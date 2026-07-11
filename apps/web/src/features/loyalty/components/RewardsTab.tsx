@@ -16,6 +16,8 @@ import {
 } from '../hooks/useRewards'
 import { RewardFormModal } from './RewardFormModal'
 import type { Reward, CreateRewardData } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface RewardsTabProps {
   programId: string
@@ -68,7 +70,7 @@ export function RewardsTab({ programId }: RewardsTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">{t('loyalty:rewards.title')}</h3>
+        <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('loyalty:rewards.title')}</h3>
         <Button size="sm" onClick={handleOpenCreate}>
           <Plus className="w-4 h-4 mr-1" />
           {t('loyalty:rewards.create')}
@@ -77,29 +79,29 @@ export function RewardsTab({ programId }: RewardsTabProps) {
 
       {rewardsList.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">{t('loyalty:rewards.noRewards')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('loyalty:rewards.noRewardsDescription')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:rewards.noRewards')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:rewards.noRewardsDescription')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.name')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.rewardType')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.pointsCost')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.rewardValue')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.status')}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:table.actions')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.rewardType')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.pointsCost')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.rewardValue')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.status')}</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('common:table.actions')}</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {rewardsList.map((reward) => (
-                <tr key={reward.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{reward.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{t(`loyalty:rewardTypes.${reward.reward_type}`)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{reward.points_cost}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{reward.reward_value ?? '-'}</td>
+                <tr key={reward.id} className={colorTokens.intent.neutral.bgHover}>
+                  <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{reward.name}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{t(`loyalty:rewardTypes.${reward.reward_type}`)}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{reward.points_cost}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{reward.reward_value ?? '-'}</td>
                   <td className="px-4 py-3">
                     <Badge variant={reward.is_active ? 'success' : 'default'}>
                       {reward.is_active ? t('loyalty:statuses.active') : t('loyalty:statuses.inactive')}
@@ -109,28 +111,28 @@ export function RewardsTab({ programId }: RewardsTabProps) {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => { handleOpenEdit(reward); }}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+                        className={`p-1.5 rounded ${colorTokens.intent.neutral.bgHoverSoft} ${colorTokens.text.muted}`}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       {reward.is_active ? (
                         <button
                           onClick={() => { deactivateMutation.mutate(reward.id); }}
-                          className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.notice.bgHover} ${colorTokens.intent.notice.text}`}
                         >
                           <Pause className="w-4 h-4" />
                         </button>
                       ) : (
                         <button
                           onClick={() => { activateMutation.mutate(reward.id); }}
-                          className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.success.bgHover} ${colorTokens.intent.success.text}`}
                         >
                           <Play className="w-4 h-4" />
                         </button>
                       )}
                       <button
                         onClick={() => { setDeleteTarget(reward); }}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                        className={`p-1.5 rounded ${colorTokens.intent.danger.bgHover} ${colorTokens.intent.danger.textSubtle}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -139,7 +141,7 @@ export function RewardsTab({ programId }: RewardsTabProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

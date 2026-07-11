@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../../../components/organisms/Modal/Modal'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { formatCurrency } from '../../../lib/format'
+import { colorClasses } from '@/lib/designTokens'
 
 interface DraftDeliveryNote {
   id: string
@@ -53,14 +54,14 @@ export function DeliveryConfirmationModal({
 
       <ModalContent>
         {/* Warning Banner */}
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className={`rounded-lg border ${colorClasses.borderAmber200} ${colorClasses.bgAmber50} p-4`}>
           <div className="flex gap-3">
-            <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-600" />
+            <AlertTriangle className={`h-5 w-5 flex-shrink-0 ${colorClasses.textAmber600}`} />
             <div className="space-y-1">
-              <p className="text-sm font-medium text-amber-900">
+              <p className={`text-sm font-medium ${colorClasses.textAmber900}`}>
                 {t('sales:invoices.deliveryConfirmation.warning')}
               </p>
-              <p className="text-sm text-amber-700">
+              <p className={`text-sm ${colorClasses.textAmber700}`}>
                 {t('sales:invoices.deliveryConfirmation.warningDetails')}
               </p>
             </div>
@@ -68,26 +69,26 @@ export function DeliveryConfirmationModal({
         </div>
 
         {/* Description */}
-        <div className="text-sm text-gray-600">
+        <div className={`text-sm ${colorClasses.textGray600}`}>
           <p>{t('sales:invoices.deliveryConfirmation.description')}</p>
         </div>
 
         {/* Delivery Notes List */}
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-900">
+          <h3 className={`text-sm font-medium ${colorClasses.textGray900}`}>
             {t('sales:invoices.deliveryConfirmation.deliveryNotesTitle')}
           </h3>
 
-          <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+          <div className={`divide-y ${colorClasses.divideGray200} rounded-lg border ${colorClasses.borderGray200}`}>
             {draftDeliveryNotes.map((dn) => (
               <div key={dn.id} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-blue-100 p-2">
-                    <Package className="h-5 w-5 text-blue-600" />
+                  <div className={`rounded-lg ${colorClasses.bgBlue100} p-2`}>
+                    <Package className={`h-5 w-5 ${colorClasses.textBlue600}`} />
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">{dn.number}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className={`font-medium ${colorClasses.textGray900}`}>{dn.number}</p>
+                    <p className={`text-sm ${colorClasses.textGray500}`}>
                       {t('sales:invoices.deliveryConfirmation.lineCount', {
                         count: dn.line_count,
                       })}
@@ -95,8 +96,8 @@ export function DeliveryConfirmationModal({
                   </div>
                 </div>
                 <div className="text-end">
-                  <p className="font-medium text-gray-900">{formatAmount(dn.total)}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className={`font-medium ${colorClasses.textGray900}`}>{formatAmount(dn.total)}</p>
+                  <p className={`text-sm ${colorClasses.textGray500}`}>
                     {t('sales:invoices.deliveryConfirmation.statusDraft')}
                   </p>
                 </div>
@@ -106,14 +107,14 @@ export function DeliveryConfirmationModal({
         </div>
 
         {/* What Will Happen */}
-        <div className="rounded-lg bg-blue-50 p-4">
+        <div className={`rounded-lg ${colorClasses.bgBlue50} p-4`}>
           <div className="flex gap-3">
-            <CheckCircle className="h-5 w-5 flex-shrink-0 text-blue-600" />
+            <CheckCircle className={`h-5 w-5 flex-shrink-0 ${colorClasses.textBlue600}`} />
             <div className="space-y-2">
-              <p className="text-sm font-medium text-blue-900">
+              <p className={`text-sm font-medium ${colorClasses.textBlue900}`}>
                 {t('sales:invoices.deliveryConfirmation.whatHappensTitle')}
               </p>
-              <ul className="space-y-1 text-sm text-blue-700">
+              <ul className={`space-y-1 text-sm ${colorClasses.textBlue700}`}>
                 <li>• {t('sales:invoices.deliveryConfirmation.step1')}</li>
                 <li>• {t('sales:invoices.deliveryConfirmation.step2')}</li>
                 <li>• {t('sales:invoices.deliveryConfirmation.step3')}</li>
@@ -129,7 +130,7 @@ export function DeliveryConfirmationModal({
           type="button"
           onClick={onClose}
           disabled={isLoading}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className={`rounded-lg border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50`}
         >
           {t('common:cancel')}
         </button>
@@ -137,7 +138,7 @@ export function DeliveryConfirmationModal({
           type="button"
           onClick={onConfirmAndPost}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} disabled:opacity-50`}
         >
           {isLoading ? (
             <>

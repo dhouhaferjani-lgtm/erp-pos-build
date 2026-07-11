@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Button, Textarea } from '@/components/atoms'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import {
+
   useEnrichmentResult,
   useAcceptEnrichment,
   useRejectEnrichment,
@@ -285,6 +287,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                       key={value}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border ${borderColors.light} px-3 py-2 text-sm ${textColors.primary}`}
                     >
+                      {/* No Radio atom exists — inline tokens.radio.base preserves styling */}
                       <input
                         type="radio"
                         name="reject-reason"
@@ -304,38 +307,39 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                 <span className={`text-sm font-medium ${textColors.secondary}`}>
                   {t('review.rejectNoteLabel')}
                 </span>
-                <textarea
+                <Textarea
                   value={rejectNotes}
                   onChange={(e) => {
                     setRejectNotes(e.target.value)
                   }}
                   placeholder={t('review.rejectNotePlaceholder')}
-                  className={`${tokens.textarea.base} min-h-20`}
+                  className="min-h-20"
                 />
               </label>
             </div>
           )}
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
+              variant="danger"
               onClick={handleReject}
               disabled={rejectMutation.isPending || (showRejectInput && !rejectReason)}
-              className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.md} flex-1`}
+              className="flex-1"
             >
               {rejectMutation.isPending
                 ? t('review.rejecting')
                 : showRejectInput
                   ? t('review.confirmReject')
                   : t('review.reject')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={handleAccept}
               disabled={acceptMutation.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} flex-1`}
+              className="flex-1"
             >
               {acceptMutation.isPending ? t('review.accepting') : t('review.accept')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -43,16 +43,23 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
-vi.mock('@/components/organisms', () => ({
+vi.mock('@/components/organisms/AddPartnerModal/AddPartnerModal', () => ({
   AddPartnerModal: () => null,
+}))
+
+vi.mock('@/components/organisms/AddRepositoryModal/AddRepositoryModal', () => ({
   AddRepositoryModal: () => null,
 }))
 
-vi.mock('./components', () => ({
-  PaymentAllocationForm: () => null,
+vi.mock('./components/AllocationPreview', () => ({
+  AllocationPreview: () => null,
 }))
 
-vi.mock('@/features/withholding', () => ({
+vi.mock('./components/OpenInvoicesList', () => ({
+  OpenInvoicesList: () => null,
+}))
+
+vi.mock('@/features/withholding/hooks/useWithholding', () => ({
   useWithholdingPreview: () => ({ data: undefined, mutate: mockWithholdingPreviewMutate }),
 }))
 

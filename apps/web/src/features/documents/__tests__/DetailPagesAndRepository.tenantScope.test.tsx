@@ -267,9 +267,9 @@ describe('detail pages and repository tenant scope', () => {
       })
     })
 
-    await user.click(screen.getByRole('button', { name: '' }))
+    await user.click(screen.getByRole('button', { name: 'common:actions.edit' }))
     await user.selectOptions(screen.getByRole('combobox'), 'account-1')
-    await user.click(screen.getAllByRole('button', { name: '' })[0])
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }))
 
     await waitFor(() => {
       expect(mockApiPatch).toHaveBeenCalledWith('/payment-repositories/repo-1', { gl_account_id: 'account-1' })

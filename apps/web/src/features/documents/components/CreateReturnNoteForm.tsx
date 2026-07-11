@@ -18,6 +18,8 @@ import { RefundMethodSelect } from './RefundMethodSelect'
 import type { ReturnReason } from './ReturnReasonSelect'
 import type { ReturnCondition } from './ReturnConditionSelect'
 import type { RefundMethod } from './RefundMethodSelect'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 // Return mode enum
 type ReturnMode = 'full' | 'partial'
@@ -199,13 +201,13 @@ export function CreateReturnNoteForm({
   return (
     <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
       {/* Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h2 className="text-lg font-medium text-gray-900">
+      <div className={`border-b ${colorClasses.borderGray200} pb-4`}>
+        <h2 className={`text-lg font-medium ${colorClasses.textGray900}`}>
           {sourceType === 'invoice'
             ? t('sales:returnNotes.createFromInvoice')
             : t('sales:returnNotes.createFromDelivery')}
         </h2>
-        <div className="mt-2 text-sm text-gray-600">
+        <div className={`mt-2 text-sm ${colorClasses.textGray600}`}>
           <p>
             <span className="font-medium">{t('sales:documents.number')}:</span>{' '}
             {sourceDocument.document_number}
@@ -224,7 +226,7 @@ export function CreateReturnNoteForm({
       {/* Return Mode Selector */}
       {hasLines && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('sales:returnNotes.form.returnMode', 'Return Mode')}
           </label>
           <div className="flex gap-4">
@@ -233,8 +235,8 @@ export function CreateReturnNoteForm({
               onClick={() => { setReturnMode('full'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 returnMode === 'full'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ${colorClasses.textBlue700}`
+                  : `${colorClasses.borderGray300} bg-white ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`
               }`}
               disabled={isSubmitting}
             >
@@ -248,8 +250,8 @@ export function CreateReturnNoteForm({
               onClick={() => { setReturnMode('partial'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 returnMode === 'partial'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ${colorClasses.textBlue700}`
+                  : `${colorClasses.borderGray300} bg-white ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`
               }`}
               disabled={isSubmitting}
             >
@@ -265,33 +267,33 @@ export function CreateReturnNoteForm({
       {/* Partial Return - Line Selection */}
       {returnMode === 'partial' && sourceDocument.lines && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('sales:returnNotes.form.selectLinesToReturn', 'Select Lines to Return')}
           </label>
 
-          <div className="rounded-md border border-gray-300 overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className={`rounded-md border ${colorClasses.borderGray300} overflow-hidden`}>
+            <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+              <thead className={`${colorClasses.bgGray50}`}>
                 <tr>
                   <th className="w-10 px-3 py-2"></th>
-                  <th className="px-3 py-2 text-start text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-start text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.item')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.quantity')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:returnNotes.form.returnQuantity', 'Return Qty')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.unitPrice')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.total')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
                 {sourceDocument.lines.map((line) => {
                   const isSelected = selectedLines.has(line.id)
                   const returnQty = selectedLines.get(line.id) || line.quantity
@@ -302,21 +304,21 @@ export function CreateReturnNoteForm({
                   const total = subtotal + tax
 
                   return (
-                    <tr key={line.id} className={isSelected ? 'bg-blue-50' : ''}>
+                    <tr key={line.id} className={isSelected ? `${colorClasses.bgBlue50}` : ''}>
                       <td className="px-3 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => { handleToggleLine(line.id, line.quantity); }}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                           disabled={isSubmitting}
                         />
                       </td>
                       <td className="px-3 py-2 text-sm">
-                        <div className="font-medium text-gray-900">{line.product_code}</div>
-                        <div className="text-gray-500">{line.description}</div>
+                        <div className={`font-medium ${colorClasses.textGray900}`}>{line.product_code}</div>
+                        <div className={`${colorClasses.textGray500}`}>{line.description}</div>
                       </td>
-                      <td className="px-3 py-2 text-end text-sm text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
                         {line.quantity}
                       </td>
                       <td className="px-3 py-2 text-end">
@@ -331,38 +333,38 @@ export function CreateReturnNoteForm({
                               parseInt(e.target.value) || 0,
                               line.quantity
                             ); }}
-                            className="w-20 rounded border-gray-300 px-2 py-1 text-sm text-end"
+                            className={`w-20 rounded ${colorClasses.borderGray300} px-2 py-1 text-sm text-end`}
                             disabled={isSubmitting}
                           />
                         ) : (
-                          <span className="text-sm text-gray-400">-</span>
+                          <span className={`text-sm ${colorClasses.textGray400}`}>-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-end text-sm text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
                         {unitPrice.toFixed(decimals)}
                       </td>
-                      <td className="px-3 py-2 text-end text-sm font-medium text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                         {isSelected ? total.toFixed(decimals) : '-'}
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className={`${colorClasses.bgGray50}`}>
                 <tr>
-                  <td colSpan={5} className="px-3 py-2 text-end text-sm font-medium text-gray-900">
+                  <td colSpan={5} className={`px-3 py-2 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                     {t('sales:returnNotes.form.returnTotal', 'Return Total')}
                   </td>
-                  <td className="px-3 py-2 text-end text-sm font-bold text-gray-900">
+                  <td className={`px-3 py-2 text-end text-sm font-bold ${colorClasses.textGray900}`}>
                     {partialReturnTotal.toFixed(decimals)}
                   </td>
                 </tr>
               </tfoot>
-            </table>
+            </DataTable>
           </div>
 
           {selectedLines.size === 0 && (
-            <p className="mt-1 text-sm text-red-600">
+            <p className={`mt-1 text-sm ${colorClasses.textRed600}`}>
               {t('sales:returnNotes.form.noLinesSelected', 'Please select at least one line to return')}
             </p>
           )}
@@ -394,20 +396,20 @@ export function CreateReturnNoteForm({
 
       {/* Auto-Create Credit Note Checkbox */}
       {sourceType === 'invoice' && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-4`}>
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
               checked={autoCreateCreditNote}
               onChange={(e) => { setAutoCreateCreditNote(e.target.checked); }}
               disabled={isSubmitting}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className={`mt-1 h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
             />
             <div className="flex-1">
-              <span className="text-sm font-medium text-gray-900">
+              <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
                 {t('sales:returnNotes.form.autoCreateCreditNote', 'Automatically create credit note')}
               </span>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
                 {t('sales:returnNotes.form.autoCreateCreditNoteHint', 'A credit note will be created automatically when this return is confirmed')}
               </p>
             </div>
@@ -417,14 +419,14 @@ export function CreateReturnNoteForm({
 
       {/* Notes Field */}
       <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="notes" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
           {t('sales:returnNotes.notes')}
         </label>
         <textarea
           {...register('notes')}
           id="notes"
           rows={3}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`}
           placeholder={t('sales:returnNotes.notesPlaceholder')}
           disabled={isSubmitting}
         />
@@ -432,11 +434,11 @@ export function CreateReturnNoteForm({
 
       {/* Error Display */}
       {createReturnNote.isError && (
-        <div className="rounded-md bg-red-50 p-4">
+        <div className={`rounded-md ${colorClasses.bgRed50} p-4`}>
           <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
+            <AlertCircle className={`h-5 w-5 ${colorClasses.textRed400}`} />
             <div className="ms-3">
-              <p className="text-sm text-red-800">
+              <p className={`text-sm ${colorClasses.textRed800}`}>
                 {createReturnNote.error.message || t('sales:returnNotes.messages.createFailed')}
               </p>
             </div>
@@ -449,14 +451,14 @@ export function CreateReturnNoteForm({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className={`rounded-md border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`}
           disabled={isSubmitting}
         >
           {t('common:actions.cancel')}
         </button>
         <button
           type="submit"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-400"
+          className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} ${colorClasses.disabledBgGray400}`}
           disabled={isSubmitting || !canSubmit()}
         >
           {isSubmitting ? t('common:status.saving', 'Saving...') : t('common:actions.save')}

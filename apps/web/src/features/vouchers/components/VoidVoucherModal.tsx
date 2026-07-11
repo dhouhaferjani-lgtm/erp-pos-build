@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Button, FormField, Textarea } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import type { VoidVoucherPayload } from '../types/voucher'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const schema = z.object({
   reason: z.string().min(5, 'vouchers:validation.reasonMin'),
@@ -36,7 +37,7 @@ export function VoidVoucherModal({ isOpen, onClose, onSubmit, isPending }: VoidV
       <Modal.Header title={t('vouchers:void.title')} onClose={onClose} />
       <form onSubmit={form.handleSubmit(handleSubmit)}>
         <Modal.Content>
-          <p className="text-sm text-gray-700">{t('vouchers:void.confirm')}</p>
+          <p className={`text-sm ${colorTokens.text.secondary}`}>{t('vouchers:void.confirm')}</p>
           <FormField
             label={t('vouchers:fields.reason')}
             error={form.formState.errors.reason?.message}

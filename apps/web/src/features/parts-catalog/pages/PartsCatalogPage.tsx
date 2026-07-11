@@ -18,7 +18,9 @@ import { useVehicleStore } from '../stores/useVehicleStore'
 import { useCatalogStore } from '../stores/useCatalogStore'
 import { SEARCH_MODES_BY_VERTICAL } from '../types/catalog'
 import type { EnrichedArticle, TenantVertical } from '../types/catalog'
-import { useCompanyConfig } from '../../../contexts'
+import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function PartsCatalogPage() {
   const { t } = useTranslation(['parts-catalog'])
@@ -113,7 +115,7 @@ export function PartsCatalogPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Filter sidebar (desktop) */}
         <div className="hidden xl:block lg:col-span-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
             <FilterSidebar />
           </div>
         </div>
@@ -125,7 +127,7 @@ export function PartsCatalogPage() {
             <button
               type="button"
               onClick={() => { setFilterDrawerOpen(true) }}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} px-3 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
             >
               <SlidersHorizontal className="h-4 w-4" />
               {t('parts-catalog:filters.openFilters')}
@@ -150,14 +152,14 @@ export function PartsCatalogPage() {
       {/* Page header */}
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50">
-            <Wrench className="h-5 w-5 text-blue-600" />
+          <div className={`flex items-center justify-center h-9 w-9 rounded-lg ${colorTokens.intent.primary.bgSubtle}`}>
+            <Wrench className={`h-5 w-5 ${colorTokens.intent.primary.text}`} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
               {t('parts-catalog:title')}
-            </h1>
-            <p className="text-sm text-gray-500">
+            </PageHeaderTitle>
+            <p className={`text-sm ${colorTokens.text.subtle}`}>
               {t('parts-catalog:subtitle')}
             </p>
           </div>
@@ -182,12 +184,12 @@ export function PartsCatalogPage() {
         {searchMode === 'vehicle' && !selectedVehicle && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
                 <VehicleNavigator />
               </div>
             </div>
             <div>
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
                 <RecentVehiclesList />
               </div>
             </div>
@@ -200,12 +202,12 @@ export function PartsCatalogPage() {
             {showVehicleSelector && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                  <div className="rounded-lg border border-gray-200 bg-white p-6">
+                  <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
                     <VehicleNavigator />
                   </div>
                 </div>
                 <div>
-                  <div className="rounded-lg border border-gray-200 bg-white p-6">
+                  <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
                     <RecentVehiclesList />
                   </div>
                 </div>
@@ -215,8 +217,8 @@ export function PartsCatalogPage() {
             {/* Category browser + results */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-3">
-                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                  <h3 className="text-sm font-medium text-gray-700 mb-3">
+                <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
+                  <h3 className={`text-sm font-medium ${colorTokens.text.secondary} mb-3`}>
                     {t('parts-catalog:vehicle.browseCategories')}
                   </h3>
                   <CategoryBrowser onCategorySelected={(nodeId) => {
@@ -232,7 +234,7 @@ export function PartsCatalogPage() {
                       <button
                         type="button"
                         onClick={() => { setFilterDrawerOpen(true) }}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} px-3 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
                       >
                         <SlidersHorizontal className="h-4 w-4" />
                         {t('parts-catalog:filters.openFilters')}
@@ -242,7 +244,7 @@ export function PartsCatalogPage() {
                     <div className="flex gap-6">
                       {/* Filter sidebar (desktop) */}
                       <div className="hidden xl:block w-56 shrink-0">
-                        <div className="rounded-lg border border-gray-200 bg-white p-4">
+                        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
                           <FilterSidebar />
                         </div>
                       </div>
@@ -260,7 +262,7 @@ export function PartsCatalogPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-gray-200 bg-white p-6">
+                  <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
                     <RecentVehiclesList />
                   </div>
                 )}
@@ -271,15 +273,15 @@ export function PartsCatalogPage() {
 
         {/* ===== PART NUMBER TAB ===== */}
         {searchMode === 'partNumber' && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
             <PartNumberSearch onArticleSelected={handleArticleSelected} />
           </div>
         )}
 
         {/* ===== CATEGORY TAB ===== */}
         {searchMode === 'category' && !selectedCategoryId && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
               {t('parts-catalog:category.title')}
             </h2>
             <CategoryBrowser onCategorySelected={handleCategorySelected} />
@@ -288,7 +290,7 @@ export function PartsCatalogPage() {
 
         {searchMode === 'category' && selectedCategoryId && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
               <CategoryBrowser onCategorySelected={handleCategorySelected} />
             </div>
             {renderResultsSection()}
@@ -298,17 +300,17 @@ export function PartsCatalogPage() {
         {/* ===== VIN/PLATE TAB ===== */}
         {searchMode === 'vinPlate' && (
           <div className="space-y-6">
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
                 {t('parts-catalog:vinPlate.title')}
               </h2>
-              <p className="text-sm text-gray-500 mb-6">
+              <p className={`text-sm ${colorTokens.text.subtle} mb-6`}>
                 {t('parts-catalog:vinPlate.description')}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1.5`}>
                     {t('parts-catalog:vinPlate.vinLabel')}
                   </label>
                   <input
@@ -317,11 +319,11 @@ export function PartsCatalogPage() {
                     onChange={(e) => { setVinInput(e.target.value.toUpperCase()) }}
                     placeholder={t('parts-catalog:vinPlate.vinPlaceholder')}
                     maxLength={17}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono uppercase text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                    className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} px-3 py-2.5 font-mono uppercase text-sm ${colorTokens.placeholder.textMuted} ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1.5`}>
                     {t('parts-catalog:vinPlate.plateLabel')}
                   </label>
                   <input
@@ -329,7 +331,7 @@ export function PartsCatalogPage() {
                     value={plateInput}
                     onChange={(e) => { setPlateInput(e.target.value.toUpperCase()) }}
                     placeholder={t('parts-catalog:vinPlate.platePlaceholder')}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono uppercase text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                    className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} px-3 py-2.5 font-mono uppercase text-sm ${colorTokens.placeholder.textMuted} ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
                   />
                 </div>
               </div>
@@ -338,17 +340,17 @@ export function PartsCatalogPage() {
                 <button
                   type="button"
                   disabled
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white opacity-50 cursor-not-allowed"
+                  className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} opacity-50 cursor-not-allowed`}
                 >
                   {t('parts-catalog:vinPlate.searchButton')}
                 </button>
-                <span className="text-xs text-gray-400">
+                <span className={`text-xs ${colorTokens.text.disabled}`}>
                   {t('parts-catalog:vinPlate.comingSoon')}
                 </span>
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
               <RecentVehiclesList />
             </div>
           </div>
@@ -356,7 +358,7 @@ export function PartsCatalogPage() {
 
         {/* ===== TIRE SIZE TAB ===== */}
         {searchMode === 'tireSize' && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
             <TireDimensionSearch onArticleSelected={handleArticleSelected} />
           </div>
         )}

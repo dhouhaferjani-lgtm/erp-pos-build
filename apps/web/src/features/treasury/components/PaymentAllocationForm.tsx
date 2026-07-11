@@ -173,6 +173,7 @@ export function PaymentAllocationForm({
                 colors.hover.gray50
               )}
             >
+              {/* raw radio: no Radio atom exists; inline token keeps it visible to the C2 auditor */}
               <input
                 type="radio"
                 name="allocation-method"

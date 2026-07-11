@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { tokens } from '@/lib/designTokens'
+import { tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { VoucherSource } from '../types/voucher'
 
 interface SourceBadgeProps {
@@ -9,10 +9,10 @@ interface SourceBadgeProps {
 // indigo and pink have no design-token equivalent yet — kept as raw Tailwind.
 const SOURCE_CLASSES: Record<VoucherSource, string> = {
   refund: tokens.badge.blue,
-  exchange_surplus: 'bg-indigo-100 text-indigo-800',
+  exchange_surplus: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStronger}`,
   goodwill: tokens.badge.purple,
   loyalty_credit: tokens.badge.yellow,
-  gift_card_purchase: 'bg-pink-100 text-pink-800',
+  gift_card_purchase: `${colorTokens.intent.promotion.bgSoft} ${colorTokens.intent.promotion.textStronger}`,
   promotional: tokens.badge.green,
 }
 

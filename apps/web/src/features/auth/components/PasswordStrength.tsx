@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface PasswordStrengthProps {
   password: string
@@ -29,11 +30,11 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
 
   let color: string
   if (met <= 1) {
-    color = 'bg-red-500'
+    color = `${colorTokens.intent.danger.bg}`
   } else if (met <= 3) {
-    color = 'bg-yellow-500'
+    color = `${colorTokens.intent.warning.bg}`
   } else {
-    color = 'bg-green-500'
+    color = `${colorTokens.intent.success.bg}`
   }
 
   return (
@@ -45,7 +46,7 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
             key={i}
             className={cn(
               'h-1 flex-1 rounded-full transition-colors',
-              i < met ? color : 'bg-gray-200'
+              i < met ? color : `${colorTokens.surface.subdued}`
             )}
           />
         ))}
@@ -58,11 +59,11 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
           return (
             <li key={req.key} className="flex items-center gap-1.5 text-xs">
               {passed ? (
-                <Check className="h-3 w-3 text-green-500" />
+                <Check className={`h-3 w-3 ${colorTokens.intent.success.textSubtle}`} />
               ) : (
-                <X className="h-3 w-3 text-gray-300" />
+                <X className={`h-3 w-3 ${colorTokens.text.faint}`} />
               )}
-              <span className={passed ? 'text-green-600' : 'text-gray-400'}>
+              <span className={passed ? `${colorTokens.intent.success.text}` : `${colorTokens.text.disabled}`}>
                 {t(`auth:passwordStrength.${req.key}`)}
               </span>
             </li>

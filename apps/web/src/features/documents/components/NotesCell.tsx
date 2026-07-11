@@ -9,21 +9,24 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
-import { textColors, borderColors } from '../../../lib/designTokens'
+import { colorClasses, textColors, borderColors, semanticColorTokens as colorTokens } from '../../../lib/designTokens'
 
 export type NotesCellProps = {
   value: string | null
   readOnly?: boolean
+  className?: string
+  valueClassName?: string
   onCommit: (next: string | null) => void
 }
 
-export function NotesCell({ value, readOnly = false, onCommit }: NotesCellProps) {
+export function NotesCell({ value, readOnly = false, className = '', valueClassName, onCommit }: NotesCellProps) {
   const { t } = useTranslation(['documents'])
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const hasValue = value !== null && value !== ''
+  const noteTextClassName = valueClassName ?? `text-xs ${textColors.tertiary}`
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -91,21 +94,21 @@ export function NotesCell({ value, readOnly = false, onCommit }: NotesCellProps)
         aria-label={t('documents:lines.additionalDescription.editAriaLabel')}
         placeholder={t('documents:lines.additionalDescription.placeholder')}
         rows={2}
-        className={`w-full rounded border ${borderColors.default} px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none`}
+        className={`w-full rounded border ${borderColors.default} px-2 py-1 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500} resize-none`}
       />
     )
   }
 
   return (
-    <div data-testid="notes-cell" className="group">
+    <div data-testid="notes-cell" className={`group ${className}`}>
       {hasValue ? (
         readOnly ? (
-          <span className={`text-xs ${textColors.tertiary}`}>{value}</span>
+          <span className={noteTextClassName}>{value}</span>
         ) : (
           <button
             type="button"
             onClick={enterEdit}
-            className={`text-start text-xs ${textColors.tertiary} hover:${textColors.secondary} cursor-pointer`}
+            className={`cursor-pointer text-start ${colorTokens.variants.hoverTextGray700} ${noteTextClassName}`}
           >
             {value}
           </button>

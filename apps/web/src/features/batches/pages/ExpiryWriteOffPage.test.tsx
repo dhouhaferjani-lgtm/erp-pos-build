@@ -44,7 +44,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('../../../hooks/useLocation', () => ({
   useLocation: () => ({ currentLocationId: 'loc-1' }),
 }))
-vi.mock('../../location/LocationSelector', () => ({
+vi.mock('../../locations/LocationSelector', () => ({
   LocationSelector: () => <div data-testid="location-selector" />,
 }))
 

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
-import { Checkbox } from '@/components/atoms'
+import { Button, Checkbox, Input, Select, Textarea } from '@/components/atoms'
 import {
+
   PartnerPicker,
   VehiclePicker,
   type PartnerPickerValue,
@@ -261,9 +262,8 @@ function AppointmentFormDrawerContent({
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className={tokens.label.base}>{t('fields.customerName')}</span>
-                  <input
+                  <Input
                     type="text"
-                    className={tokens.input.base}
                     value={form.customer_name}
                     onChange={(e) => { update('customer_name', e.target.value) }}
                     data-testid="appointment-customer-name"
@@ -271,9 +271,8 @@ function AppointmentFormDrawerContent({
                 </label>
                 <label className="block">
                   <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
-                  <input
+                  <Input
                     type="tel"
-                    className={tokens.input.base}
                     value={form.customer_phone}
                     onChange={(e) => { update('customer_phone', e.target.value) }}
                   />
@@ -291,9 +290,8 @@ function AppointmentFormDrawerContent({
                 />
                 <label className="block">
                   <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
-                  <input
+                  <Input
                     type="tel"
-                    className={tokens.input.base}
                     value={form.customer_phone}
                     onChange={(e) => { update('customer_phone', e.target.value) }}
                   />
@@ -310,9 +308,8 @@ function AppointmentFormDrawerContent({
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className={tokens.label.base}>{t('fields.vehiclePlate')}</span>
-                  <input
+                  <Input
                     type="text"
-                    className={tokens.input.base}
                     value={form.vehicle_plate}
                     onChange={(e) => { update('vehicle_plate', e.target.value) }}
                     data-testid="appointment-vehicle-plate"
@@ -320,9 +317,8 @@ function AppointmentFormDrawerContent({
                 </label>
                 <label className="block">
                   <span className={tokens.label.base}>{t('fields.vehicleDescription')}</span>
-                  <input
+                  <Input
                     type="text"
-                    className={tokens.input.base}
                     value={form.vehicle_description}
                     onChange={(e) => { update('vehicle_description', e.target.value) }}
                   />
@@ -349,10 +345,9 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>
                 {t('fields.scheduledStart')} <span className={tokens.label.required}>*</span>
               </span>
-              <input
+              <Input
                 type="datetime-local"
                 required
-                className={tokens.input.base}
                 value={form.scheduled_start}
                 onChange={(e) => { update('scheduled_start', e.target.value) }}
               />
@@ -361,10 +356,9 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>
                 {t('fields.scheduledEnd')} <span className={tokens.label.required}>*</span>
               </span>
-              <input
+              <Input
                 type="datetime-local"
                 required
-                className={tokens.input.base}
                 value={form.scheduled_end}
                 onChange={(e) => { update('scheduled_end', e.target.value) }}
               />
@@ -373,11 +367,10 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>
                 {t('fields.estimatedDuration')} <span className={tokens.label.required}>*</span>
               </span>
-              <input
+              <Input
                 type="number"
                 min={1}
                 required
-                className={tokens.input.base}
                 value={form.estimated_duration_minutes}
                 onChange={(e) => {
                   update('estimated_duration_minutes', Number(e.target.value))
@@ -386,8 +379,7 @@ function AppointmentFormDrawerContent({
             </label>
             <label className="block">
               <span className={tokens.label.base}>{t('fields.bay')}</span>
-              <select
-                className={tokens.select.base}
+              <Select
                 value={form.bay_id}
                 onChange={(e) => { update('bay_id', e.target.value) }}
               >
@@ -397,14 +389,13 @@ function AppointmentFormDrawerContent({
                     {bay.code} · {bay.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="block">
               <span className={tokens.label.base}>
                 {t('fields.appointmentType')} <span className={tokens.label.required}>*</span>
               </span>
-              <select
-                className={tokens.select.base}
+              <Select
                 value={form.appointment_type}
                 onChange={(e) => {
                   const raw = e.target.value
@@ -420,12 +411,11 @@ function AppointmentFormDrawerContent({
                 <option value="tire_service">{t('appointmentType.tire_service')}</option>
                 <option value="bodywork">{t('appointmentType.bodywork')}</option>
                 <option value="other">{t('appointmentType.other')}</option>
-              </select>
+              </Select>
             </label>
             <label className="block">
               <span className={tokens.label.base}>{t('fields.waitType')}</span>
-              <select
-                className={tokens.select.base}
+              <Select
                 value={form.wait_type}
                 onChange={(e) => {
                   const raw = e.target.value
@@ -435,7 +425,7 @@ function AppointmentFormDrawerContent({
                 <option value="drop_off">{t('waitType.drop_off')}</option>
                 <option value="waiter">{t('waitType.waiter')}</option>
                 <option value="pickup_scheduled">{t('waitType.pickup_scheduled')}</option>
-              </select>
+              </Select>
             </label>
           </fieldset>
 
@@ -445,27 +435,24 @@ function AppointmentFormDrawerContent({
             </legend>
             <label className="block">
               <span className={tokens.label.base}>{t('fields.servicesSummary')}</span>
-              <textarea
+              <Textarea
                 rows={2}
-                className={tokens.textarea.base}
                 value={form.services_summary}
                 onChange={(e) => { update('services_summary', e.target.value) }}
               />
             </label>
             <label className="block">
               <span className={tokens.label.base}>{t('fields.customerNotes')}</span>
-              <textarea
+              <Textarea
                 rows={2}
-                className={tokens.textarea.base}
                 value={form.customer_notes}
                 onChange={(e) => { update('customer_notes', e.target.value) }}
               />
             </label>
             <label className="block">
               <span className={tokens.label.base}>{t('fields.internalNotes')}</span>
-              <textarea
+              <Textarea
                 rows={2}
-                className={tokens.textarea.base}
                 value={form.internal_notes}
                 onChange={(e) => { update('internal_notes', e.target.value) }}
               />
@@ -473,20 +460,22 @@ function AppointmentFormDrawerContent({
           </fieldset>
 
           <footer className={tokens.modal.footer}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="md"
               onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
             >
               {t('actions.close')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
+              size="md"
               disabled={booking.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             >
               {booking.isPending ? t('drawer.savingLabel') : t('actions.book')}
-            </button>
+            </Button>
           </footer>
         </form>
       </div>

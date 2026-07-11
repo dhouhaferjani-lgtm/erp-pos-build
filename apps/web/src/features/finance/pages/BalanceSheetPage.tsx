@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useBalanceSheet } from '../hooks/useBalanceSheet'
 import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '../../../components/molecules/PageHeader'
-import { Button, FormField, Input } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
+import { FormField } from '../../../components/atoms/FormField/FormField'
+import { Input } from '../../../components/atoms/Input/Input'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { useCompany } from '../../../hooks/useCompany'
@@ -12,6 +14,7 @@ import {
   getTodayDateInputValue,
 } from './reportPageUtils'
 import type { BalanceSheetLine } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function BalanceSheetPage() {
   const { t } = useTranslation(['finance'])
@@ -51,7 +54,7 @@ export function BalanceSheetPage() {
       <h2 className={cn('mb-4 text-xl font-bold', textColors.primary)}>
         {heading}
       </h2>
-      <table
+      <DataTable
         className={cn('min-w-full divide-y', borderColors.divideDefault)}
       >
         <thead className={tokens.table.header}>
@@ -84,7 +87,7 @@ export function BalanceSheetPage() {
             <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 

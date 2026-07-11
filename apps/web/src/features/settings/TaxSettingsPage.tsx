@@ -12,7 +12,7 @@ import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { tokens, textColors, borderColors, colors, semanticColorTokens as colorTokens } from '../../lib/designTokens'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/molecules/Tabs'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Button } from '../../components/atoms/Button'
@@ -21,6 +21,7 @@ import { Input } from '../../components/atoms/Input'
 import { Select } from '../../components/atoms/Select'
 import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { PageHeader } from '../../components/molecules/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import {
   useTaxConfigurations,
   useDeleteTaxConfiguration,
@@ -225,7 +226,7 @@ export function TaxSettingsPage() {
                           value="REGISTERED"
                           checked={formData.tax_status === 'REGISTERED'}
                           onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
-                          className={cn('mt-0.5', tokens.radio.base)}
+                          className={`mt-0.5 h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                         />
                         <span className="ms-3">
                           <span className={cn('block text-sm font-medium', textColors.primary)}>
@@ -243,7 +244,7 @@ export function TaxSettingsPage() {
                           value="NON_REGISTERED"
                           checked={formData.tax_status === 'NON_REGISTERED'}
                           onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
-                          className={cn('mt-0.5', tokens.radio.base)}
+                          className={`mt-0.5 h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                         />
                         <span className="ms-3">
                           <span className={cn('block text-sm font-medium', textColors.primary)}>
@@ -373,7 +374,7 @@ export function TaxSettingsPage() {
               </div>
             ) : (
               <div className={cn(tokens.card.base, 'p-0 overflow-hidden')}>
-                <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
                   <thead className={tokens.table.header}>
                     <tr>
                       <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -447,7 +448,7 @@ export function TaxSettingsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
 

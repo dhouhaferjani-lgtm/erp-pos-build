@@ -13,7 +13,7 @@ vi.mock('./api', () => ({
   useCreateQuoteRequestGroup: () => ({ mutateAsync, isPending: false }),
 }))
 
-vi.mock('@/components/molecules/line-items', () => ({
+vi.mock('@/components/molecules/line-items/ProductLineSelect', () => ({
   ProductLineSelect: ({
     value,
     onChange,
@@ -32,18 +32,26 @@ vi.mock('@/components/molecules/line-items', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({
     value,
     onChange,
+    testId,
   }: {
     value: string
-    onChange: (value: string) => void
+    onChange: (value: { id: string; name: string; type: 'supplier' } | null) => void
+    testId?: string
   }) => (
     <select
-      data-testid="supplier-picker"
+      data-testid={testId ?? 'supplier-picker'}
       value={value}
-      onChange={(event) => { onChange(event.target.value) }}
+      onChange={(event) => {
+        onChange(event.target.value === '' ? null : {
+          id: event.target.value,
+          name: event.target.value === 'supplier-1' ? 'LaboDerm' : 'BioSupply',
+          type: 'supplier',
+        })
+      }}
     >
       <option value="" />
       <option value="supplier-1">LaboDerm</option>
@@ -62,7 +70,10 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, unknown>) => {
+      if (key === 'common:validation.maxLength') return `Must be at most ${String(params?.['max'])} characters`
+      return key
+    },
   }),
 }))
 
@@ -81,7 +92,34 @@ beforeEach(() => {
   })
 })
 
+function getCreateButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })
+}
+
 describe('QuoteRequestCreatePage', () => {
+  it('renders canonical footer actions for cancel and create', () => {
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/quote-requests')
+    expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'actions.openSaveMenu' })).not.toBeInTheDocument()
+  })
+
+  it('confirms before cancelling a dirty draft', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    fireEvent.change(screen.getByLabelText('purchases:quoteRequests.fields.notes'), {
+      target: { value: 'Do not discard' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'common:actions.cancel' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('confirmation.unsavedChangesBody')
+    expect(navigate).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
   it('submits a multi-supplier fan-out payload with string quantity and money values', async () => {
     renderWithProviders(<QuoteRequestCreatePage />)
 
@@ -95,7 +133,7 @@ describe('QuoteRequestCreatePage', () => {
     fireEvent.change(screen.getByTestId('line-description-0'), { target: { value: 'Crème solaire SPF50' } })
     fireEvent.change(screen.getByTestId('line-quantity-0'), { target: { value: '50.0000' } })
     fireEvent.change(screen.getByTestId('line-unit-price-0'), { target: { value: '8.200' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -116,6 +154,20 @@ describe('QuoteRequestCreatePage', () => {
     expect(navigate).toHaveBeenCalledWith('/purchases/quote-requests/groups/group-1')
   })
 
+  it('blocks submit and renders an inline error when notes exceed the field limit', async () => {
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
+    fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
+    fireEvent.change(screen.getByLabelText('purchases:quoteRequests.fields.notes'), {
+      target: { value: 'x'.repeat(2001) },
+    })
+    fireEvent.click(getCreateButton())
+
+    expect(await screen.findByText('Must be at most 2000 characters')).toBeInTheDocument()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
   it('routes a single-supplier fan-out to the detail page', async () => {
     mutateAsync.mockResolvedValue({ group_id: 'group-1', siblings: [{ id: 'rfq-1' }] })
     renderWithProviders(<QuoteRequestCreatePage />)
@@ -123,7 +175,7 @@ describe('QuoteRequestCreatePage', () => {
     fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
     fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
     fireEvent.change(screen.getByTestId('line-quantity-0'), { target: { value: '1.0000' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith('/purchases/quote-requests/rfq-1')
@@ -138,7 +190,7 @@ describe('QuoteRequestCreatePage', () => {
 
     fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
     fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('partner_ids.1 has already been taken')

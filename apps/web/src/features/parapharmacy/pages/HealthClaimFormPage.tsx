@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,8 @@ import {
 } from '../api/healthClaimApi';
 import { parapharmacyListInvalidationPredicate } from './tenantScope';
 import { toast } from 'sonner';
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function HealthClaimFormPage() {
   const { t } = useTranslation(['common', 'parapharmacy']);
@@ -28,6 +31,7 @@ export function HealthClaimFormPage() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null);
   const isEdit = !!id && id !== 'new';
+  const { handleSubmit: handleFormSubmit } = useForm();
 
   const [claimType, setClaimType] = useState<
     'function' | 'reduction_of_disease_risk' | 'development_and_health'
@@ -107,9 +111,7 @@ export function HealthClaimFormPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const submitHealthClaim = () => {
     const data: CreateHealthClaimInput = {
       claim_type: claimType,
       slug,
@@ -155,18 +157,18 @@ export function HealthClaimFormPage() {
           {t('common:back')}
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">
+          <PageHeaderTitle className="text-3xl font-bold">
             {isEdit
               ? t('parapharmacy:editHealthClaim')
               : t('parapharmacy:addHealthClaim')}
-          </h1>
+          </PageHeaderTitle>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+      <form onSubmit={(event) => { void handleFormSubmit(submitHealthClaim)(event) }} className="space-y-6">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+          <div className={`border-b ${colorTokens.border.subtle} px-6 py-4`}>
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('parapharmacy:basicInformation')}
             </h2>
           </div>
@@ -175,9 +177,9 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="claim_type"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
-                  {t('parapharmacy:claimTypeLabel')} <span className="text-red-600">*</span>
+                  {t('parapharmacy:claimTypeLabel')} <span className={`${colorTokens.intent.danger.text}`}>*</span>
                 </label>
                 <Select
                   id="claim_type"
@@ -207,9 +209,9 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="slug"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
-                  {t('parapharmacy:slug')} <span className="text-red-600">*</span>
+                  {t('parapharmacy:slug')} <span className={`${colorTokens.intent.danger.text}`}>*</span>
                 </label>
                 <Input
                   id="slug"
@@ -225,10 +227,10 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="regulatory_status"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
                   {t('parapharmacy:regulatoryStatusLabel')}{' '}
-                  <span className="text-red-600">*</span>
+                  <span className={`${colorTokens.intent.danger.text}`}>*</span>
                 </label>
                 <Select
                   id="regulatory_status"
@@ -253,7 +255,7 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="efsa_reference"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
                   {t('parapharmacy:efsaReference')}
                 </label>
@@ -270,7 +272,7 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="fda_reference"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
                   {t('parapharmacy:fdaReference')}
                 </label>
@@ -285,7 +287,7 @@ export function HealthClaimFormPage() {
               <div>
                 <label
                   htmlFor="country_restrictions"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                 >
                   {t('parapharmacy:countryRestrictions')}
                 </label>
@@ -295,7 +297,7 @@ export function HealthClaimFormPage() {
                   onChange={(e) => { setCountryRestrictions(e.target.value); }}
                   placeholder={t('parapharmacy:countryRestrictionsPlaceholder')}
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className={`text-xs ${colorTokens.text.subtle} mt-1`}>
                   {t('parapharmacy:countryRestrictionsHelp')}
                 </p>
               </div>
@@ -307,18 +309,18 @@ export function HealthClaimFormPage() {
                 id="requires_disclaimer"
                 checked={requiresDisclaimer}
                 onChange={(e) => { setRequiresDisclaimer(e.target.checked); }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
-              <label htmlFor="requires_disclaimer" className="text-sm text-gray-700">
+              <label htmlFor="requires_disclaimer" className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('parapharmacy:requiresDisclaimer')}
               </label>
             </div>
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+          <div className={`border-b ${colorTokens.border.subtle} px-6 py-4`}>
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('parapharmacy:translations')}
             </h2>
           </div>

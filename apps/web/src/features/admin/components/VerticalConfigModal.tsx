@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { useUpdateVerticalConfig } from '../hooks/useVerticals'
 import { getVerticalConfigErrorMessage } from '../api'
 import type { AdminVerticalConfig } from '../types'
+import { Button } from '@/components/atoms/Button/Button'
+import { Checkbox } from '@/components/atoms/Checkbox/Checkbox'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 
 interface VerticalConfigModalProps {
@@ -39,9 +41,7 @@ function ModuleChecklist({
             key={module}
             className={`flex items-center gap-2 text-sm ${textColors.secondary}`}
           >
-            <input
-              type="checkbox"
-              className={tokens.checkbox.base}
+            <Checkbox
               checked={selected.includes(module)}
               disabled={disabled}
               onChange={() => {
@@ -134,14 +134,16 @@ export function VerticalConfigModal({
                   >
                     {t('verticals.modal.title', { label: vertical.label })}
                   </DialogTitle>
-                  <button
+                  <Button
                     type="button"
-                    className={tokens.modal.closeButton}
+                    variant="ghost"
+                    size="sm"
+                    className="p-1"
                     aria-label={t('verticals.modal.close')}
                     onClick={onClose}
                   >
                     <X className="h-5 w-5" />
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="mt-4 flex-1 space-y-6 overflow-y-auto pr-1">
@@ -172,23 +174,22 @@ export function VerticalConfigModal({
                 </div>
 
                 <div className="mt-4 flex shrink-0 justify-end gap-3">
-                  <button
+                  <Button
                     type="button"
-                    className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                    variant="secondary"
                     onClick={onClose}
                   >
                     {t('verticals.modal.cancel')}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
                     disabled={updateConfig.isPending}
                     onClick={handleSave}
                   >
                     {updateConfig.isPending
                       ? t('verticals.modal.saving')
                       : t('verticals.modal.save')}
-                  </button>
+                  </Button>
                 </div>
               </DialogPanel>
             </TransitionChild>

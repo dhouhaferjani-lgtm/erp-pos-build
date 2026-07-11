@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 
 interface CalendarDayHeaderProps {
   date: string
@@ -30,29 +31,32 @@ export function CalendarDayHeader({
   return (
     <div className={`flex flex-col gap-3 border-b ${borderColors.light} pb-3 sm:flex-row sm:items-center sm:justify-between`}>
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={onToday}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
         >
           {t('scheduler.today')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={onPrevious}
           aria-label={t('scheduler.previous')}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
         >
           {'<'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={onNext}
           aria-label={t('scheduler.next')}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
         >
           {'>'}
-        </button>
+        </Button>
         <span className={`ml-2 text-lg font-semibold ${textColors.primary}`}>{date}</span>
       </div>
 
@@ -78,13 +82,14 @@ export function CalendarDayHeader({
           </button>
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onNewAppointment}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
         >
           {t('scheduler.newAppointment')}
-        </button>
+        </Button>
       </div>
     </div>
   )

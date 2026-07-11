@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { StatusBadge, type StatusTone } from '../../../components/atoms'
+import { StatusBadge, type StatusTone } from '../../../components/atoms/StatusBadge/StatusBadge'
 
 interface FulfillmentStatusBadgeProps {
   status: 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable'

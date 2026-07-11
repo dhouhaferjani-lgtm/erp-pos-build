@@ -43,6 +43,7 @@ class UpdateCompanySettingsRequest extends FormRequest
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50', 'timezone:all'],
             'date_format' => ['sometimes', 'nullable', 'string', 'max:20'],
             'locale' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'line_designation_override_enabled' => ['sometimes', 'boolean'],
         ];
     }
 

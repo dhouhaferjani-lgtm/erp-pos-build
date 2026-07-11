@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell, Search, User, LogOut, Settings, Menu, Globe } from 'lucide-react'
 import { useAuthStore } from '../../../stores/authStore'
-import { useLogout } from '../../../features/auth'
+import { useLogout } from '../../../features/auth/useLogout'
 import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
 import { LocationSwitcher } from '../LocationSwitcher'
@@ -11,6 +11,7 @@ import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndic
 import { QuickCreateButton } from './QuickCreateButton'
 import { useScopeChangeNotice } from '../../../hooks/useScopeChangeNotice'
 import { borderColors, colors } from '../../../lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface TopBarProps {
   onMenuClick?: () => void
@@ -64,7 +65,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
   const currentLang = languages.find((l) => l.code === i18n.language) ?? languages[0]
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6">
+    <header className={`flex h-16 items-center justify-between border-b ${colorTokens.border.subtle} ${colorTokens.surface.base} px-4 sm:px-6`}>
       {/* Left side - Menu button and Search */}
       <div className="flex items-center gap-4">
         {/* Mobile menu button */}
@@ -72,7 +73,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
           <button
             type="button"
             onClick={onMenuClick}
-            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden"
+            className={`rounded-lg p-2 ${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray100} lg:hidden`}
             aria-label={t('actions.open')}
           >
             <Menu className="h-5 w-5" />
@@ -83,11 +84,11 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
         <button
           type="button"
           onClick={onSearchClick}
-          className="hidden w-96 items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 py-2 ps-3 pe-4 text-sm text-gray-400 hover:border-gray-400 hover:bg-gray-100 sm:flex"
+          className={`hidden w-96 items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.page} py-2 ps-3 pe-4 text-sm ${colorTokens.text.disabled} ${colorTokens.border.hoverStrong} ${colorTokens.variants.hoverBgGray100} sm:flex`}
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-start">{t('common:commandPalette.searchTrigger')}</span>
-          <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-medium text-gray-500">
+          <kbd className={`rounded border ${colorTokens.border.default} ${colorTokens.surface.base} px-1.5 py-0.5 text-xs font-medium ${colorTokens.text.subtle}`}>
             ⌘K
           </kbd>
         </button>
@@ -117,7 +118,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
           <button
             type="button"
             onClick={() => { setIsLangMenuOpen(!isLangMenuOpen) }}
-            className="flex items-center gap-1 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+            className={`flex items-center gap-1 rounded-lg p-2 ${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray100}`}
             aria-label={t('common:selectLanguage')}
             aria-expanded={isLangMenuOpen}
             aria-haspopup="true"
@@ -128,19 +129,19 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
 
           {/* Language dropdown */}
           {isLangMenuOpen && (
-            <div className="absolute end-0 mt-2 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+            <div className={`absolute end-0 mt-2 w-40 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
               {languages.map((lang) => (
                 <button
                   key={lang.code}
                   type="button"
                   onClick={() => { handleLanguageChange(lang.code) }}
-                  className={`flex w-full items-center justify-between px-4 py-2 text-sm hover:bg-gray-100 ${
-                    i18n.language === lang.code ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                  className={`flex w-full items-center justify-between px-4 py-2 text-sm ${colorTokens.variants.hoverBgGray100} ${
+                    i18n.language === lang.code ? `${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.textStrong}` : `${colorTokens.text.secondary}`
                   }`}
                 >
                   <span>{lang.name}</span>
                   {i18n.language === lang.code && (
-                    <span className="text-blue-600">✓</span>
+                    <span className={`${colorTokens.intent.primary.text}`}>✓</span>
                   )}
                 </button>
               ))}
@@ -152,11 +153,11 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
 
         <button
           type="button"
-          className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+          className={`relative rounded-lg p-2 ${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray100}`}
           aria-label={t('common:notifications', { defaultValue: 'Notifications' })}
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute end-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+          <span className={`absolute end-1 top-1 h-2 w-2 rounded-full ${colorTokens.intent.danger.bg}`} />
         </button>
 
         {/* User menu */}
@@ -164,7 +165,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
           <button
             type="button"
             onClick={() => { setIsMenuOpen(!isMenuOpen) }}
-            className="flex items-center gap-2 rounded-lg p-2 text-gray-700 hover:bg-gray-100"
+            className={`flex items-center gap-2 rounded-lg p-2 ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray100}`}
             aria-label={t('auth:user.profile', { defaultValue: 'User menu' })}
             aria-expanded={isMenuOpen}
             aria-haspopup="true"
@@ -175,20 +176,20 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
 
           {/* Dropdown menu */}
           {isMenuOpen && (
-            <div className="absolute end-0 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+            <div className={`absolute end-0 mt-2 w-48 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
               <button
                 type="button"
                 onClick={handleSettingsClick}
-                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray100}`}
               >
                 <Settings className="h-4 w-4" />
                 {t('auth:user.settings')}
               </button>
-              <hr className="my-1 border-gray-200" />
+              <hr className={`my-1 ${colorTokens.border.subtle}`} />
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${colorTokens.intent.danger.text} ${colorTokens.variants.hoverBgGray100}`}
               >
                 <LogOut className="h-4 w-4" />
                 {t('auth:logout')}

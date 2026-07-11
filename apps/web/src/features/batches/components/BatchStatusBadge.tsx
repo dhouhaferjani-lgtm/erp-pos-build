@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Clock, AlertTriangle, XCircle, CheckCircle } from 'lucide-react'
 import type { ExpiryStatus } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface BatchStatusBadgeProps {
   status: ExpiryStatus
@@ -58,44 +59,43 @@ export function BatchStatusBadge({
 /**
  * Get status configuration (colors, icon)
  */
+const expiryBadgeMeta: Record<ExpiryStatus, {
+  bgColor: string
+  textColor: string
+  icon: typeof AlertCircle
+}> = {
+  OK: {
+    bgColor: `${colorTokens.intent.success.bgSoft}`,
+    textColor: `${colorTokens.intent.success.textStronger}`,
+    icon: CheckCircle,
+  },
+  APPROACHING: {
+    bgColor: `${colorTokens.intent.warning.bgSoft}`,
+    textColor: `${colorTokens.intent.warning.textStronger}`,
+    icon: Clock,
+  },
+  WARNING: {
+    bgColor: `${colorTokens.intent.notice.bgSoft}`,
+    textColor: `${colorTokens.intent.notice.textStronger}`,
+    icon: AlertTriangle,
+  },
+  CRITICAL: {
+    bgColor: `${colorTokens.intent.danger.bgSoft}`,
+    textColor: `${colorTokens.intent.danger.textStronger}`,
+    icon: AlertCircle,
+  },
+  EXPIRED: {
+    bgColor: `${colorTokens.surface.muted}`,
+    textColor: `${colorTokens.text.strong}`,
+    icon: XCircle,
+  },
+}
+
 function getStatusConfig(status: ExpiryStatus) {
-  switch (status) {
-    case 'OK':
-      return {
-        bgColor: 'bg-green-100',
-        textColor: 'text-green-800',
-        icon: CheckCircle,
-      }
-    case 'APPROACHING':
-      return {
-        bgColor: 'bg-yellow-100',
-        textColor: 'text-yellow-800',
-        icon: Clock,
-      }
-    case 'WARNING':
-      return {
-        bgColor: 'bg-orange-100',
-        textColor: 'text-orange-800',
-        icon: AlertTriangle,
-      }
-    case 'CRITICAL':
-      return {
-        bgColor: 'bg-red-100',
-        textColor: 'text-red-800',
-        icon: AlertCircle,
-      }
-    case 'EXPIRED':
-      return {
-        bgColor: 'bg-gray-100',
-        textColor: 'text-gray-800',
-        icon: XCircle,
-      }
-    default:
-      return {
-        bgColor: 'bg-gray-100',
-        textColor: 'text-gray-800',
-        icon: AlertCircle,
-      }
+  return expiryBadgeMeta[status] ?? {
+    bgColor: `${colorTokens.surface.muted}`,
+    textColor: `${colorTokens.text.strong}`,
+    icon: AlertCircle,
   }
 }
 

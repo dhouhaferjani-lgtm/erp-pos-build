@@ -85,6 +85,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $receipt_show_payment_details Whether to show payment details on receipts
  * @property bool $receipt_show_customer Whether to show customer name on receipts
  * @property string|null $receipt_thank_you Custom thank-you message for receipts
+ * @property bool $line_designation_override_enabled Whether document line designations can differ from product names
  * @property VerificationTier $verification_tier Verification tier
  * @property VerificationStatus $verification_status Verification status
  * @property Carbon|null $verification_submitted_at When verification was submitted
@@ -249,6 +250,7 @@ class Company extends Model
         'receipt_show_payment_details',
         'receipt_show_customer',
         'receipt_thank_you',
+        'line_designation_override_enabled',
         'verification_tier',
         'verification_status',
         'verification_submitted_at',
@@ -300,6 +302,7 @@ class Company extends Model
             'receipt_show_fiscal_info' => 'boolean',
             'receipt_show_payment_details' => 'boolean',
             'receipt_show_customer' => 'boolean',
+            'line_designation_override_enabled' => 'boolean',
             'verification_tier' => VerificationTier::class,
             'verification_status' => VerificationStatus::class,
             'verification_submitted_at' => 'datetime',

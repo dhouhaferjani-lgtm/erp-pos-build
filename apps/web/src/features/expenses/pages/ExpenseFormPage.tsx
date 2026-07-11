@@ -28,7 +28,7 @@ export function ExpenseFormPage() {
   // mount and reused across retries so the backend can deduplicate.
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
 
-  const handleSubmit = async (data: CreateExpenseDTO) => {
+  const handleExpenseSubmit = async (data: CreateExpenseDTO) => {
     try {
       if (isEditMode && id) {
         await updateExpense.mutateAsync({ id, data })
@@ -94,7 +94,7 @@ export function ExpenseFormPage() {
       <div className={tokens.card.base}>
         <ExpenseFormFields
           {...(expense ? { expense } : {})}
-          onSubmit={handleSubmit}
+          onSave={handleExpenseSubmit}
           onCancel={handleCancel}
           isSubmitting={createExpense.isPending || updateExpense.isPending}
         />

@@ -2,16 +2,19 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePayments, useRecordPayment, useRefundPayment } from '../hooks/useBilling'
 import type { Payment, PaymentStatus, PaymentProvider, RecordPaymentRequest, RefundPaymentRequest } from '../types'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-const STATUS_COLORS: Record<PaymentStatus, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  processing: 'bg-blue-100 text-blue-700',
-  requires_action: 'bg-orange-100 text-orange-700',
-  succeeded: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-500',
-  refunded: 'bg-purple-100 text-purple-700',
-  partially_refunded: 'bg-purple-100 text-purple-600',
+const STATUS_TONES: Record<PaymentStatus, StatusTone> = {
+  pending: 'warning',
+  processing: 'info',
+  requires_action: 'warning',
+  succeeded: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
+  refunded: 'info',
+  partially_refunded: 'info',
 }
 
 const PROVIDER_LABELS: Record<PaymentProvider, string> = {
@@ -139,7 +142,7 @@ export function PaymentsPage() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">Loading payments...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading payments...</div>
       </div>
     )
   }
@@ -151,19 +154,19 @@ export function PaymentsPage() {
           <div>
             <Link
               to="/admin/billing"
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
             >
               &larr; Back to Billing
             </Link>
-            <h1 className="mt-2 text-3xl font-bold text-gray-900">Payments</h1>
+            <h1 className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>Payments</h1>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">
+            <span className={`text-sm ${colorClasses.textGray500}`}>
               {paymentsData?.total ?? 0} total payments
             </span>
             <button
               onClick={() => { setShowRecordModal(true); }}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700}`}
             >
               Record Payment
             </button>
@@ -175,7 +178,7 @@ export function PaymentsPage() {
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -189,7 +192,7 @@ export function PaymentsPage() {
           <select
             value={providerFilter}
             onChange={(e) => { setProviderFilter(e.target.value); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
           >
             <option value="">All Providers</option>
             <option value="stripe">Stripe</option>
@@ -203,99 +206,97 @@ export function PaymentsPage() {
 
         {/* Table */}
         <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+            <thead className={`${colorClasses.bgGray50}`}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Payment
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Tenant
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Provider
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Amount
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
               {paymentsData?.data.map((payment) => (
-                <tr key={payment.id} className="hover:bg-gray-50">
+                <tr key={payment.id} className={`${colorClasses.hoverBgGray50}`}>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-mono text-sm text-gray-900">
+                    <div className={`font-mono text-sm ${colorClasses.textGray900}`}>
                       {payment.id.slice(0, 8)}...
                     </div>
                     {payment.reference_number && (
-                      <div className="text-sm text-gray-500">
+                      <div className={`text-sm ${colorClasses.textGray500}`}>
                         Ref: {payment.reference_number}
                       </div>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorClasses.textGray900}`}>
                       {payment.tenant?.name ?? 'Unknown'}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className={`text-sm ${colorClasses.textGray500}`}>
                       {payment.tenant?.email ?? ''}
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span className="text-gray-900">
+                    <span className={`${colorClasses.textGray900}`}>
                       {PROVIDER_LABELS[payment.provider] ?? payment.provider}
                     </span>
                     {payment.payment_method_type && (
-                      <div className="text-sm text-gray-500">
+                      <div className={`text-sm ${colorClasses.textGray500}`}>
                         {payment.payment_method_type}
                       </div>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${STATUS_COLORS[payment.status]}`}
-                    >
+                    <StatusBadge tone={STATUS_TONES[payment.status]}>
                       {payment.status.replace('_', ' ')}
-                    </span>
+                    </StatusBadge>
                     {payment.error_message && (
-                      <div className="mt-1 text-xs text-red-600">
+                      <div className={`mt-1 text-xs ${colorClasses.textRed600}`}>
                         {payment.error_message}
                       </div>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorClasses.textGray900}`}>
                       {formatCurrency(payment.amount, payment.currency)}
                     </div>
                     {parseFloat(payment.fee) > 0 && (
-                      <div className="text-sm text-gray-500">
+                      <div className={`text-sm ${colorClasses.textGray500}`}>
                         Fee: {formatCurrency(payment.fee, payment.currency)}
                       </div>
                     )}
                     {parseFloat(payment.refunded_amount) > 0 && (
-                      <div className="text-sm text-purple-600">
+                      <div className={`text-sm ${colorClasses.textPurple600}`}>
                         Refunded:{' '}
                         {formatCurrency(payment.refunded_amount, payment.currency)}
                       </div>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>
                     {formatDate(payment.paid_at ?? payment.payment_date)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setSelectedPayment(payment); }}
-                        className="text-sm text-blue-600 hover:text-blue-800"
+                        className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
                       >
                         View
                       </button>
@@ -307,7 +308,7 @@ export function PaymentsPage() {
                               setSelectedPayment(payment)
                               setShowRefundModal(true)
                             }}
-                            className="text-sm text-red-600 hover:text-red-800"
+                            className={`text-sm ${colorClasses.textRed600} ${colorClasses.hoverTextRed800}`}
                           >
                             Refund
                           </button>
@@ -317,10 +318,10 @@ export function PaymentsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
 
           {paymentsData?.data.length === 0 && (
-            <div className="py-12 text-center text-gray-500">
+            <div className={`py-12 text-center ${colorClasses.textGray500}`}>
               No payments found
             </div>
           )}
@@ -330,36 +331,34 @@ export function PaymentsPage() {
         {selectedPayment && !showRefundModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className={`mb-4 text-xl font-bold ${colorClasses.textGray900}`}>
                 Payment Details
               </h2>
 
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">ID:</span>
+                  <span className={`${colorClasses.textGray500}`}>ID:</span>
                   <span className="font-mono text-sm">{selectedPayment.id}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Tenant:</span>
+                  <span className={`${colorClasses.textGray500}`}>Tenant:</span>
                   <span>{selectedPayment.tenant?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Provider:</span>
+                  <span className={`${colorClasses.textGray500}`}>Provider:</span>
                   <span>
                     {PROVIDER_LABELS[selectedPayment.provider] ??
                       selectedPayment.provider}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Status:</span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[selectedPayment.status]}`}
-                  >
+                  <span className={`${colorClasses.textGray500}`}>Status:</span>
+                  <StatusBadge tone={STATUS_TONES[selectedPayment.status]}>
                     {selectedPayment.status}
-                  </span>
+                  </StatusBadge>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Amount:</span>
+                  <span className={`${colorClasses.textGray500}`}>Amount:</span>
                   <span>
                     {formatCurrency(
                       selectedPayment.amount,
@@ -368,13 +367,13 @@ export function PaymentsPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Fee:</span>
+                  <span className={`${colorClasses.textGray500}`}>Fee:</span>
                   <span>
                     {formatCurrency(selectedPayment.fee, selectedPayment.currency)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Net Amount:</span>
+                  <span className={`${colorClasses.textGray500}`}>Net Amount:</span>
                   <span>
                     {formatCurrency(
                       selectedPayment.net_amount,
@@ -384,8 +383,8 @@ export function PaymentsPage() {
                 </div>
                 {parseFloat(selectedPayment.refunded_amount) > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Refunded:</span>
-                    <span className="text-purple-600">
+                    <span className={`${colorClasses.textGray500}`}>Refunded:</span>
+                    <span className={`${colorClasses.textPurple600}`}>
                       {formatCurrency(
                         selectedPayment.refunded_amount,
                         selectedPayment.currency
@@ -395,20 +394,20 @@ export function PaymentsPage() {
                 )}
                 {selectedPayment.reference_number && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Reference:</span>
+                    <span className={`${colorClasses.textGray500}`}>Reference:</span>
                     <span>{selectedPayment.reference_number}</span>
                   </div>
                 )}
                 {selectedPayment.provider_payment_id && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Provider ID:</span>
+                    <span className={`${colorClasses.textGray500}`}>Provider ID:</span>
                     <span className="font-mono text-xs">
                       {selectedPayment.provider_payment_id}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Payment Date:</span>
+                  <span className={`${colorClasses.textGray500}`}>Payment Date:</span>
                   <span>
                     {formatDate(
                       selectedPayment.paid_at ?? selectedPayment.payment_date
@@ -417,18 +416,18 @@ export function PaymentsPage() {
                 </div>
                 {selectedPayment.recorder && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Recorded By:</span>
+                    <span className={`${colorClasses.textGray500}`}>Recorded By:</span>
                     <span>{selectedPayment.recorder.name}</span>
                   </div>
                 )}
                 {selectedPayment.invoice && (
                   <div className="border-t pt-3">
-                    <span className="text-gray-500">Invoice:</span>
+                    <span className={`${colorClasses.textGray500}`}>Invoice:</span>
                     <div className="mt-1">
                       <span className="font-medium">
                         {selectedPayment.invoice.number}
                       </span>
-                      <span className="ml-2 text-gray-500">
+                      <span className={`ml-2 ${colorClasses.textGray500}`}>
                         (
                         {formatCurrency(
                           selectedPayment.invoice.total,
@@ -441,8 +440,8 @@ export function PaymentsPage() {
                 )}
                 {selectedPayment.error_message && (
                   <div className="border-t pt-3">
-                    <span className="text-gray-500">Error:</span>
-                    <p className="mt-1 text-sm text-red-600">
+                    <span className={`${colorClasses.textGray500}`}>Error:</span>
+                    <p className={`mt-1 text-sm ${colorClasses.textRed600}`}>
                       {selectedPayment.error_code}: {selectedPayment.error_message}
                     </p>
                   </div>
@@ -455,14 +454,14 @@ export function PaymentsPage() {
                     parseFloat(selectedPayment.amount) && (
                     <button
                       onClick={() => { setShowRefundModal(true); }}
-                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      className={`rounded-md ${colorClasses.bgRed600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgRed700}`}
                     >
                       Refund
                     </button>
                   )}
                 <button
                   onClick={() => { setSelectedPayment(null); }}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                  className={`rounded-md ${colorClasses.bgGray100} px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray200}`}
                 >
                   Close
                 </button>
@@ -475,13 +474,13 @@ export function PaymentsPage() {
         {showRecordModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className={`mb-4 text-xl font-bold ${colorClasses.textGray900}`}>
                 Record Payment
               </h2>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Tenant ID *
                   </label>
                   <input
@@ -491,12 +490,12 @@ export function PaymentsPage() {
                       { setRecordForm({ ...recordForm, tenant_id: e.target.value }); }
                     }
                     placeholder="Enter tenant UUID"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Invoice ID (optional)
                   </label>
                   <input
@@ -506,12 +505,12 @@ export function PaymentsPage() {
                       { setRecordForm({ ...recordForm, invoice_id: e.target.value }); }
                     }
                     placeholder="Enter invoice UUID to allocate payment"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Amount *
                   </label>
                   <input
@@ -522,12 +521,12 @@ export function PaymentsPage() {
                       { setRecordForm({ ...recordForm, amount: e.target.value }); }
                     }
                     placeholder="0.00"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Payment Method *
                   </label>
                   <select
@@ -542,7 +541,7 @@ export function PaymentsPage() {
                           | 'check',
                       }); }
                     }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   >
                     <option value="manual">Manual</option>
                     <option value="bank_transfer">Bank Transfer</option>
@@ -552,7 +551,7 @@ export function PaymentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Reference Number
                   </label>
                   <input
@@ -565,12 +564,12 @@ export function PaymentsPage() {
                       }); }
                     }
                     placeholder="Check number, transfer reference, etc."
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Payment Date
                   </label>
                   <input
@@ -582,12 +581,12 @@ export function PaymentsPage() {
                         payment_date: e.target.value,
                       }); }
                     }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Notes
                   </label>
                   <textarea
@@ -596,7 +595,7 @@ export function PaymentsPage() {
                       { setRecordForm({ ...recordForm, notes: e.target.value }); }
                     }
                     rows={3}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
               </div>
@@ -604,14 +603,14 @@ export function PaymentsPage() {
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   onClick={() => { setShowRecordModal(false); }}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                  className={`rounded-md ${colorClasses.bgGray100} px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray200}`}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleRecordPayment}
                   disabled={recordPayment.isPending}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} disabled:opacity-50`}
                 >
                   {recordPayment.isPending ? 'Recording...' : 'Record Payment'}
                 </button>
@@ -624,12 +623,12 @@ export function PaymentsPage() {
         {showRefundModal && selectedPayment && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className={`mb-4 text-xl font-bold ${colorClasses.textGray900}`}>
                 Refund Payment
               </h2>
 
-              <div className="mb-4 rounded-md bg-yellow-50 p-4">
-                <p className="text-sm text-yellow-800">
+              <div className={`mb-4 rounded-md ${colorClasses.bgYellow50} p-4`}>
+                <p className={`text-sm ${colorClasses.textYellow800}`}>
                   Refunding payment of{' '}
                   <strong>
                     {formatCurrency(
@@ -640,7 +639,7 @@ export function PaymentsPage() {
                   for {selectedPayment.tenant?.name}
                 </p>
                 {parseFloat(selectedPayment.refunded_amount) > 0 && (
-                  <p className="mt-1 text-sm text-yellow-700">
+                  <p className={`mt-1 text-sm ${colorClasses.textYellow700}`}>
                     Already refunded:{' '}
                     {formatCurrency(
                       selectedPayment.refunded_amount,
@@ -652,7 +651,7 @@ export function PaymentsPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Refund Amount (leave empty for full refund)
                   </label>
                   <input
@@ -663,12 +662,12 @@ export function PaymentsPage() {
                       { setRefundForm({ ...refundForm, amount: e.target.value }); }
                     }
                     placeholder={`Max: ${parseFloat(selectedPayment.amount) - parseFloat(selectedPayment.refunded_amount)}`}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Reason
                   </label>
                   <textarea
@@ -678,7 +677,7 @@ export function PaymentsPage() {
                     }
                     rows={3}
                     placeholder="Reason for refund..."
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
               </div>
@@ -689,14 +688,14 @@ export function PaymentsPage() {
                     setShowRefundModal(false)
                     setRefundForm({ amount: '', reason: '' })
                   }}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                  className={`rounded-md ${colorClasses.bgGray100} px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray200}`}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleRefund}
                   disabled={refundPayment.isPending}
-                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className={`rounded-md ${colorClasses.bgRed600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgRed700} disabled:opacity-50`}
                 >
                   {refundPayment.isPending ? 'Processing...' : 'Process Refund'}
                 </button>

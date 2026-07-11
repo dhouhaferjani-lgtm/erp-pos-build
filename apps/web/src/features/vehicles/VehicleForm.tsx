@@ -9,6 +9,8 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button, Input, Select, Textarea } from '@/components/atoms'
 
 interface Partner {
   id: string
@@ -222,9 +224,9 @@ export function VehicleForm() {
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
           {isEdit ? t('vehicles:edit') : t('vehicles:new')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       {/* Form */}
@@ -238,10 +240,9 @@ export function VehicleForm() {
               <label htmlFor="partner_id" className={tokens.label.base}>
                 {t('vehicles:owner')}
               </label>
-              <select
+              <Select
                 id="partner_id"
                 {...register('partner_id')}
-                className={tokens.select.base}
               >
                 <option value="">{t('vehicles:noOwner')}</option>
                 {partners.map((partner) => (
@@ -249,7 +250,7 @@ export function VehicleForm() {
                     {partner.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* License Plate */}
@@ -257,11 +258,10 @@ export function VehicleForm() {
               <label htmlFor="license_plate" className={tokens.label.base}>
                 {t('vehicles:licensePlate')} *
               </label>
-              <input
+              <Input
                 type="text"
                 id="license_plate"
                 {...register('license_plate', { required: t('vehicles:licensePlateRequired') })}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.licensePlate')}
               />
               {errors.license_plate && (
@@ -274,7 +274,7 @@ export function VehicleForm() {
               <label htmlFor="vin" className={tokens.label.base}>
                 {t('vehicles:vin')}
               </label>
-              <input
+              <Input
                 type="text"
                 id="vin"
                 {...register('vin', {
@@ -283,7 +283,7 @@ export function VehicleForm() {
                     message: t('vehicles:vinValidation'),
                   }
                 })}
-                className={`${tokens.input.base} font-mono`}
+                className="font-mono"
                 placeholder={t('vehicles:placeholders.vin')}
                 maxLength={17}
               />
@@ -297,11 +297,10 @@ export function VehicleForm() {
               <label htmlFor="brand" className={tokens.label.base}>
                 {t('vehicles:brand')} *
               </label>
-              <input
+              <Input
                 type="text"
                 id="brand"
                 {...register('brand', { required: t('vehicles:brandRequired') })}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.brand')}
               />
               {errors.brand && (
@@ -314,11 +313,10 @@ export function VehicleForm() {
               <label htmlFor="model" className={tokens.label.base}>
                 {t('vehicles:model')} *
               </label>
-              <input
+              <Input
                 type="text"
                 id="model"
                 {...register('model', { required: t('vehicles:modelRequired') })}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.model')}
               />
               {errors.model && (
@@ -331,14 +329,13 @@ export function VehicleForm() {
               <label htmlFor="year" className={tokens.label.base}>
                 {t('vehicles:year')}
               </label>
-              <input
+              <Input
                 type="number"
                 id="year"
                 {...register('year', {
                   min: { value: 1900, message: t('vehicles:yearMin') },
                   max: { value: new Date().getFullYear() + 1, message: t('vehicles:yearMax') }
                 })}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.year')}
               />
               {errors.year && (
@@ -351,11 +348,10 @@ export function VehicleForm() {
               <label htmlFor="color" className={tokens.label.base}>
                 {t('vehicles:color')}
               </label>
-              <input
+              <Input
                 type="text"
                 id="color"
                 {...register('color')}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.color')}
               />
             </div>
@@ -365,11 +361,10 @@ export function VehicleForm() {
               <label htmlFor="mileage" className={tokens.label.base}>
                 {t('vehicles:mileageKm')}
               </label>
-              <input
+              <Input
                 type="number"
                 id="mileage"
                 {...register('mileage', { min: { value: 0, message: t('vehicles:mileageNegative') } })}
-                className={tokens.input.base}
                 placeholder="45000"
               />
               {errors.mileage && (
@@ -382,10 +377,9 @@ export function VehicleForm() {
               <label htmlFor="fuel_type" className={tokens.label.base}>
                 {t('vehicles:fuelType')}
               </label>
-              <select
+              <Select
                 id="fuel_type"
                 {...register('fuel_type')}
-                className={tokens.select.base}
               >
                 <option value="">{t('common:common.selectOption')}</option>
                 {fuelTypes.map((fuel) => (
@@ -393,7 +387,7 @@ export function VehicleForm() {
                     {fuel}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Transmission */}
@@ -401,10 +395,9 @@ export function VehicleForm() {
               <label htmlFor="transmission" className={tokens.label.base}>
                 {t('vehicles:transmission')}
               </label>
-              <select
+              <Select
                 id="transmission"
                 {...register('transmission')}
-                className={tokens.select.base}
               >
                 <option value="">{t('common:common.selectOption')}</option>
                 {transmissions.map((trans) => (
@@ -412,7 +405,7 @@ export function VehicleForm() {
                     {trans}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Engine Code */}
@@ -420,11 +413,10 @@ export function VehicleForm() {
               <label htmlFor="engine_code" className={tokens.label.base}>
                 {t('vehicles:engineCode')}
               </label>
-              <input
+              <Input
                 type="text"
                 id="engine_code"
                 {...register('engine_code')}
-                className={tokens.input.base}
                 placeholder={t('vehicles:placeholders.engineCode')}
               />
             </div>
@@ -435,11 +427,10 @@ export function VehicleForm() {
             <label htmlFor="notes" className={tokens.label.base}>
               {t('vehicles:notes')}
             </label>
-            <textarea
+            <Textarea
               id="notes"
               {...register('notes')}
               rows={3}
-              className={tokens.textarea.base}
               placeholder={t('vehicles:placeholders.notes')}
             />
           </div>
@@ -460,13 +451,12 @@ export function VehicleForm() {
           >
             {t('common:actions.cancel')}
           </Link>
-          <button
+          <Button
             type="submit"
             disabled={isSubmitting}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           >
             {isSubmitting ? t('common:status.saving') : t('common:actions.save')}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

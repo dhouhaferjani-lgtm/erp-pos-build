@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { LedgerHistoryTable } from '../LedgerHistoryTable'
 import type { VoucherLedgerRow } from '../../types/voucher'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -42,8 +43,7 @@ describe('LedgerHistoryTable', () => {
     render(<LedgerHistoryTable rows={rows} currency="EUR" />)
     const amountEl = screen.getByText((content) => content.includes('−') && content.includes('30.00'))
     expect(amountEl).toBeInTheDocument()
-    // The span should have the red color class
-    expect(amountEl.className).toContain('text-red-700')
+    expect(amountEl.className).toContain(colorTokens.intent.danger.textStrong)
   })
 
   it('renders PartiallyRedeemed as redeemed-class badge with minus amount', () => {
@@ -83,10 +83,8 @@ describe('LedgerHistoryTable', () => {
     render(<LedgerHistoryTable rows={rows} currency="EUR" />)
     const badge = screen.getByTestId('event-badge-redeemed')
     expect(badge).toBeInTheDocument()
-    // The redeemed badge class is bg-blue-*; assert we did NOT fall through
-    // to the grey default (bg-gray-100).
-    expect(badge.className).toContain('bg-blue-100')
-    expect(badge.className).not.toContain('bg-gray-100')
+    expect(badge.className).toContain(colorTokens.intent.primary.bgSoft)
+    expect(badge.className).not.toContain(colorTokens.surface.muted)
     // i18n key resolves against the lowercase namespace.
     expect(badge.textContent).toBe('vouchers:events.redeemed')
   })
@@ -95,9 +93,9 @@ describe('LedgerHistoryTable', () => {
     const rows = [makeRow({ id: 'l-i', event: 'issued', amount: '50.00' })]
     render(<LedgerHistoryTable rows={rows} currency="EUR" />)
     const amountEl = screen.getByText((content) => content.includes('+') && content.includes('50.00'))
-    expect(amountEl.className).toContain('text-green-700')
+    expect(amountEl.className).toContain(colorTokens.intent.success.textStrong)
     const badge = screen.getByTestId('event-badge-issued')
-    expect(badge.className).toContain('bg-green-100')
+    expect(badge.className).toContain(colorTokens.intent.success.bgSoft)
   })
 
   it('renders a backend-shaped `expiry_extended` ledger event with its own badge colour', () => {
@@ -105,7 +103,6 @@ describe('LedgerHistoryTable', () => {
     render(<LedgerHistoryTable rows={rows} currency="EUR" />)
     const badge = screen.getByTestId('event-badge-expiry_extended')
     expect(badge).toBeInTheDocument()
-    // Falls into the metadata-only colour bucket, not the grey default.
-    expect(badge.className).not.toContain('bg-gray-100')
+    expect(badge.className).not.toContain(colorTokens.surface.muted)
   })
 })

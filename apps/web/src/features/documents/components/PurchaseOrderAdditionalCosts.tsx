@@ -8,6 +8,7 @@ import {
   useDeleteAdditionalCost,
   type AdditionalCost as ApiAdditionalCost,
 } from '../hooks/useAdditionalCosts'
+import { colorClasses } from '@/lib/designTokens'
 
 interface PurchaseOrderAdditionalCostsProps {
   documentId: string
@@ -93,10 +94,10 @@ export function PurchaseOrderAdditionalCosts({
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-4`}>
         <div className="animate-pulse space-y-3">
-          <div className="h-4 w-32 rounded bg-gray-200" />
-          <div className="h-10 rounded bg-gray-200" />
+          <div className={`h-4 w-32 rounded ${colorClasses.bgGray200}`} />
+          <div className={`h-10 rounded ${colorClasses.bgGray200}`} />
         </div>
       </div>
     )
@@ -106,7 +107,7 @@ export function PurchaseOrderAdditionalCosts({
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-4`}>
       <AdditionalCostsForm
         costs={costs}
         onChange={handleChange}

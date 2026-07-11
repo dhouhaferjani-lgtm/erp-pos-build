@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Upload, FileText, CheckCircle, XCircle, Loader2, Download } from 'lucide-react'
 import type { OpeningBatchType } from '../types'
 import { GL_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface FileUploadProps {
   batchType: OpeningBatchType
@@ -164,15 +166,15 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
   return (
     <div className="space-y-6">
       {/* Expected columns info */}
-      <div className="rounded-lg bg-blue-50 p-4">
-        <h3 className="font-medium text-blue-800 mb-2">
+      <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} p-4`}>
+        <h3 className={`font-medium ${colorTokens.intent.primary.textStronger} mb-2`}>
           {t('openingBalances.upload.expectedColumns')}
         </h3>
         <div className="flex flex-wrap gap-2">
           {expectedColumns.map((col) => (
             <span
               key={col}
-              className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800"
+              className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}
             >
               {col}
             </span>
@@ -181,7 +183,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         <button
           type="button"
           onClick={handleDownloadTemplate}
-          className="mt-3 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"
+          className={`mt-3 inline-flex items-center gap-2 text-sm ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
         >
           <Download className="h-4 w-4" />
           {t('openingBalances.upload.downloadTemplate')}
@@ -196,8 +198,8 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         onDrop={handleDrop}
         className={`relative rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
           dragActive
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
+            ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}`
+            : `${colorTokens.border.default} ${colorTokens.border.hoverStrong}`
         }`}
       >
         <input
@@ -206,11 +208,11 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
           onChange={handleFileInput}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
-        <Upload className="mx-auto h-12 w-12 text-gray-400" />
-        <p className="mt-4 text-sm font-medium text-gray-900">
+        <Upload className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+        <p className={`mt-4 text-sm font-medium ${colorTokens.text.primary}`}>
           {t('openingBalances.upload.dragDropText')}
         </p>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
           {t('openingBalances.upload.supportedFormats')}
         </p>
       </div>
@@ -219,24 +221,24 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
       {selectedFile && (
         <div
           className={`rounded-lg p-4 ${
-            parseError ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
+            parseError ? `${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle}` : `${colorTokens.intent.success.bgSubtle} border ${colorTokens.intent.success.borderSubtle}`
           }`}
         >
           <div className="flex items-start gap-3">
             {parseError ? (
-              <XCircle className="h-5 w-5 text-red-600 mt-0.5" />
+              <XCircle className={`h-5 w-5 ${colorTokens.intent.danger.text} mt-0.5`} />
             ) : (
-              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+              <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text} mt-0.5`} />
             )}
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-gray-500" />
-                <span className="font-medium text-gray-900">{selectedFile.name}</span>
+                <FileText className={`h-4 w-4 ${colorTokens.text.subtle}`} />
+                <span className={`font-medium ${colorTokens.text.primary}`}>{selectedFile.name}</span>
               </div>
               {parseError ? (
-                <p className="mt-1 text-sm text-red-700">{parseError}</p>
+                <p className={`mt-1 text-sm ${colorTokens.intent.danger.textStrong}`}>{parseError}</p>
               ) : parsedData ? (
-                <p className="mt-1 text-sm text-green-700">
+                <p className={`mt-1 text-sm ${colorTokens.intent.success.textStrong}`}>
                   {t('openingBalances.upload.rowsFound', { count: parsedData.rows.length })}
                 </p>
               ) : null}
@@ -247,38 +249,38 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
 
       {/* Preview table */}
       {parsedData && !parseError && parsedData.rows.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle}`}>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">#</th>
+                  <th className={`px-3 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>#</th>
                   {parsedData.headers.map((header) => (
                     <th
                       key={header}
-                      className="px-3 py-2 text-left text-xs font-medium text-gray-500"
+                      className={`px-3 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}
                     >
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
                 {parsedData.rows.slice(0, 5).map((row, index) => (
                   <tr key={index}>
-                    <td className="px-3 py-2 text-xs text-gray-500">{index + 1}</td>
+                    <td className={`px-3 py-2 text-xs ${colorTokens.text.subtle}`}>{index + 1}</td>
                     {parsedData.headers.map((header) => (
-                      <td key={header} className="px-3 py-2 text-xs text-gray-900">
+                      <td key={header} className={`px-3 py-2 text-xs ${colorTokens.text.primary}`}>
                         {row[header] ?? ''}
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {parsedData.rows.length > 5 && (
-            <div className="bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            <div className={`${colorTokens.surface.page} px-3 py-2 text-xs ${colorTokens.text.subtle}`}>
               {t('openingBalances.upload.moreRows', { count: parsedData.rows.length - 5 })}
             </div>
           )}
@@ -292,7 +294,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
             type="button"
             onClick={handleUpload}
             disabled={isUploading}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
           >
             {isUploading ? (
               <>

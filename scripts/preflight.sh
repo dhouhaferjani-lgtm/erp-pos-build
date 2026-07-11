@@ -151,6 +151,10 @@ echo -e "\n${YELLOW}Running TanStack query key audit...${NC}"
 pnpm audit:keys
 echo -e "${GREEN}✓ TanStack query key audit passed${NC}"
 
+echo -e "\n${YELLOW}Running design-system audit...${NC}"
+pnpm audit:design-system
+echo -e "${GREEN}✓ Design-system audit passed${NC}"
+
 echo -e "\n${YELLOW}Running route manifest drift check...${NC}"
 bash "$ROOT_DIR/scripts/factory/check-manifest-drift.sh"
 echo -e "${GREEN}✓ Route manifests in sync${NC}"

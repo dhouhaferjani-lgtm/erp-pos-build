@@ -10,6 +10,7 @@ import { OrderLineItem } from '../../molecules/OrderLineItem'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
 import { SendToKitchenButton } from '../../components/SendToKitchenButton'
 import type { OrderData } from '../../api/orderApi'
+import { Button } from '@/components/atoms'
 
 export interface OrderPanelProps {
   order: OrderData
@@ -195,27 +196,25 @@ export function OrderPanel({
             />
           )}
           {canMarkServed && (
-            <button
+            <Button
               type="button"
               onClick={handleMarkServed}
               disabled={markServed.isPending}
-              className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md)}
             >
               {t('orders.actions.markServed')}
-            </button>
+            </Button>
           )}
           {/* §14.2 — close-order affordance removed; the order-close →
               SALE_RECEIPT path is retired. Cancel remains for non-receipt
               order termination. */}
           {canCancel && (
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={handleCancel}
               disabled={cancelOrder.isPending}
-              className={cn(tokens.button.base, tokens.button.dangerOutline, tokens.button.sizes.md)}
             >
               {t('orders.actions.cancelOrder')}
-            </button>
+            </Button>
           )}
         </div>
       )}

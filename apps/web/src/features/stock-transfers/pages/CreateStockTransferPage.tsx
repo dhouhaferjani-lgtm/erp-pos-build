@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
@@ -6,7 +7,7 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
+import { fetchLocations, type LocationApiResponse } from '@/features/locations/api'
 import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -29,6 +30,8 @@ import { useProductVariants } from '@/features/catalog/hooks/useProductVariants'
 import type { ProductVariant } from '@/features/catalog/api/variantApi'
 import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Input, Select, Textarea } from '@/components/atoms'
 
 interface DraftBatchAllocation {
   batch_id: number
@@ -422,7 +425,7 @@ interface VariantSelectCellProps {
 }
 
 /**
- * Renders a variant <select> when the line's product has active variants.
+ * Renders a variant <Select> when the line's product has active variants.
  * Reports the loaded variants up to the page so submit-time validation can
  * require a choice. Products without variants render a muted dash.
  */
@@ -452,13 +455,12 @@ function VariantSelectCell({ line, onSelect, onVariantsLoaded }: VariantSelectCe
   }
 
   return (
-    <select
+    <Select
       value={line.variantId ?? ''}
       onChange={(e) => {
         onSelect(e.target.value === '' ? null : e.target.value)
       }}
       aria-label={t('create.field.variant')}
-      className={tokens.select.base}
     >
       <option value="">{t('create.field.selectVariant')}</option>
       {variants.map((variant) => (
@@ -466,13 +468,14 @@ function VariantSelectCell({ line, onSelect, onVariantsLoaded }: VariantSelectCe
           {variant.name_suffix} ({variant.sku})
         </option>
       ))}
-    </select>
+    </Select>
   )
 }
 
 export function CreateStockTransferPage() {
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
+  const { handleSubmit: handleFormSubmit } = useForm()
   const { currency } = useCurrency()
 
   const locationsQuery = useQuery({
@@ -673,8 +676,7 @@ export function CreateStockTransferPage() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitStockTransfer = () => {
     void submitTransfer()
   }
 
@@ -793,12 +795,12 @@ export function CreateStockTransferPage() {
             <ArrowLeft className="me-1 h-4 w-4" />
             {t('detail.back')}
           </Link>
-          <h1 className={`text-2xl font-semibold ${textColors.primary}`}>{t('create.title')}</h1>
+          <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>{t('create.title')}</PageHeaderTitle>
           <p className={textColors.tertiary}>{t('create.subtitle')}</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={(event) => { void handleFormSubmit(submitStockTransfer)(event) }} className="space-y-6">
         {/* Header section */}
         <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
           <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
@@ -809,7 +811,7 @@ export function CreateStockTransferPage() {
               <label htmlFor="source" className={tokens.label.base}>
                 {t('create.field.sourceLocation')}
               </label>
-              <select
+              <Select
                 id="source"
                 value={sourceLocationId}
                 onChange={(e) => {
@@ -817,7 +819,6 @@ export function CreateStockTransferPage() {
                   setExpandedBatchLineUid(null)
                   setLines((prev) => prev.map((line) => ({ ...line, batchAllocations: [] })))
                 }}
-                className={tokens.select.base}
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
@@ -826,19 +827,18 @@ export function CreateStockTransferPage() {
                     {loc.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor="destination" className={tokens.label.base}>
                 {t('create.field.destinationLocation')}
               </label>
-              <select
+              <Select
                 id="destination"
                 value={destinationLocationId}
                 onChange={(e) => {
                   setDestinationLocationId(e.target.value)
                 }}
-                className={tokens.select.base}
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
@@ -849,20 +849,19 @@ export function CreateStockTransferPage() {
                       {loc.name}
                     </option>
                   ))}
-              </select>
+              </Select>
             </div>
             <div className="md:col-span-2">
               <label htmlFor="notes" className={tokens.label.base}>
                 {t('create.field.notes')}
               </label>
-              <textarea
+              <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => {
                   setNotes(e.target.value)
                 }}
                 rows={2}
-                className={tokens.textarea.base}
               />
             </div>
           </div>
@@ -937,32 +936,30 @@ export function CreateStockTransferPage() {
               <label htmlFor="cost-label" className={tokens.label.base}>
                 {t('create.field.transferCostLabel')}
               </label>
-              <input
+              <Input
                 id="cost-label"
                 type="text"
                 value={transferCostLabel}
                 onChange={(e) => {
                   setTransferCostLabel(e.target.value)
                 }}
-                className={tokens.input.base}
               />
             </div>
             <div>
               <label htmlFor="dist" className={tokens.label.base}>
                 {t('create.field.transferCostDistribution')}
               </label>
-              <select
+              <Select
                 id="dist"
                 value={distribution}
                 onChange={handleDistributionChange}
-                className={tokens.select.base}
               >
                 {DISTRIBUTION_OPTIONS.map((d) => (
                   <option key={d} value={d}>
                     {t(`create.distribution.${d}`)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
         </section>

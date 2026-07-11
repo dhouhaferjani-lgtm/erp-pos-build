@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/atoms'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface SaveSplitButtonProps {
   onPrimarySave: () => void
@@ -96,7 +97,7 @@ export function SaveSplitButton({
               role="menu"
               aria-labelledby={triggerId}
               onKeyDown={onMenuKeyDown}
-              className="absolute right-0 top-full z-20 mt-1 min-w-[12rem] rounded-md border border-neutral-200 bg-white py-1 shadow-lg"
+              className={`absolute right-0 top-full z-20 mt-1 min-w-[12rem] rounded-md border ${colorTokens.variants.borderNeutral200} ${colorTokens.surface.base} py-1 shadow-lg`}
             >
               {items.map((item) => (
                 <li key={item.key}>
@@ -104,7 +105,7 @@ export function SaveSplitButton({
                     type="button"
                     role="menuitem"
                     onClick={() => { close(false); item.onClick() }}
-                    className="block w-full px-4 py-2 text-left text-sm hover:bg-neutral-50"
+                    className={`block w-full px-4 py-2 text-left text-sm ${colorTokens.variants.hoverBgNeutral50}`}
                   >
                     {item.label}
                   </button>

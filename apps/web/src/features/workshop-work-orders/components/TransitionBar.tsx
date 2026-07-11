@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { tokens } from '@/lib/designTokens'
 import type { WorkOrderStatus } from '../types'
 
+
 interface TransitionBarProps {
   current: WorkOrderStatus
   canTransition: boolean
@@ -34,6 +35,9 @@ const ALLOWED_NEXT: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   cancelled: [],
 }
 
+// Button atom cannot express the custom `text-xs` size these transition
+// controls use (its size scale bottoms out at `text-sm`), so they stay raw
+// with literal design tokens to preserve pixel parity.
 const BUTTON_LAYOUT = 'gap-1 px-3 py-1.5 text-xs shadow-sm'
 const ACTION_BUTTON = `${tokens.button.base} ${tokens.button.primary} ${BUTTON_LAYOUT}`
 const SECONDARY_BUTTON = `${tokens.button.base} ${tokens.button.secondary} ${BUTTON_LAYOUT}`

@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppointmentFormDrawer } from '../components/organisms/AppointmentFormDrawer'
 import type { Appointment, Bay } from '../types'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -60,6 +62,20 @@ describe('AppointmentFormDrawer', () => {
   beforeEach(() => {
     bookMock.mockReset()
     mockApiGet.mockReset()
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        tenant_id: 'tenant-1',
+        email: 'scheduler@example.com',
+        name: 'Scheduler',
+        roles: ['admin'],
+        email_verified_at: null,
+      },
+      token: 'token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
   })
 
   it('returns null when closed', () => {

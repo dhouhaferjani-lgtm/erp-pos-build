@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { resetAuth, seedAuth } from '@/test/seedAuth'
 import { VehiclePicker, type VehiclePickerValue } from './VehiclePicker'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
@@ -40,7 +41,12 @@ const corolla: VehiclePickerValue = {
 
 describe('VehiclePicker', () => {
   beforeEach(() => {
+    seedAuth()
     mockApiGet.mockReset()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('debounces search and sends license_plate query to /vehicles', async () => {

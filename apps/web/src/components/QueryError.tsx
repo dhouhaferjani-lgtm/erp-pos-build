@@ -1,6 +1,7 @@
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getErrorMessage } from '@/lib/api'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface QueryErrorProps {
   /** The error object from useQuery */
@@ -44,16 +45,16 @@ export function QueryError({
   if (compact) {
     return (
       <div
-        className={`flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-md ${className}`}
+        className={`flex items-center justify-between p-3 ${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle} rounded-md ${className}`}
       >
-        <div className="flex items-center gap-2 text-red-700">
+        <div className={`flex items-center gap-2 ${colorTokens.intent.danger.textStrong}`}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span className="text-sm">{errorMessage}</span>
         </div>
         {onRetry && (
           <button
             onClick={onRetry}
-            className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 hover:text-red-800 hover:bg-red-100 rounded"
+            className={`inline-flex items-center px-2 py-1 text-xs font-medium ${colorTokens.intent.danger.textStrong} ${colorTokens.variants.hoverTextRed800} ${colorTokens.variants.hoverBgRed100} rounded`}
           >
             <RefreshCw className="w-3 h-3 me-1" />
             {t('retry')}
@@ -67,18 +68,18 @@ export function QueryError({
     <div
       className={`flex flex-col items-center justify-center p-8 text-center ${className}`}
     >
-      <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-        <AlertCircle className="w-6 h-6 text-red-600" />
+      <div className={`w-12 h-12 rounded-full ${colorTokens.intent.danger.bgSoft} flex items-center justify-center mb-4`}>
+        <AlertCircle className={`w-6 h-6 ${colorTokens.intent.danger.text}`} />
       </div>
 
-      <h3 className="text-lg font-medium text-gray-900 mb-2">{resolvedTitle}</h3>
+      <h3 className={`text-lg font-medium ${colorTokens.text.primary} mb-2`}>{resolvedTitle}</h3>
 
-      <p className="text-gray-600 mb-4 max-w-md">{errorMessage}</p>
+      <p className={`${colorTokens.text.muted} mb-4 max-w-md`}>{errorMessage}</p>
 
       {onRetry && (
         <button
           onClick={onRetry}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing}`}
         >
           <RefreshCw className="w-4 h-4 me-2" />
           {t('actions.tryAgain')}
@@ -100,7 +101,7 @@ export function InlineError({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 text-red-600 text-sm ${className}`}
+      className={`flex items-center gap-2 ${colorTokens.intent.danger.text} text-sm ${className}`}
     >
       <AlertCircle className="w-4 h-4 flex-shrink-0" />
       <span>{message}</span>

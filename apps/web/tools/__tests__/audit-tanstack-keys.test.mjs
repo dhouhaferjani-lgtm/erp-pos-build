@@ -155,6 +155,40 @@ describe('Gate C — TanStack queryKey scanner', () => {
       `, 'inline.ts');
       expect(v).toEqual([]);
     });
+
+    it('flags shorthand queryKey declarations with no tenant scope', () => {
+      const v = scanCode(`
+        function usePartnerSearch() {
+          const queryKey = ['pickers', 'partner', search] as const;
+          return useQuery({
+            queryKey,
+            queryFn: () => fetch('/partners'),
+          });
+        }
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].resource).toBe('pickers');
+      expect(v[0].ast_kind).toBe('array_literal');
+    });
+
+    it('does not resolve shorthand queryKey declarations from sibling function scopes', () => {
+      const v = scanCode(`
+        function unrelated() {
+          const queryKey = tenantScopedKey(['partners']);
+          return queryKey;
+        }
+
+        function usePartnerSearch() {
+          return useQuery({
+            queryKey,
+            queryFn: () => fetch('/partners'),
+          });
+        }
+      `, 'inline.ts');
+
+      expect(v).toHaveLength(1);
+      expect(v[0].ast_kind).toBe('identifier');
+    });
   });
 
   describe('useQueries (Codex C4: nested entries must be audited)', () => {

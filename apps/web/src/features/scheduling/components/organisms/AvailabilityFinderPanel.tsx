@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
+import { Button, Input } from '@/components/atoms'
 import { FreeSlotPicker } from '../molecules/FreeSlotPicker'
 import { useFreeSlots } from '../../hooks/useScheduling'
 import type { FreeSlotDTO } from '../../types'
@@ -43,39 +44,38 @@ export function AvailabilityFinderPanel({ onPick }: AvailabilityFinderPanelProps
       <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <label className="block">
           <span className={tokens.label.base}>{t('availability.duration')}</span>
-          <input
+          <Input
             type="number"
             min={1}
-            className={tokens.input.base}
             value={duration}
             onChange={(e) => { setDuration(Number(e.target.value)) }}
           />
         </label>
         <label className="block">
           <span className={tokens.label.base}>{t('availability.from')}</span>
-          <input
+          <Input
             type="date"
-            className={tokens.input.base}
             value={from}
             onChange={(e) => { setFrom(e.target.value) }}
           />
         </label>
         <label className="block">
           <span className={tokens.label.base}>{t('availability.to')}</span>
-          <input
+          <Input
             type="date"
-            className={tokens.input.base}
             value={to}
             onChange={(e) => { setTo(e.target.value) }}
           />
         </label>
         <div className="flex items-end">
-          <button
+          <Button
             type="submit"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} w-full`}
+            variant="primary"
+            size="md"
+            className="w-full"
           >
             {t('availability.search')}
-          </button>
+          </Button>
         </div>
       </form>
       <div className="mt-4">

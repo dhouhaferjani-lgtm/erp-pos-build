@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { ArticleCard } from '../molecules/ArticleCard'
 import { useCatalogStore } from '../../stores/useCatalogStore'
 import type { EnrichedArticle, PaginatedArticles } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ArticleGridProps {
   pages: PaginatedArticles[] | undefined
@@ -115,8 +116,8 @@ export function ArticleGrid({
   if (isLoading) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-16', className)}>
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
-        <p className="text-sm text-gray-500">{t('parts-catalog:results.loadingMore')}</p>
+        <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text} mb-3`} />
+        <p className={`text-sm ${colorTokens.text.subtle}`}>{t('parts-catalog:results.loadingMore')}</p>
       </div>
     )
   }
@@ -124,9 +125,9 @@ export function ArticleGrid({
   if (totalCount === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-16', className)}>
-        <PackageSearch className="h-16 w-16 text-gray-300 mb-3" />
-        <p className="text-lg font-medium text-gray-500">{t('parts-catalog:results.noResults')}</p>
-        <p className="mt-1 text-sm text-gray-400">{t('parts-catalog:results.noResultsHint')}</p>
+        <PackageSearch className={`h-16 w-16 ${colorTokens.text.faint} mb-3`} />
+        <p className={`text-lg font-medium ${colorTokens.text.subtle}`}>{t('parts-catalog:results.noResults')}</p>
+        <p className={`mt-1 text-sm ${colorTokens.text.disabled}`}>{t('parts-catalog:results.noResultsHint')}</p>
       </div>
     )
   }
@@ -135,7 +136,7 @@ export function ArticleGrid({
     <div className={cn('flex flex-col', className)}>
       {/* Toolbar: count + view toggle */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-gray-400">
+        <p className={`text-xs ${colorTokens.text.disabled}`}>
           {t('parts-catalog:results.showing', { count: totalCount })}
         </p>
         <div className="flex items-center gap-1">
@@ -145,8 +146,8 @@ export function ArticleGrid({
             className={cn(
               'rounded-md p-1.5 transition-colors',
               viewMode === 'grid'
-                ? 'bg-gray-200 text-gray-700'
-                : 'text-gray-400 hover:text-gray-600'
+                ? `${colorTokens.surface.subdued} ${colorTokens.text.secondary}`
+                : `${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHover}`
             )}
             aria-label={t('parts-catalog:filters.viewGrid')}
           >
@@ -158,8 +159,8 @@ export function ArticleGrid({
             className={cn(
               'rounded-md p-1.5 transition-colors',
               viewMode === 'list'
-                ? 'bg-gray-200 text-gray-700'
-                : 'text-gray-400 hover:text-gray-600'
+                ? `${colorTokens.surface.subdued} ${colorTokens.text.secondary}`
+                : `${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHover}`
             )}
             aria-label={t('parts-catalog:filters.viewList')}
           >
@@ -190,8 +191,8 @@ export function ArticleGrid({
       {/* Loading indicator */}
       {isFetchingNextPage && (
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-          <span className="ms-2 text-sm text-gray-500">{t('parts-catalog:results.loadingMore')}</span>
+          <Loader2 className={`h-5 w-5 animate-spin ${colorTokens.intent.primary.text}`} />
+          <span className={`ms-2 text-sm ${colorTokens.text.subtle}`}>{t('parts-catalog:results.loadingMore')}</span>
         </div>
       )}
     </div>

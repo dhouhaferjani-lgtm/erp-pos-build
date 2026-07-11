@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProductVariantMatrixEditor } from '../ProductVariantMatrixEditor'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -222,7 +223,7 @@ describe('ProductVariantMatrixEditor', () => {
 
     const countEl = await screen.findByText('catalog:variants.comboCount {"count":60}')
     await waitFor(() => {
-      expect(countEl.className).toContain('text-yellow-700')
+      expect(countEl.className).toContain(colorTokens.intent.warning.textStrong)
     })
   })
 

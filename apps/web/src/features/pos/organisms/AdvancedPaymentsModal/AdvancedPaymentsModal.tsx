@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors, colors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { Select } from '@/components/atoms'
 import { POSButton } from '../../atoms/POSButton'
 import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
 import { useCompanySettings } from '../../hooks'
@@ -24,6 +25,7 @@ import { LoyaltyRewardSelector } from '../../components/LoyaltyRewardSelector'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import type { PaymentMethod as PaymentMethodType } from '../../api/paymentMethodApi'
 import type { PaymentRepository as PaymentRepositoryType } from '../../api/paymentRepositoryApi'
+import { Input } from '@/components/atoms'
 
 /**
  * Return the repository types compatible with a given payment method.
@@ -537,14 +539,14 @@ export function AdvancedPaymentsModal({
                               <label className={cn('text-xs font-medium mb-1.5 block', textColors.tertiary)}>
                                 {t('advancedPayments.amount')} ({currency})
                               </label>
-                              <input
+                              <Input
                                 type="number"
                                 step="0.001"
                                 min="0"
                                 value={entryAmount}
                                 onChange={(e) => { setEntryAmount(e.target.value); }}
                                 placeholder="0.00"
-                                className={cn(tokens.input.base, 'text-2xl font-semibold min-h-[56px]')}
+                                className="text-2xl font-semibold min-h-[56px]"
                                 autoFocus
                               />
                             </div>
@@ -584,10 +586,10 @@ export function AdvancedPaymentsModal({
                                   </span>
                                 </div>
                               ) : (
-                                <select
+                                <Select
                                   value={entryRepositoryId}
                                   onChange={(e) => { setEntryRepositoryId(e.target.value); }}
-                                  className={cn(tokens.input.base, 'min-h-[48px]')}
+                                  className="min-h-[48px]"
                                 >
                                   <option value="">
                                     {t('advancedPayments.selectRepositoryPlaceholder')}
@@ -597,7 +599,7 @@ export function AdvancedPaymentsModal({
                                       {repo.name} ({t(`advancedPayments.repositoryType.${repo.type}`)})
                                     </option>
                                   ))}
-                                </select>
+                                </Select>
                               )}
                             </div>
                           )}
@@ -609,12 +611,12 @@ export function AdvancedPaymentsModal({
                                 <label className={cn('text-xs font-medium mb-1.5 block', textColors.tertiary)}>
                                   {t('advancedPayments.reference')}
                                 </label>
-                                <input
+                                <Input
                                   type="text"
                                   value={entryReference}
                                   onChange={(e) => { setEntryReference(e.target.value); }}
                                   placeholder={t('advancedPayments.referencePlaceholder')}
-                                  className={cn(tokens.input.base, 'min-h-[48px]')}
+                                  className={cn( 'min-h-[48px]')}
                                 />
                               </div>
 
@@ -623,13 +625,13 @@ export function AdvancedPaymentsModal({
                                   <label className={cn('text-xs font-medium mb-1.5 block', textColors.tertiary)}>
                                     {t('advancedPayments.cardLastFour')}
                                   </label>
-                                  <input
+                                  <Input
                                     type="text"
                                     maxLength={4}
                                     value={entryCardLastFour}
                                     onChange={(e) => { setEntryCardLastFour(e.target.value.replace(/\D/g, '')); }}
                                     placeholder="0000"
-                                    className={cn(tokens.input.base, 'min-h-[48px]')}
+                                    className={cn( 'min-h-[48px]')}
                                   />
                                 </div>
                               )}
@@ -665,7 +667,7 @@ export function AdvancedPaymentsModal({
                           {t('advancedPayments.addedPayments')}
                         </h3>
                       </div>
-                      <div className="divide-y divide-gray-100">
+                      <div className={`divide-y ${colorTokens.border.dividerSubtle}`}>
                         {addedPayments.map((payment) => {
                           const Icon = (() => {
                             const method = paymentMethods.find(m => m.id === payment.methodId)
@@ -747,7 +749,7 @@ export function AdvancedPaymentsModal({
                               value="change"
                               checked={preferChangeOverCredit}
                               onChange={() => { setPreferChangeOverCredit(true) }}
-                              className={cn(tokens.radio.base, textColors.warningDark)}
+                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.text} ${colorTokens.focus.primaryRing}`}
                             />
                             <span>{t('advancedPayments.giveChange')}</span>
                           </label>
@@ -758,7 +760,7 @@ export function AdvancedPaymentsModal({
                               value="credit"
                               checked={!preferChangeOverCredit}
                               onChange={() => { setPreferChangeOverCredit(false) }}
-                              className={cn(tokens.radio.base, textColors.warningDark)}
+                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.text} ${colorTokens.focus.primaryRing}`}
                             />
                             <span>{t('advancedPayments.addToCredit')}</span>
                           </label>

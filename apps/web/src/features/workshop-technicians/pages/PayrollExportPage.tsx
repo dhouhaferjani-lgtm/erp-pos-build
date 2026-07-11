@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 import { api } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button, Input } from '@/components/atoms'
 import { useTechnicians } from '../hooks/useTechnicians'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 function defaultPeriodStart(): string {
   const d = new Date()
@@ -70,9 +72,9 @@ export function PayrollExportPage() {
   return (
     <div className="space-y-6 p-6">
       <header className={`rounded-lg border ${borderColors.light} bg-white p-5`}>
-        <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
           {t('navigation.payrollExports')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`mt-1 text-sm ${textColors.tertiary}`}>
           {t('authoring.timeEntries.title')}
         </p>
@@ -84,9 +86,8 @@ export function PayrollExportPage() {
             <label className={tokens.label.base}>
               {t('authoring.timeOff.fields.startsAt')}
             </label>
-            <input
+            <Input
               type="date"
-              className={tokens.input.base}
               value={start}
               onChange={(e) => {
                 setStart(e.target.value)
@@ -97,9 +98,8 @@ export function PayrollExportPage() {
             <label className={tokens.label.base}>
               {t('authoring.timeOff.fields.endsAt')}
             </label>
-            <input
+            <Input
               type="date"
-              className={tokens.input.base}
               value={end}
               onChange={(e) => {
                 setEnd(e.target.value)
@@ -149,20 +149,22 @@ export function PayrollExportPage() {
         ) : null}
 
         <div className="flex items-center justify-end">
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="md"
             onClick={() => {
               void handleGenerate()
             }}
             disabled={isGenerating}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} inline-flex items-center gap-2`}
+            className="inline-flex items-center gap-2"
             data-testid="payroll-generate-button"
           >
             <Download className="h-4 w-4" />
             {isGenerating
               ? t('authoring.certifications.modal.saving')
               : t('navigation.payrollExports')}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

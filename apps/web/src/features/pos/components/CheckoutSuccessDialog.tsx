@@ -3,7 +3,7 @@ import { CheckCircle } from 'lucide-react'
 import { Modal } from '@/components/organisms/Modal'
 import { POSButton } from '../atoms/POSButton'
 import { ReceiptPrintButton } from './ReceiptPrintButton'
-import { textColors, colors, borderColors } from '@/lib/designTokens'
+import { textColors, colors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { cn } from '@/lib/utils'
 
@@ -70,7 +70,7 @@ export function CheckoutSuccessDialog({
             </div>
           )}
           {loyaltyPointsEarned != null && loyaltyPointsEarned > 0 && (
-            <p className="text-sm font-medium text-amber-600">
+            <p className={`text-sm font-medium ${colorTokens.intent.caution.text}`}>
               {t('pos:loyalty.earning.earned', { points: loyaltyPointsEarned })}
             </p>
           )}

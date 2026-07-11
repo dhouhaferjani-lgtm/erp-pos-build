@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
@@ -151,6 +151,52 @@ describe('AddPartnerModal prefill', () => {
     expect(payload).not.toHaveProperty('street_address')
     expect(payload).not.toHaveProperty('vat_number')
     expect(payload).not.toHaveProperty('state')
+  })
+
+  it('invalidates live partner search and detail caches after creating a partner', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    queryClient.setQueryData(['partners-search', 'supplier', '', 'tenant-1', 'company-1'], { data: [] })
+    queryClient.setQueryData(['pickers', 'partner', 'supplier', '', 'tenant-1', 'company-1'], [])
+    queryClient.setQueryData(['partner', 'partner-1', 'tenant-1', 'company-1'], { id: 'partner-1' })
+    queryClient.setQueryData(['partners-search', 'supplier', '', 'tenant-2', 'company-1'], { data: [] })
+
+    mockApiPost.mockResolvedValue({
+      id: 'partner-1',
+      name: 'PharmaDistrib SARL',
+      type: 'supplier',
+      email: null,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      country: null,
+      tax_id: null,
+      notes: null,
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AddPartnerModal isOpen={true} onClose={vi.fn()} partnerType="supplier" />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.type(await screen.findByLabelText(/^name/i), 'PharmaDistrib SARL')
+    await user.click(screen.getByRole('button', { name: /create/i }))
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(['partners-search', 'supplier', '', 'tenant-1', 'company-1'])?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryState(['pickers', 'partner', 'supplier', '', 'tenant-1', 'company-1'])?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryState(['partner', 'partner-1', 'tenant-1', 'company-1'])?.isInvalidated).toBe(true)
+    })
+    expect(queryClient.getQueryState(['partners-search', 'supplier', '', 'tenant-2', 'company-1'])?.isInvalidated).toBe(false)
   })
 
   it('re-seeds from prefill each time the modal reopens', async () => {

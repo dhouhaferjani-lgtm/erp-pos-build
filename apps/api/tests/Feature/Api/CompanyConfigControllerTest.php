@@ -115,6 +115,31 @@ class CompanyConfigControllerTest extends TestCase
         $this->assertContains('Workshop', $data['all_enabled_modules']);
     }
 
+    public function test_line_designation_override_comes_from_primary_company_setting(): void
+    {
+        UserCompanyMembership::query()
+            ->where('user_id', $this->mechanicUser->id)
+            ->where('company_id', $this->mechanicCompany->id)
+            ->update([
+                'is_primary' => true,
+                'status' => 'active',
+            ]);
+
+        $this->mechanicCompany->update(['line_designation_override_enabled' => true]);
+
+        Sanctum::actingAs($this->mechanicUser);
+
+        $this->getJson('/api/v1/company/config')
+            ->assertOk()
+            ->assertJsonPath('data.line_designation_override_enabled', true);
+
+        $this->mechanicCompany->update(['line_designation_override_enabled' => false]);
+
+        $this->getJson('/api/v1/company/config')
+            ->assertOk()
+            ->assertJsonPath('data.line_designation_override_enabled', false);
+    }
+
     public function test_returns_config_for_pharmacy_tenant(): void
     {
         Sanctum::actingAs($this->pharmacyUser);

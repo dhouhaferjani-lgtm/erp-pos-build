@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Document status types from backend
@@ -72,22 +73,22 @@ export function getStatusTranslationKey(status: string | null | undefined): stri
  * @returns Tailwind CSS classes for the badge
  */
 export function getStatusBadgeClasses(status: string | null | undefined): string {
-  if (!status) return 'bg-gray-100 text-gray-800'
+  if (!status) return `${colorTokens.surface.muted} ${colorTokens.text.strong}`
 
   const statusLower = status.toLowerCase()
 
   const colorMap: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-800',
-    pending: 'bg-yellow-100 text-yellow-800',
-    active: 'bg-green-100 text-green-800',
-    confirmed: 'bg-blue-100 text-blue-800',
-    completed: 'bg-green-100 text-green-800',
-    posted: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
-    inactive: 'bg-gray-100 text-gray-800',
-    failed: 'bg-red-100 text-red-800',
-    refunded: 'bg-orange-100 text-orange-800',
+    draft: `${colorTokens.surface.muted} ${colorTokens.text.strong}`,
+    pending: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStronger}`,
+    active: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+    confirmed: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+    completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+    posted: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+    cancelled: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
+    inactive: `${colorTokens.surface.muted} ${colorTokens.text.strong}`,
+    failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
+    refunded: `${colorTokens.intent.notice.bgSoft} ${colorTokens.intent.notice.textStronger}`,
   }
 
-  return colorMap[statusLower] ?? 'bg-gray-100 text-gray-800'
+  return colorMap[statusLower] ?? `${colorTokens.surface.muted} ${colorTokens.text.strong}`
 }

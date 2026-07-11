@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
-import { Spinner } from '@/components/atoms'
+import { Button, Spinner } from '@/components/atoms'
 import { useModules } from '../hooks/useModuleReadiness'
 import { useCompanyProfile } from '../hooks/useCompanyProgression'
 import { ModulesRoadmapView } from './ModulesRoadmapView'
 import { ModulesGridView } from './ModulesGridView'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type ViewMode = 'roadmap' | 'grid'
 
@@ -27,16 +28,17 @@ export function ModulesCatalog() {
     return (
       <div className={`${tokens.alert.warning} flex items-center justify-between`}>
         <span>{t('dashboard.unavailable')}</span>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => {
             void modulesQuery.refetch()
             void profileQuery.refetch()
           }}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
         >
           {t('dashboard.retry')}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -49,7 +51,7 @@ export function ModulesCatalog() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>{t('modules.title')}</h1>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>{t('modules.title')}</PageHeaderTitle>
           <p className={`${textColors.tertiary} text-sm mt-1`}>{t('modules.subtitle')}</p>
         </div>
 

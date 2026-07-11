@@ -4,7 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebouncedValue } from '@/lib/hooks'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Minimal service shape the picker hands back. Mirrors the Service DTO
@@ -17,6 +21,7 @@ export interface ServicePickerValue {
   pricing_type?: string | null
   hourly_rate?: string | null
   base_price?: string | null
+  tax_rate?: string | null
   currency?: string | null
 }
 
@@ -37,6 +42,7 @@ interface ServiceListItem {
   pricing_type?: string | null
   hourly_rate?: string | null
   base_price?: string | null
+  tax_rate?: string | null
   currency?: string | null
 }
 
@@ -58,6 +64,9 @@ function toValue(item: ServiceListItem): ServicePickerValue {
   }
   if (item.base_price !== undefined && item.base_price !== null) {
     value.base_price = item.base_price
+  }
+  if (item.tax_rate !== undefined && item.tax_rate !== null) {
+    value.tax_rate = item.tax_rate
   }
   if (item.currency !== undefined && item.currency !== null) {
     value.currency = item.currency
@@ -83,13 +92,15 @@ export function ServicePicker({
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
-  const queryKey = ['pickers', 'service', debouncedQuery] as const
+  const queryKey = tenantScopedKey(['pickers', 'service', debouncedQuery] as const)
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: searchEnabled && !disabled,
+    enabled: searchEnabled && !disabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '20', active: 'true' })
       params.set('search', debouncedQuery.trim())
@@ -151,7 +162,7 @@ export function ServicePicker({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+        className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         data-testid={testIdAttr}
       >
         <div className="min-w-0 flex-1">
@@ -208,7 +219,7 @@ export function ServicePicker({
         <div
           id={listboxId}
           role="listbox"
-          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} ${colorTokens.surface.base} py-1 shadow-lg`}
         >
           {!searchEnabled ? (
             <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>

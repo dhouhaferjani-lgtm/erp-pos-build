@@ -25,7 +25,7 @@ vi.mock('@/hooks/useCurrency', () => ({
   useCurrency: () => ({ currency: 'EUR' }),
 }))
 
-vi.mock('@/features/location/api', () => ({
+vi.mock('@/features/locations/api', () => ({
   fetchLocations: vi.fn().mockResolvedValue([
     { id: 'loc-a', name: 'Main Store' },
     { id: 'loc-b', name: 'Back Room' },

@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, Home } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface BreadcrumbItem {
   label: string
@@ -98,7 +99,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
         <li>
           <Link
             to="/dashboard"
-            className="flex items-center text-gray-500 hover:text-gray-700 transition-colors"
+            className={`flex items-center ${colorTokens.text.subtle} ${colorTokens.variants.hoverTextGray700} transition-colors`}
             aria-label={t('navigation.dashboard')}
           >
             <Home className="h-4 w-4" />
@@ -107,7 +108,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
 
         {/* Separator */}
         <li aria-hidden="true">
-          <ChevronRight className="h-4 w-4 text-gray-400 rtl:rotate-180" />
+          <ChevronRight className={`h-4 w-4 ${colorTokens.text.disabled} rtl:rotate-180`} />
         </li>
 
         {/* Breadcrumb items */}
@@ -119,18 +120,18 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
               {item.href && !isLast ? (
                 <Link
                   to={item.href}
-                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                  className={`${colorTokens.text.subtle} ${colorTokens.variants.hoverTextGray700} transition-colors`}
                 >
                   {item.label}
                 </Link>
               ) : (
-                <span className={isLast ? 'font-medium text-gray-900' : 'text-gray-500'}>
+                <span className={isLast ? `font-medium ${colorTokens.text.primary}` : `${colorTokens.text.subtle}`}>
                   {item.label}
                 </span>
               )}
 
               {!isLast && (
-                <ChevronRight className="h-4 w-4 text-gray-400 rtl:rotate-180" aria-hidden="true" />
+                <ChevronRight className={`h-4 w-4 ${colorTokens.text.disabled} rtl:rotate-180`} aria-hidden="true" />
               )}
             </li>
           )

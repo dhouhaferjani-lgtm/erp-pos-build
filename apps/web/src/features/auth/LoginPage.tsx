@@ -7,6 +7,7 @@ import { api, ensureCsrfCookie } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface LoginFormData {
   email: string
@@ -141,18 +142,18 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page} py-12 px-4 sm:px-6 lg:px-8`}>
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-center text-gray-900">{productName}</h1>
-          <h2 className="mt-6 text-center text-xl font-semibold text-gray-700">
+          <h1 className={`text-3xl font-bold text-center ${colorTokens.text.primary}`}>{productName}</h1>
+          <h2 className={`mt-6 text-center text-xl font-semibold ${colorTokens.text.secondary}`}>
             {t('login.subtitle')}
           </h2>
         </div>
 
         {organizations ? (
           <div className="mt-8 space-y-4" data-testid="org-picker">
-            <p className="text-center text-sm text-gray-600">
+            <p className={`text-center text-sm ${colorTokens.text.muted}`}>
               {t('login.selectOrganization', { defaultValue: 'Select your organization' })}
             </p>
             <ul className="space-y-2">
@@ -162,10 +163,10 @@ export function LoginPage() {
                     type="button"
                     onClick={() => { selectOrganization(org.tenant_id) }}
                     disabled={loginMutation.isPending}
-                    className="w-full text-left rounded-lg border border-gray-300 px-4 py-3 hover:border-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    className={`w-full text-left rounded-lg border ${colorTokens.border.default} px-4 py-3 ${colorTokens.variants.hoverBorderBlue500} ${colorTokens.variants.hoverBgBlue50} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} disabled:opacity-50`}
                   >
-                    <span className="block text-sm font-medium text-gray-900">{org.name}</span>
-                    <span className="block text-xs text-gray-500">{org.slug}</span>
+                    <span className={`block text-sm font-medium ${colorTokens.text.primary}`}>{org.name}</span>
+                    <span className={`block text-xs ${colorTokens.text.subtle}`}>{org.slug}</span>
                   </button>
                 </li>
               ))}
@@ -173,7 +174,7 @@ export function LoginPage() {
             <button
               type="button"
               onClick={() => { setOrganizations(null) }}
-              className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-500"
+              className={`w-full text-center text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}
             >
               {t('forgotPassword.backToLogin', { defaultValue: 'Back to login' })}
             </button>
@@ -181,11 +182,11 @@ export function LoginPage() {
         ) : (
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {errors.general && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div className={`rounded-md ${colorTokens.intent.danger.bgSubtle} p-4`}>
               <div className="flex">
-                <AlertCircle className="h-5 w-5 text-red-400" />
+                <AlertCircle className={`h-5 w-5 ${colorTokens.intent.danger.textFaint}`} />
                 <div className="ms-3">
-                  <p className="text-sm font-medium text-red-800">{errors.general}</p>
+                  <p className={`text-sm font-medium ${colorTokens.intent.danger.textStronger}`}>{errors.general}</p>
                 </div>
               </div>
             </div>
@@ -193,7 +194,7 @@ export function LoginPage() {
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('login.email')}
               </label>
               <input
@@ -203,23 +204,23 @@ export function LoginPage() {
                 autoComplete="email"
                 value={formData.email}
                 onChange={handleChange}
-                className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                   errors.email
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500'
+                    ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                    : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                 }`}
                 aria-invalid={!!errors.email}
                 aria-describedby={errors.email ? 'email-error' : undefined}
               />
               {errors.email && (
-                <p id="email-error" className="mt-1 text-sm text-red-600">
+                <p id="email-error" className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>
                   {errors.email}
                 </p>
               )}
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('login.password')}
               </label>
               <input
@@ -229,16 +230,16 @@ export function LoginPage() {
                 autoComplete="current-password"
                 value={formData.password}
                 onChange={handleChange}
-                className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                   errors.password
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500'
+                    ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                    : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                 }`}
                 aria-invalid={!!errors.password}
                 aria-describedby={errors.password ? 'password-error' : undefined}
               />
               {errors.password && (
-                <p id="password-error" className="mt-1 text-sm text-red-600">
+                <p id="password-error" className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>
                   {errors.password}
                 </p>
               )}
@@ -246,7 +247,7 @@ export function LoginPage() {
           </div>
 
           <div className="flex justify-end">
-            <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+            <Link to="/forgot-password" className={`text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}>
               {t('login.forgotPassword')}
             </Link>
           </div>
@@ -254,17 +255,17 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={`group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
           >
             <span className="absolute start-0 inset-y-0 flex items-center ps-3">
-              <LogIn className="h-5 w-5 text-blue-500 group-hover:text-blue-400" />
+              <LogIn className={`h-5 w-5 ${colorTokens.intent.primary.textSubtle} ${colorTokens.variants.groupHoverTextBlue400}`} />
             </span>
             {loginMutation.isPending ? t('login.signingIn') : t('login.submit')}
           </button>
 
-          <p className="text-center text-sm text-gray-600 mt-4">
+          <p className={`text-center text-sm ${colorTokens.text.muted} mt-4`}>
             {t('login.dontHaveAccount', { defaultValue: "Don't have an account?" })}{' '}
-            <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link to="/register" className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}>
               {t('login.signUp', { defaultValue: 'Sign up' })}
             </Link>
           </p>

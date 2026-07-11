@@ -3,8 +3,9 @@ import { KitchenTimer } from '../atoms/KitchenTimer'
 import { OrderStatusBadge } from '../molecules/OrderStatusBadge'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
-import { colors, textColors, borderColors, tokens } from '@/lib/designTokens'
+import { colors, textColors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { OrderData, OrderLineData } from '../api/orderApi'
+import { Button } from '@/components/atoms'
 
 interface KitchenOrderCardProps {
   order: OrderData
@@ -96,13 +97,13 @@ export function KitchenOrderCard({
           const lineTone = statusTone(line.status, LINE_STATUS_TONES)
 
           return (
-            <button
+            <Button
               key={line.id}
               type="button"
               disabled={!canTap}
               onClick={() => { handleLineTap(line) }}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors ${
-                canTap ? `${colors.hover.gray50} active:${colors.neutral[100]}` : ''
+                canTap ? `${colors.hover.gray50} ${colorTokens.variants.activeBgGray100}` : ''
               }`}
             >
               <div className="flex-1">
@@ -126,7 +127,7 @@ export function KitchenOrderCard({
               >
                 {t(`kitchen.lineStatus.${line.status}`)}
               </StatusBadge>
-            </button>
+            </Button>
           )
         })}
       </div>
@@ -134,14 +135,14 @@ export function KitchenOrderCard({
       {/* Actions */}
       {hasPendingLines && (
         <div className={`border-t ${borderColors.light} px-4 py-3`}>
-          <button
+          <Button
             type="button"
             onClick={() => { onBump(order.id) }}
             disabled={isBumping}
-            className={`w-full rounded-lg ${tokens.button.base} ${colors.success[600]} px-4 py-2 text-sm font-semibold ${textColors.inverse} hover:${colors.success[700]} disabled:opacity-50`}
+            className={`w-full rounded-lg  ${colors.success[600]} px-4 py-2 text-sm font-semibold ${textColors.inverse} ${colorTokens.variants.hoverBgGreen700} disabled:opacity-50`}
           >
             {t('kitchen.bump')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

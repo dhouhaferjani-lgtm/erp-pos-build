@@ -12,6 +12,9 @@ import { TableStatusBadge } from '../../atoms/TableStatusBadge'
 import type { FloorData, TableData } from '../../api/tableApi'
 import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Button } from '@/components/atoms'
 
 /**
  * Admin page for managing floors and tables (CRUD).
@@ -77,9 +80,9 @@ export function TableManagementPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
-      <h1 className={cn('text-2xl font-bold', textColors.primary)}>
+      <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>
         {t('tables.title')}
-      </h1>
+      </PageHeaderTitle>
 
       {/* Floors Section */}
       <section>
@@ -97,14 +100,14 @@ export function TableManagementPage() {
             className={cn('flex-1 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFloor() }}
           />
-          <button
+          <Button
             type="button"
             onClick={handleCreateFloor}
             disabled={createFloor.isPending || !newFloorName.trim()}
-            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'rounded-lg')}
+            className={cn( 'rounded-lg')}
           >
             {t('tables.addFloor')}
-          </button>
+          </Button>
         </div>
 
         {/* Floor List */}
@@ -127,14 +130,14 @@ export function TableManagementPage() {
                   </span>
                 )}
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={() => { handleDeleteFloor(floor.id) }}
                 disabled={deleteFloor.isPending}
                 className={cn('text-sm disabled:opacity-50', textColors.error, textColors.hoverError)}
               >
                 {t('common:delete', 'Delete')}
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -182,19 +185,19 @@ export function TableManagementPage() {
             max="100"
             className={cn('w-16 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
           />
-          <button
+          <Button
             type="button"
             onClick={handleCreateTable}
             disabled={createTable.isPending || !newTableNumber.trim()}
-            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'rounded-lg')}
+            className={cn( 'rounded-lg')}
           >
             {t('tables.addTable')}
-          </button>
+          </Button>
         </div>
 
         {/* Table List */}
         <div className={cn('overflow-hidden rounded-lg border', borderColors.light)}>
-          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead className={tokens.table.header}>
               <tr>
                 <th className={cn('px-4 py-3 text-left text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -236,14 +239,14 @@ export function TableManagementPage() {
                     <TableStatusBadge status={table.status} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <button
+                    <Button
                       type="button"
                       onClick={() => { handleDeleteTable(table.id) }}
                       disabled={deleteTableMutation.isPending || table.status === 'occupied'}
                       className={cn('text-sm disabled:opacity-50', textColors.error, textColors.hoverError)}
                     >
                       {t('common:delete', 'Delete')}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -255,7 +258,7 @@ export function TableManagementPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </section>
     </div>

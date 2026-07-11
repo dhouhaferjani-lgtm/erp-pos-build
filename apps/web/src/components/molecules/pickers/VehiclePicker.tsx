@@ -4,7 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebouncedValue } from '@/lib/hooks'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Minimal shape returned by `/vehicles`. Consumers that need the full
@@ -75,6 +79,8 @@ export function VehiclePicker({
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // When the scope changes (different partner selected), drop any previously
   // chosen vehicle: the new owner's vehicle list is a different search space.
@@ -92,11 +98,11 @@ export function VehiclePicker({
   }, [partnerId])
 
   const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
-  const queryKey = ['pickers', 'vehicle', partnerId ?? null, debouncedQuery] as const
+  const queryKey = tenantScopedKey(['pickers', 'vehicle', partnerId ?? null, debouncedQuery] as const)
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: searchEnabled && !disabled,
+    enabled: searchEnabled && !disabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('search', debouncedQuery.trim())
@@ -168,7 +174,7 @@ export function VehiclePicker({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+        className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         data-testid={testIdAttr}
       >
         <div className="min-w-0 flex-1">
@@ -231,7 +237,7 @@ export function VehiclePicker({
         <div
           id={listboxId}
           role="listbox"
-          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} ${colorTokens.surface.base} py-1 shadow-lg`}
         >
           {!searchEnabled ? (
             <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>

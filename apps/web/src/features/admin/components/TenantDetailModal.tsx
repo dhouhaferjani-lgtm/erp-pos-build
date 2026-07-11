@@ -6,7 +6,7 @@ import { useTenant } from '../hooks/useTenants'
 import { useUpdateTenantExtras } from '../hooks/useTenants'
 import type { PlanSummary, UsageStat } from '../types'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { tokens, textColors } from '@/lib/designTokens'
+import { tokens, textColors, colorClasses } from '@/lib/designTokens'
 
 interface TenantDetailModalProps {
   tenantId: string | null
@@ -21,19 +21,19 @@ function UsageBar({ stat, label }: { stat: UsageStat; label: string }) {
   return (
     <div className="mb-3">
       <div className="mb-1 flex justify-between text-sm">
-        <span className="font-medium text-gray-700">{label}</span>
-        <span className="text-gray-500">
+        <span className={`font-medium ${colorClasses.textGray700}`}>{label}</span>
+        <span className={`${colorClasses.textGray500}`}>
           {stat.current} / {isUnlimited ? '∞' : stat.limit}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+      <div className={`h-2 overflow-hidden rounded-full ${colorClasses.bgGray200}`}>
         <div
           className={`h-full transition-all ${
             percent >= 90
-              ? 'bg-red-500'
+              ? `${colorClasses.bgRed500}`
               : percent >= 70
-                ? 'bg-yellow-500'
-                : 'bg-blue-500'
+                ? `${colorClasses.bgYellow500}`
+                : `${colorClasses.bgBlue500}`
           }`}
           style={{ width: `${Math.min(percent, 100)}%` }}
         />
@@ -53,8 +53,8 @@ function ModuleBadge({
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
         enabled
-          ? 'bg-green-100 text-green-800'
-          : 'bg-gray-100 text-gray-500'
+          ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}`
+          : `${colorClasses.bgGray100} ${colorClasses.textGray500}`
       }`}
     >
       {name}
@@ -73,8 +73,8 @@ function FeatureBadge({
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
         enabled
-          ? 'bg-blue-50 text-blue-700'
-          : 'bg-gray-50 text-gray-400 line-through'
+          ? `${colorClasses.bgBlue50} ${colorClasses.textBlue700}`
+          : `${colorClasses.bgGray50} ${colorClasses.textGray400} line-through`
       }`}
     >
       {name}
@@ -123,20 +123,20 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
   return (
     <div className="space-y-6">
       {/* Plan Info */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-4`}>
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="font-semibold text-gray-900">
+            <h4 className={`font-semibold ${colorClasses.textGray900}`}>
               {plan?.name ?? 'No Plan'}
             </h4>
-            <p className="text-sm text-gray-500">{plan?.description}</p>
+            <p className={`text-sm ${colorClasses.textGray500}`}>{plan?.description}</p>
           </div>
           {plan?.price_monthly && (
             <div className="text-right">
-              <span className="text-2xl font-bold text-gray-900">
+              <span className={`text-2xl font-bold ${colorClasses.textGray900}`}>
                 {plan.price_monthly}
               </span>
-              <span className="text-sm text-gray-500">
+              <span className={`text-sm ${colorClasses.textGray500}`}>
                 {' '}
                 {plan.currency}/mo
               </span>
@@ -144,16 +144,16 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
           )}
         </div>
         {subscription && (
-          <div className="mt-3 flex gap-4 border-t border-gray-200 pt-3 text-sm">
+          <div className={`mt-3 flex gap-4 border-t ${colorClasses.borderGray200} pt-3 text-sm`}>
             <span>
               Status:{' '}
               <span
                 className={`font-medium ${
                   subscription.status === 'active'
-                    ? 'text-green-600'
+                    ? `${colorClasses.textGreen600}`
                     : subscription.status === 'trial'
-                      ? 'text-blue-600'
-                      : 'text-red-600'
+                      ? `${colorClasses.textBlue600}`
+                      : `${colorClasses.textRed600}`
                 }`}
               >
                 {subscription.status}
@@ -161,7 +161,7 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
             </span>
             <span>Billing: {subscription.billing_cycle}</span>
             {subscription.is_on_trial && subscription.trial_ends_at && (
-              <span className="text-orange-600">
+              <span className={`${colorClasses.textOrange600}`}>
                 Trial ends:{' '}
                 {new Date(subscription.trial_ends_at).toLocaleDateString()}
               </span>
@@ -172,14 +172,14 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
       {/* Resource Usage */}
       <div>
-        <h4 className="mb-3 font-semibold text-gray-900">Resource Usage</h4>
+        <h4 className={`mb-3 font-semibold ${colorClasses.textGray900}`}>Resource Usage</h4>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border border-gray-200 p-3">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} p-3`}>
             <UsageBar stat={usage.companies} label="Companies" />
             <UsageBar stat={usage.locations} label="Locations" />
             <UsageBar stat={usage.users} label="Users" />
           </div>
-          <div className="rounded-lg border border-gray-200 p-3">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} p-3`}>
             <UsageBar stat={usage.products} label="Products" />
             <UsageBar stat={usage.partners} label="Partners" />
             <UsageBar
@@ -192,9 +192,9 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
       {/* User Overage */}
       {overage.extra_users > 0 && (
-        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-          <h4 className="font-semibold text-orange-800">User Overage</h4>
-          <p className="mt-1 text-sm text-orange-700">
+        <div className={`rounded-lg border ${colorClasses.borderOrange200} ${colorClasses.bgOrange50} p-4`}>
+          <h4 className={`font-semibold ${colorClasses.textOrange800}`}>User Overage</h4>
+          <p className={`mt-1 text-sm ${colorClasses.textOrange700}`}>
             {overage.extra_users} extra user(s) @ {overage.price_per_user}{' '}
             {plan?.currency}/user = {overage.total_overage} {plan?.currency}
             /mo
@@ -204,7 +204,7 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
       {/* Modules */}
       <div>
-        <h4 className="mb-2 font-semibold text-gray-900">Enabled Modules</h4>
+        <h4 className={`mb-2 font-semibold ${colorClasses.textGray900}`}>Enabled Modules</h4>
         <div className="flex flex-wrap gap-2">
           {Object.entries(modules).map(([key, enabled]) => (
             <ModuleBadge
@@ -218,7 +218,7 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
       {/* Features */}
       <div>
-        <h4 className="mb-2 font-semibold text-gray-900">Features</h4>
+        <h4 className={`mb-2 font-semibold ${colorClasses.textGray900}`}>Features</h4>
         <div className="flex flex-wrap gap-2">
           {Object.entries(features).map(([key, enabled]) => (
             <FeatureBadge
@@ -314,15 +314,15 @@ export function ManageModulesSection({
           return (
             <div
               key={extra}
-              className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3"
+              className={`flex items-center justify-between rounded-lg border ${colorClasses.borderGray200} px-4 py-3`}
             >
-              <span className="text-sm font-medium text-gray-700">{extra}</span>
+              <span className={`text-sm font-medium ${colorClasses.textGray700}`}>{extra}</span>
               <button
                 type="button"
                 disabled={updateExtras.isPending}
                 onClick={() => setPendingToggle({ module: extra, enable: !isEnabled })}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
-                  isEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                  isEnabled ? `${colorClasses.bgBlue600}` : `${colorClasses.bgGray200}`
                 }`}
                 aria-pressed={isEnabled}
                 aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${extra}`}
@@ -397,23 +397,23 @@ export function TenantDetailModal({
                 <div className="flex items-center justify-between">
                   <Dialog.Title
                     as="h3"
-                    className="text-lg font-semibold leading-6 text-gray-900"
+                    className={`text-lg font-semibold leading-6 ${colorClasses.textGray900}`}
                   >
                     {data?.tenant?.name ?? 'Tenant Details'}
                   </Dialog.Title>
                   <button
                     type="button"
-                    className="rounded-md p-1 hover:bg-gray-100"
+                    className={`rounded-md p-1 ${colorClasses.hoverBgGray100}`}
                     onClick={onClose}
                   >
-                    <X className="h-5 w-5 text-gray-500" />
+                    <X className={`h-5 w-5 ${colorClasses.textGray500}`} />
                   </button>
                 </div>
 
                 <div className="mt-4">
                   {isLoading ? (
                     <div className="flex h-64 items-center justify-center">
-                      <div className="text-gray-500">Loading...</div>
+                      <div className={`${colorClasses.textGray500}`}>Loading...</div>
                     </div>
                   ) : data?.plan_summary ? (
                     <div className="space-y-6">
@@ -433,7 +433,7 @@ export function TenantDetailModal({
                     </div>
                   ) : (
                     <div className="flex h-64 items-center justify-center">
-                      <div className="text-gray-500">No data available</div>
+                      <div className={`${colorClasses.textGray500}`}>No data available</div>
                     </div>
                   )}
                 </div>

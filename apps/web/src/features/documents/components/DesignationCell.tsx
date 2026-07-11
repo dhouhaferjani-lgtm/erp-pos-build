@@ -9,13 +9,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil } from 'lucide-react'
-import { textColors, borderColors, tokens } from '../../../lib/designTokens'
+import { colorClasses, textColors, borderColors, tokens } from '../../../lib/designTokens'
 
 export type DesignationCellProps = {
   value: string
   originalSnapshot: string | null
   productDeleted?: boolean
   readOnly?: boolean
+  className?: string
+  valueClassName?: string
   onCommit: (next: string) => void
 }
 
@@ -24,6 +26,8 @@ export function DesignationCell({
   originalSnapshot,
   productDeleted = false,
   readOnly = false,
+  className = '',
+  valueClassName,
   onCommit,
 }: DesignationCellProps) {
   const { t } = useTranslation(['documents'])
@@ -136,8 +140,8 @@ export function DesignationCell({
           onBlur={handleBlur}
           className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 ${
             emptyError
-              ? tokens.input.error
-              : `${borderColors.default} focus:border-blue-500 focus:ring-blue-500`
+              ? `${colorClasses.borderRed500} ${colorClasses.focusBorderRed500} ${colorClasses.focusRingRed500}`
+              : `${borderColors.default} ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`
           }`}
         />
         {emptyError && (
@@ -167,8 +171,8 @@ export function DesignationCell({
   }
 
   return (
-    <div className="group flex items-center gap-1.5">
-      <span className={`text-sm ${textColors.primary}`}>{value}</span>
+    <div className={`group flex items-center gap-1.5 ${className}`}>
+      <span className={valueClassName ?? `text-sm ${textColors.primary}`}>{value}</span>
       {isOverridden && (
         <span
           role="status"

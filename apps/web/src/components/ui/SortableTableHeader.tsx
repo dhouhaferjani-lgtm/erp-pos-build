@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface SortableTableHeaderProps {
   column: string
@@ -38,11 +39,11 @@ export function SortableTableHeader({
   return (
     <th
       className={cn(
-        'px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none',
+        `px-4 py-3 text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider cursor-pointer ${colorTokens.variants.hoverBgGray100} transition-colors select-none`,
         align === 'left' && 'text-start',
         align === 'center' && 'text-center',
         align === 'right' && 'text-end',
-        isActive && 'bg-gray-50 text-gray-700',
+        isActive && `${colorTokens.surface.page} ${colorTokens.text.secondary}`,
         className
       )}
       onClick={handleClick}

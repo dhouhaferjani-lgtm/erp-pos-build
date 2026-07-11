@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { formatPercent } from '@/lib/format'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export type MarginLevel = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -16,24 +17,24 @@ export interface MarginIndicatorProps {
 
 const levelStyles: Record<MarginLevel, { dot: string; text: string; bg: string }> = {
   green: {
-    dot: 'bg-green-500',
-    text: 'text-green-700 dark:text-green-400',
-    bg: 'bg-green-50 dark:bg-green-900/20',
+    dot: `${colorTokens.intent.success.bg}`,
+    text: `${colorTokens.intent.success.textStrong} ${colorTokens.variants.darkTextGreen400}`,
+    bg: `${colorTokens.intent.success.bgSubtle} ${colorTokens.variants.darkBgGreen900Alpha20}`,
   },
   yellow: {
-    dot: 'bg-yellow-500',
-    text: 'text-yellow-700 dark:text-yellow-400',
-    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+    dot: `${colorTokens.intent.warning.bg}`,
+    text: `${colorTokens.intent.warning.textStrong} ${colorTokens.variants.darkTextYellow400}`,
+    bg: `${colorTokens.intent.warning.bgSubtle} ${colorTokens.variants.darkBgYellow900Alpha20}`,
   },
   orange: {
-    dot: 'bg-orange-500',
-    text: 'text-orange-700 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-900/20',
+    dot: colorTokens.variants.bgOrange500,
+    text: `${colorTokens.intent.notice.textStrong} ${colorTokens.variants.darkTextOrange400}`,
+    bg: `${colorTokens.intent.notice.bgSubtle} ${colorTokens.variants.darkBgOrange900Alpha20}`,
   },
   red: {
-    dot: 'bg-red-500',
-    text: 'text-red-700 dark:text-red-400',
-    bg: 'bg-red-50 dark:bg-red-900/20',
+    dot: `${colorTokens.intent.danger.bg}`,
+    text: `${colorTokens.intent.danger.textStrong} ${colorTokens.variants.darkTextRed400}`,
+    bg: `${colorTokens.intent.danger.bgSubtle} ${colorTokens.variants.darkBgRed900Alpha20}`,
   },
 }
 
@@ -82,7 +83,7 @@ export function MarginIndicator({
   return (
     <div className={`rounded-md px-3 py-2 ${styles.bg}`}>
       <div className="flex items-center gap-2">
-        <span className={`flex h-5 w-5 items-center justify-center rounded-full ${styles.dot} text-xs font-bold text-white`}>
+        <span className={`flex h-5 w-5 items-center justify-center rounded-full ${styles.dot} text-xs font-bold ${colorTokens.text.inverse}`}>
           {icon}
         </span>
         <div className="flex-1">
@@ -92,9 +93,9 @@ export function MarginIndicator({
           </div>
 
           {showDetails && (
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+            <div className={`mt-1 text-xs ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray400}`}>
               {level === 'red' && lossAmount !== undefined && (
-                <span className="font-medium text-red-600 dark:text-red-400">
+                <span className={`font-medium ${colorTokens.intent.danger.text} ${colorTokens.variants.darkTextRed400}`}>
                   {t('inventory:margin.lossAmount', { amount: formatCurrency(lossAmount) })}
                 </span>
               )}

@@ -65,6 +65,14 @@
       "branding": "Logo & Branding",
       "regional": "Regional Settings"
     },
+    "documents": {
+      "title": "Documents",
+      "description": "Control how product and service names appear on sales documents.",
+      "lineDesignation": {
+        "label": "Allow custom line designations",
+        "help": "When enabled, users can rename a document line. The designation must still precisely identify the goods or services sold."
+      }
+    },
     "fields": {
       "name": "Company Name *",
       "companyName": "Company Name",

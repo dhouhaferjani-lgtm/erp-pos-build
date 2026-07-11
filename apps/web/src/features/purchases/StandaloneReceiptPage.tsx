@@ -2,16 +2,24 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { MoneyInput, QuantityInput } from '../../components/atoms'
+
+import { Button } from '../../components/atoms/Button/Button'
+import { Input } from '../../components/atoms/Input/Input'
+import { Select } from '../../components/atoms/Select/Select'
+import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { api } from '../../lib/api'
 import { getDecimals } from '../../lib/currencyMeta'
 import { formatQuantity } from '../../lib/decimal'
 import { borderColors, colors, textColors, tokens, typography } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { usePermissions } from '../../hooks/usePermissions'
+import { confirmDiscard, useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 
@@ -59,6 +67,16 @@ function newLine(): ReceiptLineState {
 
 function idempotencyKey(): string {
   return crypto.randomUUID?.() ?? String(Date.now())
+}
+
+function lineMatchesNewLineDefaults(line: ReceiptLineState): boolean {
+  const defaultLine = newLine()
+  return (
+    line.productId === defaultLine.productId &&
+    line.quantity === defaultLine.quantity &&
+    line.freeQuantity === defaultLine.freeQuantity &&
+    line.unitPrice === defaultLine.unitPrice
+  )
 }
 
 export function StandaloneReceiptPage() {
@@ -126,6 +144,18 @@ export function StandaloneReceiptPage() {
   const canSubmit = supplierId !== '' && locationId !== '' && lines.every((line) =>
     line.productId !== '' && line.quantity !== '' && line.unitPrice !== '',
   )
+  const linesDirty = lines.length !== 1 || lines.some((line) => !lineMatchesNewLineDefaults(line))
+  const isDirty =
+    supplierId !== '' ||
+    locationId !== '' ||
+    externalReference !== '' ||
+    externalDate !== '' ||
+    linesDirty
+  useUnsavedChangesGuard({ isDirty })
+
+  function confirmLeave(): boolean {
+    return !isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))
+  }
 
   const createMutation = useMutation({
     mutationFn: async (postImmediately: boolean) => {
@@ -175,42 +205,155 @@ export function StandaloneReceiptPage() {
     createMutation.mutate(mode === 'post')
   }
 
+  const lineColumns: DataTableColumn<ReceiptLineState>[] = [
+    {
+      key: 'product',
+      header: t('purchases:standaloneReceipt.fields.product'),
+      render: (line) => (
+        <>
+          <label className="sr-only">{t('purchases:standaloneReceipt.fields.product')}</label>
+          <Select
+            aria-label={t('purchases:standaloneReceipt.fields.product')}
+            value={line.productId}
+            onChange={(event) => { updateLine(line.id, { productId: event.target.value }) }}
+          >
+            <option value="">{t('purchases:standaloneReceipt.placeholders.product')}</option>
+            {(productsQuery.data ?? []).map((item) => (
+              <option key={item.id} value={item.id}>{item.sku ? `${item.sku} - ${item.name}` : item.name}</option>
+            ))}
+          </Select>
+        </>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: t('purchases:standaloneReceipt.fields.quantity'),
+      width: '10rem',
+      render: (line) => {
+        const product = productById.get(line.productId)
+        return (
+          <>
+            <label className="sr-only">{t('purchases:standaloneReceipt.fields.quantity')}</label>
+            <QuantityInput
+              aria-label={t('purchases:standaloneReceipt.fields.quantity')}
+              value={line.quantity}
+              onChange={(value) => { updateLine(line.id, { quantity: value }) }}
+              decimalPlaces={product?.quantity_decimals ?? 4}
+            />
+          </>
+        )
+      },
+    },
+    {
+      key: 'freeQuantity',
+      header: t('purchases:standaloneReceipt.fields.freeQuantity'),
+      width: '10rem',
+      render: (line) => {
+        const product = productById.get(line.productId)
+        return (
+          <>
+            <label className="sr-only">{t('purchases:standaloneReceipt.fields.freeQuantity')}</label>
+            <QuantityInput
+              aria-label={t('purchases:standaloneReceipt.fields.freeQuantity')}
+              value={line.freeQuantity}
+              onChange={(value) => { updateLine(line.id, { freeQuantity: value }) }}
+              decimalPlaces={product?.quantity_decimals ?? 4}
+            />
+          </>
+        )
+      },
+    },
+    {
+      key: 'unitPrice',
+      header: t('purchases:standaloneReceipt.fields.unitPrice'),
+      width: '11rem',
+      render: (line) => (
+        <>
+          <label className="sr-only">{t('purchases:standaloneReceipt.fields.unitPrice')}</label>
+          <MoneyInput
+            aria-label={t('purchases:standaloneReceipt.fields.unitPrice')}
+            value={line.unitPrice}
+            onChange={(value) => { updateLine(line.id, { unitPrice: value }) }}
+            currency={currency}
+          />
+        </>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      width: '3.5rem',
+      render: (line) => (
+        <button
+          type="button"
+          aria-label={t('purchases:standaloneReceipt.actions.removeLine')}
+          disabled={lines.length === 1}
+          onClick={() => { setLines((current) => current.filter((candidate) => candidate.id !== line.id)) }}
+          className={`rounded-md p-2 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} disabled:opacity-40`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className={`${typography.fontSize['2xl']} ${typography.fontWeight.bold} ${textColors.primary}`}>{t('purchases:standaloneReceipt.title')}</h1>
-          <p className={`mt-1 ${typography.fontSize.sm} ${textColors.tertiary}`}>{t('purchases:standaloneReceipt.description')}</p>
-          {hasPermission('document-ingestions.view') && (
+      <PageHeader
+        title={t('purchases:standaloneReceipt.title')}
+        subtitle={t('purchases:standaloneReceipt.description')}
+        breadcrumb={
+          <Link
+            to="/purchases/receipts"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
+            onClick={(event) => {
+              if (!confirmLeave()) {
+                event.preventDefault()
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+        }
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {hasPermission('document-ingestions.view') ? (
             <Link
               to="/purchases/scans/new?kind=supplier_delivery_note"
-              className={`mt-1 inline-block ${typography.fontSize.sm} ${textColors.brand} hover:underline`}
+              className={`${typography.fontSize.sm} ${textColors.brand} hover:underline`}
             >
               {t('documentIngestions:actions.scanInstead')}
             </Link>
-          )}
-        </div>
-        {!receiptFirstDisabled && <div className="flex items-center gap-2">
-          <button
+            ) : null}
+        {!receiptFirstDisabled ? (
+          <>
+          <Button
             type="button"
+            variant="secondary"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('draft') }}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+            className="gap-2"
           >
             <Save className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.saveDraft')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('post') }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+            className="gap-2"
           >
             <Send className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.postNow')}
-          </button>
-        </div>}
-      </div>
+          </Button>
+          </>
+        ) : null}
+          </div>
+        )}
+        className="mb-0"
+      />
 
       {receiptFirstDisabled ? (
         <div className={`${tokens.alert.base} ${tokens.alert.warning} flex items-center gap-2`}>
@@ -221,45 +364,41 @@ export function StandaloneReceiptPage() {
       <section className={`grid gap-4 border-b ${borderColors.light} pb-6 md:grid-cols-2 xl:grid-cols-4`}>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.supplier')}
-          <select
+          <Select
             value={supplierId}
             onChange={(event) => { setSupplierId(event.target.value) }}
-            className={tokens.input.base}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.supplier')}</option>
             {(suppliersQuery.data ?? []).map((supplier) => (
               <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.location')}
-          <select
+          <Select
             value={locationId}
             onChange={(event) => { setLocationId(event.target.value) }}
-            className={tokens.input.base}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.location')}</option>
             {(locationsQuery.data ?? []).map((location) => (
               <option key={location.id} value={location.id}>{location.name}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.blNumber')}
-          <input
+          <Input
             value={externalReference}
             onChange={(event) => { setExternalReference(event.target.value) }}
-            className={tokens.input.base}
           />
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.blDate')}
-          <input
+          <Input
             type="date"
             value={externalDate}
             onChange={(event) => { setExternalDate(event.target.value) }}
-            className={tokens.input.base}
           />
         </label>
       </section>
@@ -270,89 +409,24 @@ export function StandaloneReceiptPage() {
             <ClipboardList className={`h-4 w-4 ${textColors.brand}`} />
             {t('purchases:standaloneReceipt.lines.title')}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => { setLines((current) => [...current, newLine()]) }}
-            className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} gap-2`}
+            className="gap-2"
           >
             <Plus className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.addLine')}
-          </button>
+          </Button>
         </div>
 
-        <div className={`overflow-x-auto ${borderColors.light} ${colors.white} rounded-lg border`}>
-          <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
-            <thead className={colors.neutral[50]}>
-              <tr>
-                <th className={`px-4 py-3 text-left ${typography.fontSize.xs} ${typography.fontWeight.medium} ${textColors.tertiary} uppercase`}>{t('purchases:standaloneReceipt.fields.product')}</th>
-                <th className={`w-40 px-4 py-3 text-left ${typography.fontSize.xs} ${typography.fontWeight.medium} ${textColors.tertiary} uppercase`}>{t('purchases:standaloneReceipt.fields.quantity')}</th>
-                <th className={`w-40 px-4 py-3 text-left ${typography.fontSize.xs} ${typography.fontWeight.medium} ${textColors.tertiary} uppercase`}>{t('purchases:standaloneReceipt.fields.freeQuantity')}</th>
-                <th className={`w-44 px-4 py-3 text-left ${typography.fontSize.xs} ${typography.fontWeight.medium} ${textColors.tertiary} uppercase`}>{t('purchases:standaloneReceipt.fields.unitPrice')}</th>
-                <th className="w-14 px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${borderColors.divideLight}`}>
-              {lines.map((line) => {
-                const product = productById.get(line.productId)
-                return (
-                  <tr key={line.id}>
-                    <td className="px-4 py-3">
-                      <label className="sr-only">{t('purchases:standaloneReceipt.fields.product')}</label>
-                      <select
-                        aria-label={t('purchases:standaloneReceipt.fields.product')}
-                        value={line.productId}
-                        onChange={(event) => { updateLine(line.id, { productId: event.target.value }) }}
-                        className={tokens.input.base}
-                      >
-                        <option value="">{t('purchases:standaloneReceipt.placeholders.product')}</option>
-                        {(productsQuery.data ?? []).map((item) => (
-                          <option key={item.id} value={item.id}>{item.sku ? `${item.sku} - ${item.name}` : item.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <label className="sr-only">{t('purchases:standaloneReceipt.fields.quantity')}</label>
-                      <QuantityInput
-                        aria-label={t('purchases:standaloneReceipt.fields.quantity')}
-                        value={line.quantity}
-                        onChange={(value) => { updateLine(line.id, { quantity: value }) }}
-                        decimalPlaces={product?.quantity_decimals ?? 4}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <label className="sr-only">{t('purchases:standaloneReceipt.fields.freeQuantity')}</label>
-                      <QuantityInput
-                        aria-label={t('purchases:standaloneReceipt.fields.freeQuantity')}
-                        value={line.freeQuantity}
-                        onChange={(value) => { updateLine(line.id, { freeQuantity: value }) }}
-                        decimalPlaces={product?.quantity_decimals ?? 4}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <label className="sr-only">{t('purchases:standaloneReceipt.fields.unitPrice')}</label>
-                      <MoneyInput
-                        aria-label={t('purchases:standaloneReceipt.fields.unitPrice')}
-                        value={line.unitPrice}
-                        onChange={(value) => { updateLine(line.id, { unitPrice: value }) }}
-                        currency={currency}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        aria-label={t('purchases:standaloneReceipt.actions.removeLine')}
-                        disabled={lines.length === 1}
-                        onClick={() => { setLines((current) => current.filter((candidate) => candidate.id !== line.id)) }}
-                        className={`rounded-md p-2 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} disabled:opacity-40`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className={`${borderColors.light} rounded-lg border`}>
+          <DataTable
+            columns={lineColumns}
+            data={lines}
+            keyExtractor={(line) => line.id}
+          />
         </div>
       </section>
 

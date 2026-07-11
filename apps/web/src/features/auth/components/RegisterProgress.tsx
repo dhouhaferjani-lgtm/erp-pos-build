@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface RegisterProgressProps {
   currentStep: number
@@ -19,7 +20,7 @@ export function RegisterProgress({ currentStep, totalSteps }: RegisterProgressPr
           key={i}
           className={cn(
             'h-1 flex-1 rounded-full transition-colors',
-            i < currentStep ? 'bg-blue-500' : 'bg-gray-200'
+            i < currentStep ? `${colorTokens.intent.primary.bg}` : `${colorTokens.surface.subdued}`
           )}
         />
       ))}

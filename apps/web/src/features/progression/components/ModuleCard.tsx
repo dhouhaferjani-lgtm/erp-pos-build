@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
-import { ReadinessBadge, ProgressBar } from '@/components/atoms'
+import { Button, ReadinessBadge, ProgressBar } from '@/components/atoms'
 import type { ModuleReadiness, ModuleReadinessStatus } from '../api/types'
 import { useActivateModule } from '../hooks/useModuleReadiness'
 
@@ -68,14 +68,16 @@ export function ModuleCard({ module }: ModuleCardProps) {
       )}
 
       {canActivate && (
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
+          className="mt-auto"
           onClick={() => activateMutation.mutate(module.id)}
           disabled={activateMutation.isPending}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} mt-auto`}
         >
           {t('modules.activate')}
-        </button>
+        </Button>
       )}
     </div>
   )

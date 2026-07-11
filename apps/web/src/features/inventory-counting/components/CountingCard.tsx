@@ -5,6 +5,7 @@ import { Clock, AlertTriangle, Eye, Bell } from 'lucide-react'
 import { CountingStatusBadge } from './CountingStatusBadge'
 import type { InventoryCounting, CountingUser } from '../types'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface Props {
   counting: InventoryCounting
@@ -22,24 +23,24 @@ function CounterProgress({ label, user, progress }: CounterProgressProps) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+      <div className={`w-6 h-6 rounded-full ${colorTokens.surface.subdued} flex items-center justify-center text-xs font-medium`}>
         {user?.name.charAt(0) ?? '?'}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between text-xs">
           <span className="truncate">{user?.name || label}</span>
           <span
-            className={cn('font-medium', isComplete && 'text-green-600')}
+            className={cn('font-medium', isComplete && colorTokens.intent.success.text)}
           >
             {progress.percentage}%
             {isComplete && ' \u2713'}
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+        <div className={`w-full ${colorTokens.surface.subdued} rounded-full h-1.5 mt-1`}>
           <div
             className={cn(
               'h-1.5 rounded-full transition-all',
-              isComplete ? 'bg-green-500' : 'bg-blue-500'
+              isComplete ? colorTokens.intent.success.bg : colorTokens.intent.primary.bg
             )}
             style={{ width: `${String(progress.percentage)}%` }}
           />
@@ -61,8 +62,8 @@ export function CountingCard({ counting, onSendReminder }: Props) {
   return (
     <div
       className={cn(
-        'rounded-lg border bg-white p-4 shadow-sm transition-shadow hover:shadow-md',
-        isOverdue && 'border-red-300 bg-red-50/50'
+        `rounded-lg border ${colorTokens.surface.base} p-4 shadow-sm transition-shadow hover:shadow-md`,
+        isOverdue && `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtleAlpha}`
       )}
     >
       {/* Header */}
@@ -71,13 +72,13 @@ export function CountingCard({ counting, onSendReminder }: Props) {
           <h3 className="text-lg font-semibold flex items-center gap-2">
             {getScopeLabel()} {t('counting.count')}
             {isOverdue && (
-              <span className="inline-flex items-center text-sm font-medium text-red-600">
+              <span className={`inline-flex items-center text-sm font-medium ${colorTokens.intent.danger.text}`}>
                 <AlertTriangle className="w-4 h-4 me-1" />
                 {t('counting.overdue')}
               </span>
             )}
           </h3>
-          <p className="text-sm text-gray-500">#{counting.id.slice(0, 8)}</p>
+          <p className={`text-sm ${colorTokens.text.subtle}`}>#{counting.id.slice(0, 8)}</p>
         </div>
         <CountingStatusBadge status={counting.status} />
       </div>
@@ -88,9 +89,9 @@ export function CountingCard({ counting, onSendReminder }: Props) {
           <span>{t('counting.overallProgress')}</span>
           <span className="font-medium">{counting.progress.overall}%</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className={`w-full ${colorTokens.surface.subdued} rounded-full h-2`}>
           <div
-            className="bg-blue-600 h-2 rounded-full transition-all"
+            className={`${colorTokens.intent.primary.bgStrong} h-2 rounded-full transition-all`}
             style={{ width: `${String(counting.progress.overall)}%` }}
           />
         </div>
@@ -123,7 +124,7 @@ export function CountingCard({ counting, onSendReminder }: Props) {
 
       {/* Deadline */}
       {counting.scheduled_end && (
-        <div className="flex items-center text-sm text-gray-500 mb-4">
+        <div className={`flex items-center text-sm ${colorTokens.text.subtle} mb-4`}>
           <Clock className="w-4 h-4 me-2" />
           <span>
             {t('counting.deadline')}:{' '}
@@ -145,7 +146,7 @@ export function CountingCard({ counting, onSendReminder }: Props) {
       <div className="flex gap-2 pt-2 border-t">
         <Link
           to={`/inventory/counting/${String(counting.id)}`}
-          className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+          className={`flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md border ${colorTokens.border.default} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover}`}
         >
           <Eye className="w-4 h-4 me-2" />
           {t('viewDetails')}
@@ -154,7 +155,7 @@ export function CountingCard({ counting, onSendReminder }: Props) {
           <button
             type="button"
             onClick={() => { onSendReminder(counting.id); }}
-            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+            className={`inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md border ${colorTokens.border.default} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover}`}
           >
             <Bell className="w-4 h-4" />
           </button>

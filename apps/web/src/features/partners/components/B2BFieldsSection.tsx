@@ -4,6 +4,7 @@ import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCompany } from '@/hooks/useCompany'
 import { useTaxIdValidation } from '../hooks/useTaxIdValidation'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface B2BFormFields {
   company_legal_name: string
@@ -38,8 +39,8 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
   }
 
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-6">
-      <h3 className="mb-4 text-lg font-semibold text-gray-900">
+    <div className={`rounded-lg border ${colorTokens.intent.primary.borderSubtle} ${colorTokens.intent.primary.bgSubtleAlphaLight} p-6`}>
+      <h3 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
         {t('partners.b2b.title')}
       </h3>
 
@@ -48,7 +49,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
         <div className="sm:col-span-2">
           <label
             htmlFor="company_legal_name"
-            className="block text-sm font-medium text-gray-700"
+            className={`block text-sm font-medium ${colorTokens.text.secondary}`}
           >
             {t('partners.b2b.companyLegalName')}
           </label>
@@ -56,7 +57,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
             type="text"
             id="company_legal_name"
             {...register('company_legal_name')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
           />
         </div>
 
@@ -64,7 +65,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
         <div>
           <label
             htmlFor="business_registration_number"
-            className="block text-sm font-medium text-gray-700"
+            className={`block text-sm font-medium ${colorTokens.text.secondary}`}
           >
             {t('partners.b2b.registrationNumber')}
           </label>
@@ -73,14 +74,14 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
               type="text"
               id="business_registration_number"
               {...register('business_registration_number')}
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
             {partnerId && (
               <button
                 type="button"
                 onClick={handleValidateTaxId}
                 disabled={taxIdValidation.isPending}
-                className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className={`inline-flex items-center rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-3 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
               >
                 {taxIdValidation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -93,7 +94,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
           {taxIdValidation.isSuccess && (
             <div
               className={`mt-1 flex items-center gap-1 text-sm ${
-                taxIdValidation.data.is_valid ? 'text-green-600' : 'text-red-600'
+                taxIdValidation.data.is_valid ? colorTokens.intent.success.text : colorTokens.intent.danger.text
               }`}
             >
               {taxIdValidation.data.is_valid ? (
@@ -118,14 +119,14 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
         <div>
           <label
             htmlFor="payment_terms"
-            className="block text-sm font-medium text-gray-700"
+            className={`block text-sm font-medium ${colorTokens.text.secondary}`}
           >
             {t('partners.b2b.paymentTerms')}
           </label>
           <select
             id="payment_terms"
             {...register('payment_terms')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
           >
             <option value="">{t('partners.b2b.selectPaymentTerms')}</option>
             <option value="immediate">{t('partners.paymentTerms.immediate')}</option>
@@ -142,7 +143,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
           <div>
             <label
               htmlFor="payment_terms_days"
-              className="block text-sm font-medium text-gray-700"
+              className={`block text-sm font-medium ${colorTokens.text.secondary}`}
             >
               {t('partners.b2b.paymentTermsDays')}
             </label>
@@ -152,7 +153,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
               min="1"
               max="365"
               {...register('payment_terms_days')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
           </div>
         )}
@@ -161,7 +162,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
         <div>
           <label
             htmlFor="credit_limit"
-            className="block text-sm font-medium text-gray-700"
+            className={`block text-sm font-medium ${colorTokens.text.secondary}`}
           >
             {t('partners.b2b.creditLimit')}
           </label>
@@ -179,7 +180,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
         <div>
           <label
             htmlFor="discount_percentage"
-            className="block text-sm font-medium text-gray-700"
+            className={`block text-sm font-medium ${colorTokens.text.secondary}`}
           >
             {t('partners.b2b.discountPercentage')}
           </label>
@@ -191,9 +192,9 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
               min="0"
               max="100"
               {...register('discount_percentage')}
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 pe-8 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 pe-8 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
-            <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-500">
+            <span className={`pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 ${colorTokens.text.subtle}`}>
               %
             </span>
           </div>
@@ -206,11 +207,11 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
               type="checkbox"
               id="invoice_consolidation"
               {...register('invoice_consolidation')}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
             />
             <label
               htmlFor="invoice_consolidation"
-              className="text-sm font-medium text-gray-700"
+              className={`text-sm font-medium ${colorTokens.text.secondary}`}
             >
               {t('partners.b2b.invoiceConsolidation')}
             </label>
@@ -222,14 +223,14 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
           <div>
             <label
               htmlFor="consolidation_frequency"
-              className="block text-sm font-medium text-gray-700"
+              className={`block text-sm font-medium ${colorTokens.text.secondary}`}
             >
               {t('partners.b2b.consolidationFrequency')}
             </label>
             <select
               id="consolidation_frequency"
               {...register('consolidation_frequency')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             >
               <option value="">{t('partners.b2b.selectFrequency')}</option>
               <option value="weekly">{t('partners.consolidation.weekly')}</option>

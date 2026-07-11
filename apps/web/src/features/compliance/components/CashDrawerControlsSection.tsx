@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
 import { bccomp } from '@/lib/decimal'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
-import { Checkbox } from '@/components/atoms'
+import { Checkbox, Select } from '@/components/atoms'
 
 export interface CashDrawerControlsValue {
   cash_variance_over_soft: string
@@ -317,18 +317,17 @@ export function CashDrawerControlsSection({
         <label htmlFor="cash-email-severity" className={tokens.label.base}>
           {t('fraudSettings.cashControls.emailSeverityLabel')}
         </label>
-        <select
+        <Select
           id="cash-email-severity"
           value={emailSeverity}
           disabled={!canEdit}
           onChange={(e) => { handleEmailSeverityChange(e.target.value) }}
-          className={tokens.select.base}
         >
           <option value="none">{t('fraudSettings.cashControls.emailSeverityNever')}</option>
           <option value="critical">{t('fraudSettings.cashControls.emailSeverityCritical')}</option>
           <option value="warning">{t('fraudSettings.cashControls.emailSeverityWarning')}</option>
           <option value="info">{t('fraudSettings.cashControls.emailSeverityInfo')}</option>
-        </select>
+        </Select>
       </div>
     </section>
   )

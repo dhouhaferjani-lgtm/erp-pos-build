@@ -8,7 +8,7 @@ import type { JournalEntryStatus } from '../types'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { documentRouteTypeFromSource } from '../../../lib/entityRoutes'
-import { Button } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import {
   StatusBadge,
@@ -16,6 +16,7 @@ import {
   type StatusTone,
 } from '../../../components/atoms/StatusBadge'
 import { PageHeader } from '../../../components/molecules/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 /**
  * Journal-entry status tone overrides for the shared StatusBadge.
@@ -205,7 +206,7 @@ export function JournalEntryDetailPage() {
             {t('finance:journalEntry.lines')}
           </h2>
         </div>
-        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+        <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
           <thead className={tokens.table.header}>
             <tr>
               <th
@@ -303,7 +304,7 @@ export function JournalEntryDetailPage() {
               <td className="px-6 py-4"></td>
             </tr>
           </tfoot>
-        </table>
+        </DataTable>
       </div>
 
       {postMutation.error && (

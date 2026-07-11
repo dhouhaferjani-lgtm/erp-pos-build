@@ -7,6 +7,9 @@ import { CountingStatusBadge } from '../components/CountingStatusBadge'
 import { useCountingList } from '../api/queries'
 import { QueryError } from '@/components/QueryError'
 import type { CountingFilters, CountingStatus } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const STATUS_OPTIONS: Array<CountingStatus | 'all'> = [
   'all',
@@ -69,12 +72,12 @@ export function CountingListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t('counting.list.title')}</h1>
-          <p className="text-gray-500">{t('counting.list.description')}</p>
+          <PageHeaderTitle className="text-2xl font-bold">{t('counting.list.title')}</PageHeaderTitle>
+          <p className={colorTokens.text.subtle}>{t('counting.list.description')}</p>
         </div>
         <Link
           to="/inventory/counting/create"
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.intent.primary.bgStrongHover}`}
         >
           <Plus className="w-4 h-4 me-2" />
           {t('counting.new')}
@@ -85,13 +88,13 @@ export function CountingListPage() {
       <div className="flex flex-wrap gap-4 items-center">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className={`absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 ${colorTokens.text.disabled}`} />
           <input
             type="text"
             placeholder={t('counting.list.searchPlaceholder')}
             value={filters.search || ''}
             onChange={(e) => { updateFilters({ search: e.target.value }); }}
-            className="w-full ps-10 pe-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className={`w-full ps-10 pe-4 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
           />
         </div>
 
@@ -101,7 +104,7 @@ export function CountingListPage() {
           onChange={(e) =>
             { updateFilters({ status: e.target.value as CountingStatus | 'all' }); }
           }
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className={`px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
         >
           {STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
@@ -121,7 +124,7 @@ export function CountingListPage() {
                 e.target.value === 'true' ? true : e.target.value === 'false' ? false : 'all',
             }); }
           }
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className={`px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
         >
           <option value="all">{t('counting.list.sourceFilter.all')}</option>
           <option value="true">{t('counting.list.sourceFilter.mobileOnly')}</option>
@@ -131,7 +134,7 @@ export function CountingListPage() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="p-8 text-center text-gray-500">
+        <div className={`p-8 text-center ${colorTokens.text.subtle}`}>
           {t('loading')}...
         </div>
       ) : error ? (
@@ -141,11 +144,11 @@ export function CountingListPage() {
           title={t('counting.list.errorLoading')}
         />
       ) : !data || data.data.length === 0 ? (
-        <div className="rounded-lg border bg-white py-12 text-center">
-          <p className="text-gray-500 mb-4">{t('counting.list.empty')}</p>
+        <div className={`rounded-lg border ${colorTokens.surface.base} py-12 text-center`}>
+          <p className={`${colorTokens.text.subtle} mb-4`}>{t('counting.list.empty')}</p>
           <Link
             to="/inventory/counting/create"
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50"
+            className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.intent.primary.text} border ${colorTokens.intent.primary.borderStrong} rounded-md ${colorTokens.intent.primary.bgHover}`}
           >
             <Plus className="w-4 h-4 me-2" />
             {t('counting.list.createFirst')}
@@ -154,44 +157,44 @@ export function CountingListPage() {
       ) : (
         <>
           <div className="border rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.id')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.scope')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.status')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.progress')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.created')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('actionsLabel')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
                 {data.data.map((counting) => (
-                  <tr key={counting.id} className="hover:bg-gray-50">
+                  <tr key={counting.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-mono text-gray-900">
+                      <span className={`text-sm font-mono ${colorTokens.text.primary}`}>
                         #{counting.id.slice(0, 8)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-900">
+                        <span className={`text-sm ${colorTokens.text.primary}`}>
                           {counting.title || t(`counting.scopeTypes.${counting.scope_type}`)}
                         </span>
                         {counting.created_on_mobile && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`}>
                             <Smartphone className="w-3 h-3" />
                             {t('counting.list.mobileBadge')}
                           </span>
@@ -203,24 +206,24 @@ export function CountingListPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className={`w-24 ${colorTokens.surface.subdued} rounded-full h-2`}>
                           <div
-                            className="bg-blue-600 h-2 rounded-full"
+                            className={`${colorTokens.intent.primary.bgStrong} h-2 rounded-full`}
                             style={{ width: `${String(counting.progress.overall)}%` }}
                           />
                         </div>
-                        <span className="text-sm text-gray-500">
+                        <span className={`text-sm ${colorTokens.text.subtle}`}>
                           {counting.progress.overall}%
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {format(new Date(counting.created_at), 'MMM d, yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Link
                         to={`/inventory/counting/${String(counting.id)}`}
-                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                        className={`inline-flex items-center px-3 py-1.5 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrong}`}
                       >
                         <Eye className="w-4 h-4 me-1" />
                         {t('view')}
@@ -229,13 +232,13 @@ export function CountingListPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
 
           {/* Pagination */}
           {data.meta.last_page > 1 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
+              <p className={`text-sm ${colorTokens.text.subtle}`}>
                 {t('pagination.showing', {
                   from: (data.meta.current_page - 1) * data.meta.per_page + 1,
                   to: Math.min(
@@ -250,7 +253,7 @@ export function CountingListPage() {
                   type="button"
                   onClick={() => { goToPage(data.meta.current_page - 1); }}
                   disabled={data.meta.current_page === 1}
-                  className="inline-flex items-center px-3 py-2 text-sm font-medium border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className={`inline-flex items-center px-3 py-2 text-sm font-medium border ${colorTokens.border.default} rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${colorTokens.intent.neutral.bgHover}`}
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -258,7 +261,7 @@ export function CountingListPage() {
                   type="button"
                   onClick={() => { goToPage(data.meta.current_page + 1); }}
                   disabled={data.meta.current_page === data.meta.last_page}
-                  className="inline-flex items-center px-3 py-2 text-sm font-medium border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className={`inline-flex items-center px-3 py-2 text-sm font-medium border ${colorTokens.border.default} rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${colorTokens.intent.neutral.bgHover}`}
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

@@ -84,7 +84,8 @@ interface DraftData {
   partner_id?: string | null
   lines?: Array<{
     id?: string
-    product_id: string
+    product_id?: string
+    service_id?: string
     quantity: number | string
     free_quantity?: number | string
     unit_price: number | string

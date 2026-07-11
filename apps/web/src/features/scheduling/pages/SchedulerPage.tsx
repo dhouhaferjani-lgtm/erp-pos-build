@@ -8,6 +8,7 @@ import { DayViewBoard } from '../components/organisms/DayViewBoard'
 import { WeekViewBoard } from '../components/organisms/WeekViewBoard'
 import { AppointmentFormDrawer } from '../components/organisms/AppointmentFormDrawer'
 import { UpcomingAppointmentsList } from '../components/organisms/UpcomingAppointmentsList'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 function formatDate(d: Date): string {
   const pad = (n: number): string => (n < 10 ? `0${String(n)}` : String(n))
@@ -65,9 +66,9 @@ export function SchedulerPage() {
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
       <header className="flex flex-col gap-1">
-        <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
           {t('scheduler.title')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`text-sm ${textColors.tertiary}`}>{t('scheduler.subtitle')}</p>
       </header>
 

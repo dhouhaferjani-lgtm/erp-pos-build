@@ -9,17 +9,25 @@ import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
-import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
-import { Button, FormField, Input, MoneyInput, Select, Textarea } from '../../components/atoms'
-import { AllocationPreview, OpenInvoicesList } from './components'
+import { AddPartnerModal } from '../../components/organisms/AddPartnerModal/AddPartnerModal'
+import { AddRepositoryModal } from '../../components/organisms/AddRepositoryModal/AddRepositoryModal'
+import { Button } from '../../components/atoms/Button/Button'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { Select } from '../../components/atoms/Select/Select'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import { AllocationPreview } from './components/AllocationPreview'
+import { OpenInvoicesList } from './components/OpenInvoicesList'
 import { AllocationMethod, type ManualAllocation, type OpenInvoice } from '../../types/treasury'
-import { useWithholdingPreview } from '../withholding'
+import { useWithholdingPreview } from '../withholding/hooks/useWithholding'
 import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub, formatCurrency as formatDecimalCurrency } from '../../lib/decimal'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed'
 
@@ -735,9 +743,9 @@ export function PaymentForm() {
           <ArrowLeft className="h-4 w-4" />
           {t('common:back')}
         </Link>
-        <h1 className={cn('text-2xl font-bold', textColors.primary)}>
+        <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>
           {documentTitle}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       {/* Form */}

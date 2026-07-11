@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { clearAllAppState } from '../../lib/clearAppState'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface MeResponseUser {
   id: string
@@ -90,10 +91,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Show loading only while checking session
   if (isLoading && !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-gray-500">Loading...</p>
+          <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
+          <p className={`${colorTokens.text.subtle}`}>Loading...</p>
         </div>
       </div>
     )
@@ -113,10 +114,10 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-gray-500">Loading...</p>
+          <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
+          <p className={`${colorTokens.text.subtle}`}>Loading...</p>
         </div>
       </div>
     )

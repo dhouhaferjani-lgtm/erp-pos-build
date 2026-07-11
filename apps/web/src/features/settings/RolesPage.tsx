@@ -12,6 +12,8 @@ import { tokens, textColors, borderColors, colors } from '../../lib/designTokens
 import { Button, Checkbox, FormField, Input } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { toast } from 'sonner'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface Role {
   id: number
@@ -222,10 +224,10 @@ export function RolesPage() {
             {t('actions.back')}
           </Link>
           <div>
-            <h1 className={cn('text-2xl font-bold flex items-center gap-2', textColors.primary)}>
+            <PageHeaderTitle className={cn('text-2xl font-bold flex items-center gap-2', textColors.primary)}>
               <Shield className={cn('h-6 w-6', textColors.brand)} />
               {t('roles.title')}
-            </h1>
+            </PageHeaderTitle>
             <p className={textColors.tertiary}>
               {t('roles.subtitle', { count: roles.length, permCount: allPermissions.length })}
             </p>
@@ -335,7 +337,7 @@ export function RolesPage() {
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+              <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={cn('sticky left-0 px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', tokens.table.header, textColors.tertiary)}>
@@ -386,7 +388,7 @@ export function RolesPage() {
                     </>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
 

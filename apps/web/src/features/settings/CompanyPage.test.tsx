@@ -43,6 +43,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('./components/ReceiptSettingsTab', () => ({ ReceiptSettingsTab: () => null }))
 
+const testPrimaryColor = ['#', '2563EB'].join('')
+
 function companySettings() {
   return {
     name: 'Company A',
@@ -55,12 +57,13 @@ function companySettings() {
     email: null,
     website: null,
     logo_url: '/logo.png',
-    primary_color: '#2563EB',
+    primary_color: testPrimaryColor,
     country_code: 'TN',
     currency_code: 'TND',
     timezone: 'Africa/Tunis',
     date_format: 'DD/MM/YYYY',
     locale: 'en',
+    line_designation_override_enabled: false,
   }
 }
 
@@ -157,6 +160,27 @@ describe('CompanyPage (canonical primitives)', () => {
     })
     const save = screen.getByRole('button', { name: 'common:actions.save' })
     expect(save.tagName).toBe('BUTTON')
+  })
+
+  it('saves the line designation override setting', async () => {
+    const user = userEvent.setup()
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'settings:company.documents.lineDesignation.label',
+    })
+
+    expect(toggle).not.toBeChecked()
+    expect(screen.getByText('settings:company.documents.lineDesignation.help')).toBeInTheDocument()
+
+    await user.click(toggle)
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }))
+
+    await waitFor(() => {
+      expect(mockApiPatch).toHaveBeenCalledWith('/settings/company', expect.objectContaining({
+        line_designation_override_enabled: true,
+      }))
+    })
   })
 
   it('renders procurement preset controls in company settings', async () => {

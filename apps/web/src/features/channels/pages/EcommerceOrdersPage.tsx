@@ -7,6 +7,7 @@ import { Button, Select } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { useAggregateChannelOrders } from '../hooks/useAggregateChannelOrders'
 import type { AggregateChannelOrderRow, ChannelOrderStatus } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 const PER_PAGE = 25
 
@@ -15,7 +16,7 @@ const ORDER_STATUSES: readonly ChannelOrderStatus[] = ['pending', 'processed', '
 const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
 const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
 
-const statusBadgeClasses: Record<ChannelOrderStatus, string> = {
+const orderBadgeClassByState: Record<ChannelOrderStatus, string> = {
   pending: `${tokens.badge.base} ${tokens.badge.yellow}`,
   processed: `${tokens.badge.base} ${tokens.badge.green}`,
   failed: `${tokens.badge.base} ${tokens.badge.red}`,
@@ -112,7 +113,7 @@ export function EcommerceOrdersPage() {
         </div>
       ) : (
         <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
-          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead>
               <tr>
                 <th className={thClass}>{t('channels:orders.externalId')}</th>
@@ -131,7 +132,7 @@ export function EcommerceOrdersPage() {
                   <td className={tdClass}>{customerLabel(order) ?? '—'}</td>
                   <td className={tdClass}>{totalLabel(order) ?? '—'}</td>
                   <td className={tdClass}>
-                    <span className={statusBadgeClasses[order.status]}>
+                    <span className={orderBadgeClassByState[order.status]}>
                       {t(`channels:orderStatus.${order.status}`)}
                     </span>
                   </td>
@@ -139,7 +140,7 @@ export function EcommerceOrdersPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

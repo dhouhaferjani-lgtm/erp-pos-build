@@ -294,6 +294,93 @@ function fingerprintExpression(sourceFile, expr) {
 }
 
 /**
+ * @param {ts.Node} node
+ * @returns {boolean}
+ */
+function isLexicalScope(node) {
+  return (
+    ts.isSourceFile(node) ||
+    ts.isBlock(node) ||
+    ts.isModuleBlock(node) ||
+    ts.isFunctionLike(node)
+  );
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {Set<ts.Node>}
+ */
+function ancestorLexicalScopes(node) {
+  const scopes = new Set();
+  let current = node.parent;
+  while (current !== undefined) {
+    if (isLexicalScope(current)) {
+      scopes.add(current);
+    }
+    current = current.parent;
+  }
+  return scopes;
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {ts.Node | null}
+ */
+function nearestLexicalScope(node) {
+  let current = node.parent;
+  while (current !== undefined) {
+    if (isLexicalScope(current)) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * Resolve a shorthand `queryKey` property back to the nearest preceding
+ * variable declaration whose lexical scope is an ancestor of the shorthand
+ * usage. This intentionally stays syntax-only like the rest of the scanner;
+ * unresolved shorthand remains default-deny by returning null.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {ts.ShorthandPropertyAssignment} shorthand
+ * @returns {ts.Expression | null}
+ */
+function resolveShorthandQueryKeyInitializer(sourceFile, shorthand) {
+  const name = shorthand.name.text;
+  const shorthandStart = shorthand.getStart(sourceFile);
+  const inScopeAncestors = ancestorLexicalScopes(shorthand);
+  /** @type {{start: number, initializer: ts.Expression} | null} */
+  let best = null;
+
+  /**
+   * @param {ts.Node} node
+   */
+  function visit(node) {
+    const nodeStart = node.getStart(sourceFile);
+    if (nodeStart >= shorthandStart) return;
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer &&
+      inScopeAncestors.has(nearestLexicalScope(node) ?? sourceFile)
+    ) {
+      if (best === null || nodeStart > best.start) {
+        best = { start: nodeStart, initializer: node.initializer };
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return best?.initializer ?? null;
+}
+
+/**
  * @param {ts.ObjectLiteralExpression} options
  * @param {string} factoryName
  * @param {ts.SourceFile} sourceFile
@@ -308,8 +395,13 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
       ts.isIdentifier(p.name) &&
       p.name.text === 'queryKey',
   );
-  if (queryKeyProp && ts.isPropertyAssignment(queryKeyProp)) {
-    const initializer = queryKeyProp.initializer;
+  if (queryKeyProp) {
+    // Merged semantics (design-sweep x replenishment): shorthand `{ queryKey }`
+    // resolves to its in-scope declaration (default-deny when unresolvable),
+    // and invalidation factories may use bare array prefixes.
+    const initializer = ts.isPropertyAssignment(queryKeyProp)
+      ? queryKeyProp.initializer
+      : resolveShorthandQueryKeyInitializer(sourceFile, queryKeyProp) ?? queryKeyProp.name;
     const isInvalidationBarePrefix =
       INVALIDATION_PREFIX_FACTORIES.has(factoryName) &&
       ts.isArrayLiteralExpression(unwrapKeyExpression(initializer));

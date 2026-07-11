@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,17 +17,20 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
-import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
+import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { Button } from '@/components/atoms/Button/Button'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
+import type { Invoice } from '@/components/molecules/pickers/InvoiceSearchSelect'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 const creditNoteSchema = z.object({
-  partner_id: z.string().min(1, 'Partner is required'),
+  partner_id: z.string().nullable().refine((value) => value !== null && value.trim() !== '', 'Partner is required'),
   source_invoice_id: z.string().optional(),
   issue_date: z.string().min(1, 'Date is required'),
   reason: z.enum([
@@ -277,26 +280,25 @@ export function CreateCreditNotePage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-gray-50">
-      {/* Header */}
-      <div className="border-b border-gray-200 bg-white">
+    <div className={`flex min-h-full flex-col ${colorClasses.bgGray50}`}>
+      <div className={`border-b ${colorClasses.borderGray200} bg-white`}>
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
-            <Link
-              to="/sales/credit-notes"
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {t('sales:creditNotes.new')}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {t('sales:creditNotes.createDescription', 'Create a new credit note')}
-              </p>
-            </div>
-          </div>
+          <PageHeader
+            title={t('sales:creditNotes.new')}
+            subtitle={t('sales:creditNotes.createDescription', 'Create a new credit note')}
+            actions={(
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => { navigate('/sales/credit-notes') }}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {t('common:actions.back')}
+              </Button>
+            )}
+            className="mb-0"
+          />
         </div>
       </div>
 
@@ -304,16 +306,16 @@ export function CreateCreditNotePage() {
       <div className="mx-auto flex flex-1 flex-col max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
           {/* Mode Selection */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 id="credit-mode-label" className="text-lg font-medium text-gray-900 mb-4">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+            <h2 id="credit-mode-label" className={`text-lg font-medium ${colorClasses.textGray900} mb-4`}>
               {t('sales:creditNotes.form.creditMode')}
             </h2>
             <div role="radiogroup" aria-labelledby="credit-mode-label" className="flex gap-4">
               <label
                 className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                   creditMode === 'invoice'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50}`
+                    : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300}`
                 }`}
               >
                 <input
@@ -326,12 +328,12 @@ export function CreateCreditNotePage() {
                   aria-describedby="invoice-mode-desc"
                 />
                 <div className="flex items-center gap-3">
-                  <Receipt className={`h-5 w-5 ${creditMode === 'invoice' ? 'text-blue-600' : 'text-gray-400'}`} aria-hidden="true" />
+                  <Receipt className={`h-5 w-5 ${creditMode === 'invoice' ? `${colorClasses.textBlue600}` : `${colorClasses.textGray400}`}`} aria-hidden="true" />
                   <div>
-                    <p className="font-medium text-gray-900">
+                    <p className={`font-medium ${colorClasses.textGray900}`}>
                       {t('sales:creditNotes.form.fromInvoice')}
                     </p>
-                    <p id="invoice-mode-desc" className="text-sm text-gray-500">
+                    <p id="invoice-mode-desc" className={`text-sm ${colorClasses.textGray500}`}>
                       {t('sales:creditNotes.form.fromInvoiceDesc', 'Credit an existing invoice')}
                     </p>
                   </div>
@@ -341,8 +343,8 @@ export function CreateCreditNotePage() {
               <label
                 className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                   creditMode === 'customer'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50}`
+                    : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300}`
                 }`}
               >
                 <input
@@ -355,12 +357,12 @@ export function CreateCreditNotePage() {
                   aria-describedby="customer-mode-desc"
                 />
                 <div className="flex items-center gap-3">
-                  <Receipt className={`h-5 w-5 ${creditMode === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} aria-hidden="true" />
+                  <Receipt className={`h-5 w-5 ${creditMode === 'customer' ? `${colorClasses.textBlue600}` : `${colorClasses.textGray400}`}`} aria-hidden="true" />
                   <div>
-                    <p className="font-medium text-gray-900">
+                    <p className={`font-medium ${colorClasses.textGray900}`}>
                       {t('sales:creditNotes.form.fromCustomer')}
                     </p>
-                    <p id="customer-mode-desc" className="text-sm text-gray-500">
+                    <p id="customer-mode-desc" className={`text-sm ${colorClasses.textGray500}`}>
                       {t('sales:creditNotes.form.fromCustomerDesc', 'Create without source invoice')}
                     </p>
                   </div>
@@ -370,8 +372,8 @@ export function CreateCreditNotePage() {
           </div>
 
           {/* Credit Note Details */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+            <h2 className={`text-lg font-medium ${colorClasses.textGray900} mb-4`}>
               {t('sales:creditNotes.form.details')}
             </h2>
 
@@ -401,13 +403,13 @@ export function CreateCreditNotePage() {
                   name="partner_id"
                   control={control}
                   render={({ field }) => (
-                    <PartnerSearchSelect
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
+                    <PartnerPicker
+                      value={field.value ?? null}
+                      onChange={(next) => { field.onChange(next?.id ?? null) }}
                       partnerType="customer"
+                      label=""
                       placeholder={t('sales:documents.partner')}
                       disabled={creditMode === 'invoice' && !!selectedInvoice}
-                      error={errors.partner_id?.message}
                     />
                   )}
                 />
@@ -415,9 +417,9 @@ export function CreateCreditNotePage() {
 
               {/* Issue Date */}
               <div>
-                <label htmlFor="issue_date" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="issue_date" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                   {/* eslint-disable-next-line local/no-untranslated-literal */}
-                  {t('sales:documents.date')} <span className="text-red-500" aria-label="required">*</span>
+                  {t('sales:documents.date')} <span className={`${colorClasses.textRed500}`} aria-label="required">*</span>
                 </label>
                 <input
                   id="issue_date"
@@ -426,24 +428,24 @@ export function CreateCreditNotePage() {
                   aria-required="true"
                   aria-invalid={errors.issue_date ? 'true' : 'false'}
                   aria-describedby={errors.issue_date ? 'issue_date-error' : undefined}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 shadow-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                 />
                 {errors.issue_date && (
-                  <p id="issue_date-error" className="mt-1 text-sm text-red-600" role="alert">{errors.issue_date.message}</p>
+                  <p id="issue_date-error" className={`mt-1 text-sm ${colorClasses.textRed600}`} role="alert">{errors.issue_date.message}</p>
                 )}
               </div>
 
               {/* Reason */}
               <div>
-                <label htmlFor="reason" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="reason" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                   {/* eslint-disable-next-line local/no-untranslated-literal */}
-                  {t('sales:creditNotes.reason.title')} <span className="text-red-500" aria-label="required">*</span>
+                  {t('sales:creditNotes.reason.title')} <span className={`${colorClasses.textRed500}`} aria-label="required">*</span>
                 </label>
                 <select
                   id="reason"
                   {...register('reason')}
                   aria-required="true"
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 shadow-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                 >
                   <option value="return">{t('sales:creditNotes.reason.return')}</option>
                   <option value="price_adjustment">{t('sales:creditNotes.reason.priceAdjustment')}</option>
@@ -456,13 +458,13 @@ export function CreateCreditNotePage() {
 
               {/* Notes */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                   {t('sales:documents.notes')}
                 </label>
                 <textarea
                   {...register('notes')}
                   rows={3}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 shadow-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   placeholder={t('sales:creditNotes.notesPlaceholder')}
                 />
               </div>
@@ -471,16 +473,16 @@ export function CreateCreditNotePage() {
 
           {/* Line Mode Selection (invoice mode only) */}
           {creditMode === 'invoice' && selectedInvoice && (
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 id="line-mode-label" className="text-lg font-medium text-gray-900 mb-4">
+            <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+              <h2 id="line-mode-label" className={`text-lg font-medium ${colorClasses.textGray900} mb-4`}>
                 {t('sales:creditNotes.form.lineSelection')}
               </h2>
               <div role="radiogroup" aria-labelledby="line-mode-label" className="flex gap-4">
                 <label
                   className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                     lineMode === 'all'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50}`
+                      : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300}`
                   }`}
                 >
                   <input
@@ -497,10 +499,10 @@ export function CreateCreditNotePage() {
                     className="sr-only"
                     aria-describedby="line-mode-all-desc"
                   />
-                  <p className="font-medium text-gray-900">
+                  <p className={`font-medium ${colorClasses.textGray900}`}>
                     {t('sales:creditNotes.form.creditAll')}
                   </p>
-                  <p id="line-mode-all-desc" className="text-sm text-gray-500">
+                  <p id="line-mode-all-desc" className={`text-sm ${colorClasses.textGray500}`}>
                     {t('sales:creditNotes.form.creditAllDesc', 'Credit all lines from invoice')}
                   </p>
                 </label>
@@ -508,8 +510,8 @@ export function CreateCreditNotePage() {
                 <label
                   className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                     lineMode === 'partial'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50}`
+                      : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300}`
                   }`}
                 >
                   <input
@@ -521,10 +523,10 @@ export function CreateCreditNotePage() {
                     className="sr-only"
                     aria-describedby="line-mode-partial-desc"
                   />
-                  <p className="font-medium text-gray-900">
+                  <p className={`font-medium ${colorClasses.textGray900}`}>
                     {t('sales:creditNotes.form.creditPartial')}
                   </p>
-                  <p id="line-mode-partial-desc" className="text-sm text-gray-500">
+                  <p id="line-mode-partial-desc" className={`text-sm ${colorClasses.textGray500}`}>
                     {t('sales:creditNotes.form.creditPartialDesc', 'Select specific lines and quantities')}
                   </p>
                 </label>
@@ -533,45 +535,45 @@ export function CreateCreditNotePage() {
               {/* Partial Line Selection */}
               {lineMode === 'partial' && lines.length > 0 && (
                 <div className="mt-6">
-                  <table className="min-w-full divide-y divide-gray-200" aria-label={t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}>
+                  <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`} aria-label={t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}>
                     <caption className="sr-only">{t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}</caption>
-                    <thead className="bg-gray-50">
+                    <thead className={`${colorClasses.bgGray50}`}>
                       <tr>
                         <th scope="col" className="w-12 px-3 py-3">
                           <span className="sr-only">{t('common:actions.select', 'Select')}</span>
                         </th>
-                        <th scope="col" className="px-3 py-3 text-start text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className={`px-3 py-3 text-start text-xs font-medium uppercase ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.product')}
                         </th>
-                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className={`px-3 py-3 text-end text-xs font-medium uppercase ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.quantity')}
                         </th>
-                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className={`px-3 py-3 text-end text-xs font-medium uppercase ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.price')}
                         </th>
-                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className={`px-3 py-3 text-end text-xs font-medium uppercase ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.total')}
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className={`divide-y ${colorClasses.divideGray200}`}>
                       {lines.map((line) => {
                         const isSelected = selectedLineIds.has(line.id)
                         const creditQty = lineQuantities.get(line.id) || line.quantity
 
                         return (
-                          <tr key={line.id} className={isSelected ? 'bg-blue-50' : ''}>
+                          <tr key={line.id} className={isSelected ? `${colorClasses.bgBlue50}` : ''}>
                             <td className="px-3 py-4">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => { toggleLineSelection(line.id); }}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                               />
                             </td>
                             <td className="px-3 py-4 text-sm">
-                              <div className="font-medium text-gray-900">{line.product_name}</div>
-                              <div className="text-gray-500">{line.description}</div>
+                              <div className={`font-medium ${colorClasses.textGray900}`}>{line.product_name}</div>
+                              <div className={`${colorClasses.textGray500}`}>{line.description}</div>
                             </td>
                             <td className="px-3 py-4 text-end text-sm">
                               {isSelected ? (
@@ -581,34 +583,34 @@ export function CreateCreditNotePage() {
                                   max={Number(line.quantity)}
                                   value={creditQty}
                                   onChange={(e) => { updateLineQuantity(line.id, parseInt(e.target.value)); }}
-                                  className="w-20 rounded border border-gray-300 px-2 py-1 text-end"
+                                  className={`w-20 rounded border ${colorClasses.borderGray300} px-2 py-1 text-end`}
                                 />
                               ) : (
-                                <span className="text-gray-500">{line.quantity}</span>
+                                <span className={`${colorClasses.textGray500}`}>{line.quantity}</span>
                               )}
-                              <span className="text-gray-400 ms-1">/ {line.quantity}</span>
+                              <span className={`${colorClasses.textGray400} ms-1`}>/ {line.quantity}</span>
                             </td>
-                            <td className="px-3 py-4 text-end text-sm text-gray-900">
+                            <td className={`px-3 py-4 text-end text-sm ${colorClasses.textGray900}`}>
                               {Number(line.unit_price).toFixed(decimals)}
                             </td>
-                            <td className="px-3 py-4 text-end text-sm font-medium text-gray-900">
+                            <td className={`px-3 py-4 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                               {((isSelected ? Number(creditQty) : 0) * Number(line.unit_price) * (1 + Number(line.tax_rate) / 100)).toFixed(decimals)}
                             </td>
                           </tr>
                         )
                       })}
                     </tbody>
-                    <tfoot className="bg-gray-50">
+                    <tfoot className={`${colorClasses.bgGray50}`}>
                       <tr>
-                        <td colSpan={4} className="px-3 py-3 text-end text-sm font-medium text-gray-900">
+                        <td colSpan={4} className={`px-3 py-3 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                           {t('sales:documents.total')}:
                         </td>
-                        <td className="px-3 py-3 text-end text-lg font-bold text-gray-900">
+                        <td className={`px-3 py-3 text-end text-lg font-bold ${colorClasses.textGray900}`}>
                           {calculateTotal().toFixed(decimals)}
                         </td>
                       </tr>
                     </tfoot>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </div>
@@ -616,7 +618,7 @@ export function CreateCreditNotePage() {
 
           {/* Customer Mode - Manual Line Entry */}
           {creditMode === 'customer' && partnerId && (
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
               <DocumentLineEditor
                 lines={lines}
                 onChange={setLines}

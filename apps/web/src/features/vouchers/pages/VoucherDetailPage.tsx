@@ -16,6 +16,7 @@ import { VoidVoucherModal } from '../components/VoidVoucherModal'
 import { ExtendExpiryModal } from '../components/ExtendExpiryModal'
 import { TransferVoucherModal } from '../components/TransferVoucherModal'
 import type { VoidVoucherPayload, ExtendExpiryPayload, TransferVoucherPayload } from '../types/voucher'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function VoucherDetailPage() {
   const { t } = useTranslation(['vouchers', 'common'])
@@ -101,7 +102,7 @@ export function VoucherDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className={`text-2xl font-bold font-mono ${textColors.primary}`}>{voucher.code}</h1>
+              <PageHeaderTitle className={`text-2xl font-bold font-mono ${textColors.primary}`}>{voucher.code}</PageHeaderTitle>
               <StatusBadge status={voucher.status} />
               <SourceBadge source={voucher.source} />
             </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ModifierGroupFormPage } from './ModifierGroupFormPage'
 
 vi.mock('react-i18next', () => ({
@@ -91,18 +91,22 @@ describe('ModifierGroupFormPage', () => {
     expect((saveButton as HTMLButtonElement).type).toBe('submit')
   })
 
-  it('submits the group as an update with unchanged field/payload names', () => {
+  it('submits the group as an update with unchanged field/payload names', async () => {
     render(<ModifierGroupFormPage />)
     fireEvent.click(screen.getByRole('button', { name: /common:save/i }))
-    expect(mockUpdateMutate).toHaveBeenCalled()
+    await waitFor(() => { expect(mockUpdateMutate).toHaveBeenCalled() })
     const [arg] = mockUpdateMutate.mock.calls[0] as [{ id: string; data: Record<string, unknown> }]
-    expect(arg.id).toBe('group-1')
-    expect(arg.data).toMatchObject({
-      code: 'SIZE',
-      name: 'Size',
-      selection_type: 'single',
-      is_required: true,
-      is_active: true,
+    expect(arg).toEqual({
+      id: 'group-1',
+      data: {
+        code: 'SIZE',
+        name: 'Size',
+        selection_type: 'single',
+        min_selections: 1,
+        max_selections: 1,
+        is_required: true,
+        is_active: true,
+      },
     })
   })
 })

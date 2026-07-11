@@ -17,6 +17,9 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { getNetBalance } from './partnerNetBalance'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -54,9 +57,9 @@ interface PartnersResponse {
 }
 
 const typeColors = {
-  customer: 'bg-blue-100 text-blue-800',
-  supplier: 'bg-purple-100 text-purple-800',
-  both: 'bg-green-100 text-green-800',
+  customer: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  supplier: `${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`,
+  both: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
 }
 
 export type PartnerType = 'customer' | 'supplier'
@@ -198,22 +201,22 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="text-gray-500">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{pageTitle}</PageHeaderTitle>
+          <p className={colorTokens.text.subtle}>
             {t('sales:partners.totalSummary', { count: total, entity: entityCountLabel })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to={`/settings/import?entity=${isSupplierView ? 'suppliers' : 'customers'}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
           >
             <Upload className="h-4 w-4" />
             {t('actions.import')}
           </Link>
           <Link
             to={`${basePath}/new`}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('actions.add')} {entitySingular}
@@ -225,12 +228,12 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <FilterTabs tabs={filterTabs} value={statusFilter} onChange={setStatusFilter} />
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <label className={`flex items-center gap-2 text-sm ${colorTokens.text.muted} cursor-pointer`}>
             <input
               type="checkbox"
               checked={hasBalanceFilter}
               onChange={toggleHasBalance}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className={`rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
             />
             {t('sales:partners.hasBalance')}
           </label>
@@ -246,19 +249,19 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
+          <div className={colorTokens.text.subtle}>{t('status.loading')}</div>
         </div>
       ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
           {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
       ) : partners.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <Users className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
+        <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} p-12 text-center`}>
+          <Users className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+          <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
             {searchQuery ? t('status.noResults') : t('sales:partners.empty.title')}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
             {searchQuery
               ? t('status.tryDifferentSearch')
               : t('sales:partners.empty.description')}
@@ -267,7 +270,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
             <div className="mt-6">
               <Link
                 to={`${basePath}/new`}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('actions.add')} {entitySingular}
@@ -276,9 +279,9 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <SortableTableHeader
                   column="name"
@@ -288,14 +291,14 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                   onSort={tableState.setSorting}
                 />
                 {!isCustomerView && !isSupplierView && (
-                  <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                     {t('fields.type')}
                   </th>
                 )}
-                <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('fields.contact')}
                 </th>
-                <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('fields.taxId')}
                 </th>
                 <SortableTableHeader
@@ -306,7 +309,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                   onSort={tableState.setSorting}
                   align="right"
                 />
-                <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('fields.status')}
                 </th>
                 <th className="relative px-4 py-3">
@@ -314,24 +317,24 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
               {partners.map((partner) => {
                 const balance = getNetBalance(partner, isCustomerView)
                 const balanceComparison = bccomp(balance, '0')
                 const balanceColor =
                   balanceComparison > 0
-                    ? 'text-red-600 font-medium'
+                    ? `${colorTokens.intent.danger.text} font-medium`
                     : balanceComparison < 0
-                      ? 'text-green-600 font-medium'
-                      : 'text-gray-400'
+                      ? `${colorTokens.intent.success.text} font-medium`
+                      : colorTokens.text.disabled
                 const displayBalance = balance.startsWith('-') ? balance.slice(1) : balance
 
                 return (
-                  <tr key={partner.id} className="hover:bg-gray-50">
+                  <tr key={partner.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="whitespace-nowrap px-4 py-4">
                       <Link
                         to={`${basePath}/${partner.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-600"
+                        className={`font-medium ${colorTokens.text.primary} ${colorTokens.intent.primary.textHover}`}
                       >
                         {partner.name}
                       </Link>
@@ -345,7 +348,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                         </span>
                       </td>
                     )}
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-4 py-4 text-sm ${colorTokens.text.subtle}`}>
                       <div className="space-y-1">
                         {partner.email && (
                           <div className="flex items-center gap-1">
@@ -361,7 +364,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                         )}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-4 py-4 text-sm ${colorTokens.text.subtle}`}>
                       {partner.tax_id ?? '-'}
                     </td>
                     <td className={`whitespace-nowrap px-4 py-4 text-sm text-end ${balanceColor}`}>
@@ -373,8 +376,8 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                           partner.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                            ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                            : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                         }`}
                       >
                         {partner.is_active ? t('status.active') : t('status.inactive')}
@@ -386,14 +389,14 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                           <>
                             <Link
                               to={`/sales/quotes/new?customer=${partner.id}`}
-                              className="text-gray-400 hover:text-blue-600"
+                              className={`${colorTokens.text.disabled} ${colorTokens.intent.primary.textHover}`}
                               title={t('actions.newQuote')}
                             >
                               <FileText className="h-4 w-4" />
                             </Link>
                             <Link
                               to={`/sales/invoices/new?customer=${partner.id}`}
-                              className="text-gray-400 hover:text-green-600"
+                              className={`${colorTokens.text.disabled} ${colorTokens.intent.success.textHover}`}
                               title={t('actions.newInvoice')}
                             >
                               <Receipt className="h-4 w-4" />
@@ -402,7 +405,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                         )}
                         <Link
                           to={`${basePath}/${partner.id}`}
-                          className="text-blue-600 hover:text-blue-900"
+                          className={`${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
                         >
                           {t('actions.view')}
                         </Link>
@@ -412,7 +415,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
 
           {meta && (
             <OffsetPagination

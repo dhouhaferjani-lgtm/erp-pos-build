@@ -18,6 +18,8 @@ import {
 import type { DeliveryNote } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
 import { useCompany } from '@/hooks/useCompany'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface DeliveryNoteConsolidationProps {
   /**
@@ -167,14 +169,14 @@ export function DeliveryNoteConsolidation({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className={`h-8 w-8 animate-spin ${colorClasses.textGray400}`} />
       </div>
     )
   }
 
   if (fetchError) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={`rounded-lg ${colorClasses.bgRed50} p-4 ${colorClasses.textRed700}`}>
         {t('errors.loadingFailed')}
       </div>
     )
@@ -182,19 +184,19 @@ export function DeliveryNoteConsolidation({
 
   if (deliveryNotes.length === 0) {
     return (
-      <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-        <FileText className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-sm font-semibold text-gray-900">
+      <div className={`rounded-lg border-2 border-dashed ${colorClasses.borderGray300} p-12 text-center`}>
+        <FileText className={`mx-auto h-12 w-12 ${colorClasses.textGray400}`} />
+        <h3 className={`mt-2 text-sm font-semibold ${colorClasses.textGray900}`}>
           {t('sales:deliveryNotes.consolidation.noDeliveryNotes')}
         </h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
           {t('sales:deliveryNotes.consolidation.noDeliveryNotesDescription')}
         </p>
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="mt-4 text-sm text-blue-600 hover:text-blue-800"
+            className={`mt-4 text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
           >
             {t('actions.back')}
           </button>
@@ -207,17 +209,17 @@ export function DeliveryNoteConsolidation({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className={`text-lg font-semibold ${colorClasses.textGray900}`}>
           {t('sales:deliveryNotes.consolidation.title')}
         </h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
           {t('sales:deliveryNotes.consolidation.description')}
         </p>
       </div>
 
       {/* Error message */}
       {error && (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700 flex items-center gap-2">
+        <div className={`rounded-lg ${colorClasses.bgRed50} p-4 ${colorClasses.textRed700} flex items-center gap-2`}>
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
@@ -225,7 +227,7 @@ export function DeliveryNoteConsolidation({
 
       {/* Validation warning */}
       {selectionValidation.error && (
-        <div className="rounded-lg bg-yellow-50 p-4 text-yellow-700 flex items-center gap-2">
+        <div className={`rounded-lg ${colorClasses.bgYellow50} p-4 ${colorClasses.textYellow700} flex items-center gap-2`}>
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <span>{selectionValidation.error}</span>
         </div>
@@ -241,10 +243,10 @@ export function DeliveryNoteConsolidation({
           return (
             <div
               key={partnerIdKey}
-              className="rounded-lg border border-gray-200 bg-white overflow-hidden"
+              className={`rounded-lg border ${colorClasses.borderGray200} bg-white overflow-hidden`}
             >
               {/* Partner header */}
-              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <div className={`${colorClasses.bgGray50} px-4 py-3 border-b ${colorClasses.borderGray200} flex items-center justify-between`}>
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -255,37 +257,37 @@ export function DeliveryNoteConsolidation({
                       }
                     }}
                     onChange={() => { selectAllForPartner(partnerDns); }}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                   />
-                  <span className="font-medium text-gray-900">{partnerName}</span>
-                  <span className="text-sm text-gray-500">
+                  <span className={`font-medium ${colorClasses.textGray900}`}>{partnerName}</span>
+                  <span className={`text-sm ${colorClasses.textGray500}`}>
                     ({partnerDns.length} {partnerDns.length === 1 ? t('sales:deliveryNotes.singular') : t('sales:deliveryNotes.plural')})
                   </span>
                 </div>
               </div>
 
               {/* Delivery notes list */}
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+                <thead className={`${colorClasses.bgGray50}`}>
                   <tr>
                     <th className="w-12 px-4 py-3"></th>
-                    <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                       {t('fields.documentNumber')}
                     </th>
-                    <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                       {t('fields.date')}
                     </th>
-                    <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-4 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                       {t('fields.amount')}
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className={`divide-y ${colorClasses.divideGray200}`}>
                   {partnerDns.map((dn) => (
                     <tr
                       key={dn.id}
                       className={`${
-                        selectedIds.has(dn.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                        selectedIds.has(dn.id) ? `${colorClasses.bgBlue50}` : `${colorClasses.hoverBgGray50}`
                       } cursor-pointer`}
                       onClick={() => { toggleSelection(dn.id); }}
                     >
@@ -295,22 +297,22 @@ export function DeliveryNoteConsolidation({
                           checked={selectedIds.has(dn.id)}
                           onChange={() => { toggleSelection(dn.id); }}
                           onClick={(e) => { e.stopPropagation(); }}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                         />
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                      <td className={`px-4 py-3 text-sm font-medium ${colorClasses.textGray900}`}>
                         {dn.document_number}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
+                      <td className={`px-4 py-3 text-sm ${colorClasses.textGray500}`}>
                         {new Date(dn.document_date).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 text-end font-medium">
+                      <td className={`px-4 py-3 text-sm ${colorClasses.textGray900} text-end font-medium`}>
                         {formatCurrency(dn.total ?? 0, dn.currency)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )
         })}
@@ -318,10 +320,10 @@ export function DeliveryNoteConsolidation({
 
       {/* Selection summary and actions */}
       {selectedDeliveryNotes.length > 0 && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className={`rounded-lg border ${colorClasses.borderBlue200} ${colorClasses.bgBlue50} p-4`}>
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-2 text-blue-800">
+              <div className={`flex items-center gap-2 ${colorClasses.textBlue800}`}>
                 <CheckCircle className="h-5 w-5" />
                 <span className="font-medium">
                   {selectedDeliveryNotes.length}{' '}
@@ -331,10 +333,10 @@ export function DeliveryNoteConsolidation({
                   {t('sales:deliveryNotes.consolidation.selected')}
                 </span>
               </div>
-              <div className="mt-2 text-sm text-blue-700">
+              <div className={`mt-2 text-sm ${colorClasses.textBlue700}`}>
                 <span className="font-medium">{t('sales:deliveryNotes.consolidation.invoiceTotal')}:</span>{' '}
                 {formatCurrency(totals.total, selectedDeliveryNotes[0]?.currency)}
-                <span className="ms-4 text-blue-600">
+                <span className={`ms-4 ${colorClasses.textBlue600}`}>
                   ({totals.lineCount} {totals.lineCount === 1 ? 'line' : 'lines'})
                 </span>
               </div>
@@ -344,7 +346,7 @@ export function DeliveryNoteConsolidation({
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className={`px-4 py-2 text-sm font-medium ${colorClasses.textGray700} bg-white border ${colorClasses.borderGray300} rounded-lg ${colorClasses.hoverBgGray50}`}
                 >
                   {t('actions.cancel')}
                 </button>
@@ -353,7 +355,7 @@ export function DeliveryNoteConsolidation({
                 type="button"
                 onClick={handleConsolidate}
                 disabled={!selectionValidation.valid || consolidateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white ${colorClasses.bgBlue600} rounded-lg ${colorClasses.hoverBgBlue700} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {consolidateMutation.isPending ? (
                   <>

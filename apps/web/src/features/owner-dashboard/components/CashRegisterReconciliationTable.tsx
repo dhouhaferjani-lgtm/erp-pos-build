@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { borderColors, textColors } from '@/lib/designTokens'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { CashReconciliationReport } from '../api/ownerReportsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface CashRegisterReconciliationTableProps {
   data: CashReconciliationReport[]
@@ -12,7 +13,7 @@ export function CashRegisterReconciliationTable({ data }: CashRegisterReconcilia
 
   return (
     <OwnerTableFrame title={t('reports:ownerDashboard.cashReconciliation.title')} isEmpty={data.length === 0}>
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead>
           <tr className={`border-b ${borderColors.light} ${textColors.tertiary}`}>
             <th className="py-2 text-start">{t('reports:ownerDashboard.columns.date')}</th>
@@ -33,7 +34,7 @@ export function CashRegisterReconciliationTable({ data }: CashRegisterReconcilia
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </OwnerTableFrame>
   )
 }

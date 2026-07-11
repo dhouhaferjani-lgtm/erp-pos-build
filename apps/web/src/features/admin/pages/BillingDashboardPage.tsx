@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useBillingDashboard, usePaymentProviders } from '../hooks/useBilling'
+import { colorClasses } from '@/lib/designTokens'
 
 function formatCurrency(amount: number, currency = 'EUR'): string {
   return new Intl.NumberFormat('en-US', {
@@ -15,7 +16,7 @@ export function BillingDashboardPage() {
   if (statsLoading || providersLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">Loading billing dashboard...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading billing dashboard...</div>
       </div>
     )
   }
@@ -24,25 +25,25 @@ export function BillingDashboardPage() {
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
             Billing Dashboard
           </h1>
           <div className="flex gap-3">
             <Link
               to="/admin/billing/subscriptions"
-              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
             >
               Subscriptions
             </Link>
             <Link
               to="/admin/billing/invoices"
-              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
             >
               Invoices
             </Link>
             <Link
               to="/admin/billing/payments"
-              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
+              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
             >
               Payments
             </Link>
@@ -51,15 +52,15 @@ export function BillingDashboardPage() {
 
         {/* Revenue Stats */}
         <div className="mb-8">
-          <h2 className="mb-4 text-lg font-semibold text-gray-700">Revenue</h2>
+          <h2 className={`mb-4 text-lg font-semibold ${colorClasses.textGray700}`}>Revenue</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">MRR</div>
-                <div className="mt-2 text-3xl font-bold text-green-600">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>MRR</div>
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGreen600}`}>
                   {formatCurrency(stats?.mrr ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-400">
+                <div className={`mt-1 text-xs ${colorClasses.textGray400}`}>
                   Monthly Recurring Revenue
                 </div>
               </div>
@@ -67,11 +68,11 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">ARR</div>
-                <div className="mt-2 text-3xl font-bold text-green-600">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>ARR</div>
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGreen600}`}>
                   {formatCurrency(stats?.arr ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-400">
+                <div className={`mt-1 text-xs ${colorClasses.textGray400}`}>
                   Annual Recurring Revenue
                 </div>
               </div>
@@ -79,13 +80,13 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                   This Month
                 </div>
-                <div className="mt-2 text-3xl font-bold text-blue-600">
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textBlue600}`}>
                   {formatCurrency(stats?.revenue_this_month ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-400">
+                <div className={`mt-1 text-xs ${colorClasses.textGray400}`}>
                   Revenue collected this month
                 </div>
               </div>
@@ -93,13 +94,13 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                   Outstanding
                 </div>
-                <div className="mt-2 text-3xl font-bold text-orange-600">
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textOrange600}`}>
                   {formatCurrency(stats?.outstanding_invoices ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-400">
+                <div className={`mt-1 text-xs ${colorClasses.textGray400}`}>
                   Unpaid invoices total
                 </div>
               </div>
@@ -109,14 +110,14 @@ export function BillingDashboardPage() {
 
         {/* Subscription Stats */}
         <div className="mb-8">
-          <h2 className="mb-4 text-lg font-semibold text-gray-700">
+          <h2 className={`mb-4 text-lg font-semibold ${colorClasses.textGray700}`}>
             Subscriptions
           </h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">Active</div>
-                <div className="mt-2 text-3xl font-bold text-green-600">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>Active</div>
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGreen600}`}>
                   {stats?.active_subscriptions ?? 0}
                 </div>
               </div>
@@ -124,8 +125,8 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">Trial</div>
-                <div className="mt-2 text-3xl font-bold text-blue-600">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>Trial</div>
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textBlue600}`}>
                   {stats?.trial_subscriptions ?? 0}
                 </div>
               </div>
@@ -133,10 +134,10 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                   Past Due
                 </div>
-                <div className="mt-2 text-3xl font-bold text-red-600">
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textRed600}`}>
                   {stats?.past_due_subscriptions ?? 0}
                 </div>
               </div>
@@ -144,10 +145,10 @@ export function BillingDashboardPage() {
 
             <div className="overflow-hidden rounded-lg bg-white shadow">
               <div className="p-6">
-                <div className="text-sm font-medium text-gray-500">
+                <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                   Overdue Invoices
                 </div>
-                <div className="mt-2 text-3xl font-bold text-red-600">
+                <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textRed600}`}>
                   {stats?.overdue_invoices_count ?? 0}
                 </div>
               </div>
@@ -157,11 +158,11 @@ export function BillingDashboardPage() {
 
         {/* Payment Providers */}
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-gray-700">
+          <h2 className={`mb-4 text-lg font-semibold ${colorClasses.textGray700}`}>
             Payment Providers
           </h2>
           <div className="overflow-hidden rounded-lg bg-white shadow">
-            <div className="divide-y divide-gray-200">
+            <div className={`divide-y ${colorClasses.divideGray200}`}>
               {providers &&
                 Object.entries(providers).map(([code, provider]) => (
                   <div
@@ -169,14 +170,14 @@ export function BillingDashboardPage() {
                     className="flex items-center justify-between p-4"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="font-medium text-gray-900">
+                      <span className={`font-medium ${colorClasses.textGray900}`}>
                         {provider.name}
                       </span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           provider.type === 'online'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-gray-100 text-gray-700'
+                            ? `${colorClasses.bgPurple100} ${colorClasses.textPurple700}`
+                            : `${colorClasses.bgGray100} ${colorClasses.textGray700}`
                         }`}
                       >
                         {provider.type}
@@ -184,7 +185,7 @@ export function BillingDashboardPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {provider.configured ? (
-                        <span className="flex items-center gap-1 text-sm text-green-600">
+                        <span className={`flex items-center gap-1 text-sm ${colorClasses.textGreen600}`}>
                           <svg
                             className="h-4 w-4"
                             fill="currentColor"
@@ -199,7 +200,7 @@ export function BillingDashboardPage() {
                           Configured
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <span className={`flex items-center gap-1 text-sm ${colorClasses.textGray400}`}>
                           <svg
                             className="h-4 w-4"
                             fill="currentColor"
@@ -215,7 +216,7 @@ export function BillingDashboardPage() {
                         </span>
                       )}
                       {provider.available && (
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <span className={`rounded-full ${colorClasses.bgGreen100} px-2 py-0.5 text-xs font-medium ${colorClasses.textGreen700}`}>
                           Available
                         </span>
                       )}

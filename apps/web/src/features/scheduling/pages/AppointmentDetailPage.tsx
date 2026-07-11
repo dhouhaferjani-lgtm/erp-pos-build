@@ -7,12 +7,15 @@ import { AppointmentSourceBadge } from '../components/atoms/AppointmentSourceBad
 import { AppointmentTypeChip } from '../components/atoms/AppointmentTypeChip'
 import { TimeSlotLabel } from '../components/atoms/TimeSlotLabel'
 import {
+
   useAppointment,
   useCancelAppointment,
   useCheckInAppointment,
   useConfirmAppointment,
   useConvertAppointment,
 } from '../hooks/useScheduling'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button, Input } from '@/components/atoms'
 
 /**
  * Read + action page for a single appointment.
@@ -83,17 +86,19 @@ export function AppointmentDetailPage() {
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
       <header className="flex flex-col gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => { void navigate('/scheduling') }}
-          className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} self-start`}
+          className="self-start"
         >
           ← {t('actions.back')}
-        </button>
+        </Button>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
             {a.appointment_number}
-          </h1>
+          </PageHeaderTitle>
           <AppointmentStatusBadge status={a.status} />
           <AppointmentSourceBadge source={a.source} />
           <AppointmentTypeChip type={a.appointment_type} />
@@ -155,13 +160,15 @@ export function AppointmentDetailPage() {
           <h2 className={`text-sm font-semibold ${textColors.primary}`}>
             {t('detail.convertedTo')}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => { void navigate(`/workshop/work-orders/${a.work_order_id ?? ''}`) }}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} self-start`}
+            className="self-start"
           >
             {a.work_order_id}
-          </button>
+          </Button>
         </section>
       ) : null}
 
@@ -169,52 +176,56 @@ export function AppointmentDetailPage() {
         <h2 className={`text-sm font-semibold ${textColors.primary}`}>{t('detail.timeline')}</h2>
         <div className="flex flex-wrap gap-2">
           {a.status === 'scheduled' ? (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               disabled={confirm.isPending}
               onClick={onConfirm}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('actions.confirm')}
-            </button>
+            </Button>
           ) : null}
           {(a.status === 'scheduled' || a.status === 'confirmed') ? (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               disabled={checkIn.isPending}
               onClick={onCheckIn}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('actions.checkIn')}
-            </button>
+            </Button>
           ) : null}
           {(a.status === 'confirmed' || a.status === 'checked_in') && a.work_order_id === null ? (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               disabled={convert.isPending}
               onClick={onConvert}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('actions.convert')}
-            </button>
+            </Button>
           ) : null}
           {a.status !== 'cancelled' && a.status !== 'completed' && a.status !== 'closed' ? (
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type="text"
-                className={`${tokens.input.base} w-48`}
+                className="w-48"
                 placeholder={t('detail.reasonPlaceholder')}
                 value={cancelReason}
                 onChange={(e) => { setCancelReason(e.target.value) }}
               />
-              <button
+              <Button
                 type="button"
+                variant="danger"
+                size="sm"
                 disabled={cancel.isPending}
                 onClick={onCancel}
-                className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm}`}
               >
                 {t('actions.cancel')}
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>

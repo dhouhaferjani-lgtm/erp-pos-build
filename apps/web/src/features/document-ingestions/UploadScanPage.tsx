@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, FileText, Upload, X } from 'lucide-react'
+import { Button, Select } from '@/components/atoms'
 import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { borderColors, textColors, tokens, typography } from '@/lib/designTokens'
@@ -152,17 +153,16 @@ export function UploadScanPage() {
         ) : (
           <div>
             <label htmlFor="ingestion-kind" className={tokens.label.base}>{t('fields.kind')}</label>
-            <select
+            <Select
               id="ingestion-kind"
               aria-label={t('fields.kind')}
-              className={tokens.select.base}
               value={kind}
               onChange={(event) => { setKind(event.target.value as DocumentKind | '') }}
             >
               <option value="">{t('upload.placeholders.kind')}</option>
               <option value="supplier_delivery_note">{t('kinds.supplier_delivery_note')}</option>
               <option value="supplier_invoice">{t('kinds.supplier_invoice')}</option>
-            </select>
+            </Select>
           </div>
         )}
 
@@ -188,27 +188,29 @@ export function UploadScanPage() {
                 <p className={cn(typography.fontSize.sm, textColors.primary)}>
                   {t('upload.selectedFile', { name: file.name, size: formatFileSize(file.size) })}
                 </p>
-                <button
+                <Button
                   type="button"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                  variant="secondary"
+                  size="sm"
                   onClick={handleRemove}
                   aria-label={t('upload.remove')}
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                   {t('upload.remove')}
-                </button>
+                </Button>
               </div>
             ) : (
               <>
                 <Upload className={cn('h-8 w-8', textColors.tertiary)} aria-hidden="true" />
                 <p className={cn(typography.fontSize.sm, textColors.tertiary)}>{t('upload.dropHint')}</p>
-                <button
+                <Button
                   type="button"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                  variant="secondary"
+                  size="sm"
                   onClick={() => { fileInputRef.current?.click() }}
                 >
                   {t('upload.browse')}
-                </button>
+                </Button>
               </>
             )}
             <input
@@ -231,14 +233,13 @@ export function UploadScanPage() {
         )}
 
         <div className="flex justify-end">
-          <button
+          <Button
             type="submit"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             disabled={uploadMutation.isPending}
           >
             <Upload className="me-2 h-4 w-4" aria-hidden="true" />
             {t('actions.startScan')}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface VatSpecialItemsProps {
   specialItems: Record<string, unknown>
@@ -61,7 +62,7 @@ export function VatSpecialItems({ specialItems, countryCode }: VatSpecialItemsPr
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold text-gray-700">
+      <h3 className={`mb-3 text-sm font-semibold ${colorTokens.text.secondary}`}>
         {t('finance:vatReporting.specialItems.title')}
       </h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -71,12 +72,12 @@ export function VatSpecialItems({ specialItems, countryCode }: VatSpecialItemsPr
           return (
             <div
               key={config.key}
-              className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+              className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-3`}
             >
-              <p className="text-xs font-medium text-gray-500">
+              <p className={`text-xs font-medium ${colorTokens.text.subtle}`}>
                 {t(config.labelKey)}
               </p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+              <p className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {formatItemValue(value)}
               </p>
             </div>

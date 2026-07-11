@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
+
   Package,
   CheckCircle2,
   Clock,
@@ -20,13 +21,16 @@ import {
 import { toast } from 'sonner'
 import { api, getErrorMessage } from '../../lib/api'
 import { formatDate as formatLocaleDate } from '../../lib/format'
-import { textColors, tokens } from '../../lib/designTokens'
+import { borderColors, colors, textColors, tokens } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { Button } from '../../components/atoms/Button/Button'
+import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { EntityLink } from '../../components/molecules/EntityLink'
+import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
 
 interface PurchaseOrderLine {
@@ -109,6 +113,40 @@ interface GoodsReceiptSummary {
 }
 
 type TabType = 'pending' | 'received' | 'drafts'
+
+const currencyFormatters = new Map<string, Intl.NumberFormat>()
+
+function formatReceiptCurrency(amount: number, currency: string, fallbackCurrency: string | undefined): string {
+  const currencyCode = currency || fallbackCurrency || 'USD'
+  const locale = currencyCode === 'TND' ? 'fr-TN' : currencyCode === 'EUR' ? 'fr-FR' : 'en-US'
+  const formatterKey = `${locale}:${currencyCode}`
+  let formatter = currencyFormatters.get(formatterKey)
+
+  if (formatter === undefined) {
+    formatter = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currencyCode,
+    })
+    currencyFormatters.set(formatterKey, formatter)
+  }
+
+  return formatter.format(amount)
+}
+
+function calculateReceiptProgress(po: PurchaseOrder): { received: number; total: number; percentage: number } {
+  let totalQty = 0
+  let receivedQty = 0
+
+  po.lines.forEach((line) => {
+    if (line.product_id) {
+      totalQty += line.quantity
+      receivedQty += line.quantity_received || 0
+    }
+  })
+
+  const percentage = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0
+  return { received: receivedQty, total: totalQty, percentage }
+}
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -333,15 +371,7 @@ export function GoodsReceiptListPage() {
     }
   }
 
-  const formatCurrency = (amount: number, currency: string) => {
-    // Use document currency, fallback to company currency, then USD
-    const currencyCode = currency || currentCompany?.currency || 'USD'
-    const locale = currencyCode === 'TND' ? 'fr-TN' : currencyCode === 'EUR' ? 'fr-FR' : 'en-US'
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number, currency: string) => formatReceiptCurrency(amount, currency, currentCompany?.currency)
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) {
@@ -356,21 +386,6 @@ export function GoodsReceiptListPage() {
     return formatLocaleDate(date)
   }
 
-  const calculateReceiptProgress = (po: PurchaseOrder): { received: number; total: number; percentage: number } => {
-    let totalQty = 0
-    let receivedQty = 0
-
-    po.lines.forEach((line) => {
-      if (line.product_id) {
-        totalQty += line.quantity
-        receivedQty += line.quantity_received || 0
-      }
-    })
-
-    const percentage = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0
-    return { received: receivedQty, total: totalQty, percentage }
-  }
-
   const pendingOrders = pendingData ?? []
   const receivedOrders = [...(receivedData ?? []), ...(fullyReceivedConfirmed ?? [])]
   const isLoading = activeTab === 'pending'
@@ -381,7 +396,8 @@ export function GoodsReceiptListPage() {
 
   const orders = activeTab === 'pending' ? pendingOrders : receivedOrders
   const canCreateSupplierInvoice = hasPermission('purchases.create')
-  const selectedInvoicePurchaseOrders = receivedOrders.filter((po) => selectedInvoicePoIds.includes(po.id))
+  const selectedInvoicePoIdSet = useMemo(() => new Set(selectedInvoicePoIds), [selectedInvoicePoIds])
+  const selectedInvoicePurchaseOrders = receivedOrders.filter((po) => selectedInvoicePoIdSet.has(po.id))
   const selectedInvoiceSupplierIds = Array.from(new Set(selectedInvoicePurchaseOrders.map((po) => po.partner_id)))
   const crossSupplierInvoiceSelection = selectedInvoiceSupplierIds.length > 1
   const canInvoiceSelectedReceipts = activeTab === 'received' && selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection
@@ -419,62 +435,68 @@ export function GoodsReceiptListPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('inventory:goodsReceipt.title')}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('inventory:goodsReceipt.description')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-start justify-end gap-2">
-          {hasPermission('document-ingestions.view') && (
-            <button
-              type="button"
-              onClick={() => { void navigate('/purchases/scans/new?kind=supplier_delivery_note') }}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
-            >
-              <ScanLine className="h-4 w-4" />
-              {t('documentIngestions:actions.scanDeliveryNote')}
-            </button>
-          )}
-          {hasPermission('goods-receipt.create-standalone') && (
-            <button
-              type="button"
-              onClick={() => { void navigate('/purchases/receipts/new') }}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
-            >
-              <Plus className="h-4 w-4" />
-              {t('purchases:standaloneReceipt.actions.newReceipt')}
-            </button>
-          )}
-          {activeTab === 'received' && canCreateSupplierInvoice && (
-            <div className="flex flex-col items-end gap-1">
-              <button
+      <PageHeader
+        title={t('inventory:goodsReceipt.title')}
+        subtitle={t('inventory:goodsReceipt.description')}
+        actions={
+          <>
+            {hasPermission('document-ingestions.view') && (
+              <Button
                 type="button"
-                data-testid="invoice-receipts"
-                disabled={!canInvoiceSelectedReceipts}
-                title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
-                onClick={handleInvoiceReceipts}
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+                onClick={() => {
+                  void navigate('/purchases/scans/new?kind=supplier_delivery_note')
+                }}
+                variant="secondary"
+                className="gap-2"
               >
-                <ReceiptText className="h-4 w-4" />
-                {t('purchases:supplierInvoices.create.invoiceReceipts')}
-              </button>
-              {invoiceSelectionBlocked && (
-                <span className={`text-xs ${textColors.warning}`}>
-                  {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+                <ScanLine className="h-4 w-4" />
+                {t('documentIngestions:actions.scanDeliveryNote')}
+              </Button>
+            )}
+            {hasPermission('goods-receipt.create-standalone') && (
+              <Button
+                type="button"
+                onClick={() => {
+                  void navigate('/purchases/receipts/new')
+                }}
+                variant="secondary"
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                {t('purchases:standaloneReceipt.actions.newReceipt')}
+              </Button>
+            )}
+            {activeTab === 'received' && canCreateSupplierInvoice && (
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  type="button"
+                  data-testid="invoice-receipts"
+                  disabled={!canInvoiceSelectedReceipts}
+                  title={
+                    invoiceSelectionBlocked
+                      ? t('purchases:supplierInvoices.create.crossSupplierTooltip')
+                      : undefined
+                  }
+                  onClick={handleInvoiceReceipts}
+                  className="gap-2"
+                >
+                  <ReceiptText className="h-4 w-4" />
+                  {t('purchases:supplierInvoices.create.invoiceReceipts')}
+                </Button>
+                {invoiceSelectionBlocked && (
+                  <span className={`text-xs ${textColors.warning}`}>
+                    {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        }
+        className="mb-0"
+      />
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className={`border-b ${borderColors.light}`}>
         <nav className="-mb-px flex space-x-8">
           <button
             type="button"
@@ -484,14 +506,14 @@ export function GoodsReceiptListPage() {
             }}
             className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
               activeTab === 'pending'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                ? `${borderColors.primary} ${textColors.brand}`
+                : `border-transparent ${textColors.disabled} ${borderColors.hover} ${textColors.hoverSecondary}`
             }`}
           >
             <Clock className="h-4 w-4" />
             {t('inventory:goodsReceipt.tabs.pending')}
             {pendingOrders.length > 0 && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+              <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
                 {pendingOrders.length}
               </span>
             )}
@@ -509,8 +531,8 @@ export function GoodsReceiptListPage() {
             }}
             className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
               activeTab === 'received'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                ? `${borderColors.primary} ${textColors.brand}`
+                : `border-transparent ${textColors.disabled} ${borderColors.hover} ${textColors.hoverSecondary}`
             }`}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -524,8 +546,8 @@ export function GoodsReceiptListPage() {
             }}
             className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
               activeTab === 'drafts'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                ? `${borderColors.primary} ${textColors.brand}`
+                : `border-transparent ${textColors.disabled} ${borderColors.hover} ${textColors.hoverSecondary}`
             }`}
           >
             <ReceiptText className="h-4 w-4" />
@@ -542,13 +564,13 @@ export function GoodsReceiptListPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('common:status.loading')}</div>
+          <div className={textColors.disabled}>{t('common:status.loading')}</div>
         </div>
       ) : activeTab === 'drafts' ? (
         draftReceipts.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-            <ReceiptText className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-4 text-lg font-medium text-gray-900">
+          <div className={`${tokens.card.base} p-12 text-center`}>
+            <ReceiptText className={`mx-auto h-12 w-12 ${textColors.disabled}`} />
+            <h3 className={`mt-4 text-lg font-medium ${textColors.primary}`}>
               {t('inventory:goodsReceipt.emptyDrafts')}
             </h3>
           </div>
@@ -557,12 +579,12 @@ export function GoodsReceiptListPage() {
             {draftReceipts.map((receipt) => (
               <div
                 key={receipt.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300"
+                className={`${tokens.card.base} p-4 transition-colors ${borderColors.hover}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-lg font-semibold text-gray-900">
+                      <span className={`text-lg font-semibold ${textColors.primary}`}>
                         {receipt.receipt_number ?? receipt.id}
                       </span>
                       <span className={`${tokens.badge.base} ${tokens.badge.yellow}`}>
@@ -570,7 +592,7 @@ export function GoodsReceiptListPage() {
                       </span>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+                    <div className={`mt-2 flex flex-wrap items-center gap-4 text-sm ${textColors.disabled}`}>
                       {receipt.supplier_id && receipt.supplier_name && (
                         <span className="flex items-center gap-1">
                           <Building2 className="h-4 w-4" />
@@ -597,7 +619,7 @@ export function GoodsReceiptListPage() {
                       </span>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                    <div className={`mt-3 flex flex-wrap items-center gap-4 text-sm ${textColors.tertiary}`}>
                       <span>
                         {receipt.lines_summary
                           ?? t('inventory:goodsReceipt.linesSummary', {
@@ -613,24 +635,27 @@ export function GoodsReceiptListPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
                       onClick={() => { handlePostDraftReceipt(receipt.id) }}
                       disabled={postDraftReceiptMutation.isPending && postDraftReceiptMutation.variables === receipt.id}
-                      className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1`}
+                      className="gap-1"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.postDraft')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="danger"
+                      size="sm"
                       onClick={() => { handleDeleteDraftReceipt(receipt.id) }}
                       disabled={deleteDraftReceiptMutation.isPending && deleteDraftReceiptMutation.variables === receipt.id}
-                      className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm} gap-1`}
+                      className="gap-1"
                     >
                       <Trash2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.deleteDraft')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -638,15 +663,15 @@ export function GoodsReceiptListPage() {
           </div>
         )
       ) : orders.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <Package className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-lg font-medium text-gray-900">
+        <div className={`${tokens.card.base} p-12 text-center`}>
+          <Package className={`mx-auto h-12 w-12 ${textColors.disabled}`} />
+          <h3 className={`mt-4 text-lg font-medium ${textColors.primary}`}>
             {activeTab === 'pending'
               ? t('inventory:goodsReceipt.emptyPending')
               : t('inventory:goodsReceipt.emptyReceived')}
           </h3>
           {activeTab === 'pending' && (
-            <p className="mt-2 text-sm text-gray-500">
+            <p className={`mt-2 text-sm ${textColors.disabled}`}>
               {t('inventory:goodsReceipt.emptyPendingHint')}
             </p>
           )}
@@ -660,19 +685,17 @@ export function GoodsReceiptListPage() {
             return (
               <div
                 key={po.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors"
+                className={`${tokens.card.base} p-4 transition-colors ${borderColors.hover}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   {/* Order Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       {activeTab === 'received' && (
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={t('purchases:supplierInvoices.create.selectReceiptPo', { number: po.document_number })}
-                          checked={selectedInvoicePoIds.includes(po.id)}
+                          checked={selectedInvoicePoIdSet.has(po.id)}
                           onChange={() => { toggleInvoiceSelection(po.id) }}
-                          className={tokens.checkbox.base}
                         />
                       )}
                       <EntityLink
@@ -680,27 +703,27 @@ export function GoodsReceiptListPage() {
                         id={po.id}
                         documentType="purchase_order"
                         label={po.document_number}
-                        className="text-lg font-semibold text-gray-900 hover:text-blue-600"
+                        className={`text-lg font-semibold ${textColors.primary} ${textColors.hoverBrand}`}
                       />
                       {isFullyReceived ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                        <span className={`${tokens.badge.base} ${tokens.badge.green} inline-flex items-center gap-1`}>
                           <CheckCircle2 className="h-3 w-3" />
                           {t('inventory:goodsReceipt.status.received')}
                         </span>
                       ) : progress.percentage > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                        <span className={`${tokens.badge.base} ${tokens.badge.yellow} inline-flex items-center gap-1`}>
                           <AlertCircle className="h-3 w-3" />
                           {t('inventory:goodsReceipt.status.partial')}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                        <span className={`${tokens.badge.base} ${tokens.badge.gray} inline-flex items-center gap-1`}>
                           <Clock className="h-3 w-3" />
                           {t('inventory:goodsReceipt.status.pending')}
                         </span>
                       )}
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+                    <div className={`mt-2 flex flex-wrap items-center gap-4 text-sm ${textColors.disabled}`}>
                       <span className="flex items-center gap-1">
                         <Building2 className="h-4 w-4" />
                         <EntityLink
@@ -714,7 +737,7 @@ export function GoodsReceiptListPage() {
                         <Calendar className="h-4 w-4" />
                         {formatDate(po.issue_date ?? po.document_date)}
                       </span>
-                      <span className="font-medium text-gray-900">
+                      <span className={`font-medium ${textColors.primary}`}>
                         {formatCurrency(po.total, po.currency)}
                       </span>
                     </div>
@@ -722,7 +745,7 @@ export function GoodsReceiptListPage() {
                     {/* Progress bar for partial receipts */}
                     {activeTab === 'pending' && progress.total > 0 && (
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <div className={`mb-1 flex items-center justify-between text-xs ${textColors.disabled}`}>
                           <span>
                             {t('inventory:goodsReceipt.progress', {
                               received: progress.received,
@@ -731,14 +754,14 @@ export function GoodsReceiptListPage() {
                           </span>
                           <span>{progress.percentage}%</span>
                         </div>
-                        <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                        <div className={`h-2 w-full overflow-hidden rounded-full ${colors.neutral[100]}`}>
                           <div
                             className={`h-full rounded-full transition-all ${
                               progress.percentage === 100
-                                ? 'bg-green-500'
+                                ? colors.success[600]
                                 : progress.percentage > 0
-                                ? 'bg-amber-500'
-                                : 'bg-gray-300'
+                                ? colors.warning[600]
+                                : colors.neutral[300]
                             }`}
                             style={{ width: `${progress.percentage}%` }}
                           />
@@ -747,23 +770,23 @@ export function GoodsReceiptListPage() {
                     )}
 
                     {/* Lines preview */}
-                    <div className="mt-3 text-sm text-gray-600">
+                    <div className={`mt-3 text-sm ${textColors.tertiary}`}>
                       {po.lines.slice(0, 3).map((line, idx) => (
                         <div key={line.id} className="flex items-center gap-2">
-                          <span className="text-gray-400">{idx + 1}.</span>
+                          <span className={textColors.disabled}>{idx + 1}.</span>
                           <EntityLink
                             type="product"
                             id={line.product_id}
                             label={line.product_name ?? line.description}
                             className="truncate"
                           />
-                          <span className="text-gray-400">
+                          <span className={textColors.disabled}>
                             ({line.quantity_received ?? 0}/{line.quantity})
                           </span>
                         </div>
                       ))}
                       {po.lines.length > 3 && (
-                        <span className="text-gray-400">
+                        <span className={textColors.disabled}>
                           +{po.lines.length - 3} {t('common:more')}
                         </span>
                       )}
@@ -777,34 +800,36 @@ export function GoodsReceiptListPage() {
                       if (!receipt) return null
                       const receiptNumber = receipt.receipt_number ?? ''
                       return (
-                        <button
+                        <Button
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           onClick={(e) => {
                             e.stopPropagation()
                             downloadGoodsReceiptPdfMutation.mutate(receipt)
                           }}
                           disabled={downloadGoodsReceiptPdfMutation.isPending}
                           aria-label={`${t('inventory:goodsReceipt.printGrn')} ${receiptNumber}`.trim()}
-                          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
+                          className="gap-1"
                         >
                           <Printer className="h-4 w-4" />
                           {t('inventory:goodsReceipt.printGrn')}
-                        </button>
+                        </Button>
                       )
                     })()}
                     {activeTab === 'pending' && !isFullyReceived && (
-                      <button
+                      <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleReceiveClick(po)
                         }}
                         disabled={isLoadingReceiveDetail}
-                        className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60 transition-colors"
+                        className="gap-2 disabled:opacity-60"
                       >
                         <Truck className="h-4 w-4" />
                         {isLoadingReceiveDetail ? t('common:status.loading') : t('inventory:goodsReceipt.receiveAll')}
-                      </button>
+                      </Button>
                     )}
                     <EntityLink
                       type="document"
@@ -816,7 +841,7 @@ export function GoodsReceiptListPage() {
                           <ChevronRight className="h-4 w-4" />
                         </>
                       )}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
                     />
                   </div>
                 </div>

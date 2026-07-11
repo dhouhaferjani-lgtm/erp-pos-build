@@ -16,6 +16,8 @@ import {
 } from '../hooks/useEarningRules'
 import { EarningRuleFormModal } from './EarningRuleFormModal'
 import type { EarningRule, CreateEarningRuleData } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface EarningRulesTabProps {
   programId: string
@@ -72,7 +74,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">{t('loyalty:earningRules.title')}</h3>
+        <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('loyalty:earningRules.title')}</h3>
         <Button size="sm" onClick={handleOpenCreate}>
           <Plus className="w-4 h-4 mr-1" />
           {t('loyalty:earningRules.create')}
@@ -81,29 +83,29 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
 
       {rulesList.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">{t('loyalty:earningRules.noRules')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('loyalty:earningRules.noRulesDescription')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:earningRules.noRules')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:earningRules.noRulesDescription')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.name')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.ruleType')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.rewardValue')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.priority')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.status')}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:table.actions')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.ruleType')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.rewardValue')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.priority')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.status')}</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('common:table.actions')}</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {rulesList.map((rule) => (
-                <tr key={rule.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{rule.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{t(`loyalty:ruleTypes.${rule.rule_type}`)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{rule.reward_value}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{rule.priority}</td>
+                <tr key={rule.id} className={colorTokens.intent.neutral.bgHover}>
+                  <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{rule.name}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{t(`loyalty:ruleTypes.${rule.rule_type}`)}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{rule.reward_value}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{rule.priority}</td>
                   <td className="px-4 py-3">
                     <Badge variant={rule.is_active ? 'success' : 'default'}>
                       {rule.is_active ? t('loyalty:statuses.active') : t('loyalty:statuses.inactive')}
@@ -113,7 +115,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => { handleOpenEdit(rule); }}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+                        className={`p-1.5 rounded ${colorTokens.intent.neutral.bgHoverSoft} ${colorTokens.text.muted}`}
                         title={t('loyalty:earningRules.edit')}
                       >
                         <Pencil className="w-4 h-4" />
@@ -121,7 +123,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                       {rule.is_active ? (
                         <button
                           onClick={() => { deactivateMutation.mutate(rule.id); }}
-                          className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.notice.bgHover} ${colorTokens.intent.notice.text}`}
                           title={t('loyalty:actions.deactivate')}
                         >
                           <Pause className="w-4 h-4" />
@@ -129,7 +131,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                       ) : (
                         <button
                           onClick={() => { activateMutation.mutate(rule.id); }}
-                          className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.success.bgHover} ${colorTokens.intent.success.text}`}
                           title={t('loyalty:actions.activate')}
                         >
                           <Play className="w-4 h-4" />
@@ -137,7 +139,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                       )}
                       <button
                         onClick={() => { setDeleteTarget(rule); }}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                        className={`p-1.5 rounded ${colorTokens.intent.danger.bgHover} ${colorTokens.intent.danger.textSubtle}`}
                         title={t('loyalty:actions.delete')}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -147,7 +149,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

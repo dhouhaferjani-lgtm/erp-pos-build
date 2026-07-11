@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { POSButton } from './POSButton'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 describe('POSButton', () => {
   it('renders children correctly', () => {
@@ -11,29 +12,29 @@ describe('POSButton', () => {
   it('applies primary variant classes by default', () => {
     const { container } = render(<POSButton>Primary</POSButton>)
     const button = container.firstChild as HTMLElement
-    expect(button.className).toContain('bg-blue-600')
-    expect(button.className).toContain('text-white')
+    expect(button.className).toContain(colorTokens.intent.primary.bgStrong)
+    expect(button.className).toContain(colorTokens.text.inverse)
   })
 
   it('applies secondary variant classes when specified', () => {
     const { container } = render(<POSButton variant="secondary">Secondary</POSButton>)
     const button = container.firstChild as HTMLElement
-    expect(button.className).toContain('bg-gray-200')
-    expect(button.className).toContain('text-gray-900')
+    expect(button.className).toContain(colorTokens.surface.subdued)
+    expect(button.className).toContain(colorTokens.text.primary)
   })
 
   it('applies success variant classes when specified', () => {
     const { container } = render(<POSButton variant="success">Success</POSButton>)
     const button = container.firstChild as HTMLElement
-    expect(button.className).toContain('bg-green-600')
-    expect(button.className).toContain('text-white')
+    expect(button.className).toContain(colorTokens.intent.success.bgStrong)
+    expect(button.className).toContain(colorTokens.text.inverse)
   })
 
   it('applies danger variant classes when specified', () => {
     const { container } = render(<POSButton variant="danger">Danger</POSButton>)
     const button = container.firstChild as HTMLElement
-    expect(button.className).toContain('bg-red-600')
-    expect(button.className).toContain('text-white')
+    expect(button.className).toContain(colorTokens.intent.danger.bgStrong)
+    expect(button.className).toContain(colorTokens.text.inverse)
   })
 
   it('applies medium size classes by default', () => {

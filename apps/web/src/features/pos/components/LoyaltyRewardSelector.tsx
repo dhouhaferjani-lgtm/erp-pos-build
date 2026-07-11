@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Gift, Star, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { textColors, colors, borderColors } from '@/lib/designTokens'
+import { textColors, colors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -60,7 +60,7 @@ export function LoyaltyRewardSelector({
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center py-4', className)}>
-        <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+        <Loader2 className={`w-5 h-5 animate-spin ${colorTokens.intent.caution.textSubtle}`} />
       </div>
     )
   }
@@ -77,10 +77,10 @@ export function LoyaltyRewardSelector({
     <div className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between">
         <h4 className={cn('text-sm font-medium flex items-center gap-1.5', textColors.secondary)}>
-          <Gift className="w-4 h-4 text-amber-500" />
+          <Gift className={`w-4 h-4 ${colorTokens.intent.caution.textSubtle}`} />
           {t('pos:loyalty.rewards.title')}
         </h4>
-        <span className="text-xs text-amber-600 flex items-center gap-1">
+        <span className={`text-xs ${colorTokens.intent.caution.text} flex items-center gap-1`}>
           <Star className="w-3 h-3" />
           {data.current_balance} {t('pos:loyalty.memberBadge.points')}
         </span>
@@ -97,7 +97,7 @@ export function LoyaltyRewardSelector({
               className={cn(
                 'flex items-center justify-between p-3 rounded-lg border',
                 canAfford
-                  ? cn(colors.white, 'border-amber-200')
+                  ? cn(colors.white, `${colorTokens.intent.caution.borderSubtle}`)
                   : cn(colors.neutral[50], borderColors.light, 'opacity-60'),
               )}
             >
@@ -108,7 +108,7 @@ export function LoyaltyRewardSelector({
                 {reward.description && (
                   <div className={cn('text-xs truncate', textColors.tertiary)}>{reward.description}</div>
                 )}
-                <div className="text-xs text-amber-600 mt-0.5">
+                <div className={`text-xs ${colorTokens.intent.caution.text} mt-0.5`}>
                   {reward.points_cost} {t('pos:loyalty.memberBadge.points')}
                 </div>
               </div>

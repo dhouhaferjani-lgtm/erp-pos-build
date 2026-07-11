@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store, Layers } from 'lucide-react'
-import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
-import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput, PosStockPolicyOverride } from '../location/api'
-import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
+import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../locations/api'
+import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput, PosStockPolicyOverride } from '../locations/api'
+import { isBranchTaxIdRequiredCountry } from '../locations/branchTaxCountries'
 import { useCountryProfile } from './hooks/useCountryProfile'
 import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
@@ -13,10 +13,17 @@ import { cn } from '../../lib/utils'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { Button, Checkbox, FormField, Input, Select, StatusBadge, Toggle } from '../../components/atoms'
+import { Button } from '../../components/atoms/Button/Button'
+import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { Select } from '../../components/atoms/Select/Select'
+import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
+import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
-import { EmptyState } from '../../components/molecules'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ZonesPanel } from './zones/ZonesPanel'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
 
@@ -255,7 +262,7 @@ export function LocationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</h1>
+          <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</PageHeaderTitle>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('locations.subtitle')}</p>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('settings:locations.scopeHint')}</p>
         </div>

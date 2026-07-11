@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -6,7 +6,7 @@ import { api } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
-import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
+import { borderColors, colors, textColors, tokens, semanticColorTokens as colorTokens } from '../../../lib/designTokens'
 import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner'
 import { ProductCell } from './ProductCell'
 import { useProductLineLookup, type ProductLineLookupOutcome, type ProductLineProduct } from './useProductLineLookup'
@@ -59,6 +59,7 @@ export function LineItemEntryBar({
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listboxId = useId()
   const { enqueueScan } = useProductLineLookup()
@@ -70,15 +71,31 @@ export function LineItemEntryBar({
     queryKey: tenantScopedKey(['line-entry-products', trimmedQuery]),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products', {
-        params: trimmedQuery !== '' ? { search: trimmedQuery } : undefined,
+        params: {
+          per_page: 20,
+          ...(trimmedQuery !== '' ? { search: trimmedQuery } : {}),
+        },
       })
       return response.data
     },
-    enabled: !disabled && isOpen && trimmedQuery !== '' && tenantId !== null && companyId !== null,
+    enabled: !disabled && isOpen && tenantId !== null && companyId !== null,
     staleTime: 30000,
   })
 
   const products = productsData?.data ?? []
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current !== null && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [])
 
   const focusInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -182,6 +199,13 @@ export function LineItemEntryBar({
 
     if (event.key !== 'Enter' && event.key !== 'Tab') return
 
+    if (isOpen && products.length > 0 && (event.key === 'Enter' || trimmedQuery !== '')) {
+      event.preventDefault()
+      event.stopPropagation()
+      commitSearchAdd(products[highlightedIndex] ?? products[0])
+      return
+    }
+
     if (trimmedQuery === '') {
       if (event.key === 'Enter') event.preventDefault()
       return
@@ -190,16 +214,17 @@ export function LineItemEntryBar({
     event.preventDefault()
     event.stopPropagation()
 
-    if (isOpen && products.length > 0) {
-      commitSearchAdd(products[highlightedIndex] ?? products[0])
-      return
-    }
-
     resolveScan(trimmedQuery)
   }
 
+  const handleContainerBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget
+    if (nextTarget instanceof Node && containerRef.current?.contains(nextTarget)) return
+    setIsOpen(false)
+  }
+
   return (
-    <div className="relative w-full">
+    <div ref={containerRef} className="relative w-full" onBlur={handleContainerBlur}>
       <div className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colors.white} px-3 py-2`}>
         <Search className={`h-4 w-4 shrink-0 ${textColors.disabled}`} aria-hidden="true" />
         <input
@@ -207,7 +232,7 @@ export function LineItemEntryBar({
           type="text"
           role="combobox"
           aria-expanded={isOpen}
-          aria-controls={isOpen && trimmedQuery !== '' ? listboxId : undefined}
+          aria-controls={isOpen ? listboxId : undefined}
           aria-label={t('sales:lineItems.entry.placeholder')}
           placeholder={t('sales:lineItems.entry.placeholder')}
           value={query}
@@ -222,7 +247,7 @@ export function LineItemEntryBar({
             setMessage(null)
           }}
           onKeyDown={handleKeyDown}
-          className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm ${textColors.primary} placeholder:${textColors.disabled} focus:outline-none focus:ring-0`}
+          className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm ${textColors.primary} ${colorTokens.variants.placeholderTextGray400} focus:outline-none focus:ring-0`}
         />
         {query !== '' && (
           <button
@@ -244,19 +269,24 @@ export function LineItemEntryBar({
         <p className={tokens.helperText.base}>{message}</p>
       )}
 
-      {isOpen && trimmedQuery !== '' && (
-        <div className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}>
+      {isOpen && (
+        <div
+          id={listboxId}
+          role="listbox"
+          className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}
+        >
           {isLoading ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.loading')}</div>
           ) : products.length === 0 ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.noProductsFound')}</div>
           ) : (
-            <ul id={listboxId} className={`divide-y ${borderColors.divideLight}`}>
+            <ul className={`divide-y ${borderColors.divideLight}`}>
               {products.map((product, index) => (
                 <li key={product.id}>
                   <button
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={index === highlightedIndex}
                     aria-label={`${product.sku ?? ''} ${product.name}`.trim()}
                     onMouseEnter={() => {

@@ -3,6 +3,7 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { TopSkuReport } from '../api/ownerReportsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface TopSkusWidgetProps {
   data: TopSkuReport[]
@@ -35,7 +36,7 @@ export function TopSkusWidget({ data, sortBy, onSortByChange }: TopSkusWidgetPro
           {t('reports:ownerDashboard.topSkus.quantity')}
         </button>
       </div>
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead>
           <tr className={`border-b ${borderColors.light} ${textColors.tertiary}`}>
             <th className="py-2 text-start">{t('reports:ownerDashboard.columns.product')}</th>
@@ -60,7 +61,7 @@ export function TopSkusWidget({ data, sortBy, onSortByChange }: TopSkusWidgetPro
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </OwnerTableFrame>
   )
 }

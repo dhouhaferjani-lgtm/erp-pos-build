@@ -8,7 +8,9 @@ import { updateUnitPrecision } from '../../uom/api/uomApi'
 import type { Unit, RoundingMethod } from '../../uom/api/uomApi'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Button, Input, Select } from '@/components/atoms'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,7 +101,7 @@ function UnitRow({
 
         {/* Decimal places */}
         <td className="px-4 py-3">
-          <input
+          <Input
             type="number"
             min={0}
             max={10}
@@ -109,13 +111,13 @@ function UnitRow({
               onDraftChange({ ...draft, decimal_places: val })
             }}
             data-testid={`decimal-places-${unit.id}`}
-            className={`w-20 ${tokens.input.base}`}
+            className={`w-20 `}
           />
         </td>
 
         {/* Rounding method */}
         <td className="px-4 py-3">
-          <select
+          <Select
             value={draft.rounding_method}
             onChange={(e) => {
               const v = e.target.value
@@ -127,24 +129,23 @@ function UnitRow({
               })
             }}
             data-testid={`rounding-method-${unit.id}`}
-            className={tokens.select.base}
           >
             {ROUNDING_METHODS.map((m) => (
               <option key={m} value={m}>
                 {t(`uom:precisionSettings.roundingOptions.${m}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </td>
 
         {/* Save button */}
         <td className="px-4 py-3 text-right">
-          <button
+          <Button size="sm"
             type="button"
             onClick={onSave}
             disabled={isSaving}
             data-testid={`save-${unit.id}`}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1`}
+            className="gap-1"
           >
             {isSaving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -154,7 +155,7 @@ function UnitRow({
             {isSaving
               ? t('uom:precisionSettings.saving')
               : t('uom:precisionSettings.save')}
-          </button>
+          </Button>
         </td>
       </tr>
 
@@ -286,7 +287,7 @@ export function UnitDecimalSettings() {
       {/* Table */}
       <div className={`overflow-hidden rounded-lg border ${borderColors.light}`}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200" data-testid="unit-precision-table">
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`} data-testid="unit-precision-table">
             <thead className={tokens.table.header}>
               <tr>
                 <th
@@ -316,7 +317,7 @@ export function UnitDecimalSettings() {
                 <th scope="col" className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {units.map((unit) => {
                 const draft = getDraft(unit)
                 return (
@@ -333,7 +334,7 @@ export function UnitDecimalSettings() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     </div>

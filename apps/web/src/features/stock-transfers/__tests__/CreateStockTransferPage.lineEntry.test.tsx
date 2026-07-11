@@ -24,7 +24,7 @@ const PLAIN_PRODUCT_ID = '22222222-2222-4222-8222-222222222222'
 const VARIANT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333'
 const VARIANT_ID = '44444444-4444-4444-8444-444444444444'
 
-vi.mock('@/features/location/api', () => ({
+vi.mock('@/features/locations/api', () => ({
   fetchLocations: mockFetchLocations,
 }))
 
@@ -255,6 +255,46 @@ describe('CreateStockTransferPage line entry bar', () => {
           }),
         ],
       }))
+    })
+  })
+
+  it('submits the complete header and line payload with decimal strings intact', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue({
+      kind: 'product',
+      matched_code_type: 'product_barcode',
+      product: product(BATCH_PRODUCT_ID),
+    })
+
+    renderPage()
+    await selectLocations(user)
+
+    await user.type(screen.getByLabelText(/notes/i), '  Cold chain handoff  ')
+    await user.type(screen.getByLabelText(/transfer cost \(freight, handling\)/i), '8.250')
+    await user.type(screen.getByLabelText(/cost label/i), 'Temperature control')
+    await user.selectOptions(screen.getByLabelText(/allocate cost by/i), 'equal_per_line')
+    scan('123456')
+
+    expect(await screen.findByText('PARA-LOT Batch tracked product')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith({
+        source_location_id: 'source-location',
+        destination_location_id: 'destination-location',
+        notes: 'Cold chain handoff',
+        transfer_cost: '8.25',
+        transfer_cost_label: 'Temperature control',
+        transfer_cost_distribution: 'equal_per_line',
+        lines: [
+          {
+            product_id: BATCH_PRODUCT_ID,
+            quantity: '1',
+            batch_allocations: [{ batch_id: 101, quantity: '1.0000' }],
+          },
+        ],
+      })
     })
   })
 

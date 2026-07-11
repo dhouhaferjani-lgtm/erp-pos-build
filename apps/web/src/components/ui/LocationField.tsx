@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { getLocations } from '../../features/locations/api/locations'
 import type { Location } from '../../features/locations/types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface LocationFieldProps {
   value: string
@@ -113,19 +114,19 @@ export function LocationField({
         aria-disabled={disabled}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${colorTokens.variants.focusVisibleRingBlue500} ${
           error
-            ? 'border-red-300'
-            : 'border-gray-300'
-        } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50 cursor-pointer'}`}
+            ? `${colorTokens.intent.danger.border}`
+            : `${colorTokens.border.default}`
+        } ${disabled ? `${colorTokens.surface.muted} cursor-not-allowed` : `${colorTokens.surface.base} ${colorTokens.variants.hoverBgGray50} cursor-pointer`}`}
       >
-        <span className={selectedLocation ? 'text-gray-900' : 'text-gray-500'}>
+        <span className={selectedLocation ? `${colorTokens.text.primary}` : `${colorTokens.text.subtle}`}>
           {selectedLocation ? (
             <span className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-gray-400" />
+              <MapPin className={`h-4 w-4 ${colorTokens.text.disabled}`} />
               {selectedLocation.name}
               {selectedLocation.code && (
-                <span className="text-xs text-gray-500">({selectedLocation.code})</span>
+                <span className={`text-xs ${colorTokens.text.subtle}`}>({selectedLocation.code})</span>
               )}
             </span>
           ) : (
@@ -141,35 +142,35 @@ export function LocationField({
                 handleClear()
               }}
               aria-label={t('common:clearSearch')}
-              className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+              className={`rounded p-0.5 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray600}`}
             >
               <X className="h-4 w-4" />
             </button>
           )}
-          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-4 w-4 ${colorTokens.text.disabled} transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </div>
       </div>
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[300px] rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className={`absolute left-0 top-full z-50 mt-1 w-full min-w-[300px] rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} shadow-lg`}>
           {/* Search input */}
-          <div className="p-3 border-b border-gray-200">
+          <div className={`p-3 border-b ${colorTokens.border.subtle}`}>
             <div className="relative">
-              <Search className="absolute inset-y-0 start-0 ms-3 h-full w-4 text-gray-400" />
+              <Search className={`absolute inset-y-0 start-0 ms-3 h-full w-4 ${colorTokens.text.disabled}`} />
               <input
                 ref={inputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value) }}
                 placeholder={t('common:searchLocation')}
-                className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full rounded-lg border ${colorTokens.border.default} py-2 pe-10 ps-10 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => { setSearchQuery('') }}
-                  className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600"
+                  className={`absolute inset-y-0 end-0 flex items-center pe-3 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -184,73 +185,73 @@ export function LocationField({
               <button
                 type="button"
                 onClick={() => { handleSelect(null) }}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-gray-50 border-b border-gray-100 ${
-                  !value ? 'bg-blue-50' : ''
+                className={`flex w-full items-center gap-3 px-4 py-3 text-start ${colorTokens.variants.hoverBgGray50} border-b ${colorTokens.border.hairline} ${
+                  !value ? `${colorTokens.intent.primary.bgSubtle}` : ''
                 }`}
               >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
-                  <MapPin className="h-4 w-4 text-gray-400" />
+                <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${colorTokens.surface.muted}`}>
+                  <MapPin className={`h-4 w-4 ${colorTokens.text.disabled}`} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className={`text-sm font-medium ${colorTokens.text.primary}`}>
                     {nullLabel ?? t('common:noLocation')}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className={`text-xs ${colorTokens.text.subtle}`}>
                     {t('common:centralInvoicing')}
                   </div>
                 </div>
                 {!value && (
                   <div className="flex-shrink-0">
-                    <div className="h-2 w-2 rounded-full bg-blue-600" />
+                    <div className={`h-2 w-2 rounded-full ${colorTokens.intent.primary.bgStrong}`} />
                   </div>
                 )}
               </button>
             )}
 
             {isLoading ? (
-              <div className="p-4 text-center text-sm text-gray-500">
+              <div className={`p-4 text-center text-sm ${colorTokens.text.subtle}`}>
                 {t('common:status.loading')}
               </div>
             ) : locations.length === 0 ? (
               <div className="p-4 text-center text-sm">
-                <MapPin className="mx-auto h-8 w-8 text-gray-300" />
-                <p className="mt-2 text-gray-500">
+                <MapPin className={`mx-auto h-8 w-8 ${colorTokens.text.faint}`} />
+                <p className={`mt-2 ${colorTokens.text.subtle}`}>
                   {searchQuery
                     ? t('common:noLocationResults')
                     : t('common:noLocations')}
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul className={`divide-y ${colorTokens.border.dividerSubtle}`}>
                 {locations.map((location) => (
                   <li key={location.id}>
                     <button
                       type="button"
                       onClick={() => { handleSelect(location) }}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-gray-50 ${
-                        location.id === value ? 'bg-blue-50' : ''
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-start ${colorTokens.variants.hoverBgGray50} ${
+                        location.id === value ? `${colorTokens.intent.primary.bgSubtle}` : ''
                       }`}
                     >
-                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
-                        <MapPin className="h-4 w-4 text-gray-500" />
+                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${colorTokens.surface.muted}`}>
+                        <MapPin className={`h-4 w-4 ${colorTokens.text.subtle}`} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-900 truncate">
+                          <div className={`text-sm font-medium ${colorTokens.text.primary} truncate`}>
                             {location.name}
                           </div>
                           {location.isDefault && (
-                            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                            <span className={`inline-flex items-center rounded-full ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}>
                               {t('common:locations.default')}
                             </span>
                           )}
                           {!location.isActive && (
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
+                            <span className={`inline-flex items-center rounded-full ${colorTokens.surface.muted} px-2 py-0.5 text-xs font-medium ${colorTokens.text.strong}`}>
                               {t('common:inactive')}
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500 truncate">
+                        <div className={`text-xs ${colorTokens.text.subtle} truncate`}>
                           {location.code && <span className="font-mono">{location.code}</span>}
                           {location.code && (location.addressStreet || location.addressCity) && ' • '}
                           {[location.addressStreet, location.addressCity].filter(Boolean).join(', ')}
@@ -258,7 +259,7 @@ export function LocationField({
                       </div>
                       {location.id === value && (
                         <div className="flex-shrink-0">
-                          <div className="h-2 w-2 rounded-full bg-blue-600" />
+                          <div className={`h-2 w-2 rounded-full ${colorTokens.intent.primary.bgStrong}`} />
                         </div>
                       )}
                     </button>
@@ -272,7 +273,7 @@ export function LocationField({
 
       {/* Error message */}
       {error && (
-        <p className="mt-1 text-sm text-red-600">{error}</p>
+        <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{error}</p>
       )}
     </div>
   )

@@ -11,7 +11,6 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { CashOperationModal } from '../components/CashOperationModal'
 import { EarnPointsPreview } from '../components/EarnPointsPreview'
 import { LoyaltyRewardSelector } from '../components/LoyaltyRewardSelector'
-import { TerminalSelector } from '../components/TerminalSelector'
 import { useActiveMenu } from '../hooks/useActiveMenu'
 import { AdvancedPaymentsModal } from '../organisms/AdvancedPaymentsModal/AdvancedPaymentsModal'
 import { ProductInfoModal } from '../organisms/ProductInfoModal/ProductInfoModal'
@@ -150,7 +149,6 @@ beforeEach(() => {
   mockFetchPaymentMethods.mockResolvedValue([])
   mockFetchPaymentRepositories.mockResolvedValue([])
   mockApiGetHelper.mockImplementation((url: string) => {
-    if (url === '/pos/terminals') return Promise.resolve([])
     if (url === '/active-menu') return Promise.resolve({ id: 'menu-1', name: 'Main', categories: [] })
     if (url === '/products/product-1') return Promise.resolve({ id: 'product-1', name: 'Product A', sale_price: '10' })
     if (url === '/products/product-1/stock-levels') return Promise.resolve({ locations: [] })
@@ -175,7 +173,6 @@ describe('POS tenant scope', () => {
         <CashOperationModal isOpen={true} onClose={vi.fn()} type="deposit" shiftId="shift-1" terminalCode="TERM-1" />
         <EarnPointsPreview enrollmentId="enroll-1" cartTotal="10" cartItems={[]} />
         <LoyaltyRewardSelector enrollmentId="enroll-1" onRewardRedeemed={vi.fn()} />
-        <TerminalSelector onSelect={vi.fn()} />
         <AdvancedPaymentsModal
           isOpen={true}
           onClose={vi.fn()}
@@ -192,7 +189,6 @@ describe('POS tenant scope', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData(['loyalty', 'preview-earning', 'enroll-1', '10', 0, 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['loyalty', 'rewards', 'enroll-1', 'tenant-A', 'company-1'])).toBeDefined()
-      expect(queryClient.getQueryData(['pos', 'terminals', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['pos', 'active-menu', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-methods', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-repositories', 'tenant-A', 'company-1'])).toBeDefined()
@@ -215,10 +211,7 @@ describe('POS tenant scope', () => {
     resetTenant()
 
     render(
-      <>
-        <EarnPointsPreview enrollmentId="enroll-1" cartTotal="10" cartItems={[]} />
-        <TerminalSelector onSelect={vi.fn()} />
-      </>,
+      <EarnPointsPreview enrollmentId="enroll-1" cartTotal="10" cartItems={[]} />,
       { wrapper: wrapper(queryClient) },
     )
 

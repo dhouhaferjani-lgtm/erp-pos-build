@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { POSLayout } from './POSLayout'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -154,7 +155,7 @@ describe('POSLayout', () => {
       )
 
       const header = screen.getByText('common:pos.title').closest('header')
-      expect(header).toHaveClass('bg-gray-800')
+      expect(header).toHaveClass(colorTokens.surface.inverse)
     })
 
     it('should have dark root background', () => {
@@ -165,7 +166,7 @@ describe('POSLayout', () => {
       )
 
       const layoutRoot = container.firstChild as HTMLElement
-      expect(layoutRoot).toHaveClass('bg-gray-900')
+      expect(layoutRoot).toHaveClass(colorTokens.surface.inverseStrong)
     })
   })
 })

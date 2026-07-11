@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
 import noHardcodedEntityRoute from './eslint-rules/no-hardcoded-entity-route.js'
+import noDeadTailwindTokenInterpolation from './eslint-rules/no-dead-tailwind-token-interpolation.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
 import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 
@@ -29,6 +30,7 @@ const precisionPlugin = {
 // they can never regress.
 const localPlugin = {
   rules: {
+    'no-dead-tailwind-token-interpolation': noDeadTailwindTokenInterpolation,
     'no-hardcoded-entity-route': noHardcodedEntityRoute,
     'no-untranslated-literal': noUntranslatedLiteral,
   },
@@ -79,6 +81,7 @@ export default tseslint.config(
       // i18n guard — WARN on the legacy surface (ratcheted). Cleaned feature
       // dirs promote it to ERROR in the i18n-clean override block at the end.
       'local/no-hardcoded-entity-route': 'warn',
+      'local/no-dead-tailwind-token-interpolation': 'error',
       'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',
@@ -187,8 +190,34 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'warn',
         {
-          selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo)-(\\d{2,3})\\b/]',
+          selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
           message: 'Avoid hardcoded Tailwind color classes. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
+          message: 'Avoid hardcoded Tailwind color classes. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/features/documents/**/*.{ts,tsx}',
+      'src/features/admin/**/*.{ts,tsx}',
+      'src/lib/designTokens.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/designTokens', '@/lib/designTokens'],
+              importNames: ['colorClasses'],
+              message: 'colorClasses is quarantined for the Wave 5 documents/admin sweep. Use semantic design tokens instead.',
+            },
+          ],
         },
       ],
     },
@@ -228,7 +257,11 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo)-(\\d{2,3})\\b/]',
+          selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
         },
       ],
@@ -249,6 +282,10 @@ export default tseslint.config(
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in scheduling. Use design tokens from lib/designTokens.ts (tokens.statusBadge.*, tokens.utilizationBar.*, tokens.toggleButton.*).',
         },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in scheduling. Use design tokens from lib/designTokens.ts (tokens.statusBadge.*, tokens.utilizationBar.*, tokens.toggleButton.*).',
+        },
       ],
     },
   },
@@ -267,6 +304,40 @@ export default tseslint.config(
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in workshop-*. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in workshop-*. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+        },
+      ],
+    },
+  },
+  // Wave 5 design-system sweep: migrated directories have been reduced to 0
+  // hardcoded color literals in production source. Keep the broader
+  // C7-equivalent utility/palette regex as ERROR here so the next sweep does
+  // not inherit regressions.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      '**/*.test.{ts,tsx}',
+      '**/__tests__/**',
+      '**/*.stories.{ts,tsx}',
+      'src/lib/designTokens.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in Wave 5 migrated directories. Use semantic design tokens from lib/designTokens.ts.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in Wave 5 migrated directories. Use semantic design tokens from lib/designTokens.ts.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/(hover|focus|focus-within|focus-visible|group-hover|disabled|placeholder|active|dark|file):$/]',
+          message: 'Do not compose Tailwind variants with token interpolation. Add the complete class literal to designTokens.ts and reference that token.',
         },
       ],
     },

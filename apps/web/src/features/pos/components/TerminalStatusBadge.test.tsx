@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TerminalStatusBadge } from './TerminalStatusBadge'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock translation hook
 vi.mock('react-i18next', () => ({
@@ -16,7 +17,7 @@ describe('TerminalStatusBadge', () => {
     const badge = screen.getByText('terminal.active')
 
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveClass('bg-green-100', 'text-green-800')
+    expect(badge).toHaveClass(colorTokens.intent.success.bgSoft, colorTokens.intent.success.textStronger)
   })
 
   it('renders inactive badge when isActive is false', () => {
@@ -25,7 +26,7 @@ describe('TerminalStatusBadge', () => {
     const badge = screen.getByText('terminal.inactive')
 
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveClass('bg-gray-100', 'text-gray-800')
+    expect(badge).toHaveClass(colorTokens.surface.muted, colorTokens.text.strong)
   })
 
   it('applies custom className when provided', () => {

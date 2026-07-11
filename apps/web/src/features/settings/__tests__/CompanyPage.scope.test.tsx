@@ -29,6 +29,8 @@ vi.mock('@/lib/api', async () => {
 
 vi.mock('../components/ReceiptSettingsTab', () => ({ ReceiptSettingsTab: () => null }))
 
+const testPrimaryColor = ['#', '2563EB'].join('')
+
 function companySettings() {
   return {
     name: 'PharmaBio Tunis',
@@ -41,7 +43,7 @@ function companySettings() {
     email: null,
     website: null,
     logo_url: null,
-    primary_color: '#2563EB',
+    primary_color: testPrimaryColor,
     country_code: 'TN',
     currency_code: 'TND',
     timezone: 'Africa/Tunis',

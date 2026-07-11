@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface CreditLimitWarningProps {
   creditLimit: string | null
@@ -39,14 +40,14 @@ export function CreditLimitWarning({
     <div
       className={`flex items-start gap-3 rounded-lg border p-4 ${
         severity === 'error'
-          ? 'border-red-200 bg-red-50 text-red-800'
-          : 'border-amber-200 bg-amber-50 text-amber-800'
+          ? `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textStronger}`
+          : `${colorTokens.intent.caution.borderSubtle} ${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStronger}`
       }`}
       role="alert"
     >
       <AlertTriangle
         className={`h-5 w-5 flex-shrink-0 ${
-          severity === 'error' ? 'text-red-500' : 'text-amber-500'
+          severity === 'error' ? colorTokens.intent.danger.textSubtle : colorTokens.intent.caution.textSubtle
         }`}
       />
       <div>

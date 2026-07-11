@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clock, ShoppingCart, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { HeldOrderData } from '../../api/heldOrderApi'
+import { Button } from '@/components/atoms'
 
 export interface HeldOrderCardProps {
   order: HeldOrderData
@@ -87,7 +88,7 @@ export function HeldOrderCard({
       className={cn(
         'rounded-lg border bg-white p-4 shadow-sm transition-all',
         'hover:shadow-md',
-        expiryInfo?.isNearExpiry && 'border-amber-300 bg-amber-50/50',
+        expiryInfo?.isNearExpiry && `${colorTokens.intent.caution.border} ${colorTokens.intent.caution.bgSubtleAlpha}`,
         expiryInfo?.expired && cn(borderColors.error, tokens.alert.error, 'opacity-75'),
       )}
     >
@@ -122,7 +123,7 @@ export function HeldOrderCard({
             className={cn(
               'flex items-center gap-1',
               expiryInfo.expired && cn('font-medium', textColors.error),
-              expiryInfo.isNearExpiry && !expiryInfo.expired && 'font-medium text-amber-600',
+              expiryInfo.isNearExpiry && !expiryInfo.expired && `font-medium ${colorTokens.intent.caution.text}`,
             )}
           >
             {(expiryInfo.expired || expiryInfo.isNearExpiry) && (
@@ -139,50 +140,48 @@ export function HeldOrderCard({
           <span className={cn('flex-1 text-xs', textColors.error)}>
             {t('pos:heldOrders.confirmDiscard')}
           </span>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => { setShowConfirmDiscard(false); }}
-            className={cn('rounded px-3 py-1.5 text-xs', tokens.button.ghost)}
+            className={cn('rounded px-3 py-1.5 text-xs')}
           >
             {t('common:cancel')}
-          </button>
-          <button
+          </Button>
+          <Button variant="danger"
             type="button"
             onClick={handleDiscard}
             disabled={isDiscarding}
-            className={cn('rounded px-3 py-1.5 text-xs font-medium disabled:opacity-50', tokens.button.danger)}
+            className={cn('rounded px-3 py-1.5 text-xs font-medium disabled:opacity-50')}
           >
             {t('pos:heldOrders.discardOrder')}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
             onClick={() => { onRecall(order.id); }}
             disabled={isRecalling || expiryInfo?.expired === true}
             className={cn(
               'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium',
-              tokens.button.primary,
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             {t('pos:heldOrders.recallOrder')}
-          </button>
-          <button
+          </Button>
+          <Button variant="secondary"
             type="button"
             onClick={handleDiscard}
             disabled={isDiscarding}
             className={cn(
               'flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium',
-              tokens.button.secondary,
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('pos:heldOrders.discardOrder')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

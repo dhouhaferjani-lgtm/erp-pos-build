@@ -3,13 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import {
-  FileUpload,
-  ColumnMapper,
-  ValidationGrid,
-  ImportProgress,
-  ImportPreviewTable,
-} from '../components'
+import { FileUpload } from '../components/FileUpload'
+import { ColumnMapper } from '../components/ColumnMapper'
+import { ValidationGrid } from '../components/ValidationGrid'
+import { ImportProgress } from '../components/ImportProgress'
+import { ImportPreviewTable } from '../components/ImportPreviewTable'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   useCreateImport,
@@ -24,6 +22,8 @@ import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
 import type { ImportJobOptions, ImportType } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -469,10 +469,10 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('wizard.upload.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('wizard.upload.description')}
               </p>
             </div>
@@ -484,27 +484,27 @@ export function ImportWizardPage() {
             />
 
             {selectedFile && sourceColumns.length > 0 && (
-              <div className="rounded-lg bg-green-50 p-4">
+              <div className={`rounded-lg ${colorTokens.intent.success.bgSubtle} p-4`}>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <span className="font-medium text-green-900">
+                  <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
+                  <span className={`font-medium ${colorTokens.intent.success.textStrongest}`}>
                     {t('wizard.upload.fileReady', { name: selectedFile.name })}
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-green-700">
+                <p className={`mt-1 text-sm ${colorTokens.intent.success.textStrong}`}>
                   {t('wizard.upload.columnsDetected', { count: sourceColumns.length })}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => authenticatedDownload(
                   importApi.downloadTemplateUrl(importType),
                   `${importType}_template.csv`
                 )}
-                className="text-sm text-blue-600 hover:text-blue-800"
+                className={`text-sm ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
               >
                 {t('wizard.upload.downloadTemplate')}
               </button>
@@ -512,7 +512,7 @@ export function ImportWizardPage() {
                 type="button"
                 onClick={handleUploadComplete}
                 disabled={!selectedFile || sourceColumns.length === 0}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {t('common:actions.next')}
                 <ArrowRight className="h-4 w-4" />
@@ -525,10 +525,10 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('wizard.mapping.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('wizard.mapping.description')}
               </p>
             </div>
@@ -541,11 +541,11 @@ export function ImportWizardPage() {
               onMappingChange={setColumnMapping}
             />
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('upload'); }}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('common:actions.back')}
@@ -554,7 +554,7 @@ export function ImportWizardPage() {
                 type="button"
                 onClick={handleMappingComplete}
                 disabled={!isMappingValid || createImport.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {createImport.isPending ? (
                   <>
@@ -576,10 +576,10 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('options.priceAuthorityTitle')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('options.priceAuthorityHint')}
               </p>
             </div>
@@ -588,7 +588,7 @@ export function ImportWizardPage() {
               {(['ttc', 'ht', 'margin'] as const).map((authority) => (
                 <label
                   key={authority}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-800 hover:bg-gray-50"
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border ${colorTokens.border.subtle} p-3 text-sm ${colorTokens.text.strong} ${colorTokens.intent.neutral.bgHover}`}
                 >
                   <input
                     type="radio"
@@ -596,18 +596,18 @@ export function ImportWizardPage() {
                     value={authority}
                     checked={priceAuthority === authority}
                     onChange={() => { setPriceAuthority(authority) }}
-                    className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                   />
                   <span>{t(`options.priceAuthority.${authority}`)}</span>
                 </label>
               ))}
             </fieldset>
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('mapping'); }}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('common:actions.back')}
@@ -615,7 +615,7 @@ export function ImportWizardPage() {
               <button
                 type="button"
                 onClick={() => { void handleOptionsComplete() }}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('common:actions.next')}
                 <ArrowRight className="h-4 w-4" />
@@ -628,24 +628,24 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('wizard.validation.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('wizard.validation.description')}
               </p>
             </div>
 
             {/* Data Preview Table */}
             {isPreviewLoading && (
-              <div className="flex items-center justify-center gap-2 py-8 text-gray-500">
+              <div className={`flex items-center justify-center gap-2 py-8 ${colorTokens.text.subtle}`}>
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span>{t('preview.loading')}</span>
               </div>
             )}
 
             {isPreviewError && (
-              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className={`flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} px-4 py-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
                 <XCircle className="h-5 w-5" />
                 <span>{t('preview.loadError')}</span>
               </div>
@@ -653,7 +653,7 @@ export function ImportWizardPage() {
 
             {!isPreviewLoading && !isPreviewError && previewData && (
               <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-700">
+                <h3 className={`text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('preview.title')}
                 </h3>
                 <ImportPreviewTable preview={previewData} />
@@ -663,7 +663,7 @@ export function ImportWizardPage() {
             {/* Validation Errors Grid */}
             {validationRows.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-700">
+                <h3 className={`text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('validation.errorsTitle')}
                 </h3>
                 <ValidationGrid
@@ -673,11 +673,11 @@ export function ImportWizardPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep(shouldShowOptionsStep ? 'options' : 'mapping'); }}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('common:actions.back')}
@@ -685,7 +685,7 @@ export function ImportWizardPage() {
               <button
                 type="button"
                 onClick={handleValidationComplete}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('wizard.validation.proceed')}
                 <ArrowRight className="h-4 w-4" />
@@ -698,37 +698,37 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('wizard.execute.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('wizard.execute.description')}
               </p>
             </div>
 
             {/* Summary before execution */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h3 className="font-medium text-gray-900 mb-4">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+              <h3 className={`font-medium ${colorTokens.text.primary} mb-4`}>
                 {t('wizard.execute.summary')}
               </h3>
               <dl className="space-y-3">
                 <div className="flex justify-between">
-                  <dt className="text-sm text-gray-500">{t('wizard.execute.file')}</dt>
-                  <dd className="text-sm font-medium text-gray-900">{selectedFile?.name}</dd>
+                  <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('wizard.execute.file')}</dt>
+                  <dd className={`text-sm font-medium ${colorTokens.text.primary}`}>{selectedFile?.name}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-sm text-gray-500">{t('wizard.execute.totalRows')}</dt>
-                  <dd className="text-sm font-medium text-gray-900">{jobData?.total_rows ?? 0}</dd>
+                  <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('wizard.execute.totalRows')}</dt>
+                  <dd className={`text-sm font-medium ${colorTokens.text.primary}`}>{jobData?.total_rows ?? 0}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-sm text-gray-500">{t('wizard.execute.validRows')}</dt>
-                  <dd className="text-sm font-medium text-green-600">
+                  <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('wizard.execute.validRows')}</dt>
+                  <dd className={`text-sm font-medium ${colorTokens.intent.success.text}`}>
                     {(jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-sm text-gray-500">{t('wizard.execute.invalidRows')}</dt>
-                  <dd className="text-sm font-medium text-red-600">
+                  <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('wizard.execute.invalidRows')}</dt>
+                  <dd className={`text-sm font-medium ${colorTokens.intent.danger.text}`}>
                     {jobData?.failed_rows ?? 0}
                   </dd>
                 </div>
@@ -737,28 +737,28 @@ export function ImportWizardPage() {
 
             {/* Progress during execution */}
             {jobData && (jobData.status === 'importing' || jobData.status === 'completed' || jobData.status === 'failed') && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-6`}>
                 <div className="flex items-center gap-3 mb-4">
                   {jobData.status === 'importing' && (
                     <>
-                      <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                      <span className="font-medium text-gray-900">{t('wizard.execute.importing')}</span>
+                      <Loader2 className={`h-5 w-5 animate-spin ${colorTokens.intent.primary.text}`} />
+                      <span className={`font-medium ${colorTokens.text.primary}`}>{t('wizard.execute.importing')}</span>
                     </>
                   )}
                   {jobData.status === 'completed' && (
                     <>
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <span className="font-medium text-green-900">{t('wizard.execute.completed')}</span>
+                      <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
+                      <span className={`font-medium ${colorTokens.intent.success.textStrongest}`}>{t('wizard.execute.completed')}</span>
                     </>
                   )}
                   {jobData.status === 'failed' && (
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <XCircle className="h-5 w-5 text-red-600" />
-                        <span className="font-medium text-red-900">{t('wizard.execute.failed')}</span>
+                        <XCircle className={`h-5 w-5 ${colorTokens.intent.danger.text}`} />
+                        <span className={`font-medium ${colorTokens.intent.danger.textStrongest}`}>{t('wizard.execute.failed')}</span>
                       </div>
                       {jobData.error_message && (
-                        <p className="mt-2 text-sm text-red-700 bg-red-100 rounded-md px-3 py-2">
+                        <p className={`mt-2 text-sm ${colorTokens.intent.danger.textStrong} ${colorTokens.intent.danger.bgSoft} rounded-md px-3 py-2`}>
                           {jobData.error_message}
                         </p>
                       )}
@@ -769,14 +769,14 @@ export function ImportWizardPage() {
                 {jobData.processed_rows !== undefined && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">{t('wizard.execute.progress')}</span>
-                      <span className="text-gray-900">
+                      <span className={colorTokens.text.subtle}>{t('wizard.execute.progress')}</span>
+                      <span className={colorTokens.text.primary}>
                         {jobData.processed_rows} / {jobData.total_rows}
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-gray-200">
+                    <div className={`h-2 w-full rounded-full ${colorTokens.surface.subdued}`}>
                       <div
-                        className="h-2 rounded-full bg-blue-600 transition-all"
+                        className={`h-2 rounded-full ${colorTokens.intent.primary.bgStrong} transition-all`}
                         style={{
                           width: `${((jobData.processed_rows ?? 0) / (jobData.total_rows ?? 1)) * 100}%`,
                         }}
@@ -787,12 +787,12 @@ export function ImportWizardPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('validation'); }}
                 disabled={executeImport.isPending || jobData?.status === 'importing'}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest} disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('common:actions.back')}
@@ -803,7 +803,7 @@ export function ImportWizardPage() {
                   type="button"
                   onClick={handleExecute}
                   disabled={executeImport.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.success.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.success.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
                 >
                   {executeImport.isPending ? (
                     <>
@@ -821,7 +821,7 @@ export function ImportWizardPage() {
                 <button
                   type="button"
                   onClick={() => { setCurrentStep('complete'); }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
                 >
                   {t('wizard.execute.viewResults')}
                   <ArrowRight className="h-4 w-4" />
@@ -835,45 +835,45 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div className="text-center py-8">
-              <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
-              <h2 className="mt-4 text-2xl font-bold text-gray-900">
+              <CheckCircle className={`mx-auto h-16 w-16 ${colorTokens.intent.success.textSubtle}`} />
+              <h2 className={`mt-4 text-2xl font-bold ${colorTokens.text.primary}`}>
                 {t('wizard.complete.title')}
               </h2>
-              <p className="mt-2 text-gray-600">
+              <p className={`mt-2 ${colorTokens.text.muted}`}>
                 {t('wizard.complete.description')}
               </p>
             </div>
 
             {/* Results summary */}
             {(jobData || importResults) && (
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="font-medium text-gray-900 mb-4">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+                <h3 className={`font-medium ${colorTokens.text.primary} mb-4`}>
                   {t('wizard.complete.results')}
                 </h3>
                 <dl className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg bg-green-50 p-4">
-                    <dt className="text-sm text-green-600">{t('wizard.complete.imported')}</dt>
-                    <dd className="text-2xl font-bold text-green-900">
+                  <div className={`rounded-lg ${colorTokens.intent.success.bgSubtle} p-4`}>
+                    <dt className={`text-sm ${colorTokens.intent.success.text}`}>{t('wizard.complete.imported')}</dt>
+                    <dd className={`text-2xl font-bold ${colorTokens.intent.success.textStrongest}`}>
                       {importResults?.imported_count ?? jobData?.successful_rows ?? 0}
                     </dd>
                   </div>
-                  <div className="rounded-lg bg-red-50 p-4">
-                    <dt className="text-sm text-red-600">{t('wizard.complete.failed')}</dt>
-                    <dd className="text-2xl font-bold text-red-900">
+                  <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4`}>
+                    <dt className={`text-sm ${colorTokens.intent.danger.text}`}>{t('wizard.complete.failed')}</dt>
+                    <dd className={`text-2xl font-bold ${colorTokens.intent.danger.textStrongest}`}>
                       {((importResults?.skipped_count ?? 0) + (importResults?.execution_error_count ?? 0)) || (jobData?.failed_rows ?? 0)}
                     </dd>
                   </div>
                 </dl>
 
                 {jobData?.id && (
-                  <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-200 pt-4">
+                  <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>
                     <button
                       type="button"
                       onClick={() => authenticatedDownload(
                         importApi.downloadResultWorkbookUrl(jobData.id),
                         `import-${jobData.id}-result.xlsx`
                       )}
-                      className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+                      className={`inline-flex items-center gap-2 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
                     >
                       <Download className="h-4 w-4" />
                       {t('results.downloadWorkbook')}
@@ -885,7 +885,7 @@ export function ImportWizardPage() {
                           importResults.failed_rows_csv_url!,
                           `import_failed_rows.csv`
                         )}
-                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+                        className={`inline-flex items-center gap-2 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
                       >
                         <Download className="h-4 w-4" />
                         {t('wizard.complete.downloadFailedRows')}
@@ -896,17 +896,17 @@ export function ImportWizardPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-center gap-4 border-t border-gray-200 pt-6">
+            <div className={`flex items-center justify-center gap-4 border-t ${colorTokens.border.subtle} pt-6`}>
               <Link
                 to="/settings/import"
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover}`}
               >
                 {t('wizard.complete.backToDashboard')}
               </Link>
               <button
                 type="button"
                 onClick={() => navigate(`/settings/import/${importType}`)}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('wizard.complete.importMore')}
               </button>
@@ -925,23 +925,23 @@ export function ImportWizardPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/settings/import"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t(`types.${importType}.title`)}
-          </h1>
-          <p className="text-gray-500">
+          </PageHeaderTitle>
+          <p className={colorTokens.text.subtle}>
             {t(`types.${importType}.description`)}
           </p>
         </div>
       </div>
 
       {/* Progress indicator */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
         <ImportProgress
           steps={translatedSteps}
           currentStep={stepIndex}
@@ -950,7 +950,7 @@ export function ImportWizardPage() {
       </div>
 
       {/* Step content */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
         {renderStepContent()}
       </div>
 

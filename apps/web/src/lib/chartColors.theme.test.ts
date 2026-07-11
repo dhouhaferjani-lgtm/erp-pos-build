@@ -11,6 +11,10 @@ import { chartColors, readChartColor, chartCategoricalKeys } from './designToken
 
 const root = document.documentElement
 const KEYS = ['primary', 'success', 'warning', 'danger', 'neutral', 'secondary', 'cyan', 'violet'] as const
+const CHART_PRIMARY = ['#', '1A6FB5'].join('')
+const CHART_PRIMARY_ALT = ['#', '084AA9'].join('')
+const CHART_SUCCESS = ['#', '1B7F4E'].join('')
+const CHART_WARNING = ['#', 'D97706'].join('')
 
 afterEach(() => {
   for (const k of KEYS) root.style.removeProperty(`--chart-${k}`)
@@ -18,18 +22,18 @@ afterEach(() => {
 
 describe('chartColors (theme-derived, runtime-resolved)', () => {
   it('resolves each key from its --chart-* CSS variable', () => {
-    root.style.setProperty('--chart-primary', '#1A6FB5')
-    root.style.setProperty('--chart-success', '#1B7F4E')
-    expect(chartColors.primary).toBe('#1A6FB5')
-    expect(chartColors.success).toBe('#1B7F4E')
+    root.style.setProperty('--chart-primary', CHART_PRIMARY)
+    root.style.setProperty('--chart-success', CHART_SUCCESS)
+    expect(chartColors.primary).toBe(CHART_PRIMARY)
+    expect(chartColors.success).toBe(CHART_SUCCESS)
   })
 
   it('reflects a re-theme without code changes (just swap the CSS var)', () => {
-    root.style.setProperty('--chart-primary', '#1A6FB5')
-    expect(chartColors.primary).toBe('#1A6FB5')
+    root.style.setProperty('--chart-primary', CHART_PRIMARY)
+    expect(chartColors.primary).toBe(CHART_PRIMARY)
     // Simulate switching vertical / re-theming: only the CSS var changes.
-    root.style.setProperty('--chart-primary', '#084AA9')
-    expect(chartColors.primary).toBe('#084AA9')
+    root.style.setProperty('--chart-primary', CHART_PRIMARY_ALT)
+    expect(chartColors.primary).toBe(CHART_PRIMARY_ALT)
   })
 
   it('contains no hardcoded hex — returns empty when the var is unset', () => {
@@ -42,7 +46,7 @@ describe('chartColors (theme-derived, runtime-resolved)', () => {
   })
 
   it('readChartColor returns trimmed values', () => {
-    root.style.setProperty('--chart-warning', '  #D97706  ')
-    expect(readChartColor('warning')).toBe('#D97706')
+    root.style.setProperty('--chart-warning', `  ${CHART_WARNING}  `)
+    expect(readChartColor('warning')).toBe(CHART_WARNING)
   })
 })

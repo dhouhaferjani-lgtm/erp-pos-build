@@ -1,5 +1,6 @@
 import { useAdminDashboard } from '../hooks/useAdminDashboard'
 import { QueryError } from '@/components/QueryError'
+import { colorClasses } from '@/lib/designTokens'
 
 export function AdminDashboardPage() {
   const { data: stats, isLoading, error, refetch } = useAdminDashboard()
@@ -7,7 +8,7 @@ export function AdminDashboardPage() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">Loading dashboard...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading dashboard...</div>
       </div>
     )
   }
@@ -27,17 +28,17 @@ export function AdminDashboardPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className="mb-8 text-3xl font-bold text-gray-900">
+        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
           Super Admin Dashboard
         </h1>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Total Tenants
               </div>
-              <div className="mt-2 text-3xl font-bold text-gray-900">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
                 {stats?.total_tenants ?? 0}
               </div>
             </div>
@@ -45,10 +46,10 @@ export function AdminDashboardPage() {
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Active Tenants
               </div>
-              <div className="mt-2 text-3xl font-bold text-green-600">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGreen600}`}>
                 {stats?.active_tenants ?? 0}
               </div>
             </div>
@@ -56,10 +57,10 @@ export function AdminDashboardPage() {
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Trial Tenants
               </div>
-              <div className="mt-2 text-3xl font-bold text-blue-600">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textBlue600}`}>
                 {stats?.trial_tenants ?? 0}
               </div>
             </div>
@@ -67,10 +68,10 @@ export function AdminDashboardPage() {
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Expired Tenants
               </div>
-              <div className="mt-2 text-3xl font-bold text-red-600">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textRed600}`}>
                 {stats?.expired_tenants ?? 0}
               </div>
             </div>
@@ -78,10 +79,10 @@ export function AdminDashboardPage() {
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Total Users
               </div>
-              <div className="mt-2 text-3xl font-bold text-gray-900">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
                 {stats?.total_users ?? 0}
               </div>
             </div>
@@ -89,10 +90,10 @@ export function AdminDashboardPage() {
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
             <div className="p-6">
-              <div className="text-sm font-medium text-gray-500">
+              <div className={`text-sm font-medium ${colorClasses.textGray500}`}>
                 Total Companies
               </div>
-              <div className="mt-2 text-3xl font-bold text-gray-900">
+              <div className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
                 {stats?.total_companies ?? 0}
               </div>
             </div>

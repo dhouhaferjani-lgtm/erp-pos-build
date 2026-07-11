@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { authenticatedDownload } from '@/lib/api'
 import type { ImportType, ImportTypeMetadata, DependencyCheck } from '../types'
 import { importApi } from '../api/importApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>> = {
   parties: Users,
@@ -56,7 +57,7 @@ export function ImportTypeCard({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-white p-6 transition-all',
+        `rounded-lg border ${colorTokens.surface.base} p-6 transition-all`,
         isLocked && 'opacity-60',
         !isLocked && 'hover:shadow-md'
       )}
@@ -66,36 +67,36 @@ export function ImportTypeCard({
           <div
             className={cn(
               'rounded-lg p-3',
-              isCompleted ? 'bg-green-100' : 'bg-blue-100'
+              isCompleted ? colorTokens.intent.success.bgSoft : colorTokens.intent.primary.bgSoft
             )}
           >
             <Icon
               className={cn(
                 'h-6 w-6',
-                isCompleted ? 'text-green-600' : 'text-blue-600'
+                isCompleted ? colorTokens.intent.success.text : colorTokens.intent.primary.text
               )}
             />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">
+            <h3 className={`font-semibold ${colorTokens.text.primary}`}>
               {t(`types.${metadata.type}.label`)}
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className={`text-sm ${colorTokens.text.subtle}`}>
               {t(`types.${metadata.type}.description`)}
             </p>
           </div>
         </div>
 
         {isCompleted && (
-          <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+          <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text} flex-shrink-0`} />
         )}
       </div>
 
       {/* Status */}
       {status && (
         <div className="mt-4 flex items-center gap-2 text-sm">
-          <span className="text-gray-500">{t('status.imported')}:</span>
-          <span className="font-medium text-gray-900">
+          <span className={colorTokens.text.subtle}>{t('status.imported')}:</span>
+          <span className={`font-medium ${colorTokens.text.primary}`}>
             {status.imported.toLocaleString()}
           </span>
         </div>
@@ -103,9 +104,9 @@ export function ImportTypeCard({
 
       {/* Dependency Warning */}
       {isLocked && dependencies?.missing_dependencies.length > 0 && (
-        <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3">
-          <Lock className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">
+        <div className={`mt-4 flex items-start gap-2 rounded-lg ${colorTokens.intent.caution.bgSubtle} p-3`}>
+          <Lock className={`h-4 w-4 ${colorTokens.intent.caution.text} flex-shrink-0 mt-0.5`} />
+          <p className={`text-sm ${colorTokens.intent.caution.textStrong}`}>
             {t('status.requiresDependencies', { deps: dependencies.missing_dependencies.join(', ') })}
           </p>
         </div>
@@ -117,7 +118,7 @@ export function ImportTypeCard({
           type="button"
           onClick={handleDownloadTemplate}
           disabled={isLoading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className={`inline-flex items-center gap-1.5 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-3 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
         >
           <Download className="h-4 w-4" />
           {t('actions.downloadTemplate')}
@@ -126,7 +127,7 @@ export function ImportTypeCard({
         {!isLocked && (
           <Link
             to={`/settings/import/wizard/${metadata.type}`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className={`inline-flex items-center gap-1.5 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
           >
             {isCompleted ? t('actions.importMore') : t('actions.startImport')}
             <ArrowRight className="h-4 w-4" />
@@ -134,7 +135,7 @@ export function ImportTypeCard({
         )}
 
         {isLocked && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-500">
+          <span className={`inline-flex items-center gap-1.5 rounded-lg ${colorTokens.surface.muted} px-3 py-2 text-sm font-medium ${colorTokens.text.subtle}`}>
             <AlertTriangle className="h-4 w-4" />
             {t('status.dependenciesRequired')}
           </span>

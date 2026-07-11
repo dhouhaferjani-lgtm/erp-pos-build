@@ -20,6 +20,7 @@ import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import {
   posShiftBalanceInvalidationPredicate,
   posShiftInvalidationPredicate,
@@ -135,13 +136,13 @@ export function POSShiftsDashboard() {
   // No location selected
   if (!isLocationLoading && !currentLocationId) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className={`flex items-center justify-center h-screen ${colorTokens.surface.page}`}>
         <div className="text-center max-w-md">
-          <MapPin className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
+          <MapPin className={`h-16 w-16 ${colorTokens.text.faint} mx-auto mb-4`} />
+          <h2 className={`text-xl font-bold ${colorTokens.text.primary} mb-2`}>
             {t('pos:transactions.noLocation')}
           </h2>
-          <p className="text-gray-500">
+          <p className={`${colorTokens.text.subtle}`}>
             {t('pos:transactions.noLocationDescription')}
           </p>
         </div>
@@ -153,12 +154,12 @@ export function POSShiftsDashboard() {
   if (isLocationLoading || webTerminalMutation.isPending || !webTerminal) {
     if (webTerminalMutation.isError) {
       return (
-        <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className={`flex items-center justify-center h-screen ${colorTokens.surface.page}`}>
           <div className="text-center max-w-md">
-            <p className="text-red-600 mb-4">{t('pos:transactions.errors.terminalCreation')}</p>
+            <p className={`${colorTokens.intent.danger.text} mb-4`}>{t('pos:transactions.errors.terminalCreation')}</p>
             <button
               type="button"
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className={`mt-4 px-4 py-2 ${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse} rounded-lg ${colorTokens.variants.hoverBgBlue700}`}
               onClick={() => {
                 if (currentLocationId) webTerminalMutation.mutate(currentLocationId)
               }}
@@ -171,10 +172,10 @@ export function POSShiftsDashboard() {
     }
 
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className={`flex items-center justify-center h-screen ${colorTokens.surface.page}`}>
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">{t('pos:transactions.loading.terminal')}</p>
+          <Loader2 className={`h-12 w-12 animate-spin ${colorTokens.intent.primary.text} mx-auto mb-4`} />
+          <p className={`${colorTokens.text.muted}`}>{t('pos:transactions.loading.terminal')}</p>
         </div>
       </div>
     )
@@ -209,7 +210,7 @@ export function POSShiftsDashboard() {
     : null
 
   return (
-    <div className="h-screen bg-gray-50">
+    <div className={`h-screen ${colorTokens.surface.page}`}>
       <ShiftDashboardPage
         terminal={terminal}
         currentShift={currentShift}

@@ -29,7 +29,10 @@
     </div>
     @endif
 
-    @include('documents.components.line_items', ['showTax' => true])
+    @include('documents.components.line_items', [
+        'showTax' => true,
+        'lineDesignationOverrideEnabled' => (bool) ($company->line_designation_override_enabled ?? false),
+    ])
 
     <div class="totals-section">
         <div class="totals-notes">

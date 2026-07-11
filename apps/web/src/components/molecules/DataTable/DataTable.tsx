@@ -75,6 +75,17 @@ export interface DataTableProps<T> {
   className?: string
 }
 
+type DataTableMarkupProps = React.TableHTMLAttributes<HTMLTableElement> & {
+  /**
+   * Legacy markup passthrough for swept pages that already own table semantics.
+   * Prefer the typed column/data API for new DataTable call sites.
+   */
+  children: React.ReactNode
+  columns?: never
+  data?: never
+  keyExtractor?: never
+}
+
 function alignClass<T>(column: DataTableColumn<T>): string {
   if (column.numeric) return 'text-right tabular-nums'
   switch (column.align) {
@@ -102,19 +113,32 @@ function cellContent<T>(
  * alignment treatment via design tokens, right-aligns numeric columns with
  * `tabular-nums`, and provides built-in loading-skeleton and empty states.
  */
-export function DataTable<T>({
-  columns,
-  data,
-  keyExtractor,
-  isLoading = false,
-  loadingRowCount = 5,
-  emptyTitle,
-  emptyDescription,
-  emptyState,
-  onRowClick,
-  selection,
-  className,
-}: DataTableProps<T>) {
+export function DataTable<T>(props: DataTableProps<T>): React.JSX.Element
+export function DataTable(props: DataTableMarkupProps): React.JSX.Element
+export function DataTable<T>(props: DataTableProps<T> | DataTableMarkupProps): React.JSX.Element {
+  if ('children' in props) {
+    const { children, className, ...restTableProps } = props
+    return (
+      <table className={className} {...restTableProps}>
+        {children}
+      </table>
+    )
+  }
+
+  const {
+    columns,
+    data,
+    keyExtractor,
+    isLoading = false,
+    loadingRowCount = 5,
+    emptyTitle,
+    emptyDescription,
+    emptyState,
+    onRowClick,
+    selection,
+    className,
+  } = props
+
   const isInteractive = Boolean(onRowClick)
   const hasSelection = Boolean(selection)
 

@@ -5,6 +5,8 @@ import { UtilizationBar } from '../components/atoms/UtilizationBar'
 import { BayBadge } from '../components/atoms/BayBadge'
 import { useBays, useDayView } from '../hooks/useScheduling'
 import type { BookedEntryDTO } from '../types'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Input } from '@/components/atoms'
 
 function formatDate(d: Date): string {
   const pad = (n: number): string => (n < 10 ? `0${String(n)}` : String(n))
@@ -85,9 +87,9 @@ export function CapacityReportPage() {
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
       <header className="flex flex-col gap-1">
-        <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
           {t('capacity.title')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`text-sm ${textColors.tertiary}`}>{t('capacity.subtitle')}</p>
       </header>
 
@@ -96,9 +98,9 @@ export function CapacityReportPage() {
           <span className={`text-sm font-medium ${textColors.secondary}`}>
             {t('scheduler.viewDay')}
           </span>
-          <input
+          <Input
             type="date"
-            className={`${tokens.input.base} w-48`}
+            className="w-48"
             value={date}
             onChange={(e) => { setDate(e.target.value) }}
           />

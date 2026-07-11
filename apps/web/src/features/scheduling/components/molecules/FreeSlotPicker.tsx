@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 import { TimeSlotLabel } from '../atoms/TimeSlotLabel'
 import type { FreeSlotDTO } from '../../types'
 
@@ -32,13 +33,14 @@ export function FreeSlotPicker({ slots, isLoading = false, onPick }: FreeSlotPic
           className={`${tokens.card.base} flex items-center justify-between`}
         >
           <TimeSlotLabel start={slot.start} end={slot.end} mode="full" />
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => { onPick(slot) }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
           >
             {t('availability.pick')}
-          </button>
+          </Button>
         </li>
       ))}
     </ul>

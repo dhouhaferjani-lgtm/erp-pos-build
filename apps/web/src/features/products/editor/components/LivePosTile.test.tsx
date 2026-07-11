@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { LivePosTile } from './LivePosTile'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // i18n is initialised globally in src/test/setup.ts (imports ../lib/i18n)
 
@@ -31,8 +32,7 @@ describe('LivePosTile', () => {
     const { container } = render(<LivePosTile name="X" price="$2.85" />)
     const price = screen.getByText('$2.85')
     expect(price.className).toContain('font-mono')
-    // the price is the orange accent (theme-bridged secondary-500, #EA661A per mock)
-    expect(price.className).toContain('text-secondary-500')
+    expect(price.className).toContain(colorTokens.variants.textSecondary500)
     expect(container.firstChild).not.toBeNull()
   })
 })

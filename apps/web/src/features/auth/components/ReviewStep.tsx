@@ -5,6 +5,7 @@ import { getCountryName } from '@/lib/countries'
 import { getDialCode } from '../config/countryData'
 import { getVerticalsForProduct } from '../config/verticals'
 import type { RegisterFormData } from '../hooks/useRegisterForm'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ReviewStepProps {
   formData: RegisterFormData
@@ -39,48 +40,48 @@ export function ReviewStep({
   return (
     <div className="space-y-4">
       {/* Account section */}
-      <div className="relative rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`relative rounded-lg border ${colorTokens.border.subtle} bg-white p-4`}>
         <button
           type="button"
           onClick={() => { onGoToStep(1) }}
-          className="absolute right-3 top-3 p-1 text-gray-400 hover:text-gray-600"
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />
         </button>
-        <h3 className="text-sm font-semibold text-gray-900">{t('auth:register.step1Title')}</h3>
+        <h3 className={`text-sm font-semibold ${colorTokens.text.primary}`}>{t('auth:register.step1Title')}</h3>
         <dl className="mt-2 space-y-1 text-sm">
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t('auth:register.name')}</dt>
-            <dd className="text-gray-900">{formData.name}</dd>
+            <dt className={`${colorTokens.text.subtle}`}>{t('auth:register.name')}</dt>
+            <dd className={`${colorTokens.text.primary}`}>{formData.name}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t('auth:register.email')}</dt>
-            <dd className="text-gray-900">{formData.email}</dd>
+            <dt className={`${colorTokens.text.subtle}`}>{t('auth:register.email')}</dt>
+            <dd className={`${colorTokens.text.primary}`}>{formData.email}</dd>
           </div>
         </dl>
       </div>
 
       {/* Business section */}
-      <div className="relative rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`relative rounded-lg border ${colorTokens.border.subtle} bg-white p-4`}>
         <button
           type="button"
           onClick={() => { onGoToStep(2) }}
-          className="absolute right-3 top-3 p-1 text-gray-400 hover:text-gray-600"
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />
         </button>
-        <h3 className="text-sm font-semibold text-gray-900">{t('auth:register.step2Title')}</h3>
+        <h3 className={`text-sm font-semibold ${colorTokens.text.primary}`}>{t('auth:register.step2Title')}</h3>
         <dl className="mt-2 space-y-1 text-sm">
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t('auth:register.country')}</dt>
-            <dd className="text-gray-900">{getCountryName(formData.countryCode, locale)}</dd>
+            <dt className={`${colorTokens.text.subtle}`}>{t('auth:register.country')}</dt>
+            <dd className={`${colorTokens.text.primary}`}>{getCountryName(formData.countryCode, locale)}</dd>
           </div>
           {selectedVertical && (
             <div className="flex items-center justify-between">
-              <dt className="text-gray-500">{t('auth:vertical.label')}</dt>
-              <dd className="flex items-center gap-1.5 text-gray-900">
+              <dt className={`${colorTokens.text.subtle}`}>{t('auth:vertical.label')}</dt>
+              <dd className={`flex items-center gap-1.5 ${colorTokens.text.primary}`}>
                 {VerticalIcon && <VerticalIcon className="h-4 w-4" />}
                 {t(selectedVertical.labelKey)}
               </dd>
@@ -90,25 +91,25 @@ export function ReviewStep({
       </div>
 
       {/* Company section */}
-      <div className="relative rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`relative rounded-lg border ${colorTokens.border.subtle} bg-white p-4`}>
         <button
           type="button"
           onClick={() => { onGoToStep(3) }}
-          className="absolute right-3 top-3 p-1 text-gray-400 hover:text-gray-600"
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />
         </button>
-        <h3 className="text-sm font-semibold text-gray-900">{t('auth:register.step3Title')}</h3>
+        <h3 className={`text-sm font-semibold ${colorTokens.text.primary}`}>{t('auth:register.step3Title')}</h3>
         <dl className="mt-2 space-y-1 text-sm">
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t('auth:register.companyName')}</dt>
-            <dd className="text-gray-900">{formData.companyName}</dd>
+            <dt className={`${colorTokens.text.subtle}`}>{t('auth:register.companyName')}</dt>
+            <dd className={`${colorTokens.text.primary}`}>{formData.companyName}</dd>
           </div>
           {fullPhone && (
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('auth:register.phone')}</dt>
-              <dd className="text-gray-900">{fullPhone}</dd>
+              <dt className={`${colorTokens.text.subtle}`}>{t('auth:register.phone')}</dt>
+              <dd className={`${colorTokens.text.primary}`}>{fullPhone}</dd>
             </div>
           )}
         </dl>
@@ -121,21 +122,21 @@ export function ReviewStep({
             type="checkbox"
             checked={formData.acceptedTerms}
             onChange={(e) => { updateField('acceptedTerms', e.target.checked) }}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className={`mt-0.5 h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
           />
-          <span className="text-sm text-gray-600">
+          <span className={`text-sm ${colorTokens.text.muted}`}>
             {t('auth:register.acceptTerms')}{' '}
-            <a href="/terms" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href="/terms" className={`${colorTokens.intent.primary.text} hover:underline`} target="_blank" rel="noopener noreferrer">
               {t('auth:register.termsLink')}
             </a>
             {' & '}
-            <a href="/privacy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href="/privacy" className={`${colorTokens.intent.primary.text} hover:underline`} target="_blank" rel="noopener noreferrer">
               {t('auth:register.privacyLink')}
             </a>
           </span>
         </label>
         {errors['acceptedTerms'] && (
-          <p className="mt-1 text-sm text-red-600">{errors['acceptedTerms']}</p>
+          <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors['acceptedTerms']}</p>
         )}
       </div>
 
@@ -144,7 +145,7 @@ export function ReviewStep({
         type="button"
         onClick={onSubmit}
         disabled={!formData.acceptedTerms || isSubmitting}
-        className="w-full rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        className={`w-full rounded-lg ${colorTokens.intent.primary.bgStrong} px-6 py-3 text-sm font-medium ${colorTokens.text.inverse} transition-colors ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50`}
       >
         {isSubmitting ? t('auth:register.creating') : t('auth:register.createAccount')}
       </button>

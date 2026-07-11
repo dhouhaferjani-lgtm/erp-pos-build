@@ -9,9 +9,9 @@ const tokenClasses = vi.hoisted(() => ({
   },
   colors: {
     neutral: {
-      100: 'token-bg-neutral-100',
+      100: 'token-surface-muted',
     },
-    white: 'token-bg-white',
+    white: 'token-surface-base',
   },
   textColors: {
     error: 'token-text-error',
@@ -34,12 +34,12 @@ describe('StatCard design tokens', () => {
       />
     )
 
-    expect(container.firstChild).toHaveClass('token-bg-white')
+    expect(container.firstChild).toHaveClass('token-surface-base')
     expect(container.firstChild).toHaveClass('token-border-light')
     expect(screen.getByText('Revenue')).toHaveClass('token-text-tertiary')
     expect(screen.getByText('1 000,000 TND')).toHaveClass('token-text-primary')
     expect(screen.getByText('+12%')).toHaveClass('token-text-success')
-    expect(container.querySelector('.token-bg-neutral-100 svg')).toHaveClass(
+    expect(container.querySelector('.token-surface-muted svg')).toHaveClass(
       'token-text-tertiary'
     )
   })

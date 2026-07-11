@@ -9,7 +9,7 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchContact, createContact, updateContact, contactKeys, contactsInvalidationPredicate } from '../api/contactApi'
 import type { CreateContactData } from '../api/contactApi'
-import { PartnerSelect } from '../components/PartnerSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { Input } from '@/components/atoms/Input/Input'
 import { Select } from '@/components/atoms/Select/Select'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
@@ -19,6 +19,8 @@ import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const contactSchema = z.object({
   first_name: z.string().min(1, 'crm:contacts.validation.firstNameRequired'),
@@ -33,7 +35,7 @@ const contactSchema = z.object({
   gender: z.string(),
   national_id: z.string(),
   notes: z.string(),
-  party_id: z.string(),
+  party_id: z.string().nullable(),
   job_title: z.string(),
   is_primary: z.boolean(),
 })
@@ -67,7 +69,7 @@ export function ContactFormPage() {
       gender: '',
       national_id: '',
       notes: '',
-      party_id: '',
+      party_id: null,
       job_title: '',
       is_primary: false,
     },
@@ -92,7 +94,7 @@ export function ContactFormPage() {
         gender: existingContact.gender ?? '',
         national_id: existingContact.national_id ?? '',
         notes: existingContact.notes ?? '',
-        party_id: primaryParty?.id ?? '',
+        party_id: primaryParty?.id ?? null,
         job_title: primaryParty?.job_title ?? '',
         is_primary: primaryParty?.is_primary ?? false,
       })
@@ -157,18 +159,18 @@ export function ContactFormPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/crm/contacts"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('crm:contacts.editContact') : t('crm:contacts.newContact')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
           <div className="grid gap-6 sm:grid-cols-2">
             <FormField
               label={t('crm:contacts.firstName')}
@@ -281,8 +283,8 @@ export function ContactFormPage() {
         </div>
 
         {/* Company Association (optional) */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('crm:contacts.companyAssociations')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
@@ -292,9 +294,12 @@ export function ContactFormPage() {
                   name="party_id"
                   control={control}
                   render={({ field }) => (
-                    <PartnerSelect
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
+                    <PartnerPicker
+                      value={field.value ?? null}
+                      onChange={(next) => { field.onChange(next?.id ?? null) }}
+                      partnerType="all"
+                      label=""
+                      placeholder={t('crm:contacts.searchCompany')}
                     />
                   )}
                 />
@@ -312,9 +317,9 @@ export function ContactFormPage() {
                   type="checkbox"
                   id="is_primary"
                   {...register('is_primary')}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
                 />
-                <span className="text-sm text-gray-700">{t('crm:contacts.isPrimary')}</span>
+                <span className={`text-sm ${colorTokens.text.secondary}`}>{t('crm:contacts.isPrimary')}</span>
               </label>
             </FormField>
           </div>

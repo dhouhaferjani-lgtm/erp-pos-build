@@ -9,10 +9,13 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { useRelatedDocuments, type RelatedDocument } from '../hooks/useRelatedDocuments'
 import { formatCurrency, formatDate } from '../../../lib/format'
+import { colorClasses } from '@/lib/designTokens'
 
 interface RelatedDocumentsTabProps {
   documentId: string
@@ -28,19 +31,9 @@ const documentTypeIcons: Record<string, React.ElementType> = {
   purchase_order: FileCheck,
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'draft':
-      return 'bg-gray-100 text-gray-700'
-    case 'confirmed':
-      return 'bg-blue-100 text-blue-700'
-    case 'posted':
-      return 'bg-green-100 text-green-700'
-    case 'cancelled':
-      return 'bg-red-100 text-red-700'
-    default:
-      return 'bg-gray-100 text-gray-700'
-  }
+const relatedDocumentTones: Record<string, StatusTone> = {
+  confirmed: 'info',
+  posted: 'success',
 }
 
 interface DocumentChainItemProps {
@@ -58,33 +51,29 @@ function DocumentChainItem({ document, isCurrent = false, currency }: DocumentCh
     <div className="flex items-start gap-3">
       <div
         className={`p-2 rounded-lg ${
-          isCurrent ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600'
+          isCurrent ? 'bg-primary-100 text-primary-600' : `${colorClasses.bgGray100} ${colorClasses.textGray600}`
         }`}
       >
         <Icon className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-gray-900">
+          <span className={`font-medium ${colorClasses.textGray900}`}>
             {t(`sales:documents.types.${document.type}`, document.type)}
           </span>
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
-              document.status
-            )}`}
-          >
+          <StatusBadge tone={statusTone(document.status, relatedDocumentTones)}>
             {t(`sales:documents.statuses.${document.status}`, document.status)}
-          </span>
+          </StatusBadge>
           {isCurrent && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
+            <StatusBadge tone="info">
               {t('sales:relatedDocuments.current')}
-            </span>
+            </StatusBadge>
           )}
         </div>
-        <p className="text-sm text-gray-600 mt-1">{documentNumberLabel}</p>
-        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+        <p className={`text-sm ${colorClasses.textGray600} mt-1`}>{documentNumberLabel}</p>
+        <div className={`flex items-center gap-4 mt-2 text-sm ${colorClasses.textGray500}`}>
           <span>{formatDate(document.document_date)}</span>
-          <span className="font-medium text-gray-700">
+          <span className={`font-medium ${colorClasses.textGray700}`}>
             {formatCurrency(document.total, { currency: currency ?? document.currency })}
           </span>
         </div>
@@ -95,7 +84,7 @@ function DocumentChainItem({ document, isCurrent = false, currency }: DocumentCh
   const cardClassName = `block p-4 rounded-lg border transition-colors ${
     isCurrent
       ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500'
-      : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+      : `${colorClasses.borderGray200} hover:border-primary-300 ${colorClasses.hoverBgGray50}`
   }`
 
   return documentType ? (
@@ -125,7 +114,7 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-red-600">
+      <div className={`flex flex-col items-center justify-center py-12 ${colorClasses.textRed600}`}>
         <AlertCircle className="h-8 w-8 mb-2" />
         <p>{t('common:error')}</p>
       </div>
@@ -143,15 +132,15 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
+        <h3 className={`text-lg font-medium ${colorClasses.textGray900} mb-2`}>
           {t('sales:relatedDocuments.title')}
         </h3>
-        <p className="text-sm text-gray-500">{t('sales:relatedDocuments.description')}</p>
+        <p className={`text-sm ${colorClasses.textGray500}`}>{t('sales:relatedDocuments.description')}</p>
       </div>
 
       {!hasRelated ? (
-        <div className="text-center py-8 text-gray-500">
-          <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+        <div className={`text-center py-8 ${colorClasses.textGray500}`}>
+          <FileText className={`h-12 w-12 mx-auto mb-3 ${colorClasses.textGray300}`} />
           <p>{t('sales:relatedDocuments.noRelated')}</p>
         </div>
       ) : (
@@ -159,7 +148,7 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
           {/* Ancestors */}
           {hasAncestors && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <h4 className={`text-sm font-medium ${colorClasses.textGray700} flex items-center gap-2`}>
                 {t('sales:relatedDocuments.sourceDocuments')}
               </h4>
               <div className="space-y-2">
@@ -167,7 +156,7 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
                   <div key={doc.id} className="flex items-center gap-2">
                     <DocumentChainItem document={doc} currency={currency} />
                     {index < chain.ancestors.length - 1 && (
-                      <ChevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                      <ChevronRight className={`h-5 w-5 ${colorClasses.textGray400} flex-shrink-0`} />
                     )}
                   </div>
                 ))}
@@ -178,13 +167,13 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
           {/* Arrow to current */}
           {hasAncestors && (
             <div className="flex justify-center">
-              <ChevronRight className="h-6 w-6 text-gray-400 rotate-90" />
+              <ChevronRight className={`h-6 w-6 ${colorClasses.textGray400} rotate-90`} />
             </div>
           )}
 
           {/* Current document */}
           <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">
+            <h4 className={`text-sm font-medium ${colorClasses.textGray700} mb-2`}>
               {t('sales:relatedDocuments.currentDocument')}
             </h4>
             <DocumentChainItem document={chain.current} isCurrent currency={currency} />
@@ -193,14 +182,14 @@ export function RelatedDocumentsTab({ documentId, currency }: RelatedDocumentsTa
           {/* Arrow to descendants */}
           {hasDescendants && (
             <div className="flex justify-center">
-              <ChevronRight className="h-6 w-6 text-gray-400 rotate-90" />
+              <ChevronRight className={`h-6 w-6 ${colorClasses.textGray400} rotate-90`} />
             </div>
           )}
 
           {/* Descendants */}
           {hasDescendants && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700">
+              <h4 className={`text-sm font-medium ${colorClasses.textGray700}`}>
                 {t('sales:relatedDocuments.derivedDocuments')}
               </h4>
               <div className="grid gap-2 sm:grid-cols-2">

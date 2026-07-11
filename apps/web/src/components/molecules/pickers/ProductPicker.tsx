@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { ProductCell } from '@/components/molecules/line-items'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Minimal product shape the picker hands back. Callers needing the full
@@ -224,7 +225,7 @@ export function ProductPicker({
       <div ref={containerRef} className="relative" data-testid={testIdAttr}>
         {labelNode}
         <div
-          className={`flex min-w-0 items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+          className={`flex min-w-0 items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         >
           <div className="min-w-0 flex-1">
             <ProductCell product={value} size="xs" />
@@ -281,7 +282,7 @@ export function ProductPicker({
           id={listboxId}
           role="listbox"
           style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
-          className={`fixed z-50 max-h-72 overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          className={`fixed z-50 max-h-72 overflow-auto rounded-md border ${borderColors.light} ${colorTokens.surface.base} py-1 shadow-lg`}
         >
           {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{t('common.loading')}</div>

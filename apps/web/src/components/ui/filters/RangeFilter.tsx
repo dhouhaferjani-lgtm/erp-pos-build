@@ -1,4 +1,5 @@
-import { Input } from '../../atoms'
+import { Input } from '../../atoms/Input'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface RangeFilterProps {
   label?: string
@@ -31,7 +32,7 @@ export function RangeFilter({
 
   return (
     <div className={className}>
-      {label && <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>}
+      {label && <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1.5`}>{label}</label>}
       <div className="grid grid-cols-2 gap-2">
         <Input
           type="number"

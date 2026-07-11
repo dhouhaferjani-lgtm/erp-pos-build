@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
 import { StatusBadge, statusTone } from '@/components/atoms/StatusBadge'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface Terminal {
   id: string
@@ -48,10 +50,10 @@ export function ShiftHistoryPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className={cn('text-2xl font-bold flex items-center gap-2', textColors.primary)}>
+        <PageHeaderTitle className={cn('text-2xl font-bold flex items-center gap-2', textColors.primary)}>
           <Clock className={cn('h-6 w-6', textColors.disabled)} />
           {t('pos:shiftHistory.title')}
-        </h1>
+        </PageHeaderTitle>
         <p className={textColors.disabled}>{t('pos:shiftHistory.description')}</p>
       </div>
 
@@ -145,7 +147,7 @@ export function ShiftHistoryPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+            <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
               <thead className={tokens.table.header}>
                 <tr>
                   <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.shiftNumber')}</th>
@@ -206,7 +208,7 @@ export function ShiftHistoryPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
 

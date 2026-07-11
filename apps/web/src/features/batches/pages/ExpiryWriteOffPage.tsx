@@ -14,10 +14,10 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useLocation } from '../../../hooks/useLocation'
 import { PageHeader } from '../../../components/molecules/PageHeader'
-import { DataTable, type DataTableColumn } from '../../../components/molecules'
-import { QuantityInput } from '../../../components/atoms'
+import { DataTable, type DataTableColumn } from '../../../components/molecules/DataTable/DataTable'
+import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
-import { LocationSelector } from '../../location/LocationSelector'
+import { LocationSelector } from '../../locations/LocationSelector'
 import {
   batchesInvalidationPredicate,
   stockLevelsInvalidationPredicate,
@@ -25,6 +25,7 @@ import {
 } from '../../inventory/_invalidation'
 import { getExpiredBatches, groupedWriteOff } from '../api/batches'
 import type { ExpiredBatch, GroupedWriteOffPayload } from '../types'
+import { Button } from '@/components/atoms/Button/Button'
 
 /** Quantity precision for write-off lines (precision contract: scale 4). */
 const QUANTITY_SCALE = 4
@@ -279,18 +280,13 @@ export function ExpiryWriteOffPage() {
               <span className={cn('text-sm', textColors.tertiary)}>
                 {t('expiryWriteOff.selectedCount', { count: selectedBatches.length })}
               </span>
-              <button
+              <Button variant="danger"
                 type="button"
                 onClick={handleOpenConfirm}
                 disabled={!canSubmit}
-                className={cn(
-                  tokens.button.base,
-                  tokens.button.danger,
-                  tokens.button.sizes.md,
-                )}
               >
                 {t('expiryWriteOff.actions.writeOffSelected')}
-              </button>
+              </Button>
             </div>
           )}
         </>

@@ -127,7 +127,7 @@ export function WithholdingCertificateDetail() {
     toast.success(t('messages.downloadStarted'))
   }
 
-  const renderStatusBadge = (status: CertificateStatus) => (
+  const renderCertificateBadge = (status: CertificateStatus) => (
     <StatusBadge tone={statusTone(status, statusToneOverrides)}>
       {t(`status.${status}`)}
     </StatusBadge>
@@ -177,7 +177,7 @@ export function WithholdingCertificateDetail() {
   const headerSubtitle = (
     <span className="flex items-center gap-2">
       {renderDirectionBadge(certificate.direction)}
-      {renderStatusBadge(certificate.status)}
+      {renderCertificateBadge(certificate.status)}
     </span>
   )
 
@@ -277,7 +277,7 @@ export function WithholdingCertificateDetail() {
             </div>
             <div>
               <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.status')}</dt>
-              <dd className="mt-1">{renderStatusBadge(certificate.status)}</dd>
+              <dd className="mt-1">{renderCertificateBadge(certificate.status)}</dd>
             </div>
             {certificate.issued_at && (
               <div>

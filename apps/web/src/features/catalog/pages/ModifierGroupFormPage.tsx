@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2, Plus } from 'lucide-react'
@@ -8,7 +9,7 @@ import { PageHeader } from '@/components/molecules'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductLineSelect } from '@/components/molecules/line-items'
 import { cn } from '@/lib/utils'
-import { tokens, textColors } from '@/lib/designTokens'
+import { tokens, textColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 
 import {
@@ -21,6 +22,7 @@ import {
 } from '../hooks/useModifierGroups'
 import type { SelectionType, ModifierData } from '../types/compositeItem'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function ModifierGroupFormPage() {
   const { t } = useTranslation(['catalog', 'common'])
@@ -30,6 +32,7 @@ export function ModifierGroupFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id && id !== 'new'
+  const { handleSubmit: handleFormSubmit } = useForm()
 
   const { data: group, isLoading } = useModifierGroup(isEdit ? id : '')
   const createMutation = useCreateModifierGroup()
@@ -68,8 +71,7 @@ export function ModifierGroupFormPage() {
     }
   }, [group])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitModifierGroup = () => {
     if (isEdit) {
       updateMutation.mutate(
         { id, data: form },
@@ -154,7 +156,7 @@ export function ModifierGroupFormPage() {
         }
       />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={(event) => { void handleFormSubmit(submitModifierGroup)(event) }} className="space-y-6">
         <div className={tokens.card.base}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label={t('catalog:code')} htmlFor="mg-code" required>
@@ -245,7 +247,7 @@ export function ModifierGroupFormPage() {
         <div className={tokens.card.base}>
           <h3 className={cn(tokens.heading.section, 'mb-4')}>{t('catalog:modifiers')}</h3>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-300">
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.dividerStrong}`}>
               <thead>
                 <tr>
                   <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:code')}</th>
@@ -256,7 +258,7 @@ export function ModifierGroupFormPage() {
                   <th className="px-3 py-3.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className={`divide-y ${colorTokens.border.divider}`}>
                 {modifiers.map((mod: ModifierData) => (
                   <tr key={mod.id}>
                     <td className={cn('whitespace-nowrap px-3 py-4 text-sm', textColors.primary)}>{mod.code}</td>
@@ -364,7 +366,7 @@ export function ModifierGroupFormPage() {
                   </td>
                 </tr>
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       )}

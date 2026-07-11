@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { getReprintLog, type ReprintLogEntry, type ReprintLogResponse } from '../api/complianceApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 function PrintTypeBadge({ printType }: { printType: ReprintLogEntry['print_type'] }) {
   const { t } = useTranslation('compliance')
 
   const colorMap: Record<ReprintLogEntry['print_type'], string> = {
-    original: 'bg-green-100 text-green-800',
-    duplicate: 'bg-yellow-100 text-yellow-800',
-    reprint: 'bg-blue-100 text-blue-800',
+    original: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+    duplicate: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStronger}`,
+    reprint: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
   }
 
   const labelMap: Record<ReprintLogEntry['print_type'], string> = {
@@ -35,7 +37,7 @@ function PrintMethodBadge({ method }: { method: ReprintLogEntry['print_method'] 
   }
 
   return (
-    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+    <span className={`inline-flex items-center rounded-full ${colorTokens.surface.muted} px-2.5 py-0.5 text-xs font-medium ${colorTokens.text.strong}`}>
       {labelMap[method]}
     </span>
   )
@@ -80,88 +82,88 @@ export function ReprintLogTable() {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+    <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+      <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
         {t('reprintLog.title')}
       </h3>
-      <p className="text-sm text-gray-600 mb-4">
+      <p className={`text-sm ${colorTokens.text.muted} mb-4`}>
         {t('reprintLog.description')}
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 text-sm ${colorTokens.intent.danger.text}`}>{error}</p>}
 
       {loading && !data && (
         <div className="flex justify-center py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <div className={`h-8 w-8 animate-spin rounded-full border-4 ${colorTokens.intent.primary.borderStrong} border-t-transparent`} />
         </div>
       )}
 
       {data && data.data.length === 0 && (
-        <p className="text-sm text-gray-500 py-4">{t('reprintLog.noRecords')}</p>
+        <p className={`text-sm ${colorTokens.text.subtle} py-4`}>{t('reprintLog.noRecords')}</p>
       )}
 
       {data && data.data.length > 0 && (
         <>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.receiptNumber')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.terminal')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.user')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.printType')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.copyNumber')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.method')}
                   </th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.printedAt')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
                 {data.data.map((entry) => (
                   <tr key={entry.id}>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className={`px-4 py-3 whitespace-nowrap text-sm font-medium ${colorTokens.text.primary}`}>
                       {entry.receipt_number}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {entry.terminal_code}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {entry.user_name}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <PrintTypeBadge printType={entry.print_type} />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {entry.copy_number}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <PrintMethodBadge method={entry.print_method} />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {new Date(entry.printed_at).toLocaleString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
 
           {/* Pagination */}
           <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+            <p className={`text-sm ${colorTokens.text.subtle}`}>
               {t('reprintLog.receiptNumber')} {((page - 1) * data.meta.per_page) + 1}
               {' - '}
               {Math.min(page * data.meta.per_page, data.meta.total)}
@@ -173,18 +175,18 @@ export function ReprintLogTable() {
                 type="button"
                 onClick={handlePrev}
                 disabled={page <= 1 || loading}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`inline-flex items-center px-3 py-1.5 border ${colorTokens.border.default} text-sm font-medium rounded-md ${colorTokens.text.secondary} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 &laquo;
               </button>
-              <span className="inline-flex items-center px-3 py-1.5 text-sm text-gray-700">
+              <span className={`inline-flex items-center px-3 py-1.5 text-sm ${colorTokens.text.secondary}`}>
                 {page} / {data.meta.last_page}
               </span>
               <button
                 type="button"
                 onClick={handleNext}
                 disabled={page >= data.meta.last_page || loading}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`inline-flex items-center px-3 py-1.5 border ${colorTokens.border.default} text-sm font-medium rounded-md ${colorTokens.text.secondary} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 &raquo;
               </button>

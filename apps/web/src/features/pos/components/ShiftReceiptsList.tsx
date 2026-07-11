@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useReceiptPrint } from '../hooks/useReceiptPrint'
 import { useCurrency } from '@/hooks/useCurrency'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export interface ShiftReceipt {
   id: string
@@ -45,7 +46,7 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
 
   return (
     <div className={cn('overflow-auto', className)}>
-      <table className={cn('min-w-full divide-y', borderColors.default)}>
+      <DataTable className={cn('min-w-full divide-y', borderColors.default)}>
         <thead className={tokens.table.header}>
           <tr>
             <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -123,7 +124,7 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
             </tr>
           )}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

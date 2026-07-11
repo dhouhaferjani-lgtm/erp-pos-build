@@ -7,6 +7,7 @@ import { PINNED_COUNTRIES } from '../config/countryData'
 import { getVerticalsForProduct } from '../config/verticals'
 import { VerticalCard } from './VerticalCard'
 import type { RegisterFormData } from '../hooks/useRegisterForm'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface BusinessStepProps {
   formData: { countryCode: string; vertical: string }
@@ -71,7 +72,7 @@ export function BusinessStep({ formData, errors, updateField }: BusinessStepProp
           ))}
         </div>
         {errors['vertical'] && (
-          <p className="mt-2 text-sm text-red-600">{t('auth:vertical.required')}</p>
+          <p className={`mt-2 text-sm ${colorTokens.intent.danger.text}`}>{t('auth:vertical.required')}</p>
         )}
       </div>
     </div>

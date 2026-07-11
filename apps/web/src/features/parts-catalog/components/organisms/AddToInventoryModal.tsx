@@ -6,6 +6,7 @@ import type { EnrichedArticle, BrandQualityTier } from '../../types/catalog'
 import { TaxConfigurationField } from '../../../../components/molecules/TaxConfigurationField'
 import { MoneyInput } from '@/components/atoms'
 import { useCompanyConfig } from '@/contexts'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface AddToInventoryModalProps {
   isOpen: boolean
@@ -113,36 +114,36 @@ export function AddToInventoryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${colorTokens.surface.overlay}`}>
+      <div className={`${colorTokens.surface.base} rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-900">
+            <Package className={`h-5 w-5 ${colorTokens.intent.primary.text}`} />
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('parts-catalog:addToInventory.title')}
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className={`p-1 rounded-lg ${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHover} ${colorTokens.intent.neutral.bgHoverSoft}`}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Article context */}
-        <div className="flex items-center gap-2 mb-5 rounded-lg bg-gray-50 px-3 py-2">
-          <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 uppercase">
+        <div className={`flex items-center gap-2 mb-5 rounded-lg ${colorTokens.surface.page} px-3 py-2`}>
+          <span className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSubtle} px-1.5 py-0.5 text-xs font-semibold ${colorTokens.intent.primary.textStrong} uppercase`}>
             {article.supplier?.brand ?? 'Unknown'}
           </span>
-          <code className="text-sm font-mono text-gray-700">{article.article_number}</code>
+          <code className={`text-sm font-mono ${colorTokens.text.secondary}`}>{article.article_number}</code>
         </div>
 
         <form onSubmit={(e) => { void handleSubmit(e) }} className="space-y-4">
           {/* Name */}
           <div>
-            <label htmlFor="inv-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="inv-name" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('parts-catalog:addToInventory.name')} *
             </label>
             <input
@@ -150,14 +151,14 @@ export function AddToInventoryModal({
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value) }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               required
             />
           </div>
 
           {/* SKU */}
           <div>
-            <label htmlFor="inv-sku" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="inv-sku" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('parts-catalog:addToInventory.sku')} *
             </label>
             <input
@@ -165,14 +166,14 @@ export function AddToInventoryModal({
               type="text"
               value={sku}
               onChange={(e) => { setSku(e.target.value) }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 text-sm font-mono ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               required
             />
           </div>
 
           {/* Barcode */}
           <div>
-            <label htmlFor="inv-barcode" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="inv-barcode" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('parts-catalog:addToInventory.barcode')}
             </label>
             <input
@@ -180,14 +181,14 @@ export function AddToInventoryModal({
               type="text"
               value={barcode}
               onChange={(e) => { setBarcode(e.target.value) }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 text-sm font-mono ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
           </div>
 
           {/* Price row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="inv-sale" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="inv-sale" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
                 {t('parts-catalog:addToInventory.salePrice')}
               </label>
               <MoneyInput
@@ -199,7 +200,7 @@ export function AddToInventoryModal({
               />
             </div>
             <div>
-              <label htmlFor="inv-purchase" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="inv-purchase" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
                 {t('parts-catalog:addToInventory.purchasePrice')}
               </label>
               <MoneyInput
@@ -224,14 +225,14 @@ export function AddToInventoryModal({
 
           {/* Quality Tier */}
           <div>
-            <label htmlFor="inv-tier" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="inv-tier" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('parts-catalog:addToInventory.qualityTier')}
             </label>
             <select
               id="inv-tier"
               value={qualityTier}
               onChange={(e) => { setQualityTier(e.target.value as BrandQualityTier) }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             >
               {QUALITY_TIERS.map((tier) => (
                 <option key={tier} value={tier}>
@@ -241,20 +242,20 @@ export function AddToInventoryModal({
             </select>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className={`text-sm ${colorTokens.intent.danger.text}`}>{error}</p>}
 
           <div className="flex gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} border ${colorTokens.border.default} rounded-lg ${colorTokens.intent.neutral.bgHover}`}
             >
               {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !name.trim() || !sku.trim()}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-lg ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {isSubmitting ? t('common:status.saving') : t('parts-catalog:inventory.addToInventory')}
             </button>

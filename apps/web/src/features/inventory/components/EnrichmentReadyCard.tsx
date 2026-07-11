@@ -7,6 +7,7 @@ import { colors, textColors, tokens } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { cn } from '@/lib/utils'
 import type { FastPathState } from '../hooks/useEnrichmentFastPath'
+import { Button } from '@/components/atoms'
 
 interface EnrichmentReadyCardProps {
   state: FastPathState
@@ -66,9 +67,8 @@ export function EnrichmentReadyCard({
           </p>
         </div>
       </div>
-      <button
+      <Button size="sm"
         type="button"
-        className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.sm)}
         onClick={() => acceptMutation.mutate()}
         disabled={!canReview || acceptMutation.isPending}
       >
@@ -76,7 +76,7 @@ export function EnrichmentReadyCard({
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
         ) : null}
         {t('barcodeLookup.fastPathApplyNow')}
-      </button>
+      </Button>
     </section>
   )
 }

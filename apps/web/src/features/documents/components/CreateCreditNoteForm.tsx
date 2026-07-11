@@ -14,6 +14,8 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateCreditNote } from '../hooks/useCreditNotes'
 import type { InvoiceForCreditNote } from '@/types/creditNote'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 // Credit mode enum
 type CreditMode = 'amount' | 'line'
@@ -232,11 +234,11 @@ export function CreateCreditNoteForm({
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h2 className="text-lg font-medium text-gray-900">
+      <div className={`border-b ${colorClasses.borderGray200} pb-4`}>
+        <h2 className={`text-lg font-medium ${colorClasses.textGray900}`}>
           {t('sales:creditNotes.createFromInvoice')}
         </h2>
-        <div className="mt-2 text-sm text-gray-600">
+        <div className={`mt-2 text-sm ${colorClasses.textGray600}`}>
           <p>
             <span className="font-medium">{t('sales:documents.number')}:</span> {invoice.document_number}
           </p>
@@ -244,7 +246,7 @@ export function CreateCreditNoteForm({
             <span className="font-medium">{t('sales:documents.total')}:</span>{' '}
             {toFixed(invoiceTotal)}
           </p>
-          <p className="text-blue-700">
+          <p className={`${colorClasses.textBlue700}`}>
             {t('sales:creditNotes.form.remainingCreditable', {
               amount: toFixed(remainingCreditable),
             })}
@@ -255,7 +257,7 @@ export function CreateCreditNoteForm({
       {/* Credit Mode Selector */}
       {invoice.lines && invoice.lines.length > 0 && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('sales:creditNotes.form.mode')}
           </label>
           <div className="flex gap-4">
@@ -264,8 +266,8 @@ export function CreateCreditNoteForm({
               onClick={() => { setCreditMode('amount'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 creditMode === 'amount'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ${colorClasses.textBlue700}`
+                  : `${colorClasses.borderGray300} bg-white ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`
               }`}
               disabled={isSubmitting}
             >
@@ -279,8 +281,8 @@ export function CreateCreditNoteForm({
               onClick={() => { setCreditMode('line'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 creditMode === 'line'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ${colorClasses.textBlue700}`
+                  : `${colorClasses.borderGray300} bg-white ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`
               }`}
               disabled={isSubmitting}
             >
@@ -296,7 +298,7 @@ export function CreateCreditNoteForm({
       {/* Amount-Based Mode */}
       {creditMode === 'amount' && (
         <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="amount" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
             {t('sales:creditNotes.amount')}
           </label>
           <div className="mt-1 flex gap-2">
@@ -315,8 +317,8 @@ export function CreateCreditNoteForm({
                   disabled={isSubmitting}
                   className={`flex-1 rounded-md border ${
                     errors.amount || customAmountError
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                      : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                      ? `${colorClasses.borderRed300} ${colorClasses.focusBorderRed500} ${colorClasses.focusRingRed500}`
+                      : `${colorClasses.borderGray300} ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`
                   } px-3 py-2 text-sm`}
                 />
               )}
@@ -324,18 +326,18 @@ export function CreateCreditNoteForm({
             <button
               type="button"
               onClick={handleFullRefund}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`rounded-md border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`}
               disabled={isSubmitting}
             >
               {t('sales:creditNotes.messages.fullRefund', 'Full Refund')}
             </button>
           </div>
           {(errors.amount || customAmountError) && (
-            <p className="mt-1 text-sm text-red-600">
+            <p className={`mt-1 text-sm ${colorClasses.textRed600}`}>
               {errors.amount ? t(errors.amount.message!) : customAmountError}
             </p>
           )}
-          <p className="mt-1 text-xs text-gray-500">
+          <p className={`mt-1 text-xs ${colorClasses.textGray500}`}>
             {t('sales:creditNotes.form.maxAmount', { amount: toFixed(remainingCreditable) })}
           </p>
         </div>
@@ -344,33 +346,33 @@ export function CreateCreditNoteForm({
       {/* Line-Based Mode */}
       {creditMode === 'line' && invoice.lines && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('sales:creditNotes.form.selectLines')}
           </label>
 
-          <div className="rounded-md border border-gray-300 overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className={`rounded-md border ${colorClasses.borderGray300} overflow-hidden`}>
+            <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+              <thead className={`${colorClasses.bgGray50}`}>
                 <tr>
                   <th className="w-10 px-3 py-2"></th>
-                  <th className="px-3 py-2 text-start text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-start text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.item')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.quantity')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:creditNotes.form.creditQuantity')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.unitPrice')}
                   </th>
-                  <th className="px-3 py-2 text-end text-xs font-medium text-gray-500">
+                  <th className={`px-3 py-2 text-end text-xs font-medium ${colorClasses.textGray500}`}>
                     {t('sales:lineItems.total')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
                 {invoice.lines.map((line) => {
                   const isSelected = selectedLines.has(line.id)
                   const creditQty = selectedLines.get(line.id) || line.quantity
@@ -381,21 +383,21 @@ export function CreateCreditNoteForm({
                   const total = subtotal + tax
 
                   return (
-                    <tr key={line.id} className={isSelected ? 'bg-blue-50' : ''}>
+                    <tr key={line.id} className={isSelected ? `${colorClasses.bgBlue50}` : ''}>
                       <td className="px-3 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => { handleToggleLine(line.id, line.quantity, unitPrice); }}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                           disabled={isSubmitting}
                         />
                       </td>
                       <td className="px-3 py-2 text-sm">
-                        <div className="font-medium text-gray-900">{line.product_code}</div>
-                        <div className="text-gray-500">{line.description}</div>
+                        <div className={`font-medium ${colorClasses.textGray900}`}>{line.product_code}</div>
+                        <div className={`${colorClasses.textGray500}`}>{line.description}</div>
                       </td>
-                      <td className="px-3 py-2 text-end text-sm text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
                         {line.quantity}
                       </td>
                       <td className="px-3 py-2 text-end">
@@ -410,38 +412,38 @@ export function CreateCreditNoteForm({
                               parseInt(e.target.value) || 0,
                               line.quantity
                             ); }}
-                            className="w-20 rounded border-gray-300 px-2 py-1 text-sm text-end"
+                            className={`w-20 rounded ${colorClasses.borderGray300} px-2 py-1 text-sm text-end`}
                             disabled={isSubmitting}
                           />
                         ) : (
-                          <span className="text-sm text-gray-400">-</span>
+                          <span className={`text-sm ${colorClasses.textGray400}`}>-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-end text-sm text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
                         {toFixed(unitPrice)}
                       </td>
-                      <td className="px-3 py-2 text-end text-sm font-medium text-gray-900">
+                      <td className={`px-3 py-2 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                         {isSelected ? toFixed(total) : '-'}
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className={`${colorClasses.bgGray50}`}>
                 <tr>
-                  <td colSpan={5} className="px-3 py-2 text-end text-sm font-medium text-gray-900">
+                  <td colSpan={5} className={`px-3 py-2 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                     {t('sales:documents.total')}
                   </td>
-                  <td className="px-3 py-2 text-end text-sm font-bold text-gray-900">
+                  <td className={`px-3 py-2 text-end text-sm font-bold ${colorClasses.textGray900}`}>
                     {toFixed(lineBasedTotal)}
                   </td>
                 </tr>
               </tfoot>
-            </table>
+            </DataTable>
           </div>
 
           {selectedLines.size === 0 && (
-            <p className="mt-1 text-sm text-red-600">
+            <p className={`mt-1 text-sm ${colorClasses.textRed600}`}>
               {t('sales:creditNotes.form.noLinesSelected')}
             </p>
           )}
@@ -450,7 +452,7 @@ export function CreateCreditNoteForm({
 
       {/* Reason Field */}
       <div>
-        <label htmlFor="reason" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="reason" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
           {t('sales:creditNotes.reason.title')}
         </label>
         <select
@@ -458,8 +460,8 @@ export function CreateCreditNoteForm({
           id="reason"
           className={`mt-1 block w-full rounded-md border ${
             errors.reason
-              ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+              ? `${colorClasses.borderRed300} ${colorClasses.focusBorderRed500} ${colorClasses.focusRingRed500}`
+              : `${colorClasses.borderGray300} ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`
           } px-3 py-2 text-sm`}
           disabled={isSubmitting}
         >
@@ -472,20 +474,20 @@ export function CreateCreditNoteForm({
           <option value="other">{t('sales:creditNotes.reason.other')}</option>
         </select>
         {errors.reason && (
-          <p className="mt-1 text-sm text-red-600">{t(errors.reason.message!)}</p>
+          <p className={`mt-1 text-sm ${colorClasses.textRed600}`}>{t(errors.reason.message!)}</p>
         )}
       </div>
 
       {/* Notes Field */}
       <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="notes" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
           {t('sales:creditNotes.notes')}
         </label>
         <textarea
           {...register('notes')}
           id="notes"
           rows={3}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`}
           placeholder={t('sales:creditNotes.notesPlaceholder')}
           disabled={isSubmitting}
         />
@@ -493,11 +495,11 @@ export function CreateCreditNoteForm({
 
       {/* Error Display */}
       {createCreditNote.isError && (
-        <div className="rounded-md bg-red-50 p-4">
+        <div className={`rounded-md ${colorClasses.bgRed50} p-4`}>
           <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
+            <AlertCircle className={`h-5 w-5 ${colorClasses.textRed400}`} />
             <div className="ms-3">
-              <p className="text-sm text-red-800">
+              <p className={`text-sm ${colorClasses.textRed800}`}>
                 {createCreditNote.error?.message ||
                   t('sales:creditNotes.messages.createFailed')}
               </p>
@@ -511,14 +513,14 @@ export function CreateCreditNoteForm({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className={`rounded-md border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`}
           disabled={isSubmitting}
         >
           {t('common:actions.cancel')}
         </button>
         <button
           type="submit"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-400"
+          className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} ${colorClasses.disabledBgGray400}`}
           disabled={
             isSubmitting ||
             (creditMode === 'amount' && !!customAmountError) ||

@@ -5,6 +5,7 @@ import { FormField } from '@/components/atoms/FormField/FormField'
 import { Input } from '@/components/atoms/Input/Input'
 import { PasswordStrength } from './PasswordStrength'
 import type { RegisterFormData } from '../hooks/useRegisterForm'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface AccountStepProps {
   formData: { name: string; email: string; password: string }
@@ -65,7 +66,7 @@ export function AccountStep({ formData, errors, updateField }: AccountStepProps)
           <button
             type="button"
             onClick={() => { setShowPassword((prev) => !prev) }}
-            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+            className={`absolute inset-y-0 right-0 flex items-center pr-3 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
             tabIndex={-1}
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

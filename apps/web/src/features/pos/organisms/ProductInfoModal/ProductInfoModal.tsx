@@ -13,6 +13,8 @@ import { useTaxConfigName } from '@/hooks/useTaxConfigName'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useCompanyConfigOptional } from '@/contexts/CompanyConfigContext'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Button } from '@/components/atoms'
 
 /**
  * Product Info Modal Props
@@ -184,7 +186,7 @@ export function ProductInfoModal({
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <div className={tokens.modal.header}>
         <h2 className={tokens.modal.title}>{t('pos:productInfo.title')}</h2>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           className={tokens.modal.closeButton}
@@ -192,7 +194,7 @@ export function ProductInfoModal({
         >
           <span className="sr-only">{t('common:actions.close')}</span>
           ✕
-        </button>
+        </Button>
       </div>
 
       {/* Loading State */}
@@ -315,18 +317,13 @@ export function ProductInfoModal({
 
                 {/* Add to Cart Button */}
                 {onAddToCart && (
-                  <button
+                  <Button size="lg"
                     onClick={handleAddToCart}
-                    className={cn(
-                      tokens.button.base,
-                      tokens.button.primary,
-                      'w-full',
-                      touchOptimized ? tokens.button.sizes.lg : tokens.button.sizes.md
-                    )}
+                    className={cn('w-full', touchOptimized && 'text-lg')}
                   >
                     <ShoppingCart className="h-5 w-5 me-2" />
                     {t('common:actions.add')}
-                  </button>
+                  </Button>
                 )}
               </div>
             </TabsContent>
@@ -347,7 +344,7 @@ export function ProductInfoModal({
 
               {stockLevels && (
                 <div className="overflow-x-auto">
-                  <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                  <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
                     <thead className={tokens.table.header}>
                       <tr>
                         <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -404,7 +401,7 @@ export function ProductInfoModal({
                         })
                       )}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </TabsContent>

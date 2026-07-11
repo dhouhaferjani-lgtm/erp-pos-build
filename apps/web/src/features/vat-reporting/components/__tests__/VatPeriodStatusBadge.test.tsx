@@ -1,5 +1,13 @@
 import { render, screen } from '@testing-library/react'
 import { VatPeriodStatusBadge } from '../VatPeriodStatusBadge'
+import type { StatusTone } from '@/components/atoms/StatusBadge'
+
+vi.mock('@/components/atoms/StatusBadge', () => ({
+  StatusBadge: ({ tone, children }: { tone: StatusTone; children: React.ReactNode }) => (
+    <span data-tone={tone}>{children}</span>
+  ),
+  statusTone: (status: string, overrides: Record<string, StatusTone>) => overrides[status] ?? 'neutral',
+}))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -15,24 +23,24 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('VatPeriodStatusBadge', () => {
-  it('renders "Open" with green styling for OPEN status', () => {
+  it('renders "Open" with success tone for OPEN status', () => {
     render(<VatPeriodStatusBadge status="OPEN" />)
     const badge = screen.getByText('Open')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveClass('bg-green-100', 'text-green-800')
+    expect(badge).toHaveAttribute('data-tone', 'success')
   })
 
-  it('renders "Closed" with amber/yellow styling for CLOSED status', () => {
+  it('renders "Closed" with warning tone for CLOSED status', () => {
     render(<VatPeriodStatusBadge status="CLOSED" />)
     const badge = screen.getByText('Closed')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveClass('bg-yellow-100', 'text-yellow-800')
+    expect(badge).toHaveAttribute('data-tone', 'warning')
   })
 
-  it('renders "Filed" with blue styling for FILED status', () => {
+  it('renders "Filed" with info tone for FILED status', () => {
     render(<VatPeriodStatusBadge status="FILED" />)
     const badge = screen.getByText('Filed')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveClass('bg-blue-100', 'text-blue-800')
+    expect(badge).toHaveAttribute('data-tone', 'info')
   })
 })

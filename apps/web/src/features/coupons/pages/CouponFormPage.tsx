@@ -13,6 +13,8 @@ import { useCompany } from '@/hooks/useCompany'
 
 import { useCoupon, useCreateCoupon, useUpdateCoupon } from '../hooks/useCoupons'
 import type { CreateCouponData } from '../api/couponApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const couponSchema = z.object({
   name: z.string().min(1),
@@ -132,7 +134,7 @@ export function CouponFormPage() {
   }
 
   if (isEditing && isLoadingCoupon) {
-    return <div className="text-center py-12 text-gray-500">{t('common:loading')}</div>
+    return <div className={`text-center py-12 ${colorTokens.text.subtle}`}>{t('common:loading')}</div>
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending
@@ -144,19 +146,19 @@ export function CouponFormPage() {
         <button
           type="button"
           onClick={() => navigate('/pos/coupons')}
-          className="p-2 rounded-lg hover:bg-gray-100"
+          className={`p-2 rounded-lg ${colorTokens.variants.hoverBgGray100}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('coupons:editCoupon') : t('coupons:createCoupon')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pb-24">
         {/* Basic Info */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.basicInfo')}
           </h2>
 
@@ -192,7 +194,7 @@ export function CouponFormPage() {
 
         {/* Discount Config */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.discountConfig')}
           </h2>
 
@@ -268,7 +270,7 @@ export function CouponFormPage() {
 
         {/* Usage Limits */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.usageLimits')}
           </h2>
 
@@ -294,15 +296,15 @@ export function CouponFormPage() {
             <input
               type="checkbox"
               {...form.register('is_single_use')}
-              className="rounded border-gray-300"
+              className={`rounded ${colorTokens.border.default}`}
             />
-            <label className="text-sm text-gray-700">{t('coupons:fields.isSingleUse')}</label>
+            <label className={`text-sm ${colorTokens.text.secondary}`}>{t('coupons:fields.isSingleUse')}</label>
           </div>
         </section>
 
         {/* Targeting */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.targeting')}
           </h2>
 
@@ -335,7 +337,7 @@ export function CouponFormPage() {
 
         {/* Schedule */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.schedule')}
           </h2>
 
@@ -352,7 +354,7 @@ export function CouponFormPage() {
 
         {/* Stacking */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('coupons:sections.stacking')}
           </h2>
 
@@ -366,9 +368,9 @@ export function CouponFormPage() {
             <input
               type="checkbox"
               {...form.register('is_exclusive')}
-              className="rounded border-gray-300"
+              className={`rounded ${colorTokens.border.default}`}
             />
-            <label className="text-sm text-gray-700">{t('coupons:fields.isExclusive')}</label>
+            <label className={`text-sm ${colorTokens.text.secondary}`}>{t('coupons:fields.isExclusive')}</label>
           </div>
         </section>
 

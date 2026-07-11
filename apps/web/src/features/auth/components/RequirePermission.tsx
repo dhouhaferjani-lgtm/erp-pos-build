@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ShieldX } from 'lucide-react'
 import { usePermissions, type Permission } from '../../../hooks/usePermissions'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface RequirePermissionProps {
   permission?: Permission
@@ -17,13 +18,13 @@ function PermissionDenied() {
 
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center p-8 text-center">
-      <div className="rounded-full bg-red-100 p-4 mb-4">
-        <ShieldX className="h-12 w-12 text-red-600" />
+      <div className={`rounded-full ${colorTokens.intent.danger.bgSoft} p-4 mb-4`}>
+        <ShieldX className={`h-12 w-12 ${colorTokens.intent.danger.text}`} />
       </div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">
+      <h2 className={`text-xl font-semibold ${colorTokens.text.primary} mb-2`}>
         {t('errors.permissionDenied', 'Permission Denied')}
       </h2>
-      <p className="text-gray-600 max-w-md">
+      <p className={`${colorTokens.text.muted} max-w-md`}>
         {t(
           'errors.permissionDeniedDescription',
           "You don't have permission to access this page. Please contact your administrator if you believe this is an error."

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Input, Button, Checkbox, FormField, Select, QuantityInput, DraftQuantityInput } from '@/components/atoms'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { ProductLineSelect } from '@/components/molecules/line-items'
 import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
 import { textColors, borderColors, colors } from '@/lib/designTokens'
@@ -200,7 +201,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
 
       {/* Lines table */}
       <div className="overflow-x-auto">
-        <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+        <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
           <thead>
             <tr>
               <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{getLabel('recipeLine')}</th>
@@ -335,14 +336,14 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
               </td>
             </tr>
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Cost breakdown */}
       {costData && (
         <div className={`mt-6 rounded-lg ${colors.neutral[50]} p-4`}>
           <h4 className={`text-sm font-medium ${textColors.primary} mb-3`}>{t('catalog:costBreakdown')}</h4>
-          <table className="min-w-full text-sm">
+          <DataTable className="min-w-full text-sm">
             <thead>
               <tr>
                 <th className="text-left py-1">{getLabel('recipeLine')}</th>
@@ -370,7 +371,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 <td className="text-right py-2">100%</td>
               </tr>
             </tfoot>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

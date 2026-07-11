@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { RegisterProgress } from '../components/RegisterProgress'
 
 describe('RegisterProgress', () => {
@@ -24,24 +25,27 @@ describe('RegisterProgress', () => {
     const { rerender } = render(<RegisterProgress currentStep={1} totalSteps={4} />)
 
     let progressbar = screen.getByRole('progressbar')
-    let filled = progressbar.querySelectorAll('.bg-blue-500')
-    let unfilled = progressbar.querySelectorAll('.bg-gray-200')
+    let segments = Array.from(progressbar.querySelectorAll('.rounded-full'))
+    let filled = segments.filter((segment) => segment.className.includes(colorTokens.intent.primary.bg))
+    let unfilled = segments.filter((segment) => segment.className.includes(colorTokens.surface.subdued))
     expect(filled).toHaveLength(1)
     expect(unfilled).toHaveLength(3)
 
     rerender(<RegisterProgress currentStep={3} totalSteps={4} />)
 
     progressbar = screen.getByRole('progressbar')
-    filled = progressbar.querySelectorAll('.bg-blue-500')
-    unfilled = progressbar.querySelectorAll('.bg-gray-200')
+    segments = Array.from(progressbar.querySelectorAll('.rounded-full'))
+    filled = segments.filter((segment) => segment.className.includes(colorTokens.intent.primary.bg))
+    unfilled = segments.filter((segment) => segment.className.includes(colorTokens.surface.subdued))
     expect(filled).toHaveLength(3)
     expect(unfilled).toHaveLength(1)
 
     rerender(<RegisterProgress currentStep={4} totalSteps={4} />)
 
     progressbar = screen.getByRole('progressbar')
-    filled = progressbar.querySelectorAll('.bg-blue-500')
-    unfilled = progressbar.querySelectorAll('.bg-gray-200')
+    segments = Array.from(progressbar.querySelectorAll('.rounded-full'))
+    filled = segments.filter((segment) => segment.className.includes(colorTokens.intent.primary.bg))
+    unfilled = segments.filter((segment) => segment.className.includes(colorTokens.surface.subdued))
     expect(filled).toHaveLength(4)
     expect(unfilled).toHaveLength(0)
   })

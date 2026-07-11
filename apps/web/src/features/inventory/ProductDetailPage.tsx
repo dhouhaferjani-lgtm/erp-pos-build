@@ -16,6 +16,7 @@ import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
 import { StatusBadge, statusTone } from '../../components/atoms/StatusBadge'
 import { PageHeader } from '../../components/molecules/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import {
   Tabs,
@@ -237,7 +238,7 @@ export function ProductDetailPage() {
             <div>
               <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.crossReferences')}</label>
               <div className={cn('mt-2 overflow-hidden rounded-lg border', borderColors.light)}>
-                <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
                   <thead className={tokens.table.header}>
                     <tr>
                       <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
@@ -256,7 +257,7 @@ export function ProductDetailPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Select, FormField } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useActivePrograms } from '../hooks/usePrograms'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface EnrollMemberModalProps {
   isOpen: boolean
@@ -31,7 +32,7 @@ export function EnrollMemberModal({ isOpen, onClose, onSubmit, isPending }: Enro
       <form onSubmit={handleSubmit}>
         <Modal.Content>
           {activePrograms.length === 0 ? (
-            <p className="text-sm text-gray-500">{t('loyalty:enroll.noActivePrograms')}</p>
+            <p className={`text-sm ${colorTokens.text.subtle}`}>{t('loyalty:enroll.noActivePrograms')}</p>
           ) : (
             <FormField label={t('loyalty:enroll.selectProgram')}>
               <Select

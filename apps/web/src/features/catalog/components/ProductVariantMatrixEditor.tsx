@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { Button, Checkbox, Input, MoneyInput } from '@/components/atoms'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useCompanyConfig } from '@/contexts'
 import { getErrorMessage } from '@/lib/api'
@@ -526,7 +527,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <DataTable className="min-w-full text-sm">
             <thead>
               <tr className={`border-b text-left ${borderColors.light} ${textColors.tertiary}`}>
                 <th className="px-3 py-2 font-medium">{t('catalog:variants.variant')}</th>
@@ -653,7 +654,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

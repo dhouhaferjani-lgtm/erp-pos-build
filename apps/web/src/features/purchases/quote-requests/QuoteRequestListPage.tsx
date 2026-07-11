@@ -2,6 +2,9 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FileText, Plus } from 'lucide-react'
 
+
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/decimal'
 
@@ -45,6 +48,16 @@ function statusLabelKey(item: QuoteRequestListItem): string {
   return `purchases:quoteRequests.status.${item.status}`
 }
 
+function statusTone(item: QuoteRequestListItem): StatusTone {
+  if (item.closed_reason === 'lost' || item.status === 'cancelled') {
+    return 'neutral'
+  }
+  if (item.status === 'confirmed') {
+    return 'success'
+  }
+  return 'pending'
+}
+
 export function QuoteRequestListPage() {
   const { t } = useTranslation(['common', 'purchases'])
   const { data, isLoading } = useQuoteRequests({})
@@ -52,23 +65,20 @@ export function QuoteRequestListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-            {t('purchases:quoteRequests.title')}
-          </h1>
-          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-            {t('purchases:quoteRequests.description')}
-          </p>
-        </div>
-        <Link
-          to="/purchases/quote-requests/new"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-        >
-          <Plus className="me-2 h-4 w-4" />
-          {t('purchases:quoteRequests.actions.new')}
-        </Link>
-      </div>
+      <PageHeader
+        title={t('purchases:quoteRequests.title')}
+        subtitle={t('purchases:quoteRequests.description')}
+        actions={
+          <Link
+            to="/purchases/quote-requests/new"
+            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          >
+            <Plus className="me-2 h-4 w-4" />
+            {t('purchases:quoteRequests.actions.new')}
+          </Link>
+        }
+        className="mb-0"
+      />
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -106,21 +116,20 @@ export function QuoteRequestListPage() {
                 >
                   <div>
                     <div className={`font-medium ${textColors.primary}`}>{group.primary.number}</div>
-                    <span
-                      data-testid={`rfq-group-chip-${group.groupId}`}
-                      className={`${tokens.badge.base} ${tokens.badge.blue} mt-2`}
-                    >
-                      {t('purchases:quoteRequests.list.groupChip', {
-                        count: group.siblings.length,
-                        responseCount: responses,
-                      })}
+                    <span data-testid={`rfq-group-chip-${group.groupId}`}>
+                      <StatusBadge tone="info" className="mt-2">
+                        {t('purchases:quoteRequests.list.groupChip', {
+                          count: group.siblings.length,
+                          responseCount: responses,
+                        })}
+                      </StatusBadge>
                     </span>
                   </div>
                   <div className={`text-sm ${textColors.secondary}`}>{supplierNames}</div>
                   <div>
-                    <span className={`${tokens.badge.base} ${group.primary.status === 'cancelled' ? tokens.badge.gray : tokens.badge.green}`}>
+                    <StatusBadge tone={statusTone(group.primary)}>
                       {t(statusLabelKey(group.primary))}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <div className={`text-sm font-medium ${textColors.primary}`}>
                     {formatCurrency(group.primary.total, true, group.primary.currency)}

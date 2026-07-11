@@ -8,6 +8,7 @@ import { tenantScopedKey } from '../../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../../stores/authStore'
 import { useCompanyStore } from '../../../../stores/companyStore'
 import { Button } from '../../../../components/atoms/Button/Button'
+import { colorClasses } from '@/lib/designTokens'
 
 interface AdditionalCost {
   id?: string
@@ -84,15 +85,15 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
   }
 
   if (isLoading) {
-    return <div className="text-sm text-gray-500">{t('documents:costing.additionalCosts.loading')}</div>
+    return <div className={`text-sm ${colorClasses.textGray500}`}>{t('documents:costing.additionalCosts.loading')}</div>
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-900">{t('documents:costing.additionalCosts.title')}</h3>
+        <h3 className={`text-sm font-medium ${colorClasses.textGray900}`}>{t('documents:costing.additionalCosts.title')}</h3>
         {totalCosts > 0 && (
-          <div className="text-sm font-semibold text-gray-900">
+          <div className={`text-sm font-semibold ${colorClasses.textGray900}`}>
             {t('documents:costing.additionalCosts.total', { amount: `$${totalCosts.toFixed(decimals)}` })}
           </div>
         )}
@@ -104,26 +105,26 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
           {costs.map((cost) => (
             <div
               key={cost.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3"
+              className={`flex items-center justify-between rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-3`}
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-900">
+                  <DollarSign className={`h-4 w-4 ${colorClasses.textGray400}`} />
+                  <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
                     {t(`documents:costing.additionalCosts.costTypes.${cost.cost_type}`)}
                   </span>
-                  <span className="text-sm font-semibold text-gray-900">
+                  <span className={`text-sm font-semibold ${colorClasses.textGray900}`}>
                     ${Number(cost.amount).toFixed(decimals)}
                   </span>
                 </div>
                 {cost.description && (
-                  <p className="mt-1 text-xs text-gray-500">{cost.description}</p>
+                  <p className={`mt-1 text-xs ${colorClasses.textGray500}`}>{cost.description}</p>
                 )}
               </div>
               {!readonly && (
                 <button
                   onClick={() => { handleDelete(cost.id!); }}
-                  className="text-red-600 hover:text-red-700"
+                  className={`${colorClasses.textRed600} ${colorClasses.hoverTextRed700}`}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -136,16 +137,16 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
 
       {/* Add New Cost Form */}
       {!readonly && (
-        <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+        <div className={`space-y-3 rounded-lg border ${colorClasses.borderGray200} bg-white p-4`}>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">
+              <label className={`mb-1 block text-xs font-medium ${colorClasses.textGray700}`}>
                 {t('documents:costing.additionalCosts.costTypeLabel')}
               </label>
               <select
                 value={newCost.cost_type}
                 onChange={(e) => { setNewCost({ ...newCost, cost_type: e.target.value as AdditionalCost['cost_type'] }); }}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
               >
                 {(['transport', 'shipping', 'insurance', 'customs', 'handling', 'other'] as const).map((value) => (
                   <option key={value} value={value}>
@@ -155,7 +156,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">
+              <label className={`mb-1 block text-xs font-medium ${colorClasses.textGray700}`}>
                 {t('documents:costing.additionalCosts.amountLabel')}
               </label>
               <input
@@ -164,20 +165,20 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
                 min="0"
                 value={newCost.amount || ''}
                 onChange={(e) => { setNewCost({ ...newCost, amount: parseFloat(e.target.value) || 0 }); }}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                 placeholder="0.00"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
+            <label className={`mb-1 block text-xs font-medium ${colorClasses.textGray700}`}>
               {t('documents:costing.additionalCosts.descriptionOptional')}
             </label>
             <input
               type="text"
               value={newCost.description || ''}
               onChange={(e) => { setNewCost({ ...newCost, description: e.target.value }); }}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
               placeholder={t('documents:costing.additionalCosts.descriptionPlaceholder')}
             />
           </div>
@@ -194,7 +195,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
       )}
 
       {costs.length === 0 && (
-        <p className="text-center text-sm text-gray-500">
+        <p className={`text-center text-sm ${colorClasses.textGray500}`}>
           {t('documents:costing.additionalCosts.empty')}
         </p>
       )}

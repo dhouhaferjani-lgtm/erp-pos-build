@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { UserEditModal } from './UserEditModal'
 import type { User } from '../../users/types'
+import { updateUser } from '../../users/api/users'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -72,5 +74,33 @@ describe('UserEditModal shared primitives', () => {
   it('renders a primary submit button', () => {
     renderModal()
     expect(screen.getByRole('button', { name: /settings:userEdit\.save/ })).toBeInTheDocument()
+  })
+
+  it('submits the normalized updateUser payload', async () => {
+    const userEventApi = userEvent.setup()
+    vi.mocked(updateUser).mockResolvedValue({} as never)
+    renderModal()
+
+    const nameInput = screen.getByLabelText(/common:users\.modal\.nameLabel/)
+    const emailInput = screen.getByLabelText(/common:users\.modal\.emailLabel/)
+    const phoneInput = screen.getByLabelText(/common:users\.modal\.phoneLabel/)
+    const roleSelect = screen.getByLabelText(/common:users\.modal\.roleLabel/)
+
+    await userEventApi.clear(nameInput)
+    await userEventApi.type(nameInput, 'Jane Manager')
+    await userEventApi.clear(emailInput)
+    await userEventApi.type(emailInput, '  jane.manager@example.test  ')
+    await userEventApi.type(phoneInput, '+2165550100')
+    await userEventApi.selectOptions(roleSelect, 'manager')
+    await userEventApi.click(screen.getByRole('button', { name: /settings:userEdit\.save/ }))
+
+    expect(updateUser).toHaveBeenCalledWith('user-1', {
+      name: 'Jane Manager',
+      email: 'jane.manager@example.test',
+      phone: '+2165550100',
+      role: 'manager',
+      can_discount: false,
+      max_discount_percent: null,
+    })
   })
 })

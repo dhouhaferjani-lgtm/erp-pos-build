@@ -22,6 +22,29 @@ import {
   DismissAlertModal,
   ResolveAlertModal,
 } from '../components'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+function resolveSeverityTone(severity: string) {
+  switch (severity) {
+    case 'critical':
+      return `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`
+    case 'warning':
+      return `${colorTokens.intent.caution.bgSoft} ${colorTokens.intent.caution.textStronger}`
+    case 'info':
+      return `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`
+    default:
+      return `${colorTokens.surface.muted} ${colorTokens.text.strong}`
+  }
+}
+
+const alertWorkflowTone: Record<string, string> = {
+  open: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
+  investigating: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  dismissed: `${colorTokens.surface.muted} ${colorTokens.text.strong}`,
+  resolved: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+}
 
 export function FraudAlertsPage() {
   const { t } = useTranslation(['common', 'compliance'])
@@ -50,35 +73,6 @@ export function FraudAlertsPage() {
     enabled: !!tenantId && !!companyId,
   })
 
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-800'
-      case 'warning':
-        return 'bg-amber-100 text-amber-800'
-      case 'info':
-        return 'bg-blue-100 text-blue-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open':
-        return 'bg-red-100 text-red-800'
-      case 'investigating':
-        return 'bg-blue-100 text-blue-800'
-      case 'dismissed':
-        return 'bg-gray-100 text-gray-800'
-      case 'resolved':
-        return 'bg-green-100 text-green-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
   const alerts = alertsData?.data || []
   const stats = statsData?.data
 
@@ -86,68 +80,68 @@ export function FraudAlertsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Shield className="h-6 w-6 text-gray-400" />
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary} flex items-center gap-2`}>
+          <Shield className={`h-6 w-6 ${colorTokens.text.disabled}`} />
           {t('compliance:fraudAlerts.title')}
-        </h1>
-        <p className="text-gray-500 mt-1">{t('compliance:fraudAlerts.description')}</p>
+        </PageHeaderTitle>
+        <p className={`${colorTokens.text.subtle} mt-1`}>{t('compliance:fraudAlerts.description')}</p>
       </div>
 
       {/* Statistics */}
       {stats && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} p-4`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">
+                <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>
                   {t('compliance:fraudAlerts.statistics.totalAlerts')}
                 </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total_alerts}</p>
+                <p className={`text-2xl font-bold ${colorTokens.text.primary} mt-1`}>{stats.total_alerts}</p>
               </div>
-              <div className="bg-blue-100 rounded-lg p-3">
-                <AlertTriangle className="h-6 w-6 text-blue-600" />
+              <div className={`${colorTokens.intent.primary.bgSoft} rounded-lg p-3`}>
+                <AlertTriangle className={`h-6 w-6 ${colorTokens.intent.primary.text}`} />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} p-4`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">
+                <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>
                   {t('compliance:fraudAlerts.statistics.openAlerts')}
                 </p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{stats.open_alerts}</p>
+                <p className={`text-2xl font-bold ${colorTokens.intent.danger.text} mt-1`}>{stats.open_alerts}</p>
               </div>
-              <div className="bg-red-100 rounded-lg p-3">
-                <XCircle className="h-6 w-6 text-red-600" />
+              <div className={`${colorTokens.intent.danger.bgSoft} rounded-lg p-3`}>
+                <XCircle className={`h-6 w-6 ${colorTokens.intent.danger.text}`} />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} p-4`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">
+                <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>
                   {t('compliance:fraudAlerts.statistics.investigating')}
                 </p>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{stats.investigating}</p>
+                <p className={`text-2xl font-bold ${colorTokens.intent.primary.text} mt-1`}>{stats.investigating}</p>
               </div>
-              <div className="bg-blue-100 rounded-lg p-3">
-                <Eye className="h-6 w-6 text-blue-600" />
+              <div className={`${colorTokens.intent.primary.bgSoft} rounded-lg p-3`}>
+                <Eye className={`h-6 w-6 ${colorTokens.intent.primary.text}`} />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} p-4`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">
+                <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>
                   {t('compliance:fraudAlerts.statistics.recentAlerts')}
                 </p>
-                <p className="text-2xl font-bold text-amber-600 mt-1">{stats.recent_alerts}</p>
+                <p className={`text-2xl font-bold ${colorTokens.intent.caution.text} mt-1`}>{stats.recent_alerts}</p>
               </div>
-              <div className="bg-amber-100 rounded-lg p-3">
-                <TrendingUp className="h-6 w-6 text-amber-600" />
+              <div className={`${colorTokens.intent.caution.bgSoft} rounded-lg p-3`}>
+                <TrendingUp className={`h-6 w-6 ${colorTokens.intent.caution.text}`} />
               </div>
             </div>
           </div>
@@ -155,15 +149,15 @@ export function FraudAlertsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} p-4`}>
         <div className="flex items-center gap-2 mb-4">
-          <Filter className="h-5 w-5 text-gray-400" />
-          <h2 className="font-medium text-gray-900">{t('compliance:fraudAlerts.filters.status')}</h2>
+          <Filter className={`h-5 w-5 ${colorTokens.text.disabled}`} />
+          <h2 className={`font-medium ${colorTokens.text.primary}`}>{t('compliance:fraudAlerts.filters.status')}</h2>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           <div>
-            <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="status-filter" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('compliance:fraudAlerts.filters.status')}
             </label>
             <select
@@ -173,7 +167,7 @@ export function FraudAlertsPage() {
                 const { status, ...rest } = filters
                 setFilters(e.target.value ? { ...rest, status: e.target.value } : rest)
               }}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
             >
               <option value="">{t('compliance:fraudAlerts.statuses.all')}</option>
               <option value="open">{t('compliance:fraudAlerts.statuses.open')}</option>
@@ -184,7 +178,7 @@ export function FraudAlertsPage() {
           </div>
 
           <div>
-            <label htmlFor="severity-filter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="severity-filter" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('compliance:fraudAlerts.filters.severity')}
             </label>
             <select
@@ -194,7 +188,7 @@ export function FraudAlertsPage() {
                 const { severity, ...rest } = filters
                 setFilters(e.target.value ? { ...rest, severity: e.target.value } : rest)
               }}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
             >
               <option value="">{t('compliance:fraudAlerts.severities.all')}</option>
               <option value="critical">{t('compliance:fraudAlerts.severities.critical')}</option>
@@ -204,7 +198,7 @@ export function FraudAlertsPage() {
           </div>
 
           <div>
-            <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="type-filter" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
               {t('compliance:fraudAlerts.filters.type')}
             </label>
             <select
@@ -214,7 +208,7 @@ export function FraudAlertsPage() {
                 const { alert_type, ...rest } = filters
                 setFilters(e.target.value ? { ...rest, alert_type: e.target.value } : rest)
               }}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
             >
               <option value="">{t('compliance:fraudAlerts.types.all')}</option>
               <option value="high_abandonment">{t('compliance:fraudAlerts.types.high_abandonment')}</option>
@@ -226,66 +220,66 @@ export function FraudAlertsPage() {
       </div>
 
       {/* Alerts Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.user')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.type')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.severity')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.detected')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.status')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-end text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className={`px-6 py-12 text-center ${colorTokens.text.subtle}`}>
                     {t('compliance:fraudAlerts.messages.loadingAlerts')}
                   </td>
                 </tr>
               ) : alerts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className={`px-6 py-12 text-center ${colorTokens.text.subtle}`}>
                     {t('compliance:fraudAlerts.messages.noAlerts')}
                   </td>
                 </tr>
               ) : (
                 alerts.map((alert) => (
-                  <tr key={alert.id} className="hover:bg-gray-50">
+                  <tr key={alert.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{alert.user?.name}</div>
-                      <div className="text-sm text-gray-500">{alert.user?.email}</div>
+                      <div className={`text-sm font-medium ${colorTokens.text.primary}`}>{alert.user?.name}</div>
+                      <div className={`text-sm ${colorTokens.text.subtle}`}>{alert.user?.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
+                      <div className={`text-sm ${colorTokens.text.primary}`}>
                         {t(`compliance:fraudAlerts.types.${alert.alert_type}`)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getSeverityColor(alert.severity)}`}>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${resolveSeverityTone(alert.severity)}`}>
                         {t(`compliance:fraudAlerts.severities.${alert.severity}`)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
                       {new Date(alert.detected_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(alert.status)}`}>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${alertWorkflowTone[alert.status] ?? `${colorTokens.surface.muted} ${colorTokens.text.strong}`}`}>
                         {t(`compliance:fraudAlerts.statuses.${alert.status}`)}
                       </span>
                     </td>
@@ -293,7 +287,7 @@ export function FraudAlertsPage() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => { setSelectedAlert(alert); }}
-                          className="text-blue-600 hover:text-blue-900"
+                          className={`${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
                           title={t('compliance:fraudAlerts.actions.view')}
                         >
                           <Eye className="h-4 w-4" />
@@ -301,7 +295,7 @@ export function FraudAlertsPage() {
                         {alert.status === 'open' && (
                           <button
                             onClick={() => { setActionModal({ type: 'assign', alert }); }}
-                            className="text-purple-600 hover:text-purple-900"
+                            className={`${colorTokens.intent.accent.text} ${colorTokens.intent.accent.textHoverStrongest}`}
                             title={t('compliance:fraudAlerts.actions.assign')}
                           >
                             <UserPlus className="h-4 w-4" />
@@ -311,14 +305,14 @@ export function FraudAlertsPage() {
                           <>
                             <button
                               onClick={() => { setActionModal({ type: 'dismiss', alert }); }}
-                              className="text-gray-600 hover:text-gray-900"
+                              className={`${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
                               title={t('compliance:fraudAlerts.actions.dismiss')}
                             >
                               <XCircle className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => { setActionModal({ type: 'resolve', alert }); }}
-                              className="text-green-600 hover:text-green-900"
+                              className={`${colorTokens.intent.success.text} ${colorTokens.intent.success.textHoverStrongest}`}
                               title={t('compliance:fraudAlerts.actions.resolve')}
                             >
                               <CheckCircle className="h-4 w-4" />
@@ -331,31 +325,31 @@ export function FraudAlertsPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
 
         {/* Pagination */}
         {alertsData && alertsData.last_page > 1 && (
-          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+          <div className={`${colorTokens.surface.base} px-4 py-3 flex items-center justify-between border-t ${colorTokens.border.subtle} sm:px-6`}>
             <div className="flex-1 flex justify-between sm:hidden">
               <button
                 onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); }}
                 disabled={currentPage === 1}
-                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                className={`relative inline-flex items-center px-4 py-2 border ${colorTokens.border.default} text-sm font-medium rounded-md ${colorTokens.text.secondary} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
               >
                 {t('common:pagination.previous')}
               </button>
               <button
                 onClick={() => { setCurrentPage((p) => Math.min(alertsData.last_page, p + 1)); }}
                 disabled={currentPage === alertsData.last_page}
-                className="ms-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                className={`ms-3 relative inline-flex items-center px-4 py-2 border ${colorTokens.border.default} text-sm font-medium rounded-md ${colorTokens.text.secondary} ${colorTokens.surface.base} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
               >
                 {t('common:pagination.next')}
               </button>
             </div>
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm text-gray-700">
+                <p className={`text-sm ${colorTokens.text.secondary}`}>
                   {t('common:pagination.showing', {
                     from: (currentPage - 1) * alertsData.per_page + 1,
                     to: Math.min(currentPage * alertsData.per_page, alertsData.total),
@@ -368,7 +362,7 @@ export function FraudAlertsPage() {
                   <button
                     onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); }}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-s-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    className={`relative inline-flex items-center px-2 py-2 rounded-s-md border ${colorTokens.border.default} ${colorTokens.surface.base} text-sm font-medium ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
                   >
                     {t('common:pagination.previous')}
                   </button>
@@ -411,7 +405,7 @@ export function FraudAlertsPage() {
                         return (
                           <span
                             key={page}
-                            className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                            className={`relative inline-flex items-center px-4 py-2 border ${colorTokens.border.default} ${colorTokens.surface.base} text-sm font-medium ${colorTokens.text.secondary}`}
                           >
                             ...
                           </span>
@@ -425,8 +419,8 @@ export function FraudAlertsPage() {
                           onClick={() => { setCurrentPage(page); }}
                           className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                             currentPage === page
-                              ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                              ? `z-10 ${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.text}`
+                              : `${colorTokens.surface.base} ${colorTokens.border.default} ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover}`
                           }`}
                         >
                           {page}
@@ -437,7 +431,7 @@ export function FraudAlertsPage() {
                   <button
                     onClick={() => { setCurrentPage((p) => Math.min(alertsData.last_page, p + 1)); }}
                     disabled={currentPage === alertsData.last_page}
-                    className="relative inline-flex items-center px-2 py-2 rounded-e-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    className={`relative inline-flex items-center px-2 py-2 rounded-e-md border ${colorTokens.border.default} ${colorTokens.surface.base} text-sm font-medium ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
                   >
                     {t('common:pagination.next')}
                   </button>

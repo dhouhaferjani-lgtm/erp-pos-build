@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Pause } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { colors, textColors } from '@/lib/designTokens'
+import { colors, textColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useHeldOrders } from '../hooks/useHeldOrders'
 
 export interface HeldOrdersBadgeProps {
@@ -28,7 +28,7 @@ export function HeldOrdersBadge({ terminalId, onClick }: HeldOrdersBadgeProps) {
       className={cn(
         'relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
         count > 0
-          ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+          ? `${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStrong} ${colorTokens.variants.hoverBgAmber100}`
           : cn(textColors.tertiary, colors.hover.gray100),
       )}
       title={t('pos:heldOrders.title')}
@@ -41,7 +41,7 @@ export function HeldOrdersBadge({ terminalId, onClick }: HeldOrdersBadgeProps) {
           </span>
           <span
             className={cn(
-              'absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white',
+              `absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full ${colorTokens.intent.caution.bg} text-[10px] font-bold text-white`,
               'animate-pulse',
             )}
           >

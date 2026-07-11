@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface Step {
   key: string
@@ -45,7 +46,7 @@ export function ImportProgress({
                   <div
                     className={cn(
                       'h-0.5 w-full',
-                      isPast || isCompleted ? 'bg-blue-600' : 'bg-gray-200'
+                      isPast || isCompleted ? colorTokens.intent.primary.bgStrong : colorTokens.surface.subdued
                     )}
                   />
                 </div>
@@ -56,9 +57,9 @@ export function ImportProgress({
                 <span
                   className={cn(
                     'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium',
-                    isCompleted && 'bg-blue-600 text-white',
-                    isCurrent && !isCompleted && 'border-2 border-blue-600 bg-white text-blue-600',
-                    !isCurrent && !isCompleted && 'border-2 border-gray-300 bg-white text-gray-500'
+                    isCompleted && `${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse}`,
+                    isCurrent && !isCompleted && `border-2 ${colorTokens.intent.primary.borderStrong} ${colorTokens.surface.base} ${colorTokens.intent.primary.text}`,
+                    !isCurrent && !isCompleted && `border-2 ${colorTokens.border.default} ${colorTokens.surface.base} ${colorTokens.text.subtle}`
                   )}
                 >
                   {isCompleted ? (
@@ -70,7 +71,7 @@ export function ImportProgress({
                 <span
                   className={cn(
                     'mt-2 text-xs font-medium',
-                    isCurrent ? 'text-blue-600' : 'text-gray-500'
+                    isCurrent ? colorTokens.intent.primary.text : colorTokens.text.subtle
                   )}
                 >
                   {step.label}

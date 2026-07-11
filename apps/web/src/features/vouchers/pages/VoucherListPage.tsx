@@ -5,7 +5,7 @@ import { Ticket, Plus, MoreHorizontal, Ban, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/atoms'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
-import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, colors, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useVouchers } from '../hooks/useVouchers'
 import { useVoidVoucher, useExtendExpiry } from '../hooks/useVoucherMutations'
@@ -15,6 +15,8 @@ import { IssueGoodwillVoucherModal } from '../components/IssueGoodwillVoucherMod
 import { VoidVoucherModal } from '../components/VoidVoucherModal'
 import { ExtendExpiryModal } from '../components/ExtendExpiryModal'
 import type { Voucher, VoucherSource, VoidVoucherPayload, ExtendExpiryPayload } from '../types/voucher'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 const SOURCE_FILTERS: Array<{ value: VoucherSource | ''; label: string }> = [
   { value: '', label: 'sources.All' },
@@ -85,7 +87,7 @@ export function VoucherListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>{t('vouchers:pageTitle')}</h1>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>{t('vouchers:pageTitle')}</PageHeaderTitle>
           <p className={`text-sm ${textColors.tertiary} mt-1`}>{t('vouchers:pageSubtitle')}</p>
         </div>
         {canIssueGoodwill && (
@@ -99,19 +101,19 @@ export function VoucherListPage() {
       {/* Source filter chips */}
       <div className="flex flex-wrap gap-2">
         {SOURCE_FILTERS.map((filter) => (
-          <button
+          <Button variant="secondary"
             key={filter.value}
             type="button"
             onClick={() => { handleSourceFilter(filter.value) }}
             className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium transition-colors ${
               source === filter.value
-                ? `${tokens.button.primary}`
-                : `${tokens.button.secondary}`
+                ? ``
+                : ``
             }`}
             data-testid={`source-filter-${filter.value || 'all'}`}
           >
             {t(`vouchers:${filter.label}`)}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -130,7 +132,7 @@ export function VoucherListPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={`px-4 py-3 text-left text-xs font-medium ${textColors.tertiary} uppercase tracking-wider`}>
@@ -157,7 +159,7 @@ export function VoucherListPage() {
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
                   {vouchers.map((voucher) => (
                     <tr
                       key={voucher.id}
@@ -194,7 +196,7 @@ export function VoucherListPage() {
                       </td>
                       <td className="px-4 py-3" data-action-menu>
                         <div className="relative">
-                          <button
+                          <Button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
@@ -204,7 +206,7 @@ export function VoucherListPage() {
                             aria-label={t('common:actions')}
                           >
                             <MoreHorizontal className="w-4 h-4" />
-                          </button>
+                          </Button>
 
                           {openMenuId === voucher.id && (
                             <div
@@ -212,7 +214,7 @@ export function VoucherListPage() {
                               role="menu"
                             >
                               {canVoid && (
-                                <button
+                                <Button
                                   type="button"
                                   role="menuitem"
                                   onClick={(e) => {
@@ -224,10 +226,10 @@ export function VoucherListPage() {
                                 >
                                   <Ban className="w-4 h-4" />
                                   {t('vouchers:actions.void')}
-                                </button>
+                                </Button>
                               )}
                               {canExtend && (
-                                <button
+                                <Button
                                   type="button"
                                   role="menuitem"
                                   onClick={(e) => {
@@ -239,7 +241,7 @@ export function VoucherListPage() {
                                 >
                                   <CalendarClock className="w-4 h-4" />
                                   {t('vouchers:actions.extend')}
-                                </button>
+                                </Button>
                               )}
                             </div>
                           )}
@@ -248,7 +250,7 @@ export function VoucherListPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
 
             {meta && (

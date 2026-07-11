@@ -14,13 +14,12 @@ import { formatCurrency, formatDate } from '../../lib/format'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
-import { Button, StatusBadge, statusTone, type StatusTone } from '../../components/atoms'
-import {
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-  ListPageLayout,
-} from '../../components/molecules'
+import { Button } from '../../components/atoms/Button/Button'
+import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
+import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPageLayout'
 import type { Document } from '../../types/document'
 
 interface DocumentsResponse {
@@ -95,6 +94,27 @@ function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
 
 type StatusFilter = 'all' | 'draft' | 'confirmed' | 'posted' | 'received' | 'cancelled'
 type PaymentStatusFilter = 'all' | 'unpaid' | 'partially_paid' | 'paid' | 'overdue'
+type ActivePaymentFilter = Exclude<PaymentStatusFilter, 'all'>
+
+interface PaymentFilterContext {
+  balanceDue: number
+  doc: Document
+  total: number
+}
+
+const paymentFilterPredicates: Record<ActivePaymentFilter, (context: PaymentFilterContext) => boolean> = {
+  paid: ({ balanceDue }) => balanceDue === 0,
+  unpaid: ({ balanceDue, total }) => balanceDue === total && balanceDue > 0,
+  partially_paid: ({ balanceDue, total }) => balanceDue > 0 && balanceDue < total,
+  overdue: ({ balanceDue, doc }) => {
+    if (!doc.due_date) return false
+    const dueDate = new Date(doc.due_date)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    dueDate.setHours(0, 0, 0, 0)
+    return dueDate < today && balanceDue > 0
+  },
+}
 
 interface DocumentListPageProps {
   documentType?: DocumentType
@@ -174,24 +194,9 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
 
       const balanceDue = parseFloat(doc.balance_due ?? doc.total ?? '0')
       const total = parseFloat(doc.total ?? '0')
+      const predicate = paymentFilterPredicates[paymentStatusFilter]
 
-      switch (paymentStatusFilter) {
-        case 'paid':
-          return balanceDue === 0
-        case 'unpaid':
-          return balanceDue === total && balanceDue > 0
-        case 'partially_paid':
-          return balanceDue > 0 && balanceDue < total
-        case 'overdue':
-          if (!doc.due_date) return false
-          const dueDate = new Date(doc.due_date)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          dueDate.setHours(0, 0, 0, 0)
-          return dueDate < today && balanceDue > 0
-        default:
-          return true
-      }
+      return predicate({ balanceDue, doc, total })
     })
   }, [data?.data, effectiveType, paymentStatusFilter])
 

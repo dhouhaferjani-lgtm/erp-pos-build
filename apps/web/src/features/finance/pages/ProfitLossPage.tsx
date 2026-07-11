@@ -5,7 +5,9 @@ import { useProfitLoss } from '../hooks/useProfitLoss'
 import { QueryError } from '@/components/QueryError'
 import { OwnerChart } from '@/features/owner-dashboard/components/OwnerChart'
 import { PageHeader } from '../../../components/molecules/PageHeader'
-import { Button, FormField, Input } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
+import { FormField } from '../../../components/atoms/FormField/FormField'
+import { Input } from '../../../components/atoms/Input/Input'
 import { StatCard } from '../../../components/ui/StatCard'
 import { tokens, textColors, borderColors, chartColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
@@ -17,6 +19,7 @@ import {
   getTodayDateInputValue,
 } from './reportPageUtils'
 import type { ProfitLossLine } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function ProfitLossPage() {
   const { t } = useTranslation(['finance'])
@@ -83,7 +86,7 @@ export function ProfitLossPage() {
       <h2 className={cn('mb-4 text-xl font-bold', textColors.primary)}>
         {heading}
       </h2>
-      <table
+      <DataTable
         className={cn('min-w-full divide-y', borderColors.divideDefault)}
       >
         <thead className={tokens.table.header}>
@@ -116,7 +119,7 @@ export function ProfitLossPage() {
             <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 

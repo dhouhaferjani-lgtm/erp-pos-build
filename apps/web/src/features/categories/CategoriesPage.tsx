@@ -11,6 +11,8 @@ import {
 import { CategoryTreeView, CategoryForm } from './components'
 import type { CategoryApiResponse, CreateCategoryInput, UpdateCategoryInput } from './api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type DialogMode = 'create' | 'edit' | 'create-child' | null
 
@@ -127,17 +129,17 @@ export function CategoriesPage() {
       {/* Page Header */}
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t('inventory:categories.tree.title')}
-          </h1>
-          <p className="mt-2 text-sm text-gray-700">
+          </PageHeaderTitle>
+          <p className={`mt-2 text-sm ${colorTokens.text.secondary}`}>
             {t('inventory:categories.tree.description')}
           </p>
         </div>
         <div className="mt-4 sm:mt-0">
           <button
             onClick={handleCreate}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.variants.focusRingBlue500}`}
           >
             <Plus className="w-4 h-4" />
             {t('inventory:categories.new')}
@@ -149,27 +151,27 @@ export function CategoriesPage() {
       <div className="mt-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ms-3 text-sm text-gray-500">
+            <Loader2 className={`w-8 h-8 animate-spin ${colorTokens.text.disabled}`} />
+            <span className={`ms-3 text-sm ${colorTokens.text.subtle}`}>
               {t('inventory:categories.tree.loading')}
             </span>
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <p className="text-sm text-red-600">{t('common:error')}: {error.message}</p>
+            <p className={`text-sm ${colorTokens.intent.danger.text}`}>{t('common:error')}: {error.message}</p>
           </div>
         ) : categoryTree.length === 0 ? (
           <div className="text-center py-12">
-            <h3 className="mt-2 text-sm font-medium text-gray-900">
+            <h3 className={`mt-2 text-sm font-medium ${colorTokens.text.primary}`}>
               {t('inventory:categories.empty.title')}
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
               {t('inventory:categories.empty.description')}
             </p>
             <div className="mt-6">
               <button
                 onClick={handleCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="w-4 h-4" />
                 {t('inventory:categories.empty.action')}
@@ -192,10 +194,10 @@ export function CategoriesPage() {
       {dialogMode && (
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500/75 transition-opacity" onClick={handleFormCancel} />
+            <div className={`fixed inset-0 ${colorTokens.variants.bgGray500Alpha75} transition-opacity`} onClick={handleFormCancel} />
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-start shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
               <div className="mb-4">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">
+                <h3 className={`text-lg font-medium leading-6 ${colorTokens.text.primary}`}>
                   {getDialogTitle()}
                 </h3>
               </div>

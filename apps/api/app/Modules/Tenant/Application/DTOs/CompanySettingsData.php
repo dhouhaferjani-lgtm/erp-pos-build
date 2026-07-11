@@ -28,12 +28,13 @@ class CompanySettingsData
         public readonly ?string $timezone,
         public readonly ?string $dateFormat,
         public readonly ?string $locale,
+        public readonly bool $lineDesignationOverrideEnabled,
     ) {}
 
     /**
      * Create from a Tenant model.
      *
-     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null}
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool}
      */
     public static function fromTenant(Tenant $tenant): array
     {
@@ -60,13 +61,14 @@ class CompanySettingsData
             'timezone' => $tenant->timezone,
             'date_format' => $tenant->date_format,
             'locale' => $tenant->locale,
+            'line_designation_override_enabled' => false,
         ];
     }
 
     /**
      * Create from a Company model.
      *
-     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null}
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool}
      */
     public static function fromCompany(Company $company): array
     {
@@ -91,6 +93,7 @@ class CompanySettingsData
             'timezone' => $company->timezone,
             'date_format' => $company->date_format,
             'locale' => $company->locale,
+            'line_designation_override_enabled' => (bool) $company->line_designation_override_enabled,
         ];
     }
 }

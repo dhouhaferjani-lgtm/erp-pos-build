@@ -3,7 +3,8 @@ import { AlertCircle, MinusCircle, Receipt, DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '../../../lib/format'
 import { Button } from '../../../components/atoms/Button'
-import type { PaymentStatus } from './PaymentStatusBadge'
+import type { PaymentStatus } from './paymentStatus'
+import { colorClasses } from '@/lib/designTokens'
 
 export interface OutstandingAmountSectionProps {
   total: number
@@ -49,8 +50,8 @@ export function OutstandingAmountSection({
   const isPaid = paymentStatus === 'paid'
 
   return (
-    <div className={cn('rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3', className)}>
-      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+    <div className={cn(`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-4 space-y-3`, className)}>
+      <h3 className={`text-sm font-semibold ${colorClasses.textGray900} flex items-center gap-2`}>
         <DollarSign className="h-4 w-4" />
         {t('sales:invoices.outstandingAmount.title')}
       </h3>
@@ -59,12 +60,12 @@ export function OutstandingAmountSection({
         {/* Invoice Total */}
         <div className="flex items-center justify-between py-1">
           <div className="flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-gray-400" />
-            <span className="text-sm text-gray-700">
+            <Receipt className={`h-4 w-4 ${colorClasses.textGray400}`} />
+            <span className={`text-sm ${colorClasses.textGray700}`}>
               {t('sales:invoices.outstandingAmount.invoiceTotal')}
             </span>
           </div>
-          <span className="text-sm font-medium text-gray-900 font-mono">
+          <span className={`text-sm font-medium ${colorClasses.textGray900} font-mono`}>
             {formatCurrency(total, { currency })}
           </span>
         </div>
@@ -73,12 +74,12 @@ export function OutstandingAmountSection({
         {amountPaid > 0 && (
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2">
-              <MinusCircle className="h-4 w-4 text-green-500" />
-              <span className="text-sm text-gray-700">
+              <MinusCircle className={`h-4 w-4 ${colorClasses.textGreen500}`} />
+              <span className={`text-sm ${colorClasses.textGray700}`}>
                 {t('sales:invoices.outstandingAmount.paymentsReceived')}
               </span>
             </div>
-            <span className="text-sm font-medium text-green-600 font-mono">
+            <span className={`text-sm font-medium ${colorClasses.textGreen600} font-mono`}>
               -{formatCurrency(amountPaid, { currency })}
             </span>
           </div>
@@ -88,42 +89,42 @@ export function OutstandingAmountSection({
         {creditNotesApplied > 0 && (
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2">
-              <MinusCircle className="h-4 w-4 text-blue-500" />
-              <span className="text-sm text-gray-700">
+              <MinusCircle className={`h-4 w-4 ${colorClasses.textBlue500}`} />
+              <span className={`text-sm ${colorClasses.textGray700}`}>
                 {t('sales:invoices.outstandingAmount.creditNotesApplied')}
               </span>
             </div>
-            <span className="text-sm font-medium text-blue-600 font-mono">
+            <span className={`text-sm font-medium ${colorClasses.textBlue600} font-mono`}>
               -{formatCurrency(creditNotesApplied, { currency })}
             </span>
           </div>
         )}
 
         {/* Divider */}
-        <div className="border-t border-gray-300 my-2"></div>
+        <div className={`border-t ${colorClasses.borderGray300} my-2`}></div>
 
         {/* Outstanding Amount */}
         <div className={cn(
           'flex items-center justify-between py-2 px-3 rounded-md',
-          isPaid && 'bg-green-50',
-          isOverpaid && 'bg-purple-50',
-          !isPaid && !isOverpaid && outstandingAmount > 0 && 'bg-red-50'
+          isPaid && `${colorClasses.bgGreen50}`,
+          isOverpaid && `${colorClasses.bgPurple50}`,
+          !isPaid && !isOverpaid && outstandingAmount > 0 && `${colorClasses.bgRed50}`
         )}>
           <span className={cn(
             'text-base font-bold',
-            isPaid && 'text-green-700',
-            isOverpaid && 'text-purple-700',
-            !isPaid && !isOverpaid && outstandingAmount > 0 && 'text-red-700',
-            outstandingAmount === 0 && !isPaid && 'text-gray-700'
+            isPaid && `${colorClasses.textGreen700}`,
+            isOverpaid && `${colorClasses.textPurple700}`,
+            !isPaid && !isOverpaid && outstandingAmount > 0 && `${colorClasses.textRed700}`,
+            outstandingAmount === 0 && !isPaid && `${colorClasses.textGray700}`
           )}>
             {t('sales:invoices.outstandingAmount.outstanding')}
           </span>
           <span className={cn(
             'text-lg font-bold font-mono',
-            isPaid && 'text-green-700',
-            isOverpaid && 'text-purple-700',
-            !isPaid && !isOverpaid && outstandingAmount > 0 && 'text-red-700',
-            outstandingAmount === 0 && !isPaid && 'text-gray-700'
+            isPaid && `${colorClasses.textGreen700}`,
+            isOverpaid && `${colorClasses.textPurple700}`,
+            !isPaid && !isOverpaid && outstandingAmount > 0 && `${colorClasses.textRed700}`,
+            outstandingAmount === 0 && !isPaid && `${colorClasses.textGray700}`
           )}>
             {formatCurrency(outstandingAmount, { currency })}
           </span>
@@ -131,9 +132,9 @@ export function OutstandingAmountSection({
 
         {/* Overpaid warning */}
         {isOverpaid && (
-          <div className="flex items-start gap-2 rounded-lg bg-purple-50 border border-purple-200 p-3 mt-2">
-            <AlertCircle className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-purple-700">
+          <div className={`flex items-start gap-2 rounded-lg ${colorClasses.bgPurple50} border ${colorClasses.borderPurple200} p-3 mt-2`}>
+            <AlertCircle className={`h-4 w-4 ${colorClasses.textPurple600} flex-shrink-0 mt-0.5`} />
+            <p className={`text-sm ${colorClasses.textPurple700}`}>
               {t('sales:invoices.outstandingAmount.overpaidWarning')}
             </p>
           </div>

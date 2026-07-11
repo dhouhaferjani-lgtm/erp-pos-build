@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface TabsContextValue {
   activeTab: string
@@ -53,7 +54,7 @@ interface TabsListProps {
 export function TabsList({ children, className = '' }: TabsListProps) {
   return (
     <div
-      className={`flex border-b border-gray-200 ${className}`}
+      className={`flex border-b ${colorTokens.border.subtle} ${className}`}
       role="tablist"
       aria-orientation="horizontal"
     >
@@ -83,17 +84,17 @@ export function TabsTrigger({ value, children, className = '', disabled = false 
       onClick={() => {
         setActiveTab(value)
       }}
-      className={`relative px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+      className={`relative px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2 ${
         isActive
-          ? 'text-blue-600'
+          ? `${colorTokens.intent.primary.text}`
           : disabled
-            ? 'cursor-not-allowed text-gray-400'
-            : 'text-gray-500 hover:text-gray-700'
+            ? `cursor-not-allowed ${colorTokens.text.disabled}`
+            : `${colorTokens.text.subtle} ${colorTokens.variants.hoverTextGray700}`
       } ${className}`}
     >
       {children}
       {isActive && (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-600" aria-hidden="true" />
+        <span className={`absolute inset-x-0 bottom-0 h-0.5 ${colorTokens.intent.primary.bgStrong}`} aria-hidden="true" />
       )}
     </button>
   )

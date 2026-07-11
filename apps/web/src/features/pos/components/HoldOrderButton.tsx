@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { useHoldOrder } from '../hooks/useHeldOrders'
 import type { CartSnapshot } from '../api/heldOrderApi'
+import { Button, Input } from '@/components/atoms'
 
 export interface HoldOrderButtonProps {
   terminalId: string
@@ -71,7 +72,7 @@ export function HoldOrderButton({
 
   return (
     <>
-      <button
+      <Button
         type="button"
         onClick={handleOpenDialog}
         disabled={isButtonDisabled}
@@ -84,7 +85,7 @@ export function HoldOrderButton({
       >
         <Pause className="h-4 w-4" />
         {t('pos:heldOrders.holdOrder')}
-      </button>
+      </Button>
 
       <Modal isOpen={isDialogOpen} onClose={() => { setIsDialogOpen(false); }}>
         <ModalHeader title={t('pos:heldOrders.holdOrder')} onClose={() => { setIsDialogOpen(false); }} />
@@ -97,14 +98,14 @@ export function HoldOrderButton({
               >
                 {t('pos:heldOrders.label')}
               </label>
-              <input
+              <Input
                 id="hold-order-label"
                 type="text"
                 value={label}
                 onChange={(e) => { setLabel(e.target.value); }}
                 placeholder={t('pos:heldOrders.labelPlaceholder')}
                 maxLength={255}
-                className={cn('block w-full text-sm', tokens.input.base)}
+                className={cn('block w-full text-sm')}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -116,21 +117,19 @@ export function HoldOrderButton({
           </div>
         </ModalContent>
         <ModalFooter>
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={() => { setIsDialogOpen(false); }}
-            className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.md)}
           >
             {t('common:cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleHold}
             disabled={holdMutation.isPending}
-            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md)}
           >
             {holdMutation.isPending ? '...' : t('pos:heldOrders.holdOrder')}
-          </button>
+          </Button>
         </ModalFooter>
       </Modal>
     </>

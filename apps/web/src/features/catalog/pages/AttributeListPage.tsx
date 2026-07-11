@@ -10,6 +10,8 @@ import { AttributeForm } from '../components/AttributeForm'
 import { AttributeValueEditor } from '../components/AttributeValueEditor'
 import { useAttributes, useDeleteAttribute } from '../hooks/useVariants'
 import type { ProductAttribute } from '../api/variantApi'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button } from '@/components/atoms'
 
 /**
  * Lists product attributes (variant axes) and lets the user create new
@@ -47,22 +49,21 @@ export function AttributeListPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+          <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
             {t('catalog:attributes.title')}
-          </h1>
+          </PageHeaderTitle>
           <p className={`mt-1 text-sm ${textColors.tertiary}`}>
             {t('catalog:attributes.subtitle')}
           </p>
         </div>
         {canCreate ? (
-          <button
+          <Button
             type="button"
             onClick={() => { setShowForm((prev) => !prev) }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           >
             <Plus className="mr-1 h-4 w-4" />
             {t('catalog:attributes.add')}
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -107,14 +108,14 @@ export function AttributeListPage() {
                   </div>
                 </div>
                 {canDelete ? (
-                  <button
+                  <Button size="sm" variant="ghost"
                     type="button"
                     onClick={() => { setPendingDelete(attribute) }}
-                    className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} ${textColors.hoverError}`}
+                    className={`   ${textColors.hoverError}`}
                     aria-label={t('catalog:attributes.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { CreateReturnNoteForm } from './CreateReturnNoteForm'
 import { makeSourceDocument } from '../__fixtures__/returnNote'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Create mock mutation function
 const mockMutate = vi.fn()
@@ -94,7 +95,7 @@ describe('CreateReturnNoteForm', () => {
       renderForm()
 
       const fullReturnButton = screen.getByText('Full Return')
-      expect(fullReturnButton.closest('button')).toHaveClass('border-blue-500')
+      expect(fullReturnButton.closest('button')).toHaveClass(colorTokens.intent.primary.borderFocus)
     })
 
     it('shows return reason field as required', () => {
@@ -134,7 +135,7 @@ describe('CreateReturnNoteForm', () => {
       const partialButton = screen.getByText('Partial Return')
       await user.click(partialButton)
 
-      expect(partialButton.closest('button')).toHaveClass('border-blue-500')
+      expect(partialButton.closest('button')).toHaveClass(colorTokens.intent.primary.borderFocus)
       expect(screen.getByText('Select Lines to Return')).toBeInTheDocument()
     })
 
@@ -172,7 +173,7 @@ describe('CreateReturnNoteForm', () => {
 
       // Line should be highlighted
       const row = checkboxes[0].closest('tr')
-      expect(row).toHaveClass('bg-blue-50')
+      expect(row).toHaveClass(colorTokens.intent.primary.bgSubtle)
     })
 
     it('shows quantity input when line is selected', async () => {
@@ -264,7 +265,7 @@ describe('CreateReturnNoteForm', () => {
       await user.click(checkboxes[0])
 
       const row = checkboxes[0].closest('tr')
-      expect(row).not.toHaveClass('bg-blue-50')
+      expect(row).not.toHaveClass(colorTokens.intent.primary.bgSubtle)
     })
   })
 

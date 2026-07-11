@@ -80,12 +80,12 @@ describe('CategoryManagementPage', () => {
     )
 
     // The description field must be the shared Textarea atom, which applies the
-    // design-token base class (rounded-md) rather than the old raw rounded-lg.
+    // design-token radius variable rather than the old raw rounded-lg.
     const textarea = screen.getByPlaceholderText(
       'common:catalog.categories.description',
     )
     expect(textarea.tagName).toBe('TEXTAREA')
-    expect(textarea.className).toContain('rounded-md')
+    expect(textarea.className).toContain('rounded-[var(--radius-input)]')
     expect(textarea.className).not.toContain('rounded-lg')
   })
 })

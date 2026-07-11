@@ -17,6 +17,7 @@ const uploadAttachmentMutateAsync = vi.hoisted(() => vi.fn())
 const navigate = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
 const mockPolicyAllowsInvoiceFirst = vi.hoisted(() => ({ value: true }))
+const productPickerProps = vi.hoisted(() => vi.fn())
 
 const receiptLines = vi.hoisted<PurchaseOrderReceiptLine[]>(() => [
   {
@@ -95,24 +96,29 @@ vi.mock('@/components/molecules/pickers', () => ({
   ProductPicker: ({
     onChange,
     testId,
+    productType,
   }: {
     onChange: (next: { id: string; sku: string; name: string; requires_batch_tracking?: boolean }) => void
     testId?: string
+    productType?: 'part' | 'consumable' | 'good' | 'all'
   }) => (
-    <button
-      type="button"
-      data-testid={testId ?? 'product-picker'}
-      onClick={() => {
-        onChange({
-          id: testId?.includes('1') === true ? 'product-manual-2' : 'product-manual-1',
-          sku: testId?.includes('1') === true ? 'SKU-2' : 'SKU-1',
-          name: testId?.includes('1') === true ? 'Second product' : 'First product',
-          requires_batch_tracking: testId?.includes('batch') === true,
-        })
-      }}
-    >
-      product-picker
-    </button>
+    <>
+      {productPickerProps({ testId, productType })}
+      <button
+        type="button"
+        data-testid={testId ?? 'product-picker'}
+        onClick={() => {
+          onChange({
+            id: testId?.includes('1') === true ? 'product-manual-2' : 'product-manual-1',
+            sku: testId?.includes('1') === true ? 'SKU-2' : 'SKU-1',
+            name: testId?.includes('1') === true ? 'Second product' : 'First product',
+            requires_batch_tracking: testId?.includes('batch') === true,
+          })
+        }}
+      >
+        product-picker
+      </button>
+    </>
   ),
 }))
 
@@ -150,6 +156,7 @@ vi.mock('react-router-dom', async () => {
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, string>) => {
+      if (key === 'common:validation.required') return 'This field is required'
       if (params !== undefined) return `${key}:${JSON.stringify(params)}`
       return key
     },
@@ -161,6 +168,14 @@ vi.mock('sonner', () => ({
 }))
 
 let SupplierInvoiceCreatePage: React.ComponentType<Record<string, never>>
+
+function getSaveButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })
+}
+
+async function findSaveButton(): Promise<HTMLButtonElement> {
+  return screen.findByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })
+}
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -206,6 +221,33 @@ beforeEach(async () => {
 })
 
 describe('SupplierInvoiceCreatePage', () => {
+  it('renders canonical footer actions for cancel and save draft', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/supplier-invoices')
+    expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'actions.openSaveMenu' })).not.toBeInTheDocument()
+  })
+
+  it('confirms before cancelling a dirty draft', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    fireEvent.change(await screen.findByTestId('supplier-reference'), {
+      target: { value: 'Do not discard' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'common:actions.cancel' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('confirmation.unsavedChangesBody')
+    expect(navigate).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
   it('renders a scan-instead link with the locked supplier_invoice kind when permitted', async () => {
     mockHasPermission.mockReturnValue(true)
     renderWithProviders(<SupplierInvoiceCreatePage />, {
@@ -230,7 +272,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-unit-price-0'), { target: { value: '8.125' } })
     fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '0.00' } })
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -247,6 +289,21 @@ describe('SupplierInvoiceCreatePage', () => {
           },
         ],
       })
+    })
+  })
+
+  it('uses an all-products picker for manual supplier-invoice lines', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    await waitFor(() => {
+      expect(productPickerProps).toHaveBeenCalledWith(
+        expect.objectContaining({
+          testId: 'manual-line-product-picker-0',
+          productType: 'all',
+        }),
+      )
     })
   })
 
@@ -267,9 +324,9 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '19.00' } })
 
     await waitFor(() => {
-      expect(screen.getByTestId('save-supplier-invoice')).not.toBeDisabled()
+      expect(getSaveButton()).not.toBeDisabled()
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -308,7 +365,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-quantity-1'), { target: { value: '4.0000' } })
     fireEvent.change(screen.getByTestId('manual-line-unit-price-1'), { target: { value: '9.125' } })
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -343,7 +400,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(screen.getByText('purchases:supplierInvoices.create.match.matched')).toBeInTheDocument()
 
     fireEvent.change(screen.getByTestId('supplier-reference'), { target: { value: 'FA-8842' } })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -364,6 +421,20 @@ describe('SupplierInvoiceCreatePage', () => {
       })
     })
     expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
+  })
+
+  it('blocks submit and renders an inline error when issue date is missing', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new?po=po-1',
+    })
+
+    fireEvent.change(await screen.findByLabelText('purchases:supplierInvoices.create.issueDate'), {
+      target: { value: '' },
+    })
+    fireEvent.click(getSaveButton())
+
+    expect(await screen.findByText('This field is required')).toBeInTheDocument()
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 
   it('submits source_document_ids for receipt-prefilled invoices spanning multiple POs', async () => {
@@ -418,7 +489,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(screen.getByDisplayValue('3.0000')).toBeInTheDocument()
     expect(screen.getByText('purchases:supplierInvoices.create.linkedPOs:{"numbers":"BC-2026-0042"}')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -441,7 +512,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(await screen.findByTestId('supplier-invoice-attachments'), {
       target: { files: [file] },
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(uploadAttachmentMutateAsync).toHaveBeenCalledWith({ documentId: 'invoice-1', file })
@@ -459,7 +530,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(await screen.findByTestId('supplier-invoice-attachments'), {
       target: { files: [file] },
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
@@ -502,7 +573,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(await screen.findByDisplayValue('6.0000')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('0.0000')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -577,7 +648,7 @@ describe('SupplierInvoiceCreatePage', () => {
       route: '/purchases/supplier-invoices/new?po=po-1',
     })
 
-    fireEvent.click(await screen.findByTestId('save-supplier-invoice'))
+    fireEvent.click(await findSaveButton())
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Validation failed')

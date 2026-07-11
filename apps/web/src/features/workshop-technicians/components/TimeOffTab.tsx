@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 import type { TechnicianTimeOff } from '../api/authoringTypes'
 import { useDeleteTimeOff, useTimeOff } from '../hooks/useAuthoring'
 import { TimeOffFormModal } from './TimeOffFormModal'
+
 
 interface TimeOffTabProps {
   technicianId: string
@@ -41,14 +43,16 @@ export function TimeOffTab({ technicianId }: TimeOffTabProps) {
         <h3 className={`text-sm font-semibold ${textColors.primary}`}>
           {t('authoring.timeOff.title')}
         </h3>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={handleAdd}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+          className="inline-flex items-center gap-1"
         >
           <Plus className="h-4 w-4" />
           {t('authoring.timeOff.add')}
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -75,16 +79,19 @@ export function TimeOffTab({ technicianId }: TimeOffTabProps) {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     handleEdit(row)
                   }}
-                  className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
                   aria-label={t('authoring.timeOff.modal.editTitle')}
                 >
                   <Pencil className="h-4 w-4" />
-                </button>
+                </Button>
+                {/* Button atom has no `dangerOutline` variant (out-of-scope
+                    atom change) — kept raw with literal tokens for pixel parity. */}
                 <button
                   type="button"
                   onClick={() => {

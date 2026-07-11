@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Printer, FileText, X } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { CreditNote } from '@/types/creditNote'
+import { colorClasses } from '@/lib/designTokens'
 
 interface CreditNoteDetailProps {
   creditNote: CreditNote
@@ -60,20 +61,20 @@ export function CreditNoteDetail({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white shadow-sm`}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-6 py-4">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <div className={`flex items-center justify-between border-b ${colorClasses.borderGray200} ${colorClasses.bgGray50} px-6 py-4`}>
+        <h2 className={`text-lg font-semibold ${colorClasses.textGray900}`}>
           {t('sales:creditNotes.detail.title')}
         </h2>
         <div className="flex items-center gap-2">
           {/* Status Badge */}
           {creditNote.status === 'posted' ? (
-            <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+            <span className={`inline-flex rounded-full ${colorClasses.bgGreen100} px-3 py-1 text-sm font-medium ${colorClasses.textGreen800}`}>
               {t('common:status.posted')}
             </span>
           ) : (
-            <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-800">
+            <span className={`inline-flex rounded-full ${colorClasses.bgGray100} px-3 py-1 text-sm font-medium ${colorClasses.textGray800}`}>
               {t('common:status.draft')}
             </span>
           )}
@@ -86,60 +87,60 @@ export function CreditNoteDetail({
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Number */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.number')}
             </label>
-            <p className="mt-1 text-base font-semibold text-gray-900">
+            <p className={`mt-1 text-base font-semibold ${colorClasses.textGray900}`}>
               {creditNote.document_number}
             </p>
           </div>
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.date')}
             </label>
-            <p className="mt-1 text-base text-gray-900">
+            <p className={`mt-1 text-base ${colorClasses.textGray900}`}>
               {formatDate(creditNote.document_date)}
             </p>
           </div>
 
           {/* Source Invoice */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.sourceInvoice')}
             </label>
-            <p className="mt-1 text-base text-blue-600 hover:text-blue-800">
+            <p className={`mt-1 text-base ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}>
               {creditNote.source_invoice_number}
             </p>
           </div>
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.amount')}
             </label>
-            <p className="mt-1 text-lg font-semibold text-gray-900">
+            <p className={`mt-1 text-lg font-semibold ${colorClasses.textGray900}`}>
               {formatAmount(creditNote.total)}
             </p>
           </div>
 
           {/* Reason */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.reasonLabel')}
             </label>
-            <p className="mt-1 text-base text-gray-900">
+            <p className={`mt-1 text-base ${colorClasses.textGray900}`}>
               {getReasonLabel(creditNote.reason)}
             </p>
           </div>
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.statusLabel')}
             </label>
-            <p className="mt-1 text-base text-gray-900">
+            <p className={`mt-1 text-base ${colorClasses.textGray900}`}>
               {creditNote.status === 'posted'
                 ? t('common:status.posted')
                 : t('common:status.draft')}
@@ -148,10 +149,10 @@ export function CreditNoteDetail({
 
           {/* Created At */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.createdAt')}
             </label>
-            <p className="mt-1 text-sm text-gray-700">
+            <p className={`mt-1 text-sm ${colorClasses.textGray700}`}>
               {formatDate(creditNote.created_at)}
             </p>
           </div>
@@ -160,10 +161,10 @@ export function CreditNoteDetail({
         {/* Notes Section - Only show if notes exist */}
         {creditNote.notes && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
               {t('sales:creditNotes.notes')}
             </label>
-            <p className="mt-1 whitespace-pre-wrap text-base text-gray-900">
+            <p className={`mt-1 whitespace-pre-wrap text-base ${colorClasses.textGray900}`}>
               {creditNote.notes}
             </p>
           </div>
@@ -171,13 +172,13 @@ export function CreditNoteDetail({
       </div>
 
       {/* Footer - Action Buttons */}
-      <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-6 py-4">
+      <div className={`flex items-center justify-between border-t ${colorClasses.borderGray200} ${colorClasses.bgGray50} px-6 py-4`}>
         <div className="flex items-center gap-3">
           {/* Print Button */}
           <button
             type="button"
             onClick={handlePrint}
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className={`inline-flex items-center gap-2 rounded-md border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ${colorClasses.hoverBgGray50} focus:outline-none focus:ring-2 ${colorClasses.focusRingBlue500} focus:ring-offset-2`}
           >
             <Printer className="h-4 w-4" />
             {t('sales:creditNotes.print')}
@@ -188,7 +189,7 @@ export function CreditNoteDetail({
             <button
               type="button"
               onClick={handleViewInvoice}
-              className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className={`inline-flex items-center gap-2 rounded-md border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ${colorClasses.hoverBgGray50} focus:outline-none focus:ring-2 ${colorClasses.focusRingBlue500} focus:ring-offset-2`}
             >
               <FileText className="h-4 w-4" />
               {t('sales:creditNotes.viewInvoice')}
@@ -201,7 +202,7 @@ export function CreditNoteDetail({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-2 rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+            className={`inline-flex items-center gap-2 rounded-md ${colorClasses.bgGray600} px-4 py-2 text-sm font-medium text-white shadow-sm ${colorClasses.hoverBgGray700} focus:outline-none focus:ring-2 ${colorClasses.focusRingGray500} focus:ring-offset-2`}
           >
             <X className="h-4 w-4" />
             {t('common:actions.close')}

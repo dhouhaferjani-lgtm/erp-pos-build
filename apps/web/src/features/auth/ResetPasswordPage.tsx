@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { KeyRound, AlertCircle, CheckCircle, Check, X } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ResetFormData {
   password: string
@@ -68,16 +69,16 @@ export function ResetPasswordPage() {
 
   if (!token || !email) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page} py-12 px-4 sm:px-6 lg:px-8`}>
         <div className="max-w-md w-full space-y-8">
           <div>
-            <h1 className="text-3xl font-bold text-center text-gray-900">{productName}</h1>
+            <h1 className={`text-3xl font-bold text-center ${colorTokens.text.primary}`}>{productName}</h1>
           </div>
-          <div className="rounded-md bg-red-50 p-4">
+          <div className={`rounded-md ${colorTokens.intent.danger.bgSubtle} p-4`}>
             <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400" />
+              <AlertCircle className={`h-5 w-5 ${colorTokens.intent.danger.textFaint}`} />
               <div className="ms-3">
-                <p className="text-sm font-medium text-red-800">
+                <p className={`text-sm font-medium ${colorTokens.intent.danger.textStronger}`}>
                   {t('resetPassword.invalidLink')}
                 </p>
               </div>
@@ -86,7 +87,7 @@ export function ResetPasswordPage() {
           <div className="text-center">
             <Link
               to="/forgot-password"
-              className="text-sm font-medium text-blue-600 hover:text-blue-500"
+              className={`text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}
             >
               {t('forgotPassword.submit')}
             </Link>
@@ -131,25 +132,25 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page} py-12 px-4 sm:px-6 lg:px-8`}>
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-center text-gray-900">{productName}</h1>
-          <h2 className="mt-6 text-center text-xl font-semibold text-gray-700">
+          <h1 className={`text-3xl font-bold text-center ${colorTokens.text.primary}`}>{productName}</h1>
+          <h2 className={`mt-6 text-center text-xl font-semibold ${colorTokens.text.secondary}`}>
             {t('resetPassword.title')}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-500">
+          <p className={`mt-2 text-center text-sm ${colorTokens.text.subtle}`}>
             {t('resetPassword.subtitle')}
           </p>
         </div>
 
         {resetMutation.isSuccess ? (
           <div className="space-y-6">
-            <div className="rounded-md bg-green-50 p-4">
+            <div className={`rounded-md ${colorTokens.intent.success.bgSubtle} p-4`}>
               <div className="flex">
-                <CheckCircle className="h-5 w-5 text-green-400" />
+                <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.textFaint}`} />
                 <div className="ms-3">
-                  <p className="text-sm font-medium text-green-800">
+                  <p className={`text-sm font-medium ${colorTokens.intent.success.textStronger}`}>
                     {t('resetPassword.success')}
                   </p>
                 </div>
@@ -158,7 +159,7 @@ export function ResetPasswordPage() {
             <div className="text-center">
               <Link
                 to="/login"
-                className="inline-flex items-center justify-center w-full py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                className={`inline-flex items-center justify-center w-full py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing} transition-colors`}
               >
                 {t('resetPassword.goToLogin')}
               </Link>
@@ -167,11 +168,11 @@ export function ResetPasswordPage() {
         ) : (
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             {errors.general && (
-              <div className="rounded-md bg-red-50 p-4">
+              <div className={`rounded-md ${colorTokens.intent.danger.bgSubtle} p-4`}>
                 <div className="flex">
-                  <AlertCircle className="h-5 w-5 text-red-400" />
+                  <AlertCircle className={`h-5 w-5 ${colorTokens.intent.danger.textFaint}`} />
                   <div className="ms-3">
-                    <p className="text-sm font-medium text-red-800">{errors.general}</p>
+                    <p className={`text-sm font-medium ${colorTokens.intent.danger.textStronger}`}>{errors.general}</p>
                   </div>
                 </div>
               </div>
@@ -179,7 +180,7 @@ export function ResetPasswordPage() {
 
             <div className="space-y-4">
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('resetPassword.password')}
                 </label>
                 <input
@@ -189,21 +190,21 @@ export function ResetPasswordPage() {
                   autoComplete="new-password"
                   value={formData.password}
                   onChange={handleChange}
-                  className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                     errors.password
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                      : 'border-gray-300 focus:border-blue-500'
+                      ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                      : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                   }`}
                   aria-invalid={!!errors.password}
                   aria-describedby="password-requirements"
                 />
                 {errors.password && (
-                  <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.password}</p>
                 )}
 
                 {formData.password.length > 0 && (
                   <div id="password-requirements" className="mt-3 space-y-1.5">
-                    <p className="text-xs font-medium text-gray-600">
+                    <p className={`text-xs font-medium ${colorTokens.text.muted}`}>
                       {t('resetPassword.requirements.title')}
                     </p>
                     <RequirementItem
@@ -233,7 +234,7 @@ export function ResetPasswordPage() {
               <div>
                 <label
                   htmlFor="password_confirmation"
-                  className="block text-sm font-medium text-gray-700"
+                  className={`block text-sm font-medium ${colorTokens.text.secondary}`}
                 >
                   {t('resetPassword.confirmPassword')}
                 </label>
@@ -244,15 +245,15 @@ export function ResetPasswordPage() {
                   autoComplete="new-password"
                   value={formData.password_confirmation}
                   onChange={handleChange}
-                  className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                     errors.password_confirmation
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                      : 'border-gray-300 focus:border-blue-500'
+                      ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                      : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                   }`}
                   aria-invalid={!!errors.password_confirmation}
                 />
                 {errors.password_confirmation && (
-                  <p className="mt-1 text-sm text-red-600">{errors.password_confirmation}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.password_confirmation}</p>
                 )}
               </div>
             </div>
@@ -260,10 +261,10 @@ export function ResetPasswordPage() {
             <button
               type="submit"
               disabled={resetMutation.isPending}
-              className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className={`group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
             >
               <span className="absolute start-0 inset-y-0 flex items-center ps-3">
-                <KeyRound className="h-5 w-5 text-blue-500 group-hover:text-blue-400" />
+                <KeyRound className={`h-5 w-5 ${colorTokens.intent.primary.textSubtle} ${colorTokens.variants.groupHoverTextBlue400}`} />
               </span>
               {resetMutation.isPending
                 ? t('resetPassword.resetting')
@@ -273,7 +274,7 @@ export function ResetPasswordPage() {
             <div className="text-center">
               <Link
                 to="/login"
-                className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                className={`text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}
               >
                 {t('forgotPassword.backToLogin')}
               </Link>
@@ -289,11 +290,11 @@ function RequirementItem({ met, label }: { met: boolean; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       {met ? (
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check className={`h-3.5 w-3.5 ${colorTokens.intent.success.textSubtle}`} />
       ) : (
-        <X className="h-3.5 w-3.5 text-gray-400" />
+        <X className={`h-3.5 w-3.5 ${colorTokens.text.disabled}`} />
       )}
-      <span className={`text-xs ${met ? 'text-green-600' : 'text-gray-500'}`}>{label}</span>
+      <span className={`text-xs ${met ? `${colorTokens.intent.success.text}` : `${colorTokens.text.subtle}`}`}>{label}</span>
     </div>
   )
 }

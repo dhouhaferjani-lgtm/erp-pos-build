@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
+import { Button } from '@/components/atoms'
 import type { ServiceBundleComponentData } from '../../types'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
+
 
 interface BundleComponentRowProps {
   component: ServiceBundleComponentData
@@ -43,18 +45,21 @@ export function BundleComponentRow({
         {hasActions ? (
           <div className="flex items-center gap-2">
             {onEdit !== undefined ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   onEdit(component)
                 }}
-                className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
                 data-testid={`bundle-component-edit-${component.id}`}
               >
                 {t('authoring.row.edit')}
-              </button>
+              </Button>
             ) : null}
             {onDelete !== undefined ? (
+              // Button atom has no `dangerOutline` variant (out-of-scope atom
+              // change) — kept raw with literal tokens to preserve pixel parity.
               <button
                 type="button"
                 onClick={() => {

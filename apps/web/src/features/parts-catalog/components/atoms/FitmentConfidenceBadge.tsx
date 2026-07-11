@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface FitmentConfidenceBadgeProps {
   confidence: number
@@ -15,7 +16,7 @@ export function FitmentConfidenceBadge({ confidence, className }: FitmentConfide
       <span
         className={cn(
           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-          'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20',
+          `${colorTokens.intent.available.bgSubtle} ${colorTokens.intent.available.textStrong} ring-1 ring-inset ${colorTokens.intent.available.ring}`,
           className
         )}
       >
@@ -30,7 +31,7 @@ export function FitmentConfidenceBadge({ confidence, className }: FitmentConfide
       <span
         className={cn(
           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-          'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20',
+          `${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStrong} ring-1 ring-inset ${colorTokens.intent.caution.ring}`,
           className
         )}
       >
@@ -44,7 +45,7 @@ export function FitmentConfidenceBadge({ confidence, className }: FitmentConfide
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-        'bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20',
+        `${colorTokens.intent.notice.bgSubtle} ${colorTokens.intent.notice.textStrong} ring-1 ring-inset ${colorTokens.intent.notice.ring}`,
         className
       )}
     >

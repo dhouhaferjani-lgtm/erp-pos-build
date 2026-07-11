@@ -3,16 +3,19 @@ import { Link } from 'react-router-dom'
 import { useInvoices, useCreateInvoice } from '../hooks/useBilling'
 import { downloadInvoicePdf } from '../api'
 import type { Invoice, InvoiceStatus, CreateInvoiceRequest } from '../types'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-const STATUS_COLORS: Record<InvoiceStatus, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  pending: 'bg-yellow-100 text-yellow-700',
-  sent: 'bg-blue-100 text-blue-700',
-  paid: 'bg-green-100 text-green-700',
-  partially_paid: 'bg-teal-100 text-teal-700',
-  overdue: 'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-500',
-  refunded: 'bg-purple-100 text-purple-700',
+const STATUS_TONES: Record<InvoiceStatus, StatusTone> = {
+  draft: 'neutral',
+  pending: 'warning',
+  sent: 'info',
+  paid: 'success',
+  partially_paid: 'info',
+  overdue: 'danger',
+  cancelled: 'neutral',
+  refunded: 'info',
 }
 
 function formatDate(dateStr: string | null): string {
@@ -109,7 +112,7 @@ export function InvoicesPage() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">Loading invoices...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading invoices...</div>
       </div>
     )
   }
@@ -121,19 +124,19 @@ export function InvoicesPage() {
           <div>
             <Link
               to="/admin/billing"
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
             >
               &larr; Back to Billing
             </Link>
-            <h1 className="mt-2 text-3xl font-bold text-gray-900">Invoices</h1>
+            <h1 className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>Invoices</h1>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">
+            <span className={`text-sm ${colorClasses.textGray500}`}>
               {invoicesData?.total ?? 0} total invoices
             </span>
             <button
               onClick={() => { setShowCreateModal(true); }}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700}`}
             >
               Create Invoice
             </button>
@@ -145,7 +148,7 @@ export function InvoicesPage() {
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
           >
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
@@ -161,83 +164,81 @@ export function InvoicesPage() {
 
         {/* Table */}
         <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+            <thead className={`${colorClasses.bgGray50}`}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Invoice
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Tenant
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Amount
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Due Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
               {invoicesData?.data.map((invoice) => (
-                <tr key={invoice.id} className="hover:bg-gray-50">
+                <tr key={invoice.id} className={`${colorClasses.hoverBgGray50}`}>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorClasses.textGray900}`}>
                       {invoice.number}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className={`text-sm ${colorClasses.textGray500}`}>
                       {formatDate(invoice.invoice_date)}
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorClasses.textGray900}`}>
                       {invoice.tenant?.name ?? 'Unknown'}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className={`text-sm ${colorClasses.textGray500}`}>
                       {invoice.billing_email ?? invoice.tenant?.email ?? ''}
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${STATUS_COLORS[invoice.status]}`}
-                    >
+                    <StatusBadge tone={STATUS_TONES[invoice.status]}>
                       {invoice.status.replace('_', ' ')}
-                    </span>
+                    </StatusBadge>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorClasses.textGray900}`}>
                       {formatCurrency(invoice.total, invoice.currency)}
                     </div>
                     {parseFloat(invoice.amount_due) > 0 && (
-                      <div className="text-sm text-red-600">
+                      <div className={`text-sm ${colorClasses.textRed600}`}>
                         Due: {formatCurrency(invoice.amount_due, invoice.currency)}
                       </div>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>
                     {formatDate(invoice.due_date)}
                     {invoice.status === 'overdue' && (
-                      <div className="text-xs text-red-600">Overdue</div>
+                      <div className={`text-xs ${colorClasses.textRed600}`}>Overdue</div>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setSelectedInvoice(invoice); }}
-                        className="text-sm text-blue-600 hover:text-blue-800"
+                        className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
                       >
                         View
                       </button>
                       {invoice.pdf_path && (
                         <button
                           onClick={() => { void downloadInvoicePdf(invoice.id) }}
-                          className="text-sm text-green-600 hover:text-green-800"
+                          className={`text-sm ${colorClasses.textGreen600} ${colorClasses.hoverTextGreen800}`}
                         >
                           Download
                         </button>
@@ -247,10 +248,10 @@ export function InvoicesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
 
           {invoicesData?.data.length === 0 && (
-            <div className="py-12 text-center text-gray-500">
+            <div className={`py-12 text-center ${colorClasses.textGray500}`}>
               No invoices found
             </div>
           )}
@@ -260,33 +261,31 @@ export function InvoicesPage() {
         {selectedInvoice && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className={`mb-4 text-xl font-bold ${colorClasses.textGray900}`}>
                 Invoice {selectedInvoice.number}
               </h2>
 
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div>
-                  <span className="text-sm text-gray-500">Tenant</span>
+                  <span className={`text-sm ${colorClasses.textGray500}`}>Tenant</span>
                   <div className="font-medium">
                     {selectedInvoice.tenant?.name}
                   </div>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-500">Status</span>
+                  <span className={`text-sm ${colorClasses.textGray500}`}>Status</span>
                   <div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[selectedInvoice.status]}`}
-                    >
-                      {selectedInvoice.status}
-                    </span>
+                    <StatusBadge tone={STATUS_TONES[selectedInvoice.status]}>
+                    {selectedInvoice.status}
+                  </StatusBadge>
                   </div>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-500">Invoice Date</span>
+                  <span className={`text-sm ${colorClasses.textGray500}`}>Invoice Date</span>
                   <div>{formatDate(selectedInvoice.invoice_date)}</div>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-500">Due Date</span>
+                  <span className={`text-sm ${colorClasses.textGray500}`}>Due Date</span>
                   <div>{formatDate(selectedInvoice.due_date)}</div>
                 </div>
               </div>
@@ -294,10 +293,10 @@ export function InvoicesPage() {
               {/* Line Items */}
               {selectedInvoice.items && selectedInvoice.items.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="mb-2 font-semibold text-gray-700">
+                  <h3 className={`mb-2 font-semibold ${colorClasses.textGray700}`}>
                     Line Items
                   </h3>
-                  <table className="w-full text-sm">
+                  <DataTable className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
                         <th className="py-2 text-left">Description</th>
@@ -323,14 +322,14 @@ export function InvoicesPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
 
               {/* Totals */}
               <div className="mb-6 border-t pt-4">
                 <div className="flex justify-between py-1">
-                  <span className="text-gray-500">Subtotal</span>
+                  <span className={`${colorClasses.textGray500}`}>Subtotal</span>
                   <span>
                     {formatCurrency(
                       selectedInvoice.subtotal,
@@ -340,7 +339,7 @@ export function InvoicesPage() {
                 </div>
                 {parseFloat(selectedInvoice.tax_amount) > 0 && (
                   <div className="flex justify-between py-1">
-                    <span className="text-gray-500">
+                    <span className={`${colorClasses.textGray500}`}>
                       Tax ({selectedInvoice.tax_rate}%)
                     </span>
                     <span>
@@ -353,8 +352,8 @@ export function InvoicesPage() {
                 )}
                 {parseFloat(selectedInvoice.discount_amount) > 0 && (
                   <div className="flex justify-between py-1">
-                    <span className="text-gray-500">Discount</span>
-                    <span className="text-green-600">
+                    <span className={`${colorClasses.textGray500}`}>Discount</span>
+                    <span className={`${colorClasses.textGreen600}`}>
                       -
                       {formatCurrency(
                         selectedInvoice.discount_amount,
@@ -373,8 +372,8 @@ export function InvoicesPage() {
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-gray-500">Paid</span>
-                  <span className="text-green-600">
+                  <span className={`${colorClasses.textGray500}`}>Paid</span>
+                  <span className={`${colorClasses.textGreen600}`}>
                     {formatCurrency(
                       selectedInvoice.amount_paid,
                       selectedInvoice.currency
@@ -386,8 +385,8 @@ export function InvoicesPage() {
                   <span
                     className={
                       parseFloat(selectedInvoice.amount_due) > 0
-                        ? 'text-red-600'
-                        : 'text-green-600'
+                        ? `${colorClasses.textRed600}`
+                        : `${colorClasses.textGreen600}`
                     }
                   >
                     {formatCurrency(
@@ -400,8 +399,8 @@ export function InvoicesPage() {
 
               {selectedInvoice.notes && (
                 <div className="mb-6 border-t pt-4">
-                  <h3 className="mb-2 font-semibold text-gray-700">Notes</h3>
-                  <p className="text-sm text-gray-600">
+                  <h3 className={`mb-2 font-semibold ${colorClasses.textGray700}`}>Notes</h3>
+                  <p className={`text-sm ${colorClasses.textGray600}`}>
                     {selectedInvoice.notes}
                   </p>
                 </div>
@@ -411,14 +410,14 @@ export function InvoicesPage() {
                 {selectedInvoice.pdf_path && (
                   <button
                     onClick={() => { void downloadInvoicePdf(selectedInvoice.id) }}
-                    className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                    className={`rounded-md ${colorClasses.bgGreen600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgGreen700}`}
                   >
                     Download PDF
                   </button>
                 )}
                 <button
                   onClick={() => { setSelectedInvoice(null); }}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                  className={`rounded-md ${colorClasses.bgGray100} px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray200}`}
                 >
                   Close
                 </button>
@@ -431,13 +430,13 @@ export function InvoicesPage() {
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className={`mb-4 text-xl font-bold ${colorClasses.textGray900}`}>
                 Create Invoice
               </h2>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Tenant ID
                   </label>
                   <input
@@ -447,12 +446,12 @@ export function InvoicesPage() {
                       { setCreateForm({ ...createForm, tenant_id: e.target.value }); }
                     }
                     placeholder="Enter tenant UUID"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className={`mb-2 block text-sm font-medium ${colorClasses.textGray700}`}>
                     Line Items
                   </label>
                   {createForm.items.map((item, index) => (
@@ -464,7 +463,7 @@ export function InvoicesPage() {
                           { handleItemChange(index, 'description', e.target.value); }
                         }
                         placeholder="Description"
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className={`flex-1 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}
                       />
                       <input
                         type="number"
@@ -473,7 +472,7 @@ export function InvoicesPage() {
                           { handleItemChange(index, 'quantity', e.target.value); }
                         }
                         placeholder="Qty"
-                        className="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className={`w-20 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}
                       />
                       <input
                         type="number"
@@ -483,13 +482,13 @@ export function InvoicesPage() {
                           { handleItemChange(index, 'amount', e.target.value); }
                         }
                         placeholder="Amount"
-                        className="w-28 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className={`w-28 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}
                       />
                       {createForm.items.length > 1 && (
                         <button
                           type="button"
                           onClick={() => { handleRemoveItem(index); }}
-                          className="text-red-600 hover:text-red-800"
+                          className={`${colorClasses.textRed600} ${colorClasses.hoverTextRed800}`}
                         >
                           &times;
                         </button>
@@ -499,14 +498,14 @@ export function InvoicesPage() {
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                    className={`mt-2 text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
                   >
                     + Add Item
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Due Date
                   </label>
                   <input
@@ -515,12 +514,12 @@ export function InvoicesPage() {
                     onChange={(e) =>
                       { setCreateForm({ ...createForm, due_date: e.target.value }); }
                     }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                     Notes
                   </label>
                   <textarea
@@ -529,7 +528,7 @@ export function InvoicesPage() {
                       { setCreateForm({ ...createForm, notes: e.target.value }); }
                     }
                     rows={3}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                   />
                 </div>
               </div>
@@ -537,14 +536,14 @@ export function InvoicesPage() {
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   onClick={() => { setShowCreateModal(false); }}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                  className={`rounded-md ${colorClasses.bgGray100} px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray200}`}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreateInvoice}
                   disabled={createInvoice.isPending}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} disabled:opacity-50`}
                 >
                   {createInvoice.isPending ? 'Creating...' : 'Create Invoice'}
                 </button>

@@ -7,7 +7,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
-import { DeliveryNoteConsolidation } from './components'
+import { Button } from '@/components/atoms/Button/Button'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
+import { DeliveryNoteConsolidation } from './components/DeliveryNoteConsolidation'
+import { colorClasses } from '@/lib/designTokens'
 
 export function DeliveryNoteConsolidationPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -15,28 +18,25 @@ export function DeliveryNoteConsolidationPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="rounded-lg p-2 hover:bg-gray-100"
-          aria-label={t('common:actions.back')}
-        >
-          <ArrowLeft className="h-5 w-5 text-gray-500" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('sales:deliveryNotes.consolidation.title')}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('sales:deliveryNotes.consolidation.description')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title={t('sales:deliveryNotes.consolidation.title')}
+        subtitle={t('sales:deliveryNotes.consolidation.description')}
+        actions={(
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { navigate(-1) }}
+            className="gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Button>
+        )}
+        className="mb-0"
+      />
 
       {/* Main Content */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
         <DeliveryNoteConsolidation
           onSuccess={(invoiceId) => navigate(`/sales/invoices/${invoiceId}`)}
           onCancel={() => navigate('/inventory/delivery-notes')}

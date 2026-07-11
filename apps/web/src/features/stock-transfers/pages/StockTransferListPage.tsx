@@ -4,10 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Truck } from 'lucide-react'
 import { Button } from '@/components/atoms/Button'
 import { EmptyState } from '@/components/molecules/EmptyState'
-import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useStockTransferList } from '../api/queries'
 import { StockTransferStatusBadge } from '../components/StockTransferStatusBadge'
 import type { StockTransferListFilters, StockTransferStatus } from '../types'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Select } from '@/components/atoms'
 
 const STATUS_OPTIONS: readonly (StockTransferStatus | 'all')[] = [
   'all',
@@ -44,7 +47,7 @@ export function StockTransferListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-semibold ${textColors.primary}`}>{t('title')}</h1>
+          <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>{t('title')}</PageHeaderTitle>
           <p className={textColors.tertiary}>{t('subtitle')}</p>
         </div>
         <Link to="/inventory/stock-transfers/new">
@@ -60,18 +63,18 @@ export function StockTransferListPage() {
           <label htmlFor="status-filter" className={`text-sm font-medium ${textColors.tertiary}`}>
             {t('filters.byStatus')}
           </label>
-          <select
+          <Select
             id="status-filter"
             value={filters.status ?? 'all'}
             onChange={handleStatusChange}
-            className={`ms-3 ${tokens.select.base}`}
+            className={`ms-3 `}
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {s === 'all' ? t('filters.all') : t(`status.${s}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {isLoading ? (
@@ -84,7 +87,7 @@ export function StockTransferListPage() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
               <thead className={tokens.badge.gray}>
                 <tr>
                   <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
@@ -107,7 +110,7 @@ export function StockTransferListPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className={`divide-y ${colorTokens.border.divider}`}>
                 {transfers.map((tx) => (
                   <tr key={tx.id} className={tokens.card.hoverPrimary}>
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-medium">
@@ -136,7 +139,7 @@ export function StockTransferListPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
             {total > 0 && (
               <div className={`border-t ${borderColors.light} px-6 py-3 text-xs ${textColors.tertiary}`}>
                 {total} / {total}

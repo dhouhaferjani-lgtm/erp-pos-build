@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { FileText, Calendar, User } from 'lucide-react'
 import { getAdminAuditLogs } from '../api'
 import { QueryError } from '@/components/QueryError'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function AuditLogsPage() {
   const { data: logsData, isLoading, error, refetch } = useQuery({
@@ -18,22 +20,22 @@ export function AuditLogsPage() {
   const getActionColor = (action: string) => {
     switch (action) {
       case 'suspend_tenant':
-        return 'bg-red-100 text-red-800'
+        return `${colorClasses.bgRed100} ${colorClasses.textRed800}`
       case 'activate_tenant':
-        return 'bg-green-100 text-green-800'
+        return `${colorClasses.bgGreen100} ${colorClasses.textGreen800}`
       case 'extend_trial':
-        return 'bg-blue-100 text-blue-800'
+        return `${colorClasses.bgBlue100} ${colorClasses.textBlue800}`
       case 'change_plan':
-        return 'bg-purple-100 text-purple-800'
+        return `${colorClasses.bgPurple100} ${colorClasses.textPurple800}`
       default:
-        return 'bg-gray-100 text-gray-800'
+        return `${colorClasses.bgGray100} ${colorClasses.textGray800}`
     }
   }
 
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-gray-500">Loading audit logs...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading audit logs...</div>
       </div>
     )
   }
@@ -54,53 +56,53 @@ export function AuditLogsPage() {
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className={`text-[1.5rem] leading-8 font-bold ${colorClasses.textGray900}`}>
             Audit Logs
           </h1>
-          <p className="text-gray-500">Complete trail of all administrative actions</p>
+          <p className={`${colorClasses.textGray500}`}>Complete trail of all administrative actions</p>
         </div>
 
         <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+            <thead className={`${colorClasses.bgGray50}`}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Admin
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Action
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Tenant
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Notes
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
               {logs.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                    <p className="mt-4 text-gray-500">No audit logs found</p>
+                    <FileText className={`mx-auto h-12 w-12 ${colorClasses.textGray400}`} />
+                    <p className={`mt-4 ${colorClasses.textGray500}`}>No audit logs found</p>
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                  <tr key={log.id} className={`${colorClasses.hoverBgGray50}`}>
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>
                       <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
+                        <Calendar className={`h-4 w-4 ${colorClasses.textGray400}`} />
                         {formatDate(log.created_at)}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>
                       <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-gray-400" />
+                        <User className={`h-4 w-4 ${colorClasses.textGray400}`} />
                         {log.admin_name}
                       </div>
                     </td>
@@ -111,10 +113,10 @@ export function AuditLogsPage() {
                         {log.action.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>
                       {log.tenant_name ?? '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td className={`px-6 py-4 text-sm ${colorClasses.textGray500}`}>
                       {typeof log.details === 'object' && log.details !== null
                         ? JSON.stringify(log.details)
                         : '-'}
@@ -123,7 +125,7 @@ export function AuditLogsPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     </div>

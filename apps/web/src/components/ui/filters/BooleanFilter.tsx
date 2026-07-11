@@ -1,3 +1,4 @@
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 export interface BooleanFilterProps {
   label?: string
   value?: boolean | undefined
@@ -22,9 +23,9 @@ export function BooleanFilter({
           type="checkbox"
           checked={value ?? false}
           onChange={handleChange}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
         />
-        {label && <span className="text-sm font-medium text-gray-700">{label}</span>}
+        {label && <span className={`text-sm font-medium ${colorTokens.text.secondary}`}>{label}</span>}
       </label>
     </div>
   )

@@ -5,13 +5,13 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreateStockTransferPage } from '../pages/CreateStockTransferPage'
 import type { ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
-import type { LocationApiResponse } from '@/features/location/api'
+import type { LocationApiResponse } from '@/features/locations/api'
 
 const mockFetchLocations = vi.fn<() => Promise<LocationApiResponse[]>>()
 const mockApiGet = vi.fn()
 
-vi.mock('@/features/location/api', async () => {
-  const actual = await vi.importActual<typeof import('@/features/location/api')>('@/features/location/api')
+vi.mock('@/features/locations/api', async () => {
+  const actual = await vi.importActual<typeof import('@/features/locations/api')>('@/features/locations/api')
   return { ...actual, fetchLocations: () => mockFetchLocations() }
 })
 

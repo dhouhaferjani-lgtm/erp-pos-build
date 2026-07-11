@@ -20,15 +20,17 @@ import { useCompany } from '../../hooks/useCompany'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import { servicesInvalidationPredicate } from './_invalidation'
 import type { Service, PricingType } from './types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface ServiceResponse {
   data: Service
 }
 
 const pricingTypeColors: Record<PricingType, string> = {
-  flat_rate: 'bg-blue-100 text-blue-800',
-  hourly: 'bg-purple-100 text-purple-800',
-  percentage: 'bg-orange-100 text-orange-800',
+  flat_rate: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  hourly: `${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`,
+  percentage: `${colorTokens.intent.notice.bgSoft} ${colorTokens.intent.notice.textStronger}`,
 }
 
 const pricingTypeIcons: Record<PricingType, typeof DollarSign> = {
@@ -112,14 +114,14 @@ export function ServiceDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
       </div>
     )
   }
 
   if (error || !service) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
         {t('errors.loadingFailed', 'Error loading data. Please try again.')}
       </div>
     )
@@ -134,15 +136,15 @@ export function ServiceDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/services"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <Wrench className="h-6 w-6 text-gray-400" />
-              <h1 className="text-2xl font-bold text-gray-900">{service.name}</h1>
+              <Wrench className={`h-6 w-6 ${colorTokens.text.disabled}`} />
+              <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{service.name}</PageHeaderTitle>
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${pricingTypeColors[service.pricing_type]}`}
               >
@@ -152,20 +154,20 @@ export function ServiceDetailPage() {
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   service.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
+                    ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                    : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                 }`}
               >
                 {service.is_active ? t('status.active') : t('status.inactive')}
               </span>
             </div>
-            <p className="text-gray-500 font-mono">{service.code}</p>
+            <p className={`${colorTokens.text.subtle} font-mono`}>{service.code}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to={`/services/${id}/edit`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
           >
             <Edit className="h-4 w-4" />
             {t('actions.edit')}
@@ -173,7 +175,7 @@ export function ServiceDetailPage() {
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} ${colorTokens.variants.hoverBgRed50} disabled:opacity-50`}
           >
             <Trash2 className="h-4 w-4" />
             {t('actions.delete')}
@@ -182,17 +184,17 @@ export function ServiceDetailPage() {
       </div>
 
       {/* Details Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
           {t('services.details', 'Service Details')}
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-sm text-gray-500">{t('services.fields.code', 'Code')}</dt>
-            <dd className="mt-1 text-sm font-mono font-medium text-gray-900">{service.code}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.code', 'Code')}</dt>
+            <dd className={`mt-1 text-sm font-mono font-medium ${colorTokens.text.primary}`}>{service.code}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('services.pricingType', 'Pricing Type')}</dt>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.pricingType', 'Pricing Type')}</dt>
             <dd className="mt-1">
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${pricingTypeColors[service.pricing_type]}`}
@@ -203,13 +205,13 @@ export function ServiceDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('fields.status', 'Status')}</dt>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.status', 'Status')}</dt>
             <dd className="mt-1">
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   service.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
+                    ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                    : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                 }`}
               >
                 {service.is_active ? t('status.active') : t('status.inactive')}
@@ -217,22 +219,22 @@ export function ServiceDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('fields.currency', 'Currency')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">{service.currency}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.currency', 'Currency')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>{service.currency}</dd>
           </div>
         </dl>
       </div>
 
       {/* Pricing Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
           {t('services.pricing', 'Pricing')}
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {service.pricing_type === 'flat_rate' && (
             <div>
-              <dt className="text-sm text-gray-500">{t('services.fields.basePrice', 'Base Price')}</dt>
-              <dd className="mt-1 text-lg font-semibold text-gray-900">
+              <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.basePrice', 'Base Price')}</dt>
+              <dd className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {formatServiceCurrency(service.base_price)}
               </dd>
             </div>
@@ -240,14 +242,14 @@ export function ServiceDetailPage() {
           {service.pricing_type === 'hourly' && (
             <>
               <div>
-                <dt className="text-sm text-gray-500">{t('services.fields.hourlyRate', 'Hourly Rate')}</dt>
-                <dd className="mt-1 text-lg font-semibold text-gray-900">
+                <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.hourlyRate', 'Hourly Rate')}</dt>
+                <dd className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
                   {formatServiceCurrency(service.hourly_rate)}/h
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-gray-500">{t('services.fields.defaultDuration', 'Default Duration')}</dt>
-                <dd className="mt-1 text-lg font-semibold text-gray-900">
+                <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.defaultDuration', 'Default Duration')}</dt>
+                <dd className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
                   {formatDuration(service.default_duration_minutes)}
                 </dd>
               </div>
@@ -255,16 +257,16 @@ export function ServiceDetailPage() {
           )}
           {service.pricing_type === 'percentage' && (
             <div>
-              <dt className="text-sm text-gray-500">{t('services.fields.percentage', 'Percentage')}</dt>
-              <dd className="mt-1 text-lg font-semibold text-gray-900">
+              <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.percentage', 'Percentage')}</dt>
+              <dd className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {formatPercent(service.base_price)}
               </dd>
             </div>
           )}
           {(service.tax_rate || service.default_tax_configuration_id) && (
             <div>
-              <dt className="text-sm text-gray-500">{t('services.fields.taxRate', 'Tax Rate')}</dt>
-              <dd className="mt-1 text-sm font-medium text-gray-900">
+              <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('services.fields.taxRate', 'Tax Rate')}</dt>
+              <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>
                 {taxConfigName ?? (service.tax_rate ? formatPercent(service.tax_rate) : '—')}
               </dd>
             </div>
@@ -274,18 +276,18 @@ export function ServiceDetailPage() {
 
       {/* Category Card */}
       {service.category && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
             {t('services.category', 'Category')}
           </h2>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
-              <FolderTree className="h-5 w-5 text-gray-600" />
+            <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${colorTokens.surface.muted}`}>
+              <FolderTree className={`h-5 w-5 ${colorTokens.text.muted}`} />
             </div>
             <div>
-              <p className="font-medium text-gray-900">{service.category.name}</p>
+              <p className={`font-medium ${colorTokens.text.primary}`}>{service.category.name}</p>
               {service.category.description && (
-                <p className="text-sm text-gray-500">{service.category.description}</p>
+                <p className={`text-sm ${colorTokens.text.subtle}`}>{service.category.description}</p>
               )}
             </div>
           </div>
@@ -294,30 +296,30 @@ export function ServiceDetailPage() {
 
       {/* Description Card */}
       {service.description && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
             {t('fields.description', 'Description')}
           </h2>
-          <p className="text-gray-700 whitespace-pre-wrap">{service.description}</p>
+          <p className={`${colorTokens.text.secondary} whitespace-pre-wrap`}>{service.description}</p>
         </div>
       )}
 
       {/* Metadata Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
           {t('services.metadata', 'Metadata')}
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-sm text-gray-500">{t('fields.created', 'Created')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.created', 'Created')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>
               {formatDate(service.created_at)}
             </dd>
           </div>
           {service.updated_at && (
             <div>
-              <dt className="text-sm text-gray-500">{t('fields.updated', 'Last Updated')}</dt>
-              <dd className="mt-1 text-sm font-medium text-gray-900">
+              <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.updated', 'Last Updated')}</dt>
+              <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>
                 {formatDate(service.updated_at)}
               </dd>
             </div>

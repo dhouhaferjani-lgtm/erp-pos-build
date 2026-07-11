@@ -10,6 +10,7 @@ import { CashOperationModal } from '../components/CashOperationModal'
 import { usePosTenantScope } from '../hooks/usePosTenantScope'
 import { cn } from '@/lib/utils'
 import { colors, tokens, textColors, focusRing } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 
 interface POSLayoutProps {
   children: React.ReactNode
@@ -144,27 +145,21 @@ export function POSLayout({
         {/* Right: Operations Menu + Exit */}
         <div className="flex items-center gap-3">
           {shift && (
-            <button
+            <Button
               onClick={() => { setIsOperationsMenuOpen(!isOperationsMenuOpen); }}
               className={cn(
-                tokens.button.base,
-                tokens.button.primary,
-                tokens.button.sizes.md,
                 'gap-2'
               )}
               aria-label={t('common:pos.operations', { defaultValue: 'Operations' })}
             >
               <Settings className="h-4 w-4" />
               <span>{t('common:pos.operations', { defaultValue: 'Operations' })}</span>
-            </button>
+            </Button>
           )}
 
-          <button
+          <Button variant="secondary"
             onClick={onExitPOS}
             className={cn(
-              tokens.button.base,
-              tokens.button.secondary,
-              tokens.button.sizes.md,
               focusRing.default,
               'gap-2'
             )}
@@ -172,7 +167,7 @@ export function POSLayout({
           >
             <X className="h-4 w-4" />
             <span>{t('common:pos.exitFullscreen', { defaultValue: 'Exit POS' })}</span>
-          </button>
+          </Button>
         </div>
       </header>
 

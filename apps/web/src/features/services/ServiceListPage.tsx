@@ -12,11 +12,14 @@ import { useCompany } from '../../hooks/useCompany'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import type { ServicesResponse, PricingType, CategoriesResponse } from './types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 const pricingTypeColors: Record<PricingType, string> = {
-  flat_rate: 'bg-blue-100 text-blue-800',
-  hourly: 'bg-purple-100 text-purple-800',
-  percentage: 'bg-orange-100 text-orange-800',
+  flat_rate: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  hourly: `${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`,
+  percentage: `${colorTokens.intent.notice.bgSoft} ${colorTokens.intent.notice.textStronger}`,
 }
 
 const pricingTypeIcons: Record<PricingType, typeof DollarSign> = {
@@ -104,21 +107,21 @@ export function ServiceListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('services.title', 'Services')}</h1>
-          <p className="text-gray-500">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('services.title', 'Services')}</PageHeaderTitle>
+          <p className={`${colorTokens.text.subtle}`}>
             {total} {total === 1 ? t('services.serviceCount.singular', 'service') : t('services.serviceCount.plural', 'services')} {t('total', 'total')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to="/services/categories"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} transition-colors`}
           >
             {t('services.manageCategories', 'Manage Categories')}
           </Link>
           <Link
             to="/services/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('services.addService', 'Add Service')}
@@ -137,17 +140,17 @@ export function ServiceListPage() {
               placeholder={t('services.searchPlaceholder', 'Search services...')}
               className="w-full sm:w-72"
             />
-            <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1">
+            <div className={`flex items-center gap-1 rounded-lg border ${colorTokens.border.subtle} p-1`}>
               <button
                 onClick={() => { setViewMode('list') }}
-                className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`rounded p-1.5 ${viewMode === 'list' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}`}
                 title={t('views.list')}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => { setViewMode('grid') }}
-                className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`rounded p-1.5 ${viewMode === 'grid' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}`}
                 title={t('views.grid')}
               >
                 <Grid className="h-4 w-4" />
@@ -160,7 +163,7 @@ export function ServiceListPage() {
         <div className="flex flex-wrap items-center gap-4">
           {/* Pricing type filter */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">{t('services.pricingType', 'Pricing')}:</span>
+            <span className={`text-sm ${colorTokens.text.subtle}`}>{t('services.pricingType', 'Pricing')}:</span>
             <div className="flex items-center gap-1">
               {(['all', 'flat_rate', 'hourly', 'percentage'] as PricingFilter[]).map((type) => (
                 <button
@@ -168,8 +171,8 @@ export function ServiceListPage() {
                   onClick={() => { setPricingFilter(type) }}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                     pricingFilter === type
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? `${colorTokens.surface.inverseStrong} text-white`
+                      : `${colorTokens.surface.muted} ${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray200}`
                   }`}
                 >
                   {type === 'all' ? t('filters.all', 'All') : getPricingTypeLabel(type)}
@@ -181,11 +184,11 @@ export function ServiceListPage() {
           {/* Category filter */}
           {categories.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">{t('services.category', 'Category')}:</span>
+              <span className={`text-sm ${colorTokens.text.subtle}`}>{t('services.category', 'Category')}:</span>
               <select
                 value={categoryFilter}
                 onChange={(e) => { setCategoryFilter(e.target.value); }}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`rounded-lg border ${colorTokens.border.default} bg-white px-3 py-1 text-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="all">{t('filters.all', 'All')}</option>
                 {categories.map((cat) => (
@@ -200,19 +203,19 @@ export function ServiceListPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
+          <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
         </div>
       ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
           {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
       ) : services.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <Wrench className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
+        <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} p-12 text-center`}>
+          <Wrench className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+          <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
             {searchQuery ? t('status.noResults') : t('services.noServices', 'No services')}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
             {searchQuery
               ? t('status.tryDifferentSearch', 'Try a different search term.')
               : t('services.noServicesDescription', 'Get started by creating a new service.')}
@@ -221,7 +224,7 @@ export function ServiceListPage() {
             <div className="mt-6">
               <Link
                 to="/services/new"
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('services.addService', 'Add Service')}
@@ -230,26 +233,26 @@ export function ServiceListPage() {
           )}
         </div>
       ) : viewMode === 'list' ? (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={`${colorTokens.surface.page}`}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('services.fields.code', 'Code')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('fields.name', 'Name')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('services.fields.category', 'Category')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('services.pricingType', 'Pricing')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('services.fields.price', 'Price')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('fields.status', 'Status')}
                 </th>
                 <th className="relative px-6 py-3">
@@ -257,28 +260,28 @@ export function ServiceListPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {services.map((service) => {
                 const PricingIcon = pricingTypeIcons[service.pricing_type]
                 return (
-                  <tr key={service.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm font-mono text-gray-500">
+                  <tr key={service.id} className={`${colorTokens.variants.hoverBgGray50}`}>
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm font-mono ${colorTokens.text.subtle}`}>
                       {service.code}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <Link
                         to={`/services/${service.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-600"
+                        className={`font-medium ${colorTokens.text.primary} ${colorTokens.variants.hoverTextBlue600}`}
                       >
                         {service.name}
                       </Link>
                       {service.description && (
-                        <p className="text-sm text-gray-500 truncate max-w-xs">
+                        <p className={`text-sm ${colorTokens.text.subtle} truncate max-w-xs`}>
                           {service.description}
                         </p>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                       {service.category?.name ?? '-'}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
@@ -289,7 +292,7 @@ export function ServiceListPage() {
                         {getPricingTypeLabel(service.pricing_type)}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
+                    <td className={`whitespace-nowrap px-6 py-4 text-end text-sm font-medium ${colorTokens.text.primary}`}>
                       {service.pricing_type === 'hourly'
                         ? `${formatServiceCurrency(service.hourly_rate)}/h`
                         : service.pricing_type === 'percentage'
@@ -301,8 +304,8 @@ export function ServiceListPage() {
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                           service.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                            ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                            : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                         }`}
                       >
                         {service.is_active ? t('status.active') : t('status.inactive')}
@@ -311,7 +314,7 @@ export function ServiceListPage() {
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link
                         to={`/services/${service.id}`}
-                        className="text-blue-600 hover:text-blue-900"
+                        className={`${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue900}`}
                       >
                         {t('actions.view')}
                       </Link>
@@ -320,7 +323,7 @@ export function ServiceListPage() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -330,12 +333,12 @@ export function ServiceListPage() {
               <Link
                 key={service.id}
                 to={`/services/${service.id}`}
-                className="block rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow"
+                className={`block rounded-lg border ${colorTokens.border.subtle} bg-white p-4 hover:shadow-md transition-shadow`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-mono text-gray-500">{service.code}</p>
-                    <h3 className="font-medium text-gray-900 truncate">{service.name}</h3>
+                    <p className={`text-xs font-mono ${colorTokens.text.subtle}`}>{service.code}</p>
+                    <h3 className={`font-medium ${colorTokens.text.primary} truncate`}>{service.name}</h3>
                   </div>
                   <span
                     className={`ms-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${pricingTypeColors[service.pricing_type]}`}
@@ -344,14 +347,14 @@ export function ServiceListPage() {
                   </span>
                 </div>
                 {service.category && (
-                  <p className="mt-1 text-xs text-gray-500">{service.category.name}</p>
+                  <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>{service.category.name}</p>
                 )}
                 {service.description && (
-                  <p className="mt-2 text-sm text-gray-500 line-clamp-2">{service.description}</p>
+                  <p className={`mt-2 text-sm ${colorTokens.text.subtle} line-clamp-2`}>{service.description}</p>
                 )}
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
-                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  <div className={`flex items-center gap-1 text-sm font-medium ${colorTokens.text.primary}`}>
+                    <DollarSign className={`h-4 w-4 ${colorTokens.text.disabled}`} />
                     {service.pricing_type === 'hourly'
                       ? `${formatServiceCurrency(service.hourly_rate)}/h`
                       : service.pricing_type === 'percentage'
@@ -362,15 +365,15 @@ export function ServiceListPage() {
                   <span
                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                       service.is_active
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
+                        ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                        : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                     }`}
                   >
                     {service.is_active ? t('status.active') : t('status.inactive')}
                   </span>
                 </div>
                 {service.default_duration_minutes && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                  <div className={`mt-2 flex items-center gap-1 text-xs ${colorTokens.text.subtle}`}>
                     <Clock className="h-3 w-3" />
                     {formatDuration(service.default_duration_minutes)}
                   </div>

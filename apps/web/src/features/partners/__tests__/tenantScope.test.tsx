@@ -207,8 +207,8 @@ describe('partner queryKey tenant scope', () => {
 
     expect(partnersKeysFromCache(queryClient)).toEqual(expect.arrayContaining([
       ['partner', 'partner-1', 'tenant-A', 'company-1'],
-      ['partner-documents', 'partner-1', false, 'tenant-A', 'company-1'],
-      ['partner-payments', 'partner-1', 'tenant-A', 'company-1'],
+      ['partner-documents', 'partner-1', false, 1, 10, 'tenant-A', 'company-1'],
+      ['partner-payments', 'partner-1', 1, 10, 'tenant-A', 'company-1'],
       ['partner-account-balance', 'partner-1', 'tenant-A', 'company-1'],
     ]))
   })

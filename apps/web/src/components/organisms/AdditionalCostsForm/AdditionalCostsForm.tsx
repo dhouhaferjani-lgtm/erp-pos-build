@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { useCompany } from '../../../hooks/useCompany'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export type AdditionalCostType = 'shipping' | 'customs' | 'insurance' | 'handling' | 'other'
 
@@ -80,20 +81,20 @@ export function AdditionalCostsForm({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <h3 className={`text-sm font-medium ${colorTokens.text.primary} ${colorTokens.variants.darkTextGray100}`}>
           {t('inventory:additionalCosts.title')}
         </h3>
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <span className={`text-sm font-semibold ${colorTokens.text.secondary} ${colorTokens.variants.darkTextGray300}`}>
           {t('inventory:additionalCosts.total')}: {formatCurrency(total)}
         </span>
       </div>
 
       {costs.length === 0 ? (
-        <p className="py-2 text-sm text-gray-500 dark:text-gray-400">
+        <p className={`py-2 text-sm ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>
           {t('inventory:additionalCosts.empty')}
         </p>
       ) : (
-        <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+        <div className={`divide-y ${colorTokens.border.divider} rounded-lg border ${colorTokens.border.subtle} ${colorTokens.variants.darkDivideGray700} ${colorTokens.variants.darkBorderGray700}`}>
           {costs.map((cost) => (
             <div
               key={cost.id}
@@ -103,7 +104,7 @@ export function AdditionalCostsForm({
                 value={cost.type}
                 onChange={(e) => { handleUpdateCost(cost.id, { type: e.target.value as AdditionalCostType }) }}
                 disabled={disabled}
-                className="w-32 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                className={`w-32 rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
               >
                 {costTypes.map((type) => (
                   <option key={type} value={type}>
@@ -118,7 +119,7 @@ export function AdditionalCostsForm({
                 onChange={(e) => { handleUpdateCost(cost.id, { description: e.target.value }) }}
                 placeholder={t('inventory:additionalCosts.description')}
                 disabled={disabled}
-                className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                className={`flex-1 rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
               />
 
               <div className="flex items-center gap-1">
@@ -129,16 +130,16 @@ export function AdditionalCostsForm({
                   disabled={disabled}
                   step="0.01"
                   min="0"
-                  className="w-24 rounded-md border border-gray-300 px-2 py-1.5 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  className={`w-24 rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-end text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{effectiveCurrency}</span>
+                <span className={`text-xs ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>{effectiveCurrency}</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => { handleRemoveCost(cost.id) }}
                 disabled={disabled}
-                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                className={`rounded p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgRed50} ${colorTokens.variants.hoverTextRed600} disabled:opacity-50 ${colorTokens.variants.darkHoverBgRed900Alpha20} ${colorTokens.variants.darkHoverTextRed400}`}
                 aria-label={t('inventory:additionalCosts.removeCost')}
               >
                 <Trash2 className="h-4 w-4" />
@@ -149,15 +150,15 @@ export function AdditionalCostsForm({
       )}
 
       {!disabled && (
-        <div className="flex items-end gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+        <div className={`flex items-end gap-3 rounded-lg ${colorTokens.surface.page} p-3 ${colorTokens.variants.darkBgGray800Alpha50}`}>
           <div className="w-32">
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+            <label className={`mb-1 block text-xs ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>
               {t('inventory:additionalCosts.type')}
             </label>
             <select
               value={newCost.type}
               onChange={(e) => { setNewCost((prev) => ({ ...prev, type: e.target.value as AdditionalCostType })) }}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={`w-full rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
             >
               {costTypes.map((type) => (
                 <option key={type} value={type}>
@@ -168,7 +169,7 @@ export function AdditionalCostsForm({
           </div>
 
           <div className="flex-1">
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+            <label className={`mb-1 block text-xs ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>
               {t('inventory:additionalCosts.description')}
             </label>
             <input
@@ -176,12 +177,12 @@ export function AdditionalCostsForm({
               value={newCost.description}
               onChange={(e) => { setNewCost((prev) => ({ ...prev, description: e.target.value })) }}
               placeholder={t('inventory:additionalCosts.description')}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={`w-full rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
             />
           </div>
 
           <div className="w-28">
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+            <label className={`mb-1 block text-xs ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>
               {t('inventory:additionalCosts.amount')}
             </label>
             <input
@@ -191,7 +192,7 @@ export function AdditionalCostsForm({
               placeholder="0.00"
               step="0.01"
               min="0"
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={`w-full rounded-md border ${colorTokens.border.default} px-2 py-1.5 text-end text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100}`}
             />
           </div>
 
@@ -199,7 +200,7 @@ export function AdditionalCostsForm({
             type="button"
             onClick={handleAddCost}
             disabled={newCost.amount <= 0}
-            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={`flex items-center gap-1.5 rounded-md ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} disabled:opacity-50`}
           >
             <Plus className="h-4 w-4" />
             {t('inventory:additionalCosts.add')}

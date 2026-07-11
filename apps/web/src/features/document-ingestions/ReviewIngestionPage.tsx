@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button, Checkbox, Select } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal'
 import { AddPartnerModal } from '@/components/organisms'
 import { getErrorMessage } from '@/lib/api'
@@ -15,17 +17,8 @@ import { ExtractedFieldsPanel } from './components/ExtractedFieldsPanel'
 import { LineMappingTable, type ReviewedLineState } from './components/LineMappingTable'
 import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
-import { SupplierPicker } from './components/SupplierPicker'
-import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload, SupplierCandidate } from './types'
-
-interface CreatedPartner {
-  id: string
-  name: string
-}
-
-function toSupplierCandidate(partner: CreatedPartner): SupplierCandidate {
-  return { id: partner.id, name: partner.name }
-}
+import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
+import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload } from './types'
 
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
@@ -122,9 +115,8 @@ export function ReviewIngestionPage() {
   const commitMutation = useCommitDocumentIngestion(id)
   const rejectMutation = useRejectDocumentIngestion(id)
   const reExtractMutation = useReExtractDocumentIngestion(id)
-  const [supplierId, setSupplierId] = useState('')
+  const [supplierSelection, setSupplierSelection] = useState<PartnerPickerValue | string | null>(null)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
-  const [createdSuppliers, setCreatedSuppliers] = useState<SupplierCandidate[]>([])
   const [locationId, setLocationId] = useState('')
   const [pendingReceipt, setPendingReceipt] = useState(false)
   const [lineStates, setLineStates] = useState<ReviewedLineState[]>([])
@@ -136,7 +128,7 @@ export function ReviewIngestionPage() {
 
   useEffect(() => {
     if (!detail) return
-    setSupplierId(detail.suggestions?.supplierCandidates[0]?.id ?? '')
+    setSupplierSelection(detail.suggestions?.supplierCandidates[0]?.id ?? null)
     setLineStates(initialLines(detail))
   }, [detail])
 
@@ -157,6 +149,9 @@ export function ReviewIngestionPage() {
   const flags = detail ? confidenceSummary(detail)?.reconciliation.flags ?? [] : []
   const currency = detail?.extraction?.header['currency']?.value ?? 'TND'
   const blockReason = detail ? commitBlockedReason(detail, t) : null
+  const supplierId = typeof supplierSelection === 'string'
+    ? supplierSelection
+    : supplierSelection?.id ?? ''
   const canCommit = blockReason === null && supplierId !== '' && lineStates.every((line) => line.productId !== '')
 
   if (isLoading || !detail) {
@@ -187,13 +182,12 @@ export function ReviewIngestionPage() {
       <div className={cn(tokens.card.base, 'space-y-4')}>
         <h1 className={tokens.heading.section}>{t('review.title')}</h1>
         <p>{detail.error?.message ?? t('review.extractionFailed')}</p>
-        <button
+        <Button
           type="button"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
         >
           {t('actions.reExtract')}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -300,20 +294,31 @@ export function ReviewIngestionPage() {
           <ExtractedFieldsPanel extraction={detail.extraction} flaggedPaths={flaggedPaths} flags={flags} />
 
           <section className={cn(tokens.card.base, 'space-y-4')}>
-            <SupplierPicker
-              candidates={[...(detail.suggestions?.supplierCandidates ?? []), ...createdSuppliers]}
-              value={supplierId}
-              onChange={setSupplierId}
-              onCreateSupplier={() => { setAddSupplierOpen(true) }}
-            />
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <PartnerPicker
+                value={supplierSelection}
+                onChange={setSupplierSelection}
+                partnerType="supplier"
+                label={t('review.supplier')}
+                placeholder={t('review.chooseSupplier')}
+                onAddNew={() => { setAddSupplierOpen(true) }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => { setAddSupplierOpen(true) }}
+              >
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                {t('review.createSupplier')}
+              </Button>
+            </div>
 
             {isDeliveryNote ? (
               <div>
                 <label htmlFor="ingestion-location" className={tokens.label.base}>{t('review.location')}</label>
-                <select
+                <Select
                   id="ingestion-location"
                   aria-label={t('review.location')}
-                  className={tokens.select.base}
                   value={locationId}
                   onChange={(event) => { setLocationId(event.target.value) }}
                 >
@@ -321,13 +326,11 @@ export function ReviewIngestionPage() {
                   {locationOptions.map((location) => (
                     <option key={location.id} value={location.id}>{location.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : (
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className={tokens.checkbox.base}
+                <Checkbox
                   checked={pendingReceipt}
                   onChange={(event) => { setPendingReceipt(event.target.checked) }}
                 />
@@ -377,8 +380,13 @@ export function ReviewIngestionPage() {
         partnerType="supplier"
         prefill={buildSupplierPrefill(detail.extraction?.supplier)}
         onSuccess={(partner) => {
-          setCreatedSuppliers((current) => [...current, toSupplierCandidate(partner)])
-          setSupplierId(partner.id)
+          setSupplierSelection({
+            id: partner.id,
+            name: partner.name,
+            type: partner.type === 'customer' || partner.type === 'supplier' || partner.type === 'both' ? partner.type : 'supplier',
+            email: partner.email,
+            city: partner.city,
+          })
           setAddSupplierOpen(false)
         }}
       />

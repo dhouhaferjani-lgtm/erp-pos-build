@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, Download } from 'lucide-react'
@@ -8,6 +8,30 @@ import { authenticatedDownload } from '@/lib/api'
 import { textColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { ImportJob, ImportStatus } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const importStateGlyphs: Record<ImportStatus, ReactNode> = {
+  pending: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
+  validating: <Loader2 className={`h-4 w-4 animate-spin ${colorTokens.intent.primary.text}`} />,
+  validated: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
+  importing: <Loader2 className={`h-4 w-4 animate-spin ${colorTokens.intent.primary.text}`} />,
+  completed: <CheckCircle className={`h-4 w-4 ${colorTokens.intent.success.text}`} />,
+  failed: <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text}`} />,
+}
+
+const importStateTone: Record<ImportStatus, string> = {
+  pending: `${colorTokens.surface.muted} ${colorTokens.text.secondary}`,
+  validating: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
+  validated: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStrong}`,
+  importing: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
+  completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStrong}`,
+  failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStrong}`,
+}
+
+const defaultImportStateGlyph = <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
+const defaultImportStateTone = `${colorTokens.surface.muted} ${colorTokens.text.secondary}`
 
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')
@@ -20,39 +44,18 @@ export function ImportHistoryPage() {
     return job.status === statusFilter
   })
 
-  const getStatusIcon = (status: ImportStatus) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-600" />
-      case 'importing':
-      case 'validating':
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />
-    }
-  }
-
-  const getStatusBadge = (status: ImportStatus) => {
-    const styles: Record<ImportStatus, string> = {
-      pending: 'bg-gray-100 text-gray-700',
-      validating: 'bg-blue-100 text-blue-700',
-      validated: 'bg-indigo-100 text-indigo-700',
-      importing: 'bg-blue-100 text-blue-700',
-      completed: 'bg-green-100 text-green-700',
-      failed: 'bg-red-100 text-red-700',
-    }
+  const renderImportStatePill = (value: ImportStatus | string) => {
+    const status = value as ImportStatus
 
     return (
       <span
         className={cn(
           'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-          styles[status]
+          importStateTone[status] ?? defaultImportStateTone
         )}
       >
-        {getStatusIcon(status)}
-        {t(`status.${status}`)}
+        {importStateGlyphs[status] ?? defaultImportStateGlyph}
+        {t(`status.${value}`)}
       </span>
     )
   }
@@ -68,21 +71,21 @@ export function ImportHistoryPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/settings/import"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:actions.back')}
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t('history.title')}</h1>
-            <p className="text-gray-500">{t('history.description')}</p>
+            <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('history.title')}</PageHeaderTitle>
+            <p className={colorTokens.text.subtle}>{t('history.description')}</p>
           </div>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500">{t('history.filterByStatus')}:</span>
+        <span className={`text-sm ${colorTokens.text.subtle}`}>{t('history.filterByStatus')}:</span>
         <div className="flex gap-2">
           {(['all', 'completed', 'failed', 'importing', 'pending'] as const).map((status) => (
             <button
@@ -92,8 +95,8 @@ export function ImportHistoryPage() {
               className={cn(
                 'rounded-full px-3 py-1 text-sm font-medium transition-colors',
                 statusFilter === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? `${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse}`
+                  : `${colorTokens.surface.muted} ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHoverStrong}`
               )}
             >
               {status === 'all' ? t('history.all') : t(`status.${status}`)}
@@ -105,78 +108,78 @@ export function ImportHistoryPage() {
       {/* Jobs list */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
         </div>
       ) : filteredJobs && filteredJobs.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.type')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.file')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.status')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.progress')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.date')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className={`divide-y ${colorTokens.border.divider}`}>
               {filteredJobs.map((job: ImportJob) => (
-                <tr key={job.id} className="hover:bg-gray-50">
+                <tr key={job.id} className={colorTokens.intent.neutral.bgHover}>
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">
+                      <FileText className={`h-4 w-4 ${colorTokens.text.disabled}`} />
+                      <span className={`font-medium ${colorTokens.text.primary}`}>
                         {t(`types.${job.type}.title`)}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-gray-900">{job.original_filename}</span>
+                    <span className={`text-sm ${colorTokens.text.primary}`}>{job.original_filename}</span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    {getStatusBadge(job.status)}
+                    {renderImportStatePill(job.status)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {job.status === 'completed' || job.status === 'failed' ? (
                       <div className="text-sm">
-                        <span className="text-green-600">{job.successful_rows ?? 0}</span>
-                        <span className="text-gray-400"> / </span>
-                        <span className="text-red-600">{job.failed_rows ?? 0}</span>
-                        <span className="text-gray-400"> / </span>
-                        <span className="text-gray-600">{job.total_rows ?? 0}</span>
+                        <span className={colorTokens.intent.success.text}>{job.successful_rows ?? 0}</span>
+                        <span className={colorTokens.text.disabled}> / </span>
+                        <span className={colorTokens.intent.danger.text}>{job.failed_rows ?? 0}</span>
+                        <span className={colorTokens.text.disabled}> / </span>
+                        <span className={colorTokens.text.muted}>{job.total_rows ?? 0}</span>
                       </div>
                     ) : job.status === 'importing' ? (
                       <div className="flex items-center gap-2">
-                        <div className="h-2 w-24 rounded-full bg-gray-200">
+                        <div className={`h-2 w-24 rounded-full ${colorTokens.surface.subdued}`}>
                           <div
-                            className="h-2 rounded-full bg-blue-600 transition-all"
+                            className={`h-2 rounded-full ${colorTokens.intent.primary.bgStrong} transition-all`}
                             style={{
                               width: `${((job.processed_rows ?? 0) / (job.total_rows ?? 1)) * 100}%`,
                             }}
                           />
                         </div>
-                        <span className="text-xs text-gray-500">
+                        <span className={`text-xs ${colorTokens.text.subtle}`}>
                           {job.processed_rows ?? 0}/{job.total_rows ?? 0}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400">-</span>
+                      <span className={`text-sm ${colorTokens.text.disabled}`}>-</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                     {formatDate(job.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
@@ -218,16 +221,16 @@ export function ImportHistoryPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <FileText className="mx-auto h-12 w-12 text-gray-300" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">{t('history.noJobs')}</h3>
-          <p className="mt-1 text-sm text-gray-500">{t('history.noJobsDescription')}</p>
+        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-12 text-center`}>
+          <FileText className={`mx-auto h-12 w-12 ${colorTokens.text.faint}`} />
+          <h3 className={`mt-2 text-sm font-medium ${colorTokens.text.primary}`}>{t('history.noJobs')}</h3>
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>{t('history.noJobsDescription')}</p>
           <Link
             to="/settings/import"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className={`mt-4 inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
           >
             {t('history.startImport')}
           </Link>

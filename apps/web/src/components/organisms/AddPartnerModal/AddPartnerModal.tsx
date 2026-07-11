@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type Query } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
@@ -11,8 +11,10 @@ import { Select } from '../../atoms/Select'
 import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { PartnerPrefill } from '../../../features/partners/partnerPrefill'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 type PartnerType = 'customer' | 'supplier' | 'both'
 
@@ -41,6 +43,32 @@ interface PartnerFormData {
   country: string
   tax_id: string
   notes: string
+}
+
+function partnerCacheInvalidationPredicate(
+  createdPartnerId: string,
+  tenantId: string | null,
+  companyId: string | null,
+) {
+  return (query: Query): boolean => {
+    if (tenantId === null || companyId === null) {
+      return false
+    }
+    const key = query.queryKey
+    if (key.length < 3) {
+      return false
+    }
+    if (key[key.length - 2] !== tenantId || key[key.length - 1] !== companyId) {
+      return false
+    }
+    if (key[0] === 'partners' || key[0] === 'partners-search') {
+      return true
+    }
+    if (key[0] === 'partner' && key[1] === createdPartnerId) {
+      return true
+    }
+    return key[0] === 'pickers' && key[1] === 'partner'
+  }
 }
 
 export interface AddPartnerModalProps {
@@ -110,6 +138,8 @@ export function AddPartnerModal({
   const { t } = useTranslation(['sales', 'common'])
   const location = useLocation()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Context detection (follows PartnerForm pattern)
   const isCustomerContext =
@@ -182,7 +212,9 @@ export function AddPartnerModal({
   const mutation = useMutation({
     mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
     onSuccess: async (partner) => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partners']) })
+      await queryClient.invalidateQueries({
+        predicate: partnerCacheInvalidationPredicate(partner.id, tenantId, companyId),
+      })
       onSuccess?.(partner)
       onClose()
     },
@@ -346,7 +378,7 @@ export function AddPartnerModal({
 
           {/* Error message */}
           {mutation.isError && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
               {mutation.error instanceof Error
                 ? mutation.error.message
                 : t('common:errorMessages.generic')}

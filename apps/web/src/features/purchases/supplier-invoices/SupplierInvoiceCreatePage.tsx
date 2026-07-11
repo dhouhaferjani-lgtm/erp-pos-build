@@ -1,17 +1,30 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Save, Trash2, TriangleAlert } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
+import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
-import { MoneyInput, QuantityInput } from '@/components/atoms'
+import { Button } from '@/components/atoms/Button/Button'
+import { FormField } from '@/components/atoms/FormField/FormField'
+import { Input } from '@/components/atoms/Input/Input'
+import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { Select } from '@/components/atoms/Select/Select'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { PartnerPicker, ProductPicker, type PartnerPickerValue, type ProductPickerValue } from '@/components/molecules/pickers'
 import { api, getErrorMessage } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { bcadd, bccomp, bcmul, bcsub, formatCurrency, formatQuantity } from '@/lib/decimal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { usePermissions } from '@/hooks/usePermissions'
+import { confirmDiscard, useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 
 import {
   useCreateSupplierInvoice,
@@ -21,7 +34,12 @@ import {
   usePurchaseOrdersForSupplierInvoice,
   useUploadAttachment,
 } from './api'
-import type { CreateSupplierInvoicePayload, SupplierInvoiceDetail } from './types'
+import type {
+  CreateSupplierInvoicePayload,
+  PurchaseOrderForSupplierInvoice,
+  PurchaseOrderInvoiceLine,
+  SupplierInvoiceDetail,
+} from './types'
 
 interface InvoiceLineFormState {
   receiptLineId: string
@@ -62,6 +80,39 @@ interface ProcurementPolicyResponse {
   data: { allow_invoice_first: boolean }
 }
 
+const SUPPLIER_INVOICE_CREATE_FORM_ID = 'supplier-invoice-create-form'
+const REQUIRED_VALIDATION_KEY = 'validation.required'
+
+const supplierInvoiceCreateBaseSchema = z.object({
+  dueDate: z.string(),
+  invoiceFirstExternalDate: z.string(),
+  invoiceFirstExternalReference: z.string(),
+  invoiceFirstLocationId: z.string(),
+  issueDate: z.string().trim().min(1, REQUIRED_VALIDATION_KEY),
+  notes: z.string(),
+  supplierReference: z.string(),
+})
+
+type SupplierInvoiceCreateFormValues = z.infer<typeof supplierInvoiceCreateBaseSchema>
+
+function createSupplierInvoiceCreateSchema(entryMode: SupplierInvoiceEntryMode) {
+  return supplierInvoiceCreateBaseSchema.superRefine((values, context) => {
+    if (entryMode === 'invoiceFirstDelivered' && values.invoiceFirstLocationId.trim() === '') {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: REQUIRED_VALIDATION_KEY,
+        path: ['invoiceFirstLocationId'],
+      })
+    }
+  })
+}
+
+function supplierInvoiceValidationError(message: string | undefined, requiredMessage: string): string | undefined {
+  if (message === undefined) return undefined
+  if (message === REQUIRED_VALIDATION_KEY) return requiredMessage
+  return message
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -81,15 +132,10 @@ function linePreview(line: InvoiceLineFormState): MatchPreviewStatus {
   return 'matched'
 }
 
-function matchChipClass(status: MatchPreviewStatus): string {
-  switch (status) {
-    case 'matched':
-      return `${tokens.badge.base} ${tokens.badge.green}`
-    case 'priceVariance':
-      return `${tokens.badge.base} ${tokens.badge.yellow}`
-    case 'quantityVariance':
-      return `${tokens.badge.base} ${tokens.badge.red}`
-  }
+const matchPreviewTone: Record<MatchPreviewStatus, StatusTone> = {
+  matched: 'success',
+  priceVariance: 'warning',
+  quantityVariance: 'danger',
 }
 
 function newIdempotencyKey(): string {
@@ -115,15 +161,35 @@ export function SupplierInvoiceCreatePage() {
 
   const [selectedSupplier, setSelectedSupplier] = useState<PartnerPickerValue | null>(null)
   const [selectedPurchaseOrderIds, setSelectedPurchaseOrderIds] = useState<string[]>(initialPurchaseOrderIds)
-  const [supplierReference, setSupplierReference] = useState('')
-  const [duplicateCheckReference, setDuplicateCheckReference] = useState('')
-  const [issueDate, setIssueDate] = useState(todayIso())
-  const [dueDate, setDueDate] = useState('')
-  const [notes, setNotes] = useState('')
-  const [lineEdits, setLineEdits] = useState<Record<string, InvoiceLineEdits>>({})
   const [entryMode, setEntryMode] = useState<SupplierInvoiceEntryMode>(
     initialPurchaseOrderIds.length > 0 ? 'receipts' : 'invoiceFirstPending',
   )
+  const supplierInvoiceCreateSchema = useMemo(() => createSupplierInvoiceCreateSchema(entryMode), [entryMode])
+  const form = useForm<SupplierInvoiceCreateFormValues>({
+    defaultValues: {
+      dueDate: '',
+      invoiceFirstExternalDate: todayIso(),
+      invoiceFirstExternalReference: '',
+      invoiceFirstLocationId: '',
+      issueDate: todayIso(),
+      notes: '',
+      supplierReference: '',
+    },
+    resolver: zodResolver(supplierInvoiceCreateSchema),
+  })
+  const errors = form.formState.errors
+  const [duplicateCheckReference, setDuplicateCheckReference] = useState('')
+  const supplierReferenceField = form.register('supplierReference', {
+    onChange: () => { setDuplicateCheckReference('') },
+  })
+  const supplierReference = form.watch('supplierReference')
+  const issueDate = form.watch('issueDate')
+  const dueDate = form.watch('dueDate')
+  const notes = form.watch('notes')
+  const invoiceFirstLocationId = form.watch('invoiceFirstLocationId')
+  const invoiceFirstExternalReference = form.watch('invoiceFirstExternalReference')
+  const invoiceFirstExternalDate = form.watch('invoiceFirstExternalDate')
+  const [lineEdits, setLineEdits] = useState<Record<string, InvoiceLineEdits>>({})
   const [manualLines, setManualLines] = useState<ManualInvoiceLineFormState[]>([
     {
       product: null,
@@ -137,9 +203,6 @@ export function SupplierInvoiceCreatePage() {
       batchManufacturingDate: '',
     },
   ])
-  const [invoiceFirstLocationId, setInvoiceFirstLocationId] = useState('')
-  const [invoiceFirstExternalReference, setInvoiceFirstExternalReference] = useState('')
-  const [invoiceFirstExternalDate, setInvoiceFirstExternalDate] = useState(todayIso())
   const [invoiceFirstIdempotencyKey] = useState(newIdempotencyKey)
   const [attachments, setAttachments] = useState<File[]>([])
   const uploadAttachment = useUploadAttachment('')
@@ -175,26 +238,29 @@ export function SupplierInvoiceCreatePage() {
     duplicateCheckReference !== '',
   )
 
-  useEffect(() => {
-    if ((receiptLinesQuery.data?.length ?? 0) > 0) {
-      console.warn('Procurement policy tolerance read endpoint is not available; rendering supplier-invoice match preview without active tolerance.')
-    }
-  }, [receiptLinesQuery.data])
-
   const prefilledLines = useMemo((): InvoiceLineFormState[] => {
     const receiptLines = receiptLinesQuery.data ?? []
     if (purchaseOrders.length === 0 || receiptLines.length === 0) {
       return []
     }
 
-    const poLinesById = new Map(purchaseOrders.flatMap((po) => po.lines.map((line) => [line.id, { line, po }] as const)))
-    return receiptLines.map((receiptLine): InvoiceLineFormState => {
+    const poLinesById = new Map<string, { line: PurchaseOrderInvoiceLine; po: PurchaseOrderForSupplierInvoice }>()
+    purchaseOrders.forEach((po) => {
+      po.lines.forEach((line) => {
+        poLinesById.set(line.id, { line, po })
+      })
+    })
+    const nextLines: InvoiceLineFormState[] = []
+    for (const receiptLine of receiptLines) {
       const poLineEntry = poLinesById.get(receiptLine.po_line_id)
       const poLine = poLineEntry?.line
       const matchableQty = positiveSub(receiptLine.received_qty, receiptLine.quantity_invoiced, 4)
+      if (bccomp(matchableQty, '0') <= 0) {
+        continue
+      }
       const unitPrice = receiptLine.received_unit_price ?? poLine?.unit_price ?? '0.000'
       const edits = lineEdits[receiptLine.id] ?? {}
-      return {
+      nextLines.push({
         receiptLineId: receiptLine.id,
         receiptNumber: receiptLine.receipt_number,
         poLineId: receiptLine.po_line_id,
@@ -207,8 +273,9 @@ export function SupplierInvoiceCreatePage() {
         quantity: edits.quantity ?? matchableQty,
         unitPrice: edits.unitPrice ?? unitPrice,
         vatRate: edits.vatRate ?? poLine?.tax_rate ?? '0.00',
-      }
-    }).filter((line) => bccomp(line.matchableQty, '0') > 0)
+      })
+    }
+    return nextLines
   }, [lineEdits, purchaseOrders, receiptLinesQuery.data])
 
   const lines = prefilledLines
@@ -242,6 +309,29 @@ export function SupplierInvoiceCreatePage() {
     duplicateCheckReference !== '' &&
     duplicateCheckReference === supplierReference.trim() &&
     duplicateReferenceQuery.data?.exists === true
+  const selectedPurchaseOrdersDirty = selectedPurchaseOrderIds.join('\u0000') !== initialPurchaseOrderIds.join('\u0000')
+  const manualLinesDirty = manualLines.length !== 1 || manualLines.some((line) => (
+    line.productId !== '' ||
+    line.variantId !== '' ||
+    line.quantity !== '1.0000' ||
+    line.unitPrice !== '0.000' ||
+    line.vatRate !== '0.00' ||
+    line.batchNumber !== '' ||
+    line.batchExpiryDate !== '' ||
+    line.batchManufacturingDate !== ''
+  ))
+  const isDirty =
+    form.formState.isDirty ||
+    selectedSupplier !== null ||
+    selectedPurchaseOrdersDirty ||
+    Object.keys(lineEdits).length > 0 ||
+    manualLinesDirty ||
+    attachments.length > 0
+  useUnsavedChangesGuard({ isDirty })
+
+  function confirmLeave(): boolean {
+    return !isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))
+  }
 
   function updateLine(index: number, patch: Partial<InvoiceLineFormState>): void {
     const line = lines[index]
@@ -366,8 +456,7 @@ export function SupplierInvoiceCreatePage() {
     return payload
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault()
+  async function handleValidSubmit(): Promise<void> {
     let created: SupplierInvoiceDetail
     try {
       created = await createInvoice.mutateAsync(buildPayload())
@@ -389,35 +478,232 @@ export function SupplierInvoiceCreatePage() {
     void navigate(`/purchases/supplier-invoices/${created.id}`)
   }
 
-  return (
-    <form className="space-y-6" onSubmit={(event) => { void handleSubmit(event) }}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-            {t('purchases:supplierInvoices.create.title')}
-          </h1>
-          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-            {t('purchases:supplierInvoices.create.description')}
-          </p>
-          {hasPermission('document-ingestions.view') && (
-            <Link
-              to="/purchases/scans/new?kind=supplier_invoice"
-              className={`mt-1 inline-block text-sm ${textColors.brand} hover:underline`}
-            >
-              {t('documentIngestions:actions.scanInstead')}
-            </Link>
-          )}
-        </div>
-        <button
-          type="submit"
-          data-testid="save-supplier-invoice"
-          disabled={createInvoice.isPending || uploadAttachment.isPending || !canSubmit}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+  const manualLineColumns: DataTableColumn<ManualInvoiceLineFormState>[] = [
+    {
+      key: 'product',
+      header: t('purchases:supplierInvoices.create.columns.product'),
+      cellClassName: 'min-w-64',
+      render: (line, index) => (
+        <>
+          <ProductPicker
+            value={line.product}
+            onChange={(product) => {
+              updateManualLine(index, {
+                product,
+                productId: product?.id ?? '',
+                batchNumber: product?.requires_batch_tracking === true ? line.batchNumber : '',
+                batchExpiryDate: product?.requires_batch_tracking === true ? line.batchExpiryDate : '',
+                batchManufacturingDate: product?.requires_batch_tracking === true ? line.batchManufacturingDate : '',
+              })
+            }}
+            label={t('purchases:supplierInvoices.create.manualLine.productId')}
+            productType="all"
+            testId={`manual-line-product-picker-${String(index)}`}
+          />
+          {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Input
+                data-testid={`manual-line-batch-number-${String(index)}`}
+                placeholder={t('purchases:supplierInvoices.create.manualLine.batchNumber')}
+                value={line.batchNumber}
+                onChange={(event) => { updateManualLine(index, { batchNumber: event.target.value }) }}
+              />
+              <Input
+                data-testid={`manual-line-batch-expiry-${String(index)}`}
+                type="date"
+                value={line.batchExpiryDate}
+                onChange={(event) => { updateManualLine(index, { batchExpiryDate: event.target.value }) }}
+              />
+              <Input
+                data-testid={`manual-line-batch-manufacturing-${String(index)}`}
+                type="date"
+                value={line.batchManufacturingDate}
+                onChange={(event) => { updateManualLine(index, { batchManufacturingDate: event.target.value }) }}
+              />
+            </div>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: t('purchases:supplierInvoices.create.columns.quantity'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <QuantityInput
+          data-testid={`manual-line-quantity-${String(index)}`}
+          value={line.quantity}
+          onChange={(quantity) => { updateManualLine(index, { quantity }) }}
+          decimalPlaces={4}
+        />
+      ),
+    },
+    {
+      key: 'unitPrice',
+      header: t('purchases:supplierInvoices.create.columns.unitPrice'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <MoneyInput
+          data-testid={`manual-line-unit-price-${String(index)}`}
+          value={line.unitPrice}
+          onChange={(unitPrice) => { updateManualLine(index, { unitPrice }) }}
+          currency={currency}
+        />
+      ),
+    },
+    {
+      key: 'vatRate',
+      header: t('purchases:supplierInvoices.create.columns.vatRate'),
+      numeric: true,
+      width: '7rem',
+      render: (line, index) => (
+        <Input
+          data-testid={`manual-line-vat-rate-${String(index)}`}
+          value={line.vatRate}
+          onChange={(event) => { updateManualLine(index, { vatRate: event.target.value }) }}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'center',
+      width: '3rem',
+      render: (_line, index) => (
+        <Button
+          type="button"
+          data-testid={`remove-manual-line-${String(index)}`}
+          disabled={manualLines.length <= 1}
+          variant="ghost"
+          size="sm"
+          onClick={() => { removeManualLine(index) }}
+          aria-label={t('purchases:supplierInvoices.create.manualLine.remove')}
         >
-          <Save className="me-2 h-4 w-4" />
-          {t('purchases:supplierInvoices.create.saveDraft')}
-        </button>
-      </div>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ]
+
+  const receiptLineColumns: DataTableColumn<InvoiceLineFormState>[] = [
+    {
+      key: 'product',
+      header: t('purchases:supplierInvoices.create.columns.product'),
+      cellClassName: 'max-w-md',
+      render: (line) => (
+        <>
+          <div className="line-clamp-2 font-medium">{line.description}</div>
+          <div className={`line-clamp-2 text-xs ${textColors.tertiary}`}>
+            {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'received',
+      header: t('purchases:supplierInvoices.create.columns.received'),
+      numeric: true,
+      accessor: (line) => line.receivedQty,
+    },
+    {
+      key: 'invoiced',
+      header: t('purchases:supplierInvoices.create.columns.invoiced'),
+      numeric: true,
+      accessor: (line) => line.alreadyInvoiced,
+    },
+    {
+      key: 'quantity',
+      header: t('purchases:supplierInvoices.create.columns.quantity'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <QuantityInput
+          data-testid={`invoice-line-quantity-${String(index)}`}
+          value={line.quantity}
+          onChange={(quantity) => { updateLine(index, { quantity }) }}
+          decimalPlaces={4}
+          max={line.matchableQty}
+        />
+      ),
+    },
+    {
+      key: 'unitPrice',
+      header: t('purchases:supplierInvoices.create.columns.unitPrice'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <MoneyInput
+          data-testid={`invoice-line-unit-price-${String(index)}`}
+          value={line.unitPrice}
+          onChange={(unitPrice) => { updateLine(index, { unitPrice }) }}
+          currency={currency}
+        />
+      ),
+    },
+    {
+      key: 'vatRate',
+      header: t('purchases:supplierInvoices.create.columns.vatRate'),
+      numeric: true,
+      width: '7rem',
+      render: (line, index) => (
+        <Input
+          value={line.vatRate}
+          onChange={(event) => { updateLine(index, { vatRate: event.target.value }) }}
+        />
+      ),
+    },
+    {
+      key: 'match',
+      header: t('purchases:supplierInvoices.create.columns.match'),
+      render: (line) => {
+        const preview = linePreview(line)
+        return (
+          <StatusBadge tone={matchPreviewTone[preview]} className="gap-1">
+            {preview === 'matched' ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+            {t(`purchases:supplierInvoices.create.match.${preview}`)}
+          </StatusBadge>
+        )
+      },
+    },
+  ]
+
+  return (
+    <div className="flex min-h-full flex-col gap-6">
+      <PageHeader
+        title={t('purchases:supplierInvoices.create.title')}
+        subtitle={t('purchases:supplierInvoices.create.description')}
+        breadcrumb={
+          <Link
+            to="/purchases/supplier-invoices"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
+            onClick={(event) => {
+              if (!confirmLeave()) {
+                event.preventDefault()
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+        }
+        actions={hasPermission('document-ingestions.view') ? (
+          <Link
+            to="/purchases/scans/new?kind=supplier_invoice"
+            className={`text-sm ${textColors.brand} hover:underline`}
+          >
+            {t('documentIngestions:actions.scanInstead')}
+          </Link>
+        ) : null}
+        className="mb-0"
+      />
+
+      <form
+        id={SUPPLIER_INVOICE_CREATE_FORM_ID}
+        className="flex flex-1 flex-col gap-6"
+        onSubmit={(event) => { void form.handleSubmit(handleValidSubmit)(event) }}
+      >
 
       <section className={`${tokens.card.base} grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr]`}>
         <div>
@@ -442,10 +728,9 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="source-po">
             {t('purchases:supplierInvoices.create.purchaseOrder')}
           </label>
-          <select
+          <Select
             id="source-po"
             data-testid="source-purchase-order"
-            className={tokens.select.base}
             multiple
             value={selectedPurchaseOrderIds}
             disabled={lockedFromEntryPoint}
@@ -461,37 +746,40 @@ export function SupplierInvoiceCreatePage() {
             {purchaseOrders.map((po) => (
               <option key={po.id} value={po.id}>{po.document_number}</option>
             ))}
-            {(openPurchaseOrdersQuery.data ?? []).filter((po) => !loadedPurchaseOrderIds.has(po.id)).map((po) => (
-              <option key={po.id} value={po.id}>
-                {po.document_number}
-              </option>
-            ))}
-          </select>
+            {(openPurchaseOrdersQuery.data ?? []).reduce<React.ReactNode[]>((options, po) => {
+              if (!loadedPurchaseOrderIds.has(po.id)) {
+                options.push(
+                  <option key={po.id} value={po.id}>
+                    {po.document_number}
+                  </option>,
+                )
+              }
+              return options
+            }, [])}
+          </Select>
         </div>
 
-        <div>
-          <label className={tokens.label.base} htmlFor="issue-date">
-            {t('purchases:supplierInvoices.create.issueDate')}
-          </label>
-          <input
+        <FormField
+          label={t('purchases:supplierInvoices.create.issueDate')}
+          htmlFor="issue-date"
+          error={supplierInvoiceValidationError(errors.issueDate?.message, t('common:validation.required'))}
+        >
+          <Input
             id="issue-date"
             type="date"
-            className={tokens.input.base}
-            value={issueDate}
-            onChange={(event) => { setIssueDate(event.target.value) }}
+            {...form.register('issueDate')}
+            error={Boolean(errors.issueDate)}
           />
-        </div>
+        </FormField>
 
         <div>
           <label className={tokens.label.base} htmlFor="due-date">
             {t('purchases:supplierInvoices.create.dueDate')}
           </label>
-          <input
+          <Input
             id="due-date"
             type="date"
-            className={tokens.input.base}
-            value={dueDate}
-            onChange={(event) => { setDueDate(event.target.value) }}
+            {...form.register('dueDate')}
           />
         </div>
 
@@ -499,16 +787,14 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="supplier-reference">
             {t('purchases:supplierInvoices.create.supplierReference')}
           </label>
-          <input
+          <Input
             id="supplier-reference"
             data-testid="supplier-reference"
-            className={tokens.input.base}
-            value={supplierReference}
-            onChange={(event) => {
-              setSupplierReference(event.target.value)
-              setDuplicateCheckReference('')
+            {...supplierReferenceField}
+            onBlur={(event) => {
+              void supplierReferenceField.onBlur(event)
+              setDuplicateCheckReference(event.target.value.trim())
             }}
-            onBlur={() => { setDuplicateCheckReference(supplierReference.trim()) }}
           />
           {duplicateWarningVisible ? (
             <p className={`${tokens.helperText.base} flex items-center gap-1 ${textColors.warning}`}>
@@ -524,11 +810,9 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="invoice-notes">
             {t('purchases:supplierInvoices.create.notes')}
           </label>
-          <input
+          <Input
             id="invoice-notes"
-            className={tokens.input.base}
-            value={notes}
-            onChange={(event) => { setNotes(event.target.value) }}
+            {...form.register('notes')}
           />
         </div>
       </section>
@@ -542,11 +826,12 @@ export function SupplierInvoiceCreatePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {invoiceFirstAllowed ? (
-            <button
+            <Button
               type="button"
               data-testid="invoice-first-pending"
               disabled={lockedFromEntryPoint}
-              className={`${tokens.button.base} ${entryMode === 'invoiceFirstPending' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              variant={entryMode === 'invoiceFirstPending' ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => {
                 setEntryMode('invoiceFirstPending')
                 setSelectedPurchaseOrderIds([])
@@ -554,14 +839,15 @@ export function SupplierInvoiceCreatePage() {
               }}
             >
               {t('purchases:supplierInvoices.create.entryMode.pending')}
-            </button>
+            </Button>
           ) : null}
           {deliveredInvoiceFirstAllowed ? (
-            <button
+            <Button
               type="button"
               data-testid="invoice-first-delivered"
               disabled={lockedFromEntryPoint}
-              className={`${tokens.button.base} ${entryMode === 'invoiceFirstDelivered' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              variant={entryMode === 'invoiceFirstDelivered' ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => {
                 setEntryMode('invoiceFirstDelivered')
                 setSelectedPurchaseOrderIds([])
@@ -569,60 +855,57 @@ export function SupplierInvoiceCreatePage() {
               }}
             >
               {t('purchases:supplierInvoices.create.entryMode.delivered')}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
             disabled={selectedPurchaseOrderIds.length === 0}
-            className={`${tokens.button.base} ${entryMode === 'receipts' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+            variant={entryMode === 'receipts' ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => { setEntryMode('receipts') }}
           >
             {t('purchases:supplierInvoices.create.entryMode.receipts')}
-          </button>
+          </Button>
         </div>
 
         {isInvoiceFirstDelivered ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div>
-              <label className={tokens.label.base} htmlFor="invoice-first-location-id">
-                {t('purchases:supplierInvoices.create.invoiceFirst.location')}
-              </label>
-              <select
+            <FormField
+              label={t('purchases:supplierInvoices.create.invoiceFirst.location')}
+              htmlFor="invoice-first-location-id"
+              error={supplierInvoiceValidationError(errors.invoiceFirstLocationId?.message, t('common:validation.required'))}
+            >
+              <Select
                 id="invoice-first-location-id"
                 data-testid="invoice-first-location-id"
-                className={tokens.select.base}
-                value={invoiceFirstLocationId}
-                onChange={(event) => { setInvoiceFirstLocationId(event.target.value) }}
+                {...form.register('invoiceFirstLocationId')}
+                error={Boolean(errors.invoiceFirstLocationId)}
               >
                 <option value="">{t('purchases:supplierInvoices.create.invoiceFirst.location')}</option>
                 {(locationsQuery.data ?? []).map((location) => (
                   <option key={location.id} value={location.id}>{location.name}</option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </FormField>
             <div>
               <label className={tokens.label.base} htmlFor="invoice-first-external-reference">
                 {t('purchases:supplierInvoices.create.invoiceFirst.externalReference')}
               </label>
-              <input
+              <Input
                 id="invoice-first-external-reference"
                 data-testid="invoice-first-external-reference"
-                className={tokens.input.base}
-                value={invoiceFirstExternalReference}
-                onChange={(event) => { setInvoiceFirstExternalReference(event.target.value) }}
+                {...form.register('invoiceFirstExternalReference')}
               />
             </div>
             <div>
               <label className={tokens.label.base} htmlFor="invoice-first-external-date">
                 {t('purchases:supplierInvoices.create.invoiceFirst.externalDate')}
               </label>
-              <input
+              <Input
                 id="invoice-first-external-date"
                 data-testid="invoice-first-external-date"
                 type="date"
-                className={tokens.input.base}
-                value={invoiceFirstExternalDate}
-                onChange={(event) => { setInvoiceFirstExternalDate(event.target.value) }}
+                {...form.register('invoiceFirstExternalDate')}
               />
             </div>
           </div>
@@ -653,119 +936,22 @@ export function SupplierInvoiceCreatePage() {
         {!isReceiptMode ? (
           <div className="space-y-3">
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
                 data-testid="add-manual-line"
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                variant="secondary"
+                size="sm"
                 onClick={addManualLine}
               >
                 <Plus className="me-1.5 h-4 w-4" />
                 {t('purchases:supplierInvoices.create.manualLine.add')}
-              </button>
+              </Button>
             </div>
-            <div className="overflow-x-auto">
-            <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
-              <thead className={tokens.table.header}>
-                <tr>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.product')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.quantity')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.unitPrice')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.vatRate')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {manualLines.map((line, index) => (
-                  <tr key={String(index)}>
-                    <td className="min-w-64 px-4 py-3">
-                      <ProductPicker
-                        value={line.product}
-                        onChange={(product) => {
-                          updateManualLine(index, {
-                            product,
-                            productId: product?.id ?? '',
-                            batchNumber: product?.requires_batch_tracking === true ? line.batchNumber : '',
-                            batchExpiryDate: product?.requires_batch_tracking === true ? line.batchExpiryDate : '',
-                            batchManufacturingDate: product?.requires_batch_tracking === true ? line.batchManufacturingDate : '',
-                          })
-                        }}
-                        label={t('purchases:supplierInvoices.create.manualLine.productId')}
-                        testId={`manual-line-product-picker-${String(index)}`}
-                      />
-                      {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          <input
-                            data-testid={`manual-line-batch-number-${String(index)}`}
-                            className={tokens.input.base}
-                            placeholder={t('purchases:supplierInvoices.create.manualLine.batchNumber')}
-                            value={line.batchNumber}
-                            onChange={(event) => { updateManualLine(index, { batchNumber: event.target.value }) }}
-                          />
-                          <input
-                            data-testid={`manual-line-batch-expiry-${String(index)}`}
-                            type="date"
-                            className={tokens.input.base}
-                            value={line.batchExpiryDate}
-                            onChange={(event) => { updateManualLine(index, { batchExpiryDate: event.target.value }) }}
-                          />
-                          <input
-                            data-testid={`manual-line-batch-manufacturing-${String(index)}`}
-                            type="date"
-                            className={tokens.input.base}
-                            value={line.batchManufacturingDate}
-                            onChange={(event) => { updateManualLine(index, { batchManufacturingDate: event.target.value }) }}
-                          />
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="w-36 px-4 py-3">
-                      <QuantityInput
-                        data-testid={`manual-line-quantity-${String(index)}`}
-                        value={line.quantity}
-                        onChange={(quantity) => { updateManualLine(index, { quantity }) }}
-                        decimalPlaces={4}
-                      />
-                    </td>
-                    <td className="w-36 px-4 py-3">
-                      <MoneyInput
-                        data-testid={`manual-line-unit-price-${String(index)}`}
-                        value={line.unitPrice}
-                        onChange={(unitPrice) => { updateManualLine(index, { unitPrice }) }}
-                        currency={currency}
-                      />
-                    </td>
-                    <td className="w-28 px-4 py-3">
-                      <input
-                        data-testid={`manual-line-vat-rate-${String(index)}`}
-                        className={tokens.input.base}
-                        value={line.vatRate}
-                        onChange={(event) => { updateManualLine(index, { vatRate: event.target.value }) }}
-                      />
-                    </td>
-                    <td className="w-12 px-4 py-3">
-                      <button
-                        type="button"
-                        data-testid={`remove-manual-line-${String(index)}`}
-                        disabled={manualLines.length <= 1}
-                        className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
-                        onClick={() => { removeManualLine(index) }}
-                        aria-label={t('purchases:supplierInvoices.create.manualLine.remove')}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <DataTable
+              columns={manualLineColumns}
+              data={manualLines}
+              keyExtractor={(_line, index) => index}
+            />
           </div>
         ) : receiptLinesQuery.isLoading || purchaseOrdersQuery.isLoading ? (
           <div className={`py-8 text-center text-sm ${textColors.tertiary}`}>
@@ -778,86 +964,11 @@ export function SupplierInvoiceCreatePage() {
               : t('purchases:supplierInvoices.create.noReceiptLines')}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
-              <thead className={tokens.table.header}>
-                <tr>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.product')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.received')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.invoiced')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.quantity')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.unitPrice')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.vatRate')}
-                  </th>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.match')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {lines.map((line, index) => {
-                  const preview = linePreview(line)
-                  return (
-                    <tr key={line.receiptLineId}>
-                      <td className={`px-4 py-3 text-sm ${textColors.primary}`}>
-                        <div className="font-medium">{line.description}</div>
-                        <div className={`text-xs ${textColors.tertiary}`}>
-                          {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 text-end text-sm ${textColors.secondary}`}>
-                        {line.receivedQty}
-                      </td>
-                      <td className={`px-4 py-3 text-end text-sm ${textColors.secondary}`}>
-                        {line.alreadyInvoiced}
-                      </td>
-                      <td className="w-36 px-4 py-3">
-                        <QuantityInput
-                          data-testid={`invoice-line-quantity-${String(index)}`}
-                          value={line.quantity}
-                          onChange={(quantity) => { updateLine(index, { quantity }) }}
-                          decimalPlaces={4}
-                          max={line.matchableQty}
-                        />
-                      </td>
-                      <td className="w-36 px-4 py-3">
-                        <MoneyInput
-                          data-testid={`invoice-line-unit-price-${String(index)}`}
-                          value={line.unitPrice}
-                          onChange={(unitPrice) => { updateLine(index, { unitPrice }) }}
-                          currency={currency}
-                        />
-                      </td>
-                      <td className="w-28 px-4 py-3">
-                        <input
-                          className={tokens.input.base}
-                          value={line.vatRate}
-                          onChange={(event) => { updateLine(index, { vatRate: event.target.value }) }}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={matchChipClass(preview)}>
-                          {preview === 'matched' ? <CheckCircle2 className="me-1 h-3 w-3" /> : <AlertTriangle className="me-1 h-3 w-3" />}
-                          {t(`purchases:supplierInvoices.create.match.${preview}`)}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={receiptLineColumns}
+            data={lines}
+            keyExtractor={(line) => line.receiptLineId}
+          />
         )}
       </section>
 
@@ -866,12 +977,11 @@ export function SupplierInvoiceCreatePage() {
           {t('purchases:supplierInvoices.create.attachments')}
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <input
+          <Input
             id="supplier-invoice-attachments"
             data-testid="supplier-invoice-attachments"
             type="file"
             multiple
-            className={tokens.input.base}
             onChange={handleAttachments}
           />
           <span className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary}`}>
@@ -880,6 +990,29 @@ export function SupplierInvoiceCreatePage() {
           </span>
         </div>
       </section>
+
+      <StickyFormFooter>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            if (confirmLeave()) {
+              void navigate('/purchases/supplier-invoices')
+            }
+          }}
+        >
+          {t('common:actions.cancel')}
+        </Button>
+        <Button
+          type="submit"
+          form={SUPPLIER_INVOICE_CREATE_FORM_ID}
+          disabled={!canSubmit || createInvoice.isPending || uploadAttachment.isPending}
+          variant="primary"
+        >
+          {t('purchases:supplierInvoices.create.saveDraft')}
+        </Button>
+      </StickyFormFooter>
     </form>
+    </div>
   )
 }

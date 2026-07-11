@@ -89,7 +89,7 @@ class CompanyConfigController
                 ],
                 'smart_prompts_enabled' => (bool) $company?->smart_prompts_enabled,
                 'allow_cross_location_stock_view' => (bool) $company?->allow_cross_location_stock_view,
-                'line_designation_override_enabled' => config('features.documents.line_designation_override.enabled', false),
+                'line_designation_override_enabled' => (bool) $company?->line_designation_override_enabled,
                 'smart_prompts_variant' => $company?->getAttribute('smart_prompts_variant') instanceof SmartPromptsVariant
                     ? $company->getAttribute('smart_prompts_variant')->value
                     : 'off',

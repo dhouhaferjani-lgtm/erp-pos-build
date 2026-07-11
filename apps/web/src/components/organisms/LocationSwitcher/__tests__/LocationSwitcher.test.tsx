@@ -2,8 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { Location } from '@/stores/locationStore'
 
 import { LocationSwitcher } from '../LocationSwitcher'
@@ -58,6 +60,43 @@ vi.mock('@/hooks/useLocation', () => ({
   }),
 }))
 
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      tenant_id: tenantId,
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'test-token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({
+    currentCompanyId: companyId,
+    companies: [
+      {
+        id: companyId,
+        name: 'Test Company',
+        legalName: 'Test Company LLC',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'en_US',
+        timezone: 'Africa/Tunis',
+      },
+    ],
+    isLoading: false,
+  })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+}
+
 function renderSwitcher() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -75,6 +114,15 @@ function renderSwitcher() {
   return { ...result, queryClient }
 }
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  setTenant('tenant-A', 'company-1')
+})
+
+afterEach(() => {
+  resetTenant()
+})
+
 describe('LocationSwitcher manage-locations entry', () => {
   it('shows a Manage locations item in the dropdown that navigates to /settings/locations', async () => {
     const user = userEvent.setup()
@@ -90,17 +138,20 @@ describe('LocationSwitcher manage-locations entry', () => {
 })
 
 describe('LocationSwitcher location-switch invalidation', () => {
-  it('invalidates all queries on location switch (parity with company switch)', async () => {
+  it('invalidates active tenant/company queries on location switch', async () => {
     const user = userEvent.setup()
     const { queryClient } = renderSwitcher()
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(['stock-levels', 'tenant-A', 'company-1'], ['tenant-A-stock'])
+    queryClient.setQueryData(['stock-movements', 'tenant-A', 'company-1'], ['tenant-A-movements'])
+    queryClient.setQueryData(['stock-levels', 'tenant-B', 'company-2'], ['tenant-B-stock'])
 
     await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
     await user.click(screen.getByRole('button', { name: /Branch Sfax/ }))
 
     expect(mockSwitchLocation).toHaveBeenCalledWith('location-2')
-    // No predicate/filters → global invalidation, parity with CompanySelector
-    expect(invalidateSpy).toHaveBeenCalledWith()
+    expect(queryClient.getQueryState(['stock-levels', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(['stock-movements', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(['stock-levels', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })
 
   it('does not invalidate when re-selecting the current location', async () => {

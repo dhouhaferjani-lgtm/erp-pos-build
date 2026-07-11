@@ -26,12 +26,12 @@ vi.mock('../hooks/useExpenses', () => ({
 
 // ─── child organism: stub so we only assert the page shell ────────────────────
 vi.mock('../components/organisms/ExpenseFormFields', () => ({
-  ExpenseFormFields: ({ onSubmit }: { onSubmit: (d: unknown) => void }) => (
+  ExpenseFormFields: ({ onSave }: { onSave: (d: unknown) => void }) => (
     <form
       data-testid="expense-form-fields"
       onSubmit={(e) => {
         e.preventDefault()
-        onSubmit({ total: '100.000' })
+        onSave({ total: '100.000' })
       }}
     >
       <button type="submit">submit</button>

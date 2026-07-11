@@ -192,7 +192,7 @@ describe('document component tenant scope', () => {
     // A real product fetch fires from the typed query, and the redesigned entry bar
     // now tenant-scopes its read key: ['line-entry-products', <query>, tenant, company].
     await waitFor(() => {
-      expect(mockApiGet).toHaveBeenCalledWith('/products', expect.objectContaining({ params: { search: 'Product' } }))
+      expect(mockApiGet).toHaveBeenCalledWith('/products', expect.objectContaining({ params: { per_page: 20, search: 'Product' } }))
     })
     await waitFor(() => {
       expect(queryClient.getQueryData(['line-entry-products', 'Product', 'tenant-A', 'company-1'])).toEqual({

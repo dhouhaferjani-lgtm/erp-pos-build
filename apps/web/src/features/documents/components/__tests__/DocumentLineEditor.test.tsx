@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { DocumentLineEditor, type DocumentLine } from '../DocumentLineEditor'
-import { apiPost } from '../../../../lib/api'
+import { api, apiPost } from '../../../../lib/api'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -328,6 +328,63 @@ describe('DocumentLineEditor — designation cells', () => {
 
     expect(screen.getAllByRole('combobox', { name: 'Search or scan a product' })).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Add blank line' })).toBeInTheDocument()
+  })
+
+  it('keeps line descriptions inside the article column instead of a separate description column', () => {
+    render(
+      <DocumentLineEditor
+        lines={[makeLine({ product_name: 'Brake pads', description: 'Front axle ceramic pads' })]}
+        onChange={onChange}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    expect(screen.getByRole('columnheader', { name: 'Article' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Description' })).not.toBeInTheDocument()
+    expect(screen.getByText('Front axle ceramic pads')).toBeInTheDocument()
+  })
+
+  it('adds a service line through the Workshop-gated service picker', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'service-1',
+            code: 'SRV-OIL',
+            name: 'Oil change labor',
+            base_price: '80.000',
+            hourly_rate: null,
+            tax_rate: '19.00',
+            currency: 'TND',
+          },
+        ],
+      },
+    })
+
+    render(<DocumentLineEditor lines={[]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Service' }))
+    const serviceInput = screen.getAllByRole('combobox')[1]
+    await user.type(serviceInput, 'oil')
+    await user.click(await screen.findByRole('option', { name: /Oil change labor/i }))
+
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        product_id: '',
+        service_id: 'service-1',
+        product_code: 'SRV-OIL',
+        product_name: 'Oil change labor',
+        description: 'Oil change labor',
+        is_service: true,
+        unit_price: '80.000',
+        tax_rate: '19.00',
+        tax_configuration_id: null,
+        line_total: '95.200',
+      }),
+    ])
   })
 
   it('does not pass a dead document-type token to the tax selector for sales orders', () => {

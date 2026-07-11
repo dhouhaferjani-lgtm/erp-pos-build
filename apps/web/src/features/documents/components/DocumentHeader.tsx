@@ -25,9 +25,10 @@ import {
   AlertTriangle,
   Truck,
 } from 'lucide-react'
-import { StatusBadge, type StatusTone } from '../../../components/atoms'
+import { StatusBadge, type StatusTone } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { tokens } from '../../../lib/designTokens'
 import type { Document } from '../../../types/document'
+import { colorClasses } from '@/lib/designTokens'
 
 const statusTones: Record<Document['status'], StatusTone> = {
   draft: 'pending',
@@ -101,7 +102,7 @@ export function DocumentHeader({
       {/* Back link */}
       <Link
         to={backPath}
-        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+        className={`inline-flex items-center gap-2 text-sm ${colorClasses.textGray600} ${colorClasses.hoverTextGray900}`}
       >
         <ArrowLeft className="h-4 w-4" />
         {t('common:actions.back')}
@@ -111,7 +112,7 @@ export function DocumentHeader({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className={`text-[1.5rem] leading-8 font-bold ${colorClasses.textGray900}`}>
               {getDocumentNumberLabel(document.document_number)}
             </h1>
 
@@ -129,7 +130,7 @@ export function DocumentHeader({
             {isAlreadyConverted && document.converted_to_order_id != null && (
               <Link
                 to={`/sales/orders/${document.converted_to_order_id}`}
-                className={`${tokens.badge.base} gap-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors`}
+                className={`${tokens.badge.base} gap-1.5 ${colorClasses.bgGray100} ${colorClasses.textGray700} ${colorClasses.hoverBgGray200} transition-colors`}
               >
                 <ArrowRight className="h-3 w-3" />
                 {t('documents.convertedToOrder')}
@@ -140,7 +141,7 @@ export function DocumentHeader({
             {hasSourceDocument && sourceDocumentPath && (
               <Link
                 to={`${sourceDocumentPath}/${document.source_document_id}`}
-                className={`${tokens.badge.base} gap-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors`}
+                className={`${tokens.badge.base} gap-1.5 ${colorClasses.bgGray100} ${colorClasses.textGray700} ${colorClasses.hoverBgGray200} transition-colors`}
               >
                 <ArrowLeft className="h-3 w-3" />
                 {document.source_document_number}

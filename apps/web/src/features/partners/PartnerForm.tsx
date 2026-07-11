@@ -13,6 +13,7 @@ import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
 import { Select } from '../../components/atoms/Select/Select'
 import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import { Button } from '../../components/atoms/Button/Button'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { B2BFieldsSection } from './components/B2BFieldsSection'
@@ -21,6 +22,8 @@ import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
 import { partnersInvalidationPredicate } from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
@@ -390,8 +393,8 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   if (isEditing && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-        <span className="ms-2 text-gray-500">{t('common:status.loading')}</span>
+        <Loader2 className={`h-6 w-6 animate-spin ${colorTokens.text.disabled}`} />
+        <span className={`ms-2 ${colorTokens.text.subtle}`}>{t('common:status.loading')}</span>
       </div>
     )
   }
@@ -402,21 +405,21 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       <div className="flex items-center gap-4">
         <Link
           to={basePath}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? `${t('common:actions.edit')} ${entityName}` : `${t('common:actions.add')} ${entityName}`}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
         {/* General Information */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+          <h3 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('sales:partners.generalInfo')}
           </h3>
           <div className="grid gap-6 sm:grid-cols-2">
@@ -595,17 +598,17 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 </FormField>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                     {t('sales:partners.taxInfo.certificate')}
                   </label>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
                     {t('sales:partners.taxInfo.certificateHint')}
                   </p>
                   <div className="mt-2">
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
-                      className="block w-full text-sm text-gray-500 file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
                     />
                   </div>
                 </div>
@@ -625,8 +628,8 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         )}
 
         {/* Address Section */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+          <h3 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('sales:partners.addressInfo')}
           </h3>
           <div className="grid gap-6 sm:grid-cols-2">
@@ -744,14 +747,14 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           >
             {t('common:actions.cancel')}
           </Link>
-          <button
+          <Button
             type="submit"
             disabled={isSaving}
-            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'gap-2')}
+            className="gap-2"
           >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
             {isSaving ? t('common:status.saving') : t('common:actions.save')}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

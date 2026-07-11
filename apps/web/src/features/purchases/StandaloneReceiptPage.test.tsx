@@ -109,10 +109,32 @@ describe('StandaloneReceiptPage', () => {
   it('renders a scan-instead link with the locked supplier_delivery_note kind', () => {
     renderWithProviders(<StandaloneReceiptPage />)
 
+    expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/receipts')
     expect(screen.getByRole('link', { name: 'documentIngestions:actions.scanInstead' })).toHaveAttribute(
       'href',
       '/purchases/scans/new?kind=supplier_delivery_note',
     )
+  })
+
+  it('confirms before following the breadcrumb from a dirty draft', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    renderWithProviders(<StandaloneReceiptPage />)
+
+    await screen.findByRole('option', { name: 'Supplier A' })
+    await user.selectOptions(screen.getByLabelText('purchases:standaloneReceipt.fields.supplier'), 'supplier-1')
+    await user.click(screen.getByRole('link', { name: 'common:actions.back' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('confirmation.unsavedChangesBody')
+    confirmSpy.mockRestore()
+  })
+
+  it('renders receipt lines in the shared DataTable shell', async () => {
+    renderWithProviders(<StandaloneReceiptPage />)
+
+    const table = await screen.findByRole('table')
+    expect(table).toHaveClass('border-collapse')
+    expect(table).not.toHaveClass('divide-y')
   })
 
   it('submits string qty and money values to the standalone receipt endpoint', async () => {

@@ -23,6 +23,7 @@ import { formatCurrency } from '@/lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { colorClasses } from '@/lib/designTokens'
 
 interface RelatedDocument {
   id: string
@@ -53,12 +54,12 @@ interface RelatedDocumentsPanelProps {
 }
 
 const documentTypeConfig = {
-  quote: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Quote' },
-  sales_order: { icon: ClipboardList, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Sales Order' },
-  delivery_note: { icon: Truck, color: 'text-green-600', bg: 'bg-green-50', label: 'Delivery Note' },
-  invoice: { icon: Receipt, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Invoice' },
-  credit_note: { icon: CreditCard, color: 'text-red-600', bg: 'bg-red-50', label: 'Credit Note' },
-  return_note: { icon: Package, color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Return Note' },
+  quote: { icon: FileText, color: `${colorClasses.textPurple600}`, bg: `${colorClasses.bgPurple50}`, label: 'Quote' },
+  sales_order: { icon: ClipboardList, color: `${colorClasses.textBlue600}`, bg: `${colorClasses.bgBlue50}`, label: 'Sales Order' },
+  delivery_note: { icon: Truck, color: `${colorClasses.textGreen600}`, bg: `${colorClasses.bgGreen50}`, label: 'Delivery Note' },
+  invoice: { icon: Receipt, color: `${colorClasses.textOrange600}`, bg: `${colorClasses.bgOrange50}`, label: 'Invoice' },
+  credit_note: { icon: CreditCard, color: `${colorClasses.textRed600}`, bg: `${colorClasses.bgRed50}`, label: 'Credit Note' },
+  return_note: { icon: Package, color: `${colorClasses.textYellow600}`, bg: `${colorClasses.bgYellow50}`, label: 'Return Note' },
 }
 
 export function RelatedDocumentsPanel({
@@ -88,12 +89,12 @@ export function RelatedDocumentsPanel({
 
   const getDocumentColor = (type: string) => {
     const config = documentTypeConfig[type as keyof typeof documentTypeConfig]
-    return config ? config.color : 'text-gray-600'
+    return config ? config.color : `${colorClasses.textGray600}`
   }
 
   const getDocumentBg = (type: string) => {
     const config = documentTypeConfig[type as keyof typeof documentTypeConfig]
-    return config ? config.bg : 'bg-gray-50'
+    return config ? config.bg : `${colorClasses.bgGray50}`
   }
 
   const getDocumentLabel = (type: string) => {
@@ -134,8 +135,8 @@ export function RelatedDocumentsPanel({
         to={getDocumentUrl(doc)}
         className={`flex items-center gap-3 rounded-lg border p-3 transition-all ${
           isCurrent
-            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-offset-1'
-            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+            ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ring-2 ${colorClasses.ringBlue500} ring-offset-1`
+            : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300} ${colorClasses.hoverBgGray50}`
         }`}
       >
         <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${bg}`}>
@@ -143,21 +144,21 @@ export function RelatedDocumentsPanel({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900">{getDocumentNumber(doc)}</span>
+            <span className={`text-sm font-medium ${colorClasses.textGray900}`}>{getDocumentNumber(doc)}</span>
             {isCurrent && (
-              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium text-white">
+              <span className={`rounded-full ${colorClasses.bgBlue600} px-2 py-0.5 text-xs font-medium text-white`}>
                 {t('common:status.current')}
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-500">
+          <div className={`text-xs ${colorClasses.textGray500}`}>
             {getDocumentLabel(doc.type)} • {new Date(doc.document_date).toLocaleDateString()}
           </div>
           {doc.partner && (
-            <div className="text-xs text-gray-500 truncate">{doc.partner.name}</div>
+            <div className={`text-xs ${colorClasses.textGray500} truncate`}>{doc.partner.name}</div>
           )}
           {doc.total && (
-            <div className="text-xs font-medium text-gray-700 mt-1">
+            <div className={`text-xs font-medium ${colorClasses.textGray700} mt-1`}>
               {formatDocumentTotal(doc.total, doc.currency)}
             </div>
           )}
@@ -173,7 +174,7 @@ export function RelatedDocumentsPanel({
 
     return (
       <div className="mb-6">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">
+        <h3 className={`mb-3 text-sm font-semibold ${colorClasses.textGray900}`}>
           {t('sales:relatedDocuments.documentChain')}
         </h3>
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -189,22 +190,22 @@ export function RelatedDocumentsPanel({
                   to={getDocumentUrl(doc)}
                   className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition-all ${
                     isCurrent
-                      ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? `${colorClasses.borderBlue500} ${colorClasses.bgBlue50} ring-2 ${colorClasses.ringBlue500}`
+                      : `${colorClasses.borderGray200} ${colorClasses.hoverBorderGray300} ${colorClasses.hoverBgGray50}`
                   }`}
                 >
                   <div className={`flex h-8 w-8 items-center justify-center rounded-full ${bg}`}>
                     <Icon className={`h-4 w-4 ${color}`} />
                   </div>
-                  <span className="text-xs font-medium text-gray-900 max-w-[80px] truncate">
+                  <span className={`text-xs font-medium ${colorClasses.textGray900} max-w-[80px] truncate`}>
                     {getDocumentNumber(doc)}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className={`text-xs ${colorClasses.textGray500}`}>
                     {getDocumentLabel(doc.type)}
                   </span>
                 </Link>
                 {index < relatedData.document_chain.length - 1 && (
-                  <ArrowRight className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                  <ArrowRight className={`h-4 w-4 flex-shrink-0 ${colorClasses.textGray400}`} />
                 )}
               </div>
             )
@@ -223,10 +224,10 @@ export function RelatedDocumentsPanel({
 
   if (isLoading) {
     return (
-      <div className={`rounded-lg border border-gray-200 bg-white p-6 ${className}`}>
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6 ${className}`}>
         <div className="flex items-center justify-center py-8">
-          <div className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-blue-600 border-e-transparent"></div>
-          <span className="ms-3 text-sm text-gray-500">{t('common:status.loading')}</span>
+          <div className={`inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid ${colorClasses.borderBlue600} border-e-transparent`}></div>
+          <span className={`ms-3 text-sm ${colorClasses.textGray500}`}>{t('common:status.loading')}</span>
         </div>
       </div>
     )
@@ -237,33 +238,33 @@ export function RelatedDocumentsPanel({
   }
 
   return (
-    <div className={`rounded-lg border border-gray-200 bg-white ${className}`}>
+    <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white ${className}`}>
       {/* Header */}
       <button
         type="button"
         onClick={() => { setIsExpanded(!isExpanded); }}
-        className="flex w-full items-center justify-between p-4 text-start hover:bg-gray-50 transition-colors"
+        className={`flex w-full items-center justify-between p-4 text-start ${colorClasses.hoverBgGray50} transition-colors`}
       >
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className={`text-lg font-semibold ${colorClasses.textGray900}`}>
           {t('sales:relatedDocuments.title')}
         </h2>
         {isExpanded ? (
-          <ChevronUp className="h-5 w-5 text-gray-400" />
+          <ChevronUp className={`h-5 w-5 ${colorClasses.textGray400}`} />
         ) : (
-          <ChevronDown className="h-5 w-5 text-gray-400" />
+          <ChevronDown className={`h-5 w-5 ${colorClasses.textGray400}`} />
         )}
       </button>
 
       {/* Content */}
       {isExpanded && (
-        <div className="border-t border-gray-200 p-4">
+        <div className={`border-t ${colorClasses.borderGray200} p-4`}>
           {/* Document Chain */}
           {renderDocumentChain()}
 
           {/* Source Documents */}
           {relatedData?.source_documents && relatedData.source_documents.length > 0 && (
             <div className="mb-6">
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">
+              <h3 className={`mb-3 text-sm font-semibold ${colorClasses.textGray900}`}>
                 {t('sales:relatedDocuments.sourceDocuments')}
               </h3>
               <div className="space-y-2">
@@ -277,7 +278,7 @@ export function RelatedDocumentsPanel({
           {/* Derived Documents */}
           {relatedData?.derived_documents && relatedData.derived_documents.length > 0 && (
             <div className="mb-6">
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">
+              <h3 className={`mb-3 text-sm font-semibold ${colorClasses.textGray900}`}>
                 {t('sales:relatedDocuments.derivedDocuments')}
               </h3>
               <div className="space-y-2">
@@ -291,7 +292,7 @@ export function RelatedDocumentsPanel({
           {/* Credit Notes */}
           {relatedData?.credit_notes && relatedData.credit_notes.length > 0 && (
             <div className="mb-6">
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">
+              <h3 className={`mb-3 text-sm font-semibold ${colorClasses.textGray900}`}>
                 {t('sales:relatedDocuments.creditNotes')}
               </h3>
               <div className="space-y-2">
@@ -305,7 +306,7 @@ export function RelatedDocumentsPanel({
           {/* Return Notes */}
           {relatedData?.return_notes && relatedData.return_notes.length > 0 && (
             <div>
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">
+              <h3 className={`mb-3 text-sm font-semibold ${colorClasses.textGray900}`}>
                 {t('sales:relatedDocuments.returnNotes')}
               </h3>
               <div className="space-y-2">

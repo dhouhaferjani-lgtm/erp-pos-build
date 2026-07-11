@@ -9,6 +9,8 @@ import { VatPeriodList } from '../components/VatPeriodList'
 import { VatSummaryCards } from '../components/VatSummaryCards'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { VatPeriod } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 function computeYtdTotals(periods: VatPeriod[], decimals: number) {
   let totalOutput = 0
@@ -61,14 +63,14 @@ export function VatPeriodsPage() {
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t('finance:vatReporting.title')}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t('finance:vatReporting.subtitle')}</p>
+          <PageHeaderTitle className="text-2xl font-bold">{t('finance:vatReporting.title')}</PageHeaderTitle>
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>{t('finance:vatReporting.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
           <select
             value={year}
             onChange={(e) => { setYear(Number(e.target.value)); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={`rounded-md border ${colorTokens.border.default} px-3 py-2 text-sm`}
             aria-label={t('finance:vatReporting.columns.period')}
           >
             {yearOptions.map((y) => (
@@ -87,7 +89,7 @@ export function VatPeriodsPage() {
 
       {/* Loading */}
       {isLoading ? (
-        <div className="py-12 text-center text-gray-500">
+        <div className={`py-12 text-center ${colorTokens.text.subtle}`}>
           {t('finance:reports.common.loading')}
         </div>
       ) : error ? (
@@ -100,7 +102,7 @@ export function VatPeriodsPage() {
         <>
           {/* Live data notice */}
           {hasOpenPeriods && (
-            <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+            <div className={`mb-4 rounded-md ${colorTokens.intent.caution.bgSubtle} border ${colorTokens.intent.caution.borderSubtle} px-4 py-3 text-sm ${colorTokens.intent.caution.textStronger}`}>
               {t('finance:vatReporting.liveData')}
             </div>
           )}
@@ -130,8 +132,8 @@ export function VatPeriodsPage() {
               isFiling={fileMutation.isPending}
             />
           ) : (
-            <div className="rounded-lg border-2 border-dashed border-gray-300 py-12 text-center">
-              <p className="text-gray-500">{t('finance:vatReporting.subtitle')}</p>
+            <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} py-12 text-center`}>
+              <p className={`${colorTokens.text.subtle}`}>{t('finance:vatReporting.subtitle')}</p>
             </div>
           )}
         </>

@@ -3,6 +3,7 @@ import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } f
 import { Plus, X } from 'lucide-react'
 import { Input, Select, Textarea } from '../../../components/atoms'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 
 
 interface ParapharmacyMetadataFieldsProps {
@@ -180,8 +181,7 @@ export function ParapharmacyMetadataFields({
 
           {/* Requires Consultation — paired with min_age in col 3 */}
           <div className="flex items-center gap-2 mt-auto">
-            <input
-              type="checkbox"
+            <Checkbox
               id="requires_consultation"
               {...register('parapharmacy_metadata.requires_consultation')}
               className={tokens.checkbox.base}

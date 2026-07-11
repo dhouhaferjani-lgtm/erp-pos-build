@@ -67,7 +67,7 @@ vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
 
 // ─── UserPicker mock ──────────────────────────────────────────────────────────
 
-vi.mock('@/components/ui/UserPicker', () => ({
+vi.mock('@/components/molecules/pickers/UserPicker', () => ({
   UserPicker: ({
     testId,
     onChange,

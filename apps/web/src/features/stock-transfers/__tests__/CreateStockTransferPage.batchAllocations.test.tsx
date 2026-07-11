@@ -10,7 +10,7 @@ const mockCreate = vi.hoisted(() => vi.fn<(input: CreateStockTransferInput) => P
 const mockFetchLocations = vi.hoisted(() => vi.fn())
 const mockUseProductBatches = vi.hoisted(() => vi.fn())
 
-vi.mock('@/features/location/api', () => ({
+vi.mock('@/features/locations/api', () => ({
   fetchLocations: mockFetchLocations,
 }))
 

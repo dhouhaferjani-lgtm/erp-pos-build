@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { StockBadge } from './StockBadge'
 
 describe('StockBadge', () => {
@@ -18,25 +18,18 @@ describe('StockBadge', () => {
     expect(getByText('Out of Stock')).toBeInTheDocument()
   })
 
-  it('applies success variant classes for in-stock', () => {
-    const { container } = render(<StockBadge quantity={100} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    expect(badge.className).toContain('bg-green-100')
-    expect(badge.className).toContain('text-green-800')
-  })
+  it('uses semantic labels for each stock state', () => {
+    render(
+      <>
+        <StockBadge quantity={100} threshold={10} />
+        <StockBadge quantity={5} threshold={10} />
+        <StockBadge quantity={0} threshold={10} />
+      </>
+    )
 
-  it('applies warning variant classes for low-stock', () => {
-    const { container } = render(<StockBadge quantity={5} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    expect(badge.className).toContain('bg-yellow-100')
-    expect(badge.className).toContain('text-yellow-800')
-  })
-
-  it('applies danger variant classes for out-of-stock', () => {
-    const { container } = render(<StockBadge quantity={0} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    expect(badge.className).toContain('bg-red-100')
-    expect(badge.className).toContain('text-red-800')
+    expect(screen.getByText('In Stock')).toBeInTheDocument()
+    expect(screen.getByText('Low Stock')).toBeInTheDocument()
+    expect(screen.getByText('Out of Stock')).toBeInTheDocument()
   })
 
   it('displays quantity when showQuantity is true', () => {
@@ -138,24 +131,4 @@ describe('StockBadge', () => {
     expect(dot?.className).toContain('rounded-full')
   })
 
-  it('applies correct dot color for in-stock', () => {
-    const { container } = render(<StockBadge quantity={50} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    const dot = badge.querySelector('span')
-    expect(dot?.className).toContain('bg-green-600')
-  })
-
-  it('applies correct dot color for low-stock', () => {
-    const { container } = render(<StockBadge quantity={5} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    const dot = badge.querySelector('span')
-    expect(dot?.className).toContain('bg-yellow-600')
-  })
-
-  it('applies correct dot color for out-of-stock', () => {
-    const { container } = render(<StockBadge quantity={0} threshold={10} />)
-    const badge = container.firstChild as HTMLElement
-    const dot = badge.querySelector('span')
-    expect(dot?.className).toContain('bg-red-600')
-  })
 })

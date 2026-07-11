@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
@@ -10,13 +11,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/utils'
-import { tokens, textColors } from '@/lib/designTokens'
+import { tokens, textColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { bcsub, bcdiv, bcmul, bccomp } from '@/lib/decimal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { fetchLocations } from '@/features/location/api'
+import { fetchLocations } from '@/features/locations/api'
 import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem, useDeleteCompositeItem, useCompositeItemAvailability } from '../hooks/useCompositeItems'
 import { useCreateRecipe } from '../hooks/useRecipes'
 import { RecipeLineEditor } from '../components/RecipeLineEditor'
@@ -27,6 +28,7 @@ import { useCompanyConfig } from '@/contexts'
 import { TaxConfigurationField } from '../../../components/molecules/TaxConfigurationField'
 import { MoneyInput } from '@/components/atoms'
 import type { ProductionType, PricingMode } from '../types/compositeItem'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
 
@@ -51,6 +53,7 @@ export function CompositeItemFormPage() {
   const canDelete = hasPermission('composite-items.delete')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { handleSubmit: handleFormSubmit } = useForm()
 
   const { config, hasModule } = useCompanyConfig()
   const currency = config?.currency ?? 'TND'
@@ -136,9 +139,7 @@ export function CompositeItemFormPage() {
     }
   }, [item])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitCompositeItem = () => {
     const data = {
       code: form.code,
       name: form.name,
@@ -225,7 +226,7 @@ export function CompositeItemFormPage() {
           </TabsList>
 
           <TabsContent value="details" className="mt-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={(event) => { void handleFormSubmit(submitCompositeItem)(event) }} className="space-y-6">
               <div className={tokens.card.base}>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField label={t('catalog:code')} htmlFor="ci-code" required>
@@ -390,13 +391,13 @@ export function CompositeItemFormPage() {
                       <div className={cn('text-2xl font-bold', textColors.primary)}>{availability.available_quantity}</div>
                       <div className={cn('text-sm', textColors.tertiary)}>{t('catalog:maxProducible')}</div>
                       {availability.limiting_component && (
-                        <div className="text-sm text-amber-600">
+                        <div className={`text-sm ${colorTokens.intent.caution.text}`}>
                           {t('catalog:limitingIngredient')}: {availability.limiting_component}
                         </div>
                       )}
                     </div>
                     {availability.components.length > 0 && (
-                      <table className="min-w-full text-sm">
+                      <DataTable className="min-w-full text-sm">
                         <thead>
                           <tr>
                             <th className={cn('text-left py-1 font-medium', textColors.secondary)}>{getLabel('recipeLine')}</th>
@@ -415,7 +416,7 @@ export function CompositeItemFormPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </DataTable>
                     )}
                   </div>
                 )}
@@ -460,7 +461,7 @@ export function CompositeItemFormPage() {
           </TabsContent>
         </Tabs>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={(event) => { void handleFormSubmit(submitCompositeItem)(event) }} className="space-y-6">
           <div className={tokens.card.base}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label={t('catalog:code')} htmlFor="ci-code" required>

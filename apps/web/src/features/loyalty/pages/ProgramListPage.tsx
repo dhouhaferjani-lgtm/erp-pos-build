@@ -10,6 +10,9 @@ import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { usePrograms, useDeleteProgram, useActivateProgram, useDeactivateProgram } from '../hooks/usePrograms'
 import { ProgramStatusBadge } from '../components/ProgramStatusBadge'
 import type { LoyaltyProgram, ProgramStatus } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type ConfirmAction = {
   type: 'delete' | 'activate' | 'deactivate'
@@ -82,8 +85,8 @@ export function ProgramListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('loyalty:title')}</h1>
-          <p className="text-sm mt-1 text-gray-500">{t('loyalty:subtitle')}</p>
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('loyalty:title')}</PageHeaderTitle>
+          <p className={`text-sm mt-1 ${colorTokens.text.subtle}`}>{t('loyalty:subtitle')}</p>
         </div>
         <Button onClick={() => navigate('/pos/loyalty/programs/new')}>
           <Plus className="w-4 h-4 mr-2" />
@@ -116,47 +119,47 @@ export function ProgramListPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12">
-          <Crown className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500 font-medium">{t('loyalty:programs.noPrograms')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('loyalty:programs.noProgramsDescription')}</p>
+          <Crown className={`w-12 h-12 mx-auto ${colorTokens.text.faint} mb-4`} />
+          <p className={`${colorTokens.text.subtle} font-medium`}>{t('loyalty:programs.noPrograms')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:programs.noProgramsDescription')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('loyalty:fields.name')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('loyalty:fields.programType')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('loyalty:fields.status')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('loyalty:fields.startDate')}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('common:table.actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {filtered.map((program) => (
                 <tr
                   key={program.id}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className={`${colorTokens.intent.neutral.bgHover} cursor-pointer`}
                   onClick={() => navigate(`/pos/loyalty/programs/${program.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium text-gray-900">{program.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
+                  <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{program.name}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>
                     {t(`loyalty:programTypes.${program.program_type}`)}
                   </td>
                   <td className="px-4 py-3">
                     <ProgramStatusBadge status={program.status} />
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.subtle}`}>
                     {program.start_date ? new Date(program.start_date).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -164,7 +167,7 @@ export function ProgramListPage() {
                       {program.status === 'draft' || program.status === 'paused' ? (
                         <button
                           onClick={() => { setConfirmAction({ type: 'activate', program }); }}
-                          className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.success.bgHover} ${colorTokens.intent.success.text}`}
                           title={t('loyalty:actions.activate')}
                         >
                           <Play className="w-4 h-4" />
@@ -173,7 +176,7 @@ export function ProgramListPage() {
                       {program.status === 'active' ? (
                         <button
                           onClick={() => { setConfirmAction({ type: 'deactivate', program }); }}
-                          className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
+                          className={`p-1.5 rounded ${colorTokens.intent.notice.bgHover} ${colorTokens.intent.notice.text}`}
                           title={t('loyalty:actions.deactivate')}
                         >
                           <Pause className="w-4 h-4" />
@@ -182,7 +185,7 @@ export function ProgramListPage() {
                       {program.status !== 'active' ? (
                         <button
                           onClick={() => { setConfirmAction({ type: 'delete', program }); }}
-                          className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                          className={`p-1.5 rounded ${colorTokens.intent.danger.bgHover} ${colorTokens.intent.danger.textSubtle}`}
                           title={t('loyalty:actions.delete')}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -193,7 +196,7 @@ export function ProgramListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

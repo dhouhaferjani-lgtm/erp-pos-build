@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface FilterConfig {
   label: string
@@ -35,14 +36,14 @@ export function ActiveFilters({ filters, onRemove, filterConfig }: ActiveFilters
         return (
           <span
             key={key}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.textStrong} border ${colorTokens.intent.primary.borderSubtle}`}
           >
             <span>
               {config.label}: {formatValue(value)}
             </span>
             <button
               onClick={() => { onRemove(key); }}
-              className="hover:text-blue-900 focus:outline-none"
+              className={`${colorTokens.variants.hoverTextBlue900} focus:outline-none`}
               aria-label={`Remove ${config.label} filter`}
             >
               <X className="w-3.5 h-3.5" />

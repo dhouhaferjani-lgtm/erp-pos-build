@@ -10,6 +10,9 @@ import { Badge } from '@/components/atoms/Badge/Badge'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import type { Unit } from '../api/uomApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function UnitsSettingsPage() {
   const { t } = useTranslation(['common', 'uom'])
@@ -72,7 +75,7 @@ export function UnitsSettingsPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">{t('common:common.error')}</div>
+        <div className={`${colorTokens.intent.danger.textSubtle}`}>{t('common:common.error')}</div>
       </div>
     )
   }
@@ -82,8 +85,8 @@ export function UnitsSettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('uom:title')}</h1>
-          <p className="mt-2 text-gray-600">{t('uom:systemUnitInfo')}</p>
+          <PageHeaderTitle className={`text-3xl font-bold ${colorTokens.text.primary}`}>{t('uom:title')}</PageHeaderTitle>
+          <p className={`mt-2 ${colorTokens.text.muted}`}>{t('uom:systemUnitInfo')}</p>
         </div>
         <Button onClick={() => { handleAddUnit(); }}>
           <Plus className="h-4 w-4 mr-2" />
@@ -94,13 +97,13 @@ export function UnitsSettingsPage() {
       {/* Categories and Units */}
       <div className="space-y-6">
         {categories?.map((category) => (
-          <div key={category.id} className="rounded-lg border border-gray-200 overflow-hidden">
+          <div key={category.id} className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
             {/* Category Header */}
-            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <div className={`px-6 py-4 ${colorTokens.surface.page} border-b ${colorTokens.border.subtle} flex items-center justify-between`}>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">{category.name}</h2>
+                <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{category.name}</h2>
                 {category.description && (
-                  <p className="mt-1 text-sm text-gray-600">{category.description}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>{category.description}</p>
                 )}
               </div>
               <Button
@@ -115,45 +118,45 @@ export function UnitsSettingsPage() {
 
             {/* Units Table */}
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+                <thead className={`${colorTokens.surface.page}`}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('uom:name')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('uom:code')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('uom:symbol')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('uom:conversionFactor')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('common:common.status')}
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className={`px-6 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('common:table.actionsColumn')}
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
                   {category.units && category.units.length > 0 ? (
                     category.units.map((unit) => (
-                      <tr key={unit.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      <tr key={unit.id} className={`${colorTokens.variants.hoverBgGray50}`}>
+                        <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                           {unit.name}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
+                          <code className={`text-xs ${colorTokens.surface.muted} px-2 py-1 rounded`}>
                             {unit.code}
                           </code>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                           {unit.symbol}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                           {unit.isBaseUnit ? (
                             <Badge variant="info">{t('uom:isBaseUnit')}</Badge>
                           ) : (
@@ -193,13 +196,13 @@ export function UnitsSettingsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={6} className={`px-6 py-8 text-center ${colorTokens.text.subtle}`}>
                         {t('uom:noUnits')}
                       </td>
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
         ))}

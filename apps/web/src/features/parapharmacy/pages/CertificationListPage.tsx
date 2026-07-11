@@ -15,6 +15,9 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { fetchCertifications, deleteCertification } from '../api/certificationApi'
 import { parapharmacyListInvalidationPredicate } from './tenantScope'
 import { toast } from 'sonner'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function CertificationListPage() {
   const { t } = useTranslation(['common', 'parapharmacy'])
@@ -61,8 +64,8 @@ export function CertificationListPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{t('parapharmacy:certifications')}</h1>
-          <p className="text-gray-600">
+          <PageHeaderTitle className="text-3xl font-bold">{t('parapharmacy:certifications')}</PageHeaderTitle>
+          <p className={`${colorTokens.text.muted}`}>
             {t('parapharmacy:certificationsDescription')}
           </p>
         </div>
@@ -72,32 +75,32 @@ export function CertificationListPage() {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={`${colorTokens.surface.page}`}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('parapharmacy:name')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('parapharmacy:type')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('parapharmacy:certifyingBody')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('parapharmacy:status')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('parapharmacy:displayOrder')}
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('common:actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
               {data?.data?.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12">
@@ -115,16 +118,16 @@ export function CertificationListPage() {
                 </tr>
               ) : (
                 data?.data?.map((certification) => (
-                  <tr key={certification.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                  <tr key={certification.id} className={`${colorTokens.variants.hoverBgGray50}`}>
+                    <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                       {certification.name}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                    <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
+                      <code className={`text-xs ${colorTokens.surface.muted} px-2 py-1 rounded`}>
                         {certification.type}
                       </code>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                       {certification.certifying_body || '—'}
                     </td>
                     <td className="px-6 py-4 text-sm">
@@ -138,7 +141,7 @@ export function CertificationListPage() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td className={`px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                       {certification.display_order}
                     </td>
                     <td className="px-6 py-4 text-sm text-right">
@@ -167,7 +170,7 @@ export function CertificationListPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

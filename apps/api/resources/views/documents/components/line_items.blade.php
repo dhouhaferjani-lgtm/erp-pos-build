@@ -28,7 +28,7 @@
                 @if($line->product_code)
                     <span class="sku">[{{ $line->product_code }}]</span>
                 @endif
-                @if(config('features.documents.line_designation_override.enabled') && $line->notes)
+                @if(($lineDesignationOverrideEnabled ?? false) && $line->notes)
                     <div class="item-description">{{ $line->notes }}</div>
                 @endif
                 @if($hasFreeQuantity)

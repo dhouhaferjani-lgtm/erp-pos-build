@@ -5,8 +5,8 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, Loader2, ShieldX, RotateCcw, Save } from 'lucide-react'
 import { toast } from 'sonner'
-import { tokens, textColors, borderColors, colors, focusRing } from '@/lib/designTokens'
-import { Checkbox } from '@/components/atoms'
+import { tokens, textColors, borderColors, colors, focusRing , semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { Checkbox , Button, Input, Select } from '@/components/atoms'
 import { usePermissions } from '@/hooks/usePermissions'
 import { usePosRefundPolicies } from '../hooks/usePosRefundPolicies'
 import { useUpdatePosRefundPolicies } from '../hooks/useUpdatePosRefundPolicies'
@@ -16,6 +16,7 @@ import {
   POS_REFUND_POLICY_DEFAULTS,
 } from '../types/posRefundPolicies'
 import type { PosRefundPoliciesForm, RefundDestination } from '../types/posRefundPolicies'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ function Toggle({
   'data-testid'?: string
 }) {
   return (
-    <button
+    <Button
       type="button"
       role="switch"
       aria-checked={checked}
@@ -68,7 +69,7 @@ function Toggle({
           checked ? 'translate-x-5' : 'translate-x-0'
         }`}
       />
-    </button>
+    </Button>
   )
 }
 
@@ -173,9 +174,9 @@ export function PosRefundPoliciesPage() {
           {t('common:actions.back')}
         </Link>
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
             {t('refund-policies:pageTitle')}
-          </h1>
+          </PageHeaderTitle>
           <p className={`text-sm ${textColors.tertiary} mt-1`}>
             {t('refund-policies:pageSubtitle')}
           </p>
@@ -191,13 +192,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.customer_return_expiry_days.help')}
             error={errors.customer_return_expiry_days?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={90}
               data-testid="field-customer_return_expiry_days"
               {...register('customer_return_expiry_days', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.customer_return_expiry_days ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -206,13 +206,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.customer_history_window_days.help')}
             error={errors.customer_history_window_days?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={365}
               data-testid="field-customer_history_window_days"
               {...register('customer_history_window_days', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.customer_history_window_days ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -227,7 +226,7 @@ export function PosRefundPoliciesPage() {
                     type="radio"
                     value={opt}
                     {...register('out_of_window_policy')}
-                    className={tokens.radio.base}
+                    className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                   />
                   <span className={`text-sm ${textColors.secondary}`}>
                     {t(`refund-policies:fields.out_of_window_policy.options.${opt}`)}
@@ -248,12 +247,11 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.manager_override_threshold_amount.help')}
             error={errors.manager_override_threshold_amount?.message}
           >
-            <input
+            <Input
               type="text"
               inputMode="decimal"
               data-testid="field-manager_override_threshold_amount"
               {...register('manager_override_threshold_amount')}
-              className={`${tokens.input.base} ${errors.manager_override_threshold_amount ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -262,12 +260,11 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.manager_override_threshold_percent.help')}
             error={errors.manager_override_threshold_percent?.message}
           >
-            <input
+            <Input
               type="text"
               inputMode="decimal"
               data-testid="field-manager_override_threshold_percent"
               {...register('manager_override_threshold_percent')}
-              className={`${tokens.input.base} ${errors.manager_override_threshold_percent ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -341,17 +338,16 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.proration_strategy.help')}
             error={errors.proration_strategy?.message}
           >
-            <select
+            <Select
               data-testid="field-proration_strategy"
               {...register('proration_strategy')}
-              className={tokens.select.base}
             >
               {(['proportional', 'largest_first', 'cashier_choice'] as const).map((opt) => (
                 <option key={opt} value={opt}>
                   {t(`refund-policies:fields.proration_strategy.options.${opt}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FieldRow>
         </RefundPoliciesSection>
 
@@ -362,13 +358,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_default_expiry_days.help')}
             error={errors.voucher_default_expiry_days?.message}
           >
-            <input
+            <Input
               type="number"
               min={1}
               max={3650}
               data-testid="field-voucher_default_expiry_days"
               {...register('voucher_default_expiry_days', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_default_expiry_days ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -445,13 +440,12 @@ export function PosRefundPoliciesPage() {
                       </label>
                     </div>
                     {isEnabled && (
-                      <input
+                      <Input
                         type="text"
                         inputMode="decimal"
                         data-testid="field-daily_refund_cap_per_cashier"
                         value={field.value ?? ''}
                         onChange={(e) => { field.onChange(e.target.value) }}
-                        className={tokens.input.base}
                       />
                     )}
                   </>
@@ -493,7 +487,7 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.customer_history_search_max_per_cashier_per_day.help')}
             error={errors.customer_history_search_max_per_cashier_per_day?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={1000}
@@ -501,7 +495,6 @@ export function PosRefundPoliciesPage() {
               {...register('customer_history_search_max_per_cashier_per_day', {
                 valueAsNumber: true,
               })}
-              className={`${tokens.input.base} ${errors.customer_history_search_max_per_cashier_per_day ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -510,14 +503,13 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.customer_history_search_alert_thresholds.rejected_specificity_per_hour.help')}
             error={errors.customer_history_search_alert_thresholds?.rejected_specificity_per_hour?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               data-testid="field-alert_rejected_specificity_per_hour"
               {...register('customer_history_search_alert_thresholds.rejected_specificity_per_hour', {
                 valueAsNumber: true,
               })}
-              className={tokens.input.base}
             />
           </FieldRow>
 
@@ -526,14 +518,13 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.customer_history_search_alert_thresholds.same_partner_per_day.help')}
             error={errors.customer_history_search_alert_thresholds?.same_partner_per_day?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               data-testid="field-alert_same_partner_per_day"
               {...register('customer_history_search_alert_thresholds.same_partner_per_day', {
                 valueAsNumber: true,
               })}
-              className={tokens.input.base}
             />
           </FieldRow>
 
@@ -567,13 +558,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_lookup_per_terminal_per_day.help')}
             error={errors.voucher_lookup_per_terminal_per_day?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={10000}
               data-testid="field-voucher_lookup_per_terminal_per_day"
               {...register('voucher_lookup_per_terminal_per_day', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_lookup_per_terminal_per_day ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -582,13 +572,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_lookup_per_cashier_per_day.help')}
             error={errors.voucher_lookup_per_cashier_per_day?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={10000}
               data-testid="field-voucher_lookup_per_cashier_per_day"
               {...register('voucher_lookup_per_cashier_per_day', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_lookup_per_cashier_per_day ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -597,13 +586,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_lookup_failed_per_tenant_per_hour_alert.help')}
             error={errors.voucher_lookup_failed_per_tenant_per_hour_alert?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={10000}
               data-testid="field-voucher_lookup_failed_per_tenant_per_hour_alert"
               {...register('voucher_lookup_failed_per_tenant_per_hour_alert', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_lookup_failed_per_tenant_per_hour_alert ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -612,13 +600,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_lookup_failed_per_tenant_per_hour_block.help')}
             error={errors.voucher_lookup_failed_per_tenant_per_hour_block?.message}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={10000}
               data-testid="field-voucher_lookup_failed_per_tenant_per_hour_block"
               {...register('voucher_lookup_failed_per_tenant_per_hour_block', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_lookup_failed_per_tenant_per_hour_block ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -627,13 +614,12 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.voucher_failed_attempts_auto_void.help')}
             error={errors.voucher_failed_attempts_auto_void?.message}
           >
-            <input
+            <Input
               type="number"
               min={1}
               max={100}
               data-testid="field-voucher_failed_attempts_auto_void"
               {...register('voucher_failed_attempts_auto_void', { valueAsNumber: true })}
-              className={`${tokens.input.base} ${errors.voucher_failed_attempts_auto_void ? tokens.input.error : ''}`}
             />
           </FieldRow>
         </RefundPoliciesSection>
@@ -645,12 +631,11 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.goodwill_named_customer_threshold.help')}
             error={errors.goodwill_named_customer_threshold?.message}
           >
-            <input
+            <Input
               type="text"
               inputMode="decimal"
               data-testid="field-goodwill_named_customer_threshold"
               {...register('goodwill_named_customer_threshold')}
-              className={`${tokens.input.base} ${errors.goodwill_named_customer_threshold ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -659,12 +644,11 @@ export function PosRefundPoliciesPage() {
             help={t('refund-policies:fields.goodwill_four_eyes_threshold.help')}
             error={errors.goodwill_four_eyes_threshold?.message}
           >
-            <input
+            <Input
               type="text"
               inputMode="decimal"
               data-testid="field-goodwill_four_eyes_threshold"
               {...register('goodwill_four_eyes_threshold')}
-              className={`${tokens.input.base} ${errors.goodwill_four_eyes_threshold ? tokens.input.error : ''}`}
             />
           </FieldRow>
 
@@ -694,13 +678,12 @@ export function PosRefundPoliciesPage() {
                       </label>
                     </div>
                     {isEnabled && (
-                      <input
+                      <Input
                         type="text"
                         inputMode="decimal"
                         data-testid="field-goodwill_daily_issuance_cap_per_user"
                         value={field.value ?? ''}
                         onChange={(e) => { field.onChange(e.target.value) }}
-                        className={tokens.input.base}
                       />
                     )}
                     <p className={tokens.helperText.base}>
@@ -739,21 +722,21 @@ export function PosRefundPoliciesPage() {
         <div
           className={`sticky bottom-0 z-10 flex items-center justify-between gap-3 rounded-lg border ${borderColors.light} ${colors.white} px-6 py-4 shadow-md`}
         >
-          <button
+          <Button variant="secondary"
             type="button"
             data-testid="reset-button"
             onClick={handleReset}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+            className="gap-2"
           >
             <RotateCcw className="h-4 w-4" />
             {t('refund-policies:actions.reset')}
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="submit"
             data-testid="save-button"
             disabled={!isDirty || updateMutation.isPending}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+            className="gap-2"
           >
             {updateMutation.isPending ? (
               <>
@@ -766,7 +749,7 @@ export function PosRefundPoliciesPage() {
                 {t('refund-policies:actions.save')}
               </>
             )}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

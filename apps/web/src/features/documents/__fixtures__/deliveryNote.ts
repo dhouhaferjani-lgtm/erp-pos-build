@@ -2,7 +2,7 @@
  * Fixture factory for DeliveryNoteSearchSelect tests.
  *
  * Mirrors the hand-written `DeliveryNote` interface in
- * `@/components/ui/DeliveryNoteSearchSelect`. Exposed here (not colocated
+ * `@/components/molecules/pickers/DeliveryNoteSearchSelect`. Exposed here (not colocated
  * with the component) because the component lives in shared UI-space and
  * the fixture is dominated by document-feature semantics.
  */

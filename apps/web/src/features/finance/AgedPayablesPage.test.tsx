@@ -22,6 +22,11 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+function getAllByEuroAmount(majorPattern: string): HTMLElement[] {
+  const pattern = new RegExp(`${majorPattern}[\\s\\u00A0\\u202F]*,00\\s*EUR`)
+  return screen.getAllByText((text) => pattern.test(text))
+}
+
 describe('AgedPayablesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -72,7 +77,7 @@ describe('AgedPayablesPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Supplier Co')).toBeInTheDocument()
-      const totals = screen.getAllByText('3,800.00')
+      const totals = getAllByEuroAmount('3[\\s\\u00A0\\u202F]*800')
       expect(totals.length).toBeGreaterThanOrEqual(1)
     })
   })

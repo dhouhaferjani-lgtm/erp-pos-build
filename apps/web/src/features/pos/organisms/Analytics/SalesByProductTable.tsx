@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { ProductSales } from '../../api/analyticsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface SalesByProductTableProps {
   data: ProductSales[]
@@ -23,7 +24,7 @@ export function SalesByProductTable({ data }: SalesByProductTableProps) {
         <p className={cn('py-8 text-center', textColors.tertiary)}>{t('pos:analytics.noData')}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead>
               <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                 <th className="py-2 pr-4">#</th>
@@ -54,7 +55,7 @@ export function SalesByProductTable({ data }: SalesByProductTableProps) {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

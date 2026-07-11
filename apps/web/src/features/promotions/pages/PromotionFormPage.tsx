@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
@@ -10,6 +11,8 @@ import { useCompany } from '@/hooks/useCompany'
 
 import { usePromotion, useCreatePromotion, useUpdatePromotion } from '../hooks/usePromotions'
 import type { CreatePromotionData, UpdatePromotionData } from '../api/promotionApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const PROMOTION_TYPES = ['happy_hour', 'buy_x_get_y', 'volume_discount', 'category_discount', 'combo_discount']
 const DISCOUNT_TYPES = ['percentage', 'fixed', 'free_item']
@@ -23,6 +26,7 @@ export function PromotionFormPage() {
   const { currentCompany } = useCompany()
   const currency = currentCompany?.currency ?? 'EUR'
   const isEditing = !!id
+  const { handleSubmit: handleFormSubmit } = useForm()
 
   const { data: existingPromotion, isLoading: isLoadingPromotion } = usePromotion(id ?? '')
   const createMutation = useCreatePromotion()
@@ -89,9 +93,7 @@ export function PromotionFormPage() {
     }
   }, [existingPromotion])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitPromotion = () => {
     const conditions: Record<string, unknown> = {}
     if (minQty) conditions['min_qty'] = parseInt(minQty, 10)
     if (minAmount) conditions['min_amount'] = minAmount
@@ -151,29 +153,29 @@ export function PromotionFormPage() {
   }
 
   if (isEditing && isLoadingPromotion) {
-    return <div className="text-center py-12 text-gray-500">{t('common:loading')}</div>
+    return <div className={`text-center py-12 ${colorTokens.text.subtle}`}>{t('common:loading')}</div>
   }
 
   const isMutating = createMutation.isPending || updateMutation.isPending
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 pb-24">
+    <form onSubmit={(event) => { void handleFormSubmit(submitPromotion)(event) }} className="space-y-8 pb-24">
       {/* Header */}
       <div className="flex items-center gap-4">
         <button
           type="button"
           onClick={() => navigate('/pos/promotions')}
-          className="p-2 rounded-lg hover:bg-gray-100"
+          className={`p-2 rounded-lg ${colorTokens.variants.hoverBgGray100}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('promotions:editPromotion') : t('promotions:createPromotion')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       {/* Basic Info */}
-      <section className="space-y-4 rounded-lg border border-gray-200 p-6">
+      <section className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} p-6`}>
         <h2 className="text-lg font-semibold">{t('common:details')}</h2>
 
         <FormField label={t('promotions:fields.name')} required>
@@ -211,7 +213,7 @@ export function PromotionFormPage() {
       </section>
 
       {/* Discount Configuration */}
-      <section className="space-y-4 rounded-lg border border-gray-200 p-6">
+      <section className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} p-6`}>
         <h2 className="text-lg font-semibold">{t('promotions:fields.discountType')}</h2>
 
         <div className="grid grid-cols-3 gap-4">
@@ -276,7 +278,7 @@ export function PromotionFormPage() {
       </section>
 
       {/* Conditions */}
-      <section className="space-y-4 rounded-lg border border-gray-200 p-6">
+      <section className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} p-6`}>
         <h2 className="text-lg font-semibold">{t('promotions:fields.conditions')}</h2>
 
         <div className="grid grid-cols-3 gap-4">
@@ -360,7 +362,7 @@ export function PromotionFormPage() {
       </section>
 
       {/* Schedule */}
-      <section className="space-y-4 rounded-lg border border-gray-200 p-6">
+      <section className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} p-6`}>
         <h2 className="text-lg font-semibold">{t('promotions:schedule.title')}</h2>
 
         <div className="grid grid-cols-2 gap-4">
@@ -406,8 +408,8 @@ export function PromotionFormPage() {
                 onClick={() => { toggleDay(day); }}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   daysOfWeek.includes(day)
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? `${colorTokens.intent.primary.bg} text-white`
+                    : `${colorTokens.surface.muted} ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray200}`
                 }`}
               >
                 {t(`promotions:days.${day}`)}
@@ -418,7 +420,7 @@ export function PromotionFormPage() {
       </section>
 
       {/* Stacking & Limits */}
-      <section className="space-y-4 rounded-lg border border-gray-200 p-6">
+      <section className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} p-6`}>
         <h2 className="text-lg font-semibold">{t('common:settings')}</h2>
 
         <div className="grid grid-cols-3 gap-4">
@@ -444,9 +446,9 @@ export function PromotionFormPage() {
                 type="checkbox"
                 checked={isExclusive}
                 onChange={(e) => { setIsExclusive(e.target.checked); }}
-                className="rounded border-gray-300"
+                className={`rounded ${colorTokens.border.default}`}
               />
-              <span className="text-sm text-gray-700">{t('promotions:fields.isExclusive')}</span>
+              <span className={`text-sm ${colorTokens.text.secondary}`}>{t('promotions:fields.isExclusive')}</span>
             </label>
           </FormField>
         </div>

@@ -1,16 +1,16 @@
 import { useTranslation } from 'react-i18next'
-import { tokens } from '@/lib/designTokens'
+import { StatusBadge, statusTone, type StatusTone } from '@/components/atoms/StatusBadge'
 
 export interface OrderStatusBadgeProps {
   status: 'open' | 'sent_to_kitchen' | 'ready' | 'closed' | 'cancelled'
 }
 
-const statusStyles: Record<string, string> = {
-  open: tokens.badge.blue,
-  sent_to_kitchen: tokens.badge.yellow,
-  ready: tokens.badge.green,
-  closed: tokens.badge.gray,
-  cancelled: tokens.badge.red,
+const orderToneOverrides: Record<string, StatusTone> = {
+  open: 'info',
+  sent_to_kitchen: 'warning',
+  ready: 'success',
+  closed: 'neutral',
+  cancelled: 'danger',
 }
 
 /**
@@ -19,13 +19,9 @@ const statusStyles: Record<string, string> = {
 export function OrderStatusBadge({ status }: OrderStatusBadgeProps) {
   const { t } = useTranslation('pos')
 
-  const style = statusStyles[status] ?? statusStyles['open']
-
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}
-    >
+    <StatusBadge tone={statusTone(status, orderToneOverrides)}>
       {t(`orders.status.${status}`)}
-    </span>
+    </StatusBadge>
   )
 }

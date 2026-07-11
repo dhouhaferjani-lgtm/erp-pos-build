@@ -67,36 +67,6 @@ vi.mock('@/components/molecules/StickyFormFooter/StickyFormFooter', () => ({
   StickyFormFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({
-    onAddNew,
-    onChange,
-    value,
-  }: {
-    onAddNew: () => void
-    onChange: (value: string) => void
-    value: string
-  }) => (
-    <div>
-      <select aria-label="partner-select" value={value} onChange={(event) => { onChange(event.target.value) }}>
-        <option value="">Select partner</option>
-        <option value="partner-1">Partner A</option>
-      </select>
-      <button type="button" onClick={onAddNew}>add-partner</button>
-    </div>
-  ),
-}))
-
-vi.mock('@/components/organisms', () => ({
-  AddPartnerModal: ({
-    isOpen,
-    onSuccess,
-  }: {
-    isOpen: boolean
-    onSuccess: (partner: { id: string }) => void
-  }) => (isOpen ? <button type="button" onClick={() => { onSuccess({ id: 'partner-2' }) }}>partner-success</button> : null),
-}))
-
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
     user: {
@@ -145,6 +115,32 @@ function documentFixture() {
   }
 }
 
+function partnerFixture() {
+  return {
+    id: 'partner-1',
+    name: 'Partner A',
+    type: 'customer',
+    email: 'partner-a@example.test',
+    city: 'Tunis',
+  }
+}
+
+function createdPartnerFixture() {
+  return {
+    id: 'partner-2',
+    name: 'Partner B',
+    type: 'customer',
+    email: null,
+    phone: null,
+    address: null,
+    city: null,
+    postal_code: null,
+    country: null,
+    tax_id: null,
+    notes: null,
+  }
+}
+
 function Probe({ queryKey, queryFn }: { queryKey: readonly unknown[]; queryFn: () => Promise<unknown> }) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -157,9 +153,13 @@ beforeEach(() => {
   mockPath.current = '/sales/invoices/new'
   mockRouteId.current = ''
   setTenant('tenant-A', 'company-1')
-  mockApiGet.mockResolvedValue({ data: { data: documentFixture() } })
+  mockApiGet.mockImplementation(async (url: string) => {
+    if (url.startsWith('/partners?')) return { data: { data: [partnerFixture()] } }
+    if (url === '/partners/partner-1') return { data: { data: partnerFixture() } }
+    return { data: { data: documentFixture() } }
+  })
   mockApiPatch.mockResolvedValue({ id: 'doc-1' })
-  mockApiPost.mockResolvedValue({ id: 'doc-new' })
+  mockApiPost.mockImplementation(async (url: string) => (url === '/partners' ? createdPartnerFixture() : { id: 'doc-new' }))
 })
 
 afterEach(() => {
@@ -167,6 +167,12 @@ afterEach(() => {
 })
 
 describe('DocumentForm tenant scope', () => {
+  async function pickPartner() {
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('combobox'))
+    await user.click(await screen.findByRole('option', { name: /Partner A/i }))
+  }
+
   it('wraps edit document read key and gates missing tenant/company (.147)', async () => {
     mockRouteId.current = 'doc-1'
     mockPath.current = '/sales/invoices/doc-1/edit'
@@ -175,6 +181,9 @@ describe('DocumentForm tenant scope', () => {
 
     await waitFor(() => {
       expect(queryClient.getQueryData(['document', 'invoice', 'doc-1', 'tenant-A', 'company-1'])).toBeDefined()
+    })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/partners/partner-1')
     })
 
     resetTenant()
@@ -205,7 +214,7 @@ describe('DocumentForm tenant scope', () => {
       expect(invoiceListCalls).toBe(1)
     })
 
-    await userEvent.selectOptions(await screen.findByLabelText('partner-select'), 'partner-1')
+    await pickPartner()
     await act(async () => {
       await userEvent.click(screen.getByRole('button', { name: 'actions.save' }))
     })
@@ -240,8 +249,7 @@ describe('DocumentForm tenant scope', () => {
       expect(detailCalls).toBe(1)
     })
 
-    await userEvent.selectOptions(await screen.findByLabelText('partner-select'), 'partner-1')
-    const issueDateInput = await screen.findByLabelText(/Issue Date/)
+    const issueDateInput = await screen.findByLabelText('sales:documents.issueDate', { exact: false })
     await userEvent.clear(issueDateInput)
     await userEvent.type(issueDateInput, '2026-05-11')
 
@@ -260,31 +268,25 @@ describe('DocumentForm tenant scope', () => {
     expect(queryClient.getQueryData(['document', 'invoice', 'doc-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-detail' })
   })
 
-  it('invalidates partner creation against active tenant only (.153)', async () => {
+  it('uses the real PartnerPicker inline-create affordance without touching another tenant cache (.153)', async () => {
     const queryClient = createClient()
-    let partnersCalls = 0
-    queryClient.setQueryData(['partners', 'tenant-B', 'company-1'], { marker: 'tenant-B-partners' })
+    queryClient.setQueryData(['pickers', 'partner', 'customer', false, '', 'tenant-B', 'company-1'], { marker: 'tenant-B-picker' })
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('/partners?')) return { data: { data: [] } }
+      return { data: { data: documentFixture() } }
+    })
 
-    render(
-      <>
-        <Probe queryKey={['partners']} queryFn={async () => [`partners-${++partnersCalls}`]} />
-        <DocumentForm documentType="invoice" />
-      </>,
-      { wrapper: wrapper(queryClient) },
-    )
+    render(<DocumentForm documentType="invoice" />, { wrapper: wrapper(queryClient) })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('combobox'))
 
     await waitFor(() => {
-      expect(partnersCalls).toBe(1)
+      const [latestUrl] = mockApiGet.mock.calls[mockApiGet.mock.calls.length - 1] as [string]
+      expect(latestUrl).toContain('/partners?')
+      expect(latestUrl).toContain('type=customer')
     })
-
-    await userEvent.click(screen.getByRole('button', { name: 'add-partner' }))
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'partner-success' }))
-    })
-
-    await waitFor(() => {
-      expect(partnersCalls).toBe(2)
-    })
-    expect(queryClient.getQueryData(['partners', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-partners' })
+    expect(await screen.findByRole('button', { name: 'partner.addNew.customer' })).toBeInTheDocument()
+    expect(queryClient.getQueryData(['pickers', 'partner', 'customer', false, '', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-picker' })
   })
 })

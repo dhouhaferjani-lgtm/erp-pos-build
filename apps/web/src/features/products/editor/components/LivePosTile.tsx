@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 
 interface LivePosTileProps {
@@ -40,7 +40,7 @@ export function LivePosTile({ name, price }: LivePosTileProps): React.JSX.Elemen
           <div className={cn('text-[13px] font-semibold leading-tight', textColors.primary)}>
             {displayName}
           </div>
-          <div className="mt-0.5 font-mono text-[13px] font-semibold text-secondary-500">
+          <div className={cn('mt-0.5 font-mono text-[13px] font-semibold', colorTokens.variants.textSecondary500)}>
             {price}
           </div>
         </div>

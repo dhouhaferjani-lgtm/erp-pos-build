@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Button, Input, FormField, Select, QuantityInput } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import type { EarningRule, CreateEarningRuleData, EarningRuleConditions } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 type ValidationFieldErrors = Record<string, string>
 
@@ -181,7 +182,7 @@ export function EarningRuleFormModal({
         <Modal.Content>
           <div className="space-y-4">
             {parsedServerError !== null && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              <div className={`rounded-md border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} px-3 py-2 text-sm ${colorTokens.intent.danger.textStrong}`} role="alert">
                 {parsedServerError.message}
               </div>
             )}

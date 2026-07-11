@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Subtle connection status dot for the TopBar.
@@ -23,8 +24,8 @@ export function ConnectionStatusIndicator() {
     : t('realtime.disconnected')
 
   const dotClasses = isConnecting
-    ? 'h-2 w-2 rounded-full bg-amber-400 animate-pulse'
-    : 'h-2 w-2 rounded-full bg-red-500'
+    ? `h-2 w-2 rounded-full ${colorTokens.variants.bgAmber400} animate-pulse`
+    : `h-2 w-2 rounded-full ${colorTokens.intent.danger.bg}`
 
   return (
     <div className="flex items-center" title={statusText}>

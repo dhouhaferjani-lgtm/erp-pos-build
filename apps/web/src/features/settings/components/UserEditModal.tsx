@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Save } from 'lucide-react'
@@ -30,6 +31,7 @@ interface UserEditModalProps {
 export function UserEditModal({ user, roles, onClose, onSuccess, onError }: UserEditModalProps) {
   const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
+  const { handleSubmit: handleFormSubmit } = useForm()
 
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState(user.email ?? '')
@@ -103,8 +105,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitUserEdit = () => {
     if (validate()) {
       mutation.mutate()
     }
@@ -112,7 +113,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
 
   return (
     <Modal isOpen onClose={onClose} size="md" title={t('settings:userEdit.title')}>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={(event) => { void handleFormSubmit(submitUserEdit)(event) }}>
         <ModalContent>
           {/* Name */}
           <FormField

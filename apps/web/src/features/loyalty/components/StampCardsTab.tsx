@@ -8,6 +8,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useStampCards, useCreateStampCard, useUpdateStampCard, useDeleteStampCard } from '../hooks/useStampCards'
 import { StampCardFormModal } from './StampCardFormModal'
 import type { StampCard, CreateStampCardData } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface StampCardsTabProps {
   programId: string
@@ -58,7 +60,7 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">{t('loyalty:stampCards.title')}</h3>
+        <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('loyalty:stampCards.title')}</h3>
         <Button size="sm" onClick={handleOpenCreate}>
           <Plus className="w-4 h-4 mr-1" />
           {t('loyalty:stampCards.create')}
@@ -67,39 +69,39 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
 
       {cardsList.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">{t('loyalty:stampCards.noCards')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('loyalty:stampCards.noCardsDescription')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:stampCards.noCards')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:stampCards.noCardsDescription')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.name')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.stampsRequired')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.stampsPerItem')}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.expiryDays')}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:table.actions')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.stampsRequired')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.stampsPerItem')}</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.expiryDays')}</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('common:table.actions')}</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {cardsList.map((card) => (
-                <tr key={card.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{card.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{card.stamps_required}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{card.stamps_per_item}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{card.expiry_days ?? '-'}</td>
+                <tr key={card.id} className={colorTokens.intent.neutral.bgHover}>
+                  <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{card.name}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{card.stamps_required}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{card.stamps_per_item}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{card.expiry_days ?? '-'}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => { handleOpenEdit(card); }}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+                        className={`p-1.5 rounded ${colorTokens.intent.neutral.bgHoverSoft} ${colorTokens.text.muted}`}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => { setDeleteTarget(card); }}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                        className={`p-1.5 rounded ${colorTokens.intent.danger.bgHover} ${colorTokens.intent.danger.textSubtle}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -108,7 +110,7 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

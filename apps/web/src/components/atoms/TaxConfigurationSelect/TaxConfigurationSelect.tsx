@@ -6,6 +6,7 @@ import { formatPercent } from '../../../lib/format'
 import { useTaxConfigurations } from '../../../hooks/useTaxConfigurations'
 import { TaxConfigFormModal } from '../../organisms/TaxConfigFormModal'
 import type { TaxConfiguration } from '../../../features/settings/types/tax'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const ADD_NEW_VALUE = '__ADD_NEW__'
 
@@ -101,7 +102,7 @@ export function TaxConfigurationSelect({
   return (
     <>
       {isStaleValue && (
-        <p className="text-xs text-amber-600">{t('tax.staleTaxWarning')}</p>
+        <p className={`text-xs ${colorTokens.intent.caution.text}`}>{t('tax.staleTaxWarning')}</p>
       )}
       <select
         value={value ?? ''}

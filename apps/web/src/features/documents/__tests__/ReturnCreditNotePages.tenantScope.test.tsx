@@ -10,7 +10,7 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 
 import { CreateCreditNotePage } from '../CreateCreditNotePage'
 import { CreateReturnNotePage } from '../CreateReturnNotePage'
-import { ReturnNoteDetailPage } from '../ReturnNoteDetailPage'
+import { ReturnNoteDetailPage } from '../return-notes'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -20,6 +20,7 @@ vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
     ...actual,
+    apiPost: mockApiPost,
     api: {
       get: mockApiGet,
       post: mockApiPost,
@@ -57,7 +58,7 @@ type InvoiceSearchSelectProps = {
   label?: string
 }
 
-vi.mock('@/components/ui/InvoiceSearchSelect', () => ({
+vi.mock('@/components/molecules/pickers/InvoiceSearchSelect', () => ({
   InvoiceSearchSelect: ({ onChange, label = 'invoice-select' }: InvoiceSearchSelectProps) => (
     <button
       type="button"
@@ -75,7 +76,7 @@ type DeliveryNoteSearchSelectProps = {
   label?: string
 }
 
-vi.mock('@/components/ui/DeliveryNoteSearchSelect', () => ({
+vi.mock('@/components/molecules/pickers/DeliveryNoteSearchSelect', () => ({
   DeliveryNoteSearchSelect: ({ onChange, label = 'delivery-note-select' }: DeliveryNoteSearchSelectProps) => (
     <button
       type="button"
@@ -88,12 +89,12 @@ vi.mock('@/components/ui/DeliveryNoteSearchSelect', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({ onChange }: { onChange: (partnerId: string) => void }) => (
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({ onChange }: { onChange: (partner: { id: string; name: string; type: 'customer' }) => void }) => (
     <button
       type="button"
       onClick={() => {
-        onChange('partner-1')
+        onChange({ id: 'partner-1', name: 'Partner A', type: 'customer' })
       }}
     >
       partner-select
@@ -186,11 +187,17 @@ const documentDetail = {
 
 const returnNote = {
   id: 'return-note-1',
+  type: 'return_note',
   document_number: 'RN-1',
   document_date: '2026-05-11',
   status: 'draft',
+  partner_name: 'Partner',
+  partner_email: null,
   partner: { id: 'partner-1', name: 'Partner' },
   lines: [],
+  payload: {
+    return_reason: 'defective',
+  },
   metadata: {
     return_reason: 'defective',
     source_invoice_id: 'invoice-1',
@@ -208,6 +215,26 @@ beforeEach(() => {
   mockApiGet.mockImplementation(async (url: string) => {
     if (url.startsWith('/invoices/')) return { data: { data: documentDetail } }
     if (url.startsWith('/delivery-notes/')) return { data: { data: documentDetail } }
+    if (url.endsWith('/related')) {
+      return {
+        data: {
+          data: {
+            ancestors: [],
+            current: {
+              id: returnNote.id,
+              type: returnNote.type,
+              document_number: returnNote.document_number,
+              document_date: returnNote.document_date,
+              status: returnNote.status,
+              total: '0.000',
+              currency: 'TND',
+            },
+            descendants: [],
+          },
+        },
+      }
+    }
+    if (url.startsWith('/documents/')) return { data: { data: returnNote } }
     if (url.startsWith('/return-notes/')) return { data: { data: returnNote } }
     return { data: { data: [] } }
   })
@@ -297,16 +324,16 @@ describe('return and credit note page tenant scope', () => {
     )
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(['return-note', 'return-note-1', 'tenant-A', 'company-1'])).toEqual({ data: returnNote })
+      expect(queryClient.getQueryData(['document', 'return-note-1', 'tenant-A', 'company-1'])).toEqual(returnNote)
     })
 
     await user.click(screen.getByRole('button', { name: 'common:actions.confirm' }))
-    await user.click(screen.getByRole('button', { name: 'sales:returnNotes.confirmations.confirm.button' }))
+    await user.click(screen.getByRole('button', { name: 'common:confirm' }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/return-notes/return-note-1/confirm')
-      expect(mockApiGet.mock.calls.filter(([url]) => url === '/return-notes/return-note-1')).toHaveLength(2)
-      expect(queryClient.getQueryState(['return-notes', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
+      expect(mockApiPost).toHaveBeenCalledWith('/documents/return-note-1/confirm')
+      expect(mockApiGet.mock.calls.filter(([url]) => url === '/documents/return-note-1')).toHaveLength(2)
+      expect(queryClient.getQueryState(['document', 'return-note-1', 'tenant-A', 'company-1'])?.isInvalidated).toBe(false)
     })
     expect(queryClient.getQueryState(['return-notes', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })

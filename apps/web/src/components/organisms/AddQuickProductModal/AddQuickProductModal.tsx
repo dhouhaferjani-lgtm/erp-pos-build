@@ -13,6 +13,7 @@ import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
 import type { ProductPrefill } from '../../../features/products/productPrefill'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface Product {
   id: string
@@ -294,7 +295,7 @@ export function AddQuickProductModal({
           </div>
 
           {/* Info message */}
-          <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+          <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} p-3 text-sm ${colorTokens.intent.primary.textStrong}`}>
             {t('inventory:products.quickCreateNote')}
           </div>
 

@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { VatRateBreakdown } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface VatBreakdownTableProps {
   breakdowns: VatRateBreakdown[]
@@ -23,45 +25,45 @@ export function VatBreakdownTable({ breakdowns, showRecoverable }: VatBreakdownT
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+        <thead className={`${colorTokens.surface.page}`}>
           <tr>
-            <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
               {t('finance:vatReporting.columns.rate')}
             </th>
-            <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
               {t('finance:vatReporting.columns.baseAmount')}
             </th>
-            <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
               {t('finance:vatReporting.columns.vatAmount')}
             </th>
-            <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
               {t('finance:vatReporting.columns.documentCount')}
             </th>
             {showRecoverable && (
-              <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.recoverable')}
               </th>
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200 bg-white">
+        <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
           {breakdowns.map((breakdown) => (
             <tr key={breakdown.tax_rate}>
-              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+              <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.primary}`}>
                 {breakdown.tax_rate}
               </td>
-              <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+              <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
                 {formatAmount(breakdown.base_amount)}
               </td>
-              <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+              <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
                 {formatAmount(breakdown.vat_amount)}
               </td>
-              <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+              <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
                 {breakdown.document_count}
               </td>
               {showRecoverable && (
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
                   {breakdown.is_recoverable
                     ? t('finance:vatReporting.columns.yes')
                     : t('finance:vatReporting.columns.no')}
@@ -70,25 +72,25 @@ export function VatBreakdownTable({ breakdowns, showRecoverable }: VatBreakdownT
             </tr>
           ))}
           {/* Total row */}
-          <tr className="bg-gray-100 font-bold">
-            <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+          <tr className={`${colorTokens.surface.muted} font-bold`}>
+            <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.primary}`}>
               {t('finance:vatReporting.total')}
             </td>
-            <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+            <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
               {formatAmount(totalBase)}
             </td>
-            <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+            <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
               {formatAmount(totalVat)}
             </td>
-            <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+            <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
               {totalDocs}
             </td>
             {showRecoverable && (
-              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" />
+              <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.primary}`} />
             )}
           </tr>
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

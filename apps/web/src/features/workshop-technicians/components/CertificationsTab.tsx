@@ -4,10 +4,12 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import type { TechnicianCertification } from '../api/authoringTypes'
 import {
+
   useDeleteCertification,
   useTechnicianCertifications,
 } from '../hooks/useAuthoring'
 import { CertificationFormModal } from './CertificationFormModal'
+import { Button } from '@/components/atoms'
 
 interface CertificationsTabProps {
   technicianId: string
@@ -44,14 +46,16 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
         <h3 className={`text-sm font-semibold ${textColors.primary}`}>
           {t('authoring.certifications.title')}
         </h3>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={handleAdd}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+          className="inline-flex items-center gap-1"
         >
           <Plus className="h-4 w-4" />
           {t('authoring.certifications.add')}
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -74,16 +78,19 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     handleEdit(row)
                   }}
-                  className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
                   aria-label={t('authoring.certifications.modal.editTitle')}
                 >
                   <Pencil className="h-4 w-4" />
-                </button>
+                </Button>
+                {/* Button atom has no `dangerOutline` variant (out-of-scope
+                    atom change) — kept raw with literal tokens for pixel parity. */}
                 <button
                   type="button"
                   onClick={() => {

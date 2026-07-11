@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
+import { colors, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { ProductGrid, TransactionCart, Calculator } from '../../organisms'
 import { ModifierSelectionModal } from '../../organisms/ModifierSelectionModal'
 import { POSLayout } from '../../layouts'
@@ -21,6 +21,7 @@ import { useDiscountPreview } from '../../hooks/useDiscountPreview'
 import { SmartPromptsContainer } from '../../smart-prompts/containers/SmartPromptsContainer'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
 import { apiGet } from '@/lib/api'
+import { Button } from '@/components/atoms'
 
 export interface POSPageProps {
   products: Product[]
@@ -580,7 +581,7 @@ export function POSPage({
         {/* Barcode Scan Flash Indicator */}
         {scanFlash && (
           <div
-            className="pointer-events-none fixed inset-0 z-50 border-4 border-emerald-400 rounded-lg animate-pulse"
+            className={`pointer-events-none fixed inset-0 z-50 border-4 ${colorTokens.intent.available.borderActive} rounded-lg animate-pulse`}
             aria-hidden="true"
           />
         )}
@@ -599,7 +600,7 @@ export function POSPage({
               </div>
               <div className="max-h-80 overflow-y-auto">
                 {barcodeMatchProducts.map((product) => (
-                  <button
+                  <Button
                     key={product.id}
                     onClick={() => { handleBarcodeMatchSelect(product); }}
                     className={cn('w-full px-6 py-4 text-start border-b last:border-b-0 transition-colors', borderColors.light, colors.hover.gray50)}
@@ -618,16 +619,16 @@ export function POSPage({
                         {product.sale_price}
                       </div>
                     )}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <div className={cn('px-6 py-3 border-t flex justify-end', borderColors.light, colors.neutral[50])}>
-                <button
+                <Button variant="secondary"
                   onClick={handleBarcodeMatchClose}
-                  className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.md, 'rounded-lg')}
+                  className={cn( 'rounded-lg')}
                 >
                   {t('pos:barcode.cancel')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

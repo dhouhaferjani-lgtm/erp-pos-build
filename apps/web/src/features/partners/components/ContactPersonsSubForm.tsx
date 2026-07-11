@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Star, StarOff, Mail, Truck } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ContactPerson {
   id?: string
@@ -80,16 +81,16 @@ export function ContactPersonsSubForm({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
           {t('partners.contacts.title')}
         </h3>
         <button
           type="button"
           onClick={handleAdd}
           disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className={`inline-flex items-center gap-1 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-3 py-1.5 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50`}
         >
           <Plus className="h-4 w-4" />
           {t('partners.contacts.add')}
@@ -97,7 +98,7 @@ export function ContactPersonsSubForm({
       </div>
 
       {contacts.length === 0 ? (
-        <p className="py-4 text-center text-sm text-gray-500">
+        <p className={`py-4 text-center text-sm ${colorTokens.text.subtle}`}>
           {t('partners.contacts.empty')}
         </p>
       ) : (
@@ -105,7 +106,7 @@ export function ContactPersonsSubForm({
           {contacts.map((contact, index) => (
             <div
               key={contact.id ?? `new-${String(index)}`}
-              className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+              className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}
             >
               {/* Summary row */}
               <div className="flex items-center justify-between">
@@ -118,20 +119,20 @@ export function ContactPersonsSubForm({
                 >
                   <div className="flex items-center gap-2">
                     {contact.is_primary && (
-                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      <Star className={`h-4 w-4 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textFaint}`} />
                     )}
-                    <span className="font-medium text-gray-900">
+                    <span className={`font-medium ${colorTokens.text.primary}`}>
                       {contact.first_name || contact.last_name
                         ? `${contact.first_name} ${contact.last_name}`.trim()
                         : t('partners.contacts.newContact')}
                     </span>
                     {contact.job_title && (
-                      <span className="text-sm text-gray-500">
+                      <span className={`text-sm ${colorTokens.text.subtle}`}>
                         - {contact.job_title}
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex gap-3 text-xs text-gray-500">
+                  <div className={`mt-1 flex gap-3 text-xs ${colorTokens.text.subtle}`}>
                     {contact.is_invoice_contact && (
                       <span className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
@@ -150,7 +151,7 @@ export function ContactPersonsSubForm({
                   type="button"
                   onClick={() => { handleRemove(index); }}
                   disabled={disabled}
-                  className="rounded p-1 text-gray-400 hover:text-red-600 disabled:opacity-50"
+                  className={`rounded p-1 ${colorTokens.text.disabled} ${colorTokens.intent.danger.textHover} disabled:opacity-50`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -160,7 +161,7 @@ export function ContactPersonsSubForm({
               {expandedIndex === index && (
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.contacts.firstName')}
                     </label>
                     <input
@@ -170,11 +171,11 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'first_name', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.contacts.lastName')}
                     </label>
                     <input
@@ -184,11 +185,11 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'last_name', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.email')}
                     </label>
                     <input
@@ -198,11 +199,11 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'email', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.phone')}
                     </label>
                     <input
@@ -212,11 +213,11 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'phone', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.contacts.jobTitle')}
                     </label>
                     <input
@@ -226,11 +227,11 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'job_title', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                       {t('partners.contacts.department')}
                     </label>
                     <input
@@ -240,7 +241,7 @@ export function ContactPersonsSubForm({
                         { handleFieldChange(index, 'department', e.target.value); }
                       }
                       disabled={disabled}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                      className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} ${colorTokens.surface.mutedWhenDisabled}`}
                     />
                   </div>
 
@@ -258,13 +259,13 @@ export function ContactPersonsSubForm({
                           ); }
                         }
                         disabled={disabled}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                       />
                       <span className="flex items-center gap-1">
                         {contact.is_primary ? (
-                          <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                          <Star className={`h-3.5 w-3.5 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textFaint}`} />
                         ) : (
-                          <StarOff className="h-3.5 w-3.5 text-gray-400" />
+                          <StarOff className={`h-3.5 w-3.5 ${colorTokens.text.disabled}`} />
                         )}
                         {t('partners.contacts.primaryContact')}
                       </span>
@@ -281,10 +282,10 @@ export function ContactPersonsSubForm({
                           ); }
                         }
                         disabled={disabled}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                       />
                       <span className="flex items-center gap-1">
-                        <Mail className="h-3.5 w-3.5 text-gray-400" />
+                        <Mail className={`h-3.5 w-3.5 ${colorTokens.text.disabled}`} />
                         {t('partners.contacts.invoiceContact')}
                       </span>
                     </label>
@@ -300,10 +301,10 @@ export function ContactPersonsSubForm({
                           ); }
                         }
                         disabled={disabled}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                       />
                       <span className="flex items-center gap-1">
-                        <Truck className="h-3.5 w-3.5 text-gray-400" />
+                        <Truck className={`h-3.5 w-3.5 ${colorTokens.text.disabled}`} />
                         {t('partners.contacts.deliveryContact')}
                       </span>
                     </label>

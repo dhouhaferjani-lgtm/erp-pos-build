@@ -153,6 +153,101 @@ describe('LineItemEntryBar', () => {
     })
   })
 
+  it('shows first-page product suggestions when focused with an empty query', async () => {
+    const user = userEvent.setup()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toBeInTheDocument()
+    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: { per_page: 20 } })
+  })
+
+  it('commits the highlighted focus suggestion with Enter when the query is empty', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Enter}')
+
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'search', incrementBy: 1 }))
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+  })
+
+  it('does not commit a focus suggestion with Tab when the query is empty', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(
+      <>
+        <LineItemEntryBar onAddProduct={onAddProduct} />
+        <button type="button">Next field</button>
+      </>,
+      { wrapper: wrapper() },
+    )
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.tab()
+
+    expect(onAddProduct).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Next field' })).toHaveFocus()
+    await waitFor(() => {
+      expect(input).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('option', { name: /CS-050 Crème solaire SPF50/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('commits a focus suggestion on mouse click', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    await user.click(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i }))
+
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'search', incrementBy: 1 }))
+    expect(input).toHaveValue('')
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('closes product suggestions on pointerdown outside', async () => {
+    const user = userEvent.setup()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(
+      <>
+        <LineItemEntryBar onAddProduct={vi.fn()} />
+        <button type="button">Outside</button>
+      </>,
+      { wrapper: wrapper() },
+    )
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toBeInTheDocument()
+
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByRole('button', { name: 'Outside' }) })
+
+    expect(screen.queryByRole('option', { name: /CS-050 Crème solaire SPF50/i })).not.toBeInTheDocument()
+  })
+
   it('does not fire the product search without tenant/company state', async () => {
     resetTenant()
     const user = userEvent.setup()

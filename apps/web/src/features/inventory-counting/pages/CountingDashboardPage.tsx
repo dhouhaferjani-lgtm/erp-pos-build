@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Activity, Clock, CheckCircle, AlertTriangle } from 'lucide-react'
 import { CountingCard } from '../components/CountingCard'
 import { useCountingDashboard, useSendReminder } from '../api/queries'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface SummaryCardProps {
   icon: React.ComponentType<{ className?: string }>
@@ -24,13 +26,13 @@ function SummaryCard({
   return (
     <div
       className={`rounded-lg border bg-white p-6 ${
-        highlight ? 'border-red-300 bg-red-50' : ''
+        highlight ? `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle}` : ''
       }`}
     >
       <Link to={href} className="block">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500">{label}</p>
+            <p className={`text-sm ${colorTokens.text.subtle}`}>{label}</p>
             <p className="text-3xl font-bold">{value}</p>
           </div>
           <Icon className={`w-8 h-8 ${iconClassName ?? ''}`} />
@@ -47,7 +49,7 @@ export function CountingDashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className={`p-8 text-center ${colorTokens.text.subtle}`}>
         {t('loading')}...
       </div>
     )
@@ -55,7 +57,7 @@ export function CountingDashboardPage() {
 
   if (error) {
     return (
-      <div className="p-8 text-center text-red-600">
+      <div className={`p-8 text-center ${colorTokens.intent.danger.text}`}>
         {t('error')}: {error.message}
       </div>
     )
@@ -76,12 +78,12 @@ export function CountingDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t('counting.title')}</h1>
-          <p className="text-gray-500">{t('counting.description')}</p>
+          <PageHeaderTitle className="text-2xl font-bold">{t('counting.title')}</PageHeaderTitle>
+          <p className={colorTokens.text.subtle}>{t('counting.description')}</p>
         </div>
         <Link
           to="/inventory/counting/create"
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.intent.primary.bgStrongHover}`}
         >
           <Plus className="w-4 h-4 me-2" />
           {t('counting.new')}
@@ -95,28 +97,28 @@ export function CountingDashboardPage() {
           label={t('counting.summary.active')}
           value={summary.active}
           href="/inventory/counting/list?status=active"
-          iconClassName="text-blue-600"
+          iconClassName={colorTokens.intent.primary.text}
         />
         <SummaryCard
           icon={Clock}
           label={t('counting.summary.pendingReview')}
           value={summary.pending_review}
           href="/inventory/counting/list?status=pending_review"
-          iconClassName="text-amber-600"
+          iconClassName={colorTokens.intent.caution.text}
         />
         <SummaryCard
           icon={CheckCircle}
           label={t('counting.summary.completedThisMonth')}
           value={summary.completed_this_month}
           href="/inventory/counting/list?status=finalized"
-          iconClassName="text-green-600"
+          iconClassName={colorTokens.intent.success.text}
         />
         <SummaryCard
           icon={AlertTriangle}
           label={t('counting.summary.overdue')}
           value={summary.overdue}
           href="/inventory/counting/list?overdue=true"
-          iconClassName="text-red-600"
+          iconClassName={colorTokens.intent.danger.text}
           highlight={summary.overdue > 0}
         />
       </div>
@@ -127,14 +129,14 @@ export function CountingDashboardPage() {
           <h2 className="text-lg font-semibold">{t('counting.activeCounts')}</h2>
           <Link
             to="/inventory/counting/list?status=active"
-            className="text-sm text-blue-600 hover:text-blue-700"
+            className={`text-sm ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrong}`}
           >
             {t('counting.viewAll')}
           </Link>
         </div>
 
         {active_counts.length === 0 ? (
-          <div className="rounded-lg border bg-white py-8 text-center text-gray-500">
+          <div className={`rounded-lg border ${colorTokens.surface.base} py-8 text-center ${colorTokens.text.subtle}`}>
             {t('counting.noActiveCounts')}
           </div>
         ) : (
@@ -156,14 +158,14 @@ export function CountingDashboardPage() {
           <h2 className="text-lg font-semibold">{t('counting.pendingReview')}</h2>
           <Link
             to="/inventory/counting/list?status=pending_review"
-            className="text-sm text-blue-600 hover:text-blue-700"
+            className={`text-sm ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrong}`}
           >
             {t('counting.viewAll')}
           </Link>
         </div>
 
         {pending_review.length === 0 ? (
-          <div className="rounded-lg border bg-white py-8 text-center text-gray-500">
+          <div className={`rounded-lg border ${colorTokens.surface.base} py-8 text-center ${colorTokens.text.subtle}`}>
             {t('counting.noPendingReview')}
           </div>
         ) : (

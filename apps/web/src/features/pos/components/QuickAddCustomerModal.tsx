@@ -5,6 +5,7 @@ import { X, UserPlus } from 'lucide-react'
 import { apiPost } from '@/lib/api'
 import { tokens, textColors, borderColors, focusRing } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/atoms'
 
 interface QuickAddCustomerModalProps {
   isOpen: boolean
@@ -93,13 +94,13 @@ export function QuickAddCustomerModal({
               {t('pos:cart.quickAddCustomer')}
             </h3>
           </div>
-          <button
+          <Button
             type="button"
             onClick={onClose}
             className={tokens.modal.closeButton}
           >
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <form onSubmit={(e) => { void handleSubmit(e) }} className="space-y-4">
@@ -151,20 +152,20 @@ export function QuickAddCustomerModal({
           )}
 
           <div className="flex gap-3 pt-1">
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={onClose}
-              className={cn('flex-1 px-4 py-2 text-sm rounded-lg', tokens.button.secondary)}
+              className={cn('flex-1 px-4 py-2 text-sm rounded-lg')}
             >
               {t('common:actions.cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className={cn('flex-1 px-4 py-2 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed', tokens.button.primary)}
+              className={cn('flex-1 px-4 py-2 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed')}
             >
               {isSubmitting ? t('common:status.saving') : t('common:actions.create')}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

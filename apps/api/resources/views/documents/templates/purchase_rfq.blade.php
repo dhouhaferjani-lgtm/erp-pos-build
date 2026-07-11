@@ -17,7 +17,10 @@
         </div>
     </div>
 
-    @include('documents.components.line_items', ['showTax' => false])
+    @include('documents.components.line_items', [
+        'showTax' => false,
+        'lineDesignationOverrideEnabled' => (bool) ($company->line_designation_override_enabled ?? false),
+    ])
 
     @if($document->notes)
     <div class="notes-section">

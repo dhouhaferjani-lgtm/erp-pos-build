@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
 import { colors, textColors } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Fiscal Phase 1 §14.2 — POS new-sale server-authoring retired.
@@ -32,7 +33,7 @@ export function POSTransactions() {
   return (
     <div className={`flex items-center justify-center h-screen ${colors.neutral[50]}`}>
       <div className="text-center max-w-lg p-8">
-        <AlertCircle className="h-16 w-16 text-amber-500 mx-auto mb-4" />
+        <AlertCircle className={`h-16 w-16 ${colorTokens.intent.caution.textSubtle} mx-auto mb-4`} />
         <h2 className={`text-xl font-bold ${textColors.primary} mb-2`}>
           {t('pos:transactions.disposition.title', {
             defaultValue: 'Point of sale runs in the desktop app',

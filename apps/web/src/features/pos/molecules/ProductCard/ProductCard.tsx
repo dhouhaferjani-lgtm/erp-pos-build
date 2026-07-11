@@ -4,6 +4,7 @@ import { StockBadge } from '../../atoms'
 import { Info, Package, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCurrency } from '@/hooks/useCurrency'
+import { Button } from '@/components/atoms'
 
 export interface Product {
   id: string
@@ -112,7 +113,7 @@ export function ProductCard({
         )}
 
         {/* Info Button (Top Right) */}
-        <button
+        <Button
           onClick={handleInfoClick}
           className={cn(
             'absolute top-2 end-2',
@@ -125,7 +126,7 @@ export function ProductCard({
           aria-label={t('pos.productInfo')}
         >
           <Info className={cn(textColors.secondary, touchOptimized ? 'w-6 h-6' : 'w-5 h-5')} />
-        </button>
+        </Button>
 
         {/* Category Badge (Top Left) */}
         {product.category && (
@@ -143,12 +144,11 @@ export function ProductCard({
 
         {/* Customize Button (Bottom Right) — only for items with modifiers */}
         {hasModifiers && onCustomize && (
-          <button
+          <Button
             onClick={handleCustomizeClick}
             className={cn(
               'absolute bottom-2 end-2',
               'p-2 rounded-full',
-              tokens.button.primary,
               'shadow-md hover:shadow-lg',
               'transition-all duration-150',
               touchOptimized && 'p-3'
@@ -156,7 +156,7 @@ export function ProductCard({
             aria-label={t('pos.customizeProduct')}
           >
             <SlidersHorizontal className={cn(textColors.inverse, touchOptimized ? 'w-5 h-5' : 'w-4 h-4')} />
-          </button>
+          </Button>
         )}
       </div>
 

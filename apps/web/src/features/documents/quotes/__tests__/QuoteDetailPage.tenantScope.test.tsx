@@ -86,6 +86,10 @@ vi.mock('../../hooks/useRelatedDocuments', () => ({
   useRelatedDocuments: () => ({ data: { descendants: [] } }),
 }))
 
+vi.mock('../../hooks/useLineDesignationFeature', () => ({
+  useLineDesignationFeature: () => false,
+}))
+
 vi.mock('../../hooks', () => ({
   useDownloadPdf: () => ({ isPending: false, mutate: vi.fn() }),
   usePreviewPdf: () => ({ isPending: false, mutate: vi.fn() }),
@@ -157,11 +161,18 @@ function quoteFixture() {
     lines: [
       {
         id: 'line-1',
-        description: 'Service',
+        product_id: 'product-1',
+        product_name: 'Workshop service',
+        description: 'Diagnostic labor',
         quantity: '1.00',
         unit_price: '100.00',
+        tax_rate: '0.00',
         line_total: '100.00',
         notes: null,
+        designation_default_snapshot: 'Diagnostic labor',
+        discount_percent: null,
+        discount_amount: null,
+        requires_batch_tracking: false,
       },
     ],
   }
@@ -266,5 +277,13 @@ describe('QuoteDetailPage tenant scope', () => {
     await waitFor(() => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/quotes/quote-1')).toHaveLength(2)
     })
+  })
+
+  it('renders quote lines through the shared line-items table contract', async () => {
+    render(<QuoteDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByRole('columnheader', { name: 'lineItems.item' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'documents.description' })).not.toBeInTheDocument()
+    expect(screen.getByText('Diagnostic labor')).toBeInTheDocument()
   })
 })

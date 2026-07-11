@@ -80,7 +80,6 @@ vi.mock('../../components/DocumentActionBar', () => ({
 vi.mock('../../components/RelatedDocumentsTab', () => ({ RelatedDocumentsTab: () => null }))
 vi.mock('../../components/DocumentAttachments', () => ({ DocumentAttachments: () => null }))
 vi.mock('../../components/PurchaseOrderLandedCostBreakdown', () => ({ PurchaseOrderLandedCostBreakdown: () => null }))
-vi.mock('../../components/PaymentStatusBadge', () => ({ PaymentStatusBadge: () => null }))
 
 vi.mock('../../components', () => ({
   OutstandingAmountSection: ({ onRecordPayment }: { onRecordPayment?: () => void }) => (

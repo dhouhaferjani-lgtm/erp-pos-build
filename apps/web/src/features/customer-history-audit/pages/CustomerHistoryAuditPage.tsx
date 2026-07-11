@@ -4,15 +4,18 @@ import { useSearchParams } from 'react-router-dom'
 import { ShieldAlert } from 'lucide-react'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
-import { UserPicker } from '@/components/ui/UserPicker'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
+import { UserPicker } from '@/components/molecules/pickers/UserPicker'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCustomerHistorySearches } from '../hooks/useCustomerHistorySearches'
 import { RejectedBadge } from '../components/RejectedBadge'
 import { SummaryChips } from '../components/SummaryChips'
 import type { CustomerHistorySearchFilters, RejectedFilter } from '../types/customerHistorySearch'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Input, Select } from '@/components/atoms'
 
 function isRejectedFilter(value: string): value is RejectedFilter {
   return value === '' || value === 'true' || value === 'false'
@@ -87,9 +90,9 @@ export function CustomerHistoryAuditPage() {
     <div className="space-y-4">
       {/* Header */}
       <div>
-        <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
           {t('customer-history-audit:pageTitle')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`text-sm ${textColors.tertiary} mt-1`}>
           {t('customer-history-audit:pageSubtitle')}
         </p>
@@ -125,11 +128,10 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.terminal')}
           </label>
-          <select
+          <Select
             id="filter-terminal"
             value={terminalIdParam}
             onChange={(e) => { setParam('terminal_id', e.target.value) }}
-            className={tokens.select.base}
           >
             <option value="">{t('customer-history-audit:filters.terminal')}</option>
             {terminals.map((terminal) => (
@@ -137,7 +139,7 @@ export function CustomerHistoryAuditPage() {
                 {terminal.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Partner picker */}
@@ -148,10 +150,13 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.partner')}
           </label>
-          <PartnerSearchSelect
+          <PartnerPicker
             value={partnerIdParam}
-            onChange={(id) => { setParam('partner_id', id) }}
+            onChange={(next) => { setParam('partner_id', next?.id ?? '') }}
+            partnerType="all"
+            label=""
             placeholder={t('customer-history-audit:filters.partner')}
+            includeInactive
           />
         </div>
 
@@ -163,16 +168,15 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.status')}
           </label>
-          <select
+          <Select
             id="filter-status"
             value={wasRejectedParam}
             onChange={(e) => { setParam('was_rejected', e.target.value) }}
-            className={tokens.select.base}
           >
             <option value="">{t('customer-history-audit:filters.all')}</option>
             <option value="true">{t('customer-history-audit:filters.onlyRejected')}</option>
             <option value="false">{t('customer-history-audit:filters.onlySuccessful')}</option>
-          </select>
+          </Select>
         </div>
 
         {/* Date range: from */}
@@ -183,13 +187,12 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.from')}
           </label>
-          <input
+          <Input
             id="filter-from"
             type="date"
             value={fromDateParam}
             onChange={(e) => { setParam('from_date', e.target.value) }}
             placeholder={t('customer-history-audit:filters.from')}
-            className={tokens.input.base}
           />
         </div>
 
@@ -201,13 +204,12 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.to')}
           </label>
-          <input
+          <Input
             id="filter-to"
             type="date"
             value={toDateParam}
             onChange={(e) => { setParam('to_date', e.target.value) }}
             placeholder={t('customer-history-audit:filters.to')}
-            className={tokens.input.base}
           />
         </div>
       </div>
@@ -243,7 +245,7 @@ export function CustomerHistoryAuditPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={`px-4 py-3 text-left text-xs font-medium ${textColors.tertiary} uppercase tracking-wider`}>
@@ -269,7 +271,7 @@ export function CustomerHistoryAuditPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
                   {rows.map((row) => (
                     <tr key={row.id} className={tokens.table.rowHover}>
                       <td className={`px-4 py-3 text-sm ${textColors.secondary} whitespace-nowrap`}>
@@ -298,7 +300,7 @@ export function CustomerHistoryAuditPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
 
             {meta && (
