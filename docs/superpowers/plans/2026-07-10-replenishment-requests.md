@@ -639,7 +639,9 @@ export interface ReplenishmentLine {
   fulfillment_type: 'transfer' | 'purchase_order' | null; fulfillment_id: string | null
   rejection_reason: string | null
 }
-export interface ReplenishmentListResponse { data: ReplenishmentLine[]; meta?: PaginationMeta; truncated?: boolean }
+export interface ReplenishmentPaginationMeta { current_page: number; per_page: number; total: number; last_page: number; from: number | null; to: number | null }
+export interface OpenReplenishmentListResponse { data: ReplenishmentLine[]; meta: { truncated: boolean } }
+export interface ReplenishmentHistoryResponse { data: ReplenishmentLine[]; meta: ReplenishmentPaginationMeta }
 export interface CaptureReplenishmentInput { location_id: string; product_id: string; variant_id?: string | null; requested_qty?: string | null; note?: string | null }
 export interface CreateTransferActionInput { source_location_id: string; lines: { request_id: string; quantity: string }[] }
 export interface CreatePoActionInput { supplier_id: string; destination_location_id: string; existing_document_id?: string; lines: { request_id: string; quantity: string }[] }
@@ -648,7 +650,7 @@ export interface RejectActionInput { request_ids: string[]; reason: string }
 - Create: `api/replenishmentApi.ts` (open list + paginated history via `api.get` preserving meta; capture/cancel/actions via `apiPost`), `api/queries.ts` (`namespace = 'replenishment'`; `useOpenReplenishment(filters)`, `useReplenishmentHistory(filters)`, `useCaptureReplenishment()`, `useCreateTransferAction()`, `useCreatePoAction()`, `useRejectAction()` — every mutation invalidates `tenantScopedKey([namespace])`, and the transfer action ALSO invalidates `tenantScopedKey(['stock-transfers'])` + `tenantScopedKey(['stock-levels'])`, mirroring `useCreateStockTransfer`).
 - Create: `src/locales/{en,fr,ar}/replenishment.json` (ar may alias en initially like `stock-transfers` does) — keys: `title`, `queue.by_shop`, `queue.by_product`, `queue.empty_title`, `queue.empty_description`, `status.{pending,in_progress,fulfilled,rejected,cancelled}`, `capture.title`, `capture.submit`, `actions.{create_transfer,add_to_po,reject}`, `dialog.*` (labels below), `matrix.requested_no_qty` etc. FR: "Demandes de réassort", statuses "En attente / En cours / Servie / Rejetée / Annulée".
 - Modify: `src/lib/i18n.ts` — import en/fr/ar files, register in all three `resources` blocks, append `'replenishment'` to `ns` array.
-- Modify: `src/routes/index.tsx` — lazy imports + routes registered **directly adjacent to the existing `stock-transfers` route block (~line 1268) at the same nesting level** (do not invent an `inventory/` path prefix the router doesn't use):
+- Route sequencing amendment: Task 13 registers the real capture page + `replenishment/new` route; Task 14 registers the real queue page + `replenishment` route. Both remain directly adjacent to the stock-transfer block at the same nesting level; Task 12 creates no placeholder pages.
 ```tsx
 <Route path="replenishment" element={
   <RequirePermission permission="replenishment.view"><SuspenseWrapper><ReplenishmentQueuePage /></SuspenseWrapper></RequirePermission>} />

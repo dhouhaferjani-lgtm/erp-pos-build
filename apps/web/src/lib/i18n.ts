@@ -50,6 +50,7 @@ import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
 import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
 import enStockTransfers from '../locales/en/stock-transfers.json'
+import enReplenishment from '../locales/en/replenishment.json'
 import enAdmin from '../locales/en/admin.json'
 import enPurchases from '../locales/en/purchases.json'
 import enDocumentIngestions from '../locales/en/documentIngestions.json'
@@ -101,6 +102,7 @@ import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
 import frChannels from '../locales/fr/channels.json'
 import frReports from '../locales/fr/reports.json'
 import frStockTransfers from '../locales/fr/stock-transfers.json'
+import frReplenishment from '../locales/fr/replenishment.json'
 import frAdmin from '../locales/fr/admin.json'
 import frPurchases from '../locales/fr/purchases.json'
 import frDocumentIngestions from '../locales/fr/documentIngestions.json'
@@ -134,6 +136,7 @@ import arFinance from '../locales/ar/finance.json'
 import arImport from '../locales/ar/import.json'
 import arTreasury from '../locales/ar/treasury.json'
 import arSettings from '../locales/ar/settings.json'
+import arReplenishment from '../locales/ar/replenishment.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -199,6 +202,7 @@ const resources = {
     channels: enChannels,
     reports: enReports,
     'stock-transfers': enStockTransfers,
+    replenishment: enReplenishment,
     admin: enAdmin,
     purchases: enPurchases,
     documentIngestions: enDocumentIngestions,
@@ -251,6 +255,7 @@ const resources = {
     channels: frChannels,
     reports: frReports,
     'stock-transfers': frStockTransfers,
+    replenishment: frReplenishment,
     admin: frAdmin,
     purchases: frPurchases,
     documentIngestions: frDocumentIngestions,
@@ -394,6 +399,7 @@ const resources = {
     channels: arChannels,
     reports: arReports,
     'stock-transfers': enStockTransfers,
+    replenishment: arReplenishment,
     admin: arAdmin,
     purchases: arPurchases,
     documentIngestions: arDocumentIngestions,
@@ -407,7 +413,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases', 'documentIngestions'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'replenishment', 'admin', 'purchases', 'documentIngestions'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
