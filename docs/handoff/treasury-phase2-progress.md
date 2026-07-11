@@ -417,3 +417,13 @@
 - Verification: `pnpm typecheck` — pass; targeted ESLint — pass; locale JSON valid; design-system audit — baseline 753, **0 new**, 0 stale; React Doctor changed scope — no issues found, score 88/100; `CACHE_STORE=array php artisan typescript:transform --force --no-interaction --quiet` — exit 0, 429 transforms, no generated diff; `git diff --check` — pass.
 - Types note: all Phase-2 DTOs/enums were already present from Tasks 2/20. The required final transform was clean, so no separate generated-types commit was necessary.
 - Money-path deviation: none. The panel and hook are read-only.
+
+### Task 26 — PostgreSQL CI coverage verification
+
+- Status: complete; read-only verification, no workflow or test move required.
+- Files inspected: `.github/workflows/ci.yml`; every new Phase-2 API test path relative to `origin/dev`; `PortfolioAccountReservationTest`; `InstrumentAuditTrailTest`; this progress log.
+- Coverage proof: `treasury-spine-pgsql` still runs `tests/Feature/Treasury`, `tests/Feature/Accounting`, and `tests/Unit/Treasury` as three explicitly serial steps under the load-bearing “DO NOT PARALLELIZE” warning. All PostgreSQL-sensitive Phase-2 tests are under the first two covered trees; no Task-26 workflow path list exists or needs extension.
+- Exceptions verified: `tests/Architecture/PortfolioAccountReservationTest.php` performs static filesystem/regex assertions only. `tests/Feature/Compliance/InstrumentAuditTrailTest.php` exercises event subscription and ordinary persistence only. Neither contains driver checks, PostgreSQL SQL, partial-index assertions, trigger assertions, or any pgsql-only artifact, so their existing non-PG legs are sufficient.
+- Aggregate gate proof: `all-checks-pass.needs` still includes `treasury-spine-pgsql`; its documented event predicate remains a strict superset of the aggregate gate predicate.
+- Verification output: `rg` located the serial commands at CI lines 769/772/775 and the aggregate dependency at line 1004; the `origin/dev...HEAD` test inventory contains 24 Treasury tests plus one Accounting test under covered directories, with only the two verified exceptions outside.
+- Deviations: none. No CI file or test path changed.
