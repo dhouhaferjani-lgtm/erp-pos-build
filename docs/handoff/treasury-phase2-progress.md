@@ -121,3 +121,14 @@
 - Verification: targeted PHPStan — zero errors; Pint — pass; `git diff --check` — pass.
 - Audit evidence: `InstrumentReceived`, `InstrumentDeposited`, `InstrumentCleared`, `InstrumentBounced`, and `InstrumentTransferred` share one typed subscriber handler; rows use aggregate type `PaymentInstrument`, the instrument id, the immutable domain-event payload, and the canonical event name. The full receive→deposit→clear service cycle leaves exactly the three ordered typed audit rows.
 - Money-path deviation: none. Audit dispatch remains after-commit side-effect handling; lifecycle, GL, and movement writes are unchanged.
+
+## Gate 1
+
+### RC1 pre-review verification
+
+- `./vendor/bin/phpunit tests/Feature/Treasury` — PASS, 489 tests / 1,744 assertions / 22 environment-specific skips; 39 existing PHPUnit deprecations reported.
+- `./vendor/bin/phpstan` — analyzer reached all 2,458 files but its parallel workers exhausted the configured 512 MB process limit; no code diagnostic was emitted before the infrastructure crash.
+- `./vendor/bin/phpstan --memory-limit=2G` — PASS, all 2,458 files, zero errors. The explicit limit is the analyzer-prescribed rerun for the same full level-8 configuration.
+- `./vendor/bin/pint --dirty` — pass, no changes.
+- `git diff --check` — pass; worktree clean before the RC review commit.
+- Task 8/9 reconcile pins are included in the passing Treasury directory run.
