@@ -13,6 +13,7 @@ use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
@@ -125,6 +126,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly HandlesMaturityTenderLeg $maturityLegHandler,
     ) {}
 
     public function name(): string
@@ -415,6 +417,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ));
         }
 
+        $isMaturityLeg = $this->maturityLegHandler->handles($paymentMethod);
+
         // Repository resolution — the 27-key canonical payload does not
         // carry per-payment `repository_id` (synthesis v5 §3 deliberately
         // excludes it: the device-side fiscal seal contract is about
@@ -460,6 +464,10 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ->where('idempotency_key', $legKey)
             ->first();
 
+        $cashAccountOverrideId = null;
+        $instrument = null;
+        $shouldRecordMovement = true;
+
         if ($existing instanceof Payment) {
             // Leg already written on a prior apply(). Do NOT create a second
             // Payment or post a second GL entry — reuse the existing GL link.
@@ -469,7 +477,70 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // never did) by linking to the EXISTING journal entry.
             $payment = $existing;
             $journalEntryId = $existing->journal_entry_id;
+
+            if ($isMaturityLeg) {
+                if ($journalEntryId === null) {
+                    throw new RuntimeException(sprintf(
+                        'TreasuryReceiptBridge: maturity payment %s has no journal entry.',
+                        $existing->id,
+                    ));
+                }
+
+                $debitAccountId = DB::table('journal_lines')
+                    ->where('journal_entry_id', $journalEntryId)
+                    ->where('line_order', 0)
+                    ->value('account_id');
+
+                if ($debitAccountId === $repository->gl_account_id) {
+                    // Pre-cutover replay: the original JE recognized cash.
+                    // Complete its movement if needed, but never mint paper.
+                    $isMaturityLeg = false;
+                } elseif ($debitAccountId === $this->maturityLegHandler->portfolioAccountId($paymentMethod, $event->company_id)) {
+                    // Post-cutover replay: ensure its instrument exists and
+                    // categorically keep this leg away from the movement port.
+                    $result = $this->maturityLegHandler->handleMaturityLeg(
+                        $event,
+                        $line,
+                        $index,
+                        $paymentMethod,
+                        $receipt,
+                        $repository,
+                    );
+                    if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
+                        throw new RuntimeException('TreasuryReceiptBridge: maturity payment links a conflicting instrument.');
+                    }
+                    if ($existing->instrument_id === null) {
+                        $existing->instrument_id = $result->instrument->id;
+                        $existing->save();
+                    }
+                    if (DB::table('repository_movements')
+                        ->where('idempotency_key', $legKey)
+                        ->exists()) {
+                        throw new RuntimeException('TreasuryReceiptBridge: portfolio maturity leg already has a forbidden cash movement.');
+                    }
+                    $shouldRecordMovement = false;
+                } else {
+                    throw new RuntimeException(sprintf(
+                        'TreasuryReceiptBridge: maturity payment %s has an unrecognized debit account.',
+                        $existing->id,
+                    ));
+                }
+            }
         } else {
+            if ($isMaturityLeg) {
+                $result = $this->maturityLegHandler->handleMaturityLeg(
+                    $event,
+                    $line,
+                    $index,
+                    $paymentMethod,
+                    $receipt,
+                    $repository,
+                );
+                $instrument = $result->instrument;
+                $cashAccountOverrideId = $result->portfolioAccountId;
+                $shouldRecordMovement = false;
+            }
+
             // Create the Treasury `Payment` row stamped with origin=pos +
             // fiscal_event_id (spec §13 writer row 1). Both `payment_method_id`
             // and `repository_id` were resolved through tenant-scoped lookups
@@ -481,6 +552,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'company_id' => $event->company_id,
                 'partner_id' => $receipt->partner_id,
                 'payment_method_id' => $paymentMethod->id,
+                'instrument_id' => $instrument?->id,
                 'repository_id' => $repository->id,
                 'amount' => $amount,
                 'currency' => $receipt->currency,
@@ -515,6 +587,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     payment: $payment,
                     receipt: $receipt,
                     repository: $repository,
+                    cashAccountOverrideId: $cashAccountOverrideId,
                 );
 
             // Pass the receipt currency explicitly: this projector runs on a
@@ -524,6 +597,11 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
             $payment->journal_entry_id = $journalEntry->id;
             $payment->save();
+
+            if ($instrument !== null) {
+                $instrument->payment_id = $payment->id;
+                $instrument->save();
+            }
 
             $journalEntryId = $journalEntry->id;
         }
@@ -545,6 +623,10 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // event would use (stable across replays; the invoice_type_code is
         // immutable on the sealed payload). The direction Out + GL reversal is
         // the ONLY difference from the normal-sale path.
+        if (! $shouldRecordMovement) {
+            return;
+        }
+
         $this->movementService->record(new MovementIntent(
             repositoryId: $repository->id,
             tenantId: $event->tenant_id,

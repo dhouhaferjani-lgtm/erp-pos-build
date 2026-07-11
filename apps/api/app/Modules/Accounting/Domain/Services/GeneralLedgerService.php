@@ -3013,13 +3013,18 @@ final class GeneralLedgerService
      * Create journal entry for POS payment.
      *
      * POS payments are DIRECT TO REVENUE (no AR account).
-     * Debit: Cash/Bank Account (from payment repository's GL account)
+     * Debit: Cash/Bank Account (from payment repository's GL account), or the
+     * caller-supplied portfolio-account override for a maturity tender.
      * Credit: Revenue Account (ProductRevenue system purpose)
+     *
+     * The override is deliberately a debit-only seam: revenue lines remain
+     * byte-identical across immediate and deferred POS tender legs.
      */
     public function createPOSPaymentEntry(
         Payment $payment,
         Receipt $receipt,
-        PaymentRepository $repository
+        PaymentRepository $repository,
+        ?string $cashAccountOverrideId = null,
     ): JournalEntry {
         if ($repository->gl_account_id === null) {
             throw new \InvalidArgumentException(
@@ -3029,7 +3034,7 @@ final class GeneralLedgerService
             );
         }
 
-        $entry = DB::transaction(function () use ($payment, $receipt, $repository): JournalEntry {
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository, $cashAccountOverrideId): JournalEntry {
             $companyId = $payment->company_id;
 
             // Get revenue account by system purpose
@@ -3053,7 +3058,7 @@ final class GeneralLedgerService
             // Debit: Cash/Bank Account (from payment repository)
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $repository->gl_account_id,
+                'account_id' => $cashAccountOverrideId ?? $repository->gl_account_id,
                 'partner_id' => null,
                 'debit' => $payment->amount,
                 'credit' => '0',
