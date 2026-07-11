@@ -6,6 +6,7 @@ namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
@@ -26,6 +27,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
@@ -197,6 +199,60 @@ final class DeferredTenderPaymentTest extends TestCase
 
         $this->assertSame('30.000', $entry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->debit);
         $this->assertDatabaseCount('repository_movements', 1);
+        $this->assertNull($payment->instrument_id);
+    }
+
+    /**
+     * Regression pin (Fable Gate-2 LOW-1): an IMMEDIATE (non-deferred, non-supplier)
+     * cash payment exceeding its allocations posts BOTH JEs — the allocation JE and the
+     * customer-advance JE for the excess — synchronously as Posted within the request
+     * (PaymentController::store now uses PostingMode::SynchronousInTransaction
+     * unconditionally, so the advance JE is no longer an afterCommit Draft). The advance
+     * JE debits the repository's own gl_account_id (immediate path), the allocation JE is
+     * the one linked to the payment, and exactly ONE cash movement records for the FULL
+     * payment amount. This green-first pins the currently-shipping behaviour.
+     */
+    public function test_immediate_cash_excess_posts_both_jes_synchronously_with_one_full_movement(): void
+    {
+        $invoice = $this->invoice('30.000');
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'has_maturity' => false,
+            'instrument_kind' => null,
+        ]);
+
+        $response = $this->pay($method, '40.000', $invoice)->assertCreated();
+        $paymentId = (string) $response->json('data.id');
+        $payment = Payment::query()->whereKey($paymentId)->firstOrFail();
+
+        // Allocation JE (customer_payment): debits the repository gl_account_id for the
+        // allocated 30.000 and is the entry linked to the payment.
+        $paymentEntry = JournalEntry::query()->with('lines')
+            ->where('source_type', 'customer_payment')->where('source_id', $paymentId)->sole();
+        $this->assertSame(JournalEntryStatus::Posted, $paymentEntry->status);
+        $this->assertSame('30.000', $paymentEntry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->debit);
+        $this->assertSame($paymentEntry->id, $payment->journal_entry_id);
+
+        // Advance JE (advance): the excess 10.000, posted synchronously (Posted, not Draft),
+        // debiting the SAME repository gl_account_id (immediate — non-deferred — path).
+        $advanceEntry = JournalEntry::query()->with('lines')
+            ->where('source_type', 'advance')->where('source_id', $paymentId)->sole();
+        $this->assertSame(JournalEntryStatus::Posted, $advanceEntry->status);
+        $this->assertSame('10.000', $advanceEntry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->debit);
+        $this->assertNotSame($advanceEntry->id, $payment->journal_entry_id);
+
+        // Exactly ONE cash movement, for the FULL payment amount, linked to the allocation JE.
+        $movements = DB::table('repository_movements')
+            ->where('payment_repository_id', $this->bank->id)->get();
+        $this->assertCount(1, $movements);
+        $movement = $movements->first();
+        $this->assertSame('in', $movement->direction);
+        $this->assertSame(0, bccomp((string) $movement->amount, '40.000', 3));
+        $this->assertSame($paymentEntry->id, $movement->journal_entry_id);
+
+        // Balance moved once by the full amount; no instrument on an immediate cash payment.
+        $this->assertSame('40.000', $this->bank->fresh()?->balance);
         $this->assertNull($payment->instrument_id);
     }
 
