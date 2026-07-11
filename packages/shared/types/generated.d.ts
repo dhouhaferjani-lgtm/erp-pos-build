@@ -263,6 +263,8 @@ due_date: string;
 balance_due: string;
 days_until_due: number;
 overdue: boolean;
+source: string;
+certainty: string | null;
 };
 export type UpcomingPaymentsData = {
 in: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;

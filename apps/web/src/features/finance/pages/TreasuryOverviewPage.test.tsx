@@ -245,6 +245,8 @@ function upcomingLine(
     balance_due: balanceDue,
     days_until_due: daysUntilDue,
     overdue,
+    source: 'document',
+    certainty: null,
   }
 }
 

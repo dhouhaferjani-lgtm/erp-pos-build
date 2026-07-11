@@ -12,6 +12,9 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
@@ -40,12 +43,20 @@ final readonly class UpcomingPaymentsService
                 (string) $document->document_number,
             ))
             ->values();
+        $incomingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Inbound, $windowEnd);
+        $outgoingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Outbound, $windowEnd);
 
-        $incomingLines = $this->toLines($incoming, $today);
-        $outgoingLines = $this->toLines($outgoing, $today);
+        $incomingLines = $this->sortLines([
+            ...$this->toLines($incoming, $today),
+            ...$this->instrumentLines($incomingInstruments, $today),
+        ]);
+        $outgoingLines = $this->sortLines([
+            ...$this->toLines($outgoing, $today),
+            ...$this->instrumentLines($outgoingInstruments, $today),
+        ]);
 
-        $totalIn = $this->sum($incoming, $scale);
-        $totalOut = $this->sum($outgoing, $scale);
+        $totalIn = bcadd($this->sum($incoming, $scale), $this->sumInstruments($incomingInstruments, $scale), $scale);
+        $totalOut = bcadd($this->sum($outgoing, $scale), $this->sumInstruments($outgoingInstruments, $scale), $scale);
 
         return new UpcomingPaymentsData(
             in: $incomingLines,
@@ -56,6 +67,27 @@ final readonly class UpcomingPaymentsService
             days: $days,
             as_of_date: $today->toDateString(),
         );
+    }
+
+    /** @return Collection<int, PaymentInstrument> */
+    private function pendingInstruments(
+        string $companyId,
+        InstrumentDirection $direction,
+        CarbonImmutable $windowEnd,
+    ): Collection {
+        return PaymentInstrument::query()
+            ->where('company_id', $companyId)
+            ->where('direction', $direction)
+            ->whereIn('status', [InstrumentStatus::Received, InstrumentStatus::Deposited])
+            ->where(function (Builder $query) use ($windowEnd): void {
+                /** @var Builder<PaymentInstrument> $query */
+                $query->whereNull('maturity_date')
+                    ->orWhereDate('maturity_date', '<=', $windowEnd->toDateString());
+            })
+            ->with(['partner:id,name'])
+            ->orderByRaw('maturity_date IS NOT NULL, maturity_date ASC')
+            ->orderBy('reference')
+            ->get();
     }
 
     /**
@@ -141,8 +173,52 @@ final readonly class UpcomingPaymentsService
                     balance_due: $this->openAmount($document),
                     days_until_due: $daysUntilDue,
                     overdue: $daysUntilDue < 0,
+                    source: 'document',
+                    certainty: null,
                 );
             })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, PaymentInstrument>  $instruments
+     * @return array<int, UpcomingPaymentLineData>
+     */
+    private function instrumentLines(Collection $instruments, CarbonImmutable $today): array
+    {
+        return $instruments
+            ->map(function (PaymentInstrument $instrument) use ($today): UpcomingPaymentLineData {
+                $dueDate = $instrument->maturity_date === null
+                    ? $today
+                    : CarbonImmutable::parse($instrument->maturity_date->toDateString());
+                $daysUntilDue = (int) $today->diffInDays($dueDate, false);
+                $partner = $instrument->getRelation('partner');
+
+                return new UpcomingPaymentLineData(
+                    partner_name: $partner instanceof Partner ? $partner->name : 'Unassigned',
+                    document_number: $instrument->reference,
+                    type: 'instrument',
+                    due_date: $dueDate->toDateString(),
+                    balance_due: $instrument->amount,
+                    days_until_due: $daysUntilDue,
+                    overdue: $daysUntilDue < 0,
+                    source: 'instrument',
+                    certainty: $instrument->status === InstrumentStatus::Deposited ? 'remitted' : 'portfolio',
+                );
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, UpcomingPaymentLineData>  $lines
+     * @return array<int, UpcomingPaymentLineData>
+     */
+    private function sortLines(array $lines): array
+    {
+        return collect($lines)
+            ->sortBy(fn (UpcomingPaymentLineData $line): string => $line->due_date.'|'.$line->document_number)
             ->values()
             ->all();
     }
@@ -158,6 +234,21 @@ final readonly class UpcomingPaymentsService
         foreach ($documents as $document) {
             $documentScale = $this->scaleResolver->getScale((string) $document->currency);
             $total = bcadd($total, $this->openAmount($document), $documentScale);
+        }
+
+        return CurrencyScale::bcformat($total, $scale);
+    }
+
+    /**
+     * @param  Collection<int, PaymentInstrument>  $instruments
+     * @return numeric-string
+     */
+    private function sumInstruments(Collection $instruments, int $scale): string
+    {
+        $total = CurrencyScale::bcformat('0', $scale);
+        foreach ($instruments as $instrument) {
+            $instrumentScale = $this->scaleResolver->getScale($instrument->currency);
+            $total = bcadd($total, $instrument->amount, $instrumentScale);
         }
 
         return CurrencyScale::bcformat($total, $scale);

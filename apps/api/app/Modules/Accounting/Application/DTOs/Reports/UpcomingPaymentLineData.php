@@ -18,5 +18,7 @@ final class UpcomingPaymentLineData extends Data
         public readonly string $balance_due,
         public readonly int $days_until_due,
         public readonly bool $overdue,
+        public readonly string $source = 'document',
+        public readonly ?string $certainty = null,
     ) {}
 }

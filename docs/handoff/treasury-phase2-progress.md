@@ -9,6 +9,7 @@
 - Dependency setup: `pnpm install --frozen-lockfile` and `composer install --no-interaction --prefer-dist` completed successfully in the worktree.
 - Baseline verification: `./vendor/bin/phpunit tests/Feature/Treasury/PaymentInstrumentTest.php tests/Feature/Treasury/PaymentMethodTest.php` — PASS, 24 tests / 67 assertions.
 - Deviations: none.
+
 - Contradictions: none. The handoff's explicit owner execution decision supersedes the older status labels embedded in the Rev 2 spec/plan.
 
 ## Task log
@@ -328,3 +329,15 @@
 - Bucket evidence: one company-scoped query selects only Received/Deposited instruments; null maturity maps to `d0_7`, past dates to overdue, and the forward 0–7/8–30/31–60/61–90/90+ boundaries produce per-bucket count/`total_in`/`total_out` plus grand totals as company-scale decimal strings using bcmath only.
 - Row/filter evidence: rows expose bucket and certainty (`portfolio` for Received, `remitted` for Deposited); from/to, direction, kind, repository, partner, and needs-details filters compose under tenant+company predicates. Cleared and foreign-company rows are excluded.
 - Deviations: none.
+
+### Task 20 — Instrument maturities in the cash forecast
+
+- Status: complete.
+- Files touched: `UpcomingPaymentsService`; `UpcomingPaymentLineData`; generated shared TypeScript declarations; new accounting feature test; one existing Treasury Overview test fixture updated for the expanded generated contract; this progress log.
+- RED: after correcting the test fixture's balance cache setup, the settled invoice produced zero Money-In lines because instruments were not queried; outbound and at-sight instruments likewise produced empty forecast sides.
+- GREEN: task plus existing upcoming-payments API regressions — PASS, 4 tests / 43 assertions. Treasury Overview generated-type fixture — PASS, 4 Vitest tests.
+- Verification: targeted PHPStan on DTO/service/test — zero errors; Pint dirty pass; `CACHE_STORE=array php artisan typescript:transform` completed 425 types and changed only `UpcomingPaymentLineData`; `pnpm typecheck` — pass after updating the typed fixture; `git diff --check` — pass.
+- Double-count evidence: a real PaymentAllocation-linked traite closes its invoice (`Paid`, `balance_due=0`) and the forecast emits exactly one Money-In line sourced from the instrument. Deleting the allocation/reopening the invoice while marking the instrument Bounced with receivable routing emits exactly one document line; Bounced is outside the pending instrument set.
+- Direction/timing evidence: outbound Received paper feeds Money-Out; inbound null-maturity paper is due today with `days_until_due=0`; Received certainty is `portfolio`, Deposited certainty is `remitted`; overdue/pending instruments inside the requested end window merge with document lines under deterministic due-date/reference ordering.
+- DTO/file-list seam: the binding interface adds `source` and `certainty`, so the TypeScript-transformed DTO and its existing typed frontend fixture necessarily changed although the plan's Files list named only the service/test. Existing document lines explicitly emit `source=document`, `certainty=null`.
+- Money-path deviation: none. This is a read-only report; all sums remain decimal strings using bcmath and explicit currency scales.
