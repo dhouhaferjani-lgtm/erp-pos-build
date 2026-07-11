@@ -203,7 +203,9 @@ describe('PaymentForm supplier invoice prefill', () => {
       expect(mockApiGet).toHaveBeenCalledWith('/supplier-invoices/si-1')
     })
 
-    expect(await screen.findByLabelText('treasury:payments.form.amount *')).toHaveValue(125.5)
+    await waitFor(() => {
+      expect(screen.getByLabelText('treasury:payments.form.amount *')).toHaveValue(125.5)
+    })
     expect(screen.getByLabelText('treasury:payments.partner *')).toHaveValue('supplier-1')
     expect(screen.getByLabelText('treasury:payments.reference')).toHaveValue('SI-2026-009')
 

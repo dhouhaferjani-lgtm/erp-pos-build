@@ -205,3 +205,10 @@
 - UX evidence: the fieldset reuses the established form tokens/grid; maturity methods never render the generic third-party field; withholding is reset when switching to a maturity method, and its recommendation action is disabled with a translated explanatory tooltip while such a method is selected.
 - Localization evidence: every new label, validation message, placeholder, and tooltip is under `treasury:instruments.*` in both English and French.
 - Money-path deviation: none. This frontend change targets the Task-13 transactional payment endpoint and removes the former client-side two-POST sequence.
+
+## Wave G resume — rebase conflict record
+
+- Precondition rechecked: `origin/dev` is `9cd1871613f4741380483f5868277ce7bc70a0bc`; it contains sweep merge `93710423f`, owner decisions `f34435504`, and `design-sweep follow-ups wave 1` `9cd187161`.
+- `git rebase origin/dev` stopped while replaying `6a9bc9f0a` (`test(web): stabilize finance gate coverage`). Conflicts: `AgedPayablesPage.test.tsx`, `BalanceSheetPage.test.tsx`, and `ProfitLossPage.test.tsx` content conflicts; `AgedReceivablesPage.test.tsx` modify/delete because the sweep deleted the stale duplicate test. `PaymentForm.test.tsx` merged automatically.
+- Money-path conflict check: none of the conflicted files is GL, movement-port, bridge, lifecycle, or `PaymentController` code; all are frontend tests.
+- Resolution rationale (recorded before resolution): preserve the sweep's canonical test structure/imports and deletion of the duplicate Aged Receivables suite, while carrying forward only the branch's formatter-independent EUR assertions and async-stability intent where those assertions still exist in the post-sweep suites. Do not resurrect the deleted duplicate file.
