@@ -6,7 +6,7 @@ import { RequirePermission } from '@/components/auth'
 import { Button } from '@/components/atoms/Button/Button'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { Modal } from '@/components/organisms/Modal/Modal'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { PartnerPicker } from '@/components/molecules/pickers'
 import { useLocations } from '@/features/locations/hooks/useLocations'
 import { api, getErrorMessage } from '@/lib/api'
 import { bccomp } from '@/lib/decimal'
@@ -89,14 +89,14 @@ export function AddToPoDialog({ selected, isOpen, onClose }: AddToPoDialogProps)
       <Modal isOpen={isOpen} onClose={onClose} title={t('actions.add_to_po')} size="lg">
         <form className="space-y-4" onSubmit={(event) => { void submit(event) }}>
           <div>
-            <span className={tokens.label.base}>{t('dialog.supplier')}</span>
-            <PartnerSearchSelect
-              value={supplierId}
-              onChange={(value) => {
-                setSupplierId(value)
+            <PartnerPicker
+              value={supplierId === '' ? null : supplierId}
+              onChange={(next) => {
+                setSupplierId(next?.id ?? '')
                 setExistingDocumentId('')
               }}
               partnerType="supplier"
+              label={t('dialog.supplier')}
               placeholder={t('dialog.supplier')}
             />
           </div>

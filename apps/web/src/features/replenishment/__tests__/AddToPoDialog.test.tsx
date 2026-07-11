@@ -14,9 +14,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('@/components/auth', () => ({
   RequirePermission: ({ children }: { children: React.ReactNode }) => permissionAllowed ? children : null,
 }))
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({ onChange }: { onChange: (id: string) => void }) => (
-    <button type="button" onClick={() => { onChange('supplier-1') }}>choose-supplier</button>
+vi.mock('@/components/molecules/pickers', () => ({
+  PartnerPicker: ({ onChange }: { onChange: (next: { id: string; name: string; type: 'supplier' } | null) => void }) => (
+    <button type="button" onClick={() => { onChange({ id: 'supplier-1', name: 'Supplier One', type: 'supplier' }) }}>choose-supplier</button>
   ),
 }))
 vi.mock('@/features/locations/hooks/useLocations', () => ({
