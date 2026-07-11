@@ -39,6 +39,11 @@ use App\Modules\POS\Domain\Events\TerminalDeactivated;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
+use App\Modules\Treasury\Domain\Events\InstrumentBounced;
+use App\Modules\Treasury\Domain\Events\InstrumentCleared;
+use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
+use App\Modules\Treasury\Domain\Events\InstrumentReceived;
+use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
@@ -978,6 +983,19 @@ final class DomainEventSubscriber
         );
     }
 
+    public function handleInstrumentEvent(
+        InstrumentReceived|InstrumentDeposited|InstrumentCleared|InstrumentBounced|InstrumentTransferred $event,
+    ): void {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'PaymentInstrument',
+            aggregateId: $event->instrumentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
     /**
      * Persist an event to the audit log.
      *
@@ -1065,6 +1083,13 @@ final class DomainEventSubscriber
 
             // Treasury spine (audit trail for money movements)
             RepositoryMovementRecorded::class => 'handleRepositoryMovementRecorded',
+
+            // Instrument portfolio lifecycle (custody + accounting transitions)
+            InstrumentReceived::class => 'handleInstrumentEvent',
+            InstrumentDeposited::class => 'handleInstrumentEvent',
+            InstrumentCleared::class => 'handleInstrumentEvent',
+            InstrumentBounced::class => 'handleInstrumentEvent',
+            InstrumentTransferred::class => 'handleInstrumentEvent',
 
             // Document events (audit trail for Phase-4 conversion auto-strip)
             DocumentLineDiscountStrippedAtConversion::class => 'handleDocumentLineDiscountStrippedAtConversion',

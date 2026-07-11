@@ -111,3 +111,13 @@
 - Test-harness note: the repository's `RefreshDatabase` outer transaction prevents a second connection from observing freshly seeded fixtures, so the PostgreSQL concurrency pin validates the exact production lock acquisition trace rather than running two independently committed writers. Gate 1 will run this PostgreSQL path and may require a separate non-transactional harness if the reviewer considers the trace insufficient.
 - Planned ownership note: `PaymentController::formatPayment()` exposure of `dishonored_at` remains in Task 14, where the Rev 2 plan explicitly assigns it; Task 9 establishes the stored/cast backend fact.
 - Money-path deviation: none. Every bank effect is a port movement linked to a synchronously posted EF entry; nominal before-clear bounce remains movement-free as specified.
+
+### Task 10 — Instrument lifecycle events in the compliance audit trail
+
+- Status: complete.
+- Files touched: compliance domain-event subscriber; new focused instrument audit-trail test; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Compliance/InstrumentAuditTrailTest.php` — expected 2 failures: all five subscriptions absent and a receive→deposit→clear cycle produced zero instrument audit rows.
+- GREEN: task path — PASS, 2 tests / 6 assertions. Task + existing subscriber + clear/bounce regressions — PASS, 30 tests / 162 assertions / 1 PostgreSQL-only skip.
+- Verification: targeted PHPStan — zero errors; Pint — pass; `git diff --check` — pass.
+- Audit evidence: `InstrumentReceived`, `InstrumentDeposited`, `InstrumentCleared`, `InstrumentBounced`, and `InstrumentTransferred` share one typed subscriber handler; rows use aggregate type `PaymentInstrument`, the instrument id, the immutable domain-event payload, and the canonical event name. The full receive→deposit→clear service cycle leaves exactly the three ordered typed audit rows.
+- Money-path deviation: none. Audit dispatch remains after-commit side-effect handling; lifecycle, GL, and movement writes are unchanged.
