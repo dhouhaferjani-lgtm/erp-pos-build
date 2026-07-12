@@ -232,3 +232,12 @@ None found during pre-flight review.
 - `origin/dev` contains the expected `feat/treasury-ui-gaps` changes to `apps/web/src/features/treasury/RepositoryDetailPage.tsx` and `apps/web/src/features/expenses/pages/ExpenseDetailPage.tsx`; Phase 3 will not edit either file.
 - Diff/log checks from the sanctioned base `f1d6c1d30` show no changes to `apps/web/src/features/treasury/RepositoryListPage.tsx` or `apps/web/src/components/organisms/TopBar/TopBar.tsx` on `origin/dev`.
 - Per the handoff's conditional interlock, no rebase is required before Wave D. No conflict exists to report.
+
+### Task D1 — FE permission registration
+
+- Status: complete.
+- Files: `apps/web/src/hooks/usePermissions.ts`, existing `apps/web/src/hooks/__tests__/usePermissions.authPayload.test.tsx`, task report, and this progress ledger.
+- RED: the token-bearing hook regression executed in Vitest, while strict typecheck failed with TS2345 because `treasury.transfer` was not yet a valid `Permission`.
+- GREEN: `treasury.transfer` is registered with the backend-privileged fallback roles `admin`, `manager`, and `accountant`; no `SERVER_AUTHORITATIVE_PERMISSIONS` entry was added because that set has no treasury/adjust-class peer.
+- Verification: focused Vitest 3/3, TypeScript typecheck, relevant ESLint, full web lint, and React Doctor diff scan all exited 0; React Doctor reported no changed-scope diagnostics or regression.
+- Deviations/concerns: none.
