@@ -362,6 +362,32 @@
       "overview": "Aperçu",
       "movements": "Mouvements"
     },
+    "adjustBalance": {
+      "action": "Ajuster le solde",
+      "title": "Ajuster le solde du dépôt",
+      "direction": "Sens",
+      "amount": "Montant",
+      "reasonCode": "Motif",
+      "reasonText": "Explication",
+      "directions": {
+        "in": "Excédent de caisse (entrée)",
+        "out": "Manquant de caisse (sortie)"
+      },
+      "reasons": {
+        "count_variance": "Écart de comptage",
+        "correction": "Correction",
+        "theft_loss": "Vol ou perte",
+        "other": "Autre"
+      },
+      "validation": {
+        "amount": "Saisissez un montant positif avec 3 décimales au maximum.",
+        "reasonText": "Saisissez une explication.",
+        "reasonTextMax": "L’explication ne peut pas dépasser 1 000 caractères."
+      },
+      "submit": "Ajuster le solde",
+      "success": "Le solde du dépôt a été ajusté",
+      "error": "Impossible d’ajuster le solde du dépôt"
+    },
     "movements": {
       "title": "Mouvements du grand livre",
       "subtitle": "{{count}} mouvement",

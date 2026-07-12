@@ -65,6 +65,7 @@ export const PERMISSIONS = {
   'treasury.view': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.edit': ['admin', 'treasury', 'accountant', 'manager'],
+  'treasury.adjust': ['admin', 'manager', 'accountant'],
   'payments.create': ['admin', 'treasury', 'accountant', 'manager'],
   'instruments.view': ['admin', 'treasury', 'accountant', 'manager'],
   'instruments.create': ['admin', 'treasury', 'accountant', 'manager'],

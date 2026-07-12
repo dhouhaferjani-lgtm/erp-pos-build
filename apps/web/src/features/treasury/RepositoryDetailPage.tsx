@@ -19,6 +19,8 @@ import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/molecules/Tabs'
 import { useAccounts } from '../finance/hooks/useAccounts'
+import { usePermissions } from '@/hooks/usePermissions'
+import { AdjustBalanceDialog } from './components/AdjustBalanceDialog'
 import { RepositoryMovementsTab } from './components/RepositoryMovementsTab'
 
 interface Repository {
@@ -224,6 +226,8 @@ export function RepositoryDetailPage() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const { hasPermission } = usePermissions()
+  const [isAdjustBalanceOpen, setIsAdjustBalanceOpen] = useState(false)
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -301,6 +305,11 @@ export function RepositoryDetailPage() {
         }
         actions={
           <div className="flex items-center gap-4">
+            {hasPermission('treasury.adjust') && (
+              <Button variant="secondary" onClick={() => { setIsAdjustBalanceOpen(true) }}>
+                {t('treasury:repositories.adjustBalance.action')}
+              </Button>
+            )}
             <div className={cn('rounded-xl p-3', typeIconBg[repository.type])}>
               <Icon className="h-8 w-8" />
             </div>
@@ -312,6 +321,16 @@ export function RepositoryDetailPage() {
             </div>
           </div>
         }
+      />
+      <AdjustBalanceDialog
+        isOpen={isAdjustBalanceOpen}
+        onClose={() => { setIsAdjustBalanceOpen(false) }}
+        repositoryId={repository.id}
+        repositoryCurrency={companyCurrency}
+        onSuccess={() => {
+          toast.success(t('treasury:repositories.adjustBalance.success'))
+          setIsAdjustBalanceOpen(false)
+        }}
       />
       <p className={cn('-mt-4 text-sm font-mono', textColors.tertiary)}>{repository.code}</p>
 
