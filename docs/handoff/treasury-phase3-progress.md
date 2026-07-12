@@ -254,3 +254,17 @@ None found during pre-flight review.
 - Verification: frontend treasury 33 files/234 tests; typecheck; full web lint; TanStack audit 0; design audit 0 new; backend 14 tests/39 assertions; Pint pass; React Doctor changed-scope against base `5a587790725a2b8a23d72ffb4a70d1e21d41aa09` 100/100 with no issues.
 - Deviation: the all-raw cache-filter amendment is recorded in the dated Deviations entry above.
 - Reviewer follow-up: a non-identity i18n regression test first failed on raw zero-amount and same-repository keys; the modal now translates only its known Zod validation keys (unknown/undefined messages remain untouched), and `repositoryLabel` is module-scoped. Follow-up gates: modal 4/4, D2 focused 11/11, typecheck/lint/audits clean, React Doctor 100/100.
+
+### Task D3 — Notification center frontend
+
+- Status: complete.
+- Base: `0aad1edfdd8d0821356dbf7a769cf0fb8e50cf49` (recorded before D3 changes and used explicitly for React Doctor changed-scope analysis).
+- Files: notification API wrappers/hooks and tests; `NotificationBell`/`NotificationPanel` and tests; TopBar organism wiring/test; en/fr/ar `notifications` namespace and `src/lib/i18n.ts` registration; task report and this progress ledger.
+- RED:
+  - API/hooks focused run failed in two suites because `notificationsApi.ts` and `useNotifications.ts` did not exist.
+  - Component/i18n/TopBar focused run failed because Bell/Panel did not exist, all three notification bundles were undefined, and TopBar still rendered the static fake-dot button.
+- GREEN: focused `pnpm exec vitest run src/features/notifications src/components/organisms/TopBar/TopBar.test.tsx` — 6 files, 20 tests passed. Coverage pins raw `api.get` list metadata vs `apiGet` count, user+tenant gating, tenant-scoped user keys, 60-second polling, panel-open list fetch, raw user-prefix mutation invalidation, zero/nonzero badge behavior, newest-first/read-state rendering, unread mark-read then deep-link, read-row behavior, mark-all, empty state, legacy PHP-FQCN `data.message` fallback, namespace registration, and static-dot replacement.
+- Contract: inbox remains universally available to authenticated tenant users; list fetches only while the panel is open; latest 15 are sorted newest-first; unread treatment uses design tokens and semantic `data-read-state`; unknown notification types render the generic title plus raw type and best-effort message; all controls use the shared Button atom and logical RTL positioning. The non-modal dropdown uses a native open `<dialog>` for browser accessibility semantics.
+- Verification: TypeScript typecheck passed; full web lint exited 0 with 0 errors (repository warning baseline only); TanStack key audit 0; design-system audit 0 new; `git diff --check` passed. The authoritative repository-root React Doctor v0.7.6 changed-scope run pinned with `--base 0aad1edf...` reported `No issues found!` and 100/100.
+- React Doctor follow-up TDD: the first repository-root scan exposed `role="dialog"` on a generic `<section>` (98/100), which the earlier app-directory invocation had missed. A native-element assertion failed RED (`SECTION` vs `DIALOG`); the panel then moved to non-modal `<dialog open>` and returned the focused suite and authoritative root scan to green/100.
+- Deviations/concerns: none. The current React Doctor CLI expresses the skill's former `--diff` behavior as `--scope changed --base <sha>`; the explicit recorded SHA prevents moving-branch contamination.

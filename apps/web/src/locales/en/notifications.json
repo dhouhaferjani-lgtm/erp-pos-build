@@ -1,0 +1,34 @@
+{
+  "title": "Notifications",
+  "ariaLabel": "Notifications",
+  "ariaLabelWithCount": "Notifications, {{count}} unread",
+  "markAllRead": "Mark all as read",
+  "empty": "No notifications yet",
+  "loading": "Loading notifications…",
+  "error": "Notifications could not be loaded.",
+  "unread": "unread",
+  "types": {
+    "generic": "Notification",
+    "treasury": {
+      "reconcile": {
+        "drift": "Treasury drift detected",
+        "portfolio_drift": "Treasury portfolio warning"
+      },
+      "instrument": {
+        "maturity_alert": "Instrument maturity alert"
+      }
+    }
+  },
+  "messages": {
+    "generic": "Open this notification for details.",
+    "treasury": {
+      "reconcile": {
+        "drift": "Repository {{repositoryCode}} was frozen after a treasury drift was detected.",
+        "portfolio_drift": "Treasury inconsistencies were detected for {{companyName}}."
+      },
+      "instrument": {
+        "maturity_alert": "{{receivedCount}} received and {{depositedCount}} deposited instruments need attention."
+      }
+    }
+  }
+}

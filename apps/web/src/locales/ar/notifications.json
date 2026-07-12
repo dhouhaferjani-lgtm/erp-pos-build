@@ -1,0 +1,34 @@
+{
+  "title": "الإشعارات",
+  "ariaLabel": "الإشعارات",
+  "ariaLabelWithCount": "الإشعارات، {{count}} غير مقروءة",
+  "markAllRead": "تحديد الكل كمقروء",
+  "empty": "لا توجد إشعارات حتى الآن",
+  "loading": "جارٍ تحميل الإشعارات…",
+  "error": "تعذر تحميل الإشعارات.",
+  "unread": "غير مقروء",
+  "types": {
+    "generic": "إشعار",
+    "treasury": {
+      "reconcile": {
+        "drift": "تم اكتشاف فرق في الخزينة",
+        "portfolio_drift": "تنبيه محفظة الخزينة"
+      },
+      "instrument": {
+        "maturity_alert": "تنبيه استحقاق الأدوات"
+      }
+    }
+  },
+  "messages": {
+    "generic": "افتح هذا الإشعار لعرض التفاصيل.",
+    "treasury": {
+      "reconcile": {
+        "drift": "تم تجميد المستودع {{repositoryCode}} بعد اكتشاف فرق في الخزينة.",
+        "portfolio_drift": "تم اكتشاف اختلافات في الخزينة لشركة {{companyName}}."
+      },
+      "instrument": {
+        "maturity_alert": "تحتاج {{receivedCount}} أدوات مستلمة و{{depositedCount}} أدوات مودعة إلى المراجعة."
+      }
+    }
+  }
+}

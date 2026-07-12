@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Bell, Search, User, LogOut, Settings, Menu, Globe } from 'lucide-react'
+import { Search, User, LogOut, Settings, Menu, Globe } from 'lucide-react'
 import { useAuthStore } from '../../../stores/authStore'
 import { useLogout } from '../../../features/auth/useLogout'
 import { languages } from '../../../lib/i18n'
@@ -12,6 +12,7 @@ import { QuickCreateButton } from './QuickCreateButton'
 import { useScopeChangeNotice } from '../../../hooks/useScopeChangeNotice'
 import { borderColors, colors } from '../../../lib/designTokens'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { NotificationBell } from '../../../features/notifications/components/NotificationBell'
 
 interface TopBarProps {
   onMenuClick?: () => void
@@ -151,14 +152,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
 
         <ConnectionStatusIndicator />
 
-        <button
-          type="button"
-          className={`relative rounded-lg p-2 ${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray100}`}
-          aria-label={t('common:notifications', { defaultValue: 'Notifications' })}
-        >
-          <Bell className="h-5 w-5" />
-          <span className={`absolute end-1 top-1 h-2 w-2 rounded-full ${colorTokens.intent.danger.bg}`} />
-        </button>
+        <NotificationBell />
 
         {/* User menu */}
         <div className="relative" ref={menuRef}>
