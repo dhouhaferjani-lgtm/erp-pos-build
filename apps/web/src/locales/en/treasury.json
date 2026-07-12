@@ -362,6 +362,32 @@
       "overview": "Overview",
       "movements": "Movements"
     },
+    "adjustBalance": {
+      "action": "Adjust balance",
+      "title": "Adjust repository balance",
+      "direction": "Direction",
+      "amount": "Amount",
+      "reasonCode": "Reason",
+      "reasonText": "Explanation",
+      "directions": {
+        "in": "Cash over (in)",
+        "out": "Cash short (out)"
+      },
+      "reasons": {
+        "count_variance": "Count variance",
+        "correction": "Correction",
+        "theft_loss": "Theft or loss",
+        "other": "Other"
+      },
+      "validation": {
+        "amount": "Enter a positive amount with no more than 3 decimal places.",
+        "reasonText": "Enter an explanation.",
+        "reasonTextMax": "The explanation cannot exceed 1,000 characters."
+      },
+      "submit": "Adjust balance",
+      "success": "Repository balance adjusted",
+      "error": "Unable to adjust the repository balance"
+    },
     "movements": {
       "title": "Ledger Movements",
       "subtitle": "{{count}} movement",

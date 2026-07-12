@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { RepositoryDetailPage } from './RepositoryDetailPage'
 
 vi.mock('react-i18next', () => ({
@@ -52,6 +52,31 @@ const repository = {
   gl_account: null,
 }
 
+let canAdjust = true
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasPermission: (permission: string) => permission === 'treasury.adjust' && canAdjust,
+  }),
+}))
+
+vi.mock('./components/AdjustBalanceDialog', () => ({
+  AdjustBalanceDialog: ({
+    isOpen,
+    repositoryCurrency,
+    onSuccess,
+  }: {
+    isOpen: boolean
+    repositoryCurrency: string
+    onSuccess?: () => void
+  }) => isOpen ? (
+    <div role="dialog">
+      <span>{repositoryCurrency}</span>
+      <button onClick={onSuccess}>complete adjustment</button>
+    </div>
+  ) : null,
+}))
+
 const transaction = {
   id: 'txn-1',
   payment_number: 'PAY-001',
@@ -100,6 +125,7 @@ vi.mock('@tanstack/react-query', () => ({
 describe('RepositoryDetailPage', () => {
   afterEach(() => {
     mockTransactions = [transaction]
+    canAdjust = true
   })
 
   it('renders exactly one h1 (the repository name) via PageHeader', () => {
@@ -135,5 +161,24 @@ describe('RepositoryDetailPage', () => {
     const amountCell = within(refundRow as HTMLElement).getAllByRole('cell').at(-1)
     expect(amountCell?.textContent).not.toMatch(/\+-/)
     expect(amountCell?.textContent?.trim().startsWith('-')).toBe(true)
+  })
+
+  it('shows the adjustment action only with treasury.adjust permission', () => {
+    const { rerender } = render(<RepositoryDetailPage />)
+    expect(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.action' })).toBeInTheDocument()
+
+    canAdjust = false
+    rerender(<RepositoryDetailPage />)
+    expect(screen.queryByRole('button', { name: 'treasury:repositories.adjustBalance.action' })).not.toBeInTheDocument()
+  })
+
+  it('opens the adjustment dialog with repository currency and closes it after success', () => {
+    render(<RepositoryDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.action' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('TND')
+
+    fireEvent.click(screen.getByRole('button', { name: 'complete adjustment' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

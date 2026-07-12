@@ -48,6 +48,10 @@ describe('expenses permission keys', () => {
   it('expenses.post is NOT granted to cashier', () => {
     expect(PERMISSIONS['expenses.post']).not.toContain('cashier')
   })
+
+  it('expenses.pay matches the backend-authorized financial roles', () => {
+    expect(PERMISSIONS['expenses.pay']).toEqual(['admin', 'manager', 'accountant'])
+  })
 })
 
 describe('expense-categories permission keys', () => {

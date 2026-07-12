@@ -10,6 +10,7 @@ import type {
   ExpenseFilters,
   LinkableInvoice,
   OperationResolution,
+  PayExpenseRequest,
   ExpenseListResponse,
   ExpenseResponse,
 } from '../types'
@@ -65,6 +66,17 @@ export const expenseApi = {
   post: async (id: string): Promise<Expense> => {
     const { data } = await api.post<ExpenseResponse>(`/expenses/${id}/post`)
     return data.data
+  },
+
+  /**
+   * Settle a posted expense for its full total.
+   */
+  pay: async (id: string, paymentData: PayExpenseRequest): Promise<Expense> => {
+    const { data: response } = await api.post<ExpenseResponse>(
+      `/expenses/${id}/pay`,
+      paymentData,
+    )
+    return response.data
   },
 
   reverse: async (id: string): Promise<unknown> => {

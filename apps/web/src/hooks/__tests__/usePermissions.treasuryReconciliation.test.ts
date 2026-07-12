@@ -11,4 +11,8 @@ describe('treasury bank reconciliation permission alignment', () => {
       expect.arrayContaining(['admin', 'treasury', 'accountant', 'manager'])
     )
   })
+
+  it('registers treasury.adjust for the backend-authorized financial roles', () => {
+    expect(PERMISSIONS['treasury.adjust']).toEqual(['admin', 'manager', 'accountant'])
+  })
 })

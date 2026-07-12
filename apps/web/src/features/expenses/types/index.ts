@@ -138,6 +138,12 @@ export interface CreateExpenseDTO {
   split_method?: LandedCostSplitMethod
 }
 
+export interface PayExpenseRequest {
+  payment_repository_id: string
+  payment_method_id?: string | null
+  payment_date: string
+}
+
 export interface LinkableInvoice {
   id: string
   document_number: string

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 import { ExpenseDetailPage } from './ExpenseDetailPage'
 
@@ -26,6 +26,11 @@ vi.mock('../hooks/useExpenses', () => ({
   useExpense: () => mockUseExpense() as unknown,
   useDeleteExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
   usePostExpense: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
+vi.mock('../components/PayExpenseDialog', () => ({
+  PayExpenseDialog: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="pay-expense-dialog" /> : null,
 }))
 
 // ─── child organism → stub so the test isolates the page shell ────────────────
@@ -168,5 +173,27 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
     render(<ExpenseDetailPage />)
 
     expect(screen.getByText('common:delete')).toBeInTheDocument()
+  })
+})
+
+describe('ExpenseDetailPage — Pay button eligibility and permission gating', () => {
+  it('shows Pay for a permitted posted, unpaid, non-linked-cost expense and opens the dialog', () => {
+    render(<ExpenseDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.submit' }))
+    expect(screen.getByTestId('pay-expense-dialog')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['missing permission', fixtureExpense, (p: string) => p !== 'expenses.pay'],
+    ['draft status', fixtureDraftExpense, () => true],
+    ['already paid', { ...fixtureExpense, metadata: { ...fixtureExpense.metadata, is_paid: true } }, () => true],
+    ['linked cost', { ...fixtureExpense, metadata: { ...fixtureExpense.metadata, expense_kind: 'linked_cost' as const } }, () => true],
+  ])('hides Pay for %s', (_case, candidate, permission) => {
+    mockUseExpense.mockReturnValue({ data: candidate, isLoading: false })
+    mockHasPermission.mockImplementation(permission)
+
+    render(<ExpenseDetailPage />)
+    expect(screen.queryByRole('button', { name: 'expenses:pay.submit' })).not.toBeInTheDocument()
   })
 })

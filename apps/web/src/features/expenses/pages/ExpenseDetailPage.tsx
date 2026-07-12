@@ -1,6 +1,7 @@
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Edit, Trash2, FileText } from 'lucide-react'
+import { ArrowLeft, CreditCard, Edit, Trash2, FileText } from 'lucide-react'
+import { useState } from 'react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
@@ -14,6 +15,7 @@ import { PageHeader } from '@/components/molecules/PageHeader'
 import { useExpense, useDeleteExpense, usePostExpense } from '../hooks/useExpenses'
 import { DocumentAttachments } from '../../documents/components/DocumentAttachments'
 import { usePermissions } from '@/hooks/usePermissions'
+import { PayExpenseDialog } from '../components/PayExpenseDialog'
 
 /**
  * Expense-status tone overrides for the shared StatusBadge. The built-in
@@ -39,6 +41,7 @@ export function ExpenseDetailPage() {
   const deleteExpense = useDeleteExpense()
   const postExpense = usePostExpense()
   const { hasPermission } = usePermissions()
+  const [isPayDialogOpen, setIsPayDialogOpen] = useState(false)
 
   const handleDelete = async () => {
     if (
@@ -146,6 +149,15 @@ export function ExpenseDetailPage() {
                 {postExpense.isPending ? t('common:processing') : t('expenses:postExpense')}
               </Button>
             )}
+            {isPosted
+              && !expense.metadata?.is_paid
+              && expense.metadata?.expense_kind !== 'linked_cost'
+              && hasPermission('expenses.pay') && (
+                <Button variant="primary" onClick={() => setIsPayDialogOpen(true)}>
+                  <CreditCard className="me-2 h-4 w-4" />
+                  {t('expenses:pay.submit')}
+                </Button>
+              )}
           </>
         }
       />
@@ -285,6 +297,14 @@ export function ExpenseDetailPage() {
           <DocumentAttachments documentId={expense.id} readOnly={isPosted} defaultRole="SOURCE_DOCUMENT" />
         </div>
       </div>
+
+      {isPayDialogOpen && (
+        <PayExpenseDialog
+          isOpen
+          onClose={() => setIsPayDialogOpen(false)}
+          expense={expense}
+        />
+      )}
     </div>
   )
 }
