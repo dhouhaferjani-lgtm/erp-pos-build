@@ -81,4 +81,8 @@
 
 ### Gate 2
 
-- Pending.
+- RC: `bank-gate-2-rc1` (`76851938f`).
+- Review: `docs/handoff/gate-reviews-bank/GATE-2-rc1.md`.
+- Verdict: `APPROVE`.
+- Findings: no blocking findings; one LOW generated-type observation and two informational notes. Opus independently re-derived the canonical RIB and IBAN mod-97 arithmetic and confirmed the PHP and TypeScript implementations avoid unsafe numeric coercion.
+- Fable escalation: not invoked; Opus reported no BLOCKER/HIGH validator-math finding and no uncertainty about the validator math.
