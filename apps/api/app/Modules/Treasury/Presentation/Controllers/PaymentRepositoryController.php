@@ -8,6 +8,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
+use App\Shared\Banking\Domain\ValueObjects\IbanValidationResult;
+use App\Shared\Banking\Domain\ValueObjects\RibValidationResult;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +21,7 @@ class PaymentRepositoryController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly BankAccountValidatorInterface $bankAccountValidator,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -33,7 +37,7 @@ class PaymentRepositoryController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $repositories->map(fn (PaymentRepository $repo) => $this->formatRepository($repo)),
+            'data' => $repositories->map(fn (PaymentRepository $repo) => $this->formatRepository($repo, $company->country_code)),
         ]);
     }
 
@@ -51,7 +55,7 @@ class PaymentRepositoryController extends Controller
             ->findOrFail($id);
 
         return response()->json([
-            'data' => $this->formatRepository($repository),
+            'data' => $this->formatRepository($repository, $company->country_code),
         ]);
     }
 
@@ -70,6 +74,7 @@ class PaymentRepositoryController extends Controller
             ],
             'name' => ['required', 'string', 'max:100'],
             'type' => ['required', 'string', Rule::in(['cash_register', 'safe', 'bank_account', 'virtual'])],
+            'bank_id' => ['nullable', 'uuid', ScopedExists::tenant('banks', $tenantId)],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
@@ -87,6 +92,7 @@ class PaymentRepositoryController extends Controller
             'code' => $validated['code'],
             'name' => $validated['name'],
             'type' => $validated['type'],
+            'bank_id' => $validated['bank_id'] ?? null,
             'bank_name' => $validated['bank_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
             'iban' => $validated['iban'] ?? null,
@@ -102,7 +108,7 @@ class PaymentRepositoryController extends Controller
         $repository->load('glAccount:id,code,name');
 
         return response()->json([
-            'data' => $this->formatRepository($repository),
+            'data' => $this->formatRepository($repository, $company->country_code),
         ], 201);
     }
 
@@ -129,6 +135,7 @@ class PaymentRepositoryController extends Controller
             ],
             'name' => ['sometimes', 'string', 'max:100'],
             'type' => ['sometimes', 'string', Rule::in(['cash_register', 'safe', 'bank_account', 'virtual'])],
+            'bank_id' => ['nullable', 'uuid', ScopedExists::tenant('banks', $tenantId)],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
@@ -151,7 +158,7 @@ class PaymentRepositoryController extends Controller
         $freshRepository = $repository->fresh(['glAccount:id,code,name']);
 
         return response()->json([
-            'data' => $this->formatRepository($freshRepository),
+            'data' => $this->formatRepository($freshRepository, $company->country_code),
         ]);
     }
 
@@ -239,8 +246,7 @@ class PaymentRepositoryController extends Controller
         array $attributes,
         ?string $existingGlAccountId = null,
         ?string $existingAccountId = null,
-    ): array
-    {
+    ): array {
         if (array_key_exists('account_id', $attributes) || $existingAccountId !== null) {
             return $attributes;
         }
@@ -259,13 +265,14 @@ class PaymentRepositoryController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function formatRepository(PaymentRepository $repository): array
+    private function formatRepository(PaymentRepository $repository, string $countryCode): array
     {
         return [
             'id' => $repository->id,
             'code' => $repository->code,
             'name' => $repository->name,
             'type' => $repository->type->value,
+            'bank_id' => $repository->bank_id,
             'bank_name' => $repository->bank_name,
             'account_number' => $repository->account_number,
             'iban' => $repository->iban,
@@ -274,6 +281,25 @@ class PaymentRepositoryController extends Controller
             'is_active' => $repository->is_active,
             'gl_account_id' => $repository->gl_account_id,
             'gl_account' => $repository->glAccount?->only(['id', 'code', 'name']),
+            'bank_account_validation' => $this->bankAccountValidation($repository, $countryCode),
+        ];
+    }
+
+    /**
+     * @return array{rib: RibValidationResult|null, iban: IbanValidationResult|null, bic_valid: bool|null}
+     */
+    private function bankAccountValidation(PaymentRepository $repository, string $countryCode): array
+    {
+        return [
+            'rib' => $repository->account_number !== null && $repository->account_number !== ''
+                ? $this->bankAccountValidator->validateRib($repository->account_number, $countryCode)
+                : null,
+            'iban' => $repository->iban !== null && $repository->iban !== ''
+                ? $this->bankAccountValidator->validateIban($repository->iban)
+                : null,
+            'bic_valid' => $repository->bic !== null && $repository->bic !== ''
+                ? $this->bankAccountValidator->validateBic($repository->bic)
+                : null,
         ];
     }
 }

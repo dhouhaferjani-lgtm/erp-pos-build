@@ -2467,6 +2467,24 @@ hasNextPage: boolean;
 hasPreviousPage: boolean;
 };
 }
+declare namespace App.Shared.Banking.Domain.ValueObjects {
+export type IbanValidationResult = {
+valid: boolean;
+normalized: string;
+country_code: string | null;
+bank_code: string | null;
+errors: Array<any>;
+};
+export type RibValidationResult = {
+valid: boolean;
+normalized: string;
+iban: string | null;
+bic: string | null;
+bank_code: string | null;
+bank_name: string | null;
+errors: Array<any>;
+};
+}
 declare namespace App.Shared.Contracts.Treasury.DTOs {
 export type ToleranceCheckResult = {
 qualifies: boolean;

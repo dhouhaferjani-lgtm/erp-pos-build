@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string $code
  * @property string $name
  * @property RepositoryType $type
+ * @property string|null $bank_id
  * @property string|null $bank_name
  * @property string|null $account_number
  * @property string|null $iban
@@ -48,6 +49,7 @@ use Illuminate\Support\Carbon;
  * @property-read Company $company
  * @property-read Account|null $glAccount
  * @property-read User|null $responsibleUser
+ * @property-read Bank|null $bank
  */
 class PaymentRepository extends Model
 {
@@ -113,6 +115,7 @@ class PaymentRepository extends Model
         'code',
         'name',
         'type',
+        'bank_id',
         'bank_name',
         'account_number',
         'iban',
@@ -156,6 +159,14 @@ class PaymentRepository extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<Bank, $this>
+     */
+    public function bank(): BelongsTo
+    {
+        return $this->belongsTo(Bank::class);
     }
 
     /**

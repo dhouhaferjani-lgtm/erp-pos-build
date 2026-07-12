@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useRef } from 'react'
+import { useForm, useWatch, type UseFormRegister, type UseFormSetValue } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Loader2 } from 'lucide-react'
-import { tokens } from '../../../lib/designTokens'
+import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react'
+import { semanticColorTokens as colorTokens, tokens } from '../../../lib/designTokens'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
@@ -11,12 +11,17 @@ import { Select } from '../../atoms/Select'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
 import { useAccounts } from '../../../features/finance/hooks/useAccounts'
+import { BankPicker } from '../../molecules/pickers/BankPicker'
+import type { Bank } from '@/hooks/useBanks'
+import { useBankAccountValidation, type BankAccountValidationResult } from '@/hooks/useBankAccountValidation'
+import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
 
 interface Repository {
   id: string
   code: string
   name: string
   type: 'cash_register' | 'safe' | 'bank_account' | 'virtual'
+  bank_id: string | null
   bank_name: string | null
   account_number: string | null
   iban: string | null
@@ -30,11 +35,106 @@ interface RepositoryFormData {
   code: string
   name: string
   type: string
+  bank_id: string
   bank_name: string
   account_number: string
   iban: string
   bic: string
   gl_account_id: string
+  selected_bank: Bank | null
+  bank_fallback: boolean
+}
+
+interface RepositoryBankFieldsProps {
+  countryCode: string
+  selectedBank: Bank | null
+  bankFallback: boolean
+  bankName: string
+  ribValidation: BankAccountValidationResult
+  ibanValidation: BankAccountValidationResult
+  register: UseFormRegister<RepositoryFormData>
+  setValue: UseFormSetValue<RepositoryFormData>
+}
+
+function RepositoryBankFields({
+  countryCode,
+  selectedBank,
+  bankFallback,
+  bankName,
+  ribValidation,
+  ibanValidation,
+  register,
+  setValue,
+}: RepositoryBankFieldsProps) {
+  const { t } = useTranslation('treasury')
+
+  return (
+    <>
+      <input type="hidden" {...register('bank_id')} />
+      <input type="hidden" {...register('bank_name')} />
+      <FormField label={t('repositories.bankName')} htmlFor="repository-bank-name">
+        <BankPicker
+          id="repository-bank-name"
+          aria-label={t('repositories.bankName')}
+          country={countryCode}
+          value={selectedBank}
+          isFallback={bankFallback}
+          fallbackValue={bankName}
+          onFallbackValueChange={(value) => {
+            setValue('bank_name', value)
+          }}
+          onFallbackChange={(isFallback) => {
+            setValue('bank_fallback', isFallback)
+            setValue('selected_bank', null)
+            setValue('bank_id', '')
+            setValue('bic', '')
+          }}
+          onChange={(bank) => {
+            setValue('selected_bank', bank)
+            setValue('bank_id', bank?.id ?? '')
+            setValue('bank_name', bank?.name ?? '')
+            setValue('bic', bank?.bic ?? '')
+          }}
+        />
+      </FormField>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormField label={t('repositories.accountNumber')} htmlFor="repository-account-number">
+          <Input id="repository-account-number" {...register('account_number')} placeholder={t('repositories.accountNumberPlaceholder')} />
+          {ribValidation.status === 'valid' ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.success.textStrong}`}>
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.validRib')}
+            </p>
+          ) : ribValidation.status === 'invalid' && ribValidation.normalized.length >= 20 ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.caution.textStrong}`}>
+              <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.invalidRibWarning')}
+            </p>
+          ) : null}
+        </FormField>
+
+        <FormField label={t('repositories.iban')} htmlFor="repository-iban">
+          <Input id="repository-iban" {...register('iban')} placeholder={t('repositories.ibanPlaceholder')} />
+          {ibanValidation.status === 'valid' ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.success.textStrong}`}>
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.validIban')}
+            </p>
+          ) : ibanValidation.status === 'invalid' && ibanValidation.normalized.length >= 24 ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.caution.textStrong}`}>
+              <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.invalidIbanWarning')}
+            </p>
+          ) : null}
+        </FormField>
+      </div>
+
+      <FormField label={t('repositories.bic')} htmlFor="repository-bic">
+        <Input id="repository-bic" {...register('bic')} readOnly={!bankFallback} placeholder={t('repositories.bicPlaceholder')} />
+      </FormField>
+    </>
+  )
 }
 
 export interface AddRepositoryModalProps {
@@ -80,6 +180,9 @@ export function AddRepositoryModal({
 }: AddRepositoryModalProps) {
   const { t } = useTranslation(['treasury', 'common'])
   const queryClient = useQueryClient()
+  const { config } = useCompanyConfig()
+  const countryCode = config?.country_code ?? ''
+  const autoDerivedIbanRef = useRef('')
 
   // Form state with React Hook Form
   const { data: accountsData } = useAccounts({ active: true })
@@ -87,20 +190,24 @@ export function AddRepositoryModal({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
-    watch,
+    setValue,
     formState: { errors },
   } = useForm<RepositoryFormData>({
     defaultValues: {
       code: '',
       name: '',
       type: 'cash_register',
+      bank_id: '',
       bank_name: '',
       account_number: '',
       iban: '',
       bic: '',
       gl_account_id: '',
+      selected_bank: null,
+      bank_fallback: false,
     },
   })
 
@@ -111,18 +218,42 @@ export function AddRepositoryModal({
         code: '',
         name: '',
         type: 'cash_register',
+        bank_id: '',
         bank_name: '',
         account_number: '',
         iban: '',
         bic: '',
         gl_account_id: '',
+        selected_bank: null,
+        bank_fallback: false,
       })
+      autoDerivedIbanRef.current = ''
     }
   }, [isOpen, reset])
 
   // Watch type to conditionally show bank fields
-  const selectedType = watch('type')
+  const selectedType = useWatch({ control, name: 'type' })
   const isBankAccount = selectedType === 'bank_account'
+  const accountNumber = useWatch({ control, name: 'account_number' })
+  const iban = useWatch({ control, name: 'iban' })
+  const bankName = useWatch({ control, name: 'bank_name' })
+  const selectedBank = useWatch({ control, name: 'selected_bank' })
+  const bankFallback = useWatch({ control, name: 'bank_fallback' })
+  const ribValidation = useBankAccountValidation(accountNumber, countryCode, 'rib')
+  const ibanValidation = useBankAccountValidation(iban, countryCode, 'iban')
+
+  useEffect(() => {
+    const nextIban = ribValidation.status === 'valid' ? ribValidation.derivedIban ?? '' : ''
+    if (nextIban !== '') {
+      if (iban === '' || iban === autoDerivedIbanRef.current) {
+        setValue('iban', nextIban)
+        autoDerivedIbanRef.current = nextIban
+      }
+    } else if (autoDerivedIbanRef.current !== '' && iban === autoDerivedIbanRef.current) {
+      setValue('iban', '')
+      autoDerivedIbanRef.current = ''
+    }
+  }, [iban, ribValidation.derivedIban, ribValidation.status, setValue])
 
   // React Query mutation
   const mutation = useMutation({
@@ -132,17 +263,18 @@ export function AddRepositoryModal({
         code: data.code,
         name: data.name,
         type: data.type,
+        bank_id: data.bank_id || null,
         bank_name: data.bank_name || null,
         account_number: data.account_number || null,
         iban: data.iban || null,
         bic: data.bic || null,
         gl_account_id: data.gl_account_id || null,
       }
-      return apiPost<{ data: Repository }>('/payment-repositories', payload)
+      return apiPost<Repository>('/payment-repositories', payload)
     },
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
-      onSuccess?.(response.data)
+      onSuccess?.(response)
       onClose()
     },
   })
@@ -225,53 +357,16 @@ export function AddRepositoryModal({
 
             {/* Bank-specific fields (conditional) */}
             {isBankAccount && (
-              <>
-                <FormField
-                  label={t('treasury:repositories.bankName', 'Bank Name')}
-                  htmlFor="repository-bank-name"
-                >
-                  <Input
-                    id="repository-bank-name"
-                    {...register('bank_name')}
-                    placeholder={t('treasury:repositories.bankNamePlaceholder')}
-                  />
-                </FormField>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField
-                    label={t('treasury:repositories.accountNumber', 'Account Number')}
-                    htmlFor="repository-account-number"
-                  >
-                    <Input
-                      id="repository-account-number"
-                      {...register('account_number')}
-                      placeholder={t('treasury:repositories.accountNumberPlaceholder')}
-                    />
-                  </FormField>
-
-                  <FormField
-                    label={t('treasury:repositories.iban', 'IBAN')}
-                    htmlFor="repository-iban"
-                  >
-                    <Input
-                      id="repository-iban"
-                      {...register('iban')}
-                      placeholder={t('treasury:repositories.ibanPlaceholder')}
-                    />
-                  </FormField>
-                </div>
-
-                <FormField
-                  label={t('treasury:repositories.bic', 'BIC/SWIFT')}
-                  htmlFor="repository-bic"
-                >
-                  <Input
-                    id="repository-bic"
-                    {...register('bic')}
-                    placeholder={t('treasury:repositories.bicPlaceholder')}
-                  />
-                </FormField>
-              </>
+              <RepositoryBankFields
+                countryCode={countryCode}
+                selectedBank={selectedBank}
+                bankFallback={bankFallback}
+                bankName={bankName}
+                ribValidation={ribValidation}
+                ibanValidation={ibanValidation}
+                register={register}
+                setValue={setValue}
+              />
             )}
           </div>
 

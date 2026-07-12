@@ -14,6 +14,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\Migrations\Migration;
@@ -209,6 +210,44 @@ class PaymentRepositoryTest extends TestCase
         $response->assertJsonPath('data.type', 'bank_account');
         $response->assertJsonPath('data.bank_name', 'BNP Paribas');
         $response->assertJsonPath('data.iban', 'FR7612345678901234567890123');
+    }
+
+    public function test_bank_reference_is_persisted_while_invalid_account_details_only_warn(): void
+    {
+        $bank = Bank::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'country_code' => 'FR',
+            'name' => 'Banque de test',
+            'short_name' => 'BDT',
+            'bic' => 'BDTEFRPP',
+            'rib_bank_code' => '30004',
+            'is_active' => true,
+            'is_custom' => false,
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-repositories', [
+            'code' => 'BANK_WARN',
+            'name' => 'Warn-only account',
+            'type' => 'bank_account',
+            'bank_id' => $bank->id,
+            'bank_name' => $bank->name,
+            'account_number' => 'not-a-valid-rib',
+            'iban' => 'not-a-valid-iban',
+            'bic' => $bank->bic,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.bank_id', $bank->id)
+            ->assertJsonPath('data.bank_account_validation.rib.valid', false)
+            ->assertJsonPath('data.bank_account_validation.iban.valid', false)
+            ->assertJsonPath('data.bank_account_validation.bic_valid', true);
+
+        $this->assertDatabaseHas('payment_repositories', [
+            'code' => 'BANK_WARN',
+            'bank_id' => $bank->id,
+            'account_number' => 'not-a-valid-rib',
+            'iban' => 'not-a-valid-iban',
+        ]);
     }
 
     public function test_can_create_safe_for_checks(): void

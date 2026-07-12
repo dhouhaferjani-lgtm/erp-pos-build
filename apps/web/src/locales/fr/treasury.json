@@ -328,6 +328,12 @@
     "accountNumberPlaceholder": "1234567890",
     "ibanPlaceholder": "FR1234567890",
     "bicPlaceholder": "BNPAFRPP",
+    "validation": {
+      "validRib": "RIB tunisien valide",
+      "invalidRibWarning": "La clé du RIB n'a pas pu être vérifiée. Vous pouvez tout de même enregistrer.",
+      "validIban": "IBAN valide",
+      "invalidIbanWarning": "La clé de l'IBAN n'a pas pu être vérifiée. Vous pouvez tout de même enregistrer."
+    },
     "types": {
       "cash_register": "Caisse",
       "safe": "Coffre",

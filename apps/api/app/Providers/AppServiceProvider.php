@@ -35,6 +35,8 @@ use App\Policies\ExpenseCategoryPolicy;
 use App\Services\CompanyConfigService;
 use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
+use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
+use App\Shared\Banking\Domain\BankAccountValidator;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -97,6 +99,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);
         $this->app->bind(EnrichmentSubmissionCorrelatorInterface::class, ProductEnrichmentCorrelationService::class);
         $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);
+        $this->app->bind(BankAccountValidatorInterface::class, BankAccountValidator::class);
     }
 
     /**
