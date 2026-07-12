@@ -800,7 +800,9 @@
       "totalItemsCounted": "Total articles comptés",
       "itemsNoVariance": "Articles sans écart",
       "itemsWithVariance": "Articles avec écart",
+      "lateSalesCorrections": "Corrections ventes tardives",
       "netVarianceValue": "Valeur écart net",
+      "openingValue": "Valeur d'ouverture",
       "varianceBreakdown": "Détail des écarts",
       "positiveVariance": "Écart positif",
       "negativeVariance": "Écart négatif",
@@ -812,7 +814,8 @@
       "matchedTheoretical": "Correspond au théorique",
       "provenWrong": "Invalidé par le 3ème",
       "flaggedItems": "Articles signalés",
-      "reason": "Raison"
+      "reason": "Raison",
+      "currentCostBasisNote": "Valeurs indicatives, calculées au coût actuel"
     },
     "messages": {
       "created": "Comptage créé avec succès",

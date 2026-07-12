@@ -6,12 +6,12 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\CountingReconciliationPayloadBuilder;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
-use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Presentation\Requests\ManualOverrideRequest;
 use App\Modules\Inventory\Presentation\Requests\SetOpeningCostRequest;
 use App\Modules\Inventory\Presentation\Requests\SubmitCountRequest;
@@ -25,7 +25,7 @@ class CountingItemController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
-        private readonly OpeningCostGate $openingCostGate,
+        private readonly CountingReconciliationPayloadBuilder $payloadBuilder,
     ) {}
 
     /**
@@ -197,64 +197,7 @@ class CountingItemController extends Controller
         return response()->json([
             'data' => [
                 'summary' => $summary,
-                'items' => $items->map(function ($item) {
-                    // Pre-finalize opening-cost signal (D3). `will_post_as_opening`
-                    // and `opening_cost_missing` come from OpeningCostGate — the
-                    // SAME computation the finalize gate enforces — so the review
-                    // page can flag/gate cost-less openings BEFORE finalize
-                    // instead of relying on the post-finalize `pending_opening_cost`
-                    // flag (which is inert here and unfixable after finalize).
-                    $onboarding = (bool) $item->location->onboarding_mode;
-                    $gate = $this->openingCostGate->evaluateItem($item, $onboarding);
-
-                    return [
-                        'id' => $item->id,
-                        'product' => [
-                            'id' => $item->product->id,
-                            'name' => $item->product->name,
-                            'sku' => $item->product->sku,
-                        ],
-                        'location' => [
-                            'code' => $item->location->code ?? null,
-                            'name' => $item->location->name,
-                        ],
-                        'theoretical_qty' => $item->theoretical_qty,
-                        'count_1' => [
-                            'qty' => $item->count_1_qty,
-                            'at' => $item->count_1_at?->toIso8601String(),
-                            'notes' => $item->count_1_notes,
-                        ],
-                        'count_2' => $item->count_2_qty !== null ? [
-                            'qty' => $item->count_2_qty,
-                            'at' => $item->count_2_at?->toIso8601String(),
-                            'notes' => $item->count_2_notes,
-                        ] : null,
-                        'count_3' => $item->count_3_qty !== null ? [
-                            'qty' => $item->count_3_qty,
-                            'at' => $item->count_3_at?->toIso8601String(),
-                            'notes' => $item->count_3_notes,
-                        ] : null,
-                        'final_qty' => $item->final_qty,
-                        'variance' => $item->getVariance(),
-                        'resolution_method' => $item->resolution_method->value,
-                        'resolution_notes' => $item->resolution_notes,
-                        'is_flagged' => $item->is_flagged,
-                        'flag_reason' => $item->flag_reason,
-                        // Replay-review fields (D3). `expected_qty_at_apply` and the
-                        // `replay_audit` snapshot are stamped by the finalize
-                        // listener; `flag_reasons` is the canonical jsonb array
-                        // (blocking + informational). `opening_unit_cost` drives the
-                        // backfill cell for onboarding opening lines.
-                        'expected_qty_at_apply' => $item->expected_qty_at_apply,
-                        'replay_audit' => $item->replay_audit,
-                        'flag_reasons' => $item->flag_reasons,
-                        'opening_unit_cost' => $item->opening_unit_cost,
-                        // Pre-finalize opening-cost gate signals (D3): drive the
-                        // review-page cost cell + finalize gate. Additive.
-                        'will_post_as_opening' => $gate['will_post_as_opening'],
-                        'opening_cost_missing' => $gate['opening_cost_missing'],
-                    ];
-                })->all(),
+                'items' => $this->payloadBuilder->transformMany($items),
                 // Late-sale flags captured on the session during the block
                 // window — surfaced as a review banner.
                 'late_sales_flags' => $counting->late_sales_flags ?? [],

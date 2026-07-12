@@ -227,6 +227,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('inventory-countings.show');
 
+    Route::get('/inventory/countings/{counting}/report', [InventoryCountingController::class, 'report'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-countings.report');
+
     // Counter-specific endpoints (BLIND view)
     Route::get('/inventory/countings/{counting}/counter-view', [InventoryCountingController::class, 'counterView'])
         ->name('inventory-countings.counter-view');

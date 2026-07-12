@@ -800,7 +800,9 @@
       "totalItemsCounted": "Total Items Counted",
       "itemsNoVariance": "Items No Variance",
       "itemsWithVariance": "Items With Variance",
+      "lateSalesCorrections": "Late Sales Corrections",
       "netVarianceValue": "Net Variance Value",
+      "openingValue": "Opening Value",
       "varianceBreakdown": "Variance Breakdown",
       "positiveVariance": "Positive Variance",
       "negativeVariance": "Negative Variance",
@@ -812,7 +814,8 @@
       "matchedTheoretical": "Matched Theoretical",
       "provenWrong": "Proven Wrong by 3rd",
       "flaggedItems": "Flagged Items",
-      "reason": "Reason"
+      "reason": "Reason",
+      "currentCostBasisNote": "Values are indicative, computed at current cost"
     },
     "messages": {
       "created": "Counting operation created successfully",

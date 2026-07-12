@@ -28,6 +28,33 @@
     "draftSaved": "تم حفظ مسودة إيصال الاستلام",
     "printGrn": "طباعة إيصال الاستلام"
   },
+  "counting": {
+    "report": {
+      "title": "تقرير الفروقات",
+      "generatedAt": "تم الإنشاء في {{date}}",
+      "exportPdf": "تصدير PDF",
+      "exportExcel": "تصدير Excel",
+      "totalItemsCounted": "إجمالي العناصر المعدودة",
+      "itemsNoVariance": "عناصر بدون فرق",
+      "itemsWithVariance": "عناصر بها فرق",
+      "lateSalesCorrections": "تصحيحات المبيعات المتأخرة",
+      "netVarianceValue": "قيمة صافي الفرق",
+      "openingValue": "قيمة الرصيد الافتتاحي",
+      "varianceBreakdown": "تفصيل الفروقات",
+      "positiveVariance": "فرق موجب",
+      "negativeVariance": "فرق سالب",
+      "resolutionMethods": "طرق التسوية",
+      "counterPerformance": "أداء العدّادين",
+      "itemsCounted": "عنصر تم عدّه",
+      "accuracyRate": "معدل الدقة",
+      "matchedOther": "مطابق للعدّاد الآخر",
+      "matchedTheoretical": "مطابق للنظري",
+      "provenWrong": "أُثبت خطؤه بواسطة العدّة الثالثة",
+      "flaggedItems": "العناصر المُعلَّمة",
+      "reason": "السبب",
+      "currentCostBasisNote": "القيم إرشادية، محسوبة بالتكلفة الحالية"
+    }
+  },
   "entryExitNotes": {
     "title": "أذونات الدخول والخروج",
     "subtitle": "{{count}} إذن مسجل",

@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\CountingDiscrepancyReportService;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
@@ -33,6 +34,7 @@ class InventoryCountingController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
+        private readonly CountingDiscrepancyReportService $reportService,
     ) {}
 
     /**
@@ -258,6 +260,41 @@ class InventoryCountingController extends Controller
 
         return response()->json([
             'data' => $this->transformCounting($counting, true),
+        ]);
+    }
+
+    public function report(Request $request, string $countingId): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        /** @var User $user */
+        $user = $request->user();
+
+        $counting = InventoryCounting::forCompany($companyId)
+            ->with([
+                'count1User',
+                'count2User',
+                'count3User',
+                'createdBy',
+                'assignments.user',
+                'company',
+            ])
+            ->findOrFail($countingId);
+
+        if (! in_array($counting->status, [CountingStatus::PendingReview, CountingStatus::Finalized], true)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COUNTING_REPORT_UNAVAILABLE',
+                    'message' => 'Counting report is only available for pending review or finalized countings.',
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => $this->reportService->build(
+                $counting,
+                $user,
+                $this->transformCounting($counting, false),
+            ),
         ]);
     }
 

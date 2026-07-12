@@ -241,15 +241,23 @@ export interface DiscrepancyReportSummary {
     manual_override: number
   }
   total_variance_value: {
-    positive: number
-    negative: number
-    net: number
+    positive: string
+    negative: string
+    net: string
     currency: string
   }
+  late_sales_corrections?: number
+  opening_items?: number
+  opening_value?: string
+}
+
+export interface DiscrepancyReportUser {
+  id: string
+  name: string
 }
 
 export interface DiscrepancyReportCounterPerformance {
-  user: CountingUser
+  user: DiscrepancyReportUser
   items_counted: number
   matched_other_counter: number
   matched_theoretical: number
@@ -260,7 +268,7 @@ export interface DiscrepancyReportCounterPerformance {
 export interface DiscrepancyReport {
   report_id: string
   generated_at: string
-  generated_by: CountingUser
+  generated_by: DiscrepancyReportUser
   counting: InventoryCounting
   summary: DiscrepancyReportSummary
   flagged_items: ReconciliationItem[]

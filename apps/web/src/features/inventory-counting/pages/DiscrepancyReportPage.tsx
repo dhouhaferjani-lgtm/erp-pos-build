@@ -18,6 +18,9 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
+// TODO(report-export-followup): enable when the /report/export backend endpoint lands
+const REPORT_EXPORT_ENABLED: boolean = false
+
 export function DiscrepancyReportPage() {
   const { t } = useTranslation('inventory')
   const { id } = useParams<{ id: string }>()
@@ -52,6 +55,9 @@ export function DiscrepancyReportPage() {
     exportReport.mutate({ id: countingId, format })
   }
 
+  const netVariance = report.summary.total_variance_value.net
+  const netVarianceIsPositive = isNonNegativeMoney(netVariance)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -76,6 +82,7 @@ export function DiscrepancyReportPage() {
           </div>
         </div>
 
+        {REPORT_EXPORT_ENABLED && (
         <div className="flex gap-2">
           <button
             type="button"
@@ -96,10 +103,11 @@ export function DiscrepancyReportPage() {
             {t('counting.report.exportExcel')}
           </button>
         </div>
+        )}
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <SummaryCard
           icon={CheckCircle}
           label={t('counting.report.totalItemsCounted')}
@@ -119,17 +127,29 @@ export function DiscrepancyReportPage() {
           iconClassName={colorTokens.intent.caution.text}
         />
         <SummaryCard
-          icon={
-            report.summary.total_variance_value.net >= 0 ? TrendingUp : TrendingDown
-          }
+          icon={netVarianceIsPositive ? TrendingUp : TrendingDown}
           label={t('counting.report.netVarianceValue')}
-          value={formatTND(report.summary.total_variance_value.net)}
+          value={formatTND(netVariance)}
           iconClassName={
-            report.summary.total_variance_value.net >= 0
+            netVarianceIsPositive
               ? colorTokens.intent.success.text
               : colorTokens.intent.danger.text
           }
-          highlight={report.summary.total_variance_value.net !== 0}
+          highlight={isNonZeroMoney(netVariance)}
+        />
+        <SummaryCard
+          icon={AlertTriangle}
+          label={t('counting.report.lateSalesCorrections')}
+          value={(report.summary.late_sales_corrections ?? 0).toString()}
+          iconClassName={colorTokens.intent.caution.text}
+          highlight={(report.summary.late_sales_corrections ?? 0) > 0}
+        />
+        <SummaryCard
+          icon={TrendingUp}
+          label={t('counting.report.openingValue')}
+          value={formatTND(report.summary.opening_value ?? '0')}
+          iconClassName={colorTokens.intent.primary.text}
+          highlight={isNonZeroMoney(report.summary.opening_value ?? '0')}
         />
       </div>
 
@@ -140,7 +160,7 @@ export function DiscrepancyReportPage() {
             {t('counting.report.varianceBreakdown')}
           </h2>
 
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-2 gap-4 mb-2">
             <div className={`${colorTokens.intent.success.bgSubtle} rounded-lg p-4`}>
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className={`w-5 h-5 ${colorTokens.intent.success.text}`} />
@@ -164,6 +184,9 @@ export function DiscrepancyReportPage() {
               </div>
             </div>
           </div>
+          <p className={`text-xs ${colorTokens.text.subtle} mb-6`}>
+            {t('counting.report.currentCostBasisNote')}
+          </p>
 
           <h3 className="font-medium mb-3">
             {t('counting.report.resolutionMethods')}
@@ -340,6 +363,14 @@ export function DiscrepancyReportPage() {
       )}
     </div>
   )
+}
+
+function isNonNegativeMoney(value: string): boolean {
+  return !value.trim().startsWith('-')
+}
+
+function isNonZeroMoney(value: string): boolean {
+  return /[1-9]/.test(value.replace(/^[+-]/, ''))
 }
 
 interface SummaryCardProps {
