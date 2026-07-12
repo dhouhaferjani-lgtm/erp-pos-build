@@ -100,3 +100,21 @@ None found during pre-flight review.
 - Contract coverage: permission 403; 201 response shape and both persisted balances; same-repository, sub-scale, negative, and missing-field validation; cross-company 404; client-group sequential replay with the original JE id, one posted JE, no drafts, and unchanged replay balances; Amendment A-1 pre-existing-transfer race shape; canonical `BUSINESS_ERROR` envelopes for frozen, virtual, and inactive repositories.
 - Permission parity: `PermissionSeeder` base list contains `treasury.transfer`; `RolesAndPermissionsSeeder` contains it in the permission catalog and beside all three `treasury.adjust` occurrences (catalog, manager bundle, accountant bundle).
 - Deviations: Amendment A-1 substitution recorded above. The requested conceptual "route 404 RED" manifested as framework-correct 405 because of the existing wildcard GET route; no test or routing behavior was contrived to misreport it.
+
+### Task A5 — Mixed-transfer reconcile-green pin
+
+- Status: complete
+- Files:
+  - `apps/api/tests/Feature/Treasury/RepositoryTransferEndpointTest.php`
+  - `.superpowers/sdd/task-A5-report.md`
+  - `.superpowers/sdd/progress.md`
+  - `docs/handoff/treasury-phase3-progress.md`
+- Pin coverage: one cross-GL endpoint transfer (cash → bank), one same-GL endpoint transfer (cash → safe), and one replay of the cross-GL transfer with the same client `transfer_group_id`. The test clears `CompanyContext`, calls `treasury:reconcile` with `['--tenant' => $this->tenant->id]`, and asserts exit 0, zero frozen repositories, and zero `treasury.reconcile.drift` audit events.
+- TDD/pinning evidence:
+  - First run immediately after adding the pin: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury/RepositoryTransferEndpointTest.php --filter test_reconcile_stays_green_after_mixed_transfers` — exit 0; `OK (1 test, 9 assertions)`. This is the binding plan's expected green-pin outcome when A1–A4 are correct; no production correction was required.
+  - `cd apps/api && ./vendor/bin/pint --dirty` — exit 0; `{"result":"pass"}`.
+  - Post-Pint focused pin: exit 0; `OK (1 test, 9 assertions)`.
+  - Full endpoint suite: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury/RepositoryTransferEndpointTest.php` — exit 0; `OK (8 tests, 89 assertions)`.
+  - `cd apps/api && ./vendor/bin/phpstan --memory-limit=1G` — exit 0; `[OK] No errors` across 2503 files.
+- Protected perimeter: no reconcile command, `TreasuryMovementService` port, fiscal file, or named UI interlock was edited.
+- Deviations/concerns: none.

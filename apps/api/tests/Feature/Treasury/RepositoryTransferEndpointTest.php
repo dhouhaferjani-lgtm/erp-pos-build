@@ -19,6 +19,8 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
@@ -206,6 +208,39 @@ final class RepositoryTransferEndpointTest extends TestCase
         $this->assertSame($original->out->movementId, $response->json('data.out.movement_id'));
         $this->assertSame(1, $this->transferEntries($groupId)->where('status', JournalEntryStatus::Posted->value)->count());
         $this->assertSame(0, $this->transferEntries($groupId)->where('status', JournalEntryStatus::Draft->value)->count());
+    }
+
+    public function test_reconcile_stays_green_after_mixed_transfers(): void
+    {
+        [$cashAccount, $bankAccount] = $this->seedCashAndBankAccounts();
+        $cash = $this->seedRepository('CASH-01', RepositoryType::CashRegister, $cashAccount->id);
+        $bank = $this->seedRepository('BANK-01', RepositoryType::BankAccount, $bankAccount->id);
+        $safe = $this->seedRepository('SAFE-01', RepositoryType::Safe, $cashAccount->id);
+        $crossGlGroupId = (string) Str::uuid();
+
+        $this->postTransfer($cash, $bank, '125.000', ['transfer_group_id' => $crossGlGroupId])
+            ->assertCreated()
+            ->assertJsonPath('data.idempotent_replay', false);
+        $this->postTransfer($cash, $safe, '50.000')
+            ->assertCreated()
+            ->assertJsonPath('data.idempotent_replay', false);
+        $this->postTransfer($cash, $bank, '125.000', ['transfer_group_id' => $crossGlGroupId])
+            ->assertCreated()
+            ->assertJsonPath('data.idempotent_replay', true);
+
+        app(CompanyContext::class)->clear();
+        $exitCode = Artisan::call('treasury:reconcile', ['--tenant' => $this->tenant->id]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame(
+            0,
+            PaymentRepository::query()->whereNotNull('frozen_at')->count(),
+            'reconcile froze a repository after spec-shaped transfers',
+        );
+        $this->assertSame(
+            0,
+            DB::table('audit_events')->where('event_type', 'treasury.reconcile.drift')->count(),
+        );
     }
 
     public function test_domain_failures_use_canonical_envelope_for_frozen_virtual_and_inactive_repositories(): void
