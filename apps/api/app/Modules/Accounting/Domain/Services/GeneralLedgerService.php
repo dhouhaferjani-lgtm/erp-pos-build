@@ -967,6 +967,73 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create the Draft GL entry for an inter-repository cash transfer.
+     *
+     * Dr destination repository account / Cr source repository account. This
+     * factory deliberately never posts: TreasuryMovementService::transfer()
+     * posts the entry inside its repository-lock scope, while its caller owns
+     * the enclosing transaction that rolls this Draft back on failure.
+     */
+    public function createRepositoryTransferJournalEntry(
+        string $companyId,
+        string $tenantId,
+        string $transferGroupId,
+        string $fromGlAccountId,
+        string $toGlAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+        string $description,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('createRepositoryTransferJournalEntry: requires an enclosing database transaction; the caller must be able to roll the Draft back if transfer() fails.');
+        }
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $transferGroupId,
+            $fromGlAccountId,
+            $toGlAccountId,
+            $amount,
+            $date,
+            $description,
+        ): JournalEntry {
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'treasury_transfer',
+                'journal_code' => JournalCode::fromSourceType('treasury_transfer')->value,
+                'source_id' => $transferGroupId,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $toGlAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Inter-repository transfer (in)',
+                'line_order' => 0,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $fromGlAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Inter-repository transfer (out)',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
      * Create journal entry for customer payment received.
      *
      * Standard payment against an invoice:
