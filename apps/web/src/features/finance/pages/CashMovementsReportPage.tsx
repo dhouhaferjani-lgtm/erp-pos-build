@@ -4,7 +4,11 @@ import { Link } from 'react-router-dom'
 import { ArrowDownCircle, ArrowUpCircle, Copy, Inbox } from 'lucide-react'
 
 import { QueryError } from '@/components/QueryError'
-import { Select, StatusBadge, type StatusTone } from '@/components/atoms'
+import { Button, Select, StatusBadge, type StatusTone } from '@/components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+} from '@/components/molecules/DataTable'
 import { EmptyState } from '@/components/molecules/EmptyState'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
@@ -70,6 +74,105 @@ export function CashMovementsReportPage() {
   const resetPage = () => {
     setPage(1)
   }
+
+  const columns: DataTableColumn<CashMovementRow>[] = [
+    {
+      key: 'date',
+      header: t('finance:cashMovements.columns.date'),
+      accessor: (movement) => movement.date,
+      cellClassName: cn('whitespace-nowrap', textColors.tertiary),
+    },
+    {
+      key: 'direction',
+      header: t('finance:cashMovements.columns.direction'),
+      render: (movement) => {
+        const Icon = directionIcon[movement.direction]
+        const isIn = movement.direction === 'in'
+
+        return (
+          <div className="flex items-center gap-2">
+            <Icon className={cn('h-4 w-4', isIn ? textColors.success : textColors.error)} />
+            <StatusBadge tone={directionTone[movement.direction]}>
+              {t('finance:cashMovements.directions.' + movement.direction)}
+            </StatusBadge>
+          </div>
+        )
+      },
+      cellClassName: 'whitespace-nowrap',
+    },
+    {
+      key: 'amount',
+      header: t('finance:cashMovements.columns.amount'),
+      numeric: true,
+      render: (movement) => {
+        const isIn = movement.direction === 'in'
+
+        return (
+          <span className={cn('font-semibold', isIn ? textColors.success : textColors.error)}>
+            {isIn ? '+' : '−'}
+            {formatCurrency(movement.amount, { currency: movement.currency })}
+          </span>
+        )
+      },
+      cellClassName: 'whitespace-nowrap',
+    },
+    {
+      key: 'sourceType',
+      header: t('finance:cashMovements.columns.sourceType'),
+      render: (movement) => (
+        <StatusBadge>
+          {t('finance:cashMovements.sourceTypes.' + movement.source_type, {
+            defaultValue: movement.source_type,
+          })}
+        </StatusBadge>
+      ),
+      cellClassName: cn('whitespace-nowrap', textColors.tertiary),
+    },
+    {
+      key: 'counterparty',
+      header: t('finance:cashMovements.columns.counterparty'),
+      render: (movement) => movement.counterparty ?? '—',
+    },
+    {
+      key: 'glAccount',
+      header: t('finance:cashMovements.columns.glAccount'),
+      render: (movement) => movement.gl_account ?? '—',
+      cellClassName: 'whitespace-nowrap font-mono',
+    },
+    {
+      key: 'sourceRef',
+      header: t('finance:cashMovements.columns.sourceRef'),
+      render: (movement) => {
+        const sourceHref = paymentSourceHref(
+          movement.source_type,
+          movement.source_id,
+        )
+
+        return sourceHref ? (
+          <Link className={cn('font-mono text-xs hover:underline', textColors.brand)} to={sourceHref}>
+            {movement.source_id}
+          </Link>
+        ) : (
+          <span className="inline-flex items-center gap-1">
+            <code className="font-mono text-xs">{movement.source_id}</code>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => {
+                copySourceRef(movement.source_id)
+              }}
+              className="h-7 w-7 p-1"
+              aria-label={t('finance:cashMovements.copySourceRef')}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </span>
+        )
+      },
+      cellClassName: 'whitespace-nowrap',
+    },
+  ]
 
   return (
     <div className="space-y-6 p-6">
@@ -197,94 +300,18 @@ export function CashMovementsReportPage() {
             />
           ) : (
             <section className={cn('overflow-hidden rounded-lg border', colors.white, borderColors.light)}>
-              <div className="overflow-x-auto">
-                {/*
-                  Hand-rolled deliberately — the shared DataTable has no
-                  pagination support. This table pairs with OffsetPagination
-                  below, following RepositoryMovementsTab's report idiom.
-                */}
-                <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
-                  <thead className={tokens.table.header}>
-                    <tr>
-                      {(['date', 'direction', 'amount', 'sourceType', 'counterparty', 'glAccount', 'sourceRef'] as const).map((column) => (
-                        <th
-                          key={column}
-                          className={cn(
-                            'px-6 py-3 text-xs font-medium uppercase tracking-wider',
-                            column === 'amount' ? 'text-end' : 'text-start',
-                            textColors.tertiary,
-                          )}
-                        >
-                          {t('finance:cashMovements.columns.' + column)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className={cn('divide-y', borderColors.divideDefault)}>
-                    {rows.map((movement) => {
-                      const Icon = directionIcon[movement.direction]
-                      const isIn = movement.direction === 'in'
-                      const sourceHref = paymentSourceHref(
-                        movement.source_type,
-                        movement.source_id,
-                      )
-
-                      return (
-                        <tr key={[movement.source_type, movement.source_id, movement.direction, movement.gl_account].join('-')} className={tokens.table.rowHover}>
-                          <td className={cn('whitespace-nowrap px-6 py-4 text-sm', textColors.tertiary)}>
-                            {movement.date}
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <Icon className={cn('h-4 w-4', isIn ? textColors.success : textColors.error)} />
-                              <StatusBadge tone={directionTone[movement.direction]}>
-                                {t('finance:cashMovements.directions.' + movement.direction)}
-                              </StatusBadge>
-                            </div>
-                          </td>
-                          <td className={cn('whitespace-nowrap px-6 py-4 text-end text-sm font-semibold tabular-nums', isIn ? textColors.success : textColors.error)}>
-                            {isIn ? '+' : '−'}{formatCurrency(movement.amount, { currency: movement.currency })}
-                          </td>
-                          <td className={cn('whitespace-nowrap px-6 py-4 text-sm', textColors.tertiary)}>
-                            <StatusBadge>
-                              {t('finance:cashMovements.sourceTypes.' + movement.source_type, {
-                                defaultValue: movement.source_type,
-                              })}
-                            </StatusBadge>
-                          </td>
-                          <td className={cn('px-6 py-4 text-sm', textColors.primary)}>
-                            {movement.counterparty ?? '—'}
-                          </td>
-                          <td className={cn('whitespace-nowrap px-6 py-4 font-mono text-sm', textColors.primary)}>
-                            {movement.gl_account ?? '—'}
-                          </td>
-                          <td className={cn('whitespace-nowrap px-6 py-4 text-sm', textColors.primary)}>
-                            {sourceHref ? (
-                              <Link className={cn('font-mono text-xs hover:underline', textColors.brand)} to={sourceHref}>
-                                {movement.source_id}
-                              </Link>
-                            ) : (
-                              <span className="inline-flex items-center gap-1">
-                                <code className="font-mono text-xs">{movement.source_id}</code>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    copySourceRef(movement.source_id)
-                                  }}
-                                  className={cn('rounded p-1', textColors.disabled, textColors.hoverSecondary)}
-                                  aria-label={t('finance:cashMovements.copySourceRef')}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </button>
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                columns={columns}
+                data={rows}
+                keyExtractor={(movement) =>
+                  [
+                    movement.source_type,
+                    movement.source_id,
+                    movement.direction,
+                    movement.gl_account,
+                  ].join('-')
+                }
+              />
 
               {meta && (
                 <OffsetPagination
