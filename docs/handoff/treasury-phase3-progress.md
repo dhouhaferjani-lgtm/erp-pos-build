@@ -268,6 +268,13 @@ None found during pre-flight review.
 - Deviation: the all-raw cache-filter amendment is recorded in the dated Deviations entry above.
 - Reviewer follow-up: a non-identity i18n regression test first failed on raw zero-amount and same-repository keys; the modal now translates only its known Zod validation keys (unknown/undefined messages remain untouched), and `repositoryLabel` is module-scoped. Follow-up gates: modal 4/4, D2 focused 11/11, typecheck/lint/audits clean, React Doctor 100/100.
 
+### E1 anomaly — Repository transfer modal cache shape
+
+- Live symptom: after the repository list loaded, opening `Transfer cash` crashed because `useActivePaymentRepositories` called `.filter` on an object.
+- Root cause: `RepositoryListPage` and `usePaymentRepositories` share the tenant-scoped `payment-repositories` key, but the page cached `{data: Repository[]}` while the hook's canonical cache value is `Repository[]`.
+- RED/GREEN: a real page/modal integration regression first observed the object-shaped cache; after the page query returned `response.data.data`, it observed the array and opened the real modal without crashing. No defensive `Array.isArray` fallback was added.
+- Verification: focused page/modal/hook coverage 12/12, typecheck, full lint, TanStack audit 0, design audit 0 new, and pinned React Doctor with no changed-scope diagnostics.
+
 ### Task D3 — Notification center frontend
 
 - Status: complete.

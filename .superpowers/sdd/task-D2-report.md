@@ -35,3 +35,10 @@ Rev2 required `tenantScopedKey(...)` for six invalidations and raw prefixes for 
 - GREEN: the modal translates only its six known Zod validation keys before passing them to `FormField`; undefined and unknown messages pass through unchanged. The modal suite passes 4/4, including translated zero, precision, and same-repository messages.
 - `repositoryLabel` moved to module scope as a pure `PaymentRepository` formatter, preserving the option text while avoiding per-render function creation.
 - Follow-up verification: D2 focused suite 11/11, typecheck and full lint pass, TanStack audit 0, design audit 0 new, and React Doctor against base `5a587790725a2b8a23d72ffb4a70d1e21d41aa09` remains 100/100 with no issues.
+
+## E1 live cache-shape fix
+
+- Root cause: `RepositoryListPage` and `usePaymentRepositories` share `tenantScopedKey(['payment-repositories'])`, but the page cached `{data: PaymentRepository[]}` while the hook consumes `PaymentRepository[]`. Opening the real transfer modal reused the incompatible page cache and crashed in `useActivePaymentRepositories().filter(...)`.
+- RED: the new page/modal integration test rendered the real shared query path and failed because the cached value was `{data: [repository]}` instead of `[repository]`.
+- GREEN: the page query now returns `response.data.data` and consumes `data ?? []`, matching the hook's canonical array contract without `Array.isArray` masking. The integration test confirms the cache contains an array and the real transfer modal opens.
+- Verification: repository-page integration + page + modal + hook suites pass 12/12; typecheck and full lint pass; TanStack audit 0; design audit 0 new; pinned React Doctor reports no changed-scope diagnostics.

@@ -88,12 +88,12 @@ export function RepositoryListPage() {
     queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<RepositoriesResponse>('/payment-repositories')
-      return response.data
+      return response.data.data
     },
     enabled: tenantId !== null && companyId !== null,
   })
 
-  const repositories = data?.data ?? []
+  const repositories = data ?? []
 
   // Format currency using company settings
   const formatAmount = (amount: string) => {

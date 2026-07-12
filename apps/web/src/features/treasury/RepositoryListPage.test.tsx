@@ -59,10 +59,6 @@ interface Repository {
   is_active: boolean
 }
 
-interface RepositoriesResponse {
-  data: Repository[]
-}
-
 function makeRepo(overrides: Partial<Repository>): Repository {
   return {
     id: 'id',
@@ -81,16 +77,14 @@ function makeRepo(overrides: Partial<Repository>): Repository {
 }
 
 const mockUseQueryReturn: {
-  data: RepositoriesResponse | undefined
+  data: Repository[] | undefined
   isLoading: boolean
   error: unknown
 } = {
-  data: {
-    data: [
-      makeRepo({ id: '1', code: 'CASH01', name: 'Front Register', type: 'cash_register', balance: '120.50', is_active: true }),
-      makeRepo({ id: '2', code: 'BANK01', name: 'Main Bank', type: 'bank_account', balance: '-30.00', is_active: false }),
-    ],
-  },
+  data: [
+    makeRepo({ id: '1', code: 'CASH01', name: 'Front Register', type: 'cash_register', balance: '120.50', is_active: true }),
+    makeRepo({ id: '2', code: 'BANK01', name: 'Main Bank', type: 'bank_account', balance: '-30.00', is_active: false }),
+  ],
   isLoading: false,
   error: null,
 }
