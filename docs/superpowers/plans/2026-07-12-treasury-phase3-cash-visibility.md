@@ -1,7 +1,8 @@
-# Treasury Phase ③ — Cash-Visibility Read Layer: Implementation Plan (Rev 1)
+# Treasury Phase ③ — Cash-Visibility Read Layer: Implementation Plan (Rev 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > **Binding spec:** `docs/superpowers/specs/2026-07-12-treasury-phase3-cash-visibility-design.md` (**Rev 2** — §15 reconciliation is part of the contract). On any conflict between this plan and the spec, the spec wins and the deviation goes in the progress file.
+> **Adversarially reviewed 2026-07-12** (2 lanes: Fable on Wave A, Opus on B–E — `docs/superpowers/plans/reviews/2026-07-12-treasury-phase3-plan-adversarial-review.md`); all findings reconciled in place, log at the end of this file. The review's "Verified-correct plan claims" sections are ground truth — implementers should NOT re-derive them.
 
 **Goal:** Ship the Phase-③ cash-visibility layer: inter-repository transfer (G13, first production consumer of `TreasuryMovementService::transfer()`), platform notification center + treasury alert delivery, cash-movements report page (G12), and the cash-position dashboard widget (C9).
 
@@ -102,10 +103,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::getDriverName() !== 'pgsql') {
-            return; // partial indexes are a Postgres feature; sqlite test DBs skip
-        }
-
+        // NO driver guard (plan-review F3): the procurement exemplar runs
+        // unconditionally and sqlite supports partial indexes — guarding
+        // would silently remove index coverage from the sqlite fast loop.
         DB::statement(<<<'SQL'
             CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_treasury_transfer_source_unique
             ON journal_entries (source_type, source_id)
@@ -115,15 +115,11 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::getDriverName() !== 'pgsql') {
-            return;
-        }
-
         DB::statement('DROP INDEX IF EXISTS journal_entries_treasury_transfer_source_unique');
     }
 };
 ```
-(If the procurement exemplar's driver guard differs — e.g. it doesn't guard — match the exemplar, but keep the `AND status = 'posted'` predicate: that predicate is the review's BLOCKER fix and non-negotiable.)
+(Verified: `journal_entries.status` stores lowercase `'draft'|'posted'|'reversed'` strings — the predicate value is correct. Reversal entries use distinct `*_reversal` source_types — no collision. The `AND status = 'posted'` predicate is the spec-review BLOCKER fix and non-negotiable.)
 
 - [ ] **Step 3: Run the migration against the test DB**
 
@@ -190,8 +186,21 @@ public function test_transfer_journal_entry_is_created_as_draft_and_never_posted
 
 public function test_transfer_journal_entry_requires_enclosing_transaction(): void
 {
-    $this->expectException(\LogicException::class);
-    app(GeneralLedgerService::class)->createRepositoryTransferJournalEntry(/* same args, outside DB::transaction */);
+    // RefreshDatabase wraps each test in a transaction (level starts at 1) —
+    // pop it so we are genuinely at level 0, else the guard never fires and
+    // this test can NEVER pass (plan-review F1). Pattern copied from
+    // tests/Feature/Treasury/TreasuryMovementServiceRecordTest.php:226-246.
+    while (DB::transactionLevel() > 0) {
+        DB::rollBack();
+    }
+    $this->assertSame(0, DB::transactionLevel());
+
+    try {
+        $this->expectException(\LogicException::class);
+        app(GeneralLedgerService::class)->createRepositoryTransferJournalEntry(/* same args as the happy-path test */);
+    } finally {
+        DB::beginTransaction(); // restore the wrapper for RefreshDatabase teardown
+    }
 }
 ```
 
@@ -333,8 +342,14 @@ public function test_virtual_repository_is_rejected_both_directions(): void   //
 public function test_currency_mismatch_leaves_no_orphan_draft(): void
 // bankRepo with currency EUR vs cash TND → CurrencyMismatchException propagates,
 // assert JournalEntry::where('source_type','treasury_transfer')->count() === 0  (outer rollback proof — L1-2c)
+public function test_cross_gl_with_missing_gl_account_is_422_before_any_write(): void
+// cross-GL pair, one side gl_account_id = null → DomainException AND
+// JournalEntry::where('source_type','treasury_transfer')->count() === 0 (plan-review F6)
 public function test_amount_is_normalized_at_source_currency_scale(): void
-// EUR(2) repos: amount '10.005' → stored legs amount '10.00' (bcformatStrict truncation)
+// EUR(2) repos: amount '10.005' → normalized to '10.00' at the boundary.
+// CAUTION (plan-review F7): RepositoryMovement casts amount decimal:3, so the
+// MODEL reads back '10.000' — assert bccomp($out->amount, '10.00', 2) === 0,
+// or pin raw storage via DB::table('repository_movements').
 ```
 
 - [ ] **Step 2: Run to verify failure** — service class undefined.
@@ -355,8 +370,8 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
-use App\Shared\Contracts\Currency\CurrencyScaleResolverInterface; // verify actual namespace before use
-use App\Shared\Support\CurrencyScale;                              // verify actual namespace before use
+use App\Shared\Contracts\CurrencyScaleResolverInterface; // VERIFIED (plan-review F4) — app/Shared/Contracts/CurrencyScaleResolverInterface.php:14
+use App\Shared\Domain\CurrencyScale;                      // VERIFIED (plan-review F4) — app/Shared/Domain/CurrencyScale.php:13; bcformatStrict(string,int): string at :130
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -465,7 +480,7 @@ final class RepositoryTransferService
     }
 }
 ```
-**Verify before coding:** exact namespaces for `CurrencyScale`/`CurrencyScaleResolverInterface` (grep an existing consumer, e.g. the adjustment controller's module), `TransferIntent` constructor arg names (`TransferIntent.php:14-39`), `TransferResult` property names (`outLeg`/`inLeg`), `MovementResult` property names (`movementId`, `wasIdempotentHit`). All error messages above are backend `DomainException` text — they surface through the canonical envelope, no i18n needed server-side (matches the adjustment endpoint precedent).
+**All signatures VERIFIED by the plan review (do not re-derive):** `TransferIntent` constructor names/order match the named-args call above (`TransferIntent.php:26-38`; `occurredAt` is `?CarbonImmutable` — pass `null`, NEVER `now()` which is Carbon → TypeError); `TransferResult->outLeg/inLeg`; `MovementResult->movementId/balanceAfter/ordinal/wasIdempotentHit`; `RepositoryFrozenException(string $repositoryId, string $frozenReason)`; `getScale('EUR')` short-circuits to the static ISO map (never touches CompanyContext) → EUR scale 2. `TreasuryMovementService` needs no import (same namespace). All error messages above are backend `DomainException` text — canonical envelope, no server-side i18n (adjustment-endpoint precedent).
 
 - [ ] **Step 4: Run to verify pass** — `./vendor/bin/phpunit tests/Feature/Treasury/RepositoryTransferServiceTest.php` → PASS; phpstan 0 new; pint.
 
@@ -504,8 +519,15 @@ public function test_client_transfer_group_id_makes_double_submit_idempotent(): 
 public function test_race_shape_replay_via_preexisting_posted_je_and_legs(): void
 // Arrange the post-commit race shape directly: run one successful service transfer for group G,
 // then POST the endpoint with transfer_group_id=G. Asserts the §5.2.3c path: 201 replay,
-// original JE id returned, draft cleaned. (True two-connection concurrency is exercised
-// by the port's own suite; this pins the service+index interaction.)
+// original JE id returned, draft cleaned.
+// SANCTIONED SPEC SUBSTITUTION (plan-review F2, recorded in spec §15 amendment A-1):
+// this sequential shape exercises the IDENTICAL 23505-inside-savepoint path as a true
+// two-connection race (Fable lane verified the mechanics: with the A1 index the violation
+// fires at postEntryNow's status-flip UPDATE, GeneralLedgerService.php:2912, inside the
+// savepoint and caught at TreasuryMovementService.php:298-304; on sqlite the legs'
+// idempotency_key unique fires instead — also caught). The port suite does NOT have a
+// two-connection test — do not claim it does. Log this substitution as a deviation entry
+// in docs/handoff/treasury-phase3-progress.md when implementing.
 public function test_domain_failures_use_canonical_envelope(): void
 // frozen repo → 422 {error:{code:'BUSINESS_ERROR'}}; virtual repo → 422; inactive → 422;
 // assert response json path error.code === 'BUSINESS_ERROR' (never a flat string)
@@ -561,7 +583,9 @@ public function store(TransferRepositoryRequest $request): JsonResponse
     ], 201);
 }
 ```
-**Exception mapping check:** `RepositoryFrozenException` and the service's `DomainException`s flow to the global 422 handler automatically. Verify `CurrencyMismatchException` and `IdempotencyConflictException` ancestry (grep their class files): if either does NOT extend `DomainException`, catch it in the controller and rethrow as `DomainException` (message preserved) — canonical envelope always. Add the `messages.treasury.transfer_recorded` line to the backend lang files beside the existing `messages.treasury.*` keys.
+**Exception mapping — VERIFIED (plan-review, no contingency code needed):** `RepositoryFrozenException`, `CurrencyMismatchException`, AND `IdempotencyConflictException` all extend `DomainException` (`RepositoryFrozenException.php:17`, `CurrencyMismatchException.php:16`, `IdempotencyConflictException.php:21`) and no earlier render closure shadows them — everything flows to the canonical `{error:{code:'BUSINESS_ERROR',message}}` 422 at `bootstrap/app.php:356-364` automatically. Do NOT add catch-and-rethrow code. FormRequest 422s use the default Laravel `{message, errors:{field:[...]}}` shape (no custom ValidationException render exists). Add the `messages.treasury.transfer_recorded` line to the backend lang files — **en + fr only** (`lang/` has no `ar/` dir — plan-review F8), beside `messages.treasury.*` at `lang/en/messages.php:65` + `lang/fr/messages.php:65`.
+
+**sqlite note (plan-review F9):** the replay tests should pass on the sqlite fast loop (`isUniqueViolation` handles sqlite's 23000/"UNIQUE constraint failed"). If they misbehave on sqlite, use the port suite's `markTestSkipped`-on-non-pgsql pattern (`TreasuryMovementServiceTransferTest.php:414-417`) — pgsql coverage is guaranteed by the `treasury-spine-pgsql` CI job. NEVER "fix" the port or the index to appease sqlite.
 
 Route (after the adjustments block):
 ```php
@@ -595,7 +619,13 @@ public function test_reconcile_stays_green_after_mixed_transfers(): void
     // 1 idempotent replay of the first (same transfer_group_id re-POSTed)
     // ... three POSTs as in A4 tests ...
 
-    $this->artisan('treasury:reconcile')->assertExitCode(0);
+    // Plan-review F5: WITHOUT --tenant the command iterates the central tenant
+    // directory — if the fixture tenant isn't registered there it reconciles
+    // ZERO repositories and exits 0 (vacuously green). Also clear CompanyContext
+    // first (rule 20 — the preceding HTTP requests may have left it bound).
+    app(CompanyContext::class)->clear();
+    $exitCode = Artisan::call('treasury:reconcile', ['--tenant' => $this->tenant->id]);
+    $this->assertSame(0, $exitCode);
 
     $this->assertSame(0, PaymentRepository::query()
         ->whereNotNull('frozen_at')->count(), 'reconcile froze a repository after spec-shaped transfers');
@@ -603,7 +633,7 @@ public function test_reconcile_stays_green_after_mixed_transfers(): void
         ->where('event_type', 'treasury.reconcile.drift')->count());
 }
 ```
-(Mirror the exact invocation/assertion style of the existing reconcile-in-test usage at `tests/Feature/Treasury/ReconcileTreasuryTest.php:461,491`.)
+(Invocation pattern copied from `tests/Feature/Treasury/ReconcileTreasuryTest.php:228-231` — `Artisan::call` with `--tenant`, `CompanyContext` cleared in setUp per `:79-81`.)
 
 - [ ] **Step 2: Run** — should PASS immediately if A1–A4 are correct; if it fails, the failure is a real design defect: STOP and re-read spec §5 before touching reconcile code (never "fix" the reconcile command to make this pass).
 
@@ -633,7 +663,7 @@ return new class extends Migration
             $table->jsonb('data');
             $table->timestampTz('read_at')->nullable();
             $table->timestampsTz();
-            $table->index(['notifiable_id', 'read_at']); // unread-count poll path
+            $table->index(['notifiable_type', 'notifiable_id', 'read_at']); // unread-count poll path (leads with the morph type — plan-review L5)
         });
     }
 
@@ -778,9 +808,9 @@ public function test_resolution_survives_multi_tenant_iteration(): void
 {
     // resolve for tenant A, then tenant B (different DBs / permission uuids):
     // without forgetCachedPermissions() per call this returns [] for B (L3-3).
-    // Simulate per the repo's existing multi-tenant test patterns for forEachTenant-style code;
-    // if the test harness cannot spin two tenant DBs cheaply, pin the flush call itself:
-    // spy PermissionRegistrar::forgetCachedPermissions is invoked on every forCompany() call.
+    // Use the repo's REAL 2-tenant harness (grep tests using forEachTenant / tenancy()->initialize).
+    // Do NOT spy on PermissionRegistrar — it is a container singleton the ->permission() scope
+    // itself resolves; a Mockery spy breaks the real permission query (plan-review L6).
 }
 
 public function test_membership_must_be_active(): void  // inactive membership in A → excluded
@@ -788,7 +818,7 @@ public function test_membership_must_be_active(): void  // inactive membership i
 
 - [ ] **Step 2: Run to verify failure.**
 
-- [ ] **Step 3: Implement** (mirror `DailyExpiryCheck.php:165-174` EXACTLY — team = TENANT id):
+- [ ] **Step 3: Implement** (mirror `DailyExpiryCheck.php:165-174`'s QUERY SHAPE — team = TENANT id, membership filter, `->permission()` — and ADDITIONALLY flush the registrar, which the exemplar does not do; the flush is spec fix L3-3, not part of the mirror — plan-review L6. Registrar methods verified in vendor: `PermissionRegistrar.php:106/114/140`):
 
 ```php
 final class TreasuryAlertRecipients
@@ -880,22 +910,28 @@ public function test_notification_failure_never_suppresses_the_freeze(): void
 public function test_maturity_command_sends_one_notification_per_user_per_company(): void
 // seeded maturing instruments in company A: exactly 1 row per recipient per run,
 // type 'treasury.instrument.maturity_alert', data.deep_link '/treasury/instruments?maturing=1'
+public function test_maturity_command_sends_nothing_when_no_instruments_due(): void
+// zero maturing/overdue instruments: audit event may still be recorded (existing behavior,
+// unchanged) but NO notification rows are created (plan-review H2 — anti-spam guard)
 ```
 
 - [ ] **Step 2: Run to verify failure.**
 
 - [ ] **Step 3: Implement** — in each of the three alert sites, AFTER the existing `AuditService::record()` block, add a third independently-try/caught channel (constructor-inject `TreasuryAlertRecipients` into both commands; the alert-failure catch mirrors the existing `alertFailed()` pattern at `:832-850`):
 
+Freeze site — **`freezeAndAlert(PaymentRepository $repository, string $reason)` has ONLY those two params in scope; there is NO `$tenant`/`$company` object there** (`ReconcileTreasuryCommand.php:786`; companies are fetched in a separate loop `:189-192` — plan-review M1). Use the repository's own columns + relation:
+
 ```php
 // third channel: in-app notification (failure-isolated like the other two — spec §6.3)
 try {
-    $recipients = $this->alertRecipients->forCompany($tenant->id, $company->id);
+    $recipients = $this->alertRecipients->forCompany($repository->tenant_id, $repository->company_id);
     if ($recipients->isNotEmpty()) {
+        $companyName = $repository->company?->name ?? '';  // relation exists — PaymentRepository.php:156
         Notification::send($recipients, new TreasuryAlertNotification(
             alertType: 'treasury.reconcile.drift',
             data: [
-                'company_id' => $company->id,
-                'company_name' => $company->name,
+                'company_id' => $repository->company_id,
+                'company_name' => $companyName,
                 'severity' => 'critical',
                 'repository_code' => $repository->code,
                 'reason' => $reason,
@@ -904,10 +940,14 @@ try {
         ));
     }
 } catch (\Throwable $exception) {
-    $this->alertFailed('notification', $repository, $exception); // reuse/extend the existing helper signature
+    // Real helper name/signature (plan-review M2) — NOT "alertFailed":
+    $this->logAlertFailure($repository, $reason, 'notification', $exception);
 }
 ```
-Portfolio drift: `alertType: 'treasury.reconcile.portfolio_drift'`, `deep_link: '/finance/overview'`, severity `warning`, no repository fields. Maturity: `alertType: 'treasury.instrument.maturity_alert'`, `deep_link: '/treasury/instruments?maturing=1'`, include `window_days`, `received_due_count`, `deposited_overdue_count` from the existing payload variables. **Verify `$tenant`/`$company` variable availability at each site** (the commands iterate tenants/companies — `ReconcileTreasuryCommand.php:136`, `InstrumentMaturityAlertsCommand.php:42`); pass what the enclosing scope actually provides, adding a parameter to `freezeAndAlert()` if needed.
+
+Portfolio drift (`alertPortfolioDrift(Company $company, …)` at `:424` — a `Company` IS in scope, but NO repository): `alertType: 'treasury.reconcile.portfolio_drift'`, `deep_link: '/finance/overview'`, severity `warning`, no repository fields. **`logAlertFailure` is `PaymentRepository`-typed and cannot be reused here** — add a small repository-less failure logger (same log/audit shape, `treasury.reconcile.alert_failed` event) or generalize `logAlertFailure`'s first param (plan-review M2).
+
+Maturity command: `alertType: 'treasury.instrument.maturity_alert'`, `deep_link: '/treasury/instruments?maturing=1'`, include `window_days`, `received_due_count`, `deposited_overdue_count` from the existing payload variables. Failure handling mirrors that command's OWN `Log::error('treasury.instrument.maturity_alert_failed', …)` pattern (`InstrumentMaturityAlertsCommand.php:58`), not `logAlertFailure`. **CRITICAL (plan-review H2): the audit event is recorded UNCONDITIONALLY per company per run, even with both counts 0 (`:129-137`) — do NOT mirror that cadence for notifications. Gate the send on `received_due_count + deposited_overdue_count > 0`, or every manager gets a daily empty alert and learns to ignore the bell.** Add the H2 test below.
 
 - [ ] **Step 4: Run to verify pass** — `./vendor/bin/phpunit tests/Feature/Treasury/ReconcileTreasuryTest.php` + the maturity test file; phpstan; pint.
 
@@ -938,7 +978,7 @@ public function test_totals_cover_the_whole_filtered_range_not_the_page(): void 
 
 - [ ] **Step 2: Run to verify failure.**
 
-- [ ] **Step 3: Implement** — in `generate()`, after `$base` is built and BEFORE pagination:
+- [ ] **Step 3: Implement** — in `generate()`, **immediately after `$base` is built at `:91` and BEFORE the `$total = (clone $base)->count()` at `:92`** (plan-review M3 — placing the filter after the count leaves `meta.total`/`last_page` counting the UNFILTERED set), so the count, the rows, and the totals aggregate all see the direction filter. Also (plan-review L4): add a `direction()` accessor to `GetCashMovementsRequest` mirroring `fromDate()/repositoryId()` (`:30-49`), a `?string $direction` param on `generate()`, and thread it from `ReportsController::cashMovements` (`:225-246`). The `scaleResolver` is ALREADY constructor-injected in this service (`:60-62`) — no constructor change needed:
 
 ```php
 if ($direction !== null) {
@@ -1019,7 +1059,7 @@ if ($windowRaw !== null) {
         ->groupBy('m.direction')
         ->pluck('total', 'direction');
 
-    $scale = $this->scaleResolver->getScale($companyCurrency); // inject resolver if the controller lacks it
+    $scale = $this->scaleResolver->getScale($company->currency); // resolver ALREADY constructor-injected at :49 (plan-review L3)
     $flows = [
         'window_days' => $window,
         'in' => CurrencyScale::bcformatStrict((string) ($sums['in'] ?? '0'), $scale),
@@ -1028,7 +1068,7 @@ if ($windowRaw !== null) {
 }
 // add to the response data array: ...($flows !== null ? ['flows' => $flows] : [])
 ```
-(Match `CASH_TYPES`'s actual shape — if it's already string values, drop the `array_map`. Match how `$companyCurrency`/`$tenantId`/`$companyId` are already derived in this controller.)
+(VERIFIED (plan-review): `CASH_TYPES` are `RepositoryType` enum instances (`:41-45`) — keep the `array_map` to `->value`; the controller derives `$company` at `:55` and uses `$company->currency` at `:68` — there is no `$companyCurrency` variable, use `$company->currency` and the existing `$tenantId`/`$companyId` derivations; `repository_movements.amount` is `decimal(15,3)` → `SUM(m.amount)` is exact, no CAST. The inline `DomainException` for `flows_window` validation maps to the canonical 422 — accepted divergence from `$request->validate()` siblings since D5 hardcodes `flows_window=7`.)
 
 - [ ] **Step 4: Run to verify pass**; phpstan; pint.
 
@@ -1059,10 +1099,12 @@ if ($windowRaw !== null) {
 - Create: `apps/web/src/features/treasury/hooks/useTransferCash.ts` (+ `useTransferCash.test.ts`)
 - Create: `apps/web/src/features/treasury/components/TransferCashModal.tsx` (+ `.test.tsx`)
 - Modify: `apps/web/src/features/treasury/RepositoryListPage.tsx` (PageHeader actions at `:209`; compose multiple actions — L2-8)
+- Modify: `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php` — **`formatRepository()` at `:262-278` does NOT emit `currency` (plan-review H1): add `'currency' => $repository->currency`.** One-line additive backend change, sanctioned despite this being an FE task — the modal is non-buildable without it (MoneyInput's `currency` prop is REQUIRED, `MoneyInput.tsx:29`). Add a backend test line asserting the list payload carries `currency`.
+- Modify: `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts` — add `currency: string` to the `PaymentRepository` interface (`:7-15`, currently absent — plan-review H1)
 - Modify: `apps/web/src/locales/{en,fr,ar}/treasury.json` — keys under `repositories.transfer.*`
 
 **Interfaces:**
-- Consumes: A4's endpoint contract; `usePaymentRepositories`/`useActivePaymentRepositories` (`features/treasury/hooks/usePaymentRepositories.ts` — verify the exported name + that items carry `id/code/name/type/currency/balance`); `Modal`/`FormField` organisms; shared `MoneyInput`; `getErrorMessage` (`@/lib/api`) — canonical envelope only for this endpoint.
+- Consumes: A4's endpoint contract; `usePaymentRepositories`/`useActivePaymentRepositories` (`features/treasury/hooks/usePaymentRepositories.ts`); `Modal` (organism) + `FormField` (**atom** — `components/atoms/FormField/FormField.tsx`, plan-review L7); shared `MoneyInput`; `getErrorMessage` (`@/lib/api:61`) — canonical envelope only for this endpoint. **Note (plan-review L8):** the repo list endpoint is tenant-scoped, not company-scoped (`PaymentRepositoryController::index` `:29-33`) — if repo items expose a company discriminator, client-filter to the active company; otherwise accept that picking a foreign-company repo 404s at the service (pre-existing behavior, do not "fix" the backend scoping in this task).
 - Produces: `useTransferCash(): UseMutationResult<TransferResponse, unknown, TransferPayload>` with
 ```ts
 interface TransferPayload { from_repository_id: string; to_repository_id: string; amount: string; notes?: string; transfer_group_id: string }
@@ -1134,7 +1176,7 @@ const schema = z.object({
 **Files:**
 - Create: `apps/web/src/features/notifications/api/notificationsApi.ts`, `hooks/useNotifications.ts` (+ tests), `components/NotificationBell.tsx`, `components/NotificationPanel.tsx` (+ tests)
 - Modify: `apps/web/src/components/organisms/TopBar/TopBar.tsx` (`:154-161` — the ORGANISMS file; `components/layout/TopBar.tsx` is a re-export, do not edit it — L3-6)
-- Create: `apps/web/src/locales/{en,fr,ar}/notifications.json`; Modify: `apps/web/src/i18n.ts` (3 touch points: import, resources, ns array)
+- Create: `apps/web/src/locales/{en,fr,ar}/notifications.json`; Modify: `apps/web/src/lib/i18n.ts` (**correct path — plan-review L1**; ~7 edits: 3 locale imports, 3 `resources` entries — the `ar` block uses the spread-merge pattern, see `:306` — and 1 `ns:` array entry at `:416`)
 
 **Interfaces:**
 - Consumes: B2's four endpoints. `{data,meta}` list → `api.get` + `response.data` (rule 14); unread-count via `apiGet` (single object, no meta).
@@ -1143,7 +1185,7 @@ const schema = z.object({
 interface AppNotification { id: string; type: string; data: Record<string, unknown>; read_at: string | null; created_at: string }
 useUnreadNotificationCount(): UseQueryResult<{ count: number }>   // key: tenantScopedKey(['notifications', userId, 'unread-count']), refetchInterval: 60_000
 useNotificationsList(enabled: boolean): UseQueryResult<{ data: AppNotification[]; meta: OffsetMeta }> // key: tenantScopedKey(['notifications', userId, 'list']), fetched on panel open
-useMarkNotificationRead() / useMarkAllNotificationsRead()          // invalidate BOTH keys above (prefix ['notifications', userId] is NOT usable — tenant suffix trails; invalidate the two exact keys)
+useMarkNotificationRead() / useMarkAllNotificationsRead()          // invalidate with the raw leading prefix ['notifications', userId] — it prefix-matches both scoped keys (trailing tenant/company suffix is irrelevant to a prefix match, same logic as the movements prefix in D2 — plan-review L2)
 ```
 `userId` from `useAuthStore` (shared-localhost safety — spec §6.4); gate queries `enabled: !!userId && !!tenantId`.
 
@@ -1235,6 +1277,30 @@ Checklist content: `php artisan tenants:migrate` (notifications table + JE index
 - [ ] Write both docs, commit: `git commit -m "docs(treasury): Phase 3 deploy checklist + progress final"`
 
 ---
+
+## Plan-review reconciliation (2026-07-12 — Rev 1 → Rev 2)
+
+Review: `docs/superpowers/plans/reviews/2026-07-12-treasury-phase3-plan-adversarial-review.md` (Lane 1 Fable/Wave A, Lane 2 Opus/B–E; both CHANGES-REQUIRED, 0 BLOCKER).
+
+| id | sev | resolution in Rev 2 |
+|---|---|---|
+| F1 | HIGH | A2 guard test rewritten with the transaction pop/restore pattern |
+| F2 | HIGH | False port-suite claim deleted; sequential race-shape test kept as a SANCTIONED substitution (identical 23505-inside-savepoint path, Fable-verified mechanics), recorded as spec §15 amendment A-1 + mandatory progress-file deviation entry |
+| F3 | MED | A1 driver guards removed (exemplar has none; sqlite supports partial indexes) |
+| F4 | MED | Verified imports pasted into A3 (`App\Shared\Contracts\CurrencyScaleResolverInterface`, `App\Shared\Domain\CurrencyScale`) |
+| F5 | MED | A5 reconcile call fixed: `CompanyContext::clear()` + `Artisan::call(..., ['--tenant' => ...])` |
+| F6 | MED | Missing-GL-account 422 test added to A3 |
+| F7 | LOW | Normalization assertion corrected for the decimal:3 model cast |
+| F8 | LOW | Backend lang = en + fr only, noted in A4 |
+| F9 | LOW | sqlite `markTestSkipped` escape hatch noted (never "fix" the port/index) |
+| H1 | HIGH | `currency` added to `formatRepository()` + FE `PaymentRepository` type as explicit D2 deliverables |
+| H2 | HIGH | Maturity notification gated on non-zero counts + anti-spam test added to B4 |
+| M1 | MED | B4 freeze-site snippet rewritten to `$repository->tenant_id/company_id` + `company` relation |
+| M2 | MED | Real helper `logAlertFailure($repo,$reason,$channel,$e)` used; repository-less logger for portfolio/maturity sites |
+| M3 | MED | C1 direction filter pinned to before the `:92` count; `direction()` accessor + threading spelled out |
+| L1–L8 | LOW | i18n path `src/lib/i18n.ts` (~7 edits); notifications invalidation via raw `['notifications', userId]` prefix (rationale corrected); C2 `$company->currency` + resolver-already-injected; B1 index leads with morph type; B3 "mirror + additionally flush" phrasing + spy fallback dropped; FormField=atom; L8 tenant-scoped-list note added to D2 |
+
+Both lanes' "Verified accurate" sections are binding ground truth (exception ancestry — no rethrow contingency needed; route non-shadowing; all DTO/model signatures; FE key names; insertion anchors).
 
 ## Plan self-review (done at authoring)
 
