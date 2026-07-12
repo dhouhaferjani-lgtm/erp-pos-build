@@ -334,3 +334,16 @@ None found during pre-flight review.
 - Added `docs/handoff/treasury-phase3-deploy-checklist.md` with the two tenant migrations, per-tenant roles/permissions reseed and cache reset, no-chart-reseed note, pre-reseed token caveat, process restart checks, staging transfer/notification/widget smoke, reconcile check, and non-destructive rollback guidance.
 - Phase 3 implementation state: Waves A–E complete; Gates 1–3 approved; Gate 4 verification and whole-branch adversarial review remain the final release-candidate actions.
 - Integration boundary: this branch is intentionally not merged or pushed by the Codex session.
+
+## Gate 4 — rc1 verification (2026-07-12)
+
+- `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury`: exit 0 — 586 tests, 2,346 assertions, 25 existing skips, 39 PHPUnit deprecations.
+- `cd apps/api && ./vendor/bin/phpunit tests/Feature/Notification`: exit 0 — 6 tests, 43 assertions.
+- `cd apps/api && ./vendor/bin/phpstan --memory-limit=1G`: exit 0 — no errors across 2,508 files.
+- `cd apps/api && ./vendor/bin/pint --dirty`: exit 0 — pass; no files changed.
+- `cd apps/web && pnpm typecheck && pnpm lint`: exit 0. ESLint reported 0 errors and 6,422 baseline warnings; TanStack audit 0 violations; design audit 753 acknowledged / 0 new / 0 stale; custom rule tests passed.
+- `cd apps/web && pnpm vitest run src/features/treasury src/features/notifications src/features/finance src/hooks/usePermissions.test.ts`: exit 0 — 65 test files, 394 tests passed. Existing suite-wide React `act(...)` and localstorage-file warnings remain non-failing.
+- Explicit `node tools/audit-design-system.mjs`: exit 0 — 0 new, 0 stale. Explicit `node tools/audit-tanstack-keys.mjs`: exit 0 — 0 violations.
+- React Doctor v0.7.6 changed-scope scan against `phase3-gate-3`: exit 0, 100/100, 3 changed source files, no diagnostics.
+- Port/interlock evidence: `TreasuryMovementService.php` has an empty `origin/dev..HEAD` diff; the two protected UI-gap files have an empty sanctioned-base `f1d6c1d30..HEAD` diff; 13 E1 PNG screenshots exist; `git diff --check` and worktree status are clean. Comparing the protected UI files directly to `origin/dev` is intentionally non-empty because `origin/dev` gained the separate `feat/treasury-ui-gaps` work after this branch's sanctioned base; Phase 3 did not edit or revert those files.
+- Task E1 A→Z result: PASS, including cross-GL transfer/JE, same-GL movement-only exemption, report totals and filters, notification deep-link/read flow, and owner/non-owner dashboard widgets. Full evidence summary is in Task E1 above; screenshots are gitignored under `docs/sessions/treasury-phase3-e2e/`.
