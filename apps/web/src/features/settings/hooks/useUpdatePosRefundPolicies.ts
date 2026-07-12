@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCompany } from '@/hooks/useCompany'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { updatePosRefundPolicies } from '../api/posRefundPoliciesApi'
@@ -21,11 +20,11 @@ export function useUpdatePosRefundPolicies() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['pos-refund-policies', currentCompany?.id]),
+          queryKey: ['pos-refund-policies', currentCompany?.id],
         }),
         // Also invalidate the shared reservation-settings key used by voucher feature
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['reservation-settings', currentCompany?.id]),
+          queryKey: ['reservation-settings', currentCompany?.id],
         }),
       ])
     },

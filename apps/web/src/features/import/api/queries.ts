@@ -143,13 +143,13 @@ export function useExecuteImport() {
     onSuccess: async (data) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...importKeys.detail(data.id)]),
+          queryKey: [...importKeys.detail(data.id)],
         }),
         queryClient.invalidateQueries({
           predicate: importsListInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...importKeys.wizardStatus()]),
+          queryKey: [...importKeys.wizardStatus()],
         }),
       ])
       toast.success(t('messages.importStarted'))

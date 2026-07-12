@@ -55,7 +55,7 @@ export function ReturnNoteDetailPage() {
       return apiPost(`/documents/${id}/confirm`)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', id] })
       toast.success(t('returnNotes.confirmed'))
       setConfirmAction(null)
     },

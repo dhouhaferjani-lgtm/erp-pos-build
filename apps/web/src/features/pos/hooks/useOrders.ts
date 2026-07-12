@@ -111,7 +111,7 @@ export function useAddOrderLine() {
     onSuccess: async (_data, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+          queryKey: [...orderKeys.detail(variables.orderId)],
         }),
         queryClient.invalidateQueries({
           predicate: scopedOrderListPredicate(tenantId, companyId),
@@ -138,7 +138,7 @@ export function useModifyOrderLine() {
     onSuccess: async (_data, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+          queryKey: [...orderKeys.detail(variables.orderId)],
         }),
         queryClient.invalidateQueries({
           predicate: scopedOrderListPredicate(tenantId, companyId),
@@ -160,7 +160,7 @@ export function useRemoveOrderLine() {
     onSuccess: async (_data, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+          queryKey: [...orderKeys.detail(variables.orderId)],
         }),
         queryClient.invalidateQueries({
           predicate: scopedOrderListPredicate(tenantId, companyId),
@@ -182,7 +182,7 @@ export function useSendToKitchen() {
     onSuccess: async (_data, orderId) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(orderId)]),
+          queryKey: [...orderKeys.detail(orderId)],
         }),
         queryClient.invalidateQueries({
           predicate: scopedOrderListPredicate(tenantId, companyId),
@@ -213,7 +213,7 @@ export function useCancelOrder() {
     onSuccess: async (_data, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+          queryKey: [...orderKeys.detail(variables.orderId)],
         }),
         queryClient.invalidateQueries({
           predicate: scopedOrderListPredicate(tenantId, companyId),

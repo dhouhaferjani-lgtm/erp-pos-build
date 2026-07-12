@@ -110,7 +110,7 @@ export function InvoiceDetailPage() {
     mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -127,7 +127,7 @@ export function InvoiceDetailPage() {
     mutationFn: () => apiPost<Document>(`/invoices/${id}/post`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -158,7 +158,7 @@ export function InvoiceDetailPage() {
     mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm-deliveries-and-post`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -225,7 +225,7 @@ export function InvoiceDetailPage() {
   const handleCreditNoteCreated = async () => {
     setShowCreditNoteForm(false)
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+      queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
       queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('documents', tenantId, companyId),
       }),
@@ -238,7 +238,7 @@ export function InvoiceDetailPage() {
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+      queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
       queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('documents', tenantId, companyId),
       }),

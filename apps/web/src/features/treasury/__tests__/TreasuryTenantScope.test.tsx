@@ -183,10 +183,21 @@ describe('treasury tenant scope', () => {
     await user.type(screen.getByLabelText(/treasury:paymentMethods.name/), 'Cash')
     await user.click(screen.getByRole('button', { name: 'common:actions.save' }))
 
+    // Invalidation filters are bare literal prefixes (2026-07 sweep):
+    // tenantScopedKey appends tenant/company as suffixes, but React Query
+    // matches filter keys as positional PREFIXES, so a suffixed filter only
+    // ever matched the exact full key. The bare prefix reaches every
+    // tenant's cached entry; data isolation lives in the query KEYS above.
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['payment-methods', 'tenant-A', 'company-1'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['payment-methods'] })
     })
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['payment-methods', 'tenant-B', 'company-2'] })
+    // The inactive tenant-B entry has no observer, so it stays marked stale —
+    // proving the bare prefix actually matched the tenant-suffixed keys.
+    // (The active tenant-A query refetches immediately, resetting its
+    // isInvalidated flag, so assert on the inactive entry.)
+    expect(
+      queryClient.getQueryState(['payment-methods', 'tenant-B', 'company-2'])?.isInvalidated,
+    ).toBe(true)
   })
 
   it('does not fetch treasury reads without tenant/company state', () => {

@@ -185,8 +185,8 @@ export function StandaloneReceiptPage() {
         ? t('purchases:standaloneReceipt.toast.posted')
         : t('purchases:standaloneReceipt.toast.draftCreated'))
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-orders']) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['goods-receipts']) }),
+        queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }),
+        queryClient.invalidateQueries({ queryKey: ['goods-receipts'] }),
       ])
       setCurrentIdempotencyKey(idempotencyKey())
       void navigate(`/purchases/orders/${data.purchase_order.id}`)

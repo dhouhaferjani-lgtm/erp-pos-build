@@ -74,9 +74,9 @@ export function useCreateAdditionalCost(documentId: string) {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['landed-cost-breakdown', documentId] }),
       ])
       toast.success('Additional cost created')
     },
@@ -104,9 +104,9 @@ export function useUpdateAdditionalCost(documentId: string) {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['landed-cost-breakdown', documentId] }),
       ])
       toast.success('Additional cost updated')
     },
@@ -130,9 +130,9 @@ export function useDeleteAdditionalCost(documentId: string) {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['landed-cost-breakdown', documentId] }),
       ])
       toast.success('Additional cost deleted')
     },

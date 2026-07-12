@@ -26,7 +26,7 @@ export function useCreateStampCard(programId: string) {
   return useMutation({
     mutationFn: (data: CreateStampCardData) => createStampCard(programId, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...stampCardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...stampCardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.created'))
     },
     onError: (error: unknown) => {
@@ -40,7 +40,7 @@ export function useUpdateStampCard(programId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateStampCardData }) => updateStampCard(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...stampCardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...stampCardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.updated'))
     },
     onError: (error: unknown) => {
@@ -54,7 +54,7 @@ export function useDeleteStampCard(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteStampCard(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...stampCardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...stampCardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deleted'))
     },
     onError: (error: unknown) => {

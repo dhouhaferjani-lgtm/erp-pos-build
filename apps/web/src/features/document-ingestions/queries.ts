@@ -85,7 +85,7 @@ export function useUploadDocumentIngestion() {
     mutationFn: (input: UploadDocumentIngestionInput) => uploadDocumentIngestion(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['document-ingestions']),
+        queryKey: ['document-ingestions'],
       })
     },
   })
@@ -98,7 +98,7 @@ export function useReExtractDocumentIngestion(id: string) {
     mutationFn: () => reExtractDocumentIngestion(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['document-ingestions']),
+        queryKey: ['document-ingestions'],
       })
     },
   })
@@ -111,7 +111,7 @@ export function useRejectDocumentIngestion(id: string) {
     mutationFn: () => rejectDocumentIngestion(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['document-ingestions']),
+        queryKey: ['document-ingestions'],
       })
     },
   })
@@ -125,7 +125,7 @@ export function useCommitDocumentIngestion(id: string) {
     onSuccess: async () => {
       if (hasTenantScope()) {
         await queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['document-ingestions']),
+          queryKey: ['document-ingestions'],
         })
       }
     },

@@ -55,7 +55,7 @@ export function useCreateFloor() {
     mutationFn: createFloor,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...tableKeys.floors()]),
+        queryKey: [...tableKeys.floors()],
       })
     },
   })
@@ -68,7 +68,7 @@ export function useUpdateFloor() {
     mutationFn: ({ id, data }) => updateFloor(id, data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...tableKeys.floors()]),
+        queryKey: [...tableKeys.floors()],
       })
     },
   })
@@ -81,7 +81,7 @@ export function useDeleteFloor() {
     mutationFn: deleteFloor,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...tableKeys.floors()]),
+        queryKey: [...tableKeys.floors()],
       })
     },
   })

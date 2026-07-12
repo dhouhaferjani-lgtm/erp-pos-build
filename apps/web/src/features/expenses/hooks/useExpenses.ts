@@ -109,7 +109,7 @@ export function useUpdateExpense() {
           predicate: expensesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...expenseKeys.detail(updatedExpense.id)]),
+          queryKey: [...expenseKeys.detail(updatedExpense.id)],
         }),
       ])
       toast.success(t('expenses:messages.updated'))
@@ -160,7 +160,7 @@ export function usePostExpense() {
           predicate: expensesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...expenseKeys.detail(postedExpense.id)]),
+          queryKey: [...expenseKeys.detail(postedExpense.id)],
         }),
       ])
       toast.success(t('expenses:messages.posted'))

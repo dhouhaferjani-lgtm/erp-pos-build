@@ -146,7 +146,7 @@ export function useAddBundleComponent(bundleId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...BUNDLES_KEY, 'detail', bundleId]),
+        queryKey: [...BUNDLES_KEY, 'detail', bundleId],
       })
     },
   })
@@ -163,7 +163,7 @@ export function useUpdateBundleComponent(bundleId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...BUNDLES_KEY, 'detail', bundleId]),
+        queryKey: [...BUNDLES_KEY, 'detail', bundleId],
       })
     },
   })
@@ -180,7 +180,7 @@ export function useDeleteBundleComponent(bundleId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...BUNDLES_KEY, 'detail', bundleId]),
+        queryKey: [...BUNDLES_KEY, 'detail', bundleId],
       })
     },
   })
@@ -197,7 +197,7 @@ export function useReplaceBundleApplicabilities(bundleId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...BUNDLES_KEY, 'detail', bundleId]),
+        queryKey: [...BUNDLES_KEY, 'detail', bundleId],
       })
     },
   })

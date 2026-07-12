@@ -282,7 +282,7 @@ export function RepositoryListPage() {
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false) }}
         onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-repositories']) })
+          void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
         }}
       />
     </ListPageLayout>

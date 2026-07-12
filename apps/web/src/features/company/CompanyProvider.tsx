@@ -146,7 +146,15 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
  */
 export function useInvalidateCompanies() {
   const queryClient = useQueryClient()
-  useAuthStore((state) => state.user?.tenant_id ?? null)
-  useCompanyStore((state) => state.currentCompanyId ?? null)
-  return () => queryClient.invalidateQueries({ queryKey: tenantScopedKey(['user', 'companies']) })
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  // Deliberate per-tenant precision (pinned by CompanyProvider.tenantScope
+  // test .107): only the ACTIVE tenant's companies entry is invalidated, so
+  // the filter is the explicit FULL key — literal prefix + tenant/company in
+  // the same suffix order tenantScopedKey stamps on the query key. Do NOT
+  // wrap invalidation filters in tenantScopedKey(...): filters match as
+  // positional prefixes, so the wrapper only works for exact-full-key
+  // matches like this one and silently no-ops everywhere else.
+  return () =>
+    queryClient.invalidateQueries({ queryKey: ['user', 'companies', tenantId, companyId] })
 }

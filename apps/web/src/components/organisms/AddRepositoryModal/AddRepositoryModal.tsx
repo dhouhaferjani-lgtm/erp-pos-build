@@ -10,7 +10,6 @@ import { Input } from '../../atoms/Input'
 import { Select } from '../../atoms/Select'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAccounts } from '../../../features/finance/hooks/useAccounts'
 
 interface Repository {
@@ -142,7 +141,7 @@ export function AddRepositoryModal({
       return apiPost<{ data: Repository }>('/payment-repositories', payload)
     },
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-repositories']) })
+      await queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
       onSuccess?.(response.data)
       onClose()
     },

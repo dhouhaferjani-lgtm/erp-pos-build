@@ -133,7 +133,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
     onSuccess: async () => {
       if (tenantId !== null && companyId !== null) {
         await queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['payment-repository', repository.id]),
+          queryKey: ['payment-repository', repository.id],
         })
       }
       toast.success(t('treasury:repositories.glAccountUpdated'))

@@ -191,10 +191,12 @@ describe('tail tenant scope', () => {
 
     await user.click(screen.getByRole('button', { name: 'settings:userEdit.save' }))
 
+    // Invalidation filters are bare literal prefixes (2026-07 sweep): React
+    // Query matches filter keys as positional PREFIXES, so the bare prefix
+    // reaches the tenant-suffixed query keys; isolation lives in the KEYS.
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users', 'tenant-A', 'company-1'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users'] })
     })
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['users', 'tenant-B', 'company-2'] })
   })
 
   it('does not fetch final reads without tenant/company state', () => {

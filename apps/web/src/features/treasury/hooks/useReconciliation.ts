@@ -147,10 +147,10 @@ export function useMatchItem() {
     onSuccess: async (_, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['reconciliation', variables.reconciliationId]),
+          queryKey: ['reconciliation', variables.reconciliationId],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['reconciliation-summary', variables.reconciliationId]),
+          queryKey: ['reconciliation-summary', variables.reconciliationId],
         }),
       ])
       toast.success('Item matched')
@@ -180,10 +180,10 @@ export function useUnmatchItem() {
     onSuccess: async (_, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['reconciliation', variables.reconciliationId]),
+          queryKey: ['reconciliation', variables.reconciliationId],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['reconciliation-summary', variables.reconciliationId]),
+          queryKey: ['reconciliation-summary', variables.reconciliationId],
         }),
       ])
       toast.success('Item unmatched')
@@ -210,8 +210,8 @@ export function useCompleteReconciliation() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('reconciliations', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation', id]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation-summary', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['reconciliation', id] }),
+        queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('payment-repositories', tenantId, companyId),
         }),
@@ -242,8 +242,8 @@ export function useCancelReconciliation() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('reconciliations', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation', id]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation-summary', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['reconciliation', id] }),
+        queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] }),
       ])
       toast.success('Reconciliation cancelled')
     },

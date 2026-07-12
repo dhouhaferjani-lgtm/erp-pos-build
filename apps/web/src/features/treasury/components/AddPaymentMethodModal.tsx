@@ -11,7 +11,6 @@ import { Button } from '../../../components/atoms/Button'
 import { Checkbox } from '../../../components/atoms'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { apiPost } from '../../../lib/api'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors } from '../../../lib/designTokens'
 
@@ -143,7 +142,7 @@ export function AddPaymentMethodModal({
       return apiPost<{ data: PaymentMethod }>('/payment-methods', payload)
     },
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
+      await queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
       onSuccess?.(response.data)
       onClose()
     },

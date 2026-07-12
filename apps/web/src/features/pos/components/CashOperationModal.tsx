@@ -7,9 +7,10 @@ import { POSButton } from '../atoms/POSButton'
 import { recordCashDeposit, recordCashPayout } from '../api/shiftApi'
 import { AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { tokens, colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 export interface CashOperationModalProps {
   isOpen: boolean
@@ -52,6 +53,8 @@ export function CashOperationModal({
 }: CashOperationModalProps) {
   const { t } = useTranslation(['common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [validationErrors, setValidationErrors] = useState<{
@@ -70,10 +73,19 @@ export function CashOperationModal({
         : 'common:pos.payoutRecorded'
       toast.success(t(successKey))
 
-      // Invalidate shift balance to reflect the change
+      // Invalidate shift balance to reflect the change. ACTIVE tenant only
+      // (pinned by PosTenantScope test .609-.619): explicit full keys —
+      // literal prefix + the tenant/company suffixes tenantScopedKey stamps.
+      // Never wrap invalidation FILTERS in tenantScopedKey(...): filters
+      // match as positional prefixes, so the wrapper only works when it
+      // equals the full key and silently no-ops for namespace prefixes.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['pos', 'shift-balance', shiftId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['pos', 'shift', terminalCode]) }),
+        queryClient.invalidateQueries({
+          queryKey: ['pos', 'shift-balance', shiftId, tenantId, companyId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['pos', 'shift', terminalCode, tenantId, companyId],
+        }),
       ])
 
       // Close modal and reset form

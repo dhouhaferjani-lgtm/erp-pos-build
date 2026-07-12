@@ -51,14 +51,14 @@ export function PriceListDetailPage() {
   const removeItemMutation = useMutation({
     mutationFn: (itemId: string) => removePriceListItem(id!, itemId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['price-list', id] })
     },
   })
 
   const removePartnerMutation = useMutation({
     mutationFn: (partnerId: string) => removePriceListFromPartner(id!, partnerId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['price-list', id] })
     },
   })
 

@@ -12,7 +12,6 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { api } from '@/lib/api'
 import { borderColors, tokens, textColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/format'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { useQueryClient } from '@tanstack/react-query'
@@ -39,7 +38,7 @@ export function RemittanceDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['remittance', remittanceId]) })
+    await queryClient.invalidateQueries({ queryKey: ['remittance', remittanceId] })
     setDialog(null)
     selectedLineRef.current = null
   }

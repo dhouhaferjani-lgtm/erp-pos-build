@@ -113,7 +113,7 @@ export function useCreateCreditNote() {
           predicate: scopedNamespacePredicate('credit-notes', tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['invoice', creditNote.source_invoice_id]),
+          queryKey: ['invoice', creditNote.source_invoice_id],
         }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),

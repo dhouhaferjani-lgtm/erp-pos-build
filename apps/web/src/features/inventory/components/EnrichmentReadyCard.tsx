@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { acceptEnrichmentResult } from '@/features/enrichment/api/enrichmentApi'
 import { colors, textColors, tokens } from '@/lib/designTokens'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { cn } from '@/lib/utils'
 import type { FastPathState } from '../hooks/useEnrichmentFastPath'
 import { Button } from '@/components/atoms'
@@ -34,7 +33,7 @@ export function EnrichmentReadyCard({
       return acceptEnrichmentResult(state.result.id, [...ACCEPT_FIELDS])
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) })
+      await queryClient.invalidateQueries({ queryKey: ['product', productId] })
       toast.success(t('barcodeLookup.fastPathAccepted'))
     },
     onError: () => {

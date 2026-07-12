@@ -187,7 +187,7 @@ export function VehicleForm() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('vehicles', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['vehicle', vehicleId]) }),
+        queryClient.invalidateQueries({ queryKey: ['vehicle', vehicleId] }),
       ])
       void navigate(`/vehicles/${vehicleId}`)
     },

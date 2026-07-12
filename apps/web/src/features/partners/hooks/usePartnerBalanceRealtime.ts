@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import {
@@ -38,7 +37,7 @@ export function usePartnerBalanceRealtime(): void {
         queryClient.invalidateQueries({
           predicate: partnersInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', data.partnerId]) }),
+        queryClient.invalidateQueries({ queryKey: ['partner', data.partnerId] }),
         queryClient.invalidateQueries({
           predicate: partnerAccountBalanceInvalidationPredicate(tenantId, companyId),
         }),

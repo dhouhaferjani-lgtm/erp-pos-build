@@ -57,7 +57,7 @@ export function CreditNoteDetailPage() {
       return apiPost(`/documents/${id}/confirm`)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', id] })
       toast.success(t('creditNotes.confirmed'))
       setConfirmAction(null)
     },
@@ -71,7 +71,7 @@ export function CreditNoteDetailPage() {
       return apiPost(`/documents/${id}/post`)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', id] })
       toast.success(t('creditNotes.posted'))
       setConfirmAction(null)
     },

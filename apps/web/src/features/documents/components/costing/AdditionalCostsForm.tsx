@@ -55,7 +55,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
       await api.post(`/documents/${documentId}/additional-costs`, cost)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document-additional-costs', documentId]) })
+      await queryClient.invalidateQueries({ queryKey: ['document-additional-costs', documentId] })
       setNewCost({ cost_type: 'shipping', amount: 0 })
       onUpdate?.()
     },
@@ -67,7 +67,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
       await api.delete(`/documents/${documentId}/additional-costs/${costId}`)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document-additional-costs', documentId]) })
+      await queryClient.invalidateQueries({ queryKey: ['document-additional-costs', documentId] })
       onUpdate?.()
     },
   })

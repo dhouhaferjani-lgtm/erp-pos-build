@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EnrichmentReadyCard } from '../EnrichmentReadyCard'
 import { acceptEnrichmentResult } from '@/features/enrichment/api/enrichmentApi'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import type { EnrichmentResult } from '@/features/enrichment/types/enrichment'
 
 vi.mock('@/features/enrichment/api/enrichmentApi', () => ({
@@ -31,6 +30,10 @@ describe('EnrichmentReadyCard', () => {
   it('accepts the ready result with blanket fields and invalidates the product query', async () => {
     mockAcceptEnrichmentResult.mockResolvedValue()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // Seed a tenant-suffixed product entry (the shape tenantScopedKey builds)
+    // to prove the bare-prefix invalidation filter actually reaches it.
+    const scopedProductKey = ['product', 'product-1', 'tenant-A', 'company-1']
+    queryClient.setQueryData(scopedProductKey, { id: 'product-1' })
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     render(
@@ -53,7 +56,10 @@ describe('EnrichmentReadyCard', () => {
         'barcode',
       ])
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tenantScopedKey(['product', 'product-1']) })
+    // Bare literal prefix (NOT tenantScopedKey-wrapped): filters match as
+    // positional prefixes, so the bare prefix hits the suffixed query key.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['product', 'product-1'] })
+    expect(queryClient.getQueryState(scopedProductKey)?.isInvalidated).toBe(true)
   })
 
   it('renders timeout copy without an apply button', () => {

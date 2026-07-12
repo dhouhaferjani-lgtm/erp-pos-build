@@ -26,7 +26,7 @@ export function useCreateTier(programId: string) {
   return useMutation({
     mutationFn: (data: CreateTierData) => createTier(programId, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...tiersKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...tiersKey(programId)] })
       toast.success(i18n.t('loyalty:actions.created'))
     },
     onError: (error: unknown) => {
@@ -40,7 +40,7 @@ export function useUpdateTier(programId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateTierData }) => updateTier(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...tiersKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...tiersKey(programId)] })
       toast.success(i18n.t('loyalty:actions.updated'))
     },
     onError: (error: unknown) => {
@@ -54,7 +54,7 @@ export function useDeleteTier(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteTier(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...tiersKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...tiersKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deleted'))
     },
     onError: (error: unknown) => {

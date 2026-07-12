@@ -8,7 +8,6 @@ import {
 } from '../api/productImages'
 import type { ProductMediaItem } from '../types'
 import { getErrorMessage } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -38,8 +37,8 @@ export function ProductImageGallery({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+        queryClient.invalidateQueries({ queryKey: ['product-images', productId] }),
+        queryClient.invalidateQueries({ queryKey: ['product', productId] }),
       ])
       // tenantId/companyId referenced so eslint doesn't drop the subscription;
       // the closure above relies on the host re-render captured via these reads.
@@ -61,8 +60,8 @@ export function ProductImageGallery({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+        queryClient.invalidateQueries({ queryKey: ['product-images', productId] }),
+        queryClient.invalidateQueries({ queryKey: ['product', productId] }),
       ])
     },
     onError: (error) => {

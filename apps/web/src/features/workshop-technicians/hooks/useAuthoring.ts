@@ -87,7 +87,7 @@ export function useCreateCertification(technicianId: string) {
       certificationApi.create(technicianId, payload),
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...authoringKeys.certifications(technicianId)]),
+        queryKey: [...authoringKeys.certifications(technicianId)],
       })
     },
   })
@@ -102,7 +102,7 @@ export function useUpdateCertification(technicianId: string) {
       certificationApi.update(technicianId, args.certificationId, args.payload),
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...authoringKeys.certifications(technicianId)]),
+        queryKey: [...authoringKeys.certifications(technicianId)],
       })
     },
   })
@@ -117,7 +117,7 @@ export function useDeleteCertification(technicianId: string) {
       certificationApi.remove(technicianId, certificationId),
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: tenantScopedKey([...authoringKeys.certifications(technicianId)]),
+        queryKey: [...authoringKeys.certifications(technicianId)],
       })
     },
   })

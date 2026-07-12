@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { productsInvalidationPredicate } from './useProducts'
 
 /**
@@ -81,7 +80,7 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
       // wrapped `[products, t, c]` tag is NOT a prefix of the leaf
       // `[products, list, params, t, c]`.
       queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['product', productId]),
+        queryKey: ['product', productId],
       })
       queryClient.invalidateQueries({
         predicate: productsInvalidationPredicate(tenantId, companyId),

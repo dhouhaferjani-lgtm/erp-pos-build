@@ -121,12 +121,12 @@ export function useCreateReturnNote() {
         }),
         returnNote.metadata.source_invoice_id
           ? queryClient.invalidateQueries({
-            queryKey: tenantScopedKey(['invoice', returnNote.metadata.source_invoice_id]),
+            queryKey: ['invoice', returnNote.metadata.source_invoice_id],
           })
           : Promise.resolve(),
         returnNote.metadata.source_delivery_note_id
           ? queryClient.invalidateQueries({
-            queryKey: tenantScopedKey(['delivery-note', returnNote.metadata.source_delivery_note_id]),
+            queryKey: ['delivery-note', returnNote.metadata.source_delivery_note_id],
           })
           : Promise.resolve(),
         queryClient.invalidateQueries({

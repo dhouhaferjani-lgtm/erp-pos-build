@@ -481,7 +481,7 @@ export function ProductForm() {
         queryClient.invalidateQueries({
           predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['product', id] }),
       ])
     },
   })
@@ -490,7 +490,7 @@ export function ProductForm() {
     setIsResettingOpening(true)
     try {
       await apiPost(`/products/${id}/opening/reset`, {})
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['product', id] })
       setShowResetConfirm(false)
       toast.success(t('inventory:opening.resetSuccess'))
     } catch {
@@ -639,7 +639,7 @@ export function ProductForm() {
     enrichmentRefreshMutation.mutate(id, {
       onSuccess: () => {
         void Promise.all([
-          queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) }),
+          queryClient.invalidateQueries({ queryKey: ['product', id] }),
           queryClient.invalidateQueries({
             predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
           }),

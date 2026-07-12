@@ -33,9 +33,9 @@ export function useCreateStockTransfer() {
   return useMutation({
     mutationFn: (input: CreateStockTransferInput) => stockTransferApi.create(input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey([namespace]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-levels']) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-movements']) })
+      void queryClient.invalidateQueries({ queryKey: [namespace] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
     },
   })
 }
@@ -45,10 +45,10 @@ export function useCompleteStockTransfer() {
   return useMutation({
     mutationFn: (id: string) => stockTransferApi.complete(id),
     onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey([namespace]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey([namespace, 'detail', id]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-levels']) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-movements']) })
+      void queryClient.invalidateQueries({ queryKey: [namespace] })
+      void queryClient.invalidateQueries({ queryKey: [namespace, 'detail', id] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
     },
   })
 }
@@ -59,10 +59,10 @@ export function useCancelStockTransfer() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       stockTransferApi.cancel(id, reason),
     onSuccess: (_data, { id }) => {
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey([namespace]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey([namespace, 'detail', id]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-levels']) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-movements']) })
+      void queryClient.invalidateQueries({ queryKey: [namespace] })
+      void queryClient.invalidateQueries({ queryKey: [namespace, 'detail', id] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
     },
   })
 }

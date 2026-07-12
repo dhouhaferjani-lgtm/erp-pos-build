@@ -105,7 +105,7 @@ export function useUpdateTerminal() {
           predicate: scopedTerminalListPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...terminalKeys.detail(variables.id)]),
+          queryKey: [...terminalKeys.detail(variables.id)],
         }),
       ])
     },
@@ -161,7 +161,7 @@ export function useActivateTerminal() {
           predicate: scopedTerminalListPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+          queryKey: [...terminalKeys.detail(data.id)],
         }),
       ])
     },
@@ -184,7 +184,7 @@ export function useDeactivateTerminal() {
           predicate: scopedTerminalListPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+          queryKey: [...terminalKeys.detail(data.id)],
         }),
       ])
     },
@@ -206,7 +206,7 @@ export function useToggleTrainingMode() {
           predicate: scopedTerminalListPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+          queryKey: [...terminalKeys.detail(data.id)],
         }),
       ])
     },

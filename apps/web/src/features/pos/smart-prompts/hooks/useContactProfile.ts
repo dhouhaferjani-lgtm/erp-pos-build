@@ -34,7 +34,7 @@ export function useContactProfile(contactId: string | null | undefined) {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['contact-profile', contactId]),
+        queryKey: ['contact-profile', contactId],
       })
     },
   })

@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
@@ -28,7 +27,7 @@ export function useCloseWithTolerance({
     mutationFn: () => closeInvoiceWithTolerance(invoiceId),
     onSuccess: async (response) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', invoiceId]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', invoiceId] }),
         queryClient.invalidateQueries({
           predicate: (q) => {
             const k = q.queryKey

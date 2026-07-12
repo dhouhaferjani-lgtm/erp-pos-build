@@ -147,7 +147,7 @@ export function ServiceForm() {
         queryClient.invalidateQueries({
           predicate: servicesInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['service', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['service', id] }),
       ])
       navigate(`/services/${id}`)
     },

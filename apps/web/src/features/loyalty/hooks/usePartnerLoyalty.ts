@@ -22,7 +22,7 @@ export function useEnrollPartner(partnerId: string) {
     onSuccess: async (data: PartnerLoyaltySummary) => {
       queryClient.setQueryData(tenantScopedKey(['loyalty', 'partner', partnerId]), data)
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['loyalty', 'partner', partnerId]),
+        queryKey: ['loyalty', 'partner', partnerId],
       })
       toast.success(i18n.t('loyalty:partnerCard.enrollSuccess'))
     },

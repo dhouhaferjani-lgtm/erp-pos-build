@@ -138,8 +138,8 @@ export function InstrumentDetailPage() {
 
   async function refresh() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', instrumentId]) }),
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument-events', instrumentId]) }),
+      queryClient.invalidateQueries({ queryKey: ['instrument', instrumentId] }),
+      queryClient.invalidateQueries({ queryKey: ['instrument-events', instrumentId] }),
     ])
     setDialog(null)
     setReason('')

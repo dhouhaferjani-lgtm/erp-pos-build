@@ -400,7 +400,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([effectiveType]) }),
+        queryClient.invalidateQueries({ queryKey: [effectiveType] }),
       ])
       const documentId = response?.id
       if (documentId) {
@@ -435,8 +435,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([effectiveType]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', effectiveType, id]) }),
+        queryClient.invalidateQueries({ queryKey: [effectiveType] }),
+        queryClient.invalidateQueries({ queryKey: ['document', effectiveType, id] }),
       ])
       if (shouldClose) { nav.goToList(); return }
       void navigate(`${basePath}/${id}`)

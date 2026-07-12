@@ -155,7 +155,7 @@ export function InventorySettings() {
       await api.patch('/company', settings)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
+      await queryClient.invalidateQueries({ queryKey: ['company-settings'] })
     },
     onError: () => {
       toast.error(t('inventory:settings.messages.inventorySaveFailed'))
@@ -169,7 +169,7 @@ export function InventorySettings() {
       await api.put(`/companies/${currentCompany.id}/reservation-settings`, reservationSettings)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reservation-settings', currentCompany?.id]) })
+      await queryClient.invalidateQueries({ queryKey: ['reservation-settings', currentCompany?.id] })
     },
     onError: () => {
       toast.error(t('inventory:settings.messages.reservationSaveFailed'))

@@ -172,7 +172,7 @@ export function useCreateBatch() {
           predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+          queryKey: ['products', 'detail', data.product_id],
         }),
       ])
       toast.success('Batch created successfully')
@@ -199,9 +199,9 @@ export function useUpdateBatch() {
         queryClient.invalidateQueries({
           predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(data.uuid)) }),
+        queryClient.invalidateQueries({ queryKey: [...batchKeys.detail(data.uuid)] }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+          queryKey: ['products', 'detail', data.product_id],
         }),
       ])
       toast.success('Batch updated successfully')
@@ -227,7 +227,7 @@ export function useDeleteBatch() {
         queryClient.invalidateQueries({
           predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(uuid)) }),
+        queryClient.invalidateQueries({ queryKey: [...batchKeys.detail(uuid)] }),
       ])
       toast.success('Batch deactivated successfully')
     },
@@ -253,9 +253,9 @@ export function useRecallBatch() {
         queryClient.invalidateQueries({
           predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(data.uuid)) }),
+        queryClient.invalidateQueries({ queryKey: [...batchKeys.detail(data.uuid)] }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+          queryKey: ['products', 'detail', data.product_id],
         }),
       ])
       toast.warning('Batch recall initiated')

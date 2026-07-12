@@ -58,7 +58,7 @@ export function DeliveryNoteDetailPage() {
       return apiPost(`/documents/${id}/confirm`)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', id] })
       toast.success(t('deliveryNotes.confirmed'))
       setConfirmAction(null)
     },
@@ -377,7 +377,7 @@ export function DeliveryNoteDetailPage() {
             sourceType="delivery_note"
             onSuccess={() => {
               setShowReturnNoteForm(false)
-              void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', deliveryNote.id]) })
+              void queryClient.invalidateQueries({ queryKey: ['document', deliveryNote.id] })
             }}
             onCancel={() => { setShowReturnNoteForm(false); }}
           />

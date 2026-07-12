@@ -100,9 +100,9 @@ export function RecordDepositModal({ isOpen, onClose, partnerId, onRecorded }: R
           credited: formatCurrency(result.credited_amount, { currency: result.currency_code }),
         }),
       )
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner-deposits', partnerId]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner-account-balance', partnerId]) })
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', partnerId]) })
+      void queryClient.invalidateQueries({ queryKey: ['partner-deposits', partnerId] })
+      void queryClient.invalidateQueries({ queryKey: ['partner-account-balance', partnerId] })
+      void queryClient.invalidateQueries({ queryKey: ['partner', partnerId] })
       onRecorded?.()
       resetForm()
       onClose()

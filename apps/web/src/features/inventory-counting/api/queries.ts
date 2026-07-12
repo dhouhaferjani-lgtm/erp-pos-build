@@ -102,7 +102,7 @@ export function useCreateCounting() {
         queryClient.invalidateQueries({
           predicate: countingListInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.dashboard()] }),
       ])
       toast.success(t('counting.messages.created'))
     },
@@ -120,8 +120,8 @@ export function useActivateCounting() {
     mutationFn: (id: string) => countingApi.activate(id),
     onSuccess: async (_, id) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(id)] }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.dashboard()] }),
       ])
       toast.success(t('counting.messages.activated'))
     },
@@ -140,8 +140,8 @@ export function useCancelCounting() {
       countingApi.cancel(id, reason),
     onSuccess: async (_, { id }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(id)] }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.dashboard()] }),
       ])
       toast.success(t('counting.messages.cancelled'))
     },
@@ -159,8 +159,8 @@ export function useFinalizeCounting() {
     mutationFn: (id: string) => countingApi.finalize(id),
     onSuccess: async (_, id) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(id)] }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.dashboard()] }),
       ])
       toast.success(t('counting.messages.finalized'))
     },
@@ -180,9 +180,9 @@ export function useTriggerThirdCount() {
     onSuccess: async (_, { countingId }) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+          queryKey: [...countingKeys.reconciliation(countingId)],
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(countingId)] }),
       ])
       toast.success(t('counting.messages.thirdCountTriggered'))
     },
@@ -210,9 +210,9 @@ export function useManualOverride(countingId: string) {
       // Invalidate reconciliation for this counting
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+          queryKey: [...countingKeys.reconciliation(countingId)],
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(countingId)] }),
       ])
       toast.success(t('counting.messages.overrideApplied'))
     },
@@ -232,9 +232,9 @@ export function useSetOpeningCost(countingId: string) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+          queryKey: [...countingKeys.reconciliation(countingId)],
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(countingId)] }),
       ])
       toast.success(t('counting.messages.openingCostUpdated'))
     },

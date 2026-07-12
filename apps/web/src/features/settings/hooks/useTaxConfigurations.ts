@@ -58,7 +58,7 @@ export function useCreateTaxConfiguration() {
       taxConfigurationApi.create(data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+        queryKey: [...taxConfigurationKeys.list()],
       })
     },
   })
@@ -73,10 +73,10 @@ export function useUpdateTaxConfiguration() {
     onSuccess: async (_, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+          queryKey: [...taxConfigurationKeys.list()],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...taxConfigurationKeys.detail(variables.id)]),
+          queryKey: [...taxConfigurationKeys.detail(variables.id)],
         }),
       ])
     },
@@ -90,7 +90,7 @@ export function useDeleteTaxConfiguration() {
     mutationFn: (id: string) => taxConfigurationApi.delete(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+        queryKey: [...taxConfigurationKeys.list()],
       })
     },
   })
@@ -104,7 +104,7 @@ export function useReorderTaxConfigurations() {
       taxConfigurationApi.reorder(order),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+        queryKey: [...taxConfigurationKeys.list()],
       })
     },
   })

@@ -113,7 +113,7 @@ export function useUploadAttachment(documentId: string, defaultRole?: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['attachments', documentId]),
+        queryKey: ['attachments', documentId],
       })
       toast.success('Attachment uploaded successfully')
     },
@@ -137,7 +137,7 @@ export function useDeleteAttachment(documentId: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['attachments', documentId]),
+        queryKey: ['attachments', documentId],
       })
       toast.success('Attachment deleted')
     },

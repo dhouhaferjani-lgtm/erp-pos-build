@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { transferOwnership, type TransferOwnershipPayload } from '../api/vehicleOwnershipApi'
@@ -36,11 +35,13 @@ export function useTransferVehicleOwnership(vehicleId: string | undefined) {
     },
     onSuccess: async (_data, variables) => {
       await Promise.all([
+        // Vehicle DETAIL only (see useLogVehicleMileage): full explicit key
+        // so sibling sub-resources ('mileage') stay untouched.
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['vehicle', vehicleId]),
+          queryKey: ['vehicle', vehicleId, tenantId, companyId],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['vehicle', vehicleId, 'ownerships']),
+          queryKey: ['vehicle', vehicleId, 'ownerships'],
         }),
         queryClient.invalidateQueries({
           predicate: partnerVehiclesPredicate(

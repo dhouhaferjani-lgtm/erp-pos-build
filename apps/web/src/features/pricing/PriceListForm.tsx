@@ -81,7 +81,7 @@ export function PriceListForm() {
         queryClient.invalidateQueries({
           predicate: priceListsInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['price-list', id] }),
       ])
       navigate(`/pricing/price-lists/${id}`)
     },

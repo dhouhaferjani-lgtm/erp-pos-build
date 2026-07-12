@@ -48,7 +48,11 @@ export function ZonesPanel({ locationId }: ZonesPanelProps) {
     enabled: locationId !== '' && tenantId !== null && companyId !== null,
   })
 
-  const invalidateZones = () => queryClient.invalidateQueries({ queryKey })
+  // Invalidation FILTER must be the bare prefix, not the tenant-suffixed key:
+  // React Query matches filters positionally from the front, so the bare
+  // prefix matches the tenantScopedKey(...) query key above.
+  const invalidateZones = () =>
+    queryClient.invalidateQueries({ queryKey: [...zonesKey(locationId)] })
 
   const createMutation = useMutation({
     mutationFn: (data: ZoneFormValues) => createZone({ location_id: locationId, ...data }),
@@ -91,7 +95,7 @@ export function ZonesPanel({ locationId }: ZonesPanelProps) {
       assignProductsToZone(zoneId, productIds),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey(['zone-products', assignTarget?.id ?? null]),
+        queryKey: ['zone-products', assignTarget?.id ?? null],
       })
       toast.success(t('inventory:zones.bulkAssign.success'))
       setAssignTarget(null)

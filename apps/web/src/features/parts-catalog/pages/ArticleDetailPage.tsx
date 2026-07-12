@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { ArticleDetailPanel } from '../components/organisms/ArticleDetailPanel'
 import { AddToInventoryModal } from '../components/organisms/AddToInventoryModal'
 import { partsCatalogKeys } from '../hooks/usePartsCatalog'
@@ -28,7 +27,7 @@ export function ArticleDetailPage() {
     setInventoryModalArticle(null)
     if (articleId && hasTenantScope) {
       void queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...partsCatalogKeys.articleDetail(articleId)]),
+        queryKey: [...partsCatalogKeys.articleDetail(articleId)],
       })
     }
   }, [articleId, hasTenantScope, queryClient])

@@ -86,7 +86,7 @@ export function useUpdateExpenseCategory() {
           predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...expenseCategoryKeys.detail(updatedCategory.id)]),
+          queryKey: [...expenseCategoryKeys.detail(updatedCategory.id)],
         }),
       ])
       toast.success(t('expenses:categories.messages.updated'))

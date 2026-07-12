@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileText, Banknote, Wallet, Pause } from 'lucide-react'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { generateXReport, type CurrentShift, type ShiftBalance } from '../api/shiftApi'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -92,10 +91,10 @@ export function ShiftOperationsMenu({
       // Invalidate shift data to reflect any changes
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
+          queryKey: ['pos', 'shift', terminalCode],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['pos', 'shift-balance', shift.id]),
+          queryKey: ['pos', 'shift-balance', shift.id],
         }),
       ])
     },

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createJournalEntry, postJournalEntry } from '../api'
 import { getErrorMessage } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import type { CreateJournalEntryData } from '../api'
@@ -52,7 +51,7 @@ export function usePostJournalEntry() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('journal-entries', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['journal-entry', data.id]) }),
+        queryClient.invalidateQueries({ queryKey: ['journal-entry', data.id] }),
       ])
       toast.success('Journal entry posted successfully')
     },

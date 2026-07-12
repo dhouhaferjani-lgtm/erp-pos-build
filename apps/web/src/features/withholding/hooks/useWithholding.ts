@@ -107,7 +107,7 @@ export function useIssueWithholdingCertificate() {
       withholdingApi.issueWithholdingCertificate(id),
     onSuccess: async (_, id) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
         }),
@@ -134,7 +134,7 @@ export function useVoidWithholdingCertificate() {
       withholdingApi.voidWithholdingCertificate(id, request),
     onSuccess: async (_, { id }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
         }),
@@ -161,7 +161,7 @@ export function useSubmitCertificateToTEJ() {
       withholdingApi.submitCertificateToTEJ(id, request),
     onSuccess: async (_, { id }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
         }),
@@ -263,7 +263,7 @@ export function useUpdateWithholdingRule() {
       withholdingApi.updateWithholdingRule(id, data),
     onSuccess: async (_, { id }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-rule', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
         }),
@@ -312,7 +312,7 @@ export function useDeactivateWithholdingRule() {
     mutationFn: withholdingApi.deactivateWithholdingRule,
     onSuccess: async (_, id) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-rule', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
         }),

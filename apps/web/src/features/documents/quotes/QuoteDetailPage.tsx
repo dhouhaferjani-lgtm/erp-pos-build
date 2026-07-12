@@ -120,7 +120,7 @@ export function QuoteDetailPage() {
     mutationFn: () => apiPost<Document>(`/quotes/${id}/confirm`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -140,7 +140,7 @@ export function QuoteDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] }),
       ])
       if (data?.id) {
         void navigate(`/sales/orders/${data.id}`)
@@ -148,7 +148,7 @@ export function QuoteDetailPage() {
     },
     onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] })
     },
   })
 

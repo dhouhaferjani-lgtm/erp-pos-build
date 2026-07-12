@@ -41,7 +41,7 @@ export function useUpdateLineStatus() {
     mutationFn: ({ orderId, lineId, status }) =>
       updateLineStatus(orderId, lineId, status),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
+      await queryClient.invalidateQueries({ queryKey: [...kitchenKeys.orders()] })
     },
   })
 }
@@ -52,7 +52,7 @@ export function useBumpOrder() {
   return useMutation<OrderData, Error, string>({
     mutationFn: bumpOrder,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
+      await queryClient.invalidateQueries({ queryKey: [...kitchenKeys.orders()] })
     },
   })
 }
@@ -65,7 +65,7 @@ export function useMarkOrderServed() {
     mutationFn: markOrderServed,
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) }),
+        queryClient.invalidateQueries({ queryKey: [...kitchenKeys.orders()] }),
         queryClient.invalidateQueries({
           predicate: scopedKeyPredicate('orders', tenantId, companyId),
         }),

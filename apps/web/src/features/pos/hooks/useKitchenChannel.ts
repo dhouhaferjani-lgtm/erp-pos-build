@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useRealtimeChannel } from '@/hooks/useRealtimeChannel'
 import { kitchenKeys } from './useKitchenOrders'
 import { usePosTenantScope } from './usePosTenantScope'
@@ -23,7 +22,7 @@ export function useKitchenChannel(): void {
     : ''
 
   const handleEvent = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
+    void queryClient.invalidateQueries({ queryKey: [...kitchenKeys.orders()] })
   }, [queryClient])
 
   // Subscribe to each event type

@@ -153,8 +153,8 @@ export function useCreateOpeningBatch() {
     onSuccess: async () => {
       if (!tenantId || !companyId) return
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.list(companyId)] }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.status(companyId)] }),
       ])
       toast.success(t('openingBalances.messages.batchCreated'))
     },
@@ -179,8 +179,8 @@ export function useDeleteOpeningBatch() {
     onSuccess: async () => {
       if (!tenantId || !companyId) return
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.list(companyId)] }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.status(companyId)] }),
       ])
       toast.success(t('openingBalances.messages.batchDeleted'))
     },
@@ -206,7 +206,7 @@ export function useImportOpeningRows() {
       if (!tenantId || !companyId) return
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, variables.batchId)]),
+          queryKey: [...openingBalanceKeys.detail(companyId, variables.batchId)],
         }),
         queryClient.invalidateQueries({
           predicate: openingBalanceRowsInvalidationPredicate(tenantId, companyId, variables.batchId),
@@ -236,7 +236,7 @@ export function useValidateOpeningBatch() {
       if (!tenantId || !companyId) return
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+          queryKey: [...openingBalanceKeys.detail(companyId, batchId)],
         }),
         queryClient.invalidateQueries({
           predicate: openingBalanceRowsInvalidationPredicate(tenantId, companyId, batchId),
@@ -270,9 +270,9 @@ export function usePostOpeningBatch() {
       if (!tenantId || !companyId) return
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+          queryKey: [...openingBalanceKeys.detail(companyId, batchId)],
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.status(companyId)] }),
       ])
       toast.success(t('openingBalances.messages.postSuccess'))
     },
@@ -298,10 +298,10 @@ export function useLockOpeningBatch() {
       if (!tenantId || !companyId) return
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+          queryKey: [...openingBalanceKeys.detail(companyId, batchId)],
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.status(companyId)] }),
+        queryClient.invalidateQueries({ queryKey: [...openingBalanceKeys.list(companyId)] }),
       ])
       toast.success(t('openingBalances.messages.lockSuccess'))
     },

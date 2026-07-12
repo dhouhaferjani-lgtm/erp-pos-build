@@ -671,16 +671,16 @@ export function PaymentForm() {
       await Promise.all([
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
         invoiceId
-          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['invoice', invoiceId]) })
+          ? queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] })
           : Promise.resolve(),
         purchaseOrderId
-          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-order', purchaseOrderId]) })
+          ? queryClient.invalidateQueries({ queryKey: ['purchase-order', purchaseOrderId] })
           : Promise.resolve(),
         deliveryNoteId
-          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['delivery-note', deliveryNoteId]) })
+          ? queryClient.invalidateQueries({ queryKey: ['delivery-note', deliveryNoteId] })
           : Promise.resolve(),
         supplierInvoiceId
-          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['supplier-invoice', supplierInvoiceId]) })
+          ? queryClient.invalidateQueries({ queryKey: ['supplier-invoice', supplierInvoiceId] })
           : Promise.resolve(),
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('invoices', tenantId, companyId) }),
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('open-invoices', tenantId, companyId) }),

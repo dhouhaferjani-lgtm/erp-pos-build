@@ -184,7 +184,7 @@ export function ReceiptSettingsTab() {
       await api.put(`/companies/${currentCompany?.id ?? ''}/receipt-settings`, formData)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['receipt-settings']) })
+      await queryClient.invalidateQueries({ queryKey: ['receipt-settings'] })
       toast.success(t('settings:receipt.messages.saved'))
     },
     onError: (err: unknown) => {

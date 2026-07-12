@@ -153,7 +153,7 @@ export function PurchaseOrderDetailPage() {
     mutationFn: () => apiPost<Document>(`/purchase-orders/${id}/confirm`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -176,8 +176,8 @@ export function PurchaseOrderDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-order', 'receipt-status', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] }),
+        queryClient.invalidateQueries({ queryKey: ['purchase-order', 'receipt-status', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
         }),
@@ -255,7 +255,7 @@ export function PurchaseOrderDetailPage() {
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+      queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] }),
       queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('documents', tenantId, companyId),
       }),

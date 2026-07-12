@@ -8,7 +8,6 @@ import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
 import { Button } from '../../atoms/Button'
 import { apiPost, getErrorMessage, isApiError } from '../../../lib/api'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
@@ -207,7 +206,7 @@ export function AddQuickProductModal({
       return apiPost<Product>('/products', payload)
     },
     onSuccess: async (product) => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['products']) })
+      await queryClient.invalidateQueries({ queryKey: ['products'] })
       onSuccess?.(product)
       onClose()
     },

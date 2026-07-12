@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Save } from 'lucide-react'
 import { updateUser } from '../../users/api/users'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { getErrorMessage } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors, colors, focusRing } from '../../../lib/designTokens'
@@ -67,7 +66,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
       return updateUser(user.id, data)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['users']) })
+      await queryClient.invalidateQueries({ queryKey: ['users'] })
       onSuccess(t('settings:userEdit.success'))
       onClose()
     },

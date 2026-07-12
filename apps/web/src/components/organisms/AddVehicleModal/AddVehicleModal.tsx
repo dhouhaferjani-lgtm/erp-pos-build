@@ -8,7 +8,6 @@ import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { tokens } from '../../../lib/designTokens'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -157,7 +156,7 @@ export function AddVehicleModal({
         predicate: scopedNamespacePredicate('vehicles', tenantId, companyId),
       })
       if (partnerId) {
-        await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', partnerId]) })
+        await queryClient.invalidateQueries({ queryKey: ['partner', partnerId] })
       }
       onSuccess?.(response.data)
       onClose()

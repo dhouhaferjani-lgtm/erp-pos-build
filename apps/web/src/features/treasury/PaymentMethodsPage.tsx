@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 import { usePaymentMethods } from './hooks/usePaymentMethods'
 import { AddPaymentMethodModal } from './components/AddPaymentMethodModal'
 import { api } from '../../lib/api'
-import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
 import { tokens, textColors } from '../../lib/designTokens'
 import { Button, StatusBadge, statusTone } from '../../components/atoms'
@@ -62,7 +61,7 @@ export function PaymentMethodsPage() {
       await api.patch(`/payment-methods/${id}`, { is_active: !isActive })
     },
     onSuccess: async (_data, variables) => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
+      await queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
       toast.success(
         variables.isActive
           ? t('treasury:paymentMethods.messages.deactivated')
@@ -305,7 +304,7 @@ export function PaymentMethodsPage() {
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false) }}
         onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
+          void queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
         }}
       />
     </ListPageLayout>

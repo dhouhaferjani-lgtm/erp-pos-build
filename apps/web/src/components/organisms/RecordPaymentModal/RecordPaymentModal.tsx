@@ -336,7 +336,7 @@ export function RecordPaymentModal({
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('payments', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['invoice', prefill.document_id]) }),
+        queryClient.invalidateQueries({ queryKey: ['invoice', prefill.document_id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('invoices', tenantId, companyId),
         }),
@@ -346,7 +346,7 @@ export function RecordPaymentModal({
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('open-invoices', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', prefill.document_id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', prefill.document_id] }),
       ])
 
       // response is already the unwrapped data (MultiPaymentResponseData)

@@ -33,7 +33,7 @@ export function useCreateReward(programId: string) {
   return useMutation({
     mutationFn: (data: CreateRewardData) => createReward(programId, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...rewardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...rewardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.created'))
     },
     onError: (error: unknown) => {
@@ -47,7 +47,7 @@ export function useUpdateReward(programId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateRewardData }) => updateReward(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...rewardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...rewardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.updated'))
     },
     onError: (error: unknown) => {
@@ -61,7 +61,7 @@ export function useDeleteReward(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteReward(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...rewardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...rewardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deleted'))
     },
     onError: (error: unknown) => {
@@ -75,7 +75,7 @@ export function useActivateReward(programId: string) {
   return useMutation({
     mutationFn: (id: string) => activateReward(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...rewardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...rewardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.activated'))
     },
     onError: (error: unknown) => {
@@ -89,7 +89,7 @@ export function useDeactivateReward(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deactivateReward(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...rewardsKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...rewardsKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deactivated'))
     },
     onError: (error: unknown) => {

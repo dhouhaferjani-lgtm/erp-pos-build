@@ -4,7 +4,6 @@ import { Upload, AlertCircle } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { uploadProductImage } from '../api/productImages'
 import { getErrorMessage } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -30,8 +29,8 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
     mutationFn: (file: File) => uploadProductImage(productId, file),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+        queryClient.invalidateQueries({ queryKey: ['product-images', productId] }),
+        queryClient.invalidateQueries({ queryKey: ['product', productId] }),
       ])
       void tenantId
       void companyId

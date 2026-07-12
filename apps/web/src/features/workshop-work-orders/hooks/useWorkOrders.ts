@@ -109,7 +109,7 @@ export function useUpdateWorkOrder(id: string) {
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({
-          queryKey: tenantScopedKey([...workOrderKeys.detail(id)]),
+          queryKey: [...workOrderKeys.detail(id)],
         }),
         qc.invalidateQueries({
           predicate: workOrderListsPredicate(tenantId, companyId),
@@ -128,7 +128,7 @@ export function useTransitionWorkOrder(id: string) {
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({
-          queryKey: tenantScopedKey([...workOrderKeys.detail(id)]),
+          queryKey: [...workOrderKeys.detail(id)],
         }),
         qc.invalidateQueries({
           predicate: workOrderListsPredicate(tenantId, companyId),
@@ -147,7 +147,7 @@ export function useApproveWorkOrder(id: string) {
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({
-          queryKey: tenantScopedKey([...workOrderKeys.detail(id)]),
+          queryKey: [...workOrderKeys.detail(id)],
         }),
         qc.invalidateQueries({
           predicate: workOrderListsPredicate(tenantId, companyId),
@@ -170,7 +170,7 @@ export function useCompleteWorkOrder(id: string) {
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({
-          queryKey: tenantScopedKey([...workOrderKeys.detail(id)]),
+          queryKey: [...workOrderKeys.detail(id)],
         }),
         qc.invalidateQueries({
           predicate: workOrderListsPredicate(tenantId, companyId),
@@ -193,7 +193,7 @@ export function useCancelWorkOrder(id: string) {
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({
-          queryKey: tenantScopedKey([...workOrderKeys.detail(id)]),
+          queryKey: [...workOrderKeys.detail(id)],
         }),
         qc.invalidateQueries({
           predicate: workOrderListsPredicate(tenantId, companyId),

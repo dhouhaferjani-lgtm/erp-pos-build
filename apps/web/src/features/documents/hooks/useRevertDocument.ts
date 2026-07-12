@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { apiPost } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import type { Document } from '@/types/document'
@@ -31,8 +30,8 @@ export function useRevertDocument(documentId: string, documentType: string) {
     mutationFn: () => apiPost<Document>(`/documents/${documentId}/revert`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', documentType, documentId]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', documentType, documentId] }),
+        queryClient.invalidateQueries({ queryKey: ['document', documentId] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),

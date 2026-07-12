@@ -102,7 +102,7 @@ export function SalesOrderDetailPage() {
     mutationFn: () => apiPost<Document>(`/orders/${id}/confirm`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -122,7 +122,7 @@ export function SalesOrderDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] }),
       ])
       if (data?.id) {
         void navigate(`/sales/invoices/${data.id}`)
@@ -130,7 +130,7 @@ export function SalesOrderDetailPage() {
     },
     onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
     },
   })
 
@@ -142,7 +142,7 @@ export function SalesOrderDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] }),
       ])
       if (data?.id) {
         void navigate(`/inventory/delivery-notes/${data.id}`)
@@ -150,7 +150,7 @@ export function SalesOrderDetailPage() {
     },
     onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) })
+      await queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
     },
   })
 
@@ -222,7 +222,7 @@ export function SalesOrderDetailPage() {
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+      queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] }),
       queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('documents', tenantId, companyId),
       }),

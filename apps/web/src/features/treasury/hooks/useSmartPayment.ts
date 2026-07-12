@@ -127,11 +127,11 @@ export function useApplyAllocation() {
           predicate: scopedNamespacePredicate('payments', tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['payment', result.payment_id]),
+          queryKey: ['payment', result.payment_id],
         }),
         ...result.allocations.map((allocation) =>
           queryClient.invalidateQueries({
-            queryKey: tenantScopedKey(['invoice', allocation.document_id]),
+            queryKey: ['invoice', allocation.document_id],
           }),
         ),
         queryClient.invalidateQueries({

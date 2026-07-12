@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
-import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -89,7 +88,7 @@ export function LoginPage() {
         email_verified_at: data.user.emailVerifiedAt,
       }
       setAuth(user, data.token)
-      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['auth', 'me']) })
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       // Redirect to the page they were trying to access, or home
       const locationState = location.state as { from?: { pathname: string } } | null
       const from = locationState?.from?.pathname ?? '/'

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { generateVatPeriods, closeVatPeriod, reopenVatPeriod, fileVatPeriod } from '../api'
 import { getErrorMessage } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -38,7 +37,7 @@ export function useVatPeriodActions() {
     onSuccess: async (_data, { id }) => {
       await Promise.all([
         invalidate(),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['vat-report', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['vat-report', id] }),
       ])
       toast.success(t('finance:vatReporting.toast.closed'))
     },

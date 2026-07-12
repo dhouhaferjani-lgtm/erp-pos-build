@@ -187,8 +187,8 @@ export function CompanyPage() {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-config']) }),
+        queryClient.invalidateQueries({ queryKey: ['company-settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['company-config'] }),
       ])
       setIsDirty(false)
       showNotification('success', t('settings:company.messages.saved'))
@@ -214,7 +214,7 @@ export function CompanyPage() {
         allow_invoice_first: policy.allow_invoice_first,
         invoice_first_requires_approval: policy.invoice_first_requires_approval,
       })
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['procurement-policy']) })
+      await queryClient.invalidateQueries({ queryKey: ['procurement-policy'] })
       showNotification('success', t('settings:company.procurement.messages.saved'))
     },
     onError: (error) => {
@@ -232,7 +232,7 @@ export function CompanyPage() {
       })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
+      await queryClient.invalidateQueries({ queryKey: ['company-settings'] })
       showNotification('success', t('settings:company.messages.logoUploaded'))
     },
     onError: (error) => {
@@ -246,7 +246,7 @@ export function CompanyPage() {
       await api.delete('/settings/company/logo')
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
+      await queryClient.invalidateQueries({ queryKey: ['company-settings'] })
       showNotification('success', t('settings:company.messages.logoDeleted'))
     },
     onError: (error) => {

@@ -212,11 +212,11 @@ export function PaymentDetailPage() {
       return api.post(`/payments/${id}/refund`, { reason, refund_request_id: refundRequestId })
     },
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'refund-history']) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'can-refund']) }),
-      ])
+      // Single bare-prefix filter: ['payment', id] prefix-matches the detail,
+      // refund-history, and can-refund keys (tenant/company are suffixes).
+      // Separate narrower invalidations would cancel+restart the refetches
+      // the first one already started (cancelRefetch), double-fetching.
+      await queryClient.invalidateQueries({ queryKey: ['payment', id] })
       toast.success(t('payments.messages.refunded'))
       setShowRefundModal(false)
       setRefundReason('')
@@ -233,11 +233,11 @@ export function PaymentDetailPage() {
       return api.post(`/payments/${id}/partial-refund`, { amount, reason, refund_request_id: refundRequestId })
     },
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'refund-history']) }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'can-refund']) }),
-      ])
+      // Single bare-prefix filter: ['payment', id] prefix-matches the detail,
+      // refund-history, and can-refund keys (tenant/company are suffixes).
+      // Separate narrower invalidations would cancel+restart the refetches
+      // the first one already started (cancelRefetch), double-fetching.
+      await queryClient.invalidateQueries({ queryKey: ['payment', id] })
       toast.success(t('payments.messages.partialRefunded'))
       setShowPartialRefundModal(false)
       setPartialRefundAmount('')
@@ -256,7 +256,7 @@ export function PaymentDetailPage() {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['payment', id] }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('payments', tenantId, companyId),
         }),

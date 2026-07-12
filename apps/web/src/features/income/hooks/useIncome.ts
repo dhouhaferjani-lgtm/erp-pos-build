@@ -74,7 +74,7 @@ export function useUpdateIncome() {
           predicate: incomeInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...incomeKeys.detail(updated.id)]),
+          queryKey: [...incomeKeys.detail(updated.id)],
         }),
       ])
       toast.success(t('income:messages.updated'))
@@ -99,7 +99,7 @@ export function usePostIncome() {
           predicate: incomeInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...incomeKeys.detail(posted.id)]),
+          queryKey: [...incomeKeys.detail(posted.id)],
         }),
       ])
       toast.success(t('income:messages.posted'))

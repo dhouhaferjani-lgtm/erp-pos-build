@@ -348,7 +348,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         queryClient.invalidateQueries({
           predicate: partnersInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', id]) }),
+        queryClient.invalidateQueries({ queryKey: ['partner', id] }),
       ])
       void navigate(`${basePath}/${id}`)
     },

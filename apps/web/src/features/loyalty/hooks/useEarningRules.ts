@@ -33,7 +33,7 @@ export function useCreateEarningRule(programId: string) {
   return useMutation({
     mutationFn: (data: CreateEarningRuleData) => createEarningRule(programId, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...earningRulesKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...earningRulesKey(programId)] })
       toast.success(i18n.t('loyalty:actions.created'))
     },
     onError: (error: unknown) => {
@@ -47,7 +47,7 @@ export function useUpdateEarningRule(programId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateEarningRuleData }) => updateEarningRule(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...earningRulesKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...earningRulesKey(programId)] })
       toast.success(i18n.t('loyalty:actions.updated'))
     },
     onError: (error: unknown) => {
@@ -61,7 +61,7 @@ export function useDeleteEarningRule(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteEarningRule(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...earningRulesKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...earningRulesKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deleted'))
     },
     onError: (error: unknown) => {
@@ -75,7 +75,7 @@ export function useActivateEarningRule(programId: string) {
   return useMutation({
     mutationFn: (id: string) => activateEarningRule(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...earningRulesKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...earningRulesKey(programId)] })
       toast.success(i18n.t('loyalty:actions.activated'))
     },
     onError: (error: unknown) => {
@@ -89,7 +89,7 @@ export function useDeactivateEarningRule(programId: string) {
   return useMutation({
     mutationFn: (id: string) => deactivateEarningRule(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...earningRulesKey(programId)]) })
+      await queryClient.invalidateQueries({ queryKey: [...earningRulesKey(programId)] })
       toast.success(i18n.t('loyalty:actions.deactivated'))
     },
     onError: (error: unknown) => {
