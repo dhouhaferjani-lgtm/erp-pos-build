@@ -24,6 +24,8 @@ None found during pre-flight review.
 - `cd apps/api && ./vendor/bin/phpstan --memory-limit=1G`: exit 0 — `[OK] No errors`, 2503/2503 files.
 - `cd apps/api && ./vendor/bin/pint --dirty`: exit 0 — `{"result":"pass"}`.
 - `git diff origin/dev..HEAD -- apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php`: exit 0 with empty output; the port is byte-untouched.
+- Opus adversarial review: `docs/handoff/gate-reviews-phase3/GATE-1-rc1.md` — `VERDICT: APPROVE`; no BLOCKER/HIGH/MEDIUM findings.
+- Review note: `origin/dev` advanced 20 commits after the sanctioned base, contaminating a literal two-dot range with phantom deletions. The reviewer used the merge-base authored diff and verified the port under both forms. The required Wave-D interlock/rebase check remains pending before frontend work.
 
 ### Task A1 — Status-scoped treasury-transfer JE uniqueness
 
