@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/restrict-template-expressions -- React Hook Form field-array paths require numeric indices. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFieldArray, useWatch } from 'react-hook-form'
@@ -42,9 +42,11 @@ function PartnerBankAccountRow({
   const bankName = useWatch({ control, name: `bank_accounts.${index}.bank_name` })
   const bic = useWatch({ control, name: `bank_accounts.${index}.bic` })
   const rib = useWatch({ control, name: `bank_accounts.${index}.rib` })
+  const iban = useWatch({ control, name: `bank_accounts.${index}.iban` })
   const isPrimary = useWatch({ control, name: `bank_accounts.${index}.is_primary` })
   const validation = useBankAccountValidation(rib, country, 'rib')
   const [isFallback, setIsFallback] = useState(bankId.length === 0 && bankName.length > 0)
+  const autoDerivedIbanRef = useRef('')
 
   const selectedBank: Bank | null = bankId.length === 0 || bankName.length === 0
     ? null
@@ -59,11 +61,22 @@ function PartnerBankAccountRow({
         is_custom: false,
       }
 
+  // Write the derived IBAN while the RIB is valid, and clear it again when the RIB
+  // becomes invalid — but only touch the field while it still holds our auto-derived
+  // value (or is empty), so a user-typed IBAN is never clobbered. Otherwise a RIB
+  // edited valid→invalid would submit a stale IBAN that no longer matches the RIB.
   useEffect(() => {
-    if (validation.status === 'valid' && validation.derivedIban !== null) {
-      setValue(`bank_accounts.${index}.iban`, validation.derivedIban, { shouldDirty: true })
+    const nextIban = validation.status === 'valid' ? validation.derivedIban ?? '' : ''
+    if (nextIban !== '') {
+      if (iban === '' || iban === autoDerivedIbanRef.current) {
+        setValue(`bank_accounts.${index}.iban`, nextIban, { shouldDirty: true })
+        autoDerivedIbanRef.current = nextIban
+      }
+    } else if (autoDerivedIbanRef.current !== '' && iban === autoDerivedIbanRef.current) {
+      setValue(`bank_accounts.${index}.iban`, '', { shouldDirty: true })
+      autoDerivedIbanRef.current = ''
     }
-  }, [index, setValue, validation.derivedIban, validation.status])
+  }, [iban, index, setValue, validation.derivedIban, validation.status])
 
   return (
     <div className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>

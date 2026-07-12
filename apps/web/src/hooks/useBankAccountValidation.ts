@@ -97,6 +97,13 @@ function validateIban(value: string): BankAccountValidationResult {
     return { status: 'invalid', normalized, derivedIban: null, errors: ['invalid_length'] }
   }
 
+  // ISO 13616 restricts IBAN check digits to 02–98. The mod-97 test alone accepts
+  // three forbidden aliases per BBAN (00≡97, 01≡98, 99≡02 modulo 97), so reject
+  // those check-digit values before the checksum test.
+  if (['00', '01', '99'].includes(normalized.slice(2, 4))) {
+    return { status: 'invalid', normalized, derivedIban: null, errors: ['invalid_check_digits'] }
+  }
+
   const rearranged = `${normalized.slice(4)}${normalized.slice(0, 4)}`
   if (mod97(expandLetters(rearranged)) !== 1) {
     return { status: 'invalid', normalized, derivedIban: null, errors: ['invalid_checksum'] }

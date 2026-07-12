@@ -96,6 +96,60 @@ final class BankAccountValidatorTest extends TestCase
         self::assertSame([], $result->errors);
     }
 
+    public function test_preserves_the_normalized_digit_string_when_the_rib_is_spaced_or_hyphenated(): void
+    {
+        $result = $this->validator->validateRib('0704-0005 8101 1112-9653', 'TN');
+
+        self::assertTrue($result->valid);
+        self::assertSame('07040005810111129653', $result->normalized);
+    }
+
+    /**
+     * ISO 13616 forbids IBAN check digits 00, 01 and 99. Each is an alias of a
+     * genuinely valid BBAN's check digits modulo 97 (00≡97, 01≡98, 99≡02), so the
+     * mod-97 test alone lets them through. They must be rejected explicitly.
+     */
+    #[DataProvider('forbiddenCheckDigitIbanProvider')]
+    public function test_rejects_iso_forbidden_iban_check_digit_aliases(string $iban): void
+    {
+        $result = $this->validator->validateIban($iban);
+
+        self::assertFalse($result->valid);
+        self::assertContains('invalid_check_digits', $result->errors);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function forbiddenCheckDigitIbanProvider(): array
+    {
+        return [
+            'check digits 00 (alias of true 97)' => ['TN0000000000000000000092'],
+            'check digits 01 (alias of true 98)' => ['TN0100000000000000000074'],
+            'check digits 99 (alias of true 02)' => ['TN9900000000000000000056'],
+        ];
+    }
+
+    #[DataProvider('invalidIbanProvider')]
+    public function test_rejects_invalid_ibans_cleanly(string $iban, string $expectedError): void
+    {
+        $result = $this->validator->validateIban($iban);
+
+        self::assertFalse($result->valid);
+        self::assertContains($expectedError, $result->errors);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function invalidIbanProvider(): array
+    {
+        return [
+            'corrupted check digit' => ['TN5807040005810111129653', 'invalid_checksum'],
+            'wrong length' => ['TN590704000581011112965', 'invalid_length'],
+        ];
+    }
+
     public function test_rejects_foreign_iban_without_throwing(): void
     {
         $result = $this->validator->validateIban('FR7630004001230000123456725');

@@ -87,6 +87,13 @@ final class BankAccountValidator implements BankAccountValidatorInterface
             return $this->invalidIban($normalized, $countryCode, 'invalid_length');
         }
 
+        // ISO 13616 restricts IBAN check digits to 02–98. The mod-97 test alone
+        // accepts three forbidden aliases per BBAN (00≡97, 01≡98, 99≡02 modulo 97),
+        // so reject those check-digit values before the checksum test.
+        if (in_array(substr($normalized, 2, 2), ['00', '01', '99'], true)) {
+            return $this->invalidIban($normalized, $countryCode, 'invalid_check_digits');
+        }
+
         $rearranged = substr($normalized, 4).substr($normalized, 0, 4);
         $numeric = $this->expandIbanLetters($rearranged);
         if (bcmod($numeric, '97', 0) !== '1') {

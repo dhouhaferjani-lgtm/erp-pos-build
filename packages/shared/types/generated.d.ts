@@ -1410,7 +1410,7 @@ is_primary: boolean;
 created_by: string | null;
 rib_validation: App.Shared.Banking.Domain.ValueObjects.RibValidationResult;
 iban_validation: App.Shared.Banking.Domain.ValueObjects.IbanValidationResult;
-bic_valid: boolean;
+bic_valid: boolean | null;
 };
 export type PartnerData = {
 id: string;

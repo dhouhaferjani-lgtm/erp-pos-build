@@ -27,7 +27,7 @@ final class PartnerBankAccountData extends Data
         public ?string $created_by,
         public RibValidationResult $rib_validation,
         public IbanValidationResult $iban_validation,
-        public bool $bic_valid,
+        public ?bool $bic_valid,
     ) {}
 
     public static function fromModel(
@@ -49,7 +49,7 @@ final class PartnerBankAccountData extends Data
             rib_validation: $validator->validateRib($account->rib ?? '', $country),
             iban_validation: $validator->validateIban($account->iban ?? ''),
             bic_valid: $account->bic === null || $account->bic === ''
-                ? false
+                ? null
                 : $validator->validateBic($account->bic),
         );
     }

@@ -361,6 +361,25 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     })
   })
 
+  it('clears the auto-derived IBAN when a valid RIB is edited back to invalid', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Legacy Supplier' } })
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
+
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129653' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^IBAN$/i)).toHaveValue('TN5907040005810111129653')
+    })
+
+    // Break the RIB: the auto-derived IBAN must be cleared, not left stale.
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129654' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^IBAN$/i)).toHaveValue('')
+    })
+  })
+
   it('warns on an invalid partner RIB while leaving Save enabled', async () => {
     mockApiPost.mockResolvedValue({ id: 'partner-new' })
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')

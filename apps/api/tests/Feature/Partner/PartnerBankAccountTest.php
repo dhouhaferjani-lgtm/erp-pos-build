@@ -169,6 +169,25 @@ final class PartnerBankAccountTest extends TestCase
             ->assertJsonPath('data.bank_accounts.0.is_primary', true);
     }
 
+    public function test_absent_bic_serializes_bic_valid_as_null_not_false(): void
+    {
+        $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/partners', [
+            'name' => 'No BIC Supplier',
+            'type' => 'supplier',
+            'bank_accounts' => [[
+                'label' => 'No BIC',
+                'bank_id' => null,
+                'bank_name' => 'Unlisted',
+                'rib' => '07040005810111129653',
+                'iban' => 'TN5907040005810111129653',
+                'bic' => null,
+                'currency' => 'TND',
+                'is_primary' => true,
+            ]],
+        ])->assertCreated()
+            ->assertJsonPath('data.bank_accounts.0.bic_valid', null);
+    }
+
     public function test_updates_accounts_as_a_nested_collection_and_keeps_one_primary(): void
     {
         $partner = Partner::create([
