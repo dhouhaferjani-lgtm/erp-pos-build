@@ -245,6 +245,8 @@ None found during pre-flight review.
 - React Doctor changed-scope scan against `phase3-gate-2`: exit 0, `baseline.newCount=0`, `diagnostics=[]`, complete scan of 29 Wave-D files. Displayed score 93 reflects five baseline host-file findings; Wave D introduced zero diagnostics.
 - D2 deviation: six cache invalidations use raw leading prefixes rather than plan-pasted `tenantScopedKey` filters because the pre-existing enforced TanStack audit rejects scoped cache filters. Prefix semantics remain correct for tenant-suffixed keys; deviation is non-money-path.
 - D4 deviation: the report uses the current typed `DataTable` plus external `OffsetPagination` rather than the plan's hand-written `<table>`, because the enforced design audit rejects raw tables and the current DataTable supports the needed presentational/external-pagination contract. Behavior and all seven columns remain pinned.
+- Opus adversarial review: `docs/handoff/gate-reviews-phase3/GATE-3-rc1.md` — `VERDICT: APPROVE`; no BLOCKER/HIGH/MEDIUM findings and no Fable escalation.
+- Non-blocking LOW carried to final cleanup: French `cashWidget.window` hardcodes seven instead of interpolating `{{days}}`.
 
 ### Task D1 — FE permission registration
 
