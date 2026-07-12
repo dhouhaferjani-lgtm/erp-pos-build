@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdjustBalanceDialog } from './AdjustBalanceDialog'
 
-const mocks = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
 
 vi.mock('../hooks/useAdjustRepositoryBalance', () => ({
-  useAdjustRepositoryBalance: () => ({ mutateAsync: mocks.mutateAsync, isPending: false }),
+  useAdjustRepositoryBalance: () => ({ mutate: mocks.mutate, isPending: false }),
 }))
 
 vi.mock('react-i18next', () => ({
@@ -15,7 +15,12 @@ vi.mock('react-i18next', () => ({
 describe('AdjustBalanceDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.mutateAsync.mockResolvedValue({ movement_id: 'movement-1' })
+    mocks.mutate.mockImplementation((
+      _request: unknown,
+      options?: { onSuccess?: (result: { movement_id: string }) => void },
+    ) => {
+      options?.onSuccess?.({ movement_id: 'movement-1' })
+    })
   })
 
   it('renders canonical inputs and every adjustment reason', () => {
@@ -60,12 +65,15 @@ describe('AdjustBalanceDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.submit' }))
 
     await waitFor(() => {
-      expect(mocks.mutateAsync).toHaveBeenCalledWith({
-        direction: 'out',
-        amount: '12.340',
-        reason_code: 'theft_loss',
-        reason_text: 'Drawer shortage',
-      })
+      expect(mocks.mutate).toHaveBeenCalledWith(
+        {
+          direction: 'out',
+          amount: '12.340',
+          reason_code: 'theft_loss',
+          reason_text: 'Drawer shortage',
+        },
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      )
     })
     expect(onSuccess).toHaveBeenCalledWith({ movement_id: 'movement-1' })
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -90,7 +98,7 @@ describe('AdjustBalanceDialog', () => {
       await waitFor(() => {
         expect(screen.getByText('treasury:repositories.adjustBalance.validation.amount')).toBeInTheDocument()
       })
-      expect(mocks.mutateAsync).not.toHaveBeenCalled()
+      expect(mocks.mutate).not.toHaveBeenCalled()
     },
   )
 
@@ -110,6 +118,6 @@ describe('AdjustBalanceDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.submit' }))
 
     expect(amountInput).toBeInvalid()
-    expect(mocks.mutateAsync).not.toHaveBeenCalled()
+    expect(mocks.mutate).not.toHaveBeenCalled()
   })
 })

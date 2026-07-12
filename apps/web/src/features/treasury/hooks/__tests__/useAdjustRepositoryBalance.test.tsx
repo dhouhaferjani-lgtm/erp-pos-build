@@ -76,10 +76,10 @@ describe('useAdjustRepositoryBalance', () => {
     expect(mocks.post).toHaveBeenCalledWith('/payment-repositories/repo-1/adjustments', payload)
     expect(mocks.invalidateQueries).toHaveBeenCalledTimes(4)
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['payment-repository', 'repo-1', 'tenant-1', 'company-1'],
+      queryKey: ['payment-repository', 'repo-1'],
     })
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['payment-repository-transactions', 'repo-1', 'tenant-1', 'company-1'],
+      queryKey: ['payment-repository-transactions', 'repo-1'],
     })
     const movementsInvalidation = mocks.invalidateQueries.mock.calls
       .map(([options]) => options as { predicate?: (query: { queryKey: readonly unknown[] }) => boolean })
@@ -91,7 +91,7 @@ describe('useAdjustRepositoryBalance', () => {
       queryKey: ['repository-movements', 'repo-1', { page: 2 }, 'tenant-2', 'company-1'],
     })).toBe(false)
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['treasury-cash-position', 'tenant-1', 'company-1'],
+      queryKey: ['treasury-cash-position'],
     })
   })
 

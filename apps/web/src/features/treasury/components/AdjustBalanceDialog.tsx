@@ -52,10 +52,13 @@ export function AdjustBalanceDialog({
     if (isOpen) reset(DEFAULT_VALUES)
   }, [isOpen, reset])
 
-  const onSubmit = async (request: AdjustRepositoryBalanceRequest) => {
-    const result = await adjustment.mutateAsync(request)
-    onSuccess?.(result)
-    onClose()
+  const onSubmit = (request: AdjustRepositoryBalanceRequest) => {
+    adjustment.mutate(request, {
+      onSuccess: (result) => {
+        onSuccess?.(result)
+        onClose()
+      },
+    })
   }
 
   return (

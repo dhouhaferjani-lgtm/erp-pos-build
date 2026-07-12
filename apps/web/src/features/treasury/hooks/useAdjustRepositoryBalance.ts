@@ -58,10 +58,10 @@ export function useAdjustRepositoryBalance(repositoryId: string) {
 
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['payment-repository', repositoryId]),
+          queryKey: ['payment-repository', repositoryId],
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['payment-repository-transactions', repositoryId]),
+          queryKey: ['payment-repository-transactions', repositoryId],
         }),
         queryClient.invalidateQueries({
           predicate: (query) =>
@@ -71,7 +71,7 @@ export function useAdjustRepositoryBalance(repositoryId: string) {
             && query.queryKey[query.queryKey.length - 1] === companyId,
         }),
         queryClient.invalidateQueries({
-          queryKey: tenantScopedKey(['treasury-cash-position']),
+          queryKey: ['treasury-cash-position'],
         }),
       ])
     },
