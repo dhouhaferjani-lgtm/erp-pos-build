@@ -17,6 +17,14 @@ Progress, files touched, test evidence, deviations, and gate verdicts are append
 
 None found during pre-flight review.
 
+## Gate 1 — rc1 verification (2026-07-12)
+
+- `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury`: exit 0 — `Tests: 573, Assertions: 2301, PHPUnit Deprecations: 39, Skipped: 22` in 05:22.172. The deprecations/skips are existing suite noise; no failures or errors.
+- A5 in-test `treasury:reconcile --tenant=<fixture tenant>` pin: green within the suite (focused evidence: 1 test, 9 assertions; endpoint file: 8 tests, 89 assertions).
+- `cd apps/api && ./vendor/bin/phpstan --memory-limit=1G`: exit 0 — `[OK] No errors`, 2503/2503 files.
+- `cd apps/api && ./vendor/bin/pint --dirty`: exit 0 — `{"result":"pass"}`.
+- `git diff origin/dev..HEAD -- apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php`: exit 0 with empty output; the port is byte-untouched.
+
 ### Task A1 — Status-scoped treasury-transfer JE uniqueness
 
 - Status: complete
