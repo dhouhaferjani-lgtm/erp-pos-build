@@ -44,9 +44,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Mockery;
 use Mockery\LegacyMockInterface;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -88,6 +91,11 @@ final class ReconcileTreasuryTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($this->tenant->id);
+        $registrar->forgetCachedPermissions();
+        Permission::findOrCreate('treasury.manage', 'sanctum');
     }
 
     protected function tearDown(): void
@@ -293,6 +301,107 @@ final class ReconcileTreasuryTest extends TestCase
 
         self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
         $logSpy->shouldHaveReceived('error', ['treasury.reconcile.drift', Mockery::type('array')]);
+    }
+
+    public function test_drift_freeze_notifies_only_managers_of_the_repository_company(): void
+    {
+        $otherCompany = Company::factory()->tunisia()->create(['tenant_id' => $this->tenant->id]);
+        $manager = $this->createTreasuryManager($this->company);
+        $otherCompanyManager = $this->createTreasuryManager($otherCompany);
+        $repo = $this->seedRepository();
+        $je = $this->postedCashEntry($this->cashAccount->id, '10.000');
+        $this->recordIn($repo, '10.000', journalEntryId: $je->id);
+        $this->rawMovement(
+            repo: $repo,
+            direction: MovementDirection::In,
+            amount: '5.000',
+            balanceAfter: '10.000',
+            ordinal: 2,
+            sourceType: MovementSourceType::OpeningBalance,
+            journalEntryId: null,
+        );
+
+        self::assertSame(1, $this->reconcile());
+
+        $notification = DB::table('notifications')
+            ->where('notifiable_id', $manager->id)
+            ->where('type', 'treasury.reconcile.drift')
+            ->sole();
+        $data = json_decode((string) $notification->data, true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame($this->company->id, $data['company_id']);
+        self::assertSame("/treasury/repositories/{$repo->id}", $data['deep_link']);
+        self::assertSame(0, DB::table('notifications')
+            ->where('notifiable_id', $otherCompanyManager->id)
+            ->where('type', 'treasury.reconcile.drift')
+            ->count());
+    }
+
+    public function test_notification_send_failure_never_suppresses_freeze_or_audit(): void
+    {
+        $this->createTreasuryManager($this->company);
+        $repo = $this->seedRepository();
+        $je = $this->postedCashEntry($this->cashAccount->id, '10.000');
+        $this->recordIn($repo, '10.000', journalEntryId: $je->id);
+        $this->rawMovement(
+            repo: $repo,
+            direction: MovementDirection::In,
+            amount: '5.000',
+            balanceAfter: '10.000',
+            ordinal: 2,
+            sourceType: MovementSourceType::OpeningBalance,
+            journalEntryId: null,
+        );
+
+        Notification::shouldReceive('send')
+            ->once()
+            ->andThrow(new \RuntimeException('simulated notification send failure'));
+        $logSpy = Log::spy();
+
+        self::assertSame(1, $this->reconcile());
+        self::assertNotNull($repo->refresh()->frozen_at);
+        self::assertSame(1, $this->driftEventCount($repo->id));
+        $logSpy->shouldHaveReceived('error', [
+            'treasury.reconcile.alert_failed',
+            Mockery::on(static fn (array $context): bool => ($context['repository_id'] ?? null) === $repo->id
+                && ($context['channel'] ?? null) === 'notification'),
+        ]);
+    }
+
+    public function test_portfolio_drift_notification_and_failure_are_isolated_from_audit(): void
+    {
+        $manager = $this->createTreasuryManager($this->company);
+        $portfolioAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '5312',
+        ]);
+        $this->postedCashEntry($portfolioAccount->id, '5.000');
+
+        self::assertSame(1, $this->reconcile());
+        $notification = DB::table('notifications')
+            ->where('notifiable_id', $manager->id)
+            ->where('type', 'treasury.reconcile.portfolio_drift')
+            ->sole();
+        $data = json_decode((string) $notification->data, true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('/finance/overview', $data['deep_link']);
+
+        DB::table('notifications')->delete();
+        Notification::shouldReceive('send')
+            ->once()
+            ->andThrow(new \RuntimeException('simulated portfolio notification failure'));
+        $logSpy = Log::spy();
+
+        self::assertSame(1, $this->reconcile());
+        self::assertSame(2, AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('event_type', 'treasury.reconcile.portfolio_drift')
+            ->count());
+        $logSpy->shouldHaveReceived('error', [
+            'treasury.reconcile.alert_failed',
+            Mockery::on(fn (array $context): bool => ($context['company_id'] ?? null) === $this->company->id
+                && ($context['channel'] ?? null) === 'notification'
+                && ! array_key_exists('repository_id', $context)),
+        ]);
     }
 
     // ── (b2) post-freeze alerting failure must still count as a freeze ─────────
@@ -1050,6 +1159,26 @@ final class ReconcileTreasuryTest extends TestCase
             'is_primary' => true,
             'status' => MembershipStatus::Active,
         ]);
+    }
+
+    private function createTreasuryManager(Company $company): User
+    {
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($company->tenant_id);
+        $registrar->forgetCachedPermissions();
+        Permission::findOrCreate('treasury.manage', 'sanctum');
+
+        $user = User::factory()->create(['tenant_id' => $company->tenant_id]);
+        $user->givePermissionTo('treasury.manage');
+        UserCompanyMembership::query()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Manager,
+            'is_primary' => true,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        return $user;
     }
 }
 
