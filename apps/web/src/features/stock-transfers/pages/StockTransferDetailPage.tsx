@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
@@ -7,6 +7,7 @@ import { Button } from '@/components/atoms/Button'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { formatDate } from '@/lib/format'
 import {
   useCancelStockTransfer,
   useCompleteStockTransfer,
@@ -202,31 +203,66 @@ export function StockTransferDetailPage() {
             </thead>
             <tbody className={`divide-y ${colorTokens.border.divider}`}>
               {(transfer.lines ?? []).map((line) => (
-                <tr key={line.id}>
-                  <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
-                    <EntityLink
-                      type="product"
-                      id={line.product_id}
-                      label={line.product_name ?? '—'}
-                      className={`font-medium ${textColors.hoverPrimary}`}
-                    />
-                    {line.variant_id !== null && line.variant_name !== null ? (
-                      <span className={`block text-xs ${textColors.tertiary}`}>{line.variant_name}</span>
-                    ) : null}
-                  </td>
-                  <td className={`px-6 py-3 text-sm ${textColors.tertiary}`}>
-                    {line.variant_sku ?? line.product_sku ?? '—'}
-                  </td>
-                  <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
-                    {line.quantity}
-                  </td>
-                  <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
-                    {line.unit_cost_snapshot ?? '—'}
-                  </td>
-                  <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
-                    {line.allocated_transfer_cost}
-                  </td>
-                </tr>
+                <Fragment key={line.id}>
+                  <tr>
+                    <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
+                      <EntityLink
+                        type="product"
+                        id={line.product_id}
+                        label={line.product_name ?? '—'}
+                        className={`font-medium ${textColors.hoverPrimary}`}
+                      />
+                      {line.variant_id !== null && line.variant_name !== null ? (
+                        <span className={`block text-xs ${textColors.tertiary}`}>{line.variant_name}</span>
+                      ) : null}
+                    </td>
+                    <td className={`px-6 py-3 text-sm ${textColors.tertiary}`}>
+                      {line.variant_sku ?? line.product_sku ?? '—'}
+                    </td>
+                    <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
+                      {line.quantity}
+                    </td>
+                    <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
+                      {line.unit_cost_snapshot ?? '—'}
+                    </td>
+                    <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
+                      {line.allocated_transfer_cost}
+                    </td>
+                  </tr>
+                  {line.batch_allocations.length > 0 && (
+                    <tr data-testid={`batch-allocations-${line.id}`}>
+                      <td colSpan={5} className={`px-6 pb-3 pt-0`}>
+                        <div className={`rounded-md border ${borderColors.light} ${tokens.badge.gray} px-4 py-2`}>
+                          <div className={`mb-1 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
+                            {t('detail.batch.heading')}
+                          </div>
+                          <ul className="space-y-1">
+                            {line.batch_allocations.map((allocation) => (
+                              <li
+                                key={allocation.id}
+                                className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-sm"
+                              >
+                                <span className={`font-medium ${textColors.primary}`}>
+                                  {allocation.batch_number ?? '—'}
+                                </span>
+                                {allocation.expiry_date !== null && (
+                                  <span className={textColors.tertiary}>
+                                    {t('detail.batch.expiry')}:{' '}
+                                    <span>{formatDate(allocation.expiry_date)}</span>
+                                  </span>
+                                )}
+                                <span className={textColors.secondary}>
+                                  {t('detail.batch.quantity')}:{' '}
+                                  <span>{allocation.quantity}</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </DataTable>

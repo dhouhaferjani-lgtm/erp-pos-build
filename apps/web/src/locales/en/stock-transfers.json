@@ -125,6 +125,12 @@
       "unitCost": "Unit cost (snapshot)",
       "allocatedCost": "Allocated cost"
     },
+    "batch": {
+      "heading": "Lots",
+      "batchNumber": "Lot",
+      "expiry": "Expiry",
+      "quantity": "Quantity"
+    },
     "actions": {
       "complete": "Confirm receipt",
       "cancel": "Cancel transfer"
