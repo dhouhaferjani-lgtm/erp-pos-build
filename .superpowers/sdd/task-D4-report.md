@@ -52,3 +52,12 @@ Command: pnpm --filter @autoerp/web exec vitest run src/features/finance src/com
 ## Deviations
 
 No functional deviation. The literal React Doctor score display is an upstream changed-file scoring artifact; its baseline/new-diagnostics and line-scope results confirm D4 introduced zero findings.
+
+## Spec Cross-link Follow-up
+
+- Added the §7.2 TreasuryOverviewPage header action linking to /finance/cash-movements.
+- Reused the existing finance:cashMovements.navTitle translations in all three locales and the established PageHeader action plus Link-wrapped secondary Button convention.
+- RED: the focused TreasuryOverviewPage suite failed exactly one new accessible-link assertion while its four existing tests passed.
+- GREEN: TreasuryOverviewPage passed 5/5; the complete D4 focused set passed 5 files and 49 tests.
+- Typecheck, full web lint, explicit TanStack/design audits, and diff check exited 0.
+- React Doctor v0.7.6 pinned to the cross-link task base 632b4eacf47ddae606dedb29b435f639eb289386 reported No issues found, baseline.newCount 0, empty diagnostics, and 100/100.

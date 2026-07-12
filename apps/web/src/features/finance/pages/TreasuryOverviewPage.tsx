@@ -1,5 +1,7 @@
 import type { EChartsOption } from 'echarts'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/atoms/Button/Button'
 import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { StatCard } from '@/components/ui/StatCard'
@@ -195,6 +197,13 @@ export function TreasuryOverviewPage() {
       <PageHeader
         title={t('finance:overview.title')}
         subtitle={t('finance:overview.subtitle')}
+        actions={
+          <Link to="/finance/cash-movements">
+            <Button variant="secondary">
+              {t('finance:cashMovements.navTitle')}
+            </Button>
+          </Link>
+        }
         className="mb-0"
       />
 
