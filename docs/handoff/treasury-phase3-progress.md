@@ -253,3 +253,4 @@ None found during pre-flight review.
 - Precision: no numeric money parsing was introduced; the touched list's existing `parseFloat` totals/sign checks were migrated to `big.js`.
 - Verification: frontend treasury 33 files/234 tests; typecheck; full web lint; TanStack audit 0; design audit 0 new; backend 14 tests/39 assertions; Pint pass; React Doctor changed-scope against base `5a587790725a2b8a23d72ffb4a70d1e21d41aa09` 100/100 with no issues.
 - Deviation: the all-raw cache-filter amendment is recorded in the dated Deviations entry above.
+- Reviewer follow-up: a non-identity i18n regression test first failed on raw zero-amount and same-repository keys; the modal now translates only its known Zod validation keys (unknown/undefined messages remain untouched), and `repositoryLabel` is module-scoped. Follow-up gates: modal 4/4, D2 focused 11/11, typecheck/lint/audits clean, React Doctor 100/100.

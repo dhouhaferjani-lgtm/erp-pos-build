@@ -27,8 +27,14 @@ const mockRandomUUID = vi.hoisted(() => vi.fn(() => 'aaaaaaaa-aaaa-4aaa-8aaa-aaa
 
 vi.stubGlobal('crypto', { randomUUID: mockRandomUUID })
 
+const translatedValidation: Record<string, string> = {
+  'treasury:repositories.transfer.zeroAmount': 'Translated positive amount',
+  'treasury:repositories.transfer.invalidAmount': 'Translated precision amount',
+  'treasury:repositories.transfer.sameRepository': 'Translated different repositories',
+}
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => translatedValidation[key] ?? key }),
 }))
 
 vi.mock('sonner', () => ({
@@ -83,13 +89,35 @@ describe('TransferCashModal', () => {
 
     await user.type(amount, '0')
     await user.click(screen.getByRole('button', { name: 'treasury:repositories.transfer.submit' }))
-    expect(await screen.findByText('treasury:repositories.transfer.zeroAmount')).toBeInTheDocument()
+    expect(await screen.findByText('Translated positive amount')).toBeInTheDocument()
     expect(mockMutate).not.toHaveBeenCalled()
 
     await user.clear(amount)
     await user.type(amount, '1.0001')
     await user.click(screen.getByRole('button', { name: 'treasury:repositories.transfer.submit' }))
-    expect(await screen.findByText('treasury:repositories.transfer.invalidAmount')).toBeInTheDocument()
+    expect(await screen.findByText('Translated precision amount')).toBeInTheDocument()
+    expect(mockMutate).not.toHaveBeenCalled()
+  })
+
+  it('renders a translated same-repository validation error', async () => {
+    const user = userEvent.setup()
+    render(<TransferCashModal isOpen onClose={vi.fn()} />)
+
+    const sourceId = '11111111-1111-4111-8111-111111111111'
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /treasury:repositories\.transfer\.from/ }),
+      sourceId,
+    )
+    const destination = screen.getByRole('combobox', { name: /treasury:repositories\.transfer\.to/ })
+    destination.append(new Option('Duplicate source', sourceId))
+    await user.selectOptions(destination, sourceId)
+    await user.type(
+      screen.getByRole('spinbutton', { name: /treasury:repositories\.transfer\.amount/ }),
+      '1.000',
+    )
+    await user.click(screen.getByRole('button', { name: 'treasury:repositories.transfer.submit' }))
+
+    expect(await screen.findByText('Translated different repositories')).toBeInTheDocument()
     expect(mockMutate).not.toHaveBeenCalled()
   })
 

@@ -28,3 +28,10 @@ Rev2 required `tenantScopedKey(...)` for six invalidations and raw prefixes for 
 - `./vendor/bin/pint --dirty --test` — pass.
 - `npx react-doctor@latest --verbose --scope changed --base 5a587790725a2b8a23d72ffb4a70d1e21d41aa09` — 100/100, no issues.
 - Protected `RepositoryDetailPage`, `ExpenseDetailPage`, `BankPicker`, and bank feature files were not changed.
+
+## Reviewer follow-up
+
+- RED: the modal suite used a non-identity translator and failed 2 of 4 tests because zero-amount and same-repository errors rendered raw i18n keys. The precision case was covered by the same translated-error test path.
+- GREEN: the modal translates only its six known Zod validation keys before passing them to `FormField`; undefined and unknown messages pass through unchanged. The modal suite passes 4/4, including translated zero, precision, and same-repository messages.
+- `repositoryLabel` moved to module scope as a pure `PaymentRepository` formatter, preserving the option text while avoiding per-render function creation.
+- Follow-up verification: D2 focused suite 11/11, typecheck and full lint pass, TanStack audit 0, design audit 0 new, and React Doctor against base `5a587790725a2b8a23d72ffb4a70d1e21d41aa09` remains 100/100 with no issues.

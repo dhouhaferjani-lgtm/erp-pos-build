@@ -10,8 +10,26 @@ import { Modal } from '@/components/organisms/Modal/Modal'
 import { getErrorMessage } from '@/lib/api'
 import { formatCurrency } from '@/lib/format'
 
-import { useActivePaymentRepositories } from '../hooks/usePaymentRepositories'
+import {
+  useActivePaymentRepositories,
+  type PaymentRepository,
+} from '../hooks/usePaymentRepositories'
 import { useTransferCash } from '../hooks/useTransferCash'
+
+const validationMessageKeys = new Set([
+  'treasury:repositories.transfer.fromRequired',
+  'treasury:repositories.transfer.toRequired',
+  'treasury:repositories.transfer.invalidAmount',
+  'treasury:repositories.transfer.zeroAmount',
+  'treasury:repositories.transfer.notesTooLong',
+  'treasury:repositories.transfer.sameRepository',
+])
+
+function repositoryLabel(repository: PaymentRepository): string {
+  return `${repository.name} (${repository.code}) — ${formatCurrency(repository.balance, {
+    currency: repository.currency,
+  })}`
+}
 
 const schema = z.object({
   from_repository_id: z.uuid('treasury:repositories.transfer.fromRequired'),
@@ -72,16 +90,17 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
       && (fromRepository === undefined || repository.currency === fromRepository.currency),
   )
 
+  const validationError = (message: string | undefined): string | undefined => {
+    if (message === undefined || !validationMessageKeys.has(message)) return message
+    return t(message)
+  }
+
   useEffect(() => {
     const destinationId = form.getValues('to_repository_id')
     if (destinationId !== '' && !destinationRepositories.some((repository) => repository.id === destinationId)) {
       form.setValue('to_repository_id', '')
     }
   }, [destinationRepositories, form])
-
-  const repositoryLabel = (repository: (typeof eligibleRepositories)[number]) => (
-    `${repository.name} (${repository.code}) — ${formatCurrency(repository.balance, { currency: repository.currency })}`
-  )
 
   const submit = (values: FormValues) => {
     transfer.mutate(
@@ -114,7 +133,7 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
             label={t('treasury:repositories.transfer.from')}
             htmlFor="transfer-from-repository"
             required
-            error={form.formState.errors.from_repository_id?.message}
+            error={validationError(form.formState.errors.from_repository_id?.message)}
             helperText={fromRepository
               ? t('treasury:repositories.transfer.balanceHint', {
                   balance: formatCurrency(fromRepository.balance, { currency: fromRepository.currency }),
@@ -138,7 +157,7 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
             label={t('treasury:repositories.transfer.to')}
             htmlFor="transfer-to-repository"
             required
-            error={form.formState.errors.to_repository_id?.message}
+            error={validationError(form.formState.errors.to_repository_id?.message)}
           >
             <Select
               id="transfer-to-repository"
@@ -157,7 +176,7 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
             label={t('treasury:repositories.transfer.amount')}
             htmlFor="transfer-amount"
             required
-            error={form.formState.errors.amount?.message}
+            error={validationError(form.formState.errors.amount?.message)}
           >
             <Controller
               name="amount"
@@ -181,7 +200,7 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
           <FormField
             label={t('treasury:repositories.transfer.notes')}
             htmlFor="transfer-notes"
-            error={form.formState.errors.notes?.message}
+            error={validationError(form.formState.errors.notes?.message)}
           >
             <Textarea id="transfer-notes" rows={3} maxLength={1000} {...form.register('notes')} />
           </FormField>
