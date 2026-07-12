@@ -54,9 +54,32 @@ interface Partner {
   exemption_certificate_path: string | null
   exemption_valid_until: string | null
   notes: string | null
+  bank_accounts?: {
+    id: string
+    label: string | null
+    bank_id: string | null
+    bank_name: string | null
+    rib: string | null
+    iban: string | null
+    bic: string | null
+    currency: string
+    is_primary: boolean
+  }[]
 }
 
-interface PartnerFormData {
+export interface PartnerBankAccountFormData {
+  id?: string | undefined
+  label: string
+  bank_id: string
+  bank_name: string
+  rib: string
+  iban: string
+  bic: string
+  currency: string
+  is_primary: boolean
+}
+
+export interface PartnerFormData {
   name: string
   type: 'customer' | 'supplier' | 'both' | ''
   customer_category: 'individual' | 'business' | ''
@@ -81,6 +104,7 @@ interface PartnerFormData {
   exemption_reason: string
   exemption_valid_until: string
   notes: string
+  bank_accounts: PartnerBankAccountFormData[]
 }
 
 interface PartnerFormProps {
@@ -200,6 +224,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       exemption_reason: '',
       exemption_valid_until: '',
       notes: '',
+      bank_accounts: [],
     },
   })
 
@@ -307,6 +332,17 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         exemption_reason: partner.exemption_reason ?? '',
         exemption_valid_until: partner.exemption_valid_until ?? '',
         notes: partner.notes ?? '',
+        bank_accounts: (partner.bank_accounts ?? []).map((account) => ({
+          id: account.id,
+          label: account.label ?? '',
+          bank_id: account.bank_id ?? '',
+          bank_name: account.bank_name ?? '',
+          rib: account.rib ?? '',
+          iban: account.iban ?? '',
+          bic: account.bic ?? '',
+          currency: account.currency,
+          is_primary: account.is_primary,
+        })),
       })
     }
   }, [partner, reset])
@@ -379,6 +415,15 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       consolidation_frequency: data.consolidation_frequency || null,
       company_legal_name: data.company_legal_name || null,
       business_registration_number: data.business_registration_number || null,
+      bank_accounts: data.bank_accounts.map((account) => ({
+        ...account,
+        bank_id: account.bank_id || null,
+        label: account.label || null,
+        bank_name: account.bank_name || null,
+        rib: account.rib || null,
+        iban: account.iban || null,
+        bic: account.bic || null,
+      })),
     }
 
     if (isEditing) {
@@ -620,8 +665,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         {/* B2B Fields Section — shown only when customer_category is 'business' */}
         {customerCategory === 'business' && (
           <B2BFieldsSection
-            register={register as never}
-            watch={watch as never}
+            control={control}
+            register={register}
+            watch={watch}
             setValue={setValue}
             partnerId={isEditing ? id : undefined}
           />

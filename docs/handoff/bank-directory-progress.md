@@ -86,3 +86,43 @@
 - Verdict: `APPROVE`.
 - Findings: no blocking findings; one LOW generated-type observation and two informational notes. Opus independently re-derived the canonical RIB and IBAN mod-97 arithmetic and confirmed the PHP and TypeScript implementations avoid unsafe numeric coercion.
 - Fable escalation: not invoked; Opus reported no BLOCKER/HIGH validator-math finding and no uncertainty about the validator math.
+
+## Phase 3 — Partner bank accounts
+
+### Delivered
+
+- Added the rerunnable-safe tenant `partner_bank_accounts` table with Partner, Bank, Tenant, and creator references.
+- Added the Partner-owned `PartnerBankAccount` entity, generated DTO, nested input DTO, and `Partner::bankAccounts()` relation without importing Treasury internals or the Treasury `Bank` model.
+- Added a constructor-injected Partner account service that transactionally synchronizes nested rows, derives a missing IBAN from a valid RIB, preserves invalid legacy values, and normalizes multiple primary requests to one primary row.
+- Extended create/update FormRequests with structurally typed nested rules, tenant-scoped bank lookup, and constructor-injected shared validator calls that record validity without adding checksum rejection.
+- Extended Partner responses with per-row RIB, IBAN, and BIC validity metadata and loaded bank accounts on create, show, and update.
+- Added a repeatable token-based Bank Accounts section inside `B2BFieldsSection`, reusing `BankPicker`, client mod-97 validation, derived IBAN, free-text fallback, canonical form atoms, and a single-primary control.
+- Added English and French Partner labels in the existing `sales` namespace and regenerated backend-owned TypeScript types.
+
+### TDD evidence
+
+- RED backend: 4 expected failures/errors for the missing table, relation, persistence, and validity response.
+- GREEN backend: 4 tests, 27 assertions for valid/invalid warn-mode saves, derived IBAN, creator attribution, nested update/delete, and one-primary enforcement.
+- RED frontend: the Partner form test could not find the additive bank-account control.
+- GREEN frontend: 8 PartnerForm tests, including edit-page picker selection/BIC autofill/derived IBAN submission and invalid-RIB warning with Save enabled.
+
+### Verification
+
+- `CACHE_STORE=array php artisan typescript:transform` — 433 PHP types transformed, including `PartnerBankAccountData` and the typed `PartnerData.bank_accounts` collection.
+- Targeted PHPStan over all touched Partner PHP paths — 0 errors.
+- Targeted Pint over all touched Partner PHP, migration, and test paths — clean.
+- Partner account + B2B/create/update/list regression slice — 63 tests, 228 assertions.
+- Partner frontend form + broader Partner regression slice — 56 tests passed (8 PartnerForm + 48 Partner management).
+- Workspace `pnpm typecheck` — all targets completed successfully.
+- Query-key audit — 0 new findings. Design-system audit — 0 new/stale baseline findings after replacing the primary toggle with the canonical Checkbox atom.
+- React Doctor scoped to `bank-gate-2` — 91/100 with an empty diagnostics report.
+- Static boundary/out-of-scope scans — no Phase 3 Partner import of Treasury internals and no `PaymentInstrument` file touched.
+
+### Deviations and decisions
+
+- The older design document's invoice/quote pay-to rendering was not implemented because the newer 2026-07-10 handoff explicitly scopes Phase 3 to the sub-table, Partner API/DTO, and `B2BFieldsSection`; customer-facing PDF expansion remains outside this three-phase track.
+- Empty BIC values are reported as unverified rather than valid; they remain nullable and never block persistence.
+
+### Gate 3
+
+- Pending.

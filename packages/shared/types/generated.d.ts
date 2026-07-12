@@ -1397,6 +1397,21 @@ export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
 export type TerminalType = 'web' | 'physical' | 'virtual_admin';
 }
 declare namespace App.Modules.Partner.Application.DTOs {
+export type PartnerBankAccountData = {
+id: string;
+label: string | null;
+bank_id: string | null;
+bank_name: string | null;
+rib: string | null;
+iban: string | null;
+bic: string | null;
+currency: string;
+is_primary: boolean;
+created_by: string | null;
+rib_validation: App.Shared.Banking.Domain.ValueObjects.RibValidationResult;
+iban_validation: App.Shared.Banking.Domain.ValueObjects.IbanValidationResult;
+bic_valid: boolean;
+};
 export type PartnerData = {
 id: string;
 name: string;
@@ -1434,6 +1449,7 @@ account_status_changed_by: string | null;
 account_status_reason: string | null;
 contacts_count: number;
 primary_contact_name: string | null;
+bank_accounts: Array<App.Modules.Partner.Application.DTOs.PartnerBankAccountData>;
 created_at: string;
 updated_at: string | null;
 };

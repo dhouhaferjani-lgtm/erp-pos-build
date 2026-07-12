@@ -435,6 +435,12 @@ class Partner extends Model
         return $this->hasMany(PartyContact::class, 'party_id');
     }
 
+    /** @return HasMany<PartnerBankAccount, $this> */
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(PartnerBankAccount::class)->orderByDesc('is_primary')->orderBy('created_at');
+    }
+
     /**
      * @return BelongsToMany<Contact, $this>
      */

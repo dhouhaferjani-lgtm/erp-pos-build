@@ -10,6 +10,7 @@ use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -53,12 +54,17 @@ class PartnerData extends Data
         public ?string $account_status_reason,
         public int $contacts_count,
         public ?string $primary_contact_name,
+        /** @var array<int, PartnerBankAccountData> */
+        public array $bank_accounts,
         public string $created_at,
         public ?string $updated_at,
     ) {}
 
-    public static function fromModel(Partner $partner): self
-    {
+    public static function fromModel(
+        Partner $partner,
+        ?BankAccountValidatorInterface $bankAccountValidator = null,
+        string $bankCountry = 'TN',
+    ): self {
         return new self(
             id: $partner->id,
             name: $partner->name,
@@ -100,6 +106,16 @@ class PartnerData extends Data
             primary_contact_name: $partner->relationLoaded('contacts')
                 ? $partner->contacts->first(fn ($c) => (bool) $c->getAttribute('pivot')?->getAttribute('is_primary'))?->full_name
                 : null,
+            bank_accounts: $partner->relationLoaded('bankAccounts') && $bankAccountValidator !== null
+                ? $partner->bankAccounts
+                    ->map(fn ($account): PartnerBankAccountData => PartnerBankAccountData::fromModel(
+                        $account,
+                        $bankAccountValidator,
+                        $bankCountry,
+                    ))
+                    ->values()
+                    ->all()
+                : [],
             created_at: $partner->created_at?->toIso8601String() ?? '',
             updated_at: $partner->updated_at?->toIso8601String(),
         );

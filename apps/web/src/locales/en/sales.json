@@ -115,6 +115,23 @@
       "creditLimitApproaching": "Approaching credit limit",
       "creditLimitUsage": "Outstanding: {{outstanding}} / Limit: {{limit}} ({{percentage}}% used)"
     },
+    "bankAccounts": {
+      "title": "Bank Accounts",
+      "hint": "Invalid or legacy identifiers show a warning but never block saving.",
+      "add": "Add bank account",
+      "empty": "No bank accounts added yet.",
+      "accountNumber": "Bank account {{number}}",
+      "remove": "Remove bank account",
+      "label": "Label",
+      "bank": "Bank",
+      "rib": "RIB",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "currency": "Currency",
+      "primary": "Primary bank account",
+      "validRib": "Valid RIB",
+      "invalidRib": "RIB could not be verified; saving is still allowed"
+    },
     "paymentTerms": {
       "immediate": "Immediate",
       "net_15": "Net 15",
