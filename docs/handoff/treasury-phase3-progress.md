@@ -237,7 +237,7 @@ None found during pre-flight review.
 
 - Status: complete.
 - Files: `apps/web/src/hooks/usePermissions.ts`, existing `apps/web/src/hooks/__tests__/usePermissions.authPayload.test.tsx`, task report, and this progress ledger.
-- RED: the token-bearing hook regression executed in Vitest, while strict typecheck failed with TS2345 because `treasury.transfer` was not yet a valid `Permission`.
+- RED: the token-bearing hook regression executed in Vitest, while strict typecheck failed with TS2345 because `treasury.transfer` was not yet a valid `Permission`; the hardened fixture uses `roles: []`, so runtime success proves token permission handling rather than role fallback.
 - GREEN: `treasury.transfer` is registered with the backend-privileged fallback roles `admin`, `manager`, and `accountant`; no `SERVER_AUTHORITATIVE_PERMISSIONS` entry was added because that set has no treasury/adjust-class peer.
-- Verification: focused Vitest 3/3, TypeScript typecheck, relevant ESLint, full web lint, and React Doctor diff scan all exited 0; React Doctor reported no changed-scope diagnostics or regression.
+- Verification: focused Vitest 3/3, TypeScript typecheck, relevant ESLint, and full web lint exited 0. Fresh `npx react-doctor@latest --verbose --scope changed --base 9218efcea` exited 0 with 100/100 and `No issues found!`; the earlier deprecated `--diff` invocation is not relied upon as React Doctor evidence.
 - Deviations/concerns: none.

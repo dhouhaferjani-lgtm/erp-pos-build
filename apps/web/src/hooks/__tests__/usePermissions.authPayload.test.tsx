@@ -24,6 +24,7 @@ describe('usePermissions auth payload', () => {
     useAuthStore.getState().setUser({
       ...baseUser,
       permissions: ['treasury.transfer'],
+      roles: [],
     })
 
     const { result } = renderHook(() => usePermissions())

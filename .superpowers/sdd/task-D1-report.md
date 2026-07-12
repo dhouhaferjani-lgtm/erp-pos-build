@@ -6,7 +6,7 @@ Registered `treasury.transfer` as a frontend `Permission` with the exact backend
 
 ## TDD evidence
 
-- RED: added a token-bearing `hasPermission('treasury.transfer')` regression to the existing hook test. Focused Vitest executed the behavior successfully, while `pnpm typecheck` failed with TS2345 because the token was not yet part of `Permission`.
+- RED: added a token-bearing `hasPermission('treasury.transfer')` regression to the existing hook test. Focused Vitest executed the behavior successfully, while `pnpm typecheck` failed with TS2345 because the token was not yet part of `Permission`. The fixture now has `roles: []`, proving runtime success comes from the server permission token rather than role fallback.
 - GREEN: added the single `PERMISSIONS` map entry. Focused Vitest passed 3/3 and `pnpm typecheck` exited 0.
 
 ## Verification
@@ -15,7 +15,7 @@ Registered `treasury.transfer` as a frontend `Permission` with the exact backend
 - `pnpm typecheck` — exit 0.
 - `pnpm exec eslint src/hooks/usePermissions.ts src/hooks/__tests__/usePermissions.authPayload.test.tsx` — exit 0.
 - `pnpm lint` — exit 0.
-- `npx react-doctor@latest --verbose --diff` — exit 0; no changed-scope diagnostics or regression reported. React Doctor v0.7.6 noted that `--diff` is deprecated in favor of `--scope changed`.
+- `npx react-doctor@latest --verbose --scope changed --base 9218efcea` — exit 0; 100/100, `No issues found!`. This pinned command is the React Doctor evidence; the earlier deprecated `--diff` invocation only emitted a scope banner and is not relied upon as verification.
 
 ## Scope
 
