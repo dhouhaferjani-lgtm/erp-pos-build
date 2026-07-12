@@ -4,8 +4,11 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { queryClient } from './lib/queryClient'
+import { registerStaleChunkReload } from './lib/staleChunkReload'
 import './lib/i18n'
 import './index.css'
+
+registerStaleChunkReload()
 
 const rootElement = document.getElementById('root')
 
