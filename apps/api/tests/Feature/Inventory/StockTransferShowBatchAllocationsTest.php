@@ -160,9 +160,9 @@ final class StockTransferShowBatchAllocationsTest extends TestCase
         $this->assertIsArray($allocations);
         $this->assertCount(2, $allocations);
 
-        // API returns allocations earliest-expiry-first (FEFO order).
-        usort($allocations, fn ($a, $b) => strcmp((string) $a['expiry_date'], (string) $b['expiry_date']));
-
+        // Assert against the RAW response order — no client-side re-sorting —
+        // so the API's earliest-expiry-first (FEFO) ordering is genuinely
+        // pinned and a regression in ordering fails this test.
         $this->assertSame('LOT-EARLY', $allocations[0]['batch_number']);
         $this->assertSame($early->expiry_date->toDateString(), $allocations[0]['expiry_date']);
         $this->assertSame('3.0000', (string) $allocations[0]['quantity']);

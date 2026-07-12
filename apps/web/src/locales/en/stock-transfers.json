@@ -127,7 +127,6 @@
     },
     "batch": {
       "heading": "Lots",
-      "batchNumber": "Lot",
       "expiry": "Expiry",
       "quantity": "Quantity"
     },
