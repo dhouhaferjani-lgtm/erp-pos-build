@@ -90,7 +90,7 @@ afterEach(() => {
 describe('useCashPosition tenant scope', () => {
   it('wraps the cash-position query key with tenant/company and gates it on missing scope', async () => {
     const queryClient = createClient()
-    const { result } = renderHook(() => useCashPosition(), { wrapper: wrapper(queryClient) })
+    const { result, unmount } = renderHook(() => useCashPosition(), { wrapper: wrapper(queryClient) })
 
     await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
 
@@ -99,6 +99,7 @@ describe('useCashPosition tenant scope', () => {
     )
     expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position')
 
+    unmount()
     resetTenant()
     const gatedClient = createClient()
     renderHook(() => useCashPosition(), { wrapper: wrapper(gatedClient) })
@@ -107,7 +108,7 @@ describe('useCashPosition tenant scope', () => {
 
   it('adds the flows window to the query key and request without changing the legacy key', async () => {
     const queryClient = createClient()
-    const { result } = renderHook(() => useCashPosition({ flowsWindow: 7 }), {
+    const { result, unmount } = renderHook(() => useCashPosition({ flowsWindow: 7 }), {
       wrapper: wrapper(queryClient),
     })
 
@@ -120,9 +121,16 @@ describe('useCashPosition tenant scope', () => {
       'company-1',
     ])).toEqual(cashPositionFixture.data)
     expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position', { flows_window: 7 })
+    unmount()
 
     const legacyClient = createClient()
-    renderHook(() => useCashPosition(), { wrapper: wrapper(legacyClient) })
+    const { result: legacyResult, unmount: unmountLegacy } = renderHook(() => useCashPosition(), {
+      wrapper: wrapper(legacyClient),
+    })
+
+    await waitFor(() => { expect(legacyResult.current.isSuccess).toBe(true) })
+    unmountLegacy()
+
     expect(legacyClient.getQueryState([
       'treasury-cash-position',
       'tenant-A',

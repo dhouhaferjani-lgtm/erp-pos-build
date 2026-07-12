@@ -52,3 +52,12 @@ The full `pnpm --filter @autoerp/web lint` pipeline stops at two design-system a
 ## Scope and protected areas
 
 No backend, fiscal, movement-port, bank-picker, `RepositoryDetailPage`, or `ExpenseDetailPage` file was touched. The existing large dashboard hosts received import-and-mount changes only.
+
+## Reviewer follow-up — monetary rows and async hook lifecycle
+
+The D5 reviewer requested two minor test-hardening changes, with production behavior held byte-untouched:
+
+- `CashPositionWidget.test.tsx` now asserts the separately formatted `250.000 TND` register total, `900.000 TND` bank total, and `100.000 TND` safe total in addition to the existing counts, grand total, flows, and links.
+- The hook test now waits for both seven-day and legacy argument-less queries to settle and unmounts each hook before moving to the next scope/query client. The tenant reset likewise occurs only after unmount.
+
+Narrow verification passed 2 files / 7 tests. Neither cash-position test emitted an `act(...)` warning; the remaining warnings in that command were confined to the two pre-existing `useRepositoryMovements` tests in the shared file. The standard Node `--localstorage-file` notices also remain environment noise rather than React lifecycle warnings.

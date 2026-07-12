@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { formatCurrency } from '@/lib/format'
 import { CashPositionWidget } from './CashPositionWidget'
 
 const mocks = vi.hoisted(() => ({
@@ -79,6 +80,9 @@ describe('CashPositionWidget', () => {
     expect(screen.getByText('cashWidget.types.cashRegisters:2')).toBeInTheDocument()
     expect(screen.getByText('cashWidget.types.bankAccounts:1')).toBeInTheDocument()
     expect(screen.getByText('cashWidget.types.safes:3')).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency('250.000', { currency: 'TND' }))).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency('900.000', { currency: 'TND' }))).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency('100.000', { currency: 'TND' }))).toBeInTheDocument()
     expect(screen.getByText('cashWidget.window:7')).toBeInTheDocument()
     expect(screen.getByText(/400/)).toBeInTheDocument()
     expect(screen.getByText(/175/)).toBeInTheDocument()
