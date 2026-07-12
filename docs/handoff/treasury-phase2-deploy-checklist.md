@@ -32,9 +32,18 @@ Required purpose codes:
 
 For an operator shell where Tinker is available, the per-tenant runner is:
 
+> **⚠️ CORRECTED 2026-07-12 (staging remediation):** the original `tenants:run tinker --option='execute=…'` form HANGS — `tenants:run` does not forward the option to tinker, which then waits on stdin. Use plain `tinker --execute` with `tenancy()->runForMultiple` instead (verified working against all 5 staging tenants):
+
 ```bash
-php artisan tenants:run tinker --option='execute=\App\Modules\Company\Domain\Company::query()->each(fn ($company) => app(\App\Modules\Accounting\Application\Services\ChartOfAccountsService::class)->seedForCompany($company));'
+php artisan tinker --execute='tenancy()->runForMultiple(null, function ($t) {
+  \App\Modules\Company\Domain\Company::query()->each(function ($c) {
+    app(\App\Modules\Accounting\Application\Services\ChartOfAccountsService::class)->seedForCompany($c);
+    echo "SEEDED ".$c->id." | ".$c->name.PHP_EOL;
+  });
+});'
 ```
+
+Idempotent — safe to re-run; a long tenant list may need the command re-run if the shell times out (already-seeded tenants no-op). **TICKET (pre-launch):** productize this as a real artisan command (e.g. `accounting:seed-charts` on the `TenantScopedCommand` batch contract), alongside the still-unbuilt opening-balance backfill command — neither ad-hoc tinker form should survive to a real-tenant deploy.
 
 Do not manually assign repository balances while seeding. No movement or journal entry is created by chart provisioning.
 
