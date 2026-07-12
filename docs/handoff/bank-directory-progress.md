@@ -38,4 +38,8 @@
 
 ### Gate 1
 
-- Pending.
+- RC: `bank-gate-1-rc1` (`d97fa7eff`).
+- Review: `docs/handoff/gate-reviews-bank/GATE-1-rc1.md`.
+- Verdict: `APPROVE`.
+- Findings: no blocking findings; one MEDIUM process observation that `origin/dev` advanced during the audit, plus LOW/INFO polish notes. The branch will be rebased onto the new `origin/dev` tip before Phase 2, followed by type regeneration and fresh verification.
+- Fable escalation: not invoked; Gate 1 contains no validator math and Opus reported no validator-math uncertainty.
