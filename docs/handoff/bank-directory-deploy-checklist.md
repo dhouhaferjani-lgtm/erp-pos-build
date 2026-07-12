@@ -10,7 +10,9 @@ php artisan tenants:migrate --force
 
 Three new tenant migrations (all guarded, re-runnable-safe): `2026_07_12_110000_create_banks_table`, `2026_07_12_111000_add_bank_id_to_payment_repositories`, `2026_07_12_120000_create_partner_bank_accounts_table`.
 
-## 2. Seed the bank directory on EXISTING tenants (REQUIRED)
+## 2. Seed the bank directory on EXISTING tenants (pre-launch: test tenants only)
+
+> **Owner clarification 2026-07-12:** there are NO production tenants yet. This step only applies to tenants that predate this code — the 5 staging test tenants and the local demo tenant (local demo seeded 2026-07-12, 32 banks confirmed). Every tenant created after this code deploys gets banks automatically via `TenantInitializationService` (test-pinned) — no backfill will ever be needed for real tenants.
 
 `BanksSeeder` is wired into `TenantInitializationService` for **new** tenants only. Existing tenants get **zero** banks rows unless this step runs — the BankPicker will render an empty list and `PaymentRepositorySeeder`-style `rib_bank_code` lookups will find nothing.
 
