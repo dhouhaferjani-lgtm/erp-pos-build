@@ -235,6 +235,17 @@ None found during pre-flight review.
 - Diff/log checks from the sanctioned base `f1d6c1d30` show no changes to `apps/web/src/features/treasury/RepositoryListPage.tsx` or `apps/web/src/components/organisms/TopBar/TopBar.tsx` on `origin/dev`.
 - Per the handoff's conditional interlock, no rebase is required before Wave D. No conflict exists to report.
 
+## Gate 3 — rc1 verification (2026-07-12)
+
+- `cd apps/web && pnpm typecheck && pnpm lint`: exit 0. ESLint reported 0 errors and 6422 existing warnings; TanStack audit 0 violations; design audit 753 acknowledged / 0 new / 0 stale; custom rule tests passed.
+- `cd apps/web && pnpm vitest run src/features/treasury src/features/notifications src/features/finance src/hooks/usePermissions.test.ts`: exit 0 — `64 test files, 393 tests passed`. Existing suite-wide React `act(...)` and localstorage-file warnings remain non-failing.
+- Gate-specific notification pins are green inside that run: bell badge hidden at count 0 and legacy PHP-FQCN/data.message fallback rendering.
+- `node tools/audit-design-system.mjs`: exit 0 — 0 new, 0 stale.
+- `node tools/audit-tanstack-keys.mjs`: exit 0 — 0 violations.
+- React Doctor changed-scope scan against `phase3-gate-2`: exit 0, `baseline.newCount=0`, `diagnostics=[]`, complete scan of 29 Wave-D files. Displayed score 93 reflects five baseline host-file findings; Wave D introduced zero diagnostics.
+- D2 deviation: six cache invalidations use raw leading prefixes rather than plan-pasted `tenantScopedKey` filters because the pre-existing enforced TanStack audit rejects scoped cache filters. Prefix semantics remain correct for tenant-suffixed keys; deviation is non-money-path.
+- D4 deviation: the report uses the current typed `DataTable` plus external `OffsetPagination` rather than the plan's hand-written `<table>`, because the enforced design audit rejects raw tables and the current DataTable supports the needed presentational/external-pagination contract. Behavior and all seven columns remain pinned.
+
 ### Task D1 — FE permission registration
 
 - Status: complete.
