@@ -231,7 +231,7 @@ describe('vehicle hooks tenant scope', () => {
     expect(mockApiGet).not.toHaveBeenCalled()
   })
 
-  it('bounds vehicle mutation invalidation to the active tenant cache (.762-.763, .765-.767)', async () => {
+  it('does not evict inactive-tenant cache on vehicle mutations - mileage prefix marks other tenants stale but never refetches or destroys their data (.762-.763, .765-.767)', async () => {
     const queryClient = createPersistentQueryClient()
     const wrapper = makeWrapper(queryClient)
     let mileageCalls = 0
