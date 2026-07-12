@@ -90,6 +90,8 @@ import {
   pullOpenReplenishment,
   pushReplenishmentRequests,
 } from '@/lib/replenishment/replenishmentSyncService';
+import { purgeOutboxRows as purgeReplenishmentOutbox } from '@/lib/db/repositories/replenishmentOutboxRepository';
+import { purgeOutboxRows as purgePendingCustomerOutbox } from '@/lib/db/repositories/pendingCustomerRepository';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -2064,6 +2066,36 @@ export async function runFullSync(
       } catch (e) {
         errors.push(`Customer push failed: ${coerceSyncError(e)}`);
       }
+
+      // GB-3 — retention sweep for BOTH POS outboxes, AFTER the pushes above
+      // complete so freshly-resolved rows are never purged in the same tick.
+      // Both DELETEs are inert-row-only (resolved > 30d, failed > 90d; never
+      // pending). Swallow-and-log like the pull steps: a purge failure must
+      // NEVER degrade the tick (no errors.push) nor block the pull below — the
+      // rows are inert and next tick retries. One DELETE per table per tick.
+      try {
+        await purgeReplenishmentOutbox(db, tenantId, companyId);
+      } catch (e) {
+        console.warn(
+          '[POS][sync] replenishment outbox purge failed (non-fatal)',
+          serializeErrorForLog(e),
+        );
+        try {
+          await logSyncOperation(db, 'push', 'replenishment_outbox_purge', null, 'error', coerceSyncError(e));
+        } catch { /* non-critical */ }
+      }
+      try {
+        await purgePendingCustomerOutbox(db, tenantId, companyId);
+      } catch (e) {
+        console.warn(
+          '[POS][sync] pending-customer outbox purge failed (non-fatal)',
+          serializeErrorForLog(e),
+        );
+        try {
+          await logSyncOperation(db, 'push', 'pending_customer_outbox_purge', null, 'error', coerceSyncError(e));
+        } catch { /* non-critical */ }
+      }
+
       try {
         customersPulled = await pullCustomers(db, tenantId, companyId);
       } catch (e) {

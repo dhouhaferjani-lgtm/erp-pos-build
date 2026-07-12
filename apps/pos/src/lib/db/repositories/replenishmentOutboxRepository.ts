@@ -126,6 +126,53 @@ export async function markReplenishmentFailed(
   await updateStatus(db, tenantId, companyId, clientRequestUuid, 'failed', syncError, now);
 }
 
+/**
+ * GB-3 — retention sweep for the replenishment outbox.
+ *
+ * Resolved rows are inert once synced, and failed rows are only useful while a
+ * human might still inspect the sync error; without a sweep both accumulate
+ * forever on the device. This deletes, within the given tenant/company scope:
+ *   - status='resolved' whose `updated_at` is older than 30 days
+ *   - status='failed'   whose `updated_at` is older than 90 days (kept longer
+ *     so sync errors remain inspectable before purge)
+ * 'pending' rows are NEVER deleted.
+ *
+ * Rule 20: `created_at`/`updated_at` are JS-authored ISO 8601 strings
+ * (`YYYY-MM-DDTHH:MM:SS.sssZ`), NOT SQLite `datetime('now')` values. The age
+ * cutoffs are therefore computed in JS as ISO strings and passed as bound
+ * params so the comparison is ISO-vs-ISO. Binding SQLite `datetime('now')`
+ * here would compare a space-separated value against 'T'-separated rows and
+ * silently mis-purge (the ' ' < 'T' lexicographic trap).
+ */
+const RESOLVED_RETENTION_DAYS = 30;
+const FAILED_RETENTION_DAYS = 90;
+
+export async function purgeOutboxRows(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+  nowIso: string = new Date().toISOString(),
+): Promise<void> {
+  assertPresent('tenant_id', tenantId);
+  assertPresent('company_id', companyId);
+
+  const nowMs = new Date(nowIso).getTime();
+  const resolvedCutoff = new Date(nowMs - RESOLVED_RETENTION_DAYS * 864e5).toISOString();
+  const failedCutoff = new Date(nowMs - FAILED_RETENTION_DAYS * 864e5).toISOString();
+
+  await execute(
+    db,
+    `DELETE FROM replenishment_outbox
+      WHERE tenant_id = $1
+        AND company_id = $2
+        AND (
+          (status = 'resolved' AND updated_at < $3)
+          OR (status = 'failed' AND updated_at < $4)
+        )`,
+    [tenantId, companyId, resolvedCutoff, failedCutoff],
+  );
+}
+
 async function updateStatus(
   db: Database,
   tenantId: string,

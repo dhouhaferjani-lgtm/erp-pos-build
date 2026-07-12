@@ -44,6 +44,31 @@ vi.mock('@/lib/customer/pendingCustomerSyncService', () => ({
   pushPendingCustomers: vi.fn().mockResolvedValue(0),
 }));
 
+// Replenishment sync service — mocked so the push/pull don't hit the mock db
+// and so the baseline tick stays clean (real pushReplenishmentRequests would
+// throw on the `{}` mock db and push a degrading error).
+vi.mock('@/lib/replenishment/replenishmentSyncService', () => ({
+  pushReplenishmentRequests: vi.fn().mockResolvedValue(undefined),
+  pullOpenReplenishment: vi.fn().mockResolvedValue(undefined),
+}));
+
+// GB-3 — the outbox retention sweeps run in the push phase. Mock the two
+// repositories' purge helpers so a test can force a purge throw and assert the
+// tick swallows it. `importActual` preserves every other export syncService
+// pulls transitively.
+vi.mock('@/lib/db/repositories/replenishmentOutboxRepository', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/lib/db/repositories/replenishmentOutboxRepository')
+  >('@/lib/db/repositories/replenishmentOutboxRepository');
+  return { ...actual, purgeOutboxRows: vi.fn().mockResolvedValue(undefined) };
+});
+vi.mock('@/lib/db/repositories/pendingCustomerRepository', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/lib/db/repositories/pendingCustomerRepository')
+  >('@/lib/db/repositories/pendingCustomerRepository');
+  return { ...actual, purgeOutboxRows: vi.fn().mockResolvedValue(undefined) };
+});
+
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   const actual = await vi.importActual<
     typeof import('@/lib/db/repositories/offlineReceiptRepository')
@@ -183,6 +208,8 @@ vi.mock('@/stores/authStore', () => ({
 import { runFullSync } from '../syncService';
 import { pullCustomers } from '@/lib/customer/customerSyncService';
 import { pushPendingCustomers } from '@/lib/customer/pendingCustomerSyncService';
+import { purgeOutboxRows as purgeReplenishmentOutbox } from '@/lib/db/repositories/replenishmentOutboxRepository';
+import { purgeOutboxRows as purgePendingCustomerOutbox } from '@/lib/db/repositories/pendingCustomerRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { apiGet } from '@/lib/api';
 
@@ -403,5 +430,62 @@ describe('T-0001 — pushPendingCustomers wired into runFullSync', () => {
 
     expect(pushPendingCustomers).not.toHaveBeenCalled();
     expect(result.customersPushed).toBe(0);
+  });
+});
+
+// ─── GB-3 — outbox retention sweep wired into runFullSync ────────────────────
+//
+// Both outbox purges run in the push phase after the pushes complete. A purge
+// failure is swallow-and-logged like the pull steps: it must NEVER reject the
+// tick nor degrade it (rows are inert; next tick retries).
+
+describe('GB-3 — outbox retention sweep wired into runFullSync', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      user: { id: 'u1', tenantId: 'tenant-1' },
+      companyId: 'company-1',
+      refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    void (async () => {
+      const { useProductStore } = await import('@/stores/productStore');
+      useProductStore.setState({
+        companyConfig: {
+          company_id: 'company-1',
+          all_enabled_modules: ['POS'],
+        } as never,
+      });
+    })();
+
+    setupApiGetSequence();
+  });
+
+  it('sweeps both outboxes with tenant/company after the pushes', async () => {
+    const result = await runFullSync(db, 'terminal-1');
+
+    expect(purgeReplenishmentOutbox).toHaveBeenCalledWith(db, 'tenant-1', 'company-1');
+    expect(purgePendingCustomerOutbox).toHaveBeenCalledWith(db, 'tenant-1', 'company-1');
+    // Clean tick: the sweep contributes nothing to the degraded signal.
+    expect(result.degraded).toBe(false);
+  });
+
+  it('swallows a purge throw without rejecting or degrading the tick', async () => {
+    vi.mocked(purgeReplenishmentOutbox).mockRejectedValueOnce(new Error('disk I/O error'));
+
+    // Must NOT reject — the tick finishes.
+    const result = await runFullSync(db, 'terminal-1');
+
+    // A purge failure never degrades the tick (no errors.push).
+    expect(result.degraded).toBe(false);
+    expect(result.errors).toEqual([]);
+    // The tick continued past the failed sweep: the pull phase still ran and
+    // the second outbox was still swept.
+    expect(pullCustomers).toHaveBeenCalledOnce();
+    expect(purgePendingCustomerOutbox).toHaveBeenCalledWith(db, 'tenant-1', 'company-1');
   });
 });
