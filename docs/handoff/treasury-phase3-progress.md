@@ -27,6 +27,15 @@ None found during pre-flight review.
 - Opus adversarial review: `docs/handoff/gate-reviews-phase3/GATE-1-rc1.md` — `VERDICT: APPROVE`; no BLOCKER/HIGH/MEDIUM findings.
 - Review note: `origin/dev` advanced 20 commits after the sanctioned base, contaminating a literal two-dot range with phantom deletions. The reviewer used the merge-base authored diff and verified the port under both forms. The required Wave-D interlock/rebase check remains pending before frontend work.
 
+## Gate 2 — rc1 verification (2026-07-12)
+
+- `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury`: exit 0 — `Tests: 586, Assertions: 2345, PHPUnit Deprecations: 39, Skipped: 25` in 05:22.172; no failures or errors.
+- `cd apps/api && ./vendor/bin/phpunit tests/Feature/Notification`: exit 0 — `OK (6 tests, 43 assertions)`.
+- Real PostgreSQL DB-per-tenant recipient pin: `DB_CONNECTION=pgsql DB_DATABASE=autoerp_treasury_test DB_HOST=/tmp DB_USERNAME=houssamr DB_PASSWORD= ./vendor/bin/phpunit tests/Feature/Treasury/TreasuryAlertRecipientsTest.php`: exit 0 — `OK (4 tests, 11 assertions)`, including two-tenant cache isolation, active-company deny direction, and inactive membership exclusion.
+- Zero-count maturity anti-spam pin: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentMaturityAlertsTest.php --filter test_maturity_alert_sends_no_notification_when_counts_are_zero`: exit 0 — `OK (1 test, 3 assertions)`.
+- `cd apps/api && php -d memory_limit=1G ./vendor/bin/phpstan --no-progress`: exit 0 — `[OK] No errors`.
+- `cd apps/api && ./vendor/bin/pint --dirty`: exit 0 — `{"result":"pass"}`.
+
 ### Task A1 — Status-scoped treasury-transfer JE uniqueness
 
 - Status: complete
