@@ -9,7 +9,9 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Database\Seeders\BanksSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Illuminate\Console\Command;
 use Illuminate\Console\OutputStyle;
@@ -52,6 +54,7 @@ final class PaymentRepositorySeederTest extends TestCase
         };
         $command->setOutput(new OutputStyle(new ArrayInput([]), new NullOutput));
         $seeder->setCommand($command);
+        $this->app->make(BanksSeeder::class)->run($company);
         $seeder->run($company);
 
         $repositories = PaymentRepository::query()
@@ -63,6 +66,16 @@ final class PaymentRepositorySeederTest extends TestCase
         foreach ($repositories as $repository) {
             $this->assertNotNull($repository->account_id);
             $this->assertSame($repository->gl_account_id, $repository->account_id);
+        }
+
+        $seededBankRepositories = $repositories->where('type.value', 'bank_account');
+        $this->assertNotEmpty($seededBankRepositories);
+
+        foreach ($seededBankRepositories as $repository) {
+            $this->assertNull($repository->account_number);
+            $this->assertNull($repository->iban);
+            $this->assertNotNull($repository->bank_id);
+            $this->assertTrue(Bank::query()->whereKey($repository->bank_id)->exists());
         }
     }
 }

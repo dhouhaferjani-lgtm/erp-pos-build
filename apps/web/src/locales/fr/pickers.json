@@ -52,5 +52,13 @@
     "label": "Utilisateur",
     "searchPlaceholder": "Rechercher un utilisateur par nom ou e-mail…",
     "empty": "Aucun utilisateur correspondant."
+  },
+  "bank": {
+    "label": "Banque",
+    "searchPlaceholder": "Rechercher une banque par nom ou BIC…",
+    "empty": "Aucune banque correspondante.",
+    "notListed": "Banque absente de la liste ?",
+    "chooseDirectory": "Choisir dans l'annuaire bancaire",
+    "fallbackPlaceholder": "Saisir le nom de la banque"
   }
 }

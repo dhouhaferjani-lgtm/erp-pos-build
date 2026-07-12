@@ -115,6 +115,23 @@
       "creditLimitApproaching": "Plafond de crédit bientôt atteint",
       "creditLimitUsage": "En cours : {{outstanding}} / Plafond : {{limit}} ({{percentage}}% utilisé)"
     },
+    "bankAccounts": {
+      "title": "Comptes bancaires",
+      "hint": "Les identifiants invalides ou anciens affichent un avertissement sans bloquer l'enregistrement.",
+      "add": "Ajouter un compte bancaire",
+      "empty": "Aucun compte bancaire ajouté.",
+      "accountNumber": "Compte bancaire {{number}}",
+      "remove": "Supprimer le compte bancaire",
+      "label": "Libellé",
+      "bank": "Banque",
+      "rib": "RIB",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "currency": "Devise",
+      "primary": "Compte bancaire principal",
+      "validRib": "RIB valide",
+      "invalidRib": "Le RIB n'a pas pu être vérifié ; l'enregistrement reste autorisé"
+    },
     "paymentTerms": {
       "immediate": "Immédiat",
       "net_15": "Net 15",

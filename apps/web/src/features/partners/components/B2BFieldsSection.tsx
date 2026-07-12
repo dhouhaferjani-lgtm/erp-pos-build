@@ -1,35 +1,28 @@
 import { useTranslation } from 'react-i18next'
-import type { UseFormRegister, UseFormWatch } from 'react-hook-form'
+import type { Control, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCompany } from '@/hooks/useCompany'
 import { useTaxIdValidation } from '../hooks/useTaxIdValidation'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
-
-interface B2BFormFields {
-  company_legal_name: string
-  business_registration_number: string
-  payment_terms: string
-  payment_terms_days: string
-  credit_limit: string
-  discount_percentage: string
-  invoice_consolidation: boolean
-  consolidation_frequency: string
-}
+import type { PartnerFormData } from '../PartnerForm'
+import { PartnerBankAccountsSection } from './PartnerBankAccountsSection'
 
 interface B2BFieldsSectionProps {
-  register: UseFormRegister<B2BFormFields & Record<string, unknown>>
-  watch: UseFormWatch<B2BFormFields & Record<string, unknown>>
-  setValue: (name: 'credit_limit', value: string) => void
+  control: Control<PartnerFormData>
+  register: UseFormRegister<PartnerFormData>
+  watch: UseFormWatch<PartnerFormData>
+  setValue: UseFormSetValue<PartnerFormData>
   partnerId?: string | undefined
 }
 
-export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFieldsSectionProps) {
+export function B2BFieldsSection({ control, register, watch, setValue, partnerId }: B2BFieldsSectionProps) {
   const { currentCompany } = useCompany()
   const currency = currentCompany?.currency ?? 'EUR'
   const { t } = useTranslation('sales')
   const paymentTerms = watch('payment_terms')
   const invoiceConsolidation = watch('invoice_consolidation')
+  const bankCountry = watch('country_code')
   const taxIdValidation = useTaxIdValidation()
 
   const handleValidateTaxId = () => {
@@ -168,7 +161,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
           </label>
           <MoneyInput
             id="credit_limit"
-            value={watch('credit_limit') ?? ''}
+            value={watch('credit_limit')}
             onChange={(v) => { setValue('credit_limit', v) }}
             currency={currency}
             min="0"
@@ -238,6 +231,16 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
             </select>
           </div>
         )}
+
+        <div className="sm:col-span-2">
+          <PartnerBankAccountsSection
+            control={control}
+            register={register}
+            setValue={setValue}
+            country={bankCountry.trim() === '' ? (currentCompany?.countryCode ?? 'TN') : bankCountry}
+            defaultCurrency={currency}
+          />
+        </div>
       </div>
     </div>
   )

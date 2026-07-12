@@ -9,6 +9,7 @@ import type { Country } from '../settings/types/country'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiPatch = vi.hoisted(() => vi.fn())
+const mockApiGetUnwrapped = vi.hoisted(() => vi.fn())
 const mockGetCountries = vi.hoisted(() => vi.fn())
 
 vi.mock('../../lib/api', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../lib/api', () => ({
   },
   apiPost: mockApiPost,
   apiPatch: mockApiPatch,
+  apiGet: mockApiGetUnwrapped,
   getErrorMessage: (error: unknown): string => (error instanceof Error ? error.message : 'Unexpected error'),
   isApiError: () => false,
 }))
@@ -121,6 +123,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     mockApiGet.mockReset()
     mockApiPost.mockReset()
     mockApiPatch.mockReset()
+    mockApiGetUnwrapped.mockReset()
     mockGetCountries.mockReset()
     mockGetCountries.mockResolvedValue([])
     window.localStorage.setItem('autoerp-language', 'en')
@@ -295,5 +298,103 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByLabelText(/credit limit/i)).toHaveValue(null)
     expect(screen.getByLabelText(/discount percentage/i)).toHaveValue(null)
     expect(screen.getByLabelText(/^payment terms$/i)).toHaveValue('')
+  })
+
+  it('adds a bank account on the edit page, derives its IBAN, and submits without blocking', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: {
+          ...makeExistingPartner(),
+          customer_category: 'business',
+          bank_accounts: [],
+        },
+      },
+    })
+    mockApiPatch.mockResolvedValue({ id: 'partner-1' })
+    mockApiGetUnwrapped.mockResolvedValue([{
+      id: 'bank-amen',
+      country_code: 'TN',
+      name: 'Amen Bank',
+      short_name: 'AB',
+      bic: 'CFCTTNTT',
+      rib_bank_code: '07',
+      city: 'Tunis',
+      is_custom: false,
+    }])
+
+    renderPartnerForm(
+      ['/purchases/suppliers/partner-1/edit'],
+      '/purchases/suppliers/:id/edit',
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add bank account/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
+
+    const bankPicker = screen.getByRole('combobox', { name: /bank$/i })
+    fireEvent.focus(bankPicker)
+    fireEvent.change(bankPicker, { target: { value: 'Amen' } })
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Amen Bank CFCTTNTT/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('option', { name: /Amen Bank CFCTTNTT/i }))
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129653' } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^IBAN$/i)).toHaveValue('TN5907040005810111129653')
+    })
+    expect(screen.getByText(/valid RIB/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/primary bank account/i)).toBeChecked()
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => {
+      expect(mockApiPatch).toHaveBeenCalledWith('/partners/partner-1', expect.objectContaining({
+        bank_accounts: [expect.objectContaining({
+          bank_id: 'bank-amen',
+          bank_name: 'Amen Bank',
+          bic: 'CFCTTNTT',
+          rib: '07040005810111129653',
+          iban: 'TN5907040005810111129653',
+          is_primary: true,
+        })],
+      }))
+    })
+  })
+
+  it('clears the auto-derived IBAN when a valid RIB is edited back to invalid', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Legacy Supplier' } })
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
+
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129653' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^IBAN$/i)).toHaveValue('TN5907040005810111129653')
+    })
+
+    // Break the RIB: the auto-derived IBAN must be cleared, not left stale.
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129654' } })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^IBAN$/i)).toHaveValue('')
+    })
+  })
+
+  it('warns on an invalid partner RIB while leaving Save enabled', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Legacy Supplier' } })
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
+    fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '123' } })
+
+    expect(screen.getByText(/could not be verified/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/partners', expect.objectContaining({
+        bank_accounts: [expect.objectContaining({ rib: '123' })],
+      }))
+    })
   })
 })

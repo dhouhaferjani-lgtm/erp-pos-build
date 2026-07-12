@@ -52,5 +52,13 @@
     "label": "User",
     "searchPlaceholder": "Search user by name or email…",
     "empty": "No matching users."
+  },
+  "bank": {
+    "label": "Bank",
+    "searchPlaceholder": "Search banks by name or BIC…",
+    "empty": "No matching banks.",
+    "notListed": "Bank not listed?",
+    "chooseDirectory": "Choose from the bank directory",
+    "fallbackPlaceholder": "Enter the bank name"
   }
 }

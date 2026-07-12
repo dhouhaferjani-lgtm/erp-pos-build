@@ -8,6 +8,7 @@ use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
+use App\Modules\Partner\Application\Services\PartnerBankAccountService;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Events\PartnerCreated;
 use App\Modules\Partner\Domain\Events\PartnerDeleted;
@@ -16,8 +17,10 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Domain\Services\TaxIdValidationService;
 use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
 use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
+use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +34,9 @@ class PartnerController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly TaxIdValidationService $taxIdValidationService,
+        private readonly PartnerBankAccountService $partnerBankAccounts,
+        private readonly BankAccountValidatorInterface $bankAccountValidator,
+        private readonly ConnectionInterface $db,
     ) {}
 
     /**
@@ -134,6 +140,7 @@ class PartnerController extends Controller
         $user = $request->user();
 
         $partnerModel = Partner::where('company_id', $this->companyContext->requireCompanyId())
+            ->with('bankAccounts')
             ->where('id', $partner)
             ->first();
 
@@ -151,7 +158,11 @@ class PartnerController extends Controller
         }
 
         return response()->json([
-            'data' => PartnerData::fromModel($partnerModel),
+            'data' => PartnerData::fromModel(
+                $partnerModel,
+                $this->bankAccountValidator,
+                $this->companyContext->requireCompany()->country_code,
+            ),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -171,11 +182,25 @@ class PartnerController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        $partner = Partner::create([
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            ...$validated,
-        ]);
+        unset($validated['bank_accounts']);
+
+        /** @var User $actor */
+        $actor = $request->user();
+        $partner = $this->db->transaction(function () use ($validated, $tenantId, $companyId, $request, $actor, $company): Partner {
+            $partner = Partner::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                ...$validated,
+            ]);
+            $this->partnerBankAccounts->sync(
+                $partner,
+                $request->bankAccounts(),
+                $actor->id,
+                $company->country_code,
+            );
+
+            return $partner;
+        });
 
         event(new PartnerCreated(
             partnerId: $partner->id,
@@ -189,8 +214,13 @@ class PartnerController extends Controller
         ));
 
         return response()->json([
-            'data' => PartnerData::fromModel($partner),
+            'data' => PartnerData::fromModel(
+                $partner->load('bankAccounts'),
+                $this->bankAccountValidator,
+                $company->country_code,
+            ),
             'meta' => [
+                'bank_account_validation' => $request->bankAccountValidity(),
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
@@ -224,6 +254,8 @@ class PartnerController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+        $hasBankAccounts = array_key_exists('bank_accounts', $validated);
+        unset($validated['bank_accounts']);
 
         // Skin fields are parapharmacy-only merchandising data. Mirror the
         // read-path vertical gate (PosCustomerMirrorResource) on the write path:
@@ -233,7 +265,18 @@ class PartnerController extends Controller
             unset($validated['skin_type'], $validated['skin_advice_note']);
         }
 
-        $partnerModel->update($validated);
+        $company = $this->companyContext->requireCompany();
+        $this->db->transaction(function () use ($partnerModel, $validated, $hasBankAccounts, $request, $user, $company): void {
+            $partnerModel->update($validated);
+            if ($hasBankAccounts) {
+                $this->partnerBankAccounts->sync(
+                    $partnerModel,
+                    $request->bankAccounts(),
+                    $user->id,
+                    $company->country_code,
+                );
+            }
+        });
 
         $changes = $partnerModel->getChanges();
         unset($changes['updated_at']);
@@ -249,11 +292,16 @@ class PartnerController extends Controller
         }
 
         /** @var Partner $freshPartner */
-        $freshPartner = $partnerModel->fresh();
+        $freshPartner = $partnerModel->fresh(['bankAccounts']);
 
         return response()->json([
-            'data' => PartnerData::fromModel($freshPartner),
+            'data' => PartnerData::fromModel(
+                $freshPartner,
+                $this->bankAccountValidator,
+                $company->country_code,
+            ),
             'meta' => [
+                'bank_account_validation' => $request->bankAccountValidity(),
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],

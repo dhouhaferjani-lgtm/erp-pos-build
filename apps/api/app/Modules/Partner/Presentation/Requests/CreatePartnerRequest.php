@@ -9,12 +9,22 @@ use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
+use App\Modules\Partner\Presentation\Requests\Concerns\ValidatesPartnerBankAccounts;
+use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
 class CreatePartnerRequest extends FormRequest
 {
+    use ValidatesPartnerBankAccounts;
+
+    public function __construct(
+        private readonly BankAccountValidatorInterface $bankAccountValidator,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -92,7 +102,13 @@ class CreatePartnerRequest extends FormRequest
             'state' => ['nullable', 'string', 'max:100'],
             'postal_code' => ['nullable', 'string', 'max:20'],
             'country' => ['nullable', 'string', 'size:2'],
+            ...$this->bankAccountRules((string) $tenantId),
         ];
+    }
+
+    protected function passedValidation(): void
+    {
+        $this->recordBankAccountValidity($this->bankAccountValidator);
     }
 
     /**

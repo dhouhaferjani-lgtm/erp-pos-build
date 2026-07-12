@@ -1397,6 +1397,21 @@ export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
 export type TerminalType = 'web' | 'physical' | 'virtual_admin';
 }
 declare namespace App.Modules.Partner.Application.DTOs {
+export type PartnerBankAccountData = {
+id: string;
+label: string | null;
+bank_id: string | null;
+bank_name: string | null;
+rib: string | null;
+iban: string | null;
+bic: string | null;
+currency: string;
+is_primary: boolean;
+created_by: string | null;
+rib_validation: App.Shared.Banking.Domain.ValueObjects.RibValidationResult;
+iban_validation: App.Shared.Banking.Domain.ValueObjects.IbanValidationResult;
+bic_valid: boolean | null;
+};
 export type PartnerData = {
 id: string;
 name: string;
@@ -1434,6 +1449,7 @@ account_status_changed_by: string | null;
 account_status_reason: string | null;
 contacts_count: number;
 primary_contact_name: string | null;
+bank_accounts: Array<App.Modules.Partner.Application.DTOs.PartnerBankAccountData>;
 created_at: string;
 updated_at: string | null;
 };
@@ -1962,6 +1978,16 @@ export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterpris
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
 declare namespace App.Modules.Treasury.Application.DTOs {
+export type BankData = {
+id: string;
+country_code: string;
+name: string;
+short_name: string | null;
+bic: string | null;
+rib_bank_code: string | null;
+city: string | null;
+is_custom: boolean;
+};
 export type TolerancePaymentBreakdownDTO = {
 userId: string;
 userName: string;
@@ -2455,6 +2481,24 @@ total: number;
 totalPages: number;
 hasNextPage: boolean;
 hasPreviousPage: boolean;
+};
+}
+declare namespace App.Shared.Banking.Domain.ValueObjects {
+export type IbanValidationResult = {
+valid: boolean;
+normalized: string;
+country_code: string | null;
+bank_code: string | null;
+errors: Array<any>;
+};
+export type RibValidationResult = {
+valid: boolean;
+normalized: string;
+iban: string | null;
+bic: string | null;
+bank_code: string | null;
+bank_name: string | null;
+errors: Array<any>;
 };
 }
 declare namespace App.Shared.Contracts.Treasury.DTOs {

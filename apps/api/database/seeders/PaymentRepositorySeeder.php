@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -71,6 +72,15 @@ class PaymentRepositorySeeder extends Seeder
 
         foreach ($repositories as $repo) {
             $glAccountId = $this->resolveGlAccountId($repo['type'], $cashAccount, $bankAccount);
+            $bankCode = $repo['bank_code'];
+            unset($repo['bank_code']);
+            $bankId = $bankCode !== null
+                ? Bank::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->where('country_code', strtoupper($company->country_code))
+                    ->where('rib_bank_code', $bankCode)
+                    ->value('id')
+                : null;
 
             // Cutover-hardening (Fix 1): repositories are BORN at balance 0 — the
             // direct-balance-write trigger now guards INSERTs too, rejecting a
@@ -90,6 +100,7 @@ class PaymentRepositorySeeder extends Seeder
                 'company_id' => $company->id,
                 'account_id' => $glAccountId,
                 'gl_account_id' => $glAccountId,
+                'bank_id' => is_string($bankId) ? $bankId : null,
                 ...$repo,
             ]);
 
@@ -169,6 +180,7 @@ class PaymentRepositorySeeder extends Seeder
      *     code: string,
      *     name: string,
      *     type: string,
+     *     bank_code: string|null,
      *     bank_name: string|null,
      *     account_number: string|null,
      *     iban: string|null,
@@ -185,6 +197,7 @@ class PaymentRepositorySeeder extends Seeder
                 'code' => 'CASH-01',
                 'name' => 'Main Cash Register',
                 'type' => 'cash_register',
+                'bank_code' => null,
                 'bank_name' => null,
                 'account_number' => null,
                 'iban' => null,
@@ -196,6 +209,7 @@ class PaymentRepositorySeeder extends Seeder
                 'code' => 'CASH-02',
                 'name' => 'Workshop Cash Register',
                 'type' => 'cash_register',
+                'bank_code' => null,
                 'bank_name' => null,
                 'account_number' => null,
                 'iban' => null,
@@ -207,6 +221,7 @@ class PaymentRepositorySeeder extends Seeder
                 'code' => 'SAFE-01',
                 'name' => 'Office Safe',
                 'type' => 'safe',
+                'bank_code' => null,
                 'bank_name' => null,
                 'account_number' => null,
                 'iban' => null,
@@ -223,10 +238,11 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-01',
                     'name' => 'Banque de Tunisie - Current Account',
                     'type' => 'bank_account',
-                    'bank_name' => 'Banque de Tunisie',
-                    'account_number' => '08 000 0012345678',
-                    'iban' => 'TN59 0800 0001 2345 6789 0123',
-                    'bic' => 'BTUETTT',
+                    'bank_code' => '05',
+                    'bank_name' => 'BANQUE DE TUNISIE',
+                    'account_number' => null,
+                    'iban' => null,
+                    'bic' => 'BTBKTNTT',
                     'balance' => '25000.000',
                     'is_active' => true,
                 ],
@@ -234,10 +250,11 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-02',
                     'name' => 'STB - Business Account',
                     'type' => 'bank_account',
-                    'bank_name' => 'Société Tunisienne de Banque',
-                    'account_number' => '10 000 0012345678',
-                    'iban' => 'TN59 1000 0001 2345 6789 0123',
-                    'bic' => 'STBKTTT',
+                    'bank_code' => '10',
+                    'bank_name' => 'SOCIETE TUNISIENNE DE BANQUE',
+                    'account_number' => null,
+                    'iban' => null,
+                    'bic' => 'STBKTNTT',
                     'balance' => '15000.000',
                     'is_active' => true,
                 ],
@@ -245,10 +262,11 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-03',
                     'name' => 'BIAT - Savings Account',
                     'type' => 'bank_account',
-                    'bank_name' => 'Banque Internationale Arabe de Tunisie',
-                    'account_number' => '08 030 0012345678',
-                    'iban' => 'TN59 0803 0001 2345 6789 0123',
-                    'bic' => 'BIATTTTT',
+                    'bank_code' => '08',
+                    'bank_name' => 'BANQUE INTERNATIONALE ARABE DE TUNISIE',
+                    'account_number' => null,
+                    'iban' => null,
+                    'bic' => 'BIATTNTT',
                     'balance' => '10000.000',
                     'is_active' => true,
                 ],
@@ -256,6 +274,7 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'VIRT-01',
                     'name' => 'D17 Digital Wallet',
                     'type' => 'virtual',
+                    'bank_code' => null,
                     'bank_name' => 'D17',
                     'account_number' => 'business@example.tn',
                     'iban' => null,
@@ -269,9 +288,10 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-01',
                     'name' => 'BNP Paribas - Current Account',
                     'type' => 'bank_account',
+                    'bank_code' => null,
                     'bank_name' => 'BNP Paribas',
-                    'account_number' => '30004 00123 00001234567 25',
-                    'iban' => 'FR76 3000 4001 2300 0012 3456 725',
+                    'account_number' => null,
+                    'iban' => null,
                     'bic' => 'BNPAFRPP',
                     'balance' => '25000.000',
                     'is_active' => true,
@@ -280,9 +300,10 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-02',
                     'name' => 'Crédit Agricole - Business Account',
                     'type' => 'bank_account',
+                    'bank_code' => null,
                     'bank_name' => 'Crédit Agricole',
-                    'account_number' => '11315 00020 12345678901 54',
-                    'iban' => 'FR14 1131 5000 2012 3456 7890 154',
+                    'account_number' => null,
+                    'iban' => null,
                     'bic' => 'AGRIFRPP',
                     'balance' => '15000.000',
                     'is_active' => true,
@@ -291,9 +312,10 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'BANK-03',
                     'name' => 'Société Générale - Savings Account',
                     'type' => 'bank_account',
+                    'bank_code' => null,
                     'bank_name' => 'Société Générale',
-                    'account_number' => '30003 00123 11223344556 78',
-                    'iban' => 'FR31 3000 3001 2311 2233 4455 678',
+                    'account_number' => null,
+                    'iban' => null,
                     'bic' => 'SOGEFRPP',
                     'balance' => '10000.000',
                     'is_active' => true,
@@ -302,6 +324,7 @@ class PaymentRepositorySeeder extends Seeder
                     'code' => 'VIRT-01',
                     'name' => 'PayPal Business Account',
                     'type' => 'virtual',
+                    'bank_code' => null,
                     'bank_name' => 'PayPal',
                     'account_number' => 'business@example.com',
                     'iban' => null,
