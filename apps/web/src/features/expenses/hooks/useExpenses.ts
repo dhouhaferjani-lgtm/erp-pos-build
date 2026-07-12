@@ -2,11 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { expenseApi } from '../api/expenseApi'
 import { expensesInvalidationPredicate } from '../_invalidation'
-import type { CreateExpenseDTO, ExpenseFilters } from '../types'
+import type { CreateExpenseDTO, ExpenseFilters, PayExpenseRequest } from '../types'
+
+function flatErrorMessage(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('response' in error)) return null
+  const response = error.response
+  if (typeof response !== 'object' || response === null || !('data' in response)) return null
+  const data = response.data
+  if (typeof data !== 'object' || data === null || !('error' in data)) return null
+  return typeof data.error === 'string' ? data.error : null
+}
 
 /**
  * Query keys for expense-related queries
@@ -167,6 +177,42 @@ export function usePostExpense() {
     },
     onError: (error: Error) => {
       toast.error(error.message || t('common:errors.unexpected'))
+    },
+  })
+}
+
+/**
+ * Hook to settle a posted expense for its full total.
+ */
+export function usePayExpense() {
+  const { t } = useTranslation(['expenses'])
+  const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: PayExpenseRequest }) =>
+      expenseApi.pay(id, data),
+    onSuccess: async (paidExpense, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [...expenseKeys.detail(paidExpense.id)],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['payment-repository', variables.data.payment_repository_id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['treasury-cash-position'],
+        }),
+      ])
+      toast.success(t('expenses:pay.success'))
+    },
+    onError: (error: unknown) => {
+      const message = flatErrorMessage(error) ?? getErrorMessage(error)
+      toast.error(message || t('expenses:pay.error'))
     },
   })
 }

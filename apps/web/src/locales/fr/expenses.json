@@ -100,6 +100,20 @@
   "errors": {
     "notFound": "Dépense introuvable"
   },
+  "pay": {
+    "title": "Payer la dépense",
+    "total": "Total de la dépense",
+    "repository": "Dépôt de paiement",
+    "selectRepository": "Sélectionnez un dépôt",
+    "repositoryRequired": "Le dépôt de paiement est requis",
+    "method": "Mode de paiement",
+    "noMethod": "Aucun mode de paiement",
+    "date": "Date de paiement",
+    "dateRequired": "La date de paiement est requise",
+    "submit": "Payer",
+    "success": "Dépense payée avec succès",
+    "error": "Impossible de payer la dépense"
+  },
   "noVendor": "Aucun fournisseur spécifié",
   "attachments": "Pièces jointes",
   "categories": {
