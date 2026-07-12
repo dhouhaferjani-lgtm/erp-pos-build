@@ -130,7 +130,8 @@ final class PartnerBankAccountTest extends TestCase
             ->assertJsonPath('data.bank_accounts.1.rib_validation.valid', false)
             ->assertJsonPath('data.bank_accounts.1.iban_validation.valid', false)
             ->assertJsonPath('data.bank_accounts.1.bic_valid', false)
-            ->assertJsonPath('data.bank_accounts.1.is_primary', false);
+            ->assertJsonPath('data.bank_accounts.1.is_primary', false)
+            ->assertJsonPath('meta.bank_account_validation.1.rib.valid', false);
 
         $partnerId = (string) $response->json('data.id');
         $this->assertDatabaseCount('partner_bank_accounts', 2);
@@ -159,12 +160,13 @@ final class PartnerBankAccountTest extends TestCase
                 'iban' => 'TN00BROKEN',
                 'bic' => 'X',
                 'currency' => 'TND',
-                'is_primary' => true,
+                'is_primary' => false,
             ]],
         ])->assertCreated()
             ->assertJsonPath('data.bank_accounts.0.rib_validation.valid', false)
             ->assertJsonPath('data.bank_accounts.0.iban_validation.valid', false)
-            ->assertJsonPath('data.bank_accounts.0.bic_valid', false);
+            ->assertJsonPath('data.bank_accounts.0.bic_valid', false)
+            ->assertJsonPath('data.bank_accounts.0.is_primary', true);
     }
 
     public function test_updates_accounts_as_a_nested_collection_and_keeps_one_primary(): void
@@ -245,5 +247,15 @@ final class PartnerBankAccountTest extends TestCase
     public function test_partner_relation_exposes_bank_accounts(): void
     {
         self::assertSame('partner_bank_accounts', (new Partner)->bankAccounts()->getRelated()->getTable());
+    }
+
+    public function test_tenant_migration_does_not_reference_the_central_tenants_table(): void
+    {
+        $migration = file_get_contents(database_path(
+            'migrations/tenant/2026_07_12_120000_create_partner_bank_accounts_table.php'
+        ));
+
+        self::assertIsString($migration);
+        self::assertStringNotContainsString("->on('tenants')", $migration);
     }
 }

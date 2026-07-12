@@ -102,7 +102,7 @@
 ### TDD evidence
 
 - RED backend: 4 expected failures/errors for the missing table, relation, persistence, and validity response.
-- GREEN backend: 4 tests, 27 assertions for valid/invalid warn-mode saves, derived IBAN, creator attribution, nested update/delete, and one-primary enforcement.
+- GREEN backend: RC1 had 4 tests/27 assertions; RC2 has 5 tests/31 assertions after adding the tenant-tier FK regression and explicit default-primary/observable validity coverage.
 - RED frontend: the Partner form test could not find the additive bank-account control.
 - GREEN frontend: 8 PartnerForm tests, including edit-page picker selection/BIC autofill/derived IBAN submission and invalid-RIB warning with Save enabled.
 
@@ -111,7 +111,7 @@
 - `CACHE_STORE=array php artisan typescript:transform` — 433 PHP types transformed, including `PartnerBankAccountData` and the typed `PartnerData.bank_accounts` collection.
 - Targeted PHPStan over all touched Partner PHP paths — 0 errors.
 - Targeted Pint over all touched Partner PHP, migration, and test paths — clean.
-- Partner account + B2B/create/update/list regression slice — 63 tests, 228 assertions.
+- Partner account + B2B/create/update/list regression slice — RC1: 63 tests, 228 assertions; RC2: 64 tests, 232 assertions.
 - Partner frontend form + broader Partner regression slice — 56 tests passed (8 PartnerForm + 48 Partner management).
 - Workspace `pnpm typecheck` — all targets completed successfully.
 - Query-key audit — 0 new findings. Design-system audit — 0 new/stale baseline findings after replacing the primary toggle with the canonical Checkbox atom.
@@ -125,4 +125,10 @@
 
 ### Gate 3
 
-- Pending.
+- RC1: `bank-gate-3-rc1` (`e625efca1`).
+- Review: `docs/handoff/gate-reviews-bank/GATE-3-rc1.md`.
+- Verdict: `CHANGES-REQUIRED`.
+- Finding: BLOCKER — the tenant-tier migration incorrectly referenced the central-only `tenants` table. SQLite's combined test database masked the production tenant-database failure.
+- Fable escalation: not invoked; the blocker concerns migration topology, and Opus reported no validator-math BLOCKER/HIGH or uncertainty.
+- RC2 response (test-first): added a regression asserting tenant migrations do not reference the central `tenants` table, removed that FK while retaining tenant-local FKs, made FormRequest validity results observable in response metadata, and defaulted the first account to primary when a non-empty collection requests no primary. Focused account tests pass (5 tests, 31 assertions) and targeted PHPStan remains at 0 errors.
+- RC2 audit: pending.

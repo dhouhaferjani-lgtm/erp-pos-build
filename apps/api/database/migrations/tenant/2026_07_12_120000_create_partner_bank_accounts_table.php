@@ -29,7 +29,6 @@ return new class extends Migration
             $table->uuid('created_by')->nullable();
             $table->timestamps();
 
-            $table->foreign('tenant_id')->references('id')->on('tenants')->cascadeOnDelete();
             $table->foreign('partner_id')->references('id')->on('partners')->cascadeOnDelete();
             $table->foreign('bank_id')->references('id')->on('banks')->nullOnDelete();
             $table->foreign('created_by')->references('id')->on('users')->nullOnDelete();

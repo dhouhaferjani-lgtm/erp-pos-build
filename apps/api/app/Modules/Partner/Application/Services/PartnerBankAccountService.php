@@ -22,6 +22,10 @@ final class PartnerBankAccountService
     {
         $retainedIds = [];
         $primaryAssigned = false;
+        $hasRequestedPrimary = false;
+        foreach ($accounts as $input) {
+            $hasRequestedPrimary = $hasRequestedPrimary || $input->is_primary;
+        }
 
         foreach ($accounts as $input) {
             $account = $input->id === null
@@ -34,7 +38,8 @@ final class PartnerBankAccountService
                 $iban = $ribResult->iban;
             }
 
-            $isPrimary = $input->is_primary && ! $primaryAssigned;
+            $isPrimary = ! $primaryAssigned
+                && ($input->is_primary || (! $hasRequestedPrimary && $retainedIds === []));
             $primaryAssigned = $primaryAssigned || $isPrimary;
 
             $account->fill([

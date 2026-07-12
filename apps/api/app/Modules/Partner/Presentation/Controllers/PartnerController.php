@@ -220,6 +220,7 @@ class PartnerController extends Controller
                 $company->country_code,
             ),
             'meta' => [
+                'bank_account_validation' => $request->bankAccountValidity(),
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
@@ -300,6 +301,7 @@ class PartnerController extends Controller
                 $company->country_code,
             ),
             'meta' => [
+                'bank_account_validation' => $request->bankAccountValidity(),
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],

@@ -6,10 +6,17 @@ namespace App\Modules\Partner\Presentation\Requests\Concerns;
 
 use App\Modules\Partner\Application\DTOs\PartnerBankAccountInputData;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
+use App\Shared\Banking\Domain\ValueObjects\IbanValidationResult;
+use App\Shared\Banking\Domain\ValueObjects\RibValidationResult;
 use App\Shared\Presentation\Validation\ScopedExists;
 
 trait ValidatesPartnerBankAccounts
 {
+    /**
+     * @var array<int, array{rib: RibValidationResult, iban: IbanValidationResult, bic_valid: bool|null}>
+     */
+    private array $recordedBankAccountValidity = [];
+
     /** @return array<string, array<int, object|string>> */
     private function bankAccountRules(string $tenantId): array
     {
@@ -52,6 +59,14 @@ trait ValidatesPartnerBankAccounts
     }
 
     /**
+     * @return array<int, array{rib: RibValidationResult, iban: IbanValidationResult, bic_valid: bool|null}>
+     */
+    public function bankAccountValidity(): array
+    {
+        return $this->recordedBankAccountValidity;
+    }
+
+    /**
      * Exercise the shared validator after structural validation without adding
      * failures: legacy and foreign identifiers remain saveable.
      */
@@ -59,11 +74,13 @@ trait ValidatesPartnerBankAccounts
     {
         $country = strtoupper((string) ($this->input('country_code') ?: 'TN'));
         foreach ($this->bankAccounts() as $account) {
-            $validator->validateRib($account->rib ?? '', $country);
-            $validator->validateIban($account->iban ?? '');
-            if ($account->bic !== null && $account->bic !== '') {
-                $validator->validateBic($account->bic);
-            }
+            $this->recordedBankAccountValidity[] = [
+                'rib' => $validator->validateRib($account->rib ?? '', $country),
+                'iban' => $validator->validateIban($account->iban ?? ''),
+                'bic_valid' => $account->bic === null || $account->bic === ''
+                    ? null
+                    : $validator->validateBic($account->bic),
+            ];
         }
     }
 }
