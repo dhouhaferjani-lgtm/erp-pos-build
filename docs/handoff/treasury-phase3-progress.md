@@ -148,3 +148,29 @@ None found during pre-flight review.
   - Isolated SQLite `php artisan migrate:rollback ... --force` — exit 0 in 1.58 ms; subsequent `sqlite_master` inspection confirmed the table was absent.
   - `./vendor/bin/pint --dirty` — exit 0; `{"result":"pass"}`. `git diff --check` — exit 0, no output.
 - Deviations/concerns: none. Database-channel behavior smoke remains assigned to B2 exactly as planned.
+
+### Task B2 — Slim Notification module inbox read API
+
+- Status: complete
+- Files:
+  - `apps/api/app/Modules/Notification/Providers/NotificationServiceProvider.php`
+  - `apps/api/app/Modules/Notification/Presentation/routes.php`
+  - `apps/api/app/Modules/Notification/Presentation/Controllers/NotificationController.php`
+  - `apps/api/bootstrap/providers.php`
+  - `apps/api/tests/Feature/Notification/NotificationEndpointsTest.php`
+  - `.superpowers/sdd/task-B2-report.md`
+  - `.superpowers/sdd/progress.md`
+  - `docs/handoff/treasury-phase3-progress.md`
+- TDD evidence:
+  - RED before module/provider registration: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Notification/NotificationEndpointsTest.php` — exit 1; `FAILURES! Tests: 6, Assertions: 7, Failures: 4.` Each implemented endpoint expectation received the required 404. The B1 database-channel smoke and malformed-UUID route check already passed, as expected at this boundary.
+  - Initial GREEN after provider/routes/controller registration: same command — exit 0; `OK (6 tests, 43 assertions)`.
+  - Post-Pint focused GREEN: same command — exit 0; `OK (6 tests, 43 assertions)`.
+- Contract coverage: B1 `$user->notify(...)` database-channel row smoke; caller-only descending pagination with exact `{data,meta}`; `filter=unread|all`; caller-only unread count; foreign notification read returns 404; owned read is idempotent and preserves the original `read_at`; malformed non-UUID ID returns 404; read-all affects only the caller. Every controller query starts at the authenticated user's `notifications()` or `unreadNotifications()` relation.
+- Route audit: `php artisan route:list --path=api/v1/notifications -v` listed exactly the four specified routes. Each carries, in order, `api`, `auth:sanctum`, `SetPermissionsTeam`, and `EnforceTokenTenantClaim`; there is no `can:` gate. The single-item read route is constrained with `whereUuid('id')` in the route declaration.
+- Static verification:
+  - First `./vendor/bin/phpstan --memory-limit=1G` found one `method.nonObject` diagnostic for framework-nullable `created_at`; serialization was made null-safe without suppression or inferred-type override.
+  - Rerun `./vendor/bin/phpstan --memory-limit=1G` — exit 0; `[OK] No errors` across 2506 files.
+  - `./vendor/bin/pint --dirty` — exit 0; formatted the endpoint test (`new_with_parentheses`, `fully_qualified_strict_types`, `no_superfluous_phpdoc_tags`, `ordered_imports`).
+  - `git diff --check` — exit 0, no output.
+- Protected perimeter: no Treasury movement port, fiscal file, frontend/interlock file, permission seeder, or unrelated module was edited.
+- Deviations/concerns: none.
