@@ -225,3 +225,10 @@ None found during pre-flight review.
 - Review: `docs/handoff/gate-reviews-phase3/GATE-2-rc1.md`.
 - Verdict: `APPROVE`; no gating findings and no Fable escalation.
 - The sole LOW process finding (missing B3-C2 summaries in this binding progress file) was corrected before the final Gate 2 tag.
+
+### Wave D interlock (2026-07-12)
+
+- Ran `git fetch origin dev` at Wave D start.
+- `origin/dev` contains the expected `feat/treasury-ui-gaps` changes to `apps/web/src/features/treasury/RepositoryDetailPage.tsx` and `apps/web/src/features/expenses/pages/ExpenseDetailPage.tsx`; Phase 3 will not edit either file.
+- Diff/log checks from the sanctioned base `f1d6c1d30` show no changes to `apps/web/src/features/treasury/RepositoryListPage.tsx` or `apps/web/src/components/organisms/TopBar/TopBar.tsx` on `origin/dev`.
+- Per the handoff's conditional interlock, no rebase is required before Wave D. No conflict exists to report.
