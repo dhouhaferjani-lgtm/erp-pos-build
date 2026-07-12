@@ -34,6 +34,9 @@ final class TreasuryAlertNotification extends Notification
      */
     public function toDatabase(object $notifiable): array
     {
-        return $this->data;
+        return [
+            ...$this->data,
+            'alert_type' => $this->alertType,
+        ];
     }
 }

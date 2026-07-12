@@ -25,3 +25,10 @@
 
 - No registrar spy or mock is used.
 - No unrelated production files were changed.
+
+## Reviewer fix: stored alert type
+
+- RED: the focused notification test supplied a conflicting `alert_type` and observed that `toDatabase()` preserved the wrong caller value.
+- GREEN: `toDatabase()` now appends the constructor's stable type, adding the key when absent and overriding caller input when present.
+- Real PostgreSQL B3 suite: 4 tests, 11 assertions, 0 skipped.
+- PHPStan with a 1 GB memory limit: clean. Pint: pass.

@@ -172,6 +172,7 @@ final class TreasuryAlertRecipientsTest extends TestCase
     public function test_notification_uses_only_database_channel_and_a_stable_type(): void
     {
         $data = [
+            'alert_type' => 'caller.supplied.value',
             'company_id' => (string) Str::uuid(),
             'severity' => 'critical',
             'deep_link' => '/finance/overview',
@@ -181,7 +182,10 @@ final class TreasuryAlertRecipientsTest extends TestCase
 
         $this->assertSame(['database'], $notification->via($notifiable));
         $this->assertSame('treasury.portfolio_drift', $notification->databaseType($notifiable));
-        $this->assertSame($data, $notification->toDatabase($notifiable));
+        $this->assertSame([
+            ...$data,
+            'alert_type' => 'treasury.portfolio_drift',
+        ], $notification->toDatabase($notifiable));
     }
 
     private function resolver(): TreasuryAlertRecipients
