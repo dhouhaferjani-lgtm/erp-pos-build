@@ -651,7 +651,7 @@
       "safes_one": "{{count}} coffre",
       "safes_other": "{{count}} coffres"
     },
-    "window": "7 derniers jours",
+    "window": "{{days}} derniers jours",
     "in": "Entrées",
     "out": "Sorties",
     "viewOverview": "Voir l’aperçu",
