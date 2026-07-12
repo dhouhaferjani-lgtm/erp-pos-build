@@ -12,6 +12,7 @@ export interface PaymentRepository {
   is_active: boolean
   is_default: boolean
   balance: string
+  currency: string
 }
 
 interface PaymentRepositoriesResponse {

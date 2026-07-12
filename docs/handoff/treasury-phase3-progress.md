@@ -11,6 +11,8 @@ Progress, files touched, test evidence, deviations, and gate verdicts are append
 
 ## Deviations
 
+- **2026-07-12 — Task D2 cache-filter prefixes:** Rev2 specified `tenantScopedKey(...)` for six transfer-success invalidations and raw prefixes only for repository movements. The pre-existing TanStack audit from `d0620c90d` rejects every scoped cache filter because `tenantScopedKey` appends tenant/company as suffixes while TanStack filter matching is positional-prefix based. D2 therefore uses raw leading literal prefixes for all eight invalidations, as required by current CI. This reaches the tenant-suffixed queries (including filtered movement variants) and changes no money-path behavior.
+
 - **2026-07-12 — Amendment A-1 (Task A4, sanctioned):** the transfer endpoint race-shape coverage uses a sequential pre-existing-transfer replay rather than a true two-connection concurrent request. The test first completes the transfer through `RepositoryTransferService` for group G, then POSTs the endpoint with the same group. This deliberately reaches the same unique-violation-inside-savepoint/idempotent-hit path, proves the original persisted JE id is returned, and proves the compensating draft cleanup leaves one posted JE and no drafts. A two-connection harness does not exist in the port suite, and adding one here would introduce database-driver-dependent test infrastructure without changing the production path exercised. This is the exact substitution approved by spec §15 Amendment A-1; no claim of literal concurrency is made.
 
 ## Contradictions
@@ -241,3 +243,13 @@ None found during pre-flight review.
 - GREEN: `treasury.transfer` is registered with the backend-privileged fallback roles `admin`, `manager`, and `accountant`; no `SERVER_AUTHORITATIVE_PERMISSIONS` entry was added because that set has no treasury/adjust-class peer.
 - Verification: focused Vitest 3/3, TypeScript typecheck, relevant ESLint, and full web lint exited 0. Fresh `npx react-doctor@latest --verbose --scope changed --base 9218efcea` exited 0 with 100/100 and `No issues found!`; the earlier deprecated `--diff` invocation is not relied upon as React Doctor evidence.
 - Deviations/concerns: none.
+
+### Task D2 — Inter-repository transfer modal
+
+- Status: complete.
+- Files: transfer mutation hook and test; transfer modal and test; `RepositoryListPage` and its test; repository payload formatter and feature assertion; frontend repository currency type; en/fr/ar treasury translations; task/progress reports.
+- RED/GREEN: the hook first failed on its missing module, the backend currency assertion first received `null`, the modal first failed on its missing component, and the page permission test first failed because the transfer action was absent. GREEN coverage is 1 hook test, 3 modal tests, 6 page tests, and the complete 14-test/39-assertion backend repository suite.
+- Contract: canonical string money through shared `MoneyInput`; active non-virtual repositories; destination excludes the source and different currencies; one `crypto.randomUUID()` per modal open and stable retries; canonical error extraction; success toast/callback/close; independent `treasury.transfer` and `repositories.manage` action gates; API/FE currency contract; all eight affected cache families invalidated by leading prefixes.
+- Precision: no numeric money parsing was introduced; the touched list's existing `parseFloat` totals/sign checks were migrated to `big.js`.
+- Verification: frontend treasury 33 files/234 tests; typecheck; full web lint; TanStack audit 0; design audit 0 new; backend 14 tests/39 assertions; Pint pass; React Doctor changed-scope against base `5a587790725a2b8a23d72ffb4a70d1e21d41aa09` 100/100 with no issues.
+- Deviation: the all-raw cache-filter amendment is recorded in the dated Deviations entry above.

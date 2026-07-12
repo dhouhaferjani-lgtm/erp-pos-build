@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RepositoryListPage } from './RepositoryListPage'
+
+const mockHasPermission = vi.hoisted(() => vi.fn<(permission: string) => boolean>(() => true))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -34,10 +36,13 @@ vi.mock('../../stores/companyStore', () => {
 // Repositories page can open an Add modal; grant the manage permission so the
 // Add button renders, and stub the modal so it never actually mounts.
 vi.mock('../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
 }))
-vi.mock('../../components/organisms', () => ({
+vi.mock('../../components/organisms/AddRepositoryModal/AddRepositoryModal', () => ({
   AddRepositoryModal: () => null,
+}))
+vi.mock('./components/TransferCashModal', () => ({
+  TransferCashModal: () => null,
 }))
 
 interface Repository {
@@ -50,6 +55,7 @@ interface Repository {
   iban: string | null
   bic: string | null
   balance: string
+  currency: string
   is_active: boolean
 }
 
@@ -68,6 +74,7 @@ function makeRepo(overrides: Partial<Repository>): Repository {
     iban: null,
     bic: null,
     balance: '0',
+    currency: 'TND',
     is_active: true,
     ...overrides,
   }
@@ -98,6 +105,10 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 })
 
 describe('RepositoryListPage (canonical list)', () => {
+  beforeEach(() => {
+    mockHasPermission.mockImplementation(() => true)
+  })
+
   it('renders exactly one h1 page title', () => {
     render(<RepositoryListPage />)
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
@@ -123,6 +134,21 @@ describe('RepositoryListPage (canonical list)', () => {
     expect(
       screen.getByRole('button', { name: /treasury:repositories\.add/ }),
     ).toBeInTheDocument()
+  })
+
+  it('gates Add and Transfer cash actions independently', () => {
+    mockHasPermission.mockImplementation((permission: string) => permission === 'treasury.transfer')
+    const { unmount } = render(<RepositoryListPage />)
+
+    expect(screen.getByRole('button', { name: /treasury:repositories\.transfer\.action/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:repositories\.add/ })).not.toBeInTheDocument()
+
+    unmount()
+    mockHasPermission.mockImplementation((permission: string) => permission === 'repositories.manage')
+    render(<RepositoryListPage />)
+
+    expect(screen.getByRole('button', { name: /treasury:repositories\.add/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:repositories\.transfer\.action/ })).not.toBeInTheDocument()
   })
 
   it('links the repository name to its detail route', () => {

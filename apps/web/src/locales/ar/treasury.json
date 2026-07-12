@@ -11,5 +11,26 @@
       "openingBalanceHelp": "يُستخدم {{amount}} افتراضيًا إذا تُرك الحقل فارغًا.",
       "liveDifference": "الفرق الحالي"
     }
+  },
+  "repositories": {
+    "transfer": {
+      "action": "تحويل النقد",
+      "title": "تحويل النقد",
+      "from": "من المستودع",
+      "to": "إلى المستودع",
+      "amount": "المبلغ",
+      "notes": "ملاحظات",
+      "submit": "تحويل",
+      "success": "تم تحويل النقد بنجاح",
+      "sameRepository": "اختر مستودعين مختلفين",
+      "zeroAmount": "يجب أن يكون المبلغ أكبر من صفر",
+      "invalidAmount": "أدخل مبلغًا بحد أقصى 3 منازل عشرية",
+      "differentCurrency": "يجب أن يستخدم المستودعان العملة نفسها",
+      "balanceHint": "الرصيد الحالي: {{balance}}",
+      "selectRepository": "اختر مستودعًا",
+      "fromRequired": "اختر المستودع المصدر",
+      "toRequired": "اختر المستودع الوجهة",
+      "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
+    }
   }
 }

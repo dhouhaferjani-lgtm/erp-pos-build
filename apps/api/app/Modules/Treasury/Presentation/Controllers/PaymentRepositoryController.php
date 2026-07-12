@@ -239,8 +239,7 @@ class PaymentRepositoryController extends Controller
         array $attributes,
         ?string $existingGlAccountId = null,
         ?string $existingAccountId = null,
-    ): array
-    {
+    ): array {
         if (array_key_exists('account_id', $attributes) || $existingAccountId !== null) {
             return $attributes;
         }
@@ -271,6 +270,7 @@ class PaymentRepositoryController extends Controller
             'iban' => $repository->iban,
             'bic' => $repository->bic,
             'balance' => $repository->balance,
+            'currency' => $repository->currency,
             'is_active' => $repository->is_active,
             'gl_account_id' => $repository->gl_account_id,
             'gl_account' => $repository->glAccount?->only(['id', 'code', 'name']),
