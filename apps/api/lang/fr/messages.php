@@ -66,6 +66,7 @@ return [
         'instrument_not_available' => 'L\'instrument de paiement n\'est pas disponible.',
         'insufficient_funds' => 'Fonds insuffisants dans le dépôt.',
         'transfer_completed' => 'Transfert effectué avec succès.',
+        'transfer_recorded' => 'Transfert entre dépôts enregistré avec succès.',
         'adjustment_tolerance_account_missing' => 'Impossible d\'enregistrer cet ajustement : le plan comptable n\'a aucun compte assigné à l\'usage \':purpose\'. Allez dans Paramètres → Plan comptable pour assigner un compte à cet usage, puis réessayez.',
     ],
 

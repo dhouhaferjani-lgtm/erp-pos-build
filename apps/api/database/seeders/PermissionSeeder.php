@@ -87,6 +87,7 @@ class PermissionSeeder extends Seeder
             // Treasury - Payment Methods
             'treasury.view',
             'treasury.manage',
+            'treasury.transfer',
 
             // Treasury - Repositories
             'repositories.view',
