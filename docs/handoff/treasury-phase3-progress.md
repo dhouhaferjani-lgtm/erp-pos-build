@@ -128,3 +128,23 @@ None found during pre-flight review.
   - `cd apps/api && ./vendor/bin/phpstan --memory-limit=1G` — exit 0; `[OK] No errors` across 2503 files.
 - Protected perimeter: no reconcile command, `TreasuryMovementService` port, fiscal file, or named UI interlock was edited.
 - Deviations/concerns: none.
+
+### Task B1 — Tenant notifications table
+
+- Status: complete
+- Files:
+  - `apps/api/database/migrations/tenant/2026_07_12_110000_create_notifications_table.php`
+  - `.superpowers/sdd/task-B1-report.md`
+  - `.superpowers/sdd/progress.md`
+  - `docs/handoff/treasury-phase3-progress.md`
+- Contract: Laravel-standard tenant `notifications` table with UUID primary key, string type, UUID morph columns and their standard composite index, JSONB data, nullable timezone-aware `read_at`, timezone-aware timestamps, and the secondary `(notifiable_type, notifiable_id, read_at)` polling index. No `company_id` column was added, per spec §6.1.
+- TDD boundary: the binding plan assigns `$user->notify(...)` behavior smoke to B2's feature-test file. B1 stayed migration-only to avoid creating B2-owned scaffolding; RED was the absent locked migration path, followed by syntax, pretend SQL, real SQLite apply, and schema inspection.
+- Verification:
+  - `php -l apps/api/database/migrations/tenant/2026_07_12_110000_create_notifications_table.php` — exit 0; no syntax errors.
+  - Testing-env isolated SQLite `php artisan migrate ... --pretend --force` — exit 0; emitted the table plus the standard morph index and required secondary polling index in exact column order.
+  - Testing-env isolated SQLite real `php artisan migrate ... --force` — final gate exit 0; migration applied in 2.58 ms.
+  - Direct `PRAGMA table_info(notifications)` — eight expected columns; UUID-backed `id` primary key; `read_at` nullable.
+  - Direct `PRAGMA index_info(...)` — standard morph index ordered `(notifiable_type, notifiable_id)` and required polling index ordered `(notifiable_type, notifiable_id, read_at)`.
+  - Isolated SQLite `php artisan migrate:rollback ... --force` — exit 0 in 1.58 ms; subsequent `sqlite_master` inspection confirmed the table was absent.
+  - `./vendor/bin/pint --dirty` — exit 0; `{"result":"pass"}`. `git diff --check` — exit 0, no output.
+- Deviations/concerns: none. Database-channel behavior smoke remains assigned to B2 exactly as planned.
