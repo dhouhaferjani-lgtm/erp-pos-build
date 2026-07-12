@@ -327,3 +327,10 @@ None found during pre-flight review.
 - Notification flow: seeded one local `treasury.reconcile.drift` database notification for the owner with a `CASH-01` deep link. Reload showed badge `1`; the panel rendered the treasury drift alert; clicking it navigated to the repository detail and marked it read, clearing the badge.
 - STOP/fix resolved during E1: opening the first transfer modal exposed the shared repository-query cache-shape mismatch documented above. Commit `625d36915` fixed the producer shape with an integration regression; the full browser flow was restarted from that step and passed.
 - Anomalies: the report correctly omits the same-GL transfer because E1 step 2 requires repository movements only; step 3's “both legs” check applies to the cross-GL drawer→bank transfer. No unresolved E1 failure remains.
+
+### Task E2 — Deployment checklist and final documentation
+
+- Status: complete.
+- Added `docs/handoff/treasury-phase3-deploy-checklist.md` with the two tenant migrations, per-tenant roles/permissions reseed and cache reset, no-chart-reseed note, pre-reseed token caveat, process restart checks, staging transfer/notification/widget smoke, reconcile check, and non-destructive rollback guidance.
+- Phase 3 implementation state: Waves A–E complete; Gates 1–3 approved; Gate 4 verification and whole-branch adversarial review remain the final release-candidate actions.
+- Integration boundary: this branch is intentionally not merged or pushed by the Codex session.
