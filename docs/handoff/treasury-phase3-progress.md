@@ -268,3 +268,14 @@ None found during pre-flight review.
 - Verification: TypeScript typecheck passed; full web lint exited 0 with 0 errors (repository warning baseline only); TanStack key audit 0; design-system audit 0 new; `git diff --check` passed. The authoritative repository-root React Doctor v0.7.6 changed-scope run pinned with `--base 0aad1edf...` reported `No issues found!` and 100/100.
 - React Doctor follow-up TDD: the first repository-root scan exposed `role="dialog"` on a generic `<section>` (98/100), which the earlier app-directory invocation had missed. A native-element assertion failed RED (`SECTION` vs `DIALOG`); the panel then moved to non-modal `<dialog open>` and returned the focused suite and authoritative root scan to green/100.
 - Deviations/concerns: none. The current React Doctor CLI expresses the skill's former `--diff` behavior as `--scope changed --base <sha>`; the explicit recorded SHA prevents moving-branch contamination.
+
+### Task D4 — Cash movements report frontend
+
+- Status: complete.
+- Base: 9ccbb45c7b252409335f6f852673e1dcfa74d1a8.
+- Files: typed useCashMovementsReport hook/test; report page/test; lazy route/test; Accounting/reports Sidebar entry/gate test; en/fr/ar finance keys; task/progress reports.
+- RED: hook/page modules were unresolved, the Sidebar lacked the entry, and the unmatched report URL fell through to Dashboard. Existing Sidebar coverage remained green.
+- GREEN: the finance + D4 route/sidebar focused run passed 27 files and 172 tests. Coverage pins raw {data,meta} preservation through api.get, tenant-scoped key/gating, current-month defaults, repository/direction filters, one formatted totals row per currency, manual table columns, safe payment link/copy fallback, filter-preserving pagination, and both route/nav permission gates.
+- Contract: route uses reports.view; navigation uses the reports mapping under Accounting beside Treasury overview. This differs intentionally from the later Treasury-axis widget per L2-6.
+- Verification: typecheck, full web lint, explicit TanStack/design audits, JSON parsing, and diff check exited 0. Pinned React Doctor changed-scope against the D4 base has baseline.newCount 0 and empty diagnostics; line-scope reports no issues. The displayed 93 score consists only of four pre-existing whole-file warnings in required host files outside D4 changed lines, so no unrelated host refactor/suppression was made.
+- Deviations: no functional deviation; React Doctor score display behavior is documented in .superpowers/sdd/task-D4-report.md.

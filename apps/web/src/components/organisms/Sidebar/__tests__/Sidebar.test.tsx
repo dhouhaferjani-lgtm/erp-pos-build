@@ -140,6 +140,31 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy()
     })
+
+    it('shows cash movements beside treasury overview only with reports access', async () => {
+      const firstRender = renderSidebar(mechanicFullConfig)
+
+      const overviewLink = await screen.findByRole('link', {
+        name: /finance:hub\.cards\.treasuryOverview\.title/i,
+      })
+      const movementsLink = await screen.findByRole('link', {
+        name: /finance:cashMovements\.navTitle/i,
+      })
+
+      expect(movementsLink).toHaveAttribute('href', '/finance/cash-movements')
+      expect(
+        overviewLink.compareDocumentPosition(movementsLink) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+
+      firstRender.unmount()
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'reports')
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', {
+        name: /finance:cashMovements\.navTitle/i,
+      })).not.toBeInTheDocument()
+    })
   })
 
   describe('Pharmacy Vertical', () => {

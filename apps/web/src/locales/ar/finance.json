@@ -48,5 +48,60 @@
     "profitLossReport": {
       "revenueVsExpenses": "الإيرادات مقابل المصروفات"
     }
+  },
+  "cashMovements": {
+    "navTitle": "الحركات النقدية",
+    "title": "الحركات النقدية",
+    "subtitle": "عرض موحّد للتدفقات النقدية الداخلة والخارجة عبر المستودعات",
+    "loading": "جاري تحميل الحركات النقدية...",
+    "loadError": "تعذر تحميل الحركات النقدية",
+    "copySourceRef": "نسخ مرجع المصدر",
+    "filters": {
+      "dateRange": "نطاق التاريخ",
+      "repository": "المستودع",
+      "allRepositories": "كل المستودعات",
+      "direction": "الاتجاه",
+      "allDirections": "كل الاتجاهات"
+    },
+    "directions": {
+      "in": "داخل",
+      "out": "خارج"
+    },
+    "totals": {
+      "title": "الإجماليات حسب العملة",
+      "currency": "العملة",
+      "in": "الداخل",
+      "out": "الخارج",
+      "net": "الصافي",
+      "empty": "لا توجد إجماليات لهذه الفترة"
+    },
+    "columns": {
+      "date": "التاريخ",
+      "direction": "الاتجاه",
+      "amount": "المبلغ",
+      "sourceType": "نوع المصدر",
+      "counterparty": "الطرف المقابل",
+      "glAccount": "الحساب العام",
+      "sourceRef": "مرجع المصدر"
+    },
+    "sourceTypes": {
+      "payment": "دفعة",
+      "customer_payment": "دفعة عميل",
+      "supplier_payment": "دفعة مورد",
+      "advance": "عربون",
+      "supplier_advance_refund": "استرداد عربون مورد",
+      "journal_entry": "قيد محاسبي",
+      "expense": "مصروف",
+      "income": "إيراد",
+      "pos_receipt": "إيصال نقطة البيع",
+      "pos_receipt_refund": "استرداد نقطة البيع",
+      "repository_adjustment": "تسوية مستودع",
+      "treasury_transfer": "تحويل خزينة",
+      "instrument": "أداة دفع"
+    },
+    "empty": {
+      "title": "لا توجد حركات نقدية",
+      "description": "لا توجد حركات نقدية تطابق عوامل التصفية المحددة."
+    }
   }
 }

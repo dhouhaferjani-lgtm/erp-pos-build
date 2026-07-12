@@ -367,5 +367,60 @@
       "filed": "VAT period marked as filed",
       "exported": "Export downloaded successfully"
     }
+  },
+  "cashMovements": {
+    "navTitle": "Cash movements",
+    "title": "Cash movements",
+    "subtitle": "Unified view of cash inflows and outflows across repositories",
+    "loading": "Loading cash movements...",
+    "loadError": "Failed to load cash movements",
+    "copySourceRef": "Copy source reference",
+    "filters": {
+      "dateRange": "Date range",
+      "repository": "Repository",
+      "allRepositories": "All repositories",
+      "direction": "Direction",
+      "allDirections": "All directions"
+    },
+    "directions": {
+      "in": "In",
+      "out": "Out"
+    },
+    "totals": {
+      "title": "Totals by currency",
+      "currency": "Currency",
+      "in": "In",
+      "out": "Out",
+      "net": "Net",
+      "empty": "No totals for this range"
+    },
+    "columns": {
+      "date": "Date",
+      "direction": "Direction",
+      "amount": "Amount",
+      "sourceType": "Source type",
+      "counterparty": "Counterparty",
+      "glAccount": "GL account",
+      "sourceRef": "Source reference"
+    },
+    "sourceTypes": {
+      "payment": "Payment",
+      "customer_payment": "Customer payment",
+      "supplier_payment": "Supplier payment",
+      "advance": "Advance",
+      "supplier_advance_refund": "Supplier advance refund",
+      "journal_entry": "Journal entry",
+      "expense": "Expense",
+      "income": "Income",
+      "pos_receipt": "POS receipt",
+      "pos_receipt_refund": "POS refund",
+      "repository_adjustment": "Repository adjustment",
+      "treasury_transfer": "Treasury transfer",
+      "instrument": "Instrument"
+    },
+    "empty": {
+      "title": "No cash movements",
+      "description": "No cash movements match the selected filters."
+    }
   }
 }
