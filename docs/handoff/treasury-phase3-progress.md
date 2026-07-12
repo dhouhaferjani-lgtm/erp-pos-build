@@ -183,3 +183,45 @@ None found during pre-flight review.
   - `git diff --check` — exit 0, no output.
 - Protected perimeter: no Treasury movement port, fiscal file, frontend/interlock file, permission seeder, or unrelated module was edited.
 - Deviations/concerns: none.
+
+### Task B3 — Treasury alert notification and recipient resolver
+
+- Status: complete, including reviewer fix `afed7090f`.
+- Files: `TreasuryAlertNotification.php`, `TreasuryAlertRecipients.php`, `TreasuryAlertRecipientsTest.php`, and task/progress reports.
+- RED/GREEN: missing-class RED; real PostgreSQL DB-per-tenant GREEN at `4 tests, 11 assertions, 0 skips`.
+- Coverage: database-only stable type; `alert_type` forced into stored payload; team set to tenant and restored; per-tenant registrar flush; active-company membership deny direction; two-tenant cache isolation; inactive membership exclusion.
+- Reviewer fix: a conflicting caller `alert_type` initially won; regression test made that RED, then `toDatabase()` was changed so the constructor's stable value overrides caller data. Real PostgreSQL suite, PHPStan 1G, and Pint passed.
+- Deviations: none.
+
+### Task B4 — Treasury alert command delivery
+
+- Status: complete (`6df99958c`).
+- Files: `ReconcileTreasuryCommand.php`, `InstrumentMaturityAlertsCommand.php`, their focused tests, and task/progress reports.
+- RED/GREEN: missing drift/portfolio/maturity rows and notification-channel failure audit were RED; GREEN is `ReconcileTreasuryTest` 20 tests/88 assertions and `InstrumentMaturityAlertsTest` 6 tests/29 assertions.
+- Coverage: notification delivery is a third independently caught channel after audit; failures never suppress freeze/audit; portfolio failure has repository-less logging; company-manager deny direction; one maturity row per recipient/company; zero-count maturity sends nothing.
+- Verification: PHPStan 1G clean, Pint clean, diff check clean.
+- Deviations: none.
+
+### Task C1 — Cash-movements direction and per-currency totals
+
+- Status: complete (`ccd89f970`).
+- Files: request, reports controller, `CashMovementsReportService`, `CashMovementsReportTest`, and reports/progress.
+- RED/GREEN: direction ignored, totals missing, and unfiltered pagination meta were RED; GREEN is `14 tests, 85 assertions`.
+- Coverage: direction applies before count; one full-range SQL aggregate groups currency+direction; TND/EUR stay separate across payment and journal sources; totals remain full-range with `per_page=1`; exact `bcformatStrict`/`bcsub` formatting.
+- Verification: PHPStan 1G clean, Pint clean, diff check clean.
+- Deviations: none.
+
+### Task C2 — Cash-position windowed flows
+
+- Status: complete (`59245962b`).
+- Files: `CashPositionController.php`, `CashPositionEndpointTest.php`, and reports/progress.
+- RED/GREEN: requested flows missing and invalid window accepted were RED; GREEN is `6 tests, 37 assertions`.
+- Coverage: absent without parameter; 1..90 validation; exact in/out sums by `occurred_at`; active cash types only; foreign-currency, inactive, virtual, and out-of-window movements excluded; position remains balance-derived.
+- Verification: PHPStan 1G clean, Pint clean, diff check clean.
+- Deviations: none. Reviewer recorded a non-blocking test-hardening opportunity because fixture rows are inserted directly and cross-company/cross-tenant exclusion is not independently pinned; production scoping is correct.
+
+### Gate 2 adversarial review
+
+- Review: `docs/handoff/gate-reviews-phase3/GATE-2-rc1.md`.
+- Verdict: `APPROVE`; no gating findings and no Fable escalation.
+- The sole LOW process finding (missing B3-C2 summaries in this binding progress file) was corrected before the final Gate 2 tag.
