@@ -59,7 +59,25 @@ const QUERY_FACTORY_NAMES = new Set([
   'prefetchQuery',
 ]);
 
-const INVALIDATION_PREFIX_FACTORIES = new Set(['invalidateQueries']);
+/**
+ * queryClient cache-FILTER methods. Their `queryKey` option is a match
+ * filter, not a storage key: React Query compares filter keys as positional
+ * PREFIXES of stored query keys. Since `tenantScopedKey([...])` appends
+ * tenant/company as SUFFIXES, wrapping a filter in it is a proven no-op for
+ * every namespace-prefix intent (it only matches when it happens to equal a
+ * FULL stored key) — memory: project_tanstack_invalidation_suffix_noop,
+ * fixed repo-wide by the 2026-07 chore/tanstack-invalidation-sweep.
+ * Filters must use bare literal prefixes (e.g. `['stock-transfers']`);
+ * bare array literals are therefore APPROVED for these factories, and
+ * `tenantScopedKey(...)` filters are FLAGGED.
+ */
+const CACHE_FILTER_FACTORIES = new Set([
+  'invalidateQueries',
+  'removeQueries',
+  'resetQueries',
+  'refetchQueries',
+  'cancelQueries',
+]);
 
 const APPROVED_SCOPE_IDENTIFIERS = new Set([
   'tenantId',
@@ -402,9 +420,39 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
     const initializer = ts.isPropertyAssignment(queryKeyProp)
       ? queryKeyProp.initializer
       : resolveShorthandQueryKeyInitializer(sourceFile, queryKeyProp) ?? queryKeyProp.name;
+    const innerKey = unwrapKeyExpression(initializer);
+    const isCacheFilterFactory = CACHE_FILTER_FACTORIES.has(factoryName);
+
+    // No-op filter rule: a cache-filter method whose queryKey is a
+    // tenantScopedKey(...) call matches by suffix-vs-prefix mismatch —
+    // see CACHE_FILTER_FACTORIES doc comment. Flag it as an error.
+    const isTenantScopedFactoryCall =
+      ts.isCallExpression(innerKey) &&
+      ts.isIdentifier(innerKey.expression) &&
+      APPROVED_FACTORY_CALLS.has(innerKey.expression.text);
+    if (isCacheFilterFactory && isTenantScopedFactoryCall) {
+      const startPos = queryKeyProp.getStart(sourceFile);
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
+      const scopedArg = innerKey.arguments[0];
+      out.push({
+        file: relPath,
+        line: line + 1,
+        column: character + 1,
+        reason:
+          `${factoryName}({ queryKey: tenantScopedKey([...]) }) is a no-op filter: ` +
+          'tenantScopedKey appends tenant/company as SUFFIXES but React Query matches ' +
+          "filter keys as positional PREFIXES — use a bare literal prefix (e.g. ['stock-transfers'])",
+        factory: factoryName,
+        enclosing_symbol: findEnclosingSymbol(queryKeyProp),
+        resource: scopedArg ? extractQueryKeyResource(scopedArg) : null,
+        statement_fingerprint: `${fingerprintExpression(sourceFile, initializer)}@${startPos}`,
+        ast_kind: classifyQueryKeyAstKind(initializer),
+      });
+      return;
+    }
+
     const isInvalidationBarePrefix =
-      INVALIDATION_PREFIX_FACTORIES.has(factoryName) &&
-      ts.isArrayLiteralExpression(unwrapKeyExpression(initializer));
+      isCacheFilterFactory && ts.isArrayLiteralExpression(innerKey);
     if (!queryKeyExpressionIsApproved(initializer) && !isInvalidationBarePrefix) {
       const startPos = queryKeyProp.getStart(sourceFile);
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);

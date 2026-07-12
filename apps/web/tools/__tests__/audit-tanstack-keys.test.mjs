@@ -260,6 +260,94 @@ describe('Gate C — TanStack queryKey scanner', () => {
     });
   });
 
+  describe('cache-filter methods reject tenantScopedKey filters (proven no-op)', () => {
+    // tenantScopedKey appends tenant/company as SUFFIXES; React Query matches
+    // filter keys as positional PREFIXES. A tenantScopedKey(...) filter
+    // therefore only matches when it happens to equal the FULL query key —
+    // for every namespace-prefix intent it silently matches zero queries
+    // (memory: project_tanstack_invalidation_suffix_noop). Filters must use
+    // bare literal prefixes instead.
+    const CACHE_FILTER_METHODS = [
+      'invalidateQueries',
+      'removeQueries',
+      'resetQueries',
+      'refetchQueries',
+      'cancelQueries',
+    ];
+
+    for (const method of CACHE_FILTER_METHODS) {
+      it(`flags queryClient.${method} with a tenantScopedKey(...) filter`, () => {
+        const v = scanCode(`
+          queryClient.${method}({ queryKey: tenantScopedKey(['stock-transfers']) });
+        `, 'inline.ts');
+        expect(v).toHaveLength(1);
+        expect(v[0].reason).toContain('no-op');
+        expect(v[0].factory).toBe(method);
+      });
+
+      it(`approves queryClient.${method} with a bare array-literal prefix`, () => {
+        const v = scanCode(`
+          queryClient.${method}({ queryKey: ['stock-transfers'] });
+        `, 'inline.ts');
+        expect(v).toEqual([]);
+      });
+    }
+
+    it('flags a parenthesized tenantScopedKey(...) filter', () => {
+      const v = scanCode(`
+        queryClient.invalidateQueries({ queryKey: (tenantScopedKey(['users'])) });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('no-op');
+    });
+
+    it('flags a shorthand queryKey resolving to tenantScopedKey(...)', () => {
+      const v = scanCode(`
+        function useThing() {
+          const queryKey = tenantScopedKey(['users']);
+          return () => queryClient.invalidateQueries({ queryKey });
+        }
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('no-op');
+    });
+
+    it('emits resource + ast_kind metadata for the no-op violation', () => {
+      const v = scanCode(`
+        function useCancelStockTransfer() {
+          return () => queryClient.invalidateQueries({ queryKey: tenantScopedKey(['stock-transfers', id]) });
+        }
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].resource).toBe('stock-transfers');
+      expect(v[0].ast_kind).toBe('call_expression');
+    });
+
+    it('still approves tenantScopedKey for useQuery (full-key factory, not a filter)', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: tenantScopedKey(['stock-transfers', 'list']),
+          queryFn: () => fetch('/stock-transfers'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('still approves tenantScopedKey for queryClient.fetchQuery (full-key factory)', () => {
+      const v = scanCode(`
+        queryClient.fetchQuery({ queryKey: tenantScopedKey(['users']), queryFn: () => f() });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('still flags a bare array-literal key for queryClient.prefetchQuery (not a filter method)', () => {
+      const v = scanCode(`
+        queryClient.prefetchQuery({ queryKey: ['users'], queryFn: () => f() });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+    });
+  });
+
   describe('useMutation (does NOT use queryKey)', () => {
     it('useMutation with mutationKey is not picked up', () => {
       // Codex C4 note: useMutation uses mutationKey, not queryKey. The
