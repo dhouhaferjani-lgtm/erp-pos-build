@@ -131,4 +131,10 @@
 - Finding: BLOCKER — the tenant-tier migration incorrectly referenced the central-only `tenants` table. SQLite's combined test database masked the production tenant-database failure.
 - Fable escalation: not invoked; the blocker concerns migration topology, and Opus reported no validator-math BLOCKER/HIGH or uncertainty.
 - RC2 response (test-first): added a regression asserting tenant migrations do not reference the central `tenants` table, removed that FK while retaining tenant-local FKs, made FormRequest validity results observable in response metadata, and defaulted the first account to primary when a non-empty collection requests no primary. Focused account tests pass (5 tests, 31 assertions) and targeted PHPStan remains at 0 errors.
-- RC2 audit: pending.
+- RC2: `bank-gate-3-rc2` (`b35a2b3d5`).
+- Review: `docs/handoff/gate-reviews-bank/GATE-3-rc2.md`.
+- Verdict: `APPROVE`.
+- RC1 blocker status: resolved and protected by a tenant-tier regression test.
+- Findings: no blocking findings; one LOW future multi-country consistency note and two informational observations. The authoritative response-body validity already uses company country, and the current shipped validator remains TN-only.
+- Fable escalation: not invoked; neither RC1 nor RC2 reported a validator-math BLOCKER/HIGH or uncertainty.
+- Final confirmations: Partner imports no Treasury internals; warn-but-allow remains non-blocking; English/French i18n and design tokens pass; `PaymentInstrument` is untouched; the branch is local, unmerged, and unpushed.
