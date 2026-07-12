@@ -568,6 +568,102 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonPath('error.errors.from.0', 'The from field must match the format Y-m-d.');
     }
 
+    public function test_direction_filter_restricts_rows_and_pagination_meta(): void
+    {
+        $incomingPayment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '25.000',
+            paymentDate: '2026-07-05',
+            paymentType: PaymentType::DocumentPayment,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-05',
+            paymentType: PaymentType::SupplierPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-05&to=2026-07-05&direction=in&per_page=1');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_id', $incomingPayment->id);
+        $response->assertJsonPath('data.0.direction', 'in');
+        $response->assertJsonPath('meta.total', 1);
+        $response->assertJsonPath('meta.last_page', 1);
+        $response->assertJsonPath('meta.from', 1);
+        $response->assertJsonPath('meta.to', 1);
+    }
+
+    public function test_totals_are_grouped_per_currency_across_payment_and_journal_sources(): void
+    {
+        $this->company->update(['currency' => 'TND']);
+
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '100.125',
+            paymentDate: '2026-07-06',
+            paymentType: PaymentType::DocumentPayment,
+            currency: 'TND',
+        );
+        $this->payment(
+            repository: $this->bankRepository,
+            amount: '20.500',
+            paymentDate: '2026-07-06',
+            paymentType: PaymentType::SupplierPayment,
+            currency: 'EUR',
+        );
+
+        $journalEntry = $this->journalEntry('2026-07-06', 'manual_cash_expense', Str::uuid()->toString());
+        $this->journalLine($journalEntry, $this->cashAccount, '0.000', '40.005', 'Cash expense');
+        $this->journalLine($journalEntry, $this->revenueAccount, '40.005', '0.000', 'Offset');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-06&to=2026-07-06');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.totals.TND.in', '100.125');
+        $response->assertJsonPath('meta.totals.TND.out', '40.005');
+        $response->assertJsonPath('meta.totals.TND.net', '60.120');
+        $response->assertJsonPath('meta.totals.EUR.in', '0.00');
+        $response->assertJsonPath('meta.totals.EUR.out', '20.50');
+        $response->assertJsonPath('meta.totals.EUR.net', '-20.50');
+    }
+
+    public function test_totals_cover_the_whole_filtered_range_not_the_page(): void
+    {
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '15.000',
+            paymentDate: '2026-07-07',
+            paymentType: PaymentType::DocumentPayment,
+        );
+        $this->payment(
+            repository: $this->bankRepository,
+            amount: '35.000',
+            paymentDate: '2026-07-07',
+            paymentType: PaymentType::DocumentPayment,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '9.000',
+            paymentDate: '2026-07-07',
+            paymentType: PaymentType::SupplierPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-07&to=2026-07-07&direction=in&per_page=1');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('meta.total', 2);
+        $response->assertJsonPath('meta.last_page', 2);
+        $response->assertJsonPath('meta.totals.EUR.in', '50.00');
+        $response->assertJsonPath('meta.totals.EUR.out', '0.00');
+        $response->assertJsonPath('meta.totals.EUR.net', '50.00');
+    }
+
     private function account(string $code, string $name, AccountType $type): Account
     {
         return Account::create([
@@ -604,6 +700,7 @@ final class CashMovementsReportTest extends TestCase
         PaymentType $paymentType,
         PaymentOrigin $origin = PaymentOrigin::WebAdmin,
         ?string $fiscalEventId = null,
+        string $currency = 'EUR',
     ): Payment {
         return Payment::create([
             'tenant_id' => $this->tenant->id,
@@ -612,7 +709,7 @@ final class CashMovementsReportTest extends TestCase
             'payment_method_id' => $this->paymentMethod->id,
             'repository_id' => $repository->id,
             'amount' => $amount,
-            'currency' => 'EUR',
+            'currency' => $currency,
             'payment_date' => $paymentDate,
             'status' => PaymentStatus::Completed,
             'payment_type' => $paymentType,
