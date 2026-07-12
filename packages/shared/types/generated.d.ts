@@ -1962,6 +1962,16 @@ export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterpris
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
 declare namespace App.Modules.Treasury.Application.DTOs {
+export type BankData = {
+id: string;
+country_code: string;
+name: string;
+short_name: string | null;
+bic: string | null;
+rib_bank_code: string | null;
+city: string | null;
+is_custom: boolean;
+};
 export type TolerancePaymentBreakdownDTO = {
 userId: string;
 userName: string;

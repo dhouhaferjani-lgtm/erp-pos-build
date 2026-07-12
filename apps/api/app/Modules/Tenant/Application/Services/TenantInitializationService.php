@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\FranceChartOfAccountsSeeder;
@@ -87,6 +88,8 @@ class TenantInitializationService
 
         // 7. Seed standard payment methods
         $this->seedPaymentMethods($company);
+
+        $this->seedBanks($company);
 
         // 8. Seed payment repositories (cash registers, bank accounts) with GL links
         // Must run AFTER chart of accounts so GL account IDs can be resolved
@@ -215,6 +218,12 @@ class TenantInitializationService
     private function seedPaymentMethods(Company $company): void
     {
         $seeder = new PaymentMethodSeeder;
+        $seeder->run($company);
+    }
+
+    private function seedBanks(Company $company): void
+    {
+        $seeder = new BanksSeeder;
         $seeder->run($company);
     }
 
