@@ -5,6 +5,37 @@
       "paymentForSupplierInvoice": "دفعة لفاتورة المورد {{invoiceNumber}}"
     }
   },
+  "cashWidget": {
+    "title": "وضع السيولة النقدية",
+    "subtitle": "النقد المتاح في جميع المستودعات",
+    "types": {
+      "cashRegisters_zero": "لا توجد صناديق نقدية",
+      "cashRegisters_one": "صندوق نقدي واحد",
+      "cashRegisters_two": "صندوقان نقديان",
+      "cashRegisters_few": "{{count}} صناديق نقدية",
+      "cashRegisters_many": "{{count}} صندوقًا نقديًا",
+      "cashRegisters_other": "{{count}} صندوق نقدي",
+      "bankAccounts_zero": "لا توجد حسابات بنكية",
+      "bankAccounts_one": "حساب بنكي واحد",
+      "bankAccounts_two": "حسابان بنكيان",
+      "bankAccounts_few": "{{count}} حسابات بنكية",
+      "bankAccounts_many": "{{count}} حسابًا بنكيًا",
+      "bankAccounts_other": "{{count}} حساب بنكي",
+      "safes_zero": "لا توجد خزائن",
+      "safes_one": "خزنة واحدة",
+      "safes_two": "خزنتان",
+      "safes_few": "{{count}} خزائن",
+      "safes_many": "{{count}} خزنة",
+      "safes_other": "{{count}} خزنة"
+    },
+    "window": "آخر {{days}} أيام",
+    "in": "الداخل",
+    "out": "الخارج",
+    "viewOverview": "عرض النظرة العامة",
+    "viewMovements": "عرض الحركات",
+    "loading": "جارٍ تحميل وضع السيولة…",
+    "unavailable": "وضع السيولة غير متاح."
+  },
   "reconciliation": {
     "openingBalance": "الرصيد الافتتاحي",
     "startModal": {

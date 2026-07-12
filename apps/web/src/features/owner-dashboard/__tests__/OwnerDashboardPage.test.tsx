@@ -21,6 +21,10 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/features/treasury/components/CashPositionWidget', () => ({
+  CashPositionWidget: () => <div data-testid="cash-position-widget" />,
+}))
+
 const ownerReportHookMocks = vi.hoisted(() => ({
   useSalesSummary: vi.fn(),
   useSalesByLocation: vi.fn(),
@@ -142,6 +146,7 @@ describe('OwnerDashboardPage', () => {
     expect(screen.getByText('reports:ownerDashboard.revenueByCategory.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.paymentMethods.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.cashReconciliation.title')).toBeInTheDocument()
+    expect(screen.getByTestId('cash-position-widget')).toBeInTheDocument()
   })
 
   it('renders chart-backed widgets through the shared owner chart wrapper', () => {

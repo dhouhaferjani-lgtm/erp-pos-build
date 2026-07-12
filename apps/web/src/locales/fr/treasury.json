@@ -640,6 +640,25 @@
     "statuses": { "draft": "Brouillon", "remitted": "Remis", "closed": "Clôturé" },
     "lineStatuses": { "pending": "En attente", "cleared": "Encaissé", "bounced": "Impayé" }
   },
+  "cashWidget": {
+    "title": "Position de trésorerie",
+    "subtitle": "Trésorerie disponible dans les comptes",
+    "types": {
+      "cashRegisters_one": "{{count}} caisse",
+      "cashRegisters_other": "{{count}} caisses",
+      "bankAccounts_one": "{{count}} compte bancaire",
+      "bankAccounts_other": "{{count}} comptes bancaires",
+      "safes_one": "{{count}} coffre",
+      "safes_other": "{{count}} coffres"
+    },
+    "window": "7 derniers jours",
+    "in": "Entrées",
+    "out": "Sorties",
+    "viewOverview": "Voir l’aperçu",
+    "viewMovements": "Voir les mouvements",
+    "loading": "Chargement de la position de trésorerie…",
+    "unavailable": "La position de trésorerie est indisponible."
+  },
   "reconciliation": {
     "openingBalance": "Solde d'ouverture",
     "startModal": {

@@ -30,6 +30,15 @@ export interface CashPosition {
   currency: string
   groups: CashPositionGroup[]
   grand_total: string
+  flows?: {
+    window_days: number
+    in: string
+    out: string
+  }
+}
+
+interface CashPositionOptions {
+  flowsWindow?: number
 }
 
 /**
@@ -40,13 +49,18 @@ export interface CashPosition {
  * computed server-side from `payment_repositories.balance`, the
  * port-managed/reconcile-guarded authoritative cash figure.
  */
-export function useCashPosition() {
+export function useCashPosition(options?: CashPositionOptions) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const queryKey = options?.flowsWindow === undefined
+    ? ['treasury-cash-position']
+    : ['treasury-cash-position', options.flowsWindow]
 
   return useQuery({
-    queryKey: tenantScopedKey(['treasury-cash-position']),
-    queryFn: () => apiGet<CashPosition>('/treasury/cash-position'),
+    queryKey: tenantScopedKey(queryKey),
+    queryFn: () => options?.flowsWindow === undefined
+      ? apiGet<CashPosition>('/treasury/cash-position')
+      : apiGet<CashPosition>('/treasury/cash-position', { flows_window: options.flowsWindow }),
     enabled: tenantId !== null && companyId !== null,
   })
 }

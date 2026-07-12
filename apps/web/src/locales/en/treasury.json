@@ -640,6 +640,25 @@
     "statuses": { "draft": "Draft", "remitted": "Remitted", "closed": "Closed" },
     "lineStatuses": { "pending": "Pending", "cleared": "Cleared", "bounced": "Bounced" }
   },
+  "cashWidget": {
+    "title": "Cash position",
+    "subtitle": "Available cash across repositories",
+    "types": {
+      "cashRegisters_one": "{{count}} cash register",
+      "cashRegisters_other": "{{count}} cash registers",
+      "bankAccounts_one": "{{count}} bank account",
+      "bankAccounts_other": "{{count}} bank accounts",
+      "safes_one": "{{count}} safe",
+      "safes_other": "{{count}} safes"
+    },
+    "window": "Last {{days}} days",
+    "in": "In",
+    "out": "Out",
+    "viewOverview": "View overview",
+    "viewMovements": "View movements",
+    "loading": "Loading cash position…",
+    "unavailable": "Cash position is unavailable."
+  },
   "reconciliation": {
     "openingBalance": "Opening Balance",
     "startModal": {

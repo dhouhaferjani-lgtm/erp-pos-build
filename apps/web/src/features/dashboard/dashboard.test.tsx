@@ -27,6 +27,10 @@ vi.mock('../../lib/api', () => ({
   api: mockApi,
 }))
 
+vi.mock('@/features/treasury/components/CashPositionWidget', () => ({
+  CashPositionWidget: () => <div data-testid="cash-position-widget" />,
+}))
+
 const mockRecentDocuments = [
   makeRecentDocument({
     id: '1',
@@ -153,6 +157,7 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText(/recent payments/i)).toBeInTheDocument()
       expect(screen.getByText('PAY-2025-0001')).toBeInTheDocument()
+      expect(screen.getByTestId('cash-position-widget')).toBeInTheDocument()
     })
   })
 
