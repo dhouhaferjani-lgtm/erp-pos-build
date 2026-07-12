@@ -125,6 +125,11 @@
       "unitCost": "Coût unitaire (au départ)",
       "allocatedCost": "Coût alloué"
     },
+    "batch": {
+      "heading": "Lots",
+      "expiry": "Péremption",
+      "quantity": "Quantité"
+    },
     "actions": {
       "complete": "Confirmer la réception",
       "cancel": "Annuler le transfert"
