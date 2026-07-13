@@ -269,3 +269,17 @@
 - Existing architecture baseline: the combined console architecture path still flags only `ScanPercentScaleDrift` and `RunEnrichmentCommand` as unclassified. Those files, the test, and deferral fixture are byte-clean against Task 10 base `13388cf94`; the new command extends `TenantScopedCommand`. No unrelated fix was made.
 - Necessary file-list deviation: the Expense module provider now registers the command because module console classes are not auto-discovered. This is registration-only; no service or behavior outside Task 10 was added.
 - Task report: `.superpowers/sdd/task-10-report.md`.
+
+## Task 11 — Recurring forecast feeds — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Accounting/Application/Services/Reports/UpcomingPaymentsService.php`
+  - `apps/api/tests/Feature/Accounting/UpcomingPaymentsRecurringTest.php`
+- RED: after correcting the command fixture's required `expenses.post` permission, focused PHPUnit exited 1 with all 5 lifecycle tests failing on the absent projected/materialized feeds. Projection assertions received no Money-Out lines, and generated Draft assertions proved the existing posted-only query left the materialization-to-posting gap.
+- GREEN: focused PHPUnit passed 6 tests / 46 assertions. The suite pins an active cursor projection, command-driven projection-to-Draft partitioning without a gap or double count, Draft-to-posted-unpaid movement, deliberate deletion semantics after cursor advancement, exact TND string aggregation, cursor iteration, and an occurrence exactly on the inclusive end date.
+- Forecast partition: posted unpaid expenses remain unchanged; recurring Draft documents with a non-null metadata template link are concrete document lines due on `document_date`; Active templates project from `next_due_date` through the horizon using origin-anchored `RecurrenceCursor::next`. Cursor advance makes the materialized and projected partitions disjoint.
+- Money contract: projection amounts remain decimal strings, are formatted and accumulated with bcmath at the owning company's resolved scale, and combine with document/instrument totals without float conversion.
+- Read architecture and scope: the service class documents its existing direct cross-module read convention for `ExpenseMetadata` and `ExpenseRecurrenceTemplate`; projections are read-only and never materialize an expense. Draft lines use the document UUID as the reference until posting assigns a document number.
+- Verification: full Accounting feature path passed 484 tests / 2202 assertions (4 existing skips and 1 existing PHPUnit deprecation); full Expense feature path passed 90 tests / 537 assertions; the Task 10 generation command path passed 7 tests / 70 assertions. Scoped PHPStan level 8 and Pint passed; `git diff --check` passed.
+- Deletion semantics: deleting a generated Draft intentionally removes that occurrence from the forecast. It is not projected or regenerated because the template cursor already advanced.
+- Deviations: none.
