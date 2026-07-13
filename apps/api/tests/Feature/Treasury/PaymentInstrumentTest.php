@@ -20,6 +20,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\InstrumentEvent;
@@ -178,6 +179,38 @@ class PaymentInstrumentTest extends TestCase
         $response->assertJsonPath('data.reference', 'CHK-123456');
         $response->assertJsonPath('data.status', 'received');
         $response->assertJsonPath('data.amount', '2500.000');
+    }
+
+    public function test_store_rejects_a_nonexistent_bank_id(): void
+    {
+        $this->actingAs($this->user)->postJson('/api/v1/payment-instruments', [
+            'payment_method_id' => $this->checkMethod->id,
+            'reference' => 'CHK-BANK-STORE',
+            'partner_id' => $this->partner->id,
+            'amount' => '2500.000',
+            'received_date' => now()->toDateString(),
+            'repository_id' => $this->checkSafe->id,
+            'bank_id' => Str::uuid()->toString(),
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['bank_id']],
+        ]);
+    }
+
+    public function test_store_rejects_a_bank_from_another_tenant(): void
+    {
+        $bank = $this->bankForAnotherTenant();
+
+        $this->actingAs($this->user)->postJson('/api/v1/payment-instruments', [
+            'payment_method_id' => $this->checkMethod->id,
+            'reference' => 'CHK-BANK-CROSS-TENANT-STORE',
+            'partner_id' => $this->partner->id,
+            'amount' => '2500.000',
+            'received_date' => now()->toDateString(),
+            'repository_id' => $this->checkSafe->id,
+            'bank_id' => $bank->id,
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['bank_id']],
+        ]);
     }
 
     public function test_can_create_pdc_with_maturity_date(): void
@@ -460,6 +493,43 @@ class PaymentInstrumentTest extends TestCase
         $this->assertSame(1, InstrumentEvent::query()->where('instrument_id', $instrument->id)->where('event_type', 'details_updated')->count());
     }
 
+    public function test_update_rejects_a_nonexistent_bank_id(): void
+    {
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'repository_id' => $this->checkSafe->id,
+        ]);
+
+        $this->actingAs($this->user)->patchJson("/api/v1/payment-instruments/{$instrument->id}", [
+            'bank_id' => Str::uuid()->toString(),
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['bank_id']],
+        ]);
+    }
+
+    public function test_update_rejects_a_bank_from_another_tenant(): void
+    {
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'repository_id' => $this->checkSafe->id,
+        ]);
+        $bank = $this->bankForAnotherTenant();
+
+        $this->actingAs($this->user)->patchJson("/api/v1/payment-instruments/{$instrument->id}", [
+            'bank_id' => $bank->id,
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['bank_id']],
+        ]);
+    }
+
     public function test_patch_rejects_deposited_instrument(): void
     {
         $this->user->givePermissionTo('instruments.update');
@@ -625,6 +695,17 @@ class PaymentInstrumentTest extends TestCase
     }
 
     /** @param array<string, mixed> $overrides */
+    private function bankForAnotherTenant(): Bank
+    {
+        $tenant = Tenant::factory()->create();
+
+        return Bank::query()->create([
+            'tenant_id' => $tenant->id,
+            'country_code' => 'TN',
+            'name' => 'Other Tenant Bank',
+        ]);
+    }
+
     private function instrument(array $overrides = []): PaymentInstrument
     {
         return PaymentInstrument::create(array_merge([

@@ -6,6 +6,7 @@ namespace Tests\Feature\Treasury;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
@@ -20,7 +21,6 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class PaymentInstrumentPortfolioColumnsTest extends TestCase
@@ -30,7 +30,11 @@ final class PaymentInstrumentPortfolioColumnsTest extends TestCase
     public function test_portfolio_fields_and_enum_casts_round_trip(): void
     {
         [$tenant, $company, $method] = $this->context();
-        $bankId = (string) Str::uuid();
+        $bankId = Bank::query()->create([
+            'tenant_id' => $tenant->id,
+            'country_code' => 'TN',
+            'name' => 'Portfolio Bank',
+        ])->id;
         $bank = PaymentRepository::factory()->for($company)->create([
             'tenant_id' => $tenant->id,
             'type' => 'bank_account',
