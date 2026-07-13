@@ -166,3 +166,12 @@
 - Root-cause fix: commit `700212281` restores the origin/dev annotations (`string $partner_id`, `Partner $partner`) and restores `partner->name` in the linkable supplier-invoice mapper. ExpenseResource keeps its explicit relation-loaded, company-constrained supplier serialization, so the expense exception remains disclosure-safe without weakening the shared model contract.
 - GREEN: fresh `./vendor/bin/phpstan --memory-limit=2G` passed 2,529/2,529 with no errors. The subsequent exact default `./vendor/bin/phpstan` also passed 2,529/2,529 with no errors; no baseline, suppression, or downstream consumer edits were added.
 - Regression verification: focused Expense response/isolation tests passed 9 tests / 35 assertions; full Expense passed 68 tests / 272 assertions; scoped Pint passed; `git diff --check` passed; `TreasuryMovementService` remained byte-untouched relative to `origin/dev`.
+
+## Gate 1 — Wave 1 money path — 2026-07-13
+
+- Release-candidate tag: `phase4-gate-1-rc1` at `806fceace`.
+- Autonomous review: Fable tier (`claude-fable-5`) over `git diff origin/dev..HEAD`.
+- Review file: `docs/handoff/gate-reviews-phase4/GATE-1-rc1.md`.
+- Verdict: **APPROVE** — no BLOCKER, HIGH, or MEDIUM findings.
+- Non-blocking observations: optional hardening of direct-service numeric-shape guards, cosmetic consistency in the tax-detail metadata access, and suggestion-only frontend rounding/formatting. No Wave 1 contract change was required.
+- Artifact note: the isolated reviewer lacked file-write permission, so it emitted the complete review text to stdout; the controller persisted that text without changing its substance.
