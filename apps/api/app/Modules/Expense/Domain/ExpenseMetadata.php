@@ -57,6 +57,8 @@ class ExpenseMetadata extends Model
         'paid_at',
         'receipt_number',
         'vendor_name',
+        'vat_rate',
+        'vat_deductible_percent',
         'expense_kind',
         'idempotency_key',
     ];
@@ -78,6 +80,8 @@ class ExpenseMetadata extends Model
             'payment_date' => 'date',
             'is_paid' => 'boolean',
             'paid_at' => 'datetime',
+            'vat_rate' => 'decimal:2',
+            'vat_deductible_percent' => 'decimal:2',
             'expense_kind' => ExpenseKind::class,
         ];
     }
