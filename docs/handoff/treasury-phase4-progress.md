@@ -200,3 +200,17 @@
 - Fix: added the nullable property annotation and fillable entry to `ExpenseMetadata`; no relationship was added because no direct consumer requires one.
 - GREEN: focused PHPUnit exited 0 with 5 tests / 56 assertions, proving model persistence and subsequent FK `SET NULL` behavior.
 - Fresh verification: full Expense 73 tests / 328 assertions; scoped PHPStan level 8 clean; scoped Pint and diff check clean.
+
+## Task 8 — Origin-anchored recurrence cursor math — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Domain/Services/RecurrenceCursor.php`
+  - `apps/api/tests/Unit/Expense/RecurrenceCursorTest.php`
+- RED: focused PHPUnit exited 2 with all 7 tests reaching the expected missing `RecurrenceCursor` API before the production class existed. The tests already pinned day-31 clamp recovery, quarterly/yearly cadence, leap-day clamping, inclusive roll-forward boundaries, and all three period-key formats.
+- GREEN: focused PHPUnit exited 0 with 7 tests / 11 assertions. Monthly `2026-01-31` advances to `2026-02-28` and then `2026-03-31`, proving candidates are regenerated from the origin rather than advanced from the clamped current value.
+- Cursor contract: `next` returns the first origin-cadence occurrence strictly after `current`; `firstOnOrAfter` returns the first occurrence greater than or equal to the supplied date, including before/on-origin and exact later occurrences; period keys are `YYYY-MM`, `YYYY-Qn`, and `YYYY`.
+- Purity: static immutable-date math only; no `now()`, `Date`, database, context, mutable clock, or other global dependency.
+- Regression: all `tests/Unit/Expense` passed 7 tests / 11 assertions; full Expense feature path passed 73 tests / 328 assertions.
+- Quality gates: scoped PHPStan level 8 clean; scoped Pint clean. Final syntax/diff/scope checks are recorded in the Task 8 report.
+- Scope: no Task 9+ CRUD, permissions, generation, scheduling, notification, forecast, frontend, Treasury, fiscal, posting, or settlement behavior changed.
+- Deviations: none.
