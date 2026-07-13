@@ -21,6 +21,8 @@ use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
@@ -32,6 +34,7 @@ use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\ExpenseVatSplit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -351,6 +354,31 @@ final class ExpenseService
                 // (BLOCKER-1) — takes the GL company advisory lock BEFORE the
                 // movement port takes the repository row lock below.
                 $entry = $this->glService->createFromExpense($expense, $user, PostingMode::SynchronousInTransaction);
+
+                $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
+                $scale = $this->scaleResolver->getScale((string) $expense->currency);
+                if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 1) {
+                    $deductiblePercent = (string) ($metadata->vat_deductible_percent ?? '100.00');
+                    $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
+                    $vatRate = $metadata?->vat_rate;
+
+                    DocumentTaxDetail::query()->firstOrCreate(
+                        [
+                            'document_id' => $expense->id,
+                            'tax_type' => TaxType::Percentage->value,
+                        ],
+                        [
+                            'sequence_order' => 1,
+                            'tax_code' => null,
+                            'tax_name' => $vatRate !== null ? "TVA {$vatRate}%" : 'TVA',
+                            'tax_rate' => $vatRate,
+                            'tax_fixed_amount' => null,
+                            'tax_base' => (string) ($expense->subtotal ?? '0'),
+                            'tax_amount' => $deductibleVat,
+                            'is_stamp_duty' => false,
+                        ],
+                    );
+                }
 
                 // Move treasury cash ONLY for a PAID expense linked to a payment
                 // repository. This REPLACES the old inline outflow: the write port

@@ -57,3 +57,23 @@
 - Scoped verification: focused PHPStan exited 0 with no errors; focused Pint exited 0 (`{"result":"pass"}`).
 - Implementation: `assertVatInvariants()` now receives the effective merged VAT trio. Any non-null trio field on a linked-cost create or stored-kind update throws before persistence can clear it. Generic zero VAT still normalizes the entire trio to null.
 - Review disposition: the VAT-less-total finding was not implemented. The binding brief states, **"When VAT is present, total and vat_amount must be ON THE CURRENCY GRID,"** and separately requires zero VAT to normalize to null for the VAT-less backward-compatible path. Rejecting VAT-less EUR `119.005` here would add an unplanned breaking validation change outside Task 3.
+
+## Task 4 — Expense VAT split posting and input-VAT declaration wiring — 2026-07-13
+
+- Files:
+  - `apps/api/app/Shared/Domain/ExpenseVatSplit.php`
+  - `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php`
+  - `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php`
+  - `apps/api/tests/Feature/Accounting/ExpenseVatPostingTest.php`
+  - `docs/handoff/treasury-phase4-progress.md`
+- RED: `php artisan test tests/Feature/Accounting/ExpenseVatPostingTest.php --display-warnings` exited 1 with 7 failed and 2 passed (13 assertions). The failures directly showed the legacy gross-only debit instead of the VAT split and the absent `document_tax_details` row; VAT-less posting and the supplier-balance regression were already green.
+- GREEN: the focused command exited 0 with 9 passed tests (29 assertions). Coverage pins unpaid/paid 100%, 80% remainder math and matching tax detail, 1-millime half-up, 0% with no 4456 line, byte-identical VAT-less shape/no tax row, EUR scale, supplier balance post-to-settle, and reconcile checks #1–#4 over a purpose-resolved repository GL account.
+- Relevant regression cutoff: `php artisan test tests/Feature/Expense/ExpenseServiceVatTest.php tests/Feature/Expense/ExpenseSettlementTest.php tests/Feature/Accounting/AccountingTenantIsolationTest.php tests/Feature/Treasury/ReconcileTreasuryTest.php --display-warnings` exited 0 with 79 passed tests (240 assertions).
+- Scoped verification:
+  - PHPStan over the shared helper, both modified services, and the new feature test exited 0 with no errors.
+  - Pint `--test` over the same four files exited 0 (`{"result":"pass"}`).
+  - `git diff --check` exited 0.
+- Invariants: both GL and tax-detail persistence consume `App\Shared\Domain\ExpenseVatSplit`; the helper uses `scale + 2` intermediates and one `CurrencyScale::bcround` at the posting boundary; GL uses the explicit expense currency scale and the remainder method; deductible VAT at zero omits 4456; the AP/Cash credit remains gross total; VAT-less posting preserves its exact two-line payload; tax detail is written in the existing posting transaction immediately after the JE is posted.
+- Reconcile harness note: this `TenantScopedCommand` run returns no captured `Artisan::output()`. The test therefore pins exit 0 plus authoritative cash-line matching, movement ordinal/balance continuity, Posted JE linkage, unfrozen/unflagged repository state, and absence of cash/portfolio drift audit events.
+- Deliberate architecture edge: `ExpenseService` writes `DocumentTaxDetail` directly as accepted by the binding plan; the shared math remains in `Shared\Domain` to avoid an Accounting-to-Expense dependency.
+- Implementation deviations: none. Settlement, linked-cost posting/capitalization, `TreasuryMovementService`, fiscal surfaces, and migrations were not changed. Broad preflight/full repository suites were intentionally not run per the Task 4 brief.
