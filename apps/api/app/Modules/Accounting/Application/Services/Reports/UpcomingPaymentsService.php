@@ -10,7 +10,10 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Domain\Enums\RecurrenceStatus;
 use App\Modules\Expense\Domain\ExpenseMetadata;
+use App\Modules\Expense\Domain\ExpenseRecurrenceTemplate;
+use App\Modules\Expense\Domain\Services\RecurrenceCursor;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -21,6 +24,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
+/**
+ * This report follows its established cross-module read style: it queries
+ * ExpenseMetadata and ExpenseRecurrenceTemplate directly for read-only feeds.
+ */
 final readonly class UpcomingPaymentsService
 {
     public function __construct(
@@ -37,12 +44,20 @@ final readonly class UpcomingPaymentsService
         $incoming = $this->openDocuments($companyId, [DocumentType::Invoice], $windowEnd);
         $outgoing = $this->openDocuments($companyId, [DocumentType::SupplierInvoice], $windowEnd)
             ->concat($this->openUnpaidExpenses($companyId, $windowEnd))
+            ->concat($this->materializedRecurringDrafts($companyId, $windowEnd))
             ->sortBy(fn (Document $document): string => sprintf(
                 '%s|%s',
                 CarbonImmutable::parse($document->due_date ?? $document->document_date)->toDateString(),
                 (string) $document->document_number,
             ))
             ->values();
+        $projectedRecurring = $this->projectedRecurringOccurrences(
+            $company->tenant_id,
+            $companyId,
+            $today,
+            $windowEnd,
+            $scale,
+        );
         $incomingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Inbound, $windowEnd);
         $outgoingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Outbound, $windowEnd);
 
@@ -52,11 +67,16 @@ final readonly class UpcomingPaymentsService
         ]);
         $outgoingLines = $this->sortLines([
             ...$this->toLines($outgoing, $today),
+            ...$projectedRecurring['lines'],
             ...$this->instrumentLines($outgoingInstruments, $today),
         ]);
 
         $totalIn = bcadd($this->sum($incoming, $scale), $this->sumInstruments($incomingInstruments, $scale), $scale);
-        $totalOut = bcadd($this->sum($outgoing, $scale), $this->sumInstruments($outgoingInstruments, $scale), $scale);
+        $totalOut = bcadd(
+            bcadd($this->sum($outgoing, $scale), $projectedRecurring['total'], $scale),
+            $this->sumInstruments($outgoingInstruments, $scale),
+            $scale,
+        );
 
         return new UpcomingPaymentsData(
             in: $incomingLines,
@@ -133,6 +153,90 @@ final readonly class UpcomingPaymentsService
     }
 
     /**
+     * Recurring drafts are already concrete outflows, even though they have not
+     * yet been posted. Their template cursor has advanced, so excluding them
+     * here would create a gap between materialization and posting.
+     *
+     * @return Collection<int, Document>
+     */
+    private function materializedRecurringDrafts(string $companyId, CarbonImmutable $windowEnd): Collection
+    {
+        return Document::query()
+            ->where('company_id', $companyId)
+            ->where('type', DocumentType::Expense)
+            ->where('status', DocumentStatus::Draft)
+            ->where('total', '>', 0)
+            ->whereHas('expenseMetadata', function (Builder $query): void {
+                /** @var Builder<ExpenseMetadata> $query */
+                $query->whereNotNull('recurrence_template_id');
+            })
+            ->whereDate('document_date', '<=', $windowEnd->toDateString())
+            ->with(['partner:id,name', 'expenseMetadata:id,document_id,vendor_name,is_paid,recurrence_template_id'])
+            ->orderBy('document_date')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Project active template cursors without materializing documents. Cursor
+     * advance partitions these lines from materialized drafts and posted bills.
+     *
+     * @return array{lines: array<int, UpcomingPaymentLineData>, total: numeric-string}
+     */
+    private function projectedRecurringOccurrences(
+        string $tenantId,
+        string $companyId,
+        CarbonImmutable $today,
+        CarbonImmutable $windowEnd,
+        int $scale,
+    ): array {
+        $lines = [];
+        $total = CurrencyScale::bcformat('0', $scale);
+        $templates = ExpenseRecurrenceTemplate::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('status', RecurrenceStatus::Active)
+            ->whereDate('next_due_date', '<=', $windowEnd->toDateString())
+            ->orderBy('next_due_date')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($templates as $template) {
+            $origin = CarbonImmutable::parse($template->start_date->toDateString());
+            $dueDate = CarbonImmutable::parse($template->next_due_date->toDateString());
+            $endDate = $template->end_date === null
+                ? null
+                : CarbonImmutable::parse($template->end_date->toDateString());
+            $amount = CurrencyScale::bcformat((string) $template->amount, $scale);
+
+            while (
+                $dueDate->lessThanOrEqualTo($windowEnd)
+                && ($endDate === null || $dueDate->lessThanOrEqualTo($endDate))
+            ) {
+                $daysUntilDue = (int) $today->diffInDays($dueDate, false);
+                $lines[] = new UpcomingPaymentLineData(
+                    partner_name: $template->name,
+                    document_number: $template->name,
+                    type: DocumentType::Expense->value,
+                    due_date: $dueDate->toDateString(),
+                    balance_due: $amount,
+                    days_until_due: $daysUntilDue,
+                    overdue: $daysUntilDue < 0,
+                    source: 'recurrence_projection',
+                    certainty: 'projected',
+                );
+                $total = bcadd($total, $amount, $scale);
+                $dueDate = RecurrenceCursor::next($origin, $template->frequency, $dueDate);
+            }
+        }
+
+        return [
+            'lines' => $lines,
+            'total' => CurrencyScale::bcformat($total, $scale),
+        ];
+    }
+
+    /**
      * Open amount owed on a document: expenses carry it in total
      * (balance_due is never populated for them), everything else in balance_due.
      *
@@ -167,7 +271,7 @@ final readonly class UpcomingPaymentsService
 
                 return new UpcomingPaymentLineData(
                     partner_name: $partnerName ?? 'Unassigned',
-                    document_number: $document->document_number,
+                    document_number: $document->document_number ?? $document->id,
                     type: $document->type->value,
                     due_date: $dueDate->toDateString(),
                     balance_due: $this->openAmount($document),

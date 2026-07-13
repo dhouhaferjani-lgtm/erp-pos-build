@@ -46,6 +46,7 @@ export const PERMISSIONS = {
   'expenses.delete': ['admin', 'accountant'],
   'expenses.post': ['admin', 'manager', 'accountant'],
   'expenses.pay': ['admin', 'manager', 'accountant'],
+  'expenses.export': ['admin', 'manager', 'accountant'],
   'income.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
   'income.create': ['admin', 'manager', 'cashier', 'operator', 'accountant'],
   'income.update': ['admin', 'manager', 'operator', 'accountant'],
@@ -57,6 +58,12 @@ export const PERMISSIONS = {
   'expense-categories.create': ['admin', 'manager', 'accountant'],
   'expense-categories.update': ['admin', 'manager', 'accountant'],
   'expense-categories.delete': ['admin', 'manager', 'accountant'],
+
+  // Recurring Expenses
+  'expense-recurrences.view': ['admin', 'manager', 'accountant', 'cashier', 'operator', 'viewer'],
+  'expense-recurrences.create': ['admin', 'manager', 'accountant'],
+  'expense-recurrences.update': ['admin', 'manager', 'accountant'],
+  'expense-recurrences.delete': ['admin', 'manager', 'accountant'],
 
   // Documents (unified view/update — e.g. attachment uploads)
   'documents.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
@@ -252,6 +259,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'replenishment.view': ['replenishment.view'],
   expenses: ['expenses.view'],
   'expense-categories': ['expense-categories.view'],
+  'expense-recurrences': ['expense-recurrences.view'],
   treasury: ['treasury.view'],
   remittances: ['instruments.remit'],
   vehicles: ['vehicles.view'],

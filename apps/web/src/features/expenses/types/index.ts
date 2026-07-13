@@ -1,4 +1,4 @@
-type DocumentStatus =
+export type DocumentStatus =
   | 'draft'
   | 'confirmed'
   | 'posted'
@@ -38,10 +38,13 @@ export interface ExpenseMetadata {
   payment_method_id: string | null
   payment_repository_id: string | null
   expense_kind: ExpenseKind
+  vat_rate: string | null
+  vat_deductible_percent: string | null
   linked_invoice_id?: string | null
   linked_operation_id?: string | null
   cost_type?: AdditionalCostType | null
   split_method?: LandedCostSplitMethod | null
+  recurrence_template_id?: string | null
   category?: {
     id: string
     name: string
@@ -59,6 +62,49 @@ export interface ExpenseMetadata {
   } | null
 }
 
+export type RecurrenceFrequency = 'monthly' | 'quarterly' | 'yearly'
+export type RecurrenceStatus = 'active' | 'paused' | 'ended'
+
+export interface ExpenseRecurrenceTemplate {
+  id: string
+  name: string
+  expense_category_id: string | null
+  partner_id: string | null
+  payment_method_id: string | null
+  payment_repository_id: string | null
+  vendor_name: string | null
+  amount: string
+  vat_rate: string | null
+  vat_deductible_percent: string | null
+  vat_amount: string | null
+  notes: string | null
+  frequency: RecurrenceFrequency
+  start_date: string
+  end_date: string | null
+  lead_days: number
+  status: RecurrenceStatus
+  next_due_date: string
+  created_by: string
+}
+
+export interface CreateExpenseRecurrenceDTO {
+  name: string
+  expense_category_id?: string | null
+  partner_id?: string | null
+  payment_method_id?: string | null
+  payment_repository_id?: string | null
+  vendor_name?: string | null
+  amount: string
+  vat_rate?: string | null
+  vat_deductible_percent?: string | null
+  vat_amount?: string | null
+  notes?: string | null
+  frequency: RecurrenceFrequency
+  start_date: string
+  end_date?: string | null
+  lead_days: number
+}
+
 /**
  * Expense document
  */
@@ -68,6 +114,13 @@ export interface Expense {
   status: DocumentStatus
   document_number: string | null
   document_date: string
+  partner_id: string | null
+  partner: {
+    id: string
+    name: string
+  } | null
+  subtotal: string | null
+  tax_amount: string | null
   total: string
   currency: string
   notes: string | null
@@ -119,12 +172,16 @@ export interface ExpenseCategory {
  */
 export interface CreateExpenseDTO {
   vendor_name?: string
+  partner_id?: string | null
   expense_category_id?: string
   payment_method_id?: string
   payment_repository_id?: string
   payment_date?: string
   receipt_number?: string
   total: string
+  vat_amount?: string
+  vat_rate?: string
+  vat_deductible_percent?: string
   notes?: string
   internal_notes?: string
   is_paid?: boolean
@@ -235,6 +292,52 @@ export interface ExpenseFilters {
   date_to?: string
   search?: string
   per_page?: number
+}
+
+export type ExpenseAnalyticsStatus = DocumentStatus | 'all'
+
+export interface ExpenseAnalyticsFilters extends Pick<
+  ExpenseFilters,
+  'category_id' | 'date_from' | 'date_to'
+> {
+  status?: ExpenseAnalyticsStatus
+}
+
+export interface ExpenseAnalyticsTiles {
+  total: string
+  count: number
+  unpaid_total: string
+  mom_delta_percent: string | null
+}
+
+export interface ExpenseAnalyticsCategory {
+  category_id: string | null
+  name: string
+  total: string
+  share_percent: string
+}
+
+export interface ExpenseAnalyticsMatrixRow {
+  category_id: string | null
+  name: string
+  months: Record<string, string>
+}
+
+export interface ExpenseAnalyticsVendor {
+  partner_id: string | null
+  vendor_name: string
+  total: string
+}
+
+export interface ExpenseAnalyticsData {
+  tiles: ExpenseAnalyticsTiles
+  by_category: ExpenseAnalyticsCategory[]
+  matrix: ExpenseAnalyticsMatrixRow[]
+  top_vendors: ExpenseAnalyticsVendor[]
+}
+
+export interface ExpenseAnalyticsResponse {
+  data: ExpenseAnalyticsData
 }
 
 /**

@@ -11,8 +11,12 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Domain\ExpenseMetadata;
+use App\Modules\Expense\Domain\ExpenseRecurrenceTemplate;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -41,6 +45,109 @@ final class ExpenseShowTest extends TestCase
             ->getJson("/api/v1/expenses/{$expense->id}")
             ->assertOk()
             ->assertJsonPath('data.id', $expense->id);
+    }
+
+    public function test_show_exposes_supplier_and_vat_response_contract_as_strings(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $supplier = Partner::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'name' => 'Papeterie Atlas',
+            'type' => PartnerType::Supplier,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+            'partner_id' => $supplier->id,
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'vendor_name' => 'Atlas receipt counter',
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.partner_id', $supplier->id)
+            ->assertJsonPath('data.partner.id', $supplier->id)
+            ->assertJsonPath('data.partner.name', 'Papeterie Atlas')
+            ->assertJsonPath('data.subtotal', '100.000')
+            ->assertJsonPath('data.tax_amount', '19.000')
+            ->assertJsonPath('data.metadata.vat_rate', '19.00')
+            ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00')
+            ->assertJsonPath('data.metadata.recurrence_template_id', null)
+            ->assertJsonStructure(['data' => ['metadata' => ['recurrence_template_id']]]);
+    }
+
+    public function test_show_exposes_the_recurring_template_origin_from_real_metadata(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $template = ExpenseRecurrenceTemplate::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'name' => 'Office rent',
+            'amount' => '1250.000',
+            'frequency' => 'monthly',
+            'start_date' => '2026-07-31',
+            'next_due_date' => '2026-08-31',
+            'created_by' => $user->id,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'recurrence_template_id' => $template->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.metadata.recurrence_template_id', $template->id);
+    }
+
+    public function test_show_does_not_disclose_an_inconsistent_cross_company_partner(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+        $otherCompany = Company::factory()->create([
+            'tenant_id' => $user->tenant_id,
+        ]);
+        $foreignSupplier = Partner::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Foreign Company Supplier',
+            'type' => PartnerType::Supplier,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+            'partner_id' => $foreignSupplier->id,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.partner_id', null)
+            ->assertJsonPath('data.partner', null)
+            ->assertJsonMissing(['name' => 'Foreign Company Supplier']);
     }
 
     /**

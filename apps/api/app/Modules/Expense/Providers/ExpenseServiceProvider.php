@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Providers;
 
+use App\Modules\Expense\Presentation\Console\GenerateRecurringExpensesCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -25,5 +26,11 @@ class ExpenseServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../routes.php');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                GenerateRecurringExpensesCommand::class,
+            ]);
+        }
     }
 }

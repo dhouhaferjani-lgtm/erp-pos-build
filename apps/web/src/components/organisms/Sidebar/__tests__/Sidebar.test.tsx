@@ -294,6 +294,32 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
   })
 
+  describe('Recurring expense permission', () => {
+    it('shows the recurring schedules link only through the recurrence view gate', async () => {
+      const allowed = renderSidebar(mechanicFullConfig)
+      expect(await screen.findByRole('link', { name: /navigation\.recurringExpenses/i }))
+        .toHaveAttribute('href', '/expenses/recurring')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('expense-recurrences')
+
+      allowed.unmount()
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'expense-recurrences')
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', { name: /navigation\.recurringExpenses/i }))
+        .not.toBeInTheDocument()
+    })
+  })
+
+  describe('Expense analytics navigation', () => {
+    it('links analytics through the expenses module permission map', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.expenseAnalytics/i }))
+        .toHaveAttribute('href', '/expenses/analytics')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('expenses')
+    })
+  })
+
   describe('Module Key Mapping', () => {
     it('maps "vehicles" sidebar key to "Vehicle" module name', async () => {
       renderSidebar(mechanicCompanyConfig)

@@ -6,20 +6,24 @@ import { useActivePaymentMethods } from '../../../treasury/hooks/usePaymentMetho
 import { useActivePaymentRepositories } from '../../../treasury/hooks/usePaymentRepositories'
 import { useLinkableExpenseInvoices, useLinkableExpenseOperations } from '../../hooks/useExpenses'
 import { useCurrency } from '../../../../hooks/useCurrency'
-import {
-  Button,
-  Checkbox,
-  FormField,
-  Input,
-  MoneyInput,
-  Select,
-  Textarea,
-} from '../../../../components/atoms'
+import { getDecimals } from '../../../../hooks/useCurrency'
+import { useTaxConfigurations } from '../../../../hooks/useTaxConfigurations'
+import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers'
+import { Button } from '../../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../../components/atoms/Checkbox/Checkbox'
+import { FormField } from '../../../../components/atoms/FormField/FormField'
+import { Input } from '../../../../components/atoms/Input/Input'
+import { MoneyInput } from '../../../../components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '../../../../components/atoms/QuantityInput/QuantityInput'
+import { Select } from '../../../../components/atoms/Select/Select'
+import { Textarea } from '../../../../components/atoms/Textarea/Textarea'
 import { StickyFormFooter } from '../../../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { tokens, textColors } from '../../../../lib/designTokens'
-import { bccomp } from '../../../../lib/decimal'
+import { bcadd, bccomp } from '../../../../lib/decimal'
+import { formatPercent } from '../../../../lib/format'
 import type { CreateExpenseDTO, Expense } from '../../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { computeVatFromInclusive } from '../../computeVatFromInclusive'
 
 interface ExpenseFormFieldsProps {
   expense?: Expense
@@ -42,6 +46,9 @@ export function ExpenseFormFields({
 }: ExpenseFormFieldsProps) {
   const { t } = useTranslation(['expenses', 'common'])
   const { currency } = useCurrency()
+  const currencyScale = getDecimals(currency)
+  const { data: taxConfigurations = [], isLoading: isLoadingTaxConfigurations } =
+    useTaxConfigurations()
 
   // Fetch payment methods and repositories
   const {
@@ -65,12 +72,18 @@ export function ExpenseFormFields({
     defaultValues: expense
       ? {
           vendor_name: expense.metadata?.vendor_name || '',
+          partner_id: expense.partner_id ?? '',
           expense_category_id: expense.metadata?.expense_category_id || '',
           payment_method_id: expense.metadata?.payment_method_id || '',
           payment_repository_id: expense.metadata?.payment_repository_id || '',
           payment_date: expense.metadata?.payment_date || '',
           receipt_number: expense.metadata?.receipt_number || '',
           total: expense.total,
+          vat_amount: expense.tax_amount ?? '',
+          vat_rate: expense.metadata?.vat_rate
+            ? bcadd(expense.metadata.vat_rate, '0', 2)
+            : '',
+          vat_deductible_percent: expense.metadata?.vat_deductible_percent || '100',
           notes: expense.notes || '',
           internal_notes: expense.internal_notes || '',
           is_paid: expense.metadata?.is_paid || false,
@@ -86,15 +99,22 @@ export function ExpenseFormFields({
           cost_type: 'transport',
           split_method: 'by_value',
           total: '',
+          vat_deductible_percent: '100',
         },
   })
 
   const categoryId = watch('expense_category_id')
   const totalValue = watch('total')
+  const vatAmount = watch('vat_amount') || ''
+  const vatRate = watch('vat_rate') || ''
+  const vatDeductiblePercent = watch('vat_deductible_percent') || ''
   const expenseKind = watch('expense_kind') || 'generic'
   const linkedOperationId = watch('linked_operation_id')
   const [selectedLinkedInvoiceId, setSelectedLinkedInvoiceId] = useState(
     expense?.metadata?.linked_invoice_id ?? ''
+  )
+  const [selectedPartner, setSelectedPartner] = useState<PartnerPickerValue | string | null>(
+    expense?.partner_id ?? null,
   )
   const isLinkedCost = expenseKind === 'linked_cost'
   const { data: linkableInvoices = [], isLoading: isLoadingInvoices } =
@@ -110,11 +130,48 @@ export function ExpenseFormFields({
     setValue('linked_operation_id', operationResolution.auto_selected_id)
   }, [operationResolution?.auto_selected_id, setValue])
 
+  useEffect(() => {
+    if (isLinkedCost) {
+      setValue('vat_amount', undefined)
+      setValue('vat_rate', undefined)
+      setValue('vat_deductible_percent', undefined)
+      return
+    }
+
+    if (vatDeductiblePercent === '') {
+      setValue('vat_deductible_percent', '100')
+    }
+  }, [isLinkedCost, setValue, vatDeductiblePercent])
+
   const selectedOperationId = linkedOperationId || operationResolution?.auto_selected_id
   const selectedOperation = operationResolution?.operations.find(
     (operation) => operation.document_id === selectedOperationId
   )
   const linkedInvoiceField = register('linked_invoice_id')
+  const vatRateField = register('vat_rate', {
+    validate: (value) =>
+      value === undefined ||
+      value === '' ||
+      (/^\d+(?:\.\d{1,2})?$/.test(value) &&
+        bccomp(value, '0') >= 0 &&
+        bccomp(value, '100') <= 0) ||
+      t('expenses:form.invalidVatRate'),
+  })
+  const percentageTaxConfigurations = taxConfigurations.filter(
+    (configuration) =>
+      configuration.is_active &&
+      configuration.tax_type === 'PERCENTAGE' &&
+      configuration.applies_to === 'LINE_ITEMS' &&
+      configuration.percentage_rate !== null,
+  )
+  const historicalVatRate = vatRate !== '' && !percentageTaxConfigurations.some(
+    (configuration) => bccomp(
+      bcadd(configuration.percentage_rate ?? '0', '0', 2),
+      vatRate,
+    ) === 0,
+  )
+    ? vatRate
+    : null
 
   return (
     <form onSubmit={handleSubmit(onSave)} className="space-y-6">
@@ -122,14 +179,30 @@ export function ExpenseFormFields({
       <div className="space-y-4">
         <h2 className={tokens.heading.section}>{t('expenses:form.vendorInfo')}</h2>
 
-        <FormField label={t('expenses:form.vendorName')} htmlFor="vendor_name">
-          <Input
-            id="vendor_name"
-            type="text"
-            {...register('vendor_name')}
-            placeholder={t('expenses:form.vendorNamePlaceholder')}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <PartnerPicker
+            value={selectedPartner}
+            onChange={(value) => {
+              setSelectedPartner(value)
+              setValue('partner_id', value?.id ?? null)
+              if (value !== null) {
+                setValue('vendor_name', value.name)
+              }
+            }}
+            partnerType="supplier"
+            label={t('expenses:form.supplier')}
+            placeholder={t('expenses:form.supplierPlaceholder')}
           />
-        </FormField>
+
+          <FormField label={t('expenses:form.vendorName')} htmlFor="vendor_name">
+            <Input
+              id="vendor_name"
+              type="text"
+              {...register('vendor_name')}
+              placeholder={t('expenses:form.vendorNamePlaceholder')}
+            />
+          </FormField>
+        </div>
 
         <FormField label={t('expenses:form.receiptNumber')} htmlFor="receipt_number">
           <Input
@@ -303,6 +376,109 @@ export function ExpenseFormFields({
           />
         </FormField>
       </div>
+
+      {!isLinkedCost && (
+        <div className={`space-y-3 rounded-md border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}>
+          <h3 className={tokens.label.base}>{t('expenses:form.vatBreakdown')}</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <FormField
+              label={t('expenses:form.vatRate')}
+              htmlFor="vat_rate"
+              error={errors.vat_rate?.message}
+            >
+              <Select
+                id="vat_rate"
+                {...vatRateField}
+                value={vatRate}
+                disabled={isLoadingTaxConfigurations}
+                error={!!errors.vat_rate}
+                onChange={(event) => {
+                  void vatRateField.onChange(event)
+                  const rate = event.target.value
+                  setValue('vat_rate', rate, { shouldValidate: true })
+                  setValue(
+                    'vat_amount',
+                    computeVatFromInclusive(totalValue || '', rate, currencyScale),
+                    { shouldValidate: true },
+                  )
+                }}
+              >
+                <option value="">
+                  {isLoadingTaxConfigurations
+                    ? t('common:loading')
+                    : t('expenses:form.selectVatRate')}
+                </option>
+                {historicalVatRate !== null ? (
+                  <option value={historicalVatRate}>
+                    {t('expenses:form.historicalVatRate')} ({historicalVatRate}%)
+                  </option>
+                ) : null}
+                {percentageTaxConfigurations.map((configuration) => {
+                  const rate = bcadd(configuration.percentage_rate ?? '0', '0', 2)
+                  return (
+                    <option key={configuration.id} value={rate}>
+                      {configuration.name} ({formatPercent(rate)})
+                    </option>
+                  )
+                })}
+              </Select>
+            </FormField>
+
+            <FormField
+              label={t('expenses:form.vatAmount')}
+              htmlFor="vat_amount"
+              error={errors.vat_amount?.message}
+            >
+              <MoneyInput
+                id="vat_amount"
+                {...register('vat_amount', {
+                  validate: (value) =>
+                    value === undefined ||
+                    value === '' ||
+                    (/^\d+(?:\.\d{1,3})?$/.test(value) &&
+                      bccomp(value, '0') >= 0 &&
+                      bccomp(value, totalValue || '0') < 0) ||
+                    t('expenses:form.vatAmountLessThanTotal'),
+                })}
+                currency={currency}
+                value={vatAmount}
+                onChange={(value) => {
+                  setValue('vat_amount', value, { shouldValidate: true })
+                }}
+                error={!!errors.vat_amount}
+              />
+            </FormField>
+
+            <FormField
+              label={t('expenses:form.vatDeductible')}
+              htmlFor="vat_deductible_percent"
+              helperText={t('expenses:form.vatDeductibleHint')}
+              error={errors.vat_deductible_percent?.message}
+            >
+              <QuantityInput
+                id="vat_deductible_percent"
+                {...register('vat_deductible_percent', {
+                  validate: (value) =>
+                    value === undefined ||
+                    value === '' ||
+                    (/^\d+(?:\.\d{1,2})?$/.test(value) &&
+                      bccomp(value, '0') >= 0 &&
+                      bccomp(value, '100') <= 0) ||
+                    t('expenses:form.invalidVatDeductible'),
+                })}
+                decimalPlaces={2}
+                min="0"
+                max="100"
+                value={vatDeductiblePercent}
+                onChange={(value) => {
+                  setValue('vat_deductible_percent', value, { shouldValidate: true })
+                }}
+                error={!!errors.vat_deductible_percent}
+              />
+            </FormField>
+          </div>
+        </div>
+      )}
 
       {/* Payment Details */}
       <div className="space-y-4">

@@ -209,6 +209,8 @@ const ExpenseListPage = lazy(() => import('../features/expenses/pages/ExpenseLis
 const ExpenseFormPage = lazy(() => import('../features/expenses/pages/ExpenseFormPage').then((m) => ({ default: m.ExpenseFormPage })))
 const ExpenseDetailPage = lazy(() => import('../features/expenses/pages/ExpenseDetailPage').then((m) => ({ default: m.ExpenseDetailPage })))
 const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/ExpenseCategoryPage').then((m) => ({ default: m.ExpenseCategoryPage })))
+const RecurringExpensesPage = lazy(() => import('../features/expenses/pages/RecurringExpensesPage').then((m) => ({ default: m.RecurringExpensesPage })))
+const ExpenseAnalyticsPage = lazy(() => import('../features/expenses/pages/ExpenseAnalyticsPage').then((m) => ({ default: m.ExpenseAnalyticsPage })))
 const IncomeListPage = lazy(() => import('../features/income/pages/IncomeListPage').then((m) => ({ default: m.IncomeListPage })))
 const IncomeFormPage = lazy(() => import('../features/income/pages/IncomeFormPage').then((m) => ({ default: m.IncomeFormPage })))
 
@@ -1611,6 +1613,26 @@ export function AppRoutes() {
               <RequirePermission permission="expense-categories.view">
                 <SuspenseWrapper>
                   <ExpenseCategoryPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="recurring"
+            element={
+              <RequirePermission permission="expense-recurrences.view">
+                <SuspenseWrapper>
+                  <RecurringExpensesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="analytics"
+            element={
+              <RequirePermission permission="expenses.view">
+                <SuspenseWrapper>
+                  <ExpenseAnalyticsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

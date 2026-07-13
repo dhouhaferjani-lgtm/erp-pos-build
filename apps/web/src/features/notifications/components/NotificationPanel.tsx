@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button'
+import { formatCurrency } from '@/lib/format'
 
 import type { AppNotification } from '../api/notificationsApi'
 import {
@@ -20,6 +21,7 @@ const KNOWN_TYPES = new Set([
   'treasury.reconcile.drift',
   'treasury.reconcile.portfolio_drift',
   'treasury.instrument.maturity_alert',
+  'expense.recurring.generated',
 ])
 
 function stringValue(value: unknown): string {
@@ -48,6 +50,13 @@ function displayMessage(notification: AppNotification, t: ReturnType<typeof useT
         depositedCount: countValue(notification.data['deposited_overdue_count']),
         receivedCount: countValue(notification.data['received_due_count']),
       })
+    case 'expense.recurring.generated': {
+      const currency = stringValue(notification.data['currency']) || 'EUR'
+      return t('messages.expense.recurring.generated', {
+        name: stringValue(notification.data['template_name']),
+        amount: formatCurrency(stringValue(notification.data['amount']), { currency }),
+      })
+    }
     default:
       return t('messages.generic')
   }

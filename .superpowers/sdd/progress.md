@@ -1,14 +1,24 @@
 # Subagent-driven development ledger
 
-Base: f2dc43f55
-Rebase note: rebased from initial `bb44387f195dd8ac9383803e30e5d43492f1c9ec` onto the latest documentation-only `origin/dev` commits through `f2dc43f55`; implementation scope unchanged
-Plan: docs/handoff/CODEX-treasury-phase3-followups-2026-07-13.md
+Base: 94a7c08cc0f4bde729a5dd8cf4c23388641840b5
+Plan: docs/superpowers/plans/2026-07-13-treasury-phase4-expense-depth.md
 
-Task F1: complete — transform exited 0 after processing 434 types; no generated declaration drift; FE-local response interfaces remain authoritative
-Task F2: complete — initial RED/GREEN plus final-review eligibility RED for inactive/virtual repositories; final focused GREEN passed 16 tests, focused lint 0 errors, React Doctor no issues at 98/100
-Task F3: complete — initial RED/GREEN plus review-fix RED for absent transactional re-fetch and stale-row comparison; final GREEN passed 20 tests / 62 assertions, focused PHPStan, and Pint
-Task F4: complete — retained both fluent predicates; gate fix uses a typed invokable callback factory with no inline override; focused PHPStan clean, PostgreSQL path passed 4 tests / 11 assertions, Pint pass
-Task F5: complete — added one decimal(15,3) SUM-exactness comment without SQL or behavior changes; focused endpoint path passed 6 tests / 37 assertions
-Task F6: complete — migrated only the repository summary-card bg-white literal to colors.white; focused list-page Vitest passed 6 tests and design audit reported 0 new / 0 stale
-Final verification: complete — backend Treasury 594 tests / 2,382 assertions green; PHPStan 2,528 files clean at the established 1 GB limit; Pint pass; FE typecheck/lint pass; changed Treasury UI 22/22; audits 0 new / 0 stale and 0 TanStack findings; React Doctor 98/100 with no changed-scope issues. Full Treasury Vitest retains the exact same 10 CompanyConfigProvider harness failures as clean origin/dev, with 243 branch passes vs 240 baseline passes.
-Autonomous review gate: complete — `phase3-followups-rc1`, Opus APPROVE, no BLOCKER/HIGH, no Fable escalation
+Task 1: complete (rebased commit 6081f8c47, review clean)
+Task 2: complete (rebased commit 7d3c2af8c, review clean)
+Task 3: complete (rebased commits 68bcb04fb..08c392a0b, review clean after linked-cost trio fix)
+Task 4: complete (rebased commits 8a71a72bf..3b59d48b8, review clean after TVA-detail collision fix)
+Task 5: complete (rebased commits ae64500ea..1b99f6e5d, review clean after persistence, isolation, accessibility, historical-rate, and explicit-null supplier-clear fixes)
+Task 6: complete (commits 3928e7f7f..806fceace; review clean after correcting branch-caused Document partner PHPDoc static-analysis regression; Gate 1 ready)
+Gate 1: APPROVE (Fable, rc1; final tag phase4-gate-1 at bf5144ef7; no blocker/high/medium findings)
+Task 7: complete (commits 4f927654a..5a8c18b2d; review clean after real ExpenseMetadata recurrence-link persistence fix)
+Task 8: complete (commit 3ad776504; review clean; 157,824 origin-cursor property checks plus focused/regression suites green)
+Task 9: complete (commits 627234dfc..13388cf94; review clean after ended-boundary and lifecycle-transition fixes; BE/FE grants aligned)
+Task 10: complete (commit f33fef2db; review clean; atomic generation/replay/notification/timezone/isolation contracts green)
+Task 11: complete (commit 9faaa374e; review clean; recurring projection/draft/posted partitions and exact company-scale totals green)
+Task 12: complete (commits 508729847..670619180; review clean after origin serialization, VAT invariant, async rejection, and scoped cache fixes; React Doctor no issues)
+Gate 2: APPROVE (Opus general + tenancy/authz lanes, rc1; final tag phase4-gate-2 at dc78d567c; no blocker/high/medium findings; no Fable escalation)
+Task 13: complete (commits 6ed0ebb0a..3229de35d; review clean after scoped top-vendor partner identity fix; analytics 9/65 and full Expense 105/664 green)
+Task 14: complete (commit a9e0ee4ea; review clean; shared list/export filters, streamed 45-row CSV, authz/isolation and raw decimal contracts green)
+Task 3: complete (initial rebased commit 68bcb04fb; review fix adds effective VAT-trio linked-cost guards)
+Task 3 review-fix TDD: RED 4 failed / 17 passed (34 assertions); GREEN 21 passed (38 assertions); final Expense path 63 passed (250 assertions); scoped PHPStan and Pint clean
+Task 3 review disposition: did not implement the VAT-less-total finding. The binding brief says, "When VAT is present, total and vat_amount must be ON THE CURRENCY GRID," and separately requires zero VAT to normalize to null for the VAT-less backward-compatible path. Rejecting VAT-less EUR total `119.005` would therefore add an unplanned breaking validation change outside Task 3.

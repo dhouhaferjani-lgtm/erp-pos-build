@@ -11,17 +11,23 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
+use App\Modules\Expense\Application\Queries\ExpenseIndexQuery;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
 use App\Modules\Expense\Presentation\Requests\PayExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\Document\OperationResolverInterface;
+use Closure;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Controller for expense management endpoints.
@@ -32,6 +38,7 @@ class ExpenseController extends Controller
         private readonly ExpenseService $expenseService,
         private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
+        private readonly ExpenseIndexQuery $expenseIndexQuery,
     ) {}
 
     /**
@@ -41,49 +48,13 @@ class ExpenseController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        $query = Document::where('type', DocumentType::Expense)
-            ->where('company_id', $companyId)
+        $query = $this->expenseIndexQuery->build($request, $companyId)
             ->with([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
             ]);
-
-        // Filter by status
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
-
-        // Filter by category
-        if ($request->filled('category_id')) {
-            $query->whereHas('expenseMetadata', function ($q) use ($request) {
-                // @phpstan-ignore-next-line
-                $q->where('expense_category_id', $request->input('category_id'));
-            });
-        }
-
-        // Filter by date range
-        if ($request->filled('date_from')) {
-            $query->where('document_date', '>=', $request->input('date_from'));
-        }
-
-        if ($request->filled('date_to')) {
-            $query->where('document_date', '<=', $request->input('date_to'));
-        }
-
-        // Search by vendor name or receipt number
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('document_number', 'ilike', "%{$search}%")
-                    ->orWhereHas('expenseMetadata', function ($metaQuery) use ($search) {
-                        // @phpstan-ignore-next-line
-                        $metaQuery->where('vendor_name', 'ilike', "%{$search}%")
-                            // @phpstan-ignore-next-line
-                            ->orWhere('receipt_number', 'ilike', "%{$search}%");
-                    });
-            });
-        }
 
         $expenses = $query->latest('document_date')
             ->latest('created_at')
@@ -118,6 +89,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.created', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -136,6 +108,7 @@ class ExpenseController extends Controller
             ->where('id', $id)
             ->where('company_id', $companyId)
             ->with([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -173,6 +146,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.updated', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -240,6 +214,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_posted'),
             'data' => new ExpenseResource($expense->load([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -280,6 +255,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_settled'),
             'data' => new ExpenseResource($expense->load([
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -309,6 +285,21 @@ class ExpenseController extends Controller
         }
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * @return Closure(Relation<*, *, *>): void
+     */
+    private function partnerForCompany(string $companyId): Closure
+    {
+        return static function (Relation $relation) use ($companyId): void {
+            if (! $relation instanceof BelongsTo || ! $relation->getRelated() instanceof Partner) {
+                throw new LogicException('Expense partner eager load must use the partner relation.');
+            }
+
+            $relation->select(['id', 'name'])
+                ->whereRaw('company_id = ?', [$companyId]);
+        };
     }
 
     public function linkableInvoices(Request $request): JsonResponse

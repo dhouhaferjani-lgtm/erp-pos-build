@@ -17,6 +17,11 @@
       "instrument": {
         "maturity_alert": "تنبيه استحقاق الأدوات"
       }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "تم إنشاء مصروف متكرر"
+      }
     }
   },
   "messages": {
@@ -28,6 +33,11 @@
       },
       "instrument": {
         "maturity_alert": "تحتاج {{receivedCount}} أدوات مستلمة و{{depositedCount}} أدوات مودعة إلى المراجعة."
+      }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "أنشأ {{name}} مسودة مصروف بقيمة {{amount}}."
       }
     }
   }
