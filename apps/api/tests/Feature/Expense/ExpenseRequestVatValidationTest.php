@@ -20,6 +20,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 final class ExpenseRequestVatValidationTest extends TestCase
@@ -143,7 +144,7 @@ final class ExpenseRequestVatValidationTest extends TestCase
 
     /**
      * @param  array<string, string>  $overrides
-     * @return TestResponse<array<string, mixed>>
+     * @return TestResponse<Response>
      */
     private function postExpense(array $overrides): TestResponse
     {
