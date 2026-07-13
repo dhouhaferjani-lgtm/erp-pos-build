@@ -105,4 +105,29 @@ Tree-management UI (master-detail + tree-table), CSV `placement_path` import, pr
 
 ---
 
-*Regenerate trigger: once the API lands, I'll append the exact endpoint paths + response envelopes here.*
+## 8. ✅ ENDPOINT REFERENCE (appended 2026-07-13 — API is LIVE on dev `52eac5364`, rename migration applied)
+
+All under the standard API base (`/api/v1`), middleware `['api','auth:sanctum',SetPermissionsTeam,EnforceTokenTenantClaim,'module:Inventory']` — the tenant must have the **Inventory module enabled** (else 403), in addition to `can:inventory.view` on reads. Bearer token with `tenant:<uuid>` ability (same auth your existing sync uses).
+
+| Purpose | Endpoint |
+|---|---|
+| **Node full-sync** (per location; small) | `GET /inventory/locations/{location}/nodes` |
+| **Placement delta-sync** (§2.1 contract) | `GET /inventory/placements` — tuple cursor + server `sync_high_watermark` + tombstones per §2.1, **with the three wire corrections below** |
+
+Three wire-level corrections vs §2.1's prose, verified against the shipped `ProductPlacementController::delta`:
+- ⚠️ **Envelope:** the page array is returned under **`data`**, not `rows`. Parse `response.data`, `response.next_cursor`, `response.sync_high_watermark`.
+- ⚠️ **Cursor serialization:** the response `next_cursor` is an object `{updated_at, id}`, but the **request** `cursor` query param must be the string `"<updated_at_iso8601>|<id_uuid>"` (server 422s if it lacks `|` or the id isn't a uuid). Re-serialize the object to that pipe string for the next page.
+- ⚠️ **Watermark echo:** on pages 2..N of a run, send the first page's watermark back as query param **`sync_high_watermark=<iso8601>`** (same name). If omitted the server re-captures `now()` and you lose the mid-pagination drift guarantee.
+| Node products (if you build a browse surface) | `GET /inventory/nodes/{node}/products` (paginated) |
+
+Write endpoints exist (`POST /inventory/nodes`, `move`, `assign-products`, …) but are **web-scoped for now** — see §7; do not build against them until the offline-write question is decided. Page size remains the only tunable on the delta endpoint. Generated type shapes: `LocationNodeDto`, `ProductPlacementDto`, `LocationNodeType` (`'zone'|'aisle'|'rack'|'shelf'|'bin'|'section'`) in the ERP repo `packages/shared/types/generated.d.ts` — mirror them, don't invent fields.
+
+## 9. Dispatch instructions (Codex, mobile repo — end-to-end)
+
+Implement the consumer end-to-end, autonomously, with checkpoints:
+
+- **Scope (v1 = READ-ONLY sync + read surfaces):** (1) SQLite migration adding the two §1 tables (check the current schema-version max and bump — never reuse a version); (2) full-sync of `location_nodes` per active location + delta-sync loop for `product_placements` per §2.1 (strict tuple `>` cursor, `<=` high-water-mark, tombstone application), wired into the existing sync scheduler alongside catalog/stock; (3) timestamp normalization per §4 (`toSqliteUtc` equivalent) — this is the #1 historical bug class, test it explicitly with a same-day boundary row; (4) read surfaces: product detail shows its placement `path` per location; counting/browse can filter by subtree using the §3 `= path OR LIKE path/%` form (test `A1` vs `A10`).
+- **NOT in scope:** any placement WRITE from the device (outbox) — blocked on §7's owner decision; the web write endpoints; inventing quantity-per-node anywhere (nodes NEVER carry stock).
+- **Checkpoints:** hard-stop gate after (a) schema+sync plumbing, (b) read surfaces — each gate = `claude -p --model claude-opus-4-8` adversarial review of the diff against THIS document (§1 shapes, §2.1 comparisons, §4 timestamps), verdict file committed in the mobile repo, CHANGES-REQUIRED → fix test-first → re-run. No Fable escalation expected (no money/quantity math in scope).
+- **Tests:** delta boundary (row updated exactly at the watermark is caught next run), tombstone removal, timestamp round-trip, subtree filter collision, offline cold-start with populated tables.
+- Verification per that repo's standard preflight; leave the branch for the ERP-side session's final review before merge.
