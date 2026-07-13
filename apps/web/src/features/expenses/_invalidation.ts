@@ -49,3 +49,39 @@ export function expenseCategoriesInvalidationPredicate(
     )
   }
 }
+
+export function expenseRecurrencesInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'expense-recurrences' &&
+      k[1] === 'list' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+export function expenseRecurrenceDetailInvalidationPredicate(
+  id: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length === 5 &&
+      k[0] === 'expense-recurrences' &&
+      k[1] === 'detail' &&
+      k[2] === id &&
+      k[3] === tenantId &&
+      k[4] === companyId
+    )
+  }
+}

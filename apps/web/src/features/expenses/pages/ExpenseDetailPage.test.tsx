@@ -185,6 +185,23 @@ describe('ExpenseDetailPage shell', () => {
     expect(vendorValue).toHaveTextContent('Legacy receipt vendor')
     expect(screen.queryByRole('link', { name: 'Legacy receipt vendor' })).not.toBeInTheDocument()
   })
+
+  it('identifies a draft generated from a recurring template', () => {
+    mockUseExpense.mockReturnValue({
+      data: {
+        ...fixtureDraftExpense,
+        metadata: {
+          ...fixtureDraftExpense.metadata,
+          recurrence_template_id: 'recurrence-1',
+        },
+      },
+      isLoading: false,
+    })
+
+    renderPage()
+
+    expect(screen.getByText('expenses:recurrences.generatedFromTemplate')).toHaveClass('rounded-full')
+  })
 })
 
 describe('ExpenseDetailPage — Post button permission gating', () => {

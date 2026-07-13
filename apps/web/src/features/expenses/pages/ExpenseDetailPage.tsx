@@ -168,6 +168,11 @@ export function ExpenseDetailPage() {
         <StatusBadge tone={statusTone(expense.status, statusToneOverrides)}>
           {t(`expenses:status.${expense.status}`)}
         </StatusBadge>
+        {expense.metadata?.recurrence_template_id && (
+          <StatusBadge tone="info" className="ms-2">
+            {t('expenses:recurrences.generatedFromTemplate')}
+          </StatusBadge>
+        )}
       </div>
 
       {/* Expense Details */}

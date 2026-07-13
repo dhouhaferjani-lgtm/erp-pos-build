@@ -238,6 +238,7 @@
     "locations": "Emplacements",
     "treasury": "Trésorerie",
     "expenseCategories": "Catégories de Dépenses",
+    "recurringExpenses": "Dépenses récurrentes",
     "instruments": "Instruments",
     "remittances": "Bordereaux de remise",
     "paymentMethods": "Modes de paiement",

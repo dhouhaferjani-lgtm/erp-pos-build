@@ -283,3 +283,24 @@
 - Verification: full Accounting feature path passed 484 tests / 2202 assertions (4 existing skips and 1 existing PHPUnit deprecation); full Expense feature path passed 90 tests / 537 assertions; the Task 10 generation command path passed 7 tests / 70 assertions. Scoped PHPStan level 8 and Pint passed; `git diff --check` passed.
 - Deletion semantics: deleting a generated Draft intentionally removes that occurrence from the forecast. It is not projected or regenerated because the template cursor already advanced.
 - Deviations: none.
+
+## Task 12 — Recurring expense UI and bell notification — 2026-07-13
+
+- Files:
+  - `apps/web/src/features/expenses/api/recurrenceApi.ts`
+  - `apps/web/src/features/expenses/hooks/useExpenseRecurrences.ts`
+  - `apps/web/src/features/expenses/components/organisms/ExpenseRecurrenceForm.tsx`
+  - `apps/web/src/features/expenses/pages/RecurringExpensesPage.tsx`
+  - expense recurrence types/invalidation predicates, route/sidebar wiring, expense-detail origin chip, bell notification rendering, EN/FR/AR locale resources, and focused tests.
+- RED: the initial six-file Vitest run exited 1 with four expected assertion failures and two missing-module suite failures before the recurrence API, hooks, page, route, navigation, notification type, and detail origin surface existed. A separate invalidation regression test then exited 1/4 because exact detail invalidation was absent.
+- GREEN: the UI provides localized cadence, next-due hierarchy, precision-safe currency display, status, permission-gated CRUD, pause/resume, and a W1-aligned supplier/VAT/payment form backed by `react-hook-form`. All seven exact `/expense-recurrences` operations are represented by the API client. Queries use tenant/company suffix scoping; mutations use scoped list/detail predicates and refresh the upcoming-payments forecast prefix.
+- Navigation and notification contract: `/expenses/recurring` is lazy-loaded before the expense `:id` route and gated by exact `expense-recurrences.view`; the sidebar link shares that gate. `expense.recurring.generated` resolves nested EN/FR/AR title/message keys, formats the decimal-string amount through `formatCurrency`, and preserves the expense deep link. Generated expense details display a recurrence-origin chip when `metadata.recurrence_template_id` is present.
+- Focused verification: six files passed 83/83 tests. Fresh widened verification passed 20 files, 151 tests, and 3 existing todo tests. Existing `tenantScope.test.tsx` act warnings remain non-failing and were not introduced by Task 12.
+- Quality gates:
+  - `pnpm typecheck`: exit 0.
+  - `pnpm lint`: exit 0 with 0 errors and existing repository warnings; TanStack audit 0 violations, design audit 753 acknowledged / 0 new / 0 stale, and custom ESLint rules green.
+  - Scoped Task 12 ESLint: 0 errors and 0 warnings.
+  - React Doctor pinned to Task 12 base `9faaa374e`: 93/100 with **No issues found**. The score remained 93 after all diagnostics were removed.
+  - `git diff --check`: exit 0.
+- Scope: frontend Task 12 only. No backend, generation, forecast, Treasury, fiscal, settlement, posting, migration, or Task 13+ behavior changed.
+- Deviations: one additional focused component file (`ExpenseRecurrenceForm.tsx`) was extracted from the page to satisfy React Doctor maintainability guidance and then migrated to the repository's required `react-hook-form` convention. No functional contract changed.

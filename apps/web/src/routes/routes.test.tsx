@@ -71,4 +71,13 @@ describe('route module guards', () => {
     expect(fragment).toContain('TreasuryOverviewPage')
     expect(fragment).toContain('permission="reports.view"')
   })
+
+  it('lazy-loads recurring expenses under an exact view permission guard', () => {
+    expect(routesSource).toContain("import('../features/expenses/pages/RecurringExpensesPage')")
+    const branch = routeBranch('expenses')
+    const idx = branch.indexOf('path="recurring"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(branch.slice(idx, idx + 450)).toContain('permission="expense-recurrences.view"')
+    expect(branch.slice(idx, idx + 450)).toContain('<RecurringExpensesPage />')
+  })
 })

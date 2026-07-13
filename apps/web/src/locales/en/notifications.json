@@ -17,6 +17,11 @@
       "instrument": {
         "maturity_alert": "Instrument maturity alert"
       }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "Recurring expense generated"
+      }
     }
   },
   "messages": {
@@ -28,6 +33,11 @@
       },
       "instrument": {
         "maturity_alert": "{{receivedCount}} received and {{depositedCount}} deposited instruments need attention."
+      }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "{{name}} generated a draft expense for {{amount}}."
       }
     }
   }

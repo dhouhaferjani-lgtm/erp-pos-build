@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppNotification } from '../api/notificationsApi'
 import { NotificationPanel } from './NotificationPanel'
+import { formatCurrency } from '@/lib/format'
 
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockMutateAll = vi.hoisted(() => vi.fn())
@@ -115,5 +116,34 @@ describe('NotificationPanel', () => {
     expect(screen.getByText('Notification')).toBeInTheDocument()
     expect(screen.getByText('App\\Notifications\\BatchExpiryNotification')).toBeInTheDocument()
     expect(screen.getByText('Lot B-42 expires tomorrow')).toBeInTheDocument()
+  })
+
+  it('renders a generated recurring expense with formatted amount and follows its deep link', async () => {
+    const user = userEvent.setup()
+    setList([{
+      id: 'recurring-1',
+      type: 'expense.recurring.generated',
+      data: {
+        template_name: 'Tunis office rent',
+        amount: '1250.000',
+        currency: 'TND',
+        due_date: '2026-08-31',
+        deep_link: '/expenses/expense-1/view',
+      },
+      read_at: null,
+      created_at: '2026-07-12T12:00:00Z',
+    }])
+
+    render(<NotificationPanel />)
+
+    expect(screen.getByText('Recurring expense generated')).toBeInTheDocument()
+    const amount = formatCurrency('1250.000', { currency: 'TND' })
+    const message = screen.getByText(/Tunis office rent generated a draft expense/)
+    expect(message.textContent).toContain(amount)
+    expect(screen.queryByText(/\{\{/)).not.toBeInTheDocument()
+    expect(screen.queryByText('expense.recurring.generated')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Tunis office rent/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/expenses/expense-1/view')
   })
 })

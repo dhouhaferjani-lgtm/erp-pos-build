@@ -261,6 +261,7 @@
     "accountingAndReports": "Accounting & Reports",
     "payments": "Payments",
     "expenses": "Expenses",
+    "recurringExpenses": "Recurring Expenses",
     "withholdingCertificates": "Withholding Certificates",
     "bankReconciliation": "Bank Reconciliation",
     "finance": "Finance",

@@ -44,6 +44,7 @@ export interface ExpenseMetadata {
   linked_operation_id?: string | null
   cost_type?: AdditionalCostType | null
   split_method?: LandedCostSplitMethod | null
+  recurrence_template_id?: string | null
   category?: {
     id: string
     name: string
@@ -59,6 +60,49 @@ export interface ExpenseMetadata {
     name: string
     type: string
   } | null
+}
+
+export type RecurrenceFrequency = 'monthly' | 'quarterly' | 'yearly'
+export type RecurrenceStatus = 'active' | 'paused' | 'ended'
+
+export interface ExpenseRecurrenceTemplate {
+  id: string
+  name: string
+  expense_category_id: string | null
+  partner_id: string | null
+  payment_method_id: string | null
+  payment_repository_id: string | null
+  vendor_name: string | null
+  amount: string
+  vat_rate: string | null
+  vat_deductible_percent: string | null
+  vat_amount: string | null
+  notes: string | null
+  frequency: RecurrenceFrequency
+  start_date: string
+  end_date: string | null
+  lead_days: number
+  status: RecurrenceStatus
+  next_due_date: string
+  created_by: string
+}
+
+export interface CreateExpenseRecurrenceDTO {
+  name: string
+  expense_category_id?: string | null
+  partner_id?: string | null
+  payment_method_id?: string | null
+  payment_repository_id?: string | null
+  vendor_name?: string | null
+  amount: string
+  vat_rate?: string | null
+  vat_deductible_percent?: string | null
+  vat_amount?: string | null
+  notes?: string | null
+  frequency: RecurrenceFrequency
+  start_date: string
+  end_date?: string | null
+  lead_days: number
 }
 
 /**
