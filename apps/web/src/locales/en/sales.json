@@ -130,7 +130,8 @@
       "currency": "Currency",
       "primary": "Primary bank account",
       "validRib": "Valid RIB",
-      "invalidRib": "RIB could not be verified; saving is still allowed"
+      "invalidRib": "RIB could not be verified; saving is still allowed",
+      "unsupportedCountry": "Automatic RIB validation is not available for this country."
     },
     "paymentTerms": {
       "immediate": "Immediate",

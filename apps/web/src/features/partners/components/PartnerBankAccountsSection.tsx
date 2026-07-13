@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/restrict-template-expressions -- React Hook Form field-array paths require numeric indices. */
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { CheckCircle, CircleAlert, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFieldArray, useWatch } from 'react-hook-form'
 import type { Control, UseFormRegister, UseFormSetValue } from 'react-hook-form'
@@ -126,6 +126,11 @@ function PartnerBankAccountRow({
             <span className={`mt-1 flex items-center gap-1 text-sm ${colorTokens.intent.caution.textStrong}`}>
               <TriangleAlert className="h-4 w-4" aria-hidden />
               {t('partners.bankAccounts.invalidRib')}
+            </span>
+          ) : validation.status === 'unsupported' ? (
+            <span className={`mt-1 flex items-center gap-1 text-sm ${colorTokens.intent.info.textStrong}`}>
+              <CircleAlert className="h-4 w-4" aria-hidden />
+              {t('partners.bankAccounts.unsupportedCountry')}
             </span>
           ) : null}
         </FormField>

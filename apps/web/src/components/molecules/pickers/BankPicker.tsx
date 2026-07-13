@@ -48,6 +48,7 @@ export function BankPicker({
   })
   const results = useMemo(() => data ?? [], [data])
   const boundedActiveIndex = activeIndex >= results.length ? -1 : activeIndex
+  const activeOption = boundedActiveIndex >= 0 ? results.at(boundedActiveIndex) : undefined
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent): void {
@@ -155,6 +156,7 @@ export function BankPicker({
         aria-label={ariaLabel}
         aria-expanded={isOpen}
         aria-controls={listboxId}
+        aria-activedescendant={activeOption === undefined ? undefined : `${inputId}-option-${activeOption.id}`}
         aria-autocomplete="list"
         value={query}
         disabled={disabled}
@@ -186,6 +188,7 @@ export function BankPicker({
               return (
                 <button
                   key={bank.id}
+                  id={`${inputId}-option-${bank.id}`}
                   type="button"
                   role="option"
                   aria-selected={isActive}

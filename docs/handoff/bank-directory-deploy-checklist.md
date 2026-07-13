@@ -29,9 +29,9 @@ php artisan tinker --execute='tenancy()->runForMultiple(null, function ($t) {
 });'
 ```
 
-Idempotent for row **existence** (updateOrCreate on `(tenant_id, country_code, rib_bank_code)`, name-keyed for the 7 null-code banks); custom banks (`is_custom=true`) are never touched.
+Idempotent for row **existence** (matched on `(tenant_id, country_code, rib_bank_code)`, name-keyed for the 7 null-code banks); custom banks (`is_custom=true`) are never touched.
 
-> **⚠️ Re-seed clobber caution:** a re-run unconditionally rewrites `is_active`, `is_custom`, `name`, `bic`, `position`, `city` on the 32 canonical rows — an admin-deactivated or admin-renamed canonical bank is reverted. Fine for a first backfill; do NOT wire this into a repeating deploy hook until the seeder preserves admin edits on update (follow-up ticket).
+On re-run, canonical rows preserve admin-managed `is_active`, `is_custom`, `name`, and `short_name` values. The seeder refreshes only directory-owned `bic`, `position`, and `city` fields, so repeating the backfill does not reactivate or rename a bank.
 
 ## 3. Verify
 

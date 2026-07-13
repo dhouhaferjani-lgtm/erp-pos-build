@@ -38,7 +38,7 @@ final class BanksSeeder extends Seeder
                 $bank['rib_bank_code'] !== null ? 'rib_bank_code' : 'name' => $bank['rib_bank_code'] ?? $bank['name'],
             ];
 
-            Bank::query()->updateOrCreate($identity, [
+            $canonicalAttributes = [
                 'name' => $bank['name'],
                 'short_name' => $bank['short_name'],
                 'bic' => $bank['bic'],
@@ -47,7 +47,20 @@ final class BanksSeeder extends Seeder
                 'is_active' => true,
                 'is_custom' => false,
                 'position' => $bank['position'],
-            ]);
+            ];
+
+            $existing = Bank::query()->where($identity)->first();
+            if ($existing instanceof Bank) {
+                $existing->update([
+                    'bic' => $bank['bic'],
+                    'position' => $bank['position'],
+                    'city' => $bank['city'],
+                ]);
+
+                continue;
+            }
+
+            Bank::query()->create([...$identity, ...$canonicalAttributes]);
         }
     }
 

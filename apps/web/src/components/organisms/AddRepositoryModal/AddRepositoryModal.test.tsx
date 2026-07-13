@@ -105,4 +105,17 @@ describe('AddRepositoryModal bank account flow', () => {
     expect(await screen.findByText('RIB checksum could not be verified. You can still save.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
+
+  it('shows unsupported-country validation as informational', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<AddRepositoryModal isOpen onClose={() => undefined} />, {
+      companyConfig: { ...mechanicCompanyConfig, country_code: 'FR', currency: 'EUR' },
+    })
+
+    await user.selectOptions(screen.getByLabelText(/^Type/), 'bank_account')
+    await user.type(screen.getByLabelText('Account'), '12345678901234567890')
+
+    expect(await screen.findByText('Automatic RIB validation is not available for this country.')).toBeInTheDocument()
+    expect(screen.queryByText('RIB checksum could not be verified. You can still save.')).not.toBeInTheDocument()
+  })
 })

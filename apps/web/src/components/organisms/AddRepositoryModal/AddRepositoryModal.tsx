@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useForm, useWatch, type UseFormRegister, type UseFormSetValue } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Loader2, TriangleAlert } from 'lucide-react'
 import { semanticColorTokens as colorTokens, tokens } from '../../../lib/designTokens'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
@@ -111,6 +111,11 @@ function RepositoryBankFields({
               <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
               {t('repositories.validation.invalidRibWarning')}
             </p>
+          ) : ribValidation.status === 'unsupported' ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.info.textStrong}`}>
+              <CircleAlert className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.unsupportedCountry')}
+            </p>
           ) : null}
         </FormField>
 
@@ -125,6 +130,11 @@ function RepositoryBankFields({
             <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.caution.textStrong}`}>
               <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
               {t('repositories.validation.invalidIbanWarning')}
+            </p>
+          ) : ibanValidation.status === 'unsupported' ? (
+            <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.info.textStrong}`}>
+              <CircleAlert className="h-3.5 w-3.5" aria-hidden />
+              {t('repositories.validation.unsupportedCountry')}
             </p>
           ) : null}
         </FormField>

@@ -47,6 +47,7 @@ const repository = {
   iban: null,
   bic: null,
   balance: '1500.000',
+  currency: 'USD',
   is_active: true,
   gl_account_id: null,
   gl_account: null,
@@ -176,7 +177,7 @@ describe('RepositoryDetailPage', () => {
     render(<RepositoryDetailPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.action' }))
-    expect(screen.getByRole('dialog')).toHaveTextContent('TND')
+    expect(screen.getByRole('dialog')).toHaveTextContent('USD')
 
     fireEvent.click(screen.getByRole('button', { name: 'complete adjustment' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

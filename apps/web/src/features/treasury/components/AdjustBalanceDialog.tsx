@@ -67,7 +67,7 @@ export function AdjustBalanceDialog({
         title={t('treasury:repositories.adjustBalance.title')}
         onClose={onClose}
       />
-      <form onSubmit={(event) => { void handleSubmit(onSubmit)(event) }}>
+      <form noValidate onSubmit={(event) => { void handleSubmit(onSubmit)(event) }}>
         <ModalContent>
           <FormField
             label={t('treasury:repositories.adjustBalance.direction')}

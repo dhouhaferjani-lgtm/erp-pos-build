@@ -350,6 +350,7 @@
     "validation": {
       "validRib": "Valid Tunisian RIB",
       "invalidRibWarning": "RIB checksum could not be verified. You can still save.",
+      "unsupportedCountry": "Automatic RIB validation is not available for this country.",
       "validIban": "Valid IBAN",
       "invalidIbanWarning": "IBAN checksum could not be verified. You can still save."
     },

@@ -102,7 +102,7 @@ describe('AdjustBalanceDialog', () => {
     },
   )
 
-  it('blocks four decimal places with native and form validation before mutation', () => {
+  it('shows localized validation for four decimal places before mutation', async () => {
     render(
       <AdjustBalanceDialog
         isOpen
@@ -113,11 +113,14 @@ describe('AdjustBalanceDialog', () => {
     )
 
     const amountInput = screen.getByLabelText(/treasury:repositories\.adjustBalance\.amount/)
+    expect(amountInput.closest('form')).toHaveAttribute('novalidate')
     fireEvent.change(amountInput, { target: { value: '1.2345' } })
     fireEvent.change(screen.getByLabelText(/treasury:repositories\.adjustBalance\.reasonText/), { target: { value: 'Count' } })
     fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.adjustBalance.submit' }))
 
-    expect(amountInput).toBeInvalid()
+    await waitFor(() => {
+      expect(screen.getByText('treasury:repositories.adjustBalance.validation.amount')).toBeInTheDocument()
+    })
     expect(mocks.mutate).not.toHaveBeenCalled()
   })
 })

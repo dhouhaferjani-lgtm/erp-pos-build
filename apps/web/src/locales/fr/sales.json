@@ -130,7 +130,8 @@
       "currency": "Devise",
       "primary": "Compte bancaire principal",
       "validRib": "RIB valide",
-      "invalidRib": "Le RIB n'a pas pu être vérifié ; l'enregistrement reste autorisé"
+      "invalidRib": "Le RIB n'a pas pu être vérifié ; l'enregistrement reste autorisé",
+      "unsupportedCountry": "La validation automatique du RIB n'est pas disponible pour ce pays."
     },
     "paymentTerms": {
       "immediate": "Immédiat",
