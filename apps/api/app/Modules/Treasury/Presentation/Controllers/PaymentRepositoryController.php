@@ -17,6 +17,7 @@ use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PaymentRepositoryController extends Controller
@@ -148,39 +149,64 @@ class PaymentRepositoryController extends Controller
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
             'is_active' => ['sometimes', 'boolean'],
         ]);
-        $validated = $this->defaultAccountIdToGlAccountId(
-            $validated,
-            $repository->gl_account_id,
-            $repository->account_id,
-        );
+        if (array_key_exists('gl_account_id', $validated)) {
+            $freshRepository = DB::transaction(function () use (
+                $companyId,
+                $id,
+                $tenantId,
+                $validated,
+            ): PaymentRepository {
+                $lockedRepository = PaymentRepository::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+                $lockedAttributes = $this->defaultAccountIdToGlAccountId(
+                    $validated,
+                    $lockedRepository->gl_account_id,
+                    $lockedRepository->account_id,
+                );
 
-        if (array_key_exists('gl_account_id', $validated)
-            && $validated['gl_account_id'] !== $repository->gl_account_id) {
-            $affectedLegCount = RepositoryMovement::query()
-                ->where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
-                ->where('payment_repository_id', $repository->id)
-                ->where('source_type', MovementSourceType::Transfer->value)
-                ->whereNull('journal_entry_id')
-                ->count();
+                if ($lockedAttributes['gl_account_id'] !== $lockedRepository->gl_account_id) {
+                    $affectedLegCount = RepositoryMovement::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->where('payment_repository_id', $lockedRepository->id)
+                        ->where('source_type', MovementSourceType::Transfer->value)
+                        ->whereNull('journal_entry_id')
+                        ->count();
 
-            if ($affectedLegCount > 0) {
-                $legClause = $affectedLegCount === 1
-                    ? 'leg has'
-                    : 'legs have';
+                    if ($affectedLegCount > 0) {
+                        $legClause = $affectedLegCount === 1
+                            ? 'leg has'
+                            : 'legs have';
 
-                throw new \DomainException(sprintf(
-                    'Cannot reassign the repository GL account while %d transfer movement %s no journal entry.',
-                    $affectedLegCount,
-                    $legClause,
-                ));
-            }
+                        throw new \DomainException(sprintf(
+                            'Cannot reassign the repository GL account while %d transfer movement %s no journal entry.',
+                            $affectedLegCount,
+                            $legClause,
+                        ));
+                    }
+                }
+
+                $lockedRepository->update($lockedAttributes);
+
+                /** @var PaymentRepository $freshRepository */
+                $freshRepository = $lockedRepository->fresh(['glAccount:id,code,name']);
+
+                return $freshRepository;
+            });
+        } else {
+            $validated = $this->defaultAccountIdToGlAccountId(
+                $validated,
+                $repository->gl_account_id,
+                $repository->account_id,
+            );
+            $repository->update($validated);
+
+            /** @var PaymentRepository $freshRepository */
+            $freshRepository = $repository->fresh(['glAccount:id,code,name']);
         }
-
-        $repository->update($validated);
-
-        /** @var PaymentRepository $freshRepository */
-        $freshRepository = $repository->fresh(['glAccount:id,code,name']);
 
         return response()->json([
             'data' => $this->formatRepository($freshRepository, $company->country_code),

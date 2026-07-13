@@ -5,7 +5,7 @@ Plan: docs/handoff/CODEX-treasury-phase3-followups-2026-07-13.md
 
 Task F1: complete — transform exited 0 after processing 434 types; no generated declaration drift; FE-local response interfaces remain authoritative
 Task F2: complete — strict RED confirmed 3 missing-behavior failures; focused GREEN passed 13 tests; React Doctor found no issues at 98/100
-Task F3: complete — RED received 200 instead of 422 for 2 null-JE transfer legs; GREEN passed 18 tests / 56 assertions, focused PHPStan, and Pint
+Task F3: complete — initial RED/GREEN plus review-fix RED for absent transactional re-fetch and stale-row comparison; final GREEN passed 20 tests / 62 assertions, focused PHPStan, and Pint
 Task F4: pending
 Task F5: pending
 Task F6: pending

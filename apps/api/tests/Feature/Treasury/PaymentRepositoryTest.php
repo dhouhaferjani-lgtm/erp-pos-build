@@ -19,6 +19,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -385,6 +386,80 @@ class PaymentRepositoryTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.gl_account_id', $replacementAccount->id);
         $this->assertSame($replacementAccount->id, $repository->refresh()->gl_account_id);
+    }
+
+    public function test_gl_account_reassignment_refetches_repository_inside_the_update_transaction(): void
+    {
+        [$repository, , $replacementAccount] = $this->repositoryAndGlAccounts();
+        $baseTransactionLevel = DB::transactionLevel();
+        $repositorySelectsInsideTransaction = [];
+        $updateTransactionLevels = [];
+
+        DB::listen(function (QueryExecuted $query) use (
+            &$repositorySelectsInsideTransaction,
+            $baseTransactionLevel,
+        ): void {
+            if (DB::transactionLevel() > $baseTransactionLevel
+                && str_contains(strtolower($query->sql), 'payment_repositories')) {
+                $repositorySelectsInsideTransaction[] = strtolower($query->sql);
+            }
+        });
+        PaymentRepository::updating(static function () use (&$updateTransactionLevels): void {
+            $updateTransactionLevels[] = DB::transactionLevel();
+        });
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'gl_account_id' => $replacementAccount->id,
+        ]);
+
+        $response->assertOk();
+        $this->assertNotEmpty(
+            $repositorySelectsInsideTransaction,
+            'A GL-bearing update must re-fetch the repository inside its transaction.',
+        );
+        $this->assertSame([$baseTransactionLevel + 1], $updateTransactionLevels);
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->assertTrue(
+                collect($repositorySelectsInsideTransaction)
+                    ->contains(static fn (string $sql): bool => str_contains($sql, 'for update')),
+                'The transactional repository re-fetch must acquire a PostgreSQL row lock.',
+            );
+        }
+    }
+
+    public function test_gl_reassignment_rechecks_actual_change_against_the_locked_repository(): void
+    {
+        [$repository, , $replacementAccount] = $this->repositoryAndGlAccounts();
+        $this->insertTransferMovement($repository, ordinal: 1);
+        $baseTransactionLevel = DB::transactionLevel();
+        $injected = false;
+
+        PaymentRepository::retrieved(function (PaymentRepository $retrieved) use (
+            &$injected,
+            $repository,
+            $replacementAccount,
+            $baseTransactionLevel,
+        ): void {
+            if ($injected
+                || $retrieved->id !== $repository->id
+                || DB::transactionLevel() > $baseTransactionLevel) {
+                return;
+            }
+
+            $injected = true;
+            DB::table('payment_repositories')
+                ->where('id', $repository->id)
+                ->update(['gl_account_id' => $replacementAccount->id]);
+        });
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'gl_account_id' => $replacementAccount->id,
+        ]);
+
+        $this->assertTrue($injected, 'The stale pre-transaction repository read must be simulated.');
+        $response->assertOk()
+            ->assertJsonPath('data.gl_account_id', $replacementAccount->id);
     }
 
     public function test_can_reassign_gl_account_when_transfer_legs_have_journal_entries(): void
