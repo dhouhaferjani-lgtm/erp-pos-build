@@ -325,3 +325,10 @@
 - Frontend: typecheck and full lint exited 0. The expense/notification/permission matrix passed 16 files / 106 tests with 3 existing todo tests. Design audit remained 753 acknowledged / 0 new / 0 stale; TanStack query-key audit remained 0.
 - Task 12 independent re-review: APPROVE after commits `508729847..670619180`; no remaining money-path BLOCKER/HIGH and no Fable escalation trigger before the formal Gate 2 Opus review.
 - Deviations: none.
+
+## Gate 2 RC1 verdict — 2026-07-13
+
+- General Opus lane: **APPROVE**, no BLOCKER/HIGH/MEDIUM. Artifact: `docs/handoff/gate-reviews-phase4/GATE-2-rc1.md`.
+- Tenancy/authz Opus lane: **APPROVE**, no BLOCKER/HIGH/MEDIUM and no money-path authorization break. Artifact: `docs/handoff/gate-reviews-phase4/GATE-2-tenancy-authz-rc1.md`.
+- Non-blocking observations: bare upcoming-payments prefix may over-refetch; primary same-tenant author lookup does not require active status; two INFO-level dedicated negative-test gaps. No data leak, IDOR, permission divergence, or money-path failure was found.
+- Fable escalation: not triggered because neither Opus lane found or remained uncertain about a money-path BLOCKER/HIGH, and Wave 2 records no money-path plan deviation.
