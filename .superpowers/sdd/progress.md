@@ -1,7 +1,7 @@
 # Subagent-driven development ledger
 
-Base: a4ecd97182bf4aeade693d6f5801e361183d3361
-Rebase note: rebased from the initial `bb44387f195dd8ac9383803e30e5d43492f1c9ec` base onto latest `origin/dev` at `a4ecd97182bf4aeade693d6f5801e361183d3361`; bookkeeping only, with no F4 behavior-scope change
+Base: f2dc43f55
+Rebase note: rebased from initial `bb44387f195dd8ac9383803e30e5d43492f1c9ec` onto the latest documentation-only `origin/dev` commits through `f2dc43f55`; implementation scope unchanged
 Plan: docs/handoff/CODEX-treasury-phase3-followups-2026-07-13.md
 
 Task F1: complete — transform exited 0 after processing 434 types; no generated declaration drift; FE-local response interfaces remain authoritative
@@ -10,5 +10,5 @@ Task F3: complete — initial RED/GREEN plus review-fix RED for absent transacti
 Task F4: complete — retained both fluent predicates; gate fix uses a typed invokable callback factory with no inline override; focused PHPStan clean, PostgreSQL path passed 4 tests / 11 assertions, Pint pass
 Task F5: complete — added one decimal(15,3) SUM-exactness comment without SQL or behavior changes; focused endpoint path passed 6 tests / 37 assertions
 Task F6: complete — migrated only the repository summary-card bg-white literal to colors.white; focused list-page Vitest passed 6 tests and design audit reported 0 new / 0 stale
-Final verification: pending
+Final verification: complete — backend Treasury 594 tests / 2,382 assertions green; PHPStan 2,528 files clean at the established 1 GB limit; Pint pass; FE typecheck/lint pass; changed Treasury UI 19/19; audits 0 new / 0 stale and 0 TanStack findings; React Doctor 98/100 with no changed-scope issues. Full Treasury Vitest retains the exact same 10 CompanyConfigProvider harness failures as clean origin/dev, with 243 branch passes vs 240 baseline passes.
 Autonomous review gate: pending
