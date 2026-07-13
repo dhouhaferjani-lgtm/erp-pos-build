@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $paid_at
  * @property string|null $receipt_number
  * @property string|null $vendor_name
+ * @property string|null $recurrence_template_id
  * @property ExpenseKind $expense_kind
  * @property string|null $idempotency_key
  * @property Carbon|null $created_at
@@ -59,6 +60,7 @@ class ExpenseMetadata extends Model
         'vendor_name',
         'vat_rate',
         'vat_deductible_percent',
+        'recurrence_template_id',
         'expense_kind',
         'idempotency_key',
     ];

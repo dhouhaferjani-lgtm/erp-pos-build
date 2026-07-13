@@ -18,7 +18,6 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -203,9 +202,10 @@ final class ExpenseRecurrenceTemplateModelTest extends TestCase
             ])->id,
         ]);
 
-        DB::table('expense_metadata')
-            ->where('id', $metadata->id)
-            ->update(['recurrence_template_id' => $template->id]);
+        $metadata->update(['recurrence_template_id' => $template->id]);
+        $metadata->refresh();
+
+        $this->assertSame($template->id, $metadata->recurrence_template_id);
 
         $template->delete();
 

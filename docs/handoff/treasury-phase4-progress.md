@@ -192,3 +192,11 @@
 - Migration/schema sanity: the focused `RefreshDatabase` path applied both migrations under the PHPUnit SQLite environment and passed real persistence and FK deletion checks.
 - Scope: exactly the Task 7 schema/enums/model slice. No cursor math, CRUD, permissions, generator, notifications, scheduling, frontend, Treasury, fiscal, settlement, posting, or generated-type surface changed.
 - Deviations: none.
+
+### Task 7 independent-review fix — metadata model write path
+
+- HIGH finding: the initial test used `DB::table` for the metadata link, hiding that `ExpenseMetadata::$fillable` omitted `recurrence_template_id`; Task 10's required `ExpenseMetadata::update()` call would silently discard it.
+- RED: after replacing the bypass with the exact model-update consumer path, focused PHPUnit exited 1 with 1 failure / 5 tests because refresh returned null instead of the template UUID.
+- Fix: added the nullable property annotation and fillable entry to `ExpenseMetadata`; no relationship was added because no direct consumer requires one.
+- GREEN: focused PHPUnit exited 0 with 5 tests / 56 assertions, proving model persistence and subsequent FK `SET NULL` behavior.
+- Fresh verification: full Expense 73 tests / 328 assertions; scoped PHPStan level 8 clean; scoped Pint and diff check clean.

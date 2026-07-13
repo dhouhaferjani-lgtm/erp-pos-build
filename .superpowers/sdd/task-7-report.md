@@ -53,9 +53,18 @@ The feature test proves:
 
 ## Scope and deviations
 
-- Production changes are exactly the two tenant migrations, two string-backed enums, and one recurrence-template model required by Task 7.
+- The initial production commit contains the two tenant migrations, two string-backed enums, and recurrence-template model required by Task 7; the independent-review fix below adds only the metadata model write contract needed to consume the new linkage.
 - The only additional file is the required focused feature test; this report and the shared handoff progress log record evidence.
 - No Task 8+ cursor, CRUD, permissions, command, notification, frontend, or scheduler behavior was implemented.
 - No Treasury, fiscal, posting, settlement, generated-type, or permission-map file changed.
 - No implementation deviation from the binding Task 7 plan/spec was required.
 - `.superpowers/sdd/progress.md` remained the sole unstaged controller ledger and was not staged.
+
+## Independent-review HIGH fix — metadata mass-assignment contract
+
+- Finding: the initial metadata-link test wrote through `DB::table`, masking that `ExpenseMetadata::$fillable` did not allow `recurrence_template_id`. Task 10's binding consumer path, `$expense->expenseMetadata?->update(['recurrence_template_id' => $template->id])`, would therefore silently discard the linkage.
+- RED: the test now uses the real `ExpenseMetadata::update()` path and refreshes the model. Focused PHPUnit exited 1 with 1 failure / 5 tests: the refreshed attribute was null instead of the template UUID.
+- Fix: added the `recurrence_template_id` PHPDoc property and fillable entry to `ExpenseMetadata`. No unused relationship was introduced.
+- GREEN: focused PHPUnit exited 0 with 5 tests / 56 assertions, including persistence through model mass assignment followed by `SET NULL` after template deletion.
+- Fresh regression: the full Expense feature path exited 0 with 73 tests / 328 assertions.
+- Fresh quality gates: scoped PHPStan level 8 reported no errors; scoped Pint passed; `git diff --check` passed.
