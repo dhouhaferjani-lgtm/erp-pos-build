@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -19,6 +21,8 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use ReflectionMethod;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -351,6 +355,61 @@ class PaymentRepositoryTest extends TestCase
         $this->assertSame($posAccount->id, $fresh->gl_account_id);
     }
 
+    public function test_cannot_reassign_gl_account_with_unposted_transfer_legs(): void
+    {
+        [$repository, $originalAccount, $replacementAccount] = $this->repositoryAndGlAccounts();
+        $this->insertTransferMovement($repository, ordinal: 1);
+        $this->insertTransferMovement($repository, ordinal: 2);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'gl_account_id' => $replacementAccount->id,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonPath('error.code', 'BUSINESS_ERROR')
+            ->assertJsonPath(
+                'error.message',
+                'Cannot reassign the repository GL account while 2 transfer movement legs have no journal entry.',
+            );
+        $this->assertSame($originalAccount->id, $repository->refresh()->gl_account_id);
+    }
+
+    public function test_can_reassign_gl_account_without_transfer_legs(): void
+    {
+        [$repository, , $replacementAccount] = $this->repositoryAndGlAccounts();
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'gl_account_id' => $replacementAccount->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.gl_account_id', $replacementAccount->id);
+        $this->assertSame($replacementAccount->id, $repository->refresh()->gl_account_id);
+    }
+
+    public function test_can_reassign_gl_account_when_transfer_legs_have_journal_entries(): void
+    {
+        [$repository, , $replacementAccount] = $this->repositoryAndGlAccounts();
+        $journalEntry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'TRF-'.Str::upper(Str::random(8)),
+            'entry_date' => now(),
+            'description' => 'Posted transfer fixture',
+            'status' => JournalEntryStatus::Posted,
+            'posted_at' => now(),
+        ]);
+        $this->insertTransferMovement($repository, ordinal: 1, journalEntryId: $journalEntry->id);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'gl_account_id' => $replacementAccount->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.gl_account_id', $replacementAccount->id);
+        $this->assertSame($replacementAccount->id, $repository->refresh()->gl_account_id);
+    }
+
     public function test_can_show_single_repository(): void
     {
         $repository = new PaymentRepository([
@@ -470,5 +529,64 @@ class PaymentRepositoryTest extends TestCase
         $this->assertInstanceOf(Migration::class, $migration);
 
         return $migration;
+    }
+
+    /**
+     * @return array{PaymentRepository, Account, Account}
+     */
+    private function repositoryAndGlAccounts(): array
+    {
+        $originalAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '101',
+            'name' => 'Original cash account',
+            'is_active' => true,
+        ]);
+        $replacementAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '102',
+            'name' => 'Replacement cash account',
+            'is_active' => true,
+        ]);
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'GL_REASSIGN',
+            'name' => 'GL reassignment fixture',
+            'type' => 'cash_register',
+            'account_id' => $originalAccount->id,
+            'gl_account_id' => $originalAccount->id,
+            'is_active' => true,
+        ]);
+
+        return [$repository, $originalAccount, $replacementAccount];
+    }
+
+    private function insertTransferMovement(
+        PaymentRepository $repository,
+        int $ordinal,
+        ?string $journalEntryId = null,
+    ): void {
+        $transferGroupId = (string) Str::uuid();
+
+        DB::table('repository_movements')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_repository_id' => $repository->id,
+            'direction' => 'out',
+            'amount' => '1.000',
+            'currency' => $repository->currency,
+            'balance_after' => '0.000',
+            'ordinal' => $ordinal,
+            'source_type' => 'transfer',
+            'source_id' => $transferGroupId,
+            'journal_entry_id' => $journalEntryId,
+            'idempotency_key' => "test:gl-reassignment:{$repository->id}:{$ordinal}",
+            'transfer_group_id' => $transferGroupId,
+            'occurred_at' => now(),
+        ]);
     }
 }

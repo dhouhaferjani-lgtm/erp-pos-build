@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\ValueObjects\IbanValidationResult;
 use App\Shared\Banking\Domain\ValueObjects\RibValidationResult;
@@ -151,6 +153,29 @@ class PaymentRepositoryController extends Controller
             $repository->gl_account_id,
             $repository->account_id,
         );
+
+        if (array_key_exists('gl_account_id', $validated)
+            && $validated['gl_account_id'] !== $repository->gl_account_id) {
+            $affectedLegCount = RepositoryMovement::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('payment_repository_id', $repository->id)
+                ->where('source_type', MovementSourceType::Transfer->value)
+                ->whereNull('journal_entry_id')
+                ->count();
+
+            if ($affectedLegCount > 0) {
+                $legClause = $affectedLegCount === 1
+                    ? 'leg has'
+                    : 'legs have';
+
+                throw new \DomainException(sprintf(
+                    'Cannot reassign the repository GL account while %d transfer movement %s no journal entry.',
+                    $affectedLegCount,
+                    $legClause,
+                ));
+            }
+        }
 
         $repository->update($validated);
 
