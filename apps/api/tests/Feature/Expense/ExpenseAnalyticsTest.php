@@ -159,6 +159,20 @@ final class ExpenseAnalyticsTest extends TestCase
             ->assertJsonCount(1, 'data.top_vendors');
     }
 
+    public function test_all_status_sentinel_is_valid_and_aggregates_posted_and_draft_expenses(): void
+    {
+        $this->seedSixMonthMatrix();
+
+        $this->getAnalytics([
+            'date_from' => '2026-01-01',
+            'date_to' => '2026-03-31',
+            'status' => 'all',
+        ])->assertOk()
+            ->assertJsonPath('data.tiles.total', '1084.00')
+            ->assertJsonPath('data.tiles.count', 6)
+            ->assertJsonPath('data.matrix.0.months.2026-02', '300.00');
+    }
+
     public function test_first_and_last_dates_are_inclusive_and_legacy_null_tax_rows_sum(): void
     {
         $this->seedSixMonthMatrix();

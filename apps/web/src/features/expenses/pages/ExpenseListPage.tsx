@@ -11,12 +11,13 @@ import { FormField } from '@/components/atoms/FormField'
 import { Select } from '@/components/atoms/Select'
 import { ListPageLayout } from '@/components/molecules/ListPageLayout'
 import { SearchInput } from '@/components/molecules/SearchInput'
+import { QueryError } from '@/components/QueryError'
 import { DateRangeFilter } from '@/components/ui/filters/DateRangeFilter'
 import { StatCard } from '@/components/ui/StatCard'
 import { useCurrency } from '@/hooks/useCurrency'
 import { usePermissions } from '@/hooks/usePermissions'
 import { formatCurrency } from '@/lib/format'
-import { textColors } from '@/lib/designTokens'
+import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { expenseApi } from '../api/expenseApi'
 import { downloadExpenseCsv } from '../downloadExpenseCsv'
@@ -38,15 +39,13 @@ export function ExpenseListPage() {
   const navigate = useNavigate()
   const { currency } = useCurrency()
   const { hasPermission } = usePermissions()
-  const [filters, setFilters] = useState<ExpenseFilters>({})
+  const [filters, setFilters] = useState<ExpenseFilters>({ status: 'posted' })
   const [searchTerm, setSearchTerm] = useState('')
   const [isExporting, setIsExporting] = useState(false)
 
   const { data, isLoading } = useExpenses(filters)
-  // The existing list intentionally starts with every status. Its summary keeps
-  // the analytics endpoint's posted default until the user selects a list status.
   const analyticsFilters: ExpenseAnalyticsFilters = {
-    ...(filters.status ? { status: filters.status } : {}),
+    status: filters.status ?? 'all',
     ...(filters.category_id ? { category_id: filters.category_id } : {}),
     ...(filters.date_from ? { date_from: filters.date_from } : {}),
     ...(filters.date_to ? { date_to: filters.date_to } : {}),
@@ -200,26 +199,48 @@ export function ExpenseListPage() {
     >
       <div className="space-y-5">
         <section aria-label={t('expenses:analytics.summary')}>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label={t('expenses:analytics.tiles.total')}
-              value={tiles ? formatCurrency(tiles.total, { currency }) : '—'}
+          {analyticsQuery.isLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'rounded-lg border p-6 text-center text-sm',
+                colors.white,
+                borderColors.light,
+                textColors.tertiary,
+              )}
+            >
+              {t('expenses:analytics.loading')}
+            </div>
+          ) : analyticsQuery.error ? (
+            <QueryError
+              error={analyticsQuery.error}
+              title={t('expenses:analytics.loadError')}
+              onRetry={() => { void analyticsQuery.refetch() }}
+              className={cn('rounded-lg border', colors.white, borderColors.light)}
             />
-            <StatCard
-              label={t('expenses:analytics.tiles.count')}
-              value={tiles?.count ?? '—'}
-            />
-            <StatCard
-              label={t('expenses:analytics.tiles.unpaid')}
-              value={tiles ? formatCurrency(tiles.unpaid_total, { currency }) : '—'}
-            />
-            <StatCard
-              label={t('expenses:analytics.tiles.change')}
-              value={tiles?.mom_delta_percent === null || tiles?.mom_delta_percent === undefined
-                ? '—'
-                : `${tiles.mom_delta_percent}%`}
-            />
-          </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label={t('expenses:analytics.tiles.total')}
+                value={tiles ? formatCurrency(tiles.total, { currency }) : '—'}
+              />
+              <StatCard
+                label={t('expenses:analytics.tiles.count')}
+                value={tiles?.count ?? '—'}
+              />
+              <StatCard
+                label={t('expenses:analytics.tiles.unpaid')}
+                value={tiles ? formatCurrency(tiles.unpaid_total, { currency }) : '—'}
+              />
+              <StatCard
+                label={t('expenses:analytics.tiles.change')}
+                value={tiles?.mom_delta_percent === null || tiles?.mom_delta_percent === undefined
+                  ? '—'
+                  : `${tiles.mom_delta_percent}%`}
+              />
+            </div>
+          )}
           {searchTerm ? (
             <p className={cn('mt-2 text-xs', textColors.tertiary)}>
               {t('expenses:analytics.searchExcluded')}

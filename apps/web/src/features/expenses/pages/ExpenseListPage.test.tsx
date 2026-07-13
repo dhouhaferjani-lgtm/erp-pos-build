@@ -27,6 +27,7 @@ const mockDeleteMutate = vi.fn()
 const mockPostMutate = vi.fn()
 const mockExportCsv = vi.fn()
 const mockHasPermission = vi.fn()
+const mockAnalyticsRefetch = vi.fn()
 vi.mock('../hooks/useExpenses', () => ({
   useExpenses: (filters: unknown) => mockUseExpenses(filters) as unknown,
   useExpenseAnalytics: (filters: unknown) => mockUseExpenseAnalytics(filters) as unknown,
@@ -66,8 +67,12 @@ beforeEach(() => {
   })
   mockNavigate.mockReset()
   mockUseExpenses.mockReset()
-  mockUseExpenses.mockReturnValue({ data: { data: [] }, isLoading: false })
+  mockUseExpenses.mockReturnValue({
+    data: { data: [] },
+    isLoading: false,
+  })
   mockUseExpenseAnalytics.mockReset()
+  mockAnalyticsRefetch.mockReset()
   mockUseExpenseAnalytics.mockReturnValue({
     data: {
       tiles: {
@@ -81,6 +86,8 @@ beforeEach(() => {
       top_vendors: [],
     },
     isLoading: false,
+    error: null,
+    refetch: mockAnalyticsRefetch,
   })
   mockExportCsv.mockReset()
   mockExportCsv.mockResolvedValue({
@@ -115,6 +122,71 @@ describe('ExpenseListPage shell', () => {
     expect(screen.getByTestId('expense-list')).toBeInTheDocument()
   })
 
+  it('announces the list analytics loading state accessibly', () => {
+    mockUseExpenseAnalytics.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: mockAnalyticsRefetch,
+    })
+
+    render(<ExpenseListPage />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('expenses:analytics.loading')
+    expect(screen.getByTestId('expense-list')).toBeInTheDocument()
+  })
+
+  it('shows permanent list analytics errors instead of empty-value tiles', () => {
+    mockUseExpenseAnalytics.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Network unavailable'),
+      refetch: mockAnalyticsRefetch,
+    })
+
+    render(<ExpenseListPage />)
+
+    expect(screen.getByRole('heading', { name: 'expenses:analytics.loadError' }))
+      .toBeInTheDocument()
+    expect(screen.getByText('Network unavailable')).toBeInTheDocument()
+    expect(screen.getByTestId('expense-list')).toBeInTheDocument()
+  })
+
+  it('retries failed list analytics from the error action', () => {
+    mockUseExpenseAnalytics.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Network unavailable'),
+      refetch: mockAnalyticsRefetch,
+    })
+
+    render(<ExpenseListPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'actions.tryAgain' }))
+
+    expect(mockAnalyticsRefetch).toHaveBeenCalledOnce()
+  })
+
+  it('starts list, tiles, and export at posted, then maps explicit All coherently', async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    render(<ExpenseListPage />)
+
+    expect(mockUseExpenses).toHaveBeenLastCalledWith({ status: 'posted' })
+    expect(mockUseExpenseAnalytics).toHaveBeenLastCalledWith({ status: 'posted' })
+
+    fireEvent.change(screen.getByLabelText('expenses:filters.status'), {
+      target: { value: '' },
+    })
+
+    await waitFor(() => {
+      expect(mockUseExpenses).toHaveBeenLastCalledWith({})
+      expect(mockUseExpenseAnalytics).toHaveBeenLastCalledWith({ status: 'all' })
+    })
+
+    fireEvent.click(screen.getByText('expenses:analytics.export'))
+    await waitFor(() => { expect(mockExportCsv).toHaveBeenCalledWith({}) })
+    click.mockRestore()
+  })
+
   it('threads both date endpoints into the list and analytics while omitting search from analytics', async () => {
     const { container } = render(<ExpenseListPage />)
     const dateInputs = container.querySelectorAll<HTMLInputElement>('input[type="date"]')
@@ -136,12 +208,14 @@ describe('ExpenseListPage shell', () => {
         date_from: '2026-01-01',
         date_to: '2026-03-31',
         search: 'paper',
+        status: 'posted',
       })
     })
     expect(mockUseExpenseAnalytics).toHaveBeenLastCalledWith({
       category_id: 'category-1',
       date_from: '2026-01-01',
       date_to: '2026-03-31',
+      status: 'posted',
     })
     expect(screen.getByText('expenses:analytics.searchExcluded')).toBeInTheDocument()
   })
@@ -171,12 +245,12 @@ describe('ExpenseListPage shell', () => {
       target: { value: 'paper' },
     })
     await waitFor(() => {
-      expect(mockUseExpenses).toHaveBeenLastCalledWith({ search: 'paper' })
+      expect(mockUseExpenses).toHaveBeenLastCalledWith({ search: 'paper', status: 'posted' })
     })
     fireEvent.click(screen.getByText('expenses:analytics.export'))
 
     await waitFor(() => {
-      expect(mockExportCsv).toHaveBeenCalledWith({ search: 'paper' })
+      expect(mockExportCsv).toHaveBeenCalledWith({ search: 'paper', status: 'posted' })
     })
     expect(createObjectURL).toHaveBeenCalledOnce()
     expect(click).toHaveBeenCalledOnce()

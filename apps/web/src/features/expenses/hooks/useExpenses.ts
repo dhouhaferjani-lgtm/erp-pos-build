@@ -6,7 +6,10 @@ import { getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { expenseApi } from '../api/expenseApi'
-import { expensesInvalidationPredicate } from '../_invalidation'
+import {
+  expenseAnalyticsInvalidationPredicate,
+  expensesInvalidationPredicate,
+} from '../_invalidation'
 import type {
   CreateExpenseDTO,
   ExpenseAnalyticsFilters,
@@ -107,9 +110,14 @@ export function useCreateExpense() {
   return useMutation({
     mutationFn: (data: CreateExpenseDTO) => expenseApi.create(data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expensesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:messages.created'))
     },
     onError: (error: Error) => {
@@ -136,6 +144,9 @@ export function useUpdateExpense() {
           predicate: expensesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(updatedExpense.id)],
         }),
       ])
@@ -159,9 +170,14 @@ export function useDeleteExpense() {
   return useMutation({
     mutationFn: (id: string) => expenseApi.delete(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expensesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:messages.deleted'))
     },
     onError: (error: Error) => {
@@ -185,6 +201,9 @@ export function usePostExpense() {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(postedExpense.id)],
@@ -214,6 +233,9 @@ export function usePayExpense() {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(paidExpense.id)],

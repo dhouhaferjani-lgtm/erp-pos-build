@@ -1,4 +1,4 @@
-type DocumentStatus =
+export type DocumentStatus =
   | 'draft'
   | 'confirmed'
   | 'posted'
@@ -294,10 +294,14 @@ export interface ExpenseFilters {
   per_page?: number
 }
 
-export type ExpenseAnalyticsFilters = Pick<
+export type ExpenseAnalyticsStatus = DocumentStatus | 'all'
+
+export interface ExpenseAnalyticsFilters extends Pick<
   ExpenseFilters,
-  'status' | 'category_id' | 'date_from' | 'date_to'
->
+  'category_id' | 'date_from' | 'date_to'
+> {
+  status?: ExpenseAnalyticsStatus
+}
 
 export interface ExpenseAnalyticsTiles {
   total: string

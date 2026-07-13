@@ -210,7 +210,10 @@ final class ExpenseAnalyticsService
             ->where('documents.tenant_id', $tenantId)
             ->where('documents.company_id', $companyId)
             ->where('documents.type', DocumentType::Expense->value)
-            ->where('documents.status', $filters->status)
+            ->when(
+                $filters->status !== AnalyticsFilters::ALL_STATUSES,
+                static fn (Builder $query): Builder => $query->where('documents.status', $filters->status),
+            )
             ->whereBetween($dateColumn, [$filters->date_from, $filters->date_to])
             ->whereNull('documents.deleted_at')
             ->when(

@@ -24,6 +24,8 @@ import type {
   ExpenseAnalyticsCategory,
   ExpenseAnalyticsFilters,
   ExpenseAnalyticsVendor,
+  ExpenseFilters,
+  DocumentStatus,
 } from '../types'
 
 interface MonthlyTotal {
@@ -49,7 +51,7 @@ function monthlyTotals(
 
 function isExpenseStatus(
   value: string,
-): value is NonNullable<ExpenseAnalyticsFilters['status']> {
+): value is DocumentStatus {
   return value === 'draft'
     || value === 'confirmed'
     || value === 'posted'
@@ -63,7 +65,7 @@ export function ExpenseAnalyticsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [categoryId, setCategoryId] = useState('')
-  const [status, setStatus] = useState<NonNullable<ExpenseAnalyticsFilters['status']>>('posted')
+  const [status, setStatus] = useState<DocumentStatus>('posted')
   const [isExporting, setIsExporting] = useState(false)
 
   const filters: ExpenseAnalyticsFilters = {
@@ -73,6 +75,12 @@ export function ExpenseAnalyticsPage() {
     status,
   }
   const analyticsQuery = useExpenseAnalytics(filters)
+  const exportFilters: ExpenseFilters = {
+    ...(dateFrom ? { date_from: dateFrom } : {}),
+    ...(dateTo ? { date_to: dateTo } : {}),
+    ...(categoryId ? { category_id: categoryId } : {}),
+    status,
+  }
   const analytics = analyticsQuery.data
   const months = [...new Set(
     (analytics?.matrix ?? []).flatMap((row) => Object.keys(row.months)),
@@ -82,7 +90,7 @@ export function ExpenseAnalyticsPage() {
   const exportCsv = async () => {
     setIsExporting(true)
     try {
-      const response = await expenseApi.exportCsv(filters)
+      const response = await expenseApi.exportCsv(exportFilters)
       downloadExpenseCsv(response)
     } catch {
       toast.error(t('expenses:analytics.exportError'))

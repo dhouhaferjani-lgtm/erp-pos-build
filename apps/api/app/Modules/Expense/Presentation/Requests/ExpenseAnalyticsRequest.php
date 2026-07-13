@@ -6,6 +6,7 @@ namespace App\Modules\Expense\Presentation\Requests;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Expense\Application\DTOs\AnalyticsFilters;
 use App\Modules\Identity\Domain\User;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Carbon\CarbonImmutable;
@@ -57,7 +58,13 @@ final class ExpenseAnalyticsRequest extends FormRequest
                     $this->companyContext->requireCompanyId(),
                 ),
             ],
-            'status' => ['required', Rule::enum(DocumentStatus::class)],
+            'status' => [
+                'required',
+                Rule::in([
+                    ...array_column(DocumentStatus::cases(), 'value'),
+                    AnalyticsFilters::ALL_STATUSES,
+                ]),
+            ],
         ];
     }
 }

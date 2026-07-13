@@ -380,7 +380,7 @@
 
 - Files: expense analytics API/types/query hook and CSV download helper; `ExpenseAnalyticsPage`; expense-list filters, tiles, and actions; expense route/sidebar wiring; EN/FR/AR locale resources; and focused API, hook, page, route, sidebar, permission, download, and locale tests.
 - TDD evidence: the initial focused page/API run failed on the absent analytics client/page, date-to filter, tiles, and export behavior. The route/hook/navigation run then failed on the absent tenant-scoped key and route/sidebar surfaces. A final parity RED proved the dedicated analytics page queried posted data while exporting all statuses; GREEN now sends explicit `status=posted` to both operations.
-- List binding: the existing expense list intentionally remains all-status when its status filter is empty. Its summary omits status in that state, so the analytics endpoint retains its documented posted default; selecting a status binds both list and tiles. Search continues to filter the list and its CSV export, while analytics deliberately excludes search and displays a localized explanatory caption. Category plus both inclusive date bounds bind list, tiles, and export.
+- List binding: the expense list, tiles, and CSV export now start coherently at posted status. Choosing explicit All removes status from the list/export filters and sends the analytics endpoint's explicit `status=all` sentinel; omitted analytics status still retains the documented posted default. Search continues to filter the list and its CSV export, while analytics deliberately excludes search and displays a localized explanatory caption. Category plus both inclusive date bounds bind list, tiles, and export.
 - Dedicated analytics page: `/expenses/analytics` is lazy-loaded before `expenses/:id` and gated by exact `expenses.view`; the Treasury sidebar item uses the existing expense module permission map. The page starts explicitly at posted status and keeps its analytics/export filters identical across status, category, `date_from`, and `date_to`.
 - Reporting surface: four summary tiles use the shared company currency formatter; category mix, top vendors, and monthly totals use the existing `DataTable`; and the category-by-month ledger is horizontally scrollable, RTL-safe, logically sticky, and token-styled. Matrix amounts remain decimal strings, and monthly aggregation uses `big.js` without float conversion. The localized legacy-net caption preserves the Task 13 reporting contract.
 - Export contract: the authenticated Axios client requests `/expenses/export` as a blob, the action is rendered only for `expenses.export`, and the helper honors the server filename, clicks a temporary object URL, removes the anchor, and revokes the URL. List export forwards the full list filter set, including search; analytics export forwards the exact visible report filters. Failures surface a localized toast.
@@ -392,5 +392,19 @@
   - Scoped Task 15 ESLint: 0 errors and 0 warnings.
   - React Doctor pinned to Task 15 base `a9e0ee4ea`: **No issues found** (84/100 under v0.7.7).
   - Locale JSON validation and `git diff --check`: pass.
-- Scope: Task 15 frontend only. No Task 16, Gate 3, backend, analytics SQL, CSV stream, recurrence, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed. Type generation remains assigned to Task 17.
+- Scope: Task 15 delivery. The independent-review repair below adds only the necessary analytics `all` status contract; no Task 16, Gate 3, CSV stream, recurrence, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed. Type generation remains assigned to Task 17.
 - Deviations: none.
+
+### Task 15 independent-review fixes — status parity, analytics invalidation, and feedback states
+
+- RA-M2 parity: the initial frontend regression failed because the list queried `{}` while tiles implicitly reported posted data. The backend regression separately received 422 for `status=all`. The analytics request now accepts one shared `AnalyticsFilters::ALL_STATUSES` sentinel, the service conditionally omits only its status predicate for that sentinel, and omitted/empty status remains posted. The list starts posted; explicit All omits list/export status and sends `all` to analytics. GREEN: focused UI parity 1/1; backend analytics 10 tests / 69 assertions, including posted-plus-draft aggregation and invalid-status validation.
+- Analytics invalidation: the first mutation regression proved create refetched the list but left analytics at one fetch. A dedicated tenant/company-scoped analytics predicate now refreshes all money-affecting expense mutations (create, update, delete, post, pay) and all category label/grouping mutations (create, rename/update, delete). GREEN: 8/8 mutation cases; sibling-company and foreign-tenant analytics entries remain uninvalidated.
+- Embedded summary feedback: three focused RED cases found no accessible loading status, permanent-error feedback, or retry action. The list summary now uses an `aria-live` status with existing tokens and the shared `QueryError`/retry pattern; the expense table remains usable beneath either state. GREEN: 3/3.
+- Final verification:
+  - Widened expense/notification/permission/route/sidebar Vitest: 23 files, 192 passed, 3 existing todos; pre-existing tenant-scope `act(...)` warnings remain non-failing.
+  - Root `pnpm typecheck`: pass.
+  - Full web lint: 0 errors with existing repository warnings; TanStack audit 0 violations; design audit 753 acknowledged / 0 new / 0 stale; custom rules pass. Scoped production/page ESLint: 0 errors and 0 warnings.
+  - Scoped backend PHPStan level 8 and Pint: pass.
+  - React Doctor pinned to Task 15 commit `790087799`, including current changes: **No issues found** (84/100 under v0.7.7).
+  - `git diff --check`: pass.
+- Scope: necessary Task 15 review repair only. No Task 16 or Gate 3 work started.

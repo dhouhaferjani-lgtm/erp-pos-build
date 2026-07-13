@@ -8,6 +8,8 @@ use Spatie\LaravelData\Data;
 
 final class AnalyticsFilters extends Data
 {
+    public const string ALL_STATUSES = 'all';
+
     public function __construct(
         public string $date_from,
         public string $date_to,
