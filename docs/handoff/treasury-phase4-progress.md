@@ -20,3 +20,12 @@
 - GREEN: `php artisan test tests/Feature/Expense/ExpenseVatSchemaTest.php --display-warnings` exited 0 with 2 passed tests (4 assertions).
 - Implementation deviations: none. No `document_tax_details` migration or modification was added.
 - Environment note: standalone `php artisan migrate --env=testing --force` reached the repository's named `central` PostgreSQL connection and failed because the local `root` role is unavailable. The focused test's `RefreshDatabase` path successfully applied the migration under the PHPUnit SQLite test configuration.
+
+## Task 2 — Expense request partner + VAT format validation — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Presentation/Requests/ExpenseRequest.php`
+  - `apps/api/tests/Feature/Expense/ExpenseRequestVatValidationTest.php`
+- RED: `php artisan test tests/Feature/Expense/ExpenseRequestVatValidationTest.php --display-warnings` exited 1 with 4 failed and 1 passed (5 assertions): the endpoint returned 201 for a cross-company partner and each invalid VAT-format/range payload.
+- GREEN: the same focused command exited 0 with 5 passed tests (13 assertions).
+- Implementation deviations: none. Task 3 service/persistence semantics were not implemented.
