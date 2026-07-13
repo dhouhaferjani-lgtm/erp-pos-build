@@ -134,3 +134,27 @@
 - RED: the focused edit-mode form test failed because clearing the controlled picker submitted `partner_id: undefined`; PATCH JSON would omit the field and preserve the supplier despite the backend's explicit-null clearing contract.
 - GREEN: `CreateExpenseDTO.partner_id` is `string | null` when present, and `PartnerPicker.onChange(null)` writes explicit `null`. The form suite passes 6/6, including create selection remaining a string UUID and edit clear submitting null so `ExpenseService::update()` reaches its tested `array_key_exists` clear path.
 - Final verification: frontend expense plus canonical picker 83 passed/3 todo; root typecheck exited 0; focused ESLint had 0 errors; design audit had 0 new/stale; focused backend clear/replace passed 2/2; pinned React Doctor remained 93/100; diff check passed.
+
+## Task 6 — W1 closeout, type generation, preflight, and Gate 1 verification — 2026-07-13
+
+- Verification baseline: branch rebased onto current `origin/dev` `e9c2b581d` by the controller before Task 6.
+- Type generation: `CACHE_STORE=array php artisan typescript:transform` exited 0 and transformed 434 PHP types. `packages/shared/types/generated.d.ts` remained byte-clean, so there was no legitimate generated-types commit.
+- Preflight: exact `./scripts/preflight.sh` exited 1 at its first unconditional full-repository Pint check. It reported 18 Product/Fiscal/Inventory/Company test files, all byte-identical to `origin/dev`; Phase 4 changes neither those paths nor Pint configuration. Per the task's scope rule, unrelated upstream formatting was not altered.
+- Branch-caused preflight/static fix: changed-file PHPStan found the request-test helper's invalid `TestResponse<array<string,mixed>>` generic. Commit `3928e7f7f` changes it to the repository-standard `TestResponse<Response>`. Focused verification passed 6 tests / 21 assertions, PHPStan level 8 with no errors, and Pint.
+- Gate 1 backend:
+  - Expense: 68 tests / 272 assertions, exit 0; rerun fresh after the PHPDoc commit with the same result.
+  - Accounting: 478 tests / 2,156 assertions, 4 skips, exit 0.
+  - Treasury: 603 tests / 2,411 assertions, 25 skips, exit 0.
+  - `./vendor/bin/pint --dirty`: exit 0.
+  - Exact `./vendor/bin/phpstan` exhausted its default 512 MB parallel workers after scanning 2,529 files. The 2 GB retry completed with 34 errors exclusively in files unchanged from `origin/dev`; a level-8 analysis over all 14 Phase 4 PHP files exited 0 with no errors. No suppression or baseline was added.
+- Gate 1 frontend:
+  - `pnpm typecheck && pnpm lint`: exit 0; ESLint 0 errors (existing warnings only), TanStack audit 0 violations, design audit 753 acknowledged / 0 new / 0 stale, custom ESLint rules green.
+  - Required Vitest scope: 14 files, 90 passed / 3 todo, exit 0.
+  - Direct design-system and TanStack audit commands both exited 0.
+- Pinned Gate 1 proofs:
+  - paid-VAT authoritative reconcile fixture: 1 test / 12 assertions, exit 0;
+  - VAT-less byte-shape regression: 1 test / 2 assertions, exit 0;
+  - console-shape create with cleared context: 1 test / 2 assertions, exit 0.
+- Inviolate port: `git diff --exit-code origin/dev..HEAD -- apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php` exited 0 (empty).
+- Task 6 report: `.superpowers/sdd/task-6-report.md`.
+- Deviations: no functional plan deviation. Type generation was a no-op, so no empty commit was manufactured. Exact preflight/full PHPStan remain non-green only because of proven `origin/dev` formatting/type debt; Phase 4's branch-owned checks are green.
