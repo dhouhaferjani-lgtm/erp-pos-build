@@ -4,11 +4,24 @@
 
 ## 1. Migrate tenant databases
 
+> **Ordering gate (instrument FK follow-up, 2026-07-13):** on every existing tenant, complete the bank-directory backfill in §2 **before** running `2026_07_13_090000_add_bank_foreign_key_to_payment_instruments`. That migration deliberately nulls `payment_instruments.bank_id` values that do not match a populated `banks` row, then adds the FK. Do not use an unscoped `tenants:migrate` while catching a tenant up across this boundary.
+
 ```bash
-php artisan tenants:migrate --force
+cd apps/api
+php artisan tenants:migrate --force \
+  --path=database/migrations/tenant/2026_07_12_110000_create_banks_table.php \
+  --path=database/migrations/tenant/2026_07_12_111000_add_bank_id_to_payment_repositories.php \
+  --path=database/migrations/tenant/2026_07_12_120000_create_partner_bank_accounts_table.php
 ```
 
-Three new tenant migrations (all guarded, re-runnable-safe): `2026_07_12_110000_create_banks_table`, `2026_07_12_111000_add_bank_id_to_payment_repositories`, `2026_07_12_120000_create_partner_bank_accounts_table`.
+After this command, run the existing-tenant backfill in §2 and verify §3. Only then run:
+
+```bash
+php artisan tenants:migrate --force \
+  --path=database/migrations/tenant/2026_07_13_090000_add_bank_foreign_key_to_payment_instruments.php
+```
+
+New tenants remain safe because `TenantInitializationService` seeds their banks during initialization.
 
 ## 2. Seed the bank directory on EXISTING tenants (pre-launch: test tenants only)
 
