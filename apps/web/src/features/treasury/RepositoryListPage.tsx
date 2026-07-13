@@ -7,7 +7,7 @@ import { ArrowLeftRight, Plus, Vault, Building2, CreditCard, Wallet } from 'luci
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
@@ -241,7 +241,7 @@ export function RepositoryListPage() {
                   new Big(0),
                 ).toFixed(3)
                 return (
-                  <div key={type} className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+                  <div key={type} className={cn('rounded-lg border p-4', colors.white, borderColors.light)}>
                     <div className="flex items-center gap-3">
                       <div className={cn('rounded-lg p-2', typeBadge[type])}>
                         <Icon className="h-5 w-5" />

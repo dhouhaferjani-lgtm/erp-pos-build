@@ -12,7 +12,7 @@ Worktree: `/Users/houssamr/Projects/syneriva/apps/erp.phase3-followups`
 | F-3 | Complete | `b4a02862e` + this review-fix commit | Focused PHPUnit: 20 tests, 62 assertions passed; focused PHPStan: no errors; Pint: clean | GL-bearing updates serialize on a tenant/company-scoped repository row lock, re-evaluate the change, then reject null-JE transfer legs with their count in the canonical 422 envelope. |
 | F-4 | Complete | This commit | PostgreSQL-focused PHPUnit: 4 tests, 11 assertions passed | Replaced only the two `whereRaw` equality predicates with behavior-equivalent fluent `where` calls; existing test file stayed unmodified. |
 | F-5 | Complete | This commit | Focused PHPUnit: 6 tests, 37 assertions passed | Added one concise comment that flow SUM exactness rests on `repository_movements.amount` being `decimal(15,3)`; SQL and behavior unchanged. |
-| F-6 | Pending | — | — | Repository summary design token. |
+| F-6 | Complete | This commit | Focused Vitest: 1 file, 6 tests passed; design audit: 753 acknowledged, 0 new, 0 stale | Replaced only the summary-card `bg-white` literal with the existing `colors.white` token imported from `@/lib/designTokens`. |
 
 Final verification: pending.
 
