@@ -176,7 +176,7 @@ final class ExpenseAnalyticsService
         int $scale,
     ): array {
         $pgsql = DB::connection()->getDriverName() === 'pgsql';
-        $partnerText = $pgsql ? 'documents.partner_id::text' : 'CAST(documents.partner_id AS TEXT)';
+        $partnerText = $pgsql ? 'partners.id::text' : 'CAST(partners.id AS TEXT)';
         $vendorKey = "COALESCE({$partnerText}, expense_metadata.vendor_name)";
 
         $rows = $this->baseQuery($tenantId, $companyId, $filters)

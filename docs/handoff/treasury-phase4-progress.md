@@ -351,3 +351,11 @@
 - Verification: scoped PHPStan level 8 passed with no errors; dirty Pint formatted the task files and the final scoped check passed; `git diff --check` passed. `php artisan route:list --path=api/v1/expenses/analytics -vv` showed exactly one GET route with `Authorize:expenses.view`, and source registration is above `expenses/{id}`.
 - Scope: Task 13 only. No Task 14 export, frontend Task 15, Treasury, fiscal, posting, settlement, recurrence, or forecast behavior changed.
 - Deviations: none. The driver-specific SQLite date/month expressions are the plan-required portability implementation and do not alter PostgreSQL semantics.
+
+### Task 13 independent-review fix — prevent malformed partner disclosure
+
+- HIGH finding: although the `partners` join was correctly tenant/company scoped, the initial vendor grouping key and selected `partner_id` came from `documents.partner_id`. A malformed/legacy company-A expense pointing at a company-B partner therefore hid the sibling name but still returned its UUID beside company A's vendor snapshot.
+- RED: the new malformed two-companies-one-tenant regression failed 1/1 with 3 assertions because `top_vendors[].partner_id` returned the sibling UUID instead of null.
+- Fix: the vendor grouping key and selected partner ID now derive from the successfully company-scoped joined `partners.id`. When that join misses, both identity and label fall back to `expense_metadata.vendor_name`; no sibling identifier or name survives. Existing same-company partner grouping and snapshot-only grouping remain covered.
+- GREEN: the exact regression passed 1 test / 5 assertions; the full analytics file passed 9 tests / 65 assertions; full Expense passed 105 tests / 664 assertions with no errors, failures, or skips. Scoped production PHPStan and scoped Pint passed; the fix diff check was clean.
+- Deviations: none.

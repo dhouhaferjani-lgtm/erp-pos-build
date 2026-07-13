@@ -223,6 +223,36 @@ final class ExpenseAnalyticsTest extends TestCase
         self::assertNotContains('Foreign Vendor', array_column($response->json('data.top_vendors'), 'vendor_name'));
     }
 
+    public function test_top_vendors_falls_back_to_snapshot_without_disclosing_a_sibling_company_partner(): void
+    {
+        $siblingPartner = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->siblingCompany->id,
+            'name' => 'Sibling Company Supplier',
+        ]);
+        $this->expense(
+            $this->company,
+            $this->rent,
+            '2026-03-15',
+            '33.00',
+            partner: $siblingPartner,
+            vendorName: 'Company A receipt snapshot',
+        );
+
+        $response = $this->getAnalytics([
+            'date_from' => '2026-03-01',
+            'date_to' => '2026-03-31',
+        ])->assertOk();
+
+        $vendors = collect($response->json('data.top_vendors'));
+        $snapshot = $vendors->firstWhere('vendor_name', 'Company A receipt snapshot');
+
+        self::assertIsArray($snapshot);
+        self::assertNull($snapshot['partner_id']);
+        self::assertNotContains($siblingPartner->id, $vendors->pluck('partner_id')->all());
+        self::assertNotContains($siblingPartner->name, $vendors->pluck('vendor_name')->all());
+    }
+
     public function test_request_validation_is_scoped_and_uses_the_canonical_error_envelope(): void
     {
         $foreignCategory = $this->category($this->siblingCompany, 'Foreign category');
