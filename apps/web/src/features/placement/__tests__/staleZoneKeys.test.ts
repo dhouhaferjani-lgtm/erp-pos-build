@@ -52,12 +52,12 @@ describe('placement terminology migration', () => {
         readFileSync(join(process.cwd(), `src/locales/${locale}/inventory.json`), 'utf8'),
       )
 
-      if (!isRecord(translation) || !isRecord(translation.counting)) throw new Error(`Missing counting translations for ${locale}`)
-      const { create, scopeTypes } = translation.counting
+      if (!isRecord(translation) || !isRecord(translation['counting'])) throw new Error(`Missing counting translations for ${locale}`)
+      const { create, scopeTypes } = translation['counting']
       if (!isRecord(scopeTypes) || !isRecord(create)) throw new Error(`Missing node-scope translations for ${locale}`)
 
-      expect(scopeTypes.zone).toBe(expectedLabel)
-      expect(create.zoneSelectionHelper).toBeTypeOf('string')
+      expect(scopeTypes['zone']).toBe(expectedLabel)
+      expect(create['zoneSelectionHelper']).toBeTypeOf('string')
     }
   })
 })
