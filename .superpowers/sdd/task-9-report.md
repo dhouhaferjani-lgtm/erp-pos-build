@@ -69,3 +69,38 @@ Vitest exited 1 because `PERMISSIONS['expense-recurrences.view']` was `undefined
 - `.superpowers/sdd/progress.md` remained the controller-owned unstaged ledger and was not staged.
 - No Task 10+ command, notification, forecast, frontend page, scheduler, Treasury, fiscal, posting, settlement, migration, or generated-type file changed.
 - No implementation deviation from Task 9, design §§6.1/6.3/8.5, or the verified plan-review findings was required.
+
+## Independent-review fixes — end bounds and lifecycle transitions
+
+Two HIGH findings exposed one shared root cause: cursor derivation and status persistence were implemented independently in create, update, and resume. This allowed active rows whose cursor was already beyond their inclusive end date, allowed generic PUT to bypass resume roll-forward, and let dedicated lifecycle endpoints accept invalid source states.
+
+### RED
+
+Focused PHPUnit exited 1 with 3 failing tests out of 10:
+
+- create computed `2027-01-01` after a `2026-12-31` end but returned Active;
+- dedicated resume rolled the cursor to `2026-07-31` after a `2026-06-30` end but returned Active;
+- resume on an already-Active template returned 200 rather than 422.
+
+The same test additions pin end-date shortening below the effective cursor, frequency/start recomputation beyond end, generic paused→active roll-forward, terminal Ended behavior, invalid pause/resume calls preserving the cursor, and both directions of the partial-update start/end constraint.
+
+### Fix and GREEN
+
+`ExpenseRecurrenceController::deriveLifecycle()` is now the single path used by create, update, pause, and resume. It:
+
+- computes from `start_date` origin via `RecurrenceCursor::firstOnOrAfter` for create, origin/cadence edits, and paused→active resume;
+- keeps the stored cursor for ordinary edits and pause;
+- applies the inclusive boundary as `cursor > end_date => Ended` (equality remains Active/Paused as requested);
+- treats Ended as terminal except for remaining Ended;
+- enforces Active as the dedicated pause source and Paused as the dedicated resume source.
+
+Fresh evidence:
+
+- focused CRUD: 10 tests / 139 assertions, exit 0;
+- full Expense: 83 tests / 467 assertions, exit 0;
+- scoped PHPStan level 8: no errors;
+- scoped Pint: pass;
+- frontend permission regression: 6 files / 28 tests, exit 0;
+- `git diff --check`: exit 0.
+
+No request enum rule, permission map, route, TypeScript, generation command, scheduler, notification, forecast, Treasury, fiscal, posting, or settlement behavior changed.

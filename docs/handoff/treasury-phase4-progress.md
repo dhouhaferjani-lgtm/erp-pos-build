@@ -242,3 +242,12 @@
   - React Doctor pinned to the Task 9 base `3ad776504` exited 0 at 98/100 with no issues. The deprecated unpinned `--diff` invocation compared the full phase branch to `main` and surfaced 330 unrelated branch-wide issues; the base-pinned Task 9 scan is the relevant regression result.
 - Scope: no generation command, scheduler, notifications, forecast projection, Task 12 UI, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed.
 - Deviations: none.
+
+### Task 9 independent-review fixes — terminal end bounds and lifecycle transitions
+
+- Root cause: cursor calculation and status persistence were split across create, update, and resume. None compared the effective cursor to the inclusive end date, generic PUT could write `paused → active` without resume roll-forward, and the dedicated endpoints did not enforce their source states.
+- RED: focused PHPUnit exited 1 with 3 failing tests out of 10. Create returned Active for a cursor after the end date; resume returned Active for an expired paused template; and resume on an already-Active template returned 200 instead of 422. The new cases also pin end-date shortening, origin/cadence recomputation, generic PUT resume semantics, terminal Ended behavior, invalid pause/resume source states, and partial-update start/end validation.
+- Fix: one controller `deriveLifecycle()` path now owns cursor selection, resume roll-forward, transition validation, terminal Ended behavior, and the inclusive end-date comparison. Create, update, pause, and resume all consume it. A cursor equal to `end_date` remains eligible; only a cursor strictly after it becomes Ended.
+- Transition contract: Paused→Active always rolls to the first origin-cadence occurrence on/after today (dedicated endpoint or generic PUT); Active→Paused is allowed; direct Ended is allowed; Ended cannot return to Active or Paused. Dedicated pause requires Active and dedicated resume requires Paused; invalid calls return 422 without changing status or cursor.
+- GREEN and regression: focused CRUD passed 10 tests / 139 assertions; full Expense passed 83 tests / 467 assertions; scoped PHPStan level 8 and Pint passed; all frontend permission tests remained green at 28/28; `git diff --check` passed.
+- Scope: no Task 10 generation/backfill behavior, permission map, TypeScript, route, request enum rule, Treasury, fiscal, posting, or settlement behavior changed.

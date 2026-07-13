@@ -228,6 +228,125 @@ final class ExpenseRecurrenceCrudTest extends TestCase
             'start_date' => '2027-01-01',
         ])->assertUnprocessable()
             ->assertJsonValidationErrors('end_date', 'error.errors');
+
+        $template->refresh()->update([
+            'start_date' => '2026-06-01',
+            'end_date' => null,
+            'next_due_date' => '2026-08-01',
+            'status' => RecurrenceStatus::Active,
+        ]);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$template->id}", [
+            'end_date' => '2026-05-31',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('end_date', 'error.errors');
+    }
+
+    public function test_cursor_beyond_inclusive_end_date_ends_create_and_update_lifecycles(): void
+    {
+        $created = $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'frequency' => 'yearly',
+            'start_date' => '2025-01-01',
+            'end_date' => '2026-12-31',
+        ])->assertCreated()
+            ->assertJsonPath('data.next_due_date', '2027-01-01')
+            ->assertJsonPath('data.status', 'ended');
+
+        $createdId = $created->json('data.id');
+        self::assertIsString($createdId);
+
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'frequency' => 'yearly',
+            'start_date' => '2025-01-01',
+            'end_date' => '2027-01-01',
+        ])->assertCreated()
+            ->assertJsonPath('data.next_due_date', '2027-01-01')
+            ->assertJsonPath('data.status', 'active');
+
+        $shortened = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$shortened->id}", [
+            'end_date' => '2026-07-30',
+        ])->assertOk()
+            ->assertJsonPath('data.next_due_date', '2026-07-31')
+            ->assertJsonPath('data.status', 'ended');
+
+        $recomputed = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $recomputed->update(['end_date' => '2026-11-30']);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$recomputed->id}", [
+            'frequency' => 'yearly',
+            'start_date' => '2025-12-31',
+        ])->assertOk()
+            ->assertJsonPath('data.next_due_date', '2026-12-31')
+            ->assertJsonPath('data.status', 'ended');
+    }
+
+    public function test_resume_and_generic_paused_to_active_roll_forward_and_end_expired_templates(): void
+    {
+        $dedicated = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $dedicated->update([
+            'status' => RecurrenceStatus::Paused,
+            'next_due_date' => '2026-03-31',
+            'end_date' => '2026-06-30',
+        ]);
+
+        $this->as($this->manager)->postJson("/api/v1/expense-recurrences/{$dedicated->id}/resume")
+            ->assertOk()
+            ->assertJsonPath('data.next_due_date', '2026-07-31')
+            ->assertJsonPath('data.status', 'ended');
+
+        $generic = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $generic->update([
+            'status' => RecurrenceStatus::Paused,
+            'next_due_date' => '2026-03-31',
+            'end_date' => '2026-06-30',
+        ]);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$generic->id}", [
+            'status' => 'active',
+        ])->assertOk()
+            ->assertJsonPath('data.next_due_date', '2026-07-31')
+            ->assertJsonPath('data.status', 'ended');
+    }
+
+    public function test_dedicated_lifecycle_endpoints_enforce_source_states_and_ended_is_terminal(): void
+    {
+        $active = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $activeCursor = $active->next_due_date->toDateString();
+        $this->as($this->manager)->postJson("/api/v1/expense-recurrences/{$active->id}/resume")
+            ->assertUnprocessable();
+        self::assertSame(RecurrenceStatus::Active, $active->refresh()->status);
+        self::assertSame($activeCursor, $active->next_due_date->toDateString());
+
+        $paused = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $paused->update([
+            'status' => RecurrenceStatus::Paused,
+            'next_due_date' => '2026-03-31',
+        ]);
+        $this->as($this->manager)->postJson("/api/v1/expense-recurrences/{$paused->id}/pause")
+            ->assertUnprocessable();
+        self::assertSame(RecurrenceStatus::Paused, $paused->refresh()->status);
+        self::assertSame('2026-03-31', $paused->next_due_date->toDateString());
+
+        $ended = $this->templateFor($this->tenant, $this->company, $this->manager);
+        $ended->update([
+            'status' => RecurrenceStatus::Ended,
+            'next_due_date' => '2026-03-31',
+        ]);
+
+        $this->as($this->manager)->postJson("/api/v1/expense-recurrences/{$ended->id}/pause")
+            ->assertUnprocessable();
+        $this->as($this->manager)->postJson("/api/v1/expense-recurrences/{$ended->id}/resume")
+            ->assertUnprocessable();
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$ended->id}", [
+            'status' => 'active',
+        ])->assertUnprocessable();
+
+        $ended->refresh();
+        self::assertSame(RecurrenceStatus::Ended, $ended->status);
+        self::assertSame('2026-03-31', $ended->next_due_date->toDateString());
     }
 
     public function test_seeded_role_grants_match_the_normative_recurrence_and_export_matrix(): void

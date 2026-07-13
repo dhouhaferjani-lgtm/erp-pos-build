@@ -44,17 +44,22 @@ final class ExpenseRecurrenceController extends Controller
         $data = $request->validated();
         $frequency = RecurrenceFrequency::from((string) $data['frequency']);
         $startDate = CarbonImmutable::parse((string) $data['start_date']);
+        $endDate = $data['end_date'] ?? null;
+        $lifecycle = $this->deriveLifecycle(
+            startDate: $startDate,
+            frequency: $frequency,
+            endDate: $endDate === null ? null : CarbonImmutable::parse((string) $endDate),
+            desiredStatus: array_key_exists('status', $data)
+                ? RecurrenceStatus::from((string) $data['status'])
+                : RecurrenceStatus::Active,
+        );
 
         $template = ExpenseRecurrenceTemplate::create([
             ...$data,
             'tenant_id' => $user->tenant_id,
             'company_id' => $companyId,
-            'status' => $data['status'] ?? RecurrenceStatus::Active,
-            'next_due_date' => RecurrenceCursor::firstOnOrAfter(
-                $startDate,
-                $frequency,
-                CarbonImmutable::today(),
-            )->toDateString(),
+            'status' => $lifecycle['status'],
+            'next_due_date' => $lifecycle['next_due_date'],
             'created_by' => $user->id,
         ]);
 
@@ -88,16 +93,22 @@ final class ExpenseRecurrenceController extends Controller
             ]);
         }
 
-        if (array_key_exists('frequency', $data) || array_key_exists('start_date', $data)) {
-            $frequency = array_key_exists('frequency', $data)
-                ? RecurrenceFrequency::from((string) $data['frequency'])
-                : $template->frequency;
-            $data['next_due_date'] = RecurrenceCursor::firstOnOrAfter(
-                $mergedStartDate,
-                $frequency,
-                CarbonImmutable::today(),
-            )->toDateString();
-        }
+        $frequency = array_key_exists('frequency', $data)
+            ? RecurrenceFrequency::from((string) $data['frequency'])
+            : $template->frequency;
+        $desiredStatus = array_key_exists('status', $data)
+            ? RecurrenceStatus::from((string) $data['status'])
+            : $template->status;
+        $lifecycle = $this->deriveLifecycle(
+            startDate: $mergedStartDate,
+            frequency: $frequency,
+            endDate: $mergedEndDate,
+            desiredStatus: $desiredStatus,
+            template: $template,
+            originChanged: array_key_exists('frequency', $data) || array_key_exists('start_date', $data),
+        );
+        $data['next_due_date'] = $lifecycle['next_due_date'];
+        $data['status'] = $lifecycle['status'];
 
         $template->update($data);
 
@@ -114,7 +125,17 @@ final class ExpenseRecurrenceController extends Controller
     public function pause(Request $request, string $id): JsonResponse
     {
         $template = $this->findScoped($request, $id);
-        $template->update(['status' => RecurrenceStatus::Paused]);
+        $lifecycle = $this->deriveLifecycle(
+            startDate: CarbonImmutable::parse($template->start_date->toDateString()),
+            frequency: $template->frequency,
+            endDate: $template->end_date === null
+                ? null
+                : CarbonImmutable::parse($template->end_date->toDateString()),
+            desiredStatus: RecurrenceStatus::Paused,
+            template: $template,
+            requiredSource: RecurrenceStatus::Active,
+        );
+        $template->update($lifecycle);
 
         return response()->json(['data' => $this->serialize($template->refresh())]);
     }
@@ -122,16 +143,17 @@ final class ExpenseRecurrenceController extends Controller
     public function resume(Request $request, string $id): JsonResponse
     {
         $template = $this->findScoped($request, $id);
-        $nextDueDate = RecurrenceCursor::firstOnOrAfter(
-            CarbonImmutable::parse($template->start_date->toDateString()),
-            $template->frequency,
-            CarbonImmutable::today(),
+        $lifecycle = $this->deriveLifecycle(
+            startDate: CarbonImmutable::parse($template->start_date->toDateString()),
+            frequency: $template->frequency,
+            endDate: $template->end_date === null
+                ? null
+                : CarbonImmutable::parse($template->end_date->toDateString()),
+            desiredStatus: RecurrenceStatus::Active,
+            template: $template,
+            requiredSource: RecurrenceStatus::Paused,
         );
-
-        $template->update([
-            'status' => RecurrenceStatus::Active,
-            'next_due_date' => $nextDueDate->toDateString(),
-        ]);
+        $template->update($lifecycle);
 
         return response()->json(['data' => $this->serialize($template->refresh())]);
     }
@@ -150,6 +172,55 @@ final class ExpenseRecurrenceController extends Controller
     private function findScoped(Request $request, string $id): ExpenseRecurrenceTemplate
     {
         return $this->scopedQuery($request)->whereKey($id)->firstOrFail();
+    }
+
+    /**
+     * @return array{next_due_date: string, status: RecurrenceStatus}
+     */
+    private function deriveLifecycle(
+        CarbonImmutable $startDate,
+        RecurrenceFrequency $frequency,
+        ?CarbonImmutable $endDate,
+        RecurrenceStatus $desiredStatus,
+        ?ExpenseRecurrenceTemplate $template = null,
+        bool $originChanged = false,
+        ?RecurrenceStatus $requiredSource = null,
+    ): array {
+        $currentStatus = $template?->status;
+
+        if ($requiredSource !== null && $currentStatus !== $requiredSource) {
+            throw ValidationException::withMessages([
+                'status' => __('validation.in', ['attribute' => 'status']),
+            ]);
+        }
+
+        if ($currentStatus === RecurrenceStatus::Ended && $desiredStatus !== RecurrenceStatus::Ended) {
+            throw ValidationException::withMessages([
+                'status' => __('validation.in', ['attribute' => 'status']),
+            ]);
+        }
+
+        $resume = $currentStatus === RecurrenceStatus::Paused
+            && $desiredStatus === RecurrenceStatus::Active;
+        $nextDueDate = $template === null || $originChanged || $resume
+            ? RecurrenceCursor::firstOnOrAfter(
+                $startDate,
+                $frequency,
+                CarbonImmutable::today(),
+            )
+            : CarbonImmutable::parse($template->next_due_date->toDateString());
+        $status = $currentStatus === RecurrenceStatus::Ended
+            ? RecurrenceStatus::Ended
+            : $desiredStatus;
+
+        if ($endDate !== null && $nextDueDate->isAfter($endDate)) {
+            $status = RecurrenceStatus::Ended;
+        }
+
+        return [
+            'next_due_date' => $nextDueDate->toDateString(),
+            'status' => $status,
+        ];
     }
 
     /** @return array<string, mixed> */
