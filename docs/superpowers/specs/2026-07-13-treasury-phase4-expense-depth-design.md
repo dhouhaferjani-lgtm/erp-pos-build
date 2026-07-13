@@ -1,7 +1,7 @@
 # Treasury Phase ④ — Expense Depth — Design Spec (Rev 2)
 
 **Date:** 2026-07-13
-**Status:** Rev 2 — reconciles the 4-lane adversarial review (`docs/superpowers/specs/reviews/2026-07-13-treasury-phase4-expense-depth-spec-review.md`; all lanes APPROVE-WITH-FIXES, every accepted disposition folded in). Ready for writing-plans.
+**Status:** Rev 2.1 — Rev 2 reconciled the 4-lane adversarial review (`docs/superpowers/specs/reviews/2026-07-13-treasury-phase4-expense-depth-spec-review.md`; all lanes APPROVE-WITH-FIXES, every accepted disposition folded in). Rev 2.1 (2026-07-13, post plan-review) carries two factual corrections from the two-lane PLAN review (`…-plan-review-w1-money-path-fable.md` / `…-plan-review-w2-w4-opus.md`), marked ⟦Rev 2.1⟧ in §5.3. The plan (Rev 2) is normative where they conflict.
 **Mandate:** `docs/handoff/HANDOFF-treasury-phase4-spec-kickoff-2026-07-13.md`
 **Predecessors:** Phase ① spine, Phase ② instruments, Phase ③ cash visibility — all shipped on origin/dev (Phase ③ merge `05674a586`; ui-gaps pay dialog `a2c0968f2`; banks-tug polish `bb44387f1` = base tip)
 
@@ -82,7 +82,7 @@ W1 before W2 (templates carry the VAT trio; W2 needs the `document_date` passthr
 
 ### 5.3 Posting design (`GeneralLedgerService::createFromExpense`)
 
-All arithmetic bcmath at `scale+1` intermediates. **Rounding mode for the deductible split: `CurrencyScale::bcround`** (half-up, away from zero) at the currency scale — the documented GL-posting-boundary helper (NC 01 §62; the review called it "bcroundHalfUp" but the method's actual name is `bcround`), per review MP-M1. Scale always via `getScale($expense->currency)`; **the in-class `$this->scale()` helper (`GeneralLedgerService.php:58`) is the forbidden no-arg form and is BANNED inside `createFromExpense`** (throws in console/queue contexts — rule 20).
+All arithmetic bcmath at `scale+2` intermediates ⟦Rev 2.1: was "scale+1" — the Fable plan-review lane verified scale+1 would truncate the ×percent product; the plan's scale+2 is normative⟧. **Rounding mode for the deductible split: `CurrencyScale::bcround`** (half-up, away from zero) at the currency scale — the documented GL-posting-boundary helper (NC 01 §62; the review called it "bcroundHalfUp" but the method's actual name is `bcround`), per review MP-M1. Scale always via `getScale($expense->currency)`; **the in-class `$this->scale()` helper (`GeneralLedgerService.php:58`) is the forbidden no-arg form and is BANNED inside `createFromExpense`** (throws in console/queue contexts — rule 20).
 
 With VAT present (`tax_amount` non-null and > 0):
 
@@ -98,7 +98,7 @@ Cr  SupplierPayable (unpaid, partner_id) | Cash/Bank (paid)   total
 
 Balanced by construction. Without VAT: current 2-line entry unchanged. `settle()` **untouched** (verified: debits/credits `total`, never recomputes from subtotal — `ExpenseService.php:384,398`).
 
-**VAT-declaration wiring (review MP-H1 — required, or the feature is invisible where it's declared):** at expense post, W1 writes a `document_tax_details` row with **`tax_amount` = deductible VAT** (the declarable amount — keeps GL 4456 ≡ declared input VAT) and `tax_base` = subtotal, so `EloquentVatDataRepository`'s existing INPUT branch (`:29-39`) picks expenses up. ⚠️ Schema fix required first: `document_tax_details.tax_base/tax_amount` are `decimal(15,2)` columns (create migration) while the model casts claim `decimal:3` — a 3dp TND amount would silently lose millimes. W1 ships a safe widening migration to `decimal(15,3)` (2dp→3dp, no data loss). Partial-deductibility base treatment = EC5 (§11). The write happens in the same posting transaction; reversal is N/A (below).
+**VAT-declaration wiring (review MP-H1 — required, or the feature is invisible where it's declared):** at expense post, W1 writes a `document_tax_details` row with **`tax_amount` = deductible VAT** (the declarable amount — keeps GL 4456 ≡ declared input VAT) and `tax_base` = subtotal, so `EloquentVatDataRepository`'s existing INPUT branch (`:29-39`) picks expenses up. ⟦Rev 2.1 CORRECTION (Fable plan-review F2): this claim was STALE — `document_tax_details.tax_base/tax_amount` are ALREADY `decimal(15,3)` on dev via `2026_03_23_100000_widen_missed_monetary_columns_to_scale_3.php:22-25`. NO widening migration ships in W1; adding one would create a `down()` that fights the March migration. The original text is preserved struck-through for audit:⟧ ~~⚠️ Schema fix required first: `document_tax_details.tax_base/tax_amount` are `decimal(15,2)` columns (create migration) while the model casts claim `decimal:3` — a 3dp TND amount would silently lose millimes. W1 ships a safe widening migration to `decimal(15,3)` (2dp→3dp, no data loss).~~ Partial-deductibility base treatment = EC5 (§11). The write happens in the same posting transaction; reversal is N/A (below).
 
 **Correction path (review MP-BLOCKER):** generic expenses have **no reversal path** today (`ExpenseService::reverse` rejects non-linked-cost — pre-existing, unchanged). VAT correction v1 = edit/delete the DRAFT before post; a posted generic expense is corrected the way it is today (not at all — generic expense reversal is deferred, §12). The Rev 1 claim that `/expenses/{id}/reverse` mirrors VAT lines generically was FALSE and is withdrawn; no test asserts it.
 

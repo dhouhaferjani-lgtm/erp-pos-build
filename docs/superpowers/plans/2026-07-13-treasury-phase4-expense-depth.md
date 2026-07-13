@@ -4,7 +4,9 @@
 
 **Goal:** Recoverable-VAT split wired through GL and the VAT declaration, supplier link, recurring expense templates with notifications + forecast feed, category×period analytics with streamed CSV export, and outbound-instrument direction guards.
 
-**Architecture:** Four sequential waves on one branch `feat/treasury-phase4-expense-depth` (worktree off dev tip ≥ `f2dc43f55`). W1 changes the expense money path (`ExpenseService` + `GeneralLedgerService::createFromExpense`), W2 adds a recurrence engine (template table + daily command + `TreasuryAlertRecipients` notifications + forecast feeds), W3 adds a read layer (analytics endpoint, streamed CSV), W4 hardens instruments. Spec (normative): `docs/superpowers/specs/2026-07-13-treasury-phase4-expense-depth-design.md` (Rev 2).
+**Architecture:** Four sequential waves on one branch `feat/treasury-phase4-expense-depth` (worktree off dev tip ≥ `6e95f309e`). W1 changes the expense money path (`ExpenseService` + `GeneralLedgerService::createFromExpense`), W2 adds a recurrence engine (template table + daily command + `TreasuryAlertRecipients` notifications + forecast feeds), W3 adds a read layer (analytics endpoint, streamed CSV), W4 hardens instruments. Spec (normative): `docs/superpowers/specs/2026-07-13-treasury-phase4-expense-depth-design.md` (Rev 2).
+
+**Plan Rev 2 (2026-07-13):** reconciles the two-lane independent plan review — Fable W1 money-path lane (`docs/superpowers/specs/reviews/2026-07-13-treasury-phase4-plan-review-w1-money-path-fable.md`) + Opus W2–W4 lane (`docs/superpowers/specs/reviews/2026-07-13-treasury-phase4-plan-review-w2-w4-opus.md`). Both lanes' **"Verified accurate" sections are ground truth** — the executor relies on them without re-deriving. Every finding's disposition is logged in the reconciliation section at the end of this file; all accepted fixes are folded into the task bodies below.
 
 **Tech Stack:** Laravel 12 / PHP 8.2 strict, PostgreSQL (db-per-tenant), bcmath via `CurrencyScale`, PHPUnit (RefreshDatabase + real models), React 19 + TanStack Query 5 + RHF, Vitest.
 
@@ -25,15 +27,17 @@
 
 ## WAVE 1 — Money path: VAT split + supplier link (GATE 1 after Task 6: Fable-tier treasury review)
 
-### Task 1: Migrations — VAT columns on expense_metadata + widen document_tax_details scale
+### Task 1: Migration — VAT columns on expense_metadata + model fillable/casts
+
+> **Plan-review corrections folded (Fable F2, F4):** the `document_tax_details` widening migration is DELETED from this task — `tax_base`/`tax_amount` are ALREADY `decimal(15,3)` on dev (`2026_03_23_100000_widen_missed_monetary_columns_to_scale_3.php:22-25`; the spec §5.3 "live (15,2) mismatch" claim was stale). Do NOT add a widening migration: its `down()` would fight the March migration's guarantee, and its red step is unreachable (PG already 3dp; SQLite test env doesn't enforce decimal scale). The `ExpenseMetadata` model change is REQUIRED here — without fillable+casts, Task 3's mass assignment silently drops the VAT fields and posting would read every expense as 100% deductible.
 
 **Files:**
 - Create: `apps/api/database/migrations/tenant/2026_07_14_100000_add_vat_fields_to_expense_metadata.php`
-- Create: `apps/api/database/migrations/tenant/2026_07_14_100100_widen_document_tax_details_amount_scale.php`
+- Modify: `apps/api/app/Modules/Expense/Domain/ExpenseMetadata.php` (`$fillable` `:50-62` + `casts()` `:75-83`)
 - Test: `apps/api/tests/Feature/Expense/ExpenseVatSchemaTest.php`
 
 **Interfaces:**
-- Produces: `expense_metadata.vat_rate` `decimal(5,2)` nullable; `expense_metadata.vat_deductible_percent` `decimal(5,2)` nullable (**NO DB default** — spec §5.1); `document_tax_details.tax_base`/`tax_amount` widened `decimal(15,2) → decimal(15,3)` (model casts already say `decimal:3` — this fixes a live cast/column mismatch).
+- Produces: `expense_metadata.vat_rate` `decimal(5,2)` nullable; `expense_metadata.vat_deductible_percent` `decimal(5,2)` nullable (**NO DB default** — spec §5.1); `ExpenseMetadata` fillable includes both fields with casts `'vat_rate' => 'decimal:2'`, `'vat_deductible_percent' => 'decimal:2'`.
 
 - [ ] **Step 1: Write the failing schema test**
 
@@ -44,6 +48,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Expense;
 
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -58,24 +63,22 @@ final class ExpenseVatSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('expense_metadata', 'vat_deductible_percent'));
     }
 
-    public function test_document_tax_details_amounts_carry_three_decimals(): void
+    public function test_vat_fields_survive_mass_assignment(): void
     {
-        \DB::table('documents')->insert([/* minimal expense document row with valid uuids */]);
-        \DB::table('document_tax_details')->insert([
-            'id' => \Str::uuid()->toString(), 'document_id' => $docId,
-            'tax_type' => 'PERCENTAGE', 'tax_name' => 'TVA 19%',
-            'tax_base' => '10.001', 'tax_amount' => '1.901', 'created_at' => now(),
+        // Guards the fillable/casts change — without it Laravel silently drops both keys.
+        $metadata = ExpenseMetadata::create([/* minimal valid row with valid uuids */
+            'vat_rate' => '19.00', 'vat_deductible_percent' => '80.00',
         ]);
-        $row = \DB::table('document_tax_details')->where('document_id', $docId)->first();
-        $this->assertSame('1.901', (string) $row->tax_amount); // fails while column is (15,2)
+        $this->assertSame('19.00', (string) $metadata->fresh()->vat_rate);
+        $this->assertSame('80.00', (string) $metadata->fresh()->vat_deductible_percent);
     }
 }
 ```
 
-- [ ] **Step 2: Run — expect FAIL** (`hasColumn` false; `1.901` truncated to `1.90`).
-- [ ] **Step 3: Write both migrations** — `$table->decimal('vat_rate', 5, 2)->nullable(); $table->decimal('vat_deductible_percent', 5, 2)->nullable();` after `vendor_name`; and `$table->decimal('tax_base', 15, 3)->nullable()->change(); $table->decimal('tax_amount', 15, 3)->change();` (widening only — reversible `down()` narrows back).
+- [ ] **Step 2: Run — expect FAIL** (`hasColumn` false; mass-assignment drops the fields).
+- [ ] **Step 3: Write the migration + model change** — `$table->decimal('vat_rate', 5, 2)->nullable(); $table->decimal('vat_deductible_percent', 5, 2)->nullable();` after `vendor_name`; add both fields to `ExpenseMetadata::$fillable` and `casts()`.
 - [ ] **Step 4: `php artisan migrate` in test env; run test — PASS.**
-- [ ] **Step 5: Commit** `feat(expense): VAT columns on expense_metadata + 3dp tax-detail scale fix`
+- [ ] **Step 5: Commit** `feat(expense): VAT columns on expense_metadata + model casts`
 
 ### Task 2: ExpenseRequest — partner_id + VAT trio format rules
 
@@ -106,38 +109,55 @@ final class ExpenseVatSchemaTest extends TestCase
 - Modify: `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:59-159` (`create()`, `update()`)
 - Test: `apps/api/tests/Feature/Expense/ExpenseServiceVatTest.php`
 
+> **Plan-review corrections folded (Fable F1/F3/F5/F7/F8, Opus F1-BLOCKER):** (1) `create()` becomes CONSOLE-SAFE — it resolves the `Company` from the explicit `$data['company_id']` (the controller already merges it at `ExpenseController.php:98-105`; W2's command passes it explicitly) and MUST NOT call `CompanyContext::requireCompany()` — this is the W1↔W2 contract both lanes flagged; W2's `expenses:generate-recurring` dies on its first `create()` otherwise. (2) `assertVatInvariants` takes the resolved `$scale` — a literal bccomp scale fails `ForbidHardcodedBcmathScale`. (3) When VAT is present, `total` and `vat_amount` must be ON THE CURRENCY GRID — an off-grid EUR total like `119.005` (legal per the 3dp regex) would produce an unbalanced 3-line JE and a 500 at post. Reject with `\DomainException` before any bcformatStrict call. (4) `vat_amount` of zero normalizes to `null` (keeps VAT-less rows byte-identical).
+
 **Interfaces:**
 - Consumes: Task 1 columns, Task 2 fields.
-- Produces (Task 4 posting relies on these invariants): `documents.partner_id` set from `$data['partner_id']`; `documents.tax_amount = vat_amount`; `documents.subtotal = bcsub(total, vat_amount, scale)`; `documents.document_date = $data['document_date'] ?? $data['payment_date'] ?? now()`; metadata `vat_rate`, `vat_deductible_percent` (defaulted to `'100.00'` when `vat_amount` present and percent absent); private `assertVatInvariants(array $effective, ExpenseKind $kind): void` throwing `\DomainException`.
+- Produces (Task 4 posting + Task 10 console caller rely on these invariants): **`create()` resolves `$company = Company::query()->whereKey($data['company_id'])->firstOrFail()` and derives currency/scale from it — no `CompanyContext` reads anywhere in `create()`** (same source feeds `prepareLinkedCost`'s currency argument); `documents.partner_id` set from `$data['partner_id']`; `documents.tax_amount = vat_amount` (null when vat is null OR zero); `documents.subtotal = bcsub(total, vat_amount, scale)`; `documents.document_date = $data['document_date'] ?? $data['payment_date'] ?? now()`; metadata `vat_rate`, `vat_deductible_percent` (defaulted to `'100.00'` when `vat_amount` present and percent absent); private `assertVatInvariants(array $effective, ExpenseKind $kind, int $scale): void` throwing `\DomainException`.
 
 - [ ] **Step 1: Failing tests** (all through the service with real models):
   - create with `total: "119.000"`, `vat_amount: "19.000"` → `subtotal === "100.000"`, `tax_amount === "19.000"`, `vat_deductible_percent === "100.00"` (defaulted).
   - create VAT-less → `subtotal === total`, `tax_amount` null, percent null (backward compat).
+  - create with `vat_amount: "0"` → normalized: `tax_amount` null, percent null, 2-line-JE path — byte-identical to VAT-less (Fable F7).
   - create with `document_date: "2026-08-01"`, no payment_date → document_date honored (today it falls to now()).
   - create `expense_kind: linked_cost` + `vat_amount` → `\DomainException`.
   - **update merged-value guard:** create draft `total: "100.000"`, `vat_amount: "15.000"`; update payload `['total' => '10.000']` only → `\DomainException` (`vat_amount < total` violated on MERGED values).
+  - **equality edge:** `vat_amount == total` → `\DomainException` (Fable F8c — pins the `>=` bccomp; one keystroke from a zero-net regression).
+  - **off-grid guard (Fable F1):** EUR (2dp) company, `total: "119.005"` + `vat_amount: "19.00"` → `\DomainException` (not a 500); same for off-grid `vat_amount`.
+  - **update clearing VAT (Fable F8a):** draft with VAT; update payload `['vat_amount' => null]` → `subtotal` re-derived to `total`, `tax_amount` null, `vat_rate`/`vat_deductible_percent` cleared to null (pin the full-trio clear).
+  - **update changing only vat_amount (Fable F8b):** subtotal re-derived from merged total.
   - create with `partner_id` → `documents.partner_id` persisted.
+  - **console-shape test (Opus F1):** `app(CompanyContext::class)->clear()`, then `create()` with explicit `company_id` succeeds and stamps the right company/currency — no context bound (rule 20; mirrors the projection-test convention).
 - [ ] **Step 2: Run — FAIL.**
 - [ ] **Step 3: Implement.** In `create()` (and mirrored in `update()` with merged effective values):
 
 ```php
-$scale = $this->scaleResolver->getScale((string) $companyCurrency);
+// Console-safe: resolve from explicit company_id — controller merges it; commands pass it (rule 20).
+$company = Company::query()->whereKey($data['company_id'])->firstOrFail();
+$scale = $this->scaleResolver->getScale((string) $company->currency);
 $total = (string) ($data['total'] ?? '0.00');
-$vatAmount = isset($data['vat_amount']) ? CurrencyScale::bcformatStrict((string) $data['vat_amount'], $scale) : null;
-$vatDeductiblePercent = $data['vat_deductible_percent'] ?? ($vatAmount !== null ? '100.00' : null);
+$vatAmount = isset($data['vat_amount']) ? (string) $data['vat_amount'] : null;
+if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 0) {
+    $vatAmount = null; // zero-VAT normalizes to VAT-less (byte-identical rows)
+}
 
 $this->assertVatInvariants(
     ['total' => $total, 'vat_amount' => $vatAmount],
     $linked === null ? ExpenseKind::Generic : ExpenseKind::LinkedCost,
+    $scale,
 );
 
+$vatAmount = $vatAmount !== null ? CurrencyScale::bcformatStrict($vatAmount, $scale) : null;
+$vatDeductiblePercent = $vatAmount !== null
+    ? ($data['vat_deductible_percent'] ?? '100.00')
+    : null;
 $subtotal = $vatAmount !== null ? bcsub($total, $vatAmount, $scale) : $total;
 ```
 
-Document::create gains `'partner_id' => $data['partner_id'] ?? null`, `'subtotal' => $subtotal`, `'tax_amount' => $vatAmount`, `'document_date' => $data['document_date'] ?? $data['payment_date'] ?? now()->toDateString()`. Metadata gains `'vat_rate' => $data['vat_rate'] ?? null`, `'vat_deductible_percent' => $vatDeductiblePercent`.
+Document::create gains `'partner_id' => $data['partner_id'] ?? null`, `'subtotal' => $subtotal`, `'tax_amount' => $vatAmount`, `'document_date' => $data['document_date'] ?? $data['payment_date'] ?? now()->toDateString()`. Metadata gains `'vat_rate' => $vatAmount !== null ? ($data['vat_rate'] ?? null) : null`, `'vat_deductible_percent' => $vatDeductiblePercent`.
 
 ```php
-private function assertVatInvariants(array $effective, ExpenseKind $kind): void
+private function assertVatInvariants(array $effective, ExpenseKind $kind, int $scale): void
 {
     $vat = $effective['vat_amount'];
     if ($vat === null) {
@@ -146,16 +166,23 @@ private function assertVatInvariants(array $effective, ExpenseKind $kind): void
     if ($kind === ExpenseKind::LinkedCost) {
         throw new \DomainException('VAT fields are not supported on linked-cost expenses; landed-cost capitalization consumes the full amount. Record VAT-bearing costs as generic expenses.');
     }
-    if (bccomp($vat, $effective['total'], 4) >= 0) {
+    // Off-grid amounts (legal per the fixed 3dp regex but finer than the currency scale)
+    // would produce an unbalanced JE downstream — reject at the boundary (plan-review F1).
+    foreach (['total', 'vat_amount'] as $field) {
+        if (bccomp($effective[$field], CurrencyScale::bcformat($effective[$field], $scale), $scale + 1) !== 0) {
+            throw new \DomainException('Amount precision exceeds the currency scale.');
+        }
+    }
+    if (bccomp($vat, $effective['total'], $scale + 1) >= 0) {
         throw new \DomainException('VAT amount must be less than the expense total.');
     }
 }
 ```
 
-`update()`: compute effective `$total = $data['total'] ?? (string) $expense->total`, `$vatAmount = array_key_exists('vat_amount', $data) ? ... : (string|null) stored`, call `assertVatInvariants` with the STORED `expense_kind`, then persist derived subtotal/tax_amount alongside the existing merge; `document_date` honors `$data['document_date'] ?? $data['payment_date'] ?? stored`.
+`update()`: compute effective `$total = $data['total'] ?? (string) $expense->total`, `$vatAmount = array_key_exists('vat_amount', $data) ? ... : (string|null) stored` (zero-normalized the same way), call `assertVatInvariants` with the STORED `expense_kind` and the resolved `$scale`, then persist derived subtotal/tax_amount alongside the existing merge; **an explicit `vat_amount => null` (or zero) clears the whole trio** (`tax_amount`, `vat_rate`, `vat_deductible_percent` → null, `subtotal` → total); `document_date` honors `$data['document_date'] ?? $data['payment_date'] ?? stored`. `update()` resolves the company from the STORED document's `company_id` (same console-safe shape).
 
-- [ ] **Step 4: Run — PASS.** Also run the existing expense cutoff tests by path (`tests/Feature/Expense/`) — must stay green.
-- [ ] **Step 5: Commit** `feat(expense): VAT-aware totals, partner link, document_date passthrough, merged-value guards`
+- [ ] **Step 4: Run — PASS.** Also run the existing expense cutoff tests by path (`tests/Feature/Expense/`) — must stay green (the create() currency-resolution change is behavior-preserving for HTTP callers: the controller has always merged `company_id`).
+- [ ] **Step 5: Commit** `feat(expense): VAT-aware totals, partner link, console-safe create, merged-value guards`
 
 ### Task 4: Posting — 3-line VAT split in createFromExpense + document_tax_details write
 
@@ -215,7 +242,9 @@ if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 1) {
 // credit line unchanged: Cr AP-or-Cash = $total
 ```
 
-In `ExpenseService::post()`, inside the existing transaction after the JE call: when `tax_amount > 0`, create the `DocumentTaxDetail` (idempotent: `firstOrCreate` keyed on `document_id` + `tax_type` since post() is idempotency-guarded upstream); `tax_amount` = the SAME `$deductibleVat` recomputed with the identical formula (extract a small shared pure helper `ExpenseVatSplit::deductible(string $vatAmount, string $percent, int $scale): string` in `apps/api/app/Modules/Expense/Domain/Services/ExpenseVatSplit.php` and use it in BOTH places so GL and declaration can never diverge).
+In `ExpenseService::post()`, inside the existing transaction after the JE call: when `tax_amount > 0`, create the `DocumentTaxDetail` (idempotent: `firstOrCreate` keyed on `document_id` + `tax_type` since post() is idempotency-guarded upstream); `tax_amount` = the SAME `$deductibleVat` recomputed with the identical formula — extract a small shared pure helper `ExpenseVatSplit::deductible(string $vatAmount, string $percent, int $scale): string` in **`apps/api/app/Shared/Domain/ExpenseVatSplit.php`** (next to `CurrencyScale` — plan-review Fable F6: placing it in the Expense module would create a new Accounting→Expense deptrac edge; in `Shared\Domain` both `GeneralLedgerService` and `ExpenseService` consume it cleanly) and use it in BOTH places so GL and declaration can never diverge. The `ExpenseService` → `DocumentTaxDetail` (Taxation model) write is an accepted cross-module edge (Document-module precedent) — noted deliberately, do not "fix" it.
+
+Note (plan-review, Fable lane verified): the `$scale + 2` intermediate in the snippet above is CORRECT and normative — spec §5.3's "scale+1 intermediates" phrasing would truncate the ×percent product; keep scale+2.
 
 - [ ] **Step 4: Run — PASS** (all cases incl. reconcile + regression).
 - [ ] **Step 5: Commit** `feat(accounting): expense VAT split posting (bcround half-up) + input-VAT declaration wiring`
@@ -279,7 +308,7 @@ In `ExpenseService::post()`, inside the existing transaction after the JE call: 
 
 **Interfaces:**
 - Produces routes: `GET/POST /expense-recurrences` (`can:expense-recurrences.view` / `.create`), `GET/PUT/DELETE /expense-recurrences/{id}` (`.view`/`.update`/`.delete`), `POST /expense-recurrences/{id}/pause`, `POST /{id}/resume` (`.update`). Permissions + grants per spec §8.5 (normative): full CRUD → manager + accountant (+admin via all); `.view` → cashier/operator/viewer; `expenses.export` is Task 14's, seeded here too to keep one seeder edit.
-- FormRequest: all four FKs `ScopedExists::tenantAndCompany(...)` (mirror `ExpenseRequest.php:53-68`); `frequency`/`status` `Rule::enum`; amount money-3dp regex; percent 2dp regexes; `lead_days` integer 0–60; dates. Controller: every query `->where('tenant_id',...)->where('company_id', $this->companyContext->requireCompanyId())`; create computes `next_due_date = RecurrenceCursor::firstOnOrAfter(start_date, frequency, today)`; **update recomputes `next_due_date` when `frequency` or `start_date` changes; resume rolls `firstOnOrAfter(..., today)` — no backfill (spec §6.1)**.
+- FormRequest: all four FKs `ScopedExists::tenantAndCompany(...)` (mirror `ExpenseRequest.php:53-68`); `frequency`/`status` `Rule::enum`; amount money-3dp regex; percent 2dp regexes; `lead_days` integer, `'max:' . ExpenseRecurrenceTemplate::MAX_LEAD_DAYS` — **define `public const MAX_LEAD_DAYS = 60;` on the model; the Task 10 pre-filter MUST use the same constant** (plan-review Opus F4: two hardcoded 60s in different files silently drift — a template with lead_days above the pre-filter window would never generate, with no error); dates. Controller: every query `->where('tenant_id',...)->where('company_id', $this->companyContext->requireCompanyId())`; create computes `next_due_date = RecurrenceCursor::firstOnOrAfter(start_date, frequency, today)`; **update recomputes `next_due_date` when `frequency` or `start_date` changes; resume rolls `firstOnOrAfter(..., today)` — no backfill (spec §6.1)**.
 
 - [ ] **Step 1: Failing tests** — CRUD happy paths; **deny-path: cashier can `GET` (200) but `POST` → 403; operator `PUT` → 403** (spec §8.5); cross-company `payment_repository_id` → 422; update `start_date` → `next_due_date` recomputed; pause→resume with stale past cursor → rolled forward, no intermediate periods.
 - [ ] **Steps 2–4: red → implement → green** (run seeder in test setup).
@@ -297,6 +326,8 @@ In `ExpenseService::post()`, inside the existing transaction after the JE call: 
 - Consumes: `ExpenseService::create` (Task 3 shape — pass `company_id`, `document_date`, NO `payment_date`, `is_paid => false`, `status` Draft default, `idempotency_key`), `RecurrenceCursor`, `TreasuryAlertRecipients::forCompany($tenantId, $companyId, 'expenses.post')`, `TreasuryAlertNotification`.
 - Produces: notification type string `'expense.recurring.generated'` with `data: {template_name, amount, currency, due_date, deep_link: "/expenses/{id}"}`; metadata rows carry `recurrence_template_id` + `idempotency_key = "recurring:{template_id}:{period_key}"`.
 
+> **Plan-review corrections folded (Opus F1/F2/F4):** `create()` is console-safe as of Task 3 (resolves company/currency from explicit `company_id` — this task depends on that contract; do NOT bind CompanyContext in the command). The acting `User` is now specified (F2): resolve `$actor = User::query()->where('tenant_id', $template->tenant_id)->whereKey($template->created_by)->first() ?? /* deterministic fallback: first active admin of that tenant */` — `create()` stamps `documents.tenant_id` from `$actor->tenant_id`, so a wrong-tenant actor corrupts isolation. The pre-filter window uses `ExpenseRecurrenceTemplate::MAX_LEAD_DAYS` (F4), never a literal 60.
+
 Core per-company loop (the shape to implement — atomicity + `wasRecentlyCreated` gate are spec-normative RA-H1):
 
 ```php
@@ -305,12 +336,16 @@ $templates = ExpenseRecurrenceTemplate::query()
     ->where('tenant_id', $company->tenant_id)
     ->where('company_id', $company->id)                          // TA-M2: company-partitioned scan
     ->where('status', RecurrenceStatus::Active)
-    ->whereDate('next_due_date', '<=', $today->addDays(/* max lead */ 60))
+    ->whereDate('next_due_date', '<=', $today->addDays(ExpenseRecurrenceTemplate::MAX_LEAD_DAYS))
     ->orderBy('id')->get()
     ->filter(fn ($t) => $t->next_due_date->subDays($t->lead_days)->lte($today));
 
 foreach ($templates as $template) {
-    [$expense, $fresh] = DB::transaction(function () use ($template, $user): array {   // atomic create+advance
+    $actor = User::query()
+        ->where('tenant_id', $template->tenant_id)
+        ->whereKey($template->created_by)
+        ->first() ?? $this->fallbackActor($template->tenant_id); // Opus F2: tenant-correct actor, deterministic fallback
+    [$expense, $fresh] = DB::transaction(function () use ($template, $actor): array {   // atomic create+advance
         $due = CarbonImmutable::parse($template->next_due_date->toDateString());
         $expense = $this->expenseService->create([
             'company_id' => $template->company_id,               // explicit, no context (rule 20 / TA-M2)
@@ -327,7 +362,7 @@ foreach ($templates as $template) {
             'notes' => $template->notes,
             'idempotency_key' => sprintf('recurring:%s:%s', $template->id,
                 RecurrenceCursor::periodKey($due, $template->frequency)),
-        ], $systemUser);
+        ], $actor);
         $expense->expenseMetadata?->update(['recurrence_template_id' => $template->id]);
         $next = RecurrenceCursor::next($template->start_date, $template->frequency, $due);
         $template->update([
@@ -357,7 +392,7 @@ Schedule::command('expenses:generate-recurring')
     ->withoutOverlapping();
 ```
 
-- [ ] **Step 1: Failing tests** — draft created with template's fields (incl. VAT trio + `recurrence_template_id`, `document_date` = due, `payment_date` NULL, `is_paid` false, status Draft); cursor advanced origin-anchored; **replay run (same period): no second draft, cursor NOT double-advanced, NO second notification** (assert `DatabaseNotification` count); notification recipients = `expenses.post` holders of THAT company only; ended when `next > end_date`; **two-companies-one-tenant: company-A template never generates for company B**; lead-days gate honors company timezone (fixture company with `Pacific/Auckland` vs UTC edge date); `HorizonQueueCoverageTest` untouched (database channel — no queue).
+- [ ] **Step 1: Failing tests** — draft created with template's fields (incl. VAT trio + `recurrence_template_id`, `document_date` = due, `payment_date` NULL, `is_paid` false, status Draft); **generated `documents.tenant_id === $template->tenant_id`** (Opus F2 — actor stamping) and `created_by` fallback path when the template author no longer exists; **day-31 template generates `document_date` = the clamped due date** (origin-anchored, not drifted); cursor advanced origin-anchored; **replay run (same period): no second draft, cursor NOT double-advanced, NO second notification** (assert `DatabaseNotification` count); notification recipients = `expenses.post` holders of THAT company only; ended when `next > end_date`; **two-companies-one-tenant: company-A template never generates for company B**; lead-days gate honors company timezone (fixture company with `Pacific/Auckland` vs UTC edge date); `HorizonQueueCoverageTest` untouched (database channel — no queue).
 - [ ] **Steps 2–4: red → implement → green.** `php artisan schedule:list` shows the entry.
 - [ ] **Step 5: Commit** `feat(expense): recurring draft generation command + due notifications`
 
@@ -371,7 +406,7 @@ Schedule::command('expenses:generate-recurring')
 - Consumes: `ExpenseRecurrenceTemplate`, `RecurrenceCursor` (same direct-query pattern the file already uses for `ExpenseMetadata` — keep the existing in-file convention; note in the class docblock that this is the file's established cross-module read style).
 - Produces in Money-Out, per spec §6.4 partition: (1) `materializedRecurringDrafts()` — same query shape as `openUnpaidExpenses` but `status = Draft` + `whereHas('expenseMetadata', fn($q) => $q->whereNotNull('recurrence_template_id'))`, due = `document_date`; (2) `projectedRecurringOccurrences()` — active templates, occurrences from `next_due_date` forward within `windowEnd` (loop `RecurrenceCursor::next` from the cursor), emitted as synthetic lines (label = template name, amount string, date) — **projection only, never materializes**; (3) existing posted-unpaid feed unchanged.
 
-- [ ] **Step 1: Failing tests** — template with cursor inside window → projected line appears; generate the draft (call the Task 10 command) → **the period moves from projection to the draft feed (no double-count, no gap)**; post the draft unpaid → moves to the existing feed; amounts are strings summed with bcmath at company scale.
+- [ ] **Step 1: Failing tests** — template with cursor inside window → projected line appears; generate the draft (call the Task 10 command) → **the period moves from projection to the draft feed (no double-count, no gap)**; post the draft unpaid → moves to the existing feed; **deleting a generated draft removes that period from the forecast and it does NOT reappear in projection** (Opus F5 — accepted semantics, pinned deliberately: the cursor has advanced; explicit user deletion means the period is gone, no regeneration); amounts are strings summed with bcmath at company scale.
 - [ ] **Steps 2–4: red → implement → green** (existing `UpcomingPaymentsService` tests by path stay green).
 - [ ] **Step 5: Commit** `feat(accounting): recurring occurrences + materialized drafts feed the 30-day forecast`
 
@@ -380,7 +415,7 @@ Schedule::command('expenses:generate-recurring')
 **Files:**
 - Create: `apps/web/src/features/expenses/pages/RecurringExpensesPage.tsx`, `.../api/recurrenceApi.ts`, `.../hooks/useExpenseRecurrences.ts` (+ tests)
 - Modify: routes/nav per `docs/conventions/02-NAVIGATION-ROUTING.md`; `apps/web/src/features/expenses/_invalidation.ts`; `NotificationPanel.tsx` (`KNOWN_TYPES` + `displayMessage` case); `locales/{en,fr,ar}/notifications.json` (**NESTED** `types → expense → recurring → generated`, FE-L1) + `expenses.json` namespaces; `ExpenseDetailPage.tsx` (template chip when `recurrence_template_id`).
-- [ ] TDD: Vitest — list renders (name, frequency badge, next due, `formatCurrency(amount)`, status), pause/resume mutations invalidate via bare-literal prefixes, nav gated `hasPermission('expense-recurrences.view')`, form reuses W1 field set incl. PartnerPicker + VAT block; notification panel resolves the nested key and deep-links.
+- [ ] TDD: Vitest — list renders (name, frequency badge, next due, `formatCurrency(amount)`, status), pause/resume mutations invalidate via bare-literal prefixes, nav gated `hasPermission('expense-recurrences.view')`, form reuses W1 field set incl. PartnerPicker + VAT block; notification panel resolves the nested key and deep-links. **Interpolation contract pinned (Opus F7):** the `displayMessage` case maps snake_case payload → camelCase i18n vars explicitly — `t('messages.expense.recurring.generated', { name: data.template_name, amount: formatCurrency(data.amount, data.currency) })` — and a Vitest assertion renders the message with the template name + formatted amount visible (no raw `{{…}}` placeholder leakage).
 - [ ] `pnpm typecheck && pnpm lint` (feature paths) + transform if DTOs changed; commit `feat(web/expenses): recurring templates UI + bell notification type`.
 - [ ] **GATE 2 (autonomous):** Opus review of W2 diff + tenancy-authz lane on permissions/notification. Fable escalation only on money-path BLOCKER/HIGH.
 
@@ -397,9 +432,9 @@ Schedule::command('expenses:generate-recurring')
 
 **Interfaces:**
 - Produces response per spec §7.1 (tiles/by_category/matrix/top_vendors, all money strings). Params: `date_from`, `date_to` (default: first day of month 5 months back → today), `category_id?`, `status?` default `'posted'`. Service method: `generate(string $tenantId, string $companyId, AnalyticsFilters $f): ExpenseAnalyticsData` (spatie-data DTO → transform later).
-- Implementation constraints: **every aggregate one GROUP BY query** over `documents` joined to `expense_metadata`/`expense_categories`, ALL filtered `company_id = requireCompanyId()` AND `type = expense` (TA-H2); `matrix` months via `to_char(document_date, 'YYYY-MM')`; `top_vendors` groups `COALESCE(partner_id::text, vendor_name)` with partner name join; `mom_delta_percent` = current vs previous equal-length period, bcmath, `null` when previous = 0; SUMs read as strings. Check `\DB::select("SELECT indexname FROM pg_indexes WHERE tablename='documents'")` in a plan step — add composite index migration `documents(company_id, type, status, document_date)` ONLY if no equivalent exists (RA-L4).
+- Implementation constraints: **every aggregate one GROUP BY query** over `documents` joined to `expense_metadata`/`expense_categories`, ALL filtered `company_id = requireCompanyId()` AND `type = expense` (TA-H2); `matrix` months via `to_char(document_date, 'YYYY-MM')`; `top_vendors` groups `COALESCE(partner_id::text, vendor_name)` with partner name join; `mom_delta_percent` = current vs previous equal-length period, bcmath, `null` when previous = 0; **`share_percent` guards division by zero (Opus F3): `grandTotal == '0' ? '0.00' : bcround(bcmul(bcdiv(catTotal, grandTotal, scale+4), '100', scale+4), 2)`** — an empty filter window must return zeros, not 500; SUMs read as strings. Check `\DB::select("SELECT indexname FROM pg_indexes WHERE tablename='documents'")` in a plan step — add composite index migration `documents(company_id, type, status, document_date)` ONLY if no equivalent exists (RA-L4).
 
-- [ ] **Step 1: Failing tests** — seeded fixture (2 categories × 3 months × posted/draft mix, one VAT expense): totals string-exact; draft excluded under default status, included with `status=draft`; category filter; month bucketing at boundaries (doc on the 1st/last day); **two-companies-one-tenant leak test: company B rows never in company A response** (TA-H2); top_vendors groups by partner when set, else vendor_name.
+- [ ] **Step 1: Failing tests** — seeded fixture (2 categories × 3 months × posted/draft mix, one VAT expense): totals string-exact; draft excluded under default status, included with `status=draft`; category filter; month bucketing at boundaries (doc on the 1st/last day); **empty/zero-total window returns `total:'0.00'`, `mom_delta_percent: null`, empty/zero `by_category` — no error** (Opus F3); **a pre-W1 legacy row (`subtotal == total`, `tax_amount` null) sums without error** (legacy-net caption path); **two-companies-one-tenant leak test: company B rows never in company A response** (TA-H2); top_vendors groups by partner when set, else vendor_name.
 - [ ] **Steps 2–4: red → implement → green.**
 - [ ] **Step 5: Commit** `feat(expense): analytics endpoint (tiles/category/matrix/top-vendors)`
 
@@ -412,7 +447,7 @@ Schedule::command('expenses:generate-recurring')
 
 **Interfaces:**
 - Produces `GET /expenses/export` — same filters as `index()` (reuse the exact filter block, extracted into a shared query-builder method on a small `ExpenseIndexQuery` class consumed by BOTH `index()` and export so filters can't drift). `response()->streamDownload` (exemplar `ImportController.php:527-533`) writing UTF-8 BOM `"\xEF\xBB\xBF"` then header row then `->cursor()` rows; columns per spec §7.3; money cells = raw stored decimal strings; filename `expenses-{date_from}-{date_to}.csv`.
-- [ ] **Step 1: Failing tests** — 45 seeded rows with `per_page=20`-style filters → CSV contains ALL 45 (not one page); BOM present; deny-path: role without `expenses.export` → 403; company-B rows absent (leak test); VAT columns populated.
+- [ ] **Step 1: Failing tests** — 45 seeded rows with `per_page=20`-style filters → CSV contains ALL 45 (not one page); BOM present; deny-path: role without `expenses.export` → 403; company-B rows absent (leak test); VAT columns populated; **a row with `document_date` exactly on `date_to` IS included** (Opus test-adequacy — boundary parity with `index()`'s `<=`, proves the shared `ExpenseIndexQuery` didn't flip an inequality).
 - [ ] **Steps 2–4: red → implement → green.**
 - [ ] **Step 5: Commit** `feat(expense): permission-gated streamed CSV export`
 
@@ -444,7 +479,7 @@ if ($instrument->direction === InstrumentDirection::Outbound) {
 }
 ```
 
-- [ ] **Step 1: Failing tests** — an Outbound instrument (created via the manual registration endpoint) rejected by each of the five entry points (custodyTransfer, deposit, clear, bounce, remittance addLine via `assertEligible`); `receive()` and `cancel()` still work on Outbound (regression — the deferred-supplier branch depends on receive); an Inbound instrument still clears end-to-end (regression by path).
+- [ ] **Step 1: Failing tests** — an Outbound instrument (created via the manual registration endpoint) rejected by each of the five entry points (custodyTransfer, deposit, clear, bounce, remittance addLine via `assertEligible`); `receive()` and `cancel()` still work on Outbound (regression — the deferred-supplier branch depends on receive); an Inbound instrument still clears end-to-end (regression by path). **Deliberate scope statement (Opus F6): `updateDetails` (`InstrumentLifecycleService.php:646`), `receive()` and `cancel()` intentionally stay direction-neutral — only the five collection-lifecycle actions gain guards; outbound editing must remain possible pending the deferred outbound-lifecycle phase (spec §12).**
 - [ ] **Steps 2–4: red → implement → green.**
 - [ ] **Step 5: Commit** `fix(treasury): reject inbound lifecycle actions on outbound instruments (5 guard points)`
 
@@ -460,4 +495,28 @@ if ($instrument->direction === InstrumentDirection::Outbound) {
 
 - **Spec coverage:** §5→Tasks 1-6; §6→7-12; §7→13-15; §8→16; §8.5→9 (+14 deny-path); §9 test cases distributed into task Step-1 lists; §10→17; §12 G20-handoff→17. No uncovered spec section.
 - **Type consistency:** `RecurrenceCursor` signatures identical across Tasks 8/9/10/11; `ExpenseVatSplit::deductible` shared GL/tax-detail (Task 4); DTO field names match `CreateExpenseDTO` extension (Tasks 2/3/5).
-- **Known deliberate deviations:** none from spec Rev 2; `bcround` (not "bcroundHalfUp") per spec correction; tax-detail widening migration added per spec §5.3 note.
+- **Known deliberate deviations:** none from spec Rev 2; `bcround` (not "bcroundHalfUp") per spec correction. ~~Tax-detail widening migration added per spec §5.3 note~~ — REMOVED in Rev 2 (see reconciliation, Fable F2: the columns were already widened in March; spec §5.3 carries a correction note).
+
+## Plan review reconciliation (Rev 2, 2026-07-13 — two independent lanes)
+
+Reviews: Fable W1 money-path lane (`specs/reviews/2026-07-13-treasury-phase4-plan-review-w1-money-path-fable.md`, CHANGES-REQUIRED, 8 findings) + Opus W2–W4 lane (`specs/reviews/2026-07-13-treasury-phase4-plan-review-w2-w4-opus.md`, CHANGES-REQUIRED, 7 findings). Both lanes independently converged on the console-safety defect (Fable F5 ≡ Opus F1). All findings ACCEPTED; none rebutted. Dispositions:
+
+| Finding | Sev | Disposition |
+|---|---|---|
+| Fable F1 — off-grid total → unbalanced JE → 500 | HIGH | Task 3: on-grid guard in `assertVatInvariants` (reject `\DomainException`, option b — no silent mutation of user-entered totals) + EUR off-grid test |
+| Fable F2 — tax-detail widening premise stale (already 15,3 since March) | MED | Task 1: widening migration + false red step DELETED; spec §5.3 correction note added (Rev 2.1) |
+| Fable F3 — literal bccomp scale fails `ForbidHardcodedBcmathScale` | MED | Task 3: `assertVatInvariants(array, ExpenseKind, int $scale)` — resolved scale passed in |
+| Fable F4 — `ExpenseMetadata` fillable/casts missing → silent field drop | MED | Task 1: model added to Files, mass-assignment round-trip test pinned; Task 4's 80% test reads a non-default percent through the model |
+| Fable F5 ≡ Opus F1 — `create()` not console-safe (`requireCompany()` at :72) | **BLOCKER** (Opus) | Task 3: `create()`/`update()` resolve `Company` from explicit `company_id` (controller already merges it), NO CompanyContext reads; console-shape test (context cleared) pinned; Task 10 cross-referenced — command must NOT bind context |
+| Fable F6 — new deptrac edge Accounting→Expense via `ExpenseVatSplit` | LOW | Task 4: helper moved to `App\Shared\Domain\ExpenseVatSplit` (next to `CurrencyScale`); Expense→Taxation `DocumentTaxDetail` write accepted + noted |
+| Fable F7 — zero `vat_amount` breaks byte-identical promise | LOW | Task 3: zero normalizes to null (full-trio clear); test pinned |
+| Fable F8 — missing tests (VAT clear on update, vat-only update, `vat == total`, EUR off-grid) | LOW | Task 3 Step 1: all four added |
+| Opus F2 — Task 10 acting `User` unspecified → tenant stamping risk | HIGH | Task 10: `$actor` resolution specified (template author in-tenant, deterministic fallback), `$systemUser`/`$user` inconsistency fixed, `documents.tenant_id === template.tenant_id` test pinned |
+| Opus F3 — `share_percent` divide-by-zero | MED | Task 13: guard formula + empty-window test pinned |
+| Opus F4 — lead-days literal 60 drift | MED | Task 9: `ExpenseRecurrenceTemplate::MAX_LEAD_DAYS` shared by FormRequest + Task 10 pre-filter |
+| Opus F5 — draft-deletion forecast semantics undefined | LOW | Task 11: semantics accepted + documented + test pinned (deleted period does not regenerate) |
+| Opus F6 — `updateDetails` direction-neutrality unstated | LOW | Task 16: deliberate scope statement added (no code change) |
+| Opus F7 — notification interpolation contract unpinned | LOW | Task 12: mapping pinned + no-placeholder-leak Vitest |
+| Opus test-adequacy — day-31 `document_date`, legacy-row analytics, `date_to` export boundary | — | Folded into Tasks 10/13/14 Step-1 lists |
+
+Both lanes' "Verified accurate" sections are ground truth for the executor: all line anchors, `bcround` semantics, remainder-method math (scale+2 intermediates confirmed CORRECT over spec §5.3's scale+1 phrasing), `wasRecentlyCreated` contract, exemplar signatures (`TreasuryAlertRecipients::forCompany`, `TreasuryAlertNotification`, `DateRangeFilter`, `PartnerPicker`), guard-point line numbers, and the missing-index confirmation were verified against `6e95f309e` — do not re-derive.
