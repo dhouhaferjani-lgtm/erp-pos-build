@@ -26,4 +26,4 @@ Worktree: `/Users/houssamr/Projects/syneriva/apps/erp.phase3-followups`
 - React Doctor, changed scope against `origin/dev`: 98/100, no issues.
 - `TreasuryMovementService.php`: byte-untouched relative to `origin/dev`.
 
-Autonomous gate: pending.
+Autonomous gate: `phase3-followups-rc1` reviewed by `claude-opus-4-8`; no BLOCKER/HIGH and no Fable escalation required. Artifact: `docs/handoff/gate-reviews-phase3-followups/GATE-rc1.md`. **VERDICT: APPROVE**.

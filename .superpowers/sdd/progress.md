@@ -11,4 +11,4 @@ Task F4: complete — retained both fluent predicates; gate fix uses a typed inv
 Task F5: complete — added one decimal(15,3) SUM-exactness comment without SQL or behavior changes; focused endpoint path passed 6 tests / 37 assertions
 Task F6: complete — migrated only the repository summary-card bg-white literal to colors.white; focused list-page Vitest passed 6 tests and design audit reported 0 new / 0 stale
 Final verification: complete — backend Treasury 594 tests / 2,382 assertions green; PHPStan 2,528 files clean at the established 1 GB limit; Pint pass; FE typecheck/lint pass; changed Treasury UI 22/22; audits 0 new / 0 stale and 0 TanStack findings; React Doctor 98/100 with no changed-scope issues. Full Treasury Vitest retains the exact same 10 CompanyConfigProvider harness failures as clean origin/dev, with 243 branch passes vs 240 baseline passes.
-Autonomous review gate: pending
+Autonomous review gate: complete — `phase3-followups-rc1`, Opus APPROVE, no BLOCKER/HIGH, no Fable escalation
