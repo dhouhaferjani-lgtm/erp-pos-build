@@ -116,7 +116,7 @@
   - Scoped PHPStan over `Document`, `ExpenseController`, and `ExpenseResource` exited 0 with no errors; scoped Pint over the PHP implementation/tests passed.
   - The required deprecated `npx react-doctor@latest --verbose --diff` invocation compared the full phase branch to `main` and scored 49/100 from 143 branch-wide findings. The authoritative Task 5 scan, `npx react-doctor@latest apps/web --verbose --scope changed --base ef4cea39e --blocking none`, exited 0 at 93/100 with two pre-existing whole-file warnings: the form atoms barrel import and the already-over-300-line detail page. The Task 5 base versions were already 427 and 310 lines respectively, so this is no diagnostic regression.
 - Behavior: selecting a supplier writes `partner_id` and snapshots its name into an independently editable `vendor_name`; configured active line-percentage taxes feed the rate select; inclusive VAT suggestion uses only decimal-string helpers; the receipt VAT amount remains editable; deductible VAT defaults to `100`; linked costs render without the VAT block and have their trio cleared; all fields validate inline through RHF; detail shows linked supplier plus net/VAT/rate/deductible/total.
-- Necessary plan deviation: Task 2/3 persisted supplier/VAT values but the existing `ExpenseResource` omitted `partner_id`, partner snapshot, `subtotal`, `tax_amount`, `vat_rate`, and deductible percent, leaving the required detail UI disconnected. With task-owner approval, the initial Task 5 commit added focused response-contract tests, minimal resource serialization, and eager loading on shared expense responses. The later approved service update is recorded below; no posting logic or generated package types were touched. The `Document` PHPDoc was corrected to match the existing nullable `documents.partner_id` migration; the already-nullable linkable-invoice partner label was made null-safe as the corresponding scoped PHPStan fix.
+- Necessary plan deviation: Task 2/3 persisted supplier/VAT values but the existing `ExpenseResource` omitted `partner_id`, partner snapshot, `subtotal`, `tax_amount`, `vat_rate`, and deductible percent, leaving the required detail UI disconnected. With task-owner approval, the initial Task 5 commit added focused response-contract tests, minimal resource serialization, and eager loading on shared expense responses. The later approved service update is recorded below; no posting logic or generated package types were touched. The initial commit also widened the global `Document` partner PHPDoc and made the linkable-invoice mapper null-safe; Task 6 independent review proved that global annotation change invalid and reverted it while preserving ExpenseResource's explicit loaded-relation safety.
 
 ### Task 5 post-commit review fixes — persistence, isolation, and legacy UX
 
@@ -146,7 +146,7 @@
   - Accounting: 478 tests / 2,156 assertions, 4 skips, exit 0.
   - Treasury: 603 tests / 2,411 assertions, 25 skips, exit 0.
   - `./vendor/bin/pint --dirty`: exit 0.
-  - Exact `./vendor/bin/phpstan` exhausted its default 512 MB parallel workers after scanning 2,529 files. The 2 GB retry completed with 34 errors exclusively in files unchanged from `origin/dev`; a level-8 analysis over all 14 Phase 4 PHP files exited 0 with no errors. No suppression or baseline was added.
+  - Initial exact `./vendor/bin/phpstan` exhausted its default 512 MB parallel workers after scanning 2,529 files. The initial 2 GB retry completed with 34 errors that were incorrectly attributed to upstream because their downstream paths were unchanged; independent review later proved they were induced by this branch's shared `Document` partner annotation change. The correction and fresh green evidence are recorded below.
 - Gate 1 frontend:
   - `pnpm typecheck && pnpm lint`: exit 0; ESLint 0 errors (existing warnings only), TanStack audit 0 violations, design audit 753 acknowledged / 0 new / 0 stale, custom ESLint rules green.
   - Required Vitest scope: 14 files, 90 passed / 3 todo, exit 0.
@@ -157,4 +157,12 @@
   - console-shape create with cleared context: 1 test / 2 assertions, exit 0.
 - Inviolate port: `git diff --exit-code origin/dev..HEAD -- apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php` exited 0 (empty).
 - Task 6 report: `.superpowers/sdd/task-6-report.md`.
-- Deviations: no functional plan deviation. Type generation was a no-op, so no empty commit was manufactured. Exact preflight/full PHPStan remain non-green only because of proven `origin/dev` formatting/type debt; Phase 4's branch-owned checks are green.
+- Deviations: no functional plan deviation. Type generation was a no-op, so no empty commit was manufactured. Exact preflight remains non-green only because of proven `origin/dev` formatting drift. Full PHPStan is green after the review correction below.
+
+### Task 6 independent-review fix — restore the shared Document partner contract
+
+- HIGH finding: changing global `Document::$partner_id` and `$partner` PHPDoc to nullable propagated nullable types into every document domain, despite the null exception being specific to expenses. The changed-file PHPStan run missed the regression because all 34 failing consumers were unchanged files.
+- RED: fresh `./vendor/bin/phpstan --memory-limit=2G --error-format=json` analyzed 2,529 files and reproduced exactly 34 file errors across 22 consumers. The prior claim that these were origin/dev errors is retracted.
+- Root-cause fix: commit `700212281` restores the origin/dev annotations (`string $partner_id`, `Partner $partner`) and restores `partner->name` in the linkable supplier-invoice mapper. ExpenseResource keeps its explicit relation-loaded, company-constrained supplier serialization, so the expense exception remains disclosure-safe without weakening the shared model contract.
+- GREEN: fresh `./vendor/bin/phpstan --memory-limit=2G` passed 2,529/2,529 with no errors. The subsequent exact default `./vendor/bin/phpstan` also passed 2,529/2,529 with no errors; no baseline, suppression, or downstream consumer edits were added.
+- Regression verification: focused Expense response/isolation tests passed 9 tests / 35 assertions; full Expense passed 68 tests / 272 assertions; scoped Pint passed; `git diff --check` passed; `TreasuryMovementService` remained byte-untouched relative to `origin/dev`.

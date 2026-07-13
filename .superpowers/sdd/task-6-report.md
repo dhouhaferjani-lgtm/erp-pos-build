@@ -1,18 +1,19 @@
 # Task 6 report — W1 closeout and Gate 1 verification
 
-Status: **DONE — Phase 4 changes are green; two origin/dev-wide checks have documented pre-existing failures**
+Status: **DONE — Phase 4 changes are green; origin/dev-wide Pint drift is documented**
 
 ## Outcome
 
 - Regenerated backend-driven TypeScript declarations with `CACHE_STORE=array`; 434 PHP types transformed and `packages/shared/types/generated.d.ts` remained byte-clean. There was no legitimate generated diff to commit.
 - Ran the repository preflight exactly. It stopped at its first unconditional full-repository Pint check on 18 files that are byte-identical to `origin/dev`; Phase 4 does not change any reported file or Pint configuration.
-- Corrected the one branch-owned PHPStan issue surfaced by a changed-files analysis: the expense request helper now declares Laravel's established `TestResponse<Response>` generic instead of an invalid array payload generic.
+- Corrected the request helper's invalid response generic and, after independent review, restored the established non-null general `Document` partner contract that the branch had incorrectly widened.
 - Ran every Gate 1 verification path and each pinned Gate 1 money-path test. All runtime, frontend, formatting, and branch-owned static checks are green.
 - Confirmed `TreasuryMovementService.php` is byte-untouched relative to `origin/dev`.
 
 ## Commits
 
 - `3928e7f7f chore(expense): correct response test generic`
+- `700212281 fix(expense): restore document partner contract`
 - Task report/progress evidence is committed separately by the Task 6 closeout commit.
 
 The transform produced no file change, so creating an empty generated-types commit would have misrepresented the repository state.
@@ -57,12 +58,18 @@ Evidence of upstream ownership: `git diff --name-only origin/dev..HEAD` is empty
 
 ### PHPStan
 
-- Exact `./vendor/bin/phpstan`: reached 2,529/2,529 files but exited 1 because four parallel workers exhausted the configured 512 MB memory limit.
-- `./vendor/bin/phpstan --memory-limit=2G`: completed analysis and reported 34 errors across files untouched by Phase 4. No reported error is in a branch-changed file.
-- Changed-file command: all 14 Phase 4 PHP implementation/migration/test files analyzed at level 8 with 2 GB; exit 0, `[OK] No errors`.
+- Initial exact `./vendor/bin/phpstan`: reached 2,529/2,529 files but exited 1 because four parallel workers exhausted the configured 512 MB memory limit.
+- Initial `./vendor/bin/phpstan --memory-limit=2G`: completed analysis and reported 34 errors. The first diagnosis incorrectly attributed those errors to upstream because their downstream file paths were unchanged. That diagnosis was incomplete: all 34 errors were induced by this branch widening `Document::$partner_id` and `Document::$partner` to nullable.
+- Changed-file analysis was therefore insufficient as the sole new-error check: it excluded the unchanged consumers whose inferred types had been altered by the shared model annotation.
 - The first changed-file run correctly found the invalid `TestResponse<array<string,mixed>>` generic. After commit `3928e7f7f`, the focused request test passed 6 tests / 21 assertions, its focused PHPStan run passed, its focused Pint run passed, and the complete changed-file PHPStan run passed.
 
-The full PHPStan failures are pre-existing `origin/dev` type debt, not a zero-new-error violation. No baseline or suppression was added.
+### Independent-review HIGH — shared Document partner contract
+
+- RED: fresh `./vendor/bin/phpstan --memory-limit=2G --error-format=json` analyzed all 2,529 files and reported exactly 34 file errors across 22 consumers. Every error was nullability propagation from the two branch-changed `Document` PHPDoc properties.
+- Root cause: the database permits a nullable partner for the Expense exception, but the shared `Document` domain contract and the 34 affected non-expense paths require a partner. Widening the global model annotation changed inference for every document type and forced an unnecessary optional chain into the supplier-invoice mapper.
+- Fix: commit `700212281` restores origin/dev's `string $partner_id` and `Partner $partner` model annotations and restores `partner->name` in `ExpenseController::linkableInvoices()`. Expense response disclosure remains safe because `ExpenseResource` still derives supplier data only from the explicitly company-constrained loaded relation.
+- GREEN: fresh `./vendor/bin/phpstan --memory-limit=2G` analyzed 2,529/2,529 files with `[OK] No errors`. A subsequent exact `./vendor/bin/phpstan` also analyzed 2,529/2,529 with `[OK] No errors`; the earlier default-memory OOM did not recur after the contract fix/cache warm-up.
+- Regression verification: focused `ExpenseShowTest.php + ExpenseRequestVatValidationTest.php` passed 9 tests / 35 assertions; full `tests/Feature/Expense` passed 68 tests / 272 assertions; scoped Pint passed; `git diff --check` and the Treasury port diff both exited 0.
 
 ## Gate 1 frontend matrix
 
@@ -87,5 +94,5 @@ The full PHPStan failures are pre-existing `origin/dev` type debt, not a zero-ne
 
 - Type generation was a no-op, so no empty commit was created.
 - Exact preflight cannot become green without unrelated origin/dev formatting changes.
-- Exact full PHPStan cannot become green without either more memory and fixing 34 unrelated origin/dev errors or weakening/suppressing analysis; neither is in scope. Phase 4's complete changed-file level-8 analysis is green.
+- The original attribution of 34 full-PHPStan errors to origin/dev was a Task 6 verification mistake; it is explicitly retracted above. Full PHPStan is now green without a baseline, suppression, or downstream edits.
 - No branch-caused blocker remains. Formal Gate 1 tagging and `claude -p` review are intentionally left to the root controller.
