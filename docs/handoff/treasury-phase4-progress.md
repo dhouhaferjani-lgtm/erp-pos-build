@@ -175,3 +175,20 @@
 - Verdict: **APPROVE** — no BLOCKER, HIGH, or MEDIUM findings.
 - Non-blocking observations: optional hardening of direct-service numeric-shape guards, cosmetic consistency in the tax-detail metadata access, and suggestion-only frontend rounding/formatting. No Wave 1 contract change was required.
 - Artifact note: the isolated reviewer lacked file-write permission, so it emitted the complete review text to stdout; the controller persisted that text without changing its substance.
+
+## Task 7 — Recurring expense template schema — 2026-07-13
+
+- Files:
+  - `apps/api/database/migrations/tenant/2026_07_14_110000_create_expense_recurrence_templates.php`
+  - `apps/api/database/migrations/tenant/2026_07_14_110100_add_recurrence_template_id_to_expense_metadata.php`
+  - `apps/api/app/Modules/Expense/Domain/Enums/RecurrenceFrequency.php`
+  - `apps/api/app/Modules/Expense/Domain/Enums/RecurrenceStatus.php`
+  - `apps/api/app/Modules/Expense/Domain/ExpenseRecurrenceTemplate.php`
+  - `apps/api/tests/Feature/Expense/ExpenseRecurrenceTemplateModelTest.php`
+- RED: focused PHPUnit exited 2 with 5 tests, 1 expected schema failure, and 4 expected missing-model errors before any production file existed.
+- GREEN: focused PHPUnit exited 0 with 5 tests / 55 assertions. It proves the full schema field list, complete mass-assignment behavior, enum/date/decimal/integer casts, active/three-day defaults, all four nullable default FKs using `SET NULL`, and metadata linkage using `SET NULL`.
+- Expense regression: `./vendor/bin/phpunit tests/Feature/Expense` exited 0 with 73 tests / 327 assertions.
+- Quality gates: scoped PHPStan level 8 passed with no errors; scoped Pint passed; all six task PHP files passed `php -l`; `git diff --check` passed.
+- Migration/schema sanity: the focused `RefreshDatabase` path applied both migrations under the PHPUnit SQLite environment and passed real persistence and FK deletion checks.
+- Scope: exactly the Task 7 schema/enums/model slice. No cursor math, CRUD, permissions, generator, notifications, scheduling, frontend, Treasury, fiscal, settlement, posting, or generated-type surface changed.
+- Deviations: none.
