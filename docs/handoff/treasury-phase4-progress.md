@@ -128,3 +128,9 @@
 - Fresh regression cutoffs: Expense backend 68 passed/272 assertions; expense frontend plus canonical picker 82 passed/3 todo across 10 files; root typecheck exited 0; focused ESLint exited 0 with no errors; design audit remained 753 acknowledged/0 new/0 stale; scoped PHPStan reported no errors.
 - React Doctor pinned to Task 5 base `ef4cea39e` exited 0 at 93/100 with the same two base-existing findings (atoms barrel import and already-large detail component).
 - Owner-approved deviation: Task 5 now minimally updates `Document.partner_id` inside `ExpenseService::update` and secures response supplier loading/serialization. Posting, settlement, VAT split math, linked-cost capitalization, Treasury, fiscal behavior, migrations, and generated types are unchanged.
+
+### Task 5 final review fix — explicit supplier clear payload
+
+- RED: the focused edit-mode form test failed because clearing the controlled picker submitted `partner_id: undefined`; PATCH JSON would omit the field and preserve the supplier despite the backend's explicit-null clearing contract.
+- GREEN: `CreateExpenseDTO.partner_id` is `string | null` when present, and `PartnerPicker.onChange(null)` writes explicit `null`. The form suite passes 6/6, including create selection remaining a string UUID and edit clear submitting null so `ExpenseService::update()` reaches its tested `array_key_exists` clear path.
+- Final verification: frontend expense plus canonical picker 83 passed/3 todo; root typecheck exited 0; focused ESLint had 0 errors; design audit had 0 new/stale; focused backend clear/replace passed 2/2; pinned React Doctor remained 93/100; diff check passed.

@@ -128,7 +128,7 @@ export interface ExpenseCategory {
  */
 export interface CreateExpenseDTO {
   vendor_name?: string
-  partner_id?: string
+  partner_id?: string | null
   expense_category_id?: string
   payment_method_id?: string
   payment_repository_id?: string

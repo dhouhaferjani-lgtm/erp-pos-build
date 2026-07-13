@@ -195,7 +195,7 @@ export function ExpenseFormFields({
             value={selectedPartner}
             onChange={(value) => {
               setSelectedPartner(value)
-              setValue('partner_id', value?.id || undefined)
+              setValue('partner_id', value?.id ?? null)
               if (value !== null) {
                 setValue('vendor_name', value.name)
               }

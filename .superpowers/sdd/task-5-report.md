@@ -109,3 +109,10 @@ No functional concern. Existing expense tenant-scope tests emit `act(...)` warni
 ### Approved deviation
 
 The task owner approved the minimal cross-layer correction needed for edit persistence and disclosure safety: only `Document.partner_id` merge persistence in `ExpenseService`, company-constrained response eager loading, and relation-derived supplier serialization changed. Posting, settlement, VAT split math, linked-cost capitalization, treasury movement, fiscal behavior, migrations, and generated package types remain unchanged.
+
+## Final review fix — explicit supplier clear payload
+
+- RED: `pnpm --filter @autoerp/web test -- --run src/features/expenses/components/organisms/ExpenseFormFields.test.tsx -t 'explicit null'` exited 1. The controlled edit-mode picker cleared visually, but the submitted payload contained `partner_id: undefined` instead of explicit `null`, so JSON serialization would omit the field and preserve the stored supplier.
+- GREEN: `CreateExpenseDTO.partner_id` now accepts `string | null`, and the picker writes `value?.id ?? null`. The complete form suite passes 6/6: edit clear submits explicit null, while create selection still submits the supplier UUID string.
+- Backend handoff: the existing focused `ExpenseService::update()` replacement/explicit-null tests pin the `array_key_exists` persistence semantics reached by this payload.
+- Final verification: expense frontend plus canonical picker passed 83 tests with 3 todo across 10 files; root typecheck exited 0; focused ESLint exited 0 with 0 errors; design audit remained 753 acknowledged/0 new/0 stale; the two backend supplier-update tests passed; pinned React Doctor remained 93/100 with the same two base-existing findings; `git diff --check` exited 0.

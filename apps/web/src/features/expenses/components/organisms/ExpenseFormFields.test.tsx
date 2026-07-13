@@ -165,6 +165,20 @@ describe('ExpenseFormFields supplier and VAT capture', () => {
     }))
   })
 
+  it('submits an explicit null when clearing the supplier in edit mode', async () => {
+    const onSave = vi.fn<(data: CreateExpenseDTO) => void>()
+    const { user } = renderForm(onSave, editExpense)
+
+    expect(screen.getByTestId('selected-supplier')).toHaveTextContent('supplier-1')
+    await user.click(screen.getByRole('button', { name: 'Clear supplier' }))
+    expect(screen.getByTestId('selected-supplier')).toHaveTextContent('none')
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1) })
+    expect(onSave.mock.calls[0]?.[0]).toHaveProperty('partner_id', null)
+  })
+
   it('suggests inclusive VAT with decimal strings and submits corrected receipt arithmetic', async () => {
     const { onSave, user } = renderForm()
 
