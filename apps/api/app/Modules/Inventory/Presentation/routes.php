@@ -9,11 +9,12 @@ use App\Modules\Inventory\Presentation\Controllers\CountingItemController;
 use App\Modules\Inventory\Presentation\Controllers\EntryExitNoteController;
 use App\Modules\Inventory\Presentation\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
+use App\Modules\Inventory\Presentation\Controllers\LocationNodeController;
+use App\Modules\Inventory\Presentation\Controllers\ProductPlacementController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
 use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
 use App\Modules\Inventory\Presentation\Controllers\StockTransferController;
-use App\Modules\Inventory\Presentation\Controllers\ZoneController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -279,31 +280,65 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('inventory-countings.items.opening-cost');
 
     // ==========================================
-    // Zones — shelf/section labels for count scoping + product placement
-    // (stock quantity stays at product/location grain; zones are labels only)
+    // Location placement hierarchy — nodes are aisle/rack/shelf/bin LABELS
+    // for count scoping + product placement (stock quantity stays at
+    // product/location grain; nodes never carry quantity). Replaces the flat
+    // zones API (FE placement UI lands in Phase 2).
     // ==========================================
 
-    Route::get('/inventory/zones', [ZoneController::class, 'index'])
+    Route::get('/inventory/locations/{location}/nodes', [LocationNodeController::class, 'index'])
         ->middleware('can:inventory.view')
-        ->name('inventory-zones.index');
+        ->name('inventory-nodes.index');
 
-    Route::post('/inventory/zones', [ZoneController::class, 'store'])
+    Route::post('/inventory/nodes', [LocationNodeController::class, 'store'])
         ->middleware('can:inventory.adjust')
-        ->name('inventory-zones.store');
+        ->name('inventory-nodes.store');
 
-    Route::patch('/inventory/zones/{zone}', [ZoneController::class, 'update'])
+    Route::patch('/inventory/nodes/{node}', [LocationNodeController::class, 'update'])
         ->middleware('can:inventory.adjust')
-        ->name('inventory-zones.update');
+        ->name('inventory-nodes.update');
 
-    Route::delete('/inventory/zones/{zone}', [ZoneController::class, 'destroy'])
+    Route::post('/inventory/nodes/{node}/move', [LocationNodeController::class, 'move'])
         ->middleware('can:inventory.adjust')
-        ->name('inventory-zones.destroy');
+        ->name('inventory-nodes.move');
 
-    Route::post('/inventory/zones/{zone}/assign-products', [ZoneController::class, 'assignProducts'])
+    Route::delete('/inventory/nodes/{node}', [LocationNodeController::class, 'destroy'])
         ->middleware('can:inventory.adjust')
-        ->name('inventory-zones.assign-products');
+        ->name('inventory-nodes.destroy');
 
-    Route::get('/inventory/zones/{zone}/products', [ZoneController::class, 'products'])
+    Route::post('/inventory/nodes/{node}/restore', [LocationNodeController::class, 'restore'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-nodes.restore');
+
+    // Product placements on nodes (one LIVE placement per product+location;
+    // unassign = tombstone for offline delta sync)
+    Route::get('/inventory/nodes/{node}/products', [ProductPlacementController::class, 'products'])
         ->middleware('can:inventory.view')
-        ->name('inventory-zones.products');
+        ->name('inventory-nodes.products');
+
+    Route::post('/inventory/nodes/{node}/assign-products', [ProductPlacementController::class, 'assignProducts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-nodes.assign-products');
+
+    Route::delete('/inventory/nodes/{node}/products/{product}', [ProductPlacementController::class, 'unassignProduct'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-nodes.unassign-product');
+
+    // Delta sync (mobile): tuple cursor + server high-water-mark + tombstones.
+    // Registered BEFORE bulk-move for readability; distinct paths, no clash.
+    Route::get('/inventory/placements', [ProductPlacementController::class, 'delta'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-placements.delta');
+
+    Route::post('/inventory/placements/bulk-move', [ProductPlacementController::class, 'bulkMove'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-placements.bulk-move');
+
+    Route::get('/inventory/products/{product}/placements', [ProductPlacementController::class, 'productPlacements'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-products.placements');
+
+    Route::put('/inventory/products/{product}/placements', [ProductPlacementController::class, 'setProductPlacement'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-products.placements.set');
 });

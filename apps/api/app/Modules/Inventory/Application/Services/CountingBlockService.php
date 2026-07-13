@@ -8,7 +8,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
-use App\Modules\Inventory\Domain\LocationZone;
+use App\Modules\Inventory\Domain\LocationNode;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -116,7 +116,7 @@ final class CountingBlockService
         }
 
         // Only zones belonging to THIS location can advise this terminal.
-        $zoneNames = LocationZone::query()
+        $zoneNames = LocationNode::query()
             ->where('location_id', $locationId)
             ->pluck('name', 'id');
 

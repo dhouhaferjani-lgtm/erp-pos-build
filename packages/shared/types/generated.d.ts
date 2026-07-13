@@ -883,6 +883,32 @@ price_override_reason: string | null;
 created_at: string;
 updated_at: string;
 };
+export type LocationNodeDto = {
+id: string;
+location_id: string;
+parent_id: string | null;
+node_type: string;
+name: string;
+code: string;
+path: string;
+depth: number;
+sort_order: number;
+is_active: boolean;
+deleted_at: string | null;
+created_at: string;
+updated_at: string;
+};
+export type ProductPlacementDto = {
+id: string;
+product_id: string;
+product_name: string | null;
+product_sku: string | null;
+location_id: string;
+node_id: string;
+deleted_at: string | null;
+created_at: string;
+updated_at: string;
+};
 export type ReplayAuditDto = {
 windowFrom: string;
 windowTo: string;
@@ -906,26 +932,6 @@ max_quantity: string | null;
 is_below_minimum: boolean;
 quantity_decimals: number;
 };
-export type ZoneDto = {
-id: string;
-location_id: string;
-name: string;
-code: string;
-sort_order: number;
-is_active: boolean;
-created_at: string;
-updated_at: string;
-};
-export type ZoneProductAssignmentDto = {
-id: string;
-product_id: string;
-product_name: string | null;
-product_sku: string | null;
-location_id: string;
-zone_id: string;
-created_at: string;
-updated_at: string;
-};
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
 export type AssignmentStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
@@ -935,6 +941,7 @@ export type CountingScopeType = 'product_location' | 'product' | 'location' | 'c
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type GoodsReceiptStatus = 'draft' | 'posted';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
+export type LocationNodeType = 'zone' | 'aisle' | 'rack' | 'shelf' | 'bin' | 'section';
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';

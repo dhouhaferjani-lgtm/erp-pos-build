@@ -51,13 +51,20 @@ vi.mock('@/components/molecules/pickers/ProductPicker', () => ({
 }))
 
 function zone(overrides: Partial<Record<string, unknown>> = {}) {
+  // LocationNodeDto shape (Phase-1 hierarchy backend): flat zones are
+  // top-level nodes with node_type 'zone'.
   return {
     id: 'zone-1',
     location_id: 'loc-1',
+    parent_id: null,
+    node_type: 'zone',
     name: 'Aisle 1',
     code: 'A1',
+    path: 'A1',
+    depth: 0,
     sort_order: 0,
     is_active: true,
+    deleted_at: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -107,7 +114,7 @@ afterEach(() => {
 describe('ZonesPanel', () => {
   it('renders the zones list for the given location', async () => {
     mockApiGet.mockImplementation(async (url: string) => {
-      if (url === '/inventory/zones') {
+      if (url === '/inventory/locations/loc-1/nodes') {
         return [zone()]
       }
       return []
@@ -119,7 +126,7 @@ describe('ZonesPanel', () => {
       expect(screen.getByText('Aisle 1')).toBeInTheDocument()
     })
     expect(screen.getByText('A1')).toBeInTheDocument()
-    expect(mockApiGet).toHaveBeenCalledWith('/inventory/zones', { location_id: 'loc-1' })
+    expect(mockApiGet).toHaveBeenCalledWith('/inventory/locations/loc-1/nodes')
   })
 
   it('validates required name on create and does not submit', async () => {
@@ -146,17 +153,17 @@ describe('ZonesPanel', () => {
   it('posts product_ids when bulk-assigning products to a zone', async () => {
     const user = userEvent.setup()
     mockApiGet.mockImplementation(async (url: string) => {
-      if (url === '/inventory/zones') {
+      if (url === '/inventory/locations/loc-1/nodes') {
         return [zone()]
       }
-      if (url === '/inventory/zones/zone-1/products') {
+      if (url === '/inventory/nodes/zone-1/products') {
         return []
       }
       return []
     })
     mockApiPost.mockImplementation(async (url: string) => {
-      if (url === '/inventory/zones/zone-1/assign-products') {
-        return [{ id: 'assign-1', product_id: 'prod-1', product_name: 'Product One', product_sku: 'SKU1', location_id: 'loc-1', zone_id: 'zone-1', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }]
+      if (url === '/inventory/nodes/zone-1/assign-products') {
+        return [{ id: 'assign-1', product_id: 'prod-1', product_name: 'Product One', product_sku: 'SKU1', location_id: 'loc-1', node_id: 'zone-1', deleted_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }]
       }
       return {}
     })
@@ -175,7 +182,7 @@ describe('ZonesPanel', () => {
     await user.click(submitButton)
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/inventory/zones/zone-1/assign-products', {
+      expect(mockApiPost).toHaveBeenCalledWith('/inventory/nodes/zone-1/assign-products', {
         product_ids: ['prod-1'],
       })
     })

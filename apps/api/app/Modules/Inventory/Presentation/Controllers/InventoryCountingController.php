@@ -892,7 +892,7 @@ class InventoryCountingController extends Controller
         // InventoryCountingService::resolveCountingItemSeeds /
         // getStockLevelsForScope) require it here — zone-scoped and
         // catalog-sourced (location/category/full_inventory) countings
-        // generate items from product_zone_assignments or the active catalog
+        // generate items from product_placements or the active catalog
         // and carry no product_ids at all.
         if (in_array($counting->scope_type, [CountingScopeType::Product, CountingScopeType::ProductLocation], true)) {
             $productIds = $counting->scope_filters['product_ids'] ?? [];

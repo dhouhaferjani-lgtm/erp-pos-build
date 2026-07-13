@@ -12,14 +12,16 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
-use App\Modules\Inventory\Application\Services\ZoneService;
+use App\Modules\Inventory\Application\Services\LocationNodeService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
-use App\Modules\Inventory\Domain\LocationZone;
-use App\Modules\Inventory\Domain\ProductZoneAssignment;
+use App\Modules\Inventory\Domain\LocationNode;
+use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -27,6 +29,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -37,7 +40,7 @@ use Tests\Traits\AssertsApiValidation;
  * - Zone scope sources items from `product_zone_assignments` for the given
  *   zone_ids; theoretical qty is the current on-hand (incl. 0 / no stock row).
  * - Submitting the first count of a zone-scoped session (single zone) upserts
- *   the counted product into that zone via ZoneService::assignProduct.
+ *   the counted product into that zone via LocationNodeService::assignProduct.
  * - `block_sales=true` is rejected for a zone scope (soft advisory only).
  * - Onboarding-location full counts (and opt-in full/location counts) source
  *   the whole active catalog LEFT JOIN stock (theoretical 0 when absent) and
@@ -58,7 +61,7 @@ final class ZoneScopedCountingTest extends TestCase
 
     private InventoryCountingService $service;
 
-    private ZoneService $zoneService;
+    private LocationNodeService $zoneService;
 
     protected function setUp(): void
     {
@@ -114,7 +117,7 @@ final class ZoneScopedCountingTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->service = app(InventoryCountingService::class);
-        $this->zoneService = app(ZoneService::class);
+        $this->zoneService = app(LocationNodeService::class);
     }
 
     private function makeProduct(string $sku, bool $isActive = true): Product
@@ -142,11 +145,13 @@ final class ZoneScopedCountingTest extends TestCase
         ]);
     }
 
-    private function makeZone(string $code, ?Location $location = null): LocationZone
+    private function makeZone(string $code, ?Location $location = null): LocationNode
     {
-        return $this->zoneService->createZone(
+        return $this->zoneService->createNode(
             tenantId: $this->tenant->id,
             locationId: ($location ?? $this->location)->id,
+            parentId: null,
+            type: LocationNodeType::Zone,
             name: 'Zone '.$code,
             code: $code,
         );
@@ -165,9 +170,9 @@ final class ZoneScopedCountingTest extends TestCase
         // $noStock deliberately has NO stock row.
         $this->setStock($otherZone, '9.0000');
 
-        $this->zoneService->assignProduct($withStock->id, $this->location->id, $zoneA->id);
-        $this->zoneService->assignProduct($noStock->id, $this->location->id, $zoneA->id);
-        $this->zoneService->assignProduct($otherZone->id, $this->location->id, $zoneB->id);
+        $this->zoneService->assignProduct($this->tenant->id, $withStock->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($this->tenant->id, $noStock->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($this->tenant->id, $otherZone->id, $this->location->id, $zoneB->id);
 
         $counting = $this->service->create([
             'scope_type' => CountingScopeType::Zone->value,
@@ -228,20 +233,20 @@ final class ZoneScopedCountingTest extends TestCase
             'theoretical_qty' => '0.0000',
         ]);
 
-        $this->assertDatabaseMissing('product_zone_assignments', [
+        $this->assertDatabaseMissing('product_placements', [
             'product_id' => $unassigned->id,
             'location_id' => $this->location->id,
         ]);
 
         $this->service->submitCount($item, 1, '3.0000', null, $this->user);
 
-        $assignment = ProductZoneAssignment::query()
+        $assignment = ProductPlacement::query()
             ->where('product_id', $unassigned->id)
             ->where('location_id', $this->location->id)
             ->first();
 
         $this->assertNotNull($assignment, 'Submitting a count must assign the product to the zone.');
-        $this->assertSame($zoneA->id, $assignment->zone_id);
+        $this->assertSame($zoneA->id, $assignment->node_id);
     }
 
     public function test_zone_scope_rejects_block_sales(): void
@@ -427,8 +432,8 @@ final class ZoneScopedCountingTest extends TestCase
         $this->setStock($assigned1, '4.0000');
         // $assigned2 deliberately has no stock row.
 
-        $this->zoneService->assignProduct($assigned1->id, $this->location->id, $zoneA->id);
-        $this->zoneService->assignProduct($assigned2->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($this->tenant->id, $assigned1->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($this->tenant->id, $assigned2->id, $this->location->id, $zoneA->id);
 
         $draft = InventoryCounting::create([
             'tenant_id' => $this->tenant->id,
@@ -498,7 +503,7 @@ final class ZoneScopedCountingTest extends TestCase
     {
         $zoneA = $this->makeZone('A');
         $product = $this->makeProduct('MOB-SESSION');
-        $this->zoneService->assignProduct($product->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $zoneA->id);
 
         $counting = InventoryCounting::create([
             'tenant_id' => $this->tenant->id,
@@ -545,5 +550,38 @@ final class ZoneScopedCountingTest extends TestCase
 
         // The blind counter-view must still never leak theoretical_qty.
         $this->assertStringNotContainsString('theoretical_qty', $counterViewResponse->getContent());
+    }
+
+    /**
+     * Review MINOR: the zone_ids exists-rule itself must reject tombstoned
+     * nodes so the defense isn't single-layered (previously only
+     * validateZonesBelongToLocation — which needs location_id present —
+     * caught them).
+     */
+    public function test_zone_ids_rule_rejects_tombstoned_nodes_at_rule_level(): void
+    {
+        $zone = $this->makeZone('TDZ');
+        $this->zoneService->softDeleteSubtree($zone);
+
+        $request = new CreateCountingRequest(app(CompanyContext::class));
+        $rules = $request->rules();
+
+        $validator = Validator::make(
+            ['scope_filters' => ['zone_ids' => [$zone->id]]],
+            ['scope_filters.zone_ids.*' => $rules['scope_filters.zone_ids.*']],
+        );
+
+        $this->assertTrue(
+            $validator->errors()->has('scope_filters.zone_ids.0'),
+            'tombstoned node id must fail the exists rule itself',
+        );
+
+        // a live node still passes the same rule
+        $live = $this->makeZone('LVZ');
+        $validator = Validator::make(
+            ['scope_filters' => ['zone_ids' => [$live->id]]],
+            ['scope_filters.zone_ids.*' => $rules['scope_filters.zone_ids.*']],
+        );
+        $this->assertFalse($validator->errors()->has('scope_filters.zone_ids.0'));
     }
 }
