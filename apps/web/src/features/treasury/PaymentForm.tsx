@@ -1,14 +1,14 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, CircleAlert, Plus, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { semanticColorTokens as colorTokens, tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { AddPartnerModal } from '../../components/organisms/AddPartnerModal/AddPartnerModal'
 import { AddRepositoryModal } from '../../components/organisms/AddRepositoryModal/AddRepositoryModal'
 import { Button } from '../../components/atoms/Button/Button'
@@ -29,6 +29,10 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub, formatCurrency as formatDecimalCurrency } from '../../lib/decimal'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { BankPicker } from '@/components/molecules/pickers/BankPicker'
+import { useBankAccountValidation } from '@/hooks/useBankAccountValidation'
+import type { Bank } from '@/hooks/useBanks'
+import { useCompanyConfigOptional } from '@/contexts/CompanyConfigContext'
 
 type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed'
 
@@ -112,9 +116,13 @@ interface PaymentFormData {
   maturity_date: string
   third_party_name: string
   drawer_name: string
+  bank_id: string
   bank_name: string
   bank_branch: string
   bank_account: string
+  bank_iban: string
+  selected_bank: Bank | null
+  bank_fallback: boolean
   withholding_enabled?: boolean
   withholding_rate?: string
   withholding_transaction_type?: string
@@ -257,6 +265,9 @@ function scopedNamespacePredicate(
 export function PaymentForm() {
   const { t } = useTranslation(['treasury', 'common', 'sales', 'withholding'])
   const { currency, symbol, decimals, format: formatCurrency } = useCurrency()
+  const companyConfig = useCompanyConfigOptional()
+  const countryCode = companyConfig?.config?.country_code ?? ''
+  const autoDerivedIbanRef = useRef('')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
@@ -295,9 +306,13 @@ export function PaymentForm() {
       maturity_date: '',
       third_party_name: '',
       drawer_name: '',
+      bank_id: '',
       bank_name: '',
       bank_branch: '',
       bank_account: '',
+      bank_iban: '',
+      selected_bank: null,
+      bank_fallback: false,
     },
   })
 
@@ -305,6 +320,25 @@ export function PaymentForm() {
   const selectedPartnerId = watch('partner_id')
   const paymentAmount = watch('amount')
   const selectedMethodId = watch('payment_method_id')
+  const bankAccount = watch('bank_account') ?? ''
+  const bankIban = watch('bank_iban') ?? ''
+  const bankName = watch('bank_name') ?? ''
+  const selectedBank = watch('selected_bank') ?? null
+  const bankFallback = watch('bank_fallback') ?? false
+  const ribValidation = useBankAccountValidation(bankAccount, countryCode, 'rib')
+
+  useEffect(() => {
+    const nextIban = ribValidation.status === 'valid' ? ribValidation.derivedIban ?? '' : ''
+    if (nextIban !== '') {
+      if (bankIban === '' || bankIban === autoDerivedIbanRef.current) {
+        setValue('bank_iban', nextIban)
+        autoDerivedIbanRef.current = nextIban
+      }
+    } else if (autoDerivedIbanRef.current !== '' && bankIban === autoDerivedIbanRef.current) {
+      setValue('bank_iban', '')
+      autoDerivedIbanRef.current = ''
+    }
+  }, [bankIban, ribValidation.derivedIban, ribValidation.status, setValue])
 
   // Fetch invoice data if invoice ID is provided in query params
   const { data: invoiceData } = useQuery({
@@ -655,6 +689,7 @@ export function PaymentForm() {
             reference: data.instrument_number,
             maturity_date: data.maturity_date || undefined,
             drawer_name: data.drawer_name || undefined,
+            bank_id: data.bank_id || undefined,
             bank_name: data.bank_name || undefined,
             bank_branch: data.bank_branch || undefined,
             bank_account: data.bank_account || undefined,
@@ -963,8 +998,30 @@ export function PaymentForm() {
                     <Input id="drawer_name" type="text" {...register('drawer_name')} />
                   </FormField>
 
-                  <FormField label={t('treasury:instruments.bankName')} htmlFor="bank_name">
-                    <Input id="bank_name" type="text" {...register('bank_name')} />
+                  <Input type="hidden" {...register('bank_id')} />
+                  <Input type="hidden" {...register('bank_name')} />
+                  <FormField label={t('treasury:instruments.bankName')} htmlFor="instrument-bank-name">
+                    <BankPicker
+                      id="instrument-bank-name"
+                      aria-label={t('treasury:instruments.bankName')}
+                      country={countryCode}
+                      value={selectedBank}
+                      isFallback={bankFallback}
+                      fallbackValue={bankName}
+                      onFallbackValueChange={(value) => {
+                        setValue('bank_name', value)
+                      }}
+                      onFallbackChange={(isFallback) => {
+                        setValue('bank_fallback', isFallback)
+                        setValue('selected_bank', null)
+                        setValue('bank_id', '')
+                      }}
+                      onChange={(bank) => {
+                        setValue('selected_bank', bank)
+                        setValue('bank_id', bank?.id ?? '')
+                        setValue('bank_name', bank?.name ?? '')
+                      }}
+                    />
                   </FormField>
 
                   <FormField label={t('treasury:instruments.bankBranch')} htmlFor="bank_branch">
@@ -973,6 +1030,26 @@ export function PaymentForm() {
 
                   <FormField label={t('treasury:instruments.bankAccount')} htmlFor="bank_account">
                     <Input id="bank_account" type="text" {...register('bank_account')} />
+                    {ribValidation.status === 'valid' ? (
+                      <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.success.textStrong}`}>
+                        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                        {t('treasury:repositories.validation.validRib')}
+                      </p>
+                    ) : ribValidation.status === 'invalid' && ribValidation.normalized.length >= 20 ? (
+                      <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.caution.textStrong}`}>
+                        <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
+                        {t('treasury:repositories.validation.invalidRibWarning')}
+                      </p>
+                    ) : ribValidation.status === 'unsupported' ? (
+                      <p className={`mt-1 flex items-center gap-1 text-xs ${colorTokens.intent.info.textStrong}`}>
+                        <CircleAlert className="h-3.5 w-3.5" aria-hidden />
+                        {t('treasury:repositories.validation.unsupportedCountry')}
+                      </p>
+                    ) : null}
+                  </FormField>
+
+                  <FormField label={t('treasury:repositories.iban')} htmlFor="bank_iban">
+                    <Input id="bank_iban" type="text" readOnly {...register('bank_iban')} />
                   </FormField>
                 </div>
               </fieldset>
