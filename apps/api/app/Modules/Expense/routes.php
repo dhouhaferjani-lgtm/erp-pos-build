@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Expense\Presentation\Controllers\ExpenseAnalyticsController;
 use App\Modules\Expense\Presentation\Controllers\ExpenseCategoryController;
 use App\Modules\Expense\Presentation\Controllers\ExpenseController;
 use App\Modules\Expense\Presentation\Controllers\ExpenseRecurrenceController;
@@ -24,6 +25,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('expenses', [ExpenseController::class, 'index'])->middleware('can:expenses.view')->name('expenses.index');
     Route::get('expenses/linkable-invoices', [ExpenseController::class, 'linkableInvoices'])->middleware('can:expenses.create')->name('expenses.linkable-invoices');
     Route::get('expenses/linkable-operations', [ExpenseController::class, 'linkableOperations'])->middleware('can:expenses.create')->name('expenses.linkable-operations');
+    Route::get('expenses/analytics', ExpenseAnalyticsController::class)->middleware('can:expenses.view')->name('expenses.analytics');
     Route::post('expenses', [ExpenseController::class, 'store'])->middleware('can:expenses.create')->name('expenses.store');
     Route::get('expenses/{id}', [ExpenseController::class, 'show'])->name('expenses.show');
     Route::match(['put', 'patch'], 'expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');

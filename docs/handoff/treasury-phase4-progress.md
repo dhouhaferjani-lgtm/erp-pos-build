@@ -332,3 +332,22 @@
 - Tenancy/authz Opus lane: **APPROVE**, no BLOCKER/HIGH/MEDIUM and no money-path authorization break. Artifact: `docs/handoff/gate-reviews-phase4/GATE-2-tenancy-authz-rc1.md`.
 - Non-blocking observations: bare upcoming-payments prefix may over-refetch; primary same-tenant author lookup does not require active status; two INFO-level dedicated negative-test gaps. No data leak, IDOR, permission divergence, or money-path failure was found.
 - Fable escalation: not triggered because neither Opus lane found or remained uncertain about a money-path BLOCKER/HIGH, and Wave 2 records no money-path plan deviation.
+
+## Task 13 — Expense analytics endpoint — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Application/DTOs/AnalyticsFilters.php` and the five `ExpenseAnalytics*Data` response DTOs;
+  - `apps/api/app/Modules/Expense/Application/Services/ExpenseAnalyticsService.php`;
+  - `apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseAnalyticsController.php`;
+  - `apps/api/app/Modules/Expense/Presentation/Requests/ExpenseAnalyticsRequest.php`;
+  - `apps/api/app/Modules/Expense/routes.php`;
+  - `apps/api/database/migrations/tenant/2026_07_14_120000_add_expense_analytics_documents_index.php`;
+  - `apps/api/tests/Feature/Expense/ExpenseAnalyticsTest.php`.
+- RED: focused PHPUnit exited 1 with 8/8 expected 404 failures and 8 assertions before any endpoint production file or route existed. The tests already pinned the default six-month/status window, explicit status/category filters, inclusive date boundaries, exact tiles/category/matrix/vendor strings, equal-length prior-period percentage, empty/zero behavior, a pre-W1 legacy row, sibling-company and explicit tenant isolation, partner-vs-snapshot vendor grouping, canonical validation, permission denial, and route order.
+- GREEN: focused PHPUnit passed 8 tests / 60 assertions. Full Expense feature regression passed 104 tests / 659 assertions with 0 errors, 0 failures, and 0 skips.
+- Query contract: current/prior tiles, categories, category-month matrix, and vendors each use one database `GROUP BY` query. Every query filters `documents.tenant_id`, `documents.company_id`, Expense type, status, inclusive date window, soft-delete state, and optional category. Category and partner joins are also tenant/company constrained. PostgreSQL month buckets use `to_char(document_date, 'YYYY-MM')`; SQLite alone wraps its permissive time-suffixed test date storage in `date(...)` and uses `strftime`, leaving production predicates/index use unchanged.
+- Money contract: aggregate SQL values are cast to text, then normalized at the explicit owning-company currency scale. All arithmetic is BCMath; no float conversion is used. `share_percent` has the reviewed zero-total guard and two-decimal rounding, while equal-length prior-period percentage is null when the previous total is zero. Legacy `subtotal == total` / null-tax rows continue to sum by stored gross `total`.
+- Index decision: live PostgreSQL `pg_indexes` inventory showed `idx_documents_company_type_status` and `idx_documents_company_date` as separate indexes, but no equivalent `(company_id, type, status, document_date)` index. The tenant migration therefore adds `idx_documents_company_type_status_date`; focused/full `RefreshDatabase` runs applied it successfully under SQLite.
+- Verification: scoped PHPStan level 8 passed with no errors; dirty Pint formatted the task files and the final scoped check passed; `git diff --check` passed. `php artisan route:list --path=api/v1/expenses/analytics -vv` showed exactly one GET route with `Authorize:expenses.view`, and source registration is above `expenses/{id}`.
+- Scope: Task 13 only. No Task 14 export, frontend Task 15, Treasury, fiscal, posting, settlement, recurrence, or forecast behavior changed.
+- Deviations: none. The driver-specific SQLite date/month expressions are the plan-required portability implementation and do not alter PostgreSQL semantics.
