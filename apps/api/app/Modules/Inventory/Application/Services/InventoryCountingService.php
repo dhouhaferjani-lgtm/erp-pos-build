@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
@@ -23,6 +24,7 @@ use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -295,9 +297,9 @@ class InventoryCountingService
     }
 
     /**
-     * Seeds for a zone scope: every product placed in the requested zones, at
-     * the zone's location, with its current product-grain on-hand (or
-     * `'0.0000'` when there is no stock row).
+     * Seeds for a node scope: every product placed directly in any selected
+     * node or descendant. Products with variants expand to variant-grain
+     * items; products without variants retain the null-variant grain.
      *
      * @param  array<string, mixed>  $filters
      * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
@@ -322,32 +324,115 @@ class InventoryCountingService
             return [];
         }
 
-        $seeds = [];
+        /** @var Collection<int, LocationNode> $selectedNodes */
+        $selectedNodes = LocationNode::query()
+            ->atLocation($locationId)
+            ->whereIn('id', $zoneIds)
+            ->get();
+
+        if ($selectedNodes->isEmpty()) {
+            return [];
+        }
+
+        /** @var list<string> $subtreeNodeIds */
+        $subtreeNodeIds = LocationNode::query()
+            ->atLocation($locationId)
+            ->where(function (Builder $query) use ($selectedNodes): void {
+                foreach ($selectedNodes as $node) {
+                    $query->orWhere(
+                        fn (Builder $subtree): Builder => $subtree->subtreeOf($node->path)
+                    );
+                }
+            })
+            ->pluck('id')
+            ->all();
+
+        if ($subtreeNodeIds === []) {
+            return [];
+        }
 
         // SoftDeletes default scope excludes tombstoned placements (live only).
         $assignments = ProductPlacement::query()
-            ->whereIn('node_id', $zoneIds)
+            ->whereIn('node_id', $subtreeNodeIds)
             ->where('location_id', $locationId)
             ->get();
 
-        foreach ($assignments as $assignment) {
-            /** @var StockLevel|null $stock */
-            $stock = StockLevel::query()
-                ->forCompany($companyId)
-                ->where('product_id', $assignment->product_id)
-                ->where('location_id', $assignment->location_id)
-                ->whereNull('variant_id')
-                ->first();
+        if ($assignments->isEmpty()) {
+            return [];
+        }
 
-            $seeds[] = [
-                'product_id' => $assignment->product_id,
-                'variant_id' => null,
-                'location_id' => $assignment->location_id,
-                'theoretical_qty' => $stock !== null ? $stock->quantity : '0.0000',
-            ];
+        /** @var list<string> $productIds */
+        $productIds = $assignments->pluck('product_id')->unique()->values()->all();
+
+        /** @var array<string, list<string>> $variantIdsByProduct */
+        $variantIdsByProduct = [];
+        foreach (ProductVariant::query()
+            ->where('company_id', $companyId)
+            ->whereIn('product_id', $productIds)
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->get() as $variant) {
+            $variantIdsByProduct[$variant->product_id][] = $variant->id;
+        }
+
+        /** @var array<string, numeric-string> $stockByGrain */
+        $stockByGrain = [];
+        foreach (StockLevel::query()
+            ->forCompany($companyId)
+            ->whereIn('product_id', $productIds)
+            ->where('location_id', $locationId)
+            ->get() as $stock) {
+            $stockByGrain[$this->stockGrainKey($stock->product_id, $stock->variant_id)] = $stock->quantity;
+        }
+
+        $seeds = [];
+        foreach ($assignments as $assignment) {
+            $variantIds = $variantIdsByProduct[$assignment->product_id] ?? [];
+            if ($variantIds === []) {
+                $seeds[] = $this->nodeItemSeed(
+                    $assignment->product_id,
+                    null,
+                    $assignment->location_id,
+                    $stockByGrain,
+                );
+
+                continue;
+            }
+
+            foreach ($variantIds as $variantId) {
+                $seeds[] = $this->nodeItemSeed(
+                    $assignment->product_id,
+                    $variantId,
+                    $assignment->location_id,
+                    $stockByGrain,
+                );
+            }
         }
 
         return $seeds;
+    }
+
+    private function stockGrainKey(string $productId, ?string $variantId): string
+    {
+        return $productId.'|'.($variantId ?? '');
+    }
+
+    /**
+     * @param  array<string, numeric-string>  $stockByGrain
+     * @return array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}
+     */
+    private function nodeItemSeed(
+        string $productId,
+        ?string $variantId,
+        string $locationId,
+        array $stockByGrain,
+    ): array {
+        return [
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'location_id' => $locationId,
+            'theoretical_qty' => $stockByGrain[$this->stockGrainKey($productId, $variantId)] ?? '0.0000',
+        ];
     }
 
     /**

@@ -20,6 +20,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { listLocationNodes } from '@/features/placement/api'
+import { NodePicker } from '@/features/placement/components/NodePicker'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Button } from '@/components/atoms/Button'
@@ -464,26 +465,26 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
         />
       )}
 
-      {/* Zone Selection: single location, then zones of that location */}
-      {scopeType === 'zone' && <ZoneScopeSelection data={data} onChange={onChange} />}
+      {/* Node / Zone Selection: single location, then hierarchy nodes of that location */}
+      {scopeType === 'zone' && <NodeScopeSelection data={data} onChange={onChange} />}
     </div>
   )
 }
 
-interface ZoneScopeSelectionProps {
+interface NodeScopeSelectionProps {
   data: Partial<CreateCountingFormData>
   onChange: (updates: Partial<CreateCountingFormData>) => void
 }
 
-function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
+function NodeScopeSelection({ data, onChange }: NodeScopeSelectionProps) {
   const { t } = useTranslation(['inventory', 'locations'])
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const locationId = data.scope_filters?.location_id ?? ''
-  const zoneIds = data.scope_filters?.zone_ids ?? []
+  const nodeIds = data.scope_filters?.zone_ids ?? []
 
-  const { data: zones, isLoading } = useQuery({
+  const { data: nodes, isLoading } = useQuery({
     queryKey: tenantScopedKey(['placement', 'nodes', locationId]),
     queryFn: () => listLocationNodes(locationId),
     enabled: locationId !== '' && tenantId !== null && companyId !== null,
@@ -501,14 +502,24 @@ function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
     })
   }
 
-  const handleToggleZone = (zoneId: string) => {
-    const next = zoneIds.includes(zoneId)
-      ? zoneIds.filter((id) => id !== zoneId)
-      : [...zoneIds, zoneId]
+  const handleToggleNode = (nodeId: string) => {
+    const next = nodeIds.includes(nodeId)
+      ? nodeIds.filter((id) => id !== nodeId)
+      : [...nodeIds, nodeId]
     onChange({
       scope_filters: {
         ...data.scope_filters,
         zone_ids: next,
+      },
+    })
+  }
+
+  const handleNodeSelection = (selectedIds: ReadonlySet<string>) => {
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        location_id: locationId,
+        zone_ids: [...selectedIds],
       },
     })
   }
@@ -525,39 +536,24 @@ function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
 
       {locationId !== '' && (
         <div>
-          <label className={cn('mb-2 block text-sm font-medium', textColors.secondary)}>
+          <p className={cn('mb-2 text-sm font-medium', textColors.secondary)}>
             {t('counting.create.zoneSelectLabel')}
-          </label>
+          </p>
 
           {isLoading ? (
             <p className={cn('text-sm', textColors.tertiary)}>{t('counting.create.zoneLoadingZones')}</p>
-          ) : (zones ?? []).length === 0 ? (
+          ) : (nodes ?? []).length === 0 ? (
             <p className={cn('text-sm', textColors.tertiary)}>{t('counting.create.noZonesForLocation')}</p>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {(zones ?? []).map((zone) => {
-                const selected = zoneIds.includes(zone.id)
-                return (
-                  <label
-                    key={zone.id}
-                    className={cn(
-                      'flex cursor-pointer items-center gap-2 rounded-md border-2 p-3 transition-colors',
-                      selected ? `${colorTokens.intent.primary.borderStrong} ${colorTokens.intent.primary.bgSubtle}` : cn(borderColors.default, colorTokens.border.hover),
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => { handleToggleZone(zone.id); }}
-                      className="rounded"
-                    />
-                    <span>
-                      <span className={cn('font-medium', textColors.primary)}>{zone.name}</span>
-                      <span className={cn('ms-1', textColors.tertiary)}>({zone.code})</span>
-                    </span>
-                  </label>
-                )
-              })}
+            <div className={cn('rounded-lg border', borderColors.default)}>
+              <NodePicker
+                nodes={nodes ?? []}
+                selectedId={nodeIds.length === 1 ? nodeIds[0] : null}
+                onSelect={(node) => { handleToggleNode(node.id) }}
+                selectedIds={new Set(nodeIds)}
+                onSelectionChange={handleNodeSelection}
+                label={t('counting.create.zoneSelectLabel')}
+              />
             </div>
           )}
 

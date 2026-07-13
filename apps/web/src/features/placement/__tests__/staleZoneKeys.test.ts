@@ -10,6 +10,10 @@ function sourceFiles(directory: string): string[] {
   })
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 describe('placement terminology migration', () => {
   it('has no stale zones.* translation keys in counting or settings source', () => {
     const roots = [
@@ -33,6 +37,27 @@ describe('placement terminology migration', () => {
       if (typeof translation !== 'object' || translation === null) throw new Error('Expected translation object')
       expect('placement' in translation).toBe(true)
       expect('zones' in translation).toBe(false)
+    }
+  })
+
+  it('labels the legacy zone counting enum as Node / Zone in every locale', () => {
+    const expected = {
+      en: 'Node / Zone',
+      fr: 'Nœud / Zone',
+      ar: 'عقدة / منطقة',
+    } as const
+
+    for (const [locale, expectedLabel] of Object.entries(expected)) {
+      const translation: unknown = JSON.parse(
+        readFileSync(join(process.cwd(), `src/locales/${locale}/inventory.json`), 'utf8'),
+      )
+
+      if (!isRecord(translation) || !isRecord(translation.counting)) throw new Error(`Missing counting translations for ${locale}`)
+      const { create, scopeTypes } = translation.counting
+      if (!isRecord(scopeTypes) || !isRecord(create)) throw new Error(`Missing node-scope translations for ${locale}`)
+
+      expect(scopeTypes.zone).toBe(expectedLabel)
+      expect(create.zoneSelectionHelper).toBeTypeOf('string')
     }
   })
 })

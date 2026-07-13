@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { CreateCountingPage } from '../pages/CreateCountingPage'
+import type { CreateCountingFormData } from '../types'
 
 // Mock translation
 vi.mock('react-i18next', () => ({
@@ -25,7 +26,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 // Mock useCreateCounting
-const mockMutate = vi.fn()
+const mockMutate = vi.fn<(payload: CreateCountingFormData) => void>()
 vi.mock('../api/queries', () => ({
   useCreateCounting: () => ({
     mutate: mockMutate,
@@ -74,14 +75,28 @@ vi.mock('@/features/placement/api', () => ({
   listLocationNodes: mockListZones,
 }))
 
-function zone(overrides: Partial<{ id: string; name: string; code: string }> = {}) {
+function node(overrides: Partial<{
+  id: string
+  parent_id: string | null
+  node_type: 'zone' | 'aisle' | 'rack' | 'shelf' | 'bin' | 'section'
+  name: string
+  code: string
+  path: string
+  depth: number
+}> = {}) {
   return {
-    id: 'zone-1',
+    id: 'node-a1',
     location_id: 'loc-1',
+    parent_id: null,
+    node_type: 'aisle' as const,
     name: 'Aisle 1',
     code: 'A1',
+    path: 'A1',
+    depth: 0,
     sort_order: 0,
     is_active: true,
+    product_count: 0,
+    deleted_at: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -127,14 +142,20 @@ describe('CreateCountingPage - zone scope', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setTenant()
-    mockListZones.mockResolvedValue([zone(), zone({ id: 'zone-2', name: 'Aisle 2', code: 'A2' })])
+    mockListZones.mockResolvedValue([
+      node(),
+      node({ id: 'node-r2', parent_id: 'node-a1', node_type: 'rack', name: 'Rack 2', code: 'R2', path: 'A1/R2', depth: 1 }),
+      node({ id: 'node-b7', parent_id: 'node-r2', node_type: 'bin', name: 'Bin 7', code: 'B7', path: 'A1/R2/B7', depth: 2 }),
+      node({ id: 'node-a10', name: 'Aisle 10', code: 'A10', path: 'A10' }),
+    ])
   })
 
   afterEach(() => {
+    cleanup()
     resetTenant()
   })
 
-  it('lists zones of the selected location once a location is chosen', async () => {
+  it('renders an expandable node tree for the selected location', async () => {
     const user = userEvent.setup()
     renderPage()
 
@@ -151,8 +172,12 @@ describe('CreateCountingPage - zone scope', () => {
     })
     await waitFor(() => {
       expect(screen.getByText('Aisle 1')).toBeInTheDocument()
-      expect(screen.getByText('Aisle 2')).toBeInTheDocument()
+      expect(screen.getByText('Aisle 10')).toBeInTheDocument()
     })
+    expect(screen.queryByText('Rack 2')).not.toBeInTheDocument()
+
+    await user.click(screen.getAllByRole('button', { name: 'placement.tree.expand' })[0])
+    expect(await screen.findByText('Rack 2')).toBeInTheDocument()
   })
 
   it('disables the block-sales toggle under zone scope with an explanatory hint', async () => {
@@ -187,7 +212,7 @@ describe('CreateCountingPage - zone scope', () => {
     await user.click(screen.getByText('Aisle 1'))
     await user.click(screen.getByText('next'))
 
-    const input = screen.getByLabelText('counting.create.ambiguityWindowMinutes') as HTMLInputElement
+    const input = screen.getByLabelText<HTMLInputElement>('counting.create.ambiguityWindowMinutes')
     expect(input.value).toBe('15')
   })
 
@@ -219,7 +244,7 @@ describe('CreateCountingPage - zone scope', () => {
     expect(mockMutate).toHaveBeenCalledTimes(1)
     const payload = mockMutate.mock.calls[0][0]
     expect(payload.scope_type).toBe('zone')
-    expect(payload.scope_filters).toEqual({ location_id: 'loc-1', zone_ids: ['zone-1'] })
+    expect(payload.scope_filters).toEqual({ location_id: 'loc-1', zone_ids: ['node-a1'] })
     expect(payload.block_sales).toBe(false)
     expect(payload.ambiguity_window_minutes).toBe(15)
   })
