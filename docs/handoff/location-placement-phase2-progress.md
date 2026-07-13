@@ -16,7 +16,7 @@
 | Wave | Scope | Commit(s) | RC tag | Gate verdict | Final tag | Notes / deviations |
 |---|---|---|---|---|---|---|
 | 1 | Tree management UI | `0ea41e1ad`, `023e04fe3` | `plc-gate-1-rc1` | APPROVE | `plc-gate-1` | Six LOW observations accepted as non-blocking; F4 is explicitly Wave 4 scope. |
-| 2 | Product-page placement field | Pending | Pending | Pending | Pending | None |
+| 2 | Product-page placement field | `a61951409` | `plc-gate-2-rc1` | APPROVE | `plc-gate-2` | Frontend-only as required; five LOW defensive/cosmetic observations accepted. |
 | 3 | CSV `placement_path` | Pending | Pending | Pending | Pending | None |
 | 4 | Counting node scope | Pending | Pending | Pending | Pending | None |
 
@@ -30,3 +30,9 @@ Gate reviews are written to `docs/handoff/gate-reviews-plc/GATE-<N>-rc<attempt>.
 - Backend: `LocationNodeApiTest.php` passed with 8 tests / 43 assertions; PHPStan L8 and Pint passed on changed PHP paths.
 - Static gates: TypeScript passed; design audit reported 752 acknowledged / 0 new / 0 stale; TanStack key audit reported 0 violations; React Doctor reported no issues against the branch diff.
 - Review: Opus returned APPROVE. Its CLI sandbox blocked only creation of the new review directory, so the executor preserved the returned review verbatim in `GATE-1-rc1.md`.
+
+### Gate 2 verification
+
+- Frontend: 61 scoped Vitest tests passed across the new per-location field, ProductForm integration, section ordering, and Wave 1 regression paths.
+- Static gates: TypeScript passed; exact placement i18n parity is 79 keys in en/fr/ar; design audit remained 752 acknowledged / 0 new / 0 stale; TanStack key audit remained 0; React Doctor reported no Wave 2 issues.
+- Review: Opus returned APPROVE with five LOW findings and no escalation-class finding. Its CLI sandbox again blocked only the review-file write, so the executor preserved the returned review in `GATE-2-rc1.md`.
