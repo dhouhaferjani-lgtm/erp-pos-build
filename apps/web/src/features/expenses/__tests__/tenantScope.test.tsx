@@ -15,6 +15,7 @@ import {
   useCreateExpense,
   useDeleteExpense,
   useExpense,
+  useExpenseAnalytics,
   useExpenses,
   usePostExpense,
   useUpdateExpense,
@@ -36,6 +37,7 @@ const mockExpenseCreate = vi.hoisted(() => vi.fn())
 const mockExpenseUpdate = vi.hoisted(() => vi.fn())
 const mockExpenseDelete = vi.hoisted(() => vi.fn())
 const mockExpensePost = vi.hoisted(() => vi.fn())
+const mockExpenseAnalytics = vi.hoisted(() => vi.fn())
 const mockCategoryList = vi.hoisted(() => vi.fn())
 const mockCategoryGet = vi.hoisted(() => vi.fn())
 const mockCategoryCreate = vi.hoisted(() => vi.fn())
@@ -50,6 +52,7 @@ vi.mock('../api/expenseApi', () => ({
     update: mockExpenseUpdate,
     delete: mockExpenseDelete,
     post: mockExpensePost,
+    getAnalytics: mockExpenseAnalytics,
   },
   expenseCategoryApi: {
     list: mockCategoryList,
@@ -104,6 +107,7 @@ beforeEach(() => {
   mockExpenseUpdate.mockReset(); mockExpenseUpdate.mockResolvedValue({ id: 'e-1' })
   mockExpenseDelete.mockReset(); mockExpenseDelete.mockResolvedValue(undefined)
   mockExpensePost.mockReset(); mockExpensePost.mockResolvedValue({ id: 'e-1' })
+  mockExpenseAnalytics.mockReset(); mockExpenseAnalytics.mockResolvedValue({ tiles: {} })
   mockCategoryList.mockReset(); mockCategoryList.mockResolvedValue([])
   mockCategoryGet.mockReset(); mockCategoryGet.mockResolvedValue({ id: 'c-1' })
   mockCategoryCreate.mockReset(); mockCategoryCreate.mockResolvedValue({ id: 'c-new' })
@@ -167,6 +171,21 @@ describe('expenseCategoriesInvalidationPredicate', () => {
 // ─── useQuery shape probes ───────────────────────────────────────────────────
 
 describe('expenses hook queryKey shapes', () => {
+  it('useExpenseAnalytics queryKey carries filters, tenant, and company', async () => {
+    setTenant('tenant-A', 'company-1')
+    const client = createTestQueryClient()
+    const wrapper = makeWrapper(client)
+    const filters = { status: 'posted' as const, date_to: '2026-03-31' }
+    const { result } = renderHook(() => useExpenseAnalytics(filters), { wrapper })
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
+
+    const key = client.getQueryCache().getAll()
+      .map((query) => query.queryKey as unknown[])
+      .find((candidate) => candidate[0] === 'expenses' && candidate[1] === 'analytics')
+    expect(key).toEqual(['expenses', 'analytics', filters, 'tenant-A', 'company-1'])
+    expect(mockExpenseAnalytics).toHaveBeenCalledWith(filters)
+  })
+
   it('useExpenses queryKey carries tenant + company at the suffix (.261)', async () => {
     setTenant('tenant-A', 'company-1')
     const client = createTestQueryClient()

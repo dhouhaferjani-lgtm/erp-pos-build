@@ -80,4 +80,15 @@ describe('route module guards', () => {
     expect(branch.slice(idx, idx + 450)).toContain('permission="expense-recurrences.view"')
     expect(branch.slice(idx, idx + 450)).toContain('<RecurringExpensesPage />')
   })
+
+  it('lazy-loads expense analytics before the dynamic id route under expenses.view', () => {
+    expect(routesSource).toContain("import('../features/expenses/pages/ExpenseAnalyticsPage')")
+    const branch = routeBranch('expenses')
+    const analytics = branch.indexOf('path="analytics"')
+    const dynamicId = branch.indexOf('path=":id"')
+    expect(analytics).toBeGreaterThanOrEqual(0)
+    expect(analytics).toBeLessThan(dynamicId)
+    expect(branch.slice(analytics, analytics + 450)).toContain('permission="expenses.view"')
+    expect(branch.slice(analytics, analytics + 450)).toContain('<ExpenseAnalyticsPage />')
+  })
 })

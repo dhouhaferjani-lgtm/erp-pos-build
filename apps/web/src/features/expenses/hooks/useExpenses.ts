@@ -7,7 +7,12 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { expenseApi } from '../api/expenseApi'
 import { expensesInvalidationPredicate } from '../_invalidation'
-import type { CreateExpenseDTO, ExpenseFilters, PayExpenseRequest } from '../types'
+import type {
+  CreateExpenseDTO,
+  ExpenseAnalyticsFilters,
+  ExpenseFilters,
+  PayExpenseRequest,
+} from '../types'
 
 function flatErrorMessage(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('response' in error)) return null
@@ -25,6 +30,8 @@ export const expenseKeys = {
   all: ['expenses'] as const,
   lists: () => [...expenseKeys.all, 'list'] as const,
   list: (filters?: ExpenseFilters) => [...expenseKeys.lists(), filters] as const,
+  analytics: (filters?: ExpenseAnalyticsFilters) =>
+    [...expenseKeys.all, 'analytics', filters] as const,
   details: () => [...expenseKeys.all, 'detail'] as const,
   detail: (id: string) => [...expenseKeys.details(), id] as const,
   linkableInvoices: () => [...expenseKeys.all, 'linkable-invoices'] as const,
@@ -41,6 +48,16 @@ export function useExpenses(filters?: ExpenseFilters) {
   return useQuery({
     queryKey: tenantScopedKey([...expenseKeys.list(filters)]),
     queryFn: () => expenseApi.list(filters),
+    enabled: !!tenantId && !!companyId,
+  })
+}
+
+export function useExpenseAnalytics(filters?: ExpenseAnalyticsFilters) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  return useQuery({
+    queryKey: tenantScopedKey([...expenseKeys.analytics(filters)]),
+    queryFn: () => expenseApi.getAnalytics(filters),
     enabled: !!tenantId && !!companyId,
   })
 }

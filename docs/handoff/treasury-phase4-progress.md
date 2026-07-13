@@ -375,3 +375,22 @@
 - GREEN and verification: focused export/list/show coverage passed 11 tests / 53 assertions. Full Expense feature regression passed 110 tests / 695 assertions. Scoped PHPStan level 8 passed with no errors; scoped Pint passed; `git diff --check` passed. `php artisan route:list --path=api/v1/expenses/export -vv` showed exactly one GET route with the full authenticated tenant middleware chain and `Authorize:expenses.export`.
 - Scope: Task 14 only. No Task 15 frontend, analytics aggregation, recurrence, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed.
 - Deviations: none.
+
+## Task 15 — Expense analytics UI, list depth, and CSV download — 2026-07-13
+
+- Files: expense analytics API/types/query hook and CSV download helper; `ExpenseAnalyticsPage`; expense-list filters, tiles, and actions; expense route/sidebar wiring; EN/FR/AR locale resources; and focused API, hook, page, route, sidebar, permission, download, and locale tests.
+- TDD evidence: the initial focused page/API run failed on the absent analytics client/page, date-to filter, tiles, and export behavior. The route/hook/navigation run then failed on the absent tenant-scoped key and route/sidebar surfaces. A final parity RED proved the dedicated analytics page queried posted data while exporting all statuses; GREEN now sends explicit `status=posted` to both operations.
+- List binding: the existing expense list intentionally remains all-status when its status filter is empty. Its summary omits status in that state, so the analytics endpoint retains its documented posted default; selecting a status binds both list and tiles. Search continues to filter the list and its CSV export, while analytics deliberately excludes search and displays a localized explanatory caption. Category plus both inclusive date bounds bind list, tiles, and export.
+- Dedicated analytics page: `/expenses/analytics` is lazy-loaded before `expenses/:id` and gated by exact `expenses.view`; the Treasury sidebar item uses the existing expense module permission map. The page starts explicitly at posted status and keeps its analytics/export filters identical across status, category, `date_from`, and `date_to`.
+- Reporting surface: four summary tiles use the shared company currency formatter; category mix, top vendors, and monthly totals use the existing `DataTable`; and the category-by-month ledger is horizontally scrollable, RTL-safe, logically sticky, and token-styled. Matrix amounts remain decimal strings, and monthly aggregation uses `big.js` without float conversion. The localized legacy-net caption preserves the Task 13 reporting contract.
+- Export contract: the authenticated Axios client requests `/expenses/export` as a blob, the action is rendered only for `expenses.export`, and the helper honors the server filename, clicks a temporary object URL, removes the anchor, and revokes the URL. List export forwards the full list filter set, including search; analytics export forwards the exact visible report filters. Failures surface a localized toast.
+- Localization: navigation and complete analytics resources were added for English, French, and Arabic, with a leaf-completeness regression test.
+- Verification:
+  - Fresh widened Vitest: 16 files passed, 147 tests passed, and 3 existing todos; the pre-existing tenant-scope React `act(...)` warnings remain non-failing.
+  - Root `pnpm typecheck`: all participating workspaces passed.
+  - Full web lint: exit 0 with 0 errors and existing repository warnings; TanStack audit 0 violations, design audit 753 acknowledged / 0 new / 0 stale, and custom ESLint rules green.
+  - Scoped Task 15 ESLint: 0 errors and 0 warnings.
+  - React Doctor pinned to Task 15 base `a9e0ee4ea`: **No issues found** (84/100 under v0.7.7).
+  - Locale JSON validation and `git diff --check`: pass.
+- Scope: Task 15 frontend only. No Task 16, Gate 3, backend, analytics SQL, CSV stream, recurrence, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed. Type generation remains assigned to Task 17.
+- Deviations: none.

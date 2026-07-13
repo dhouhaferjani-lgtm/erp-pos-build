@@ -294,6 +294,48 @@ export interface ExpenseFilters {
   per_page?: number
 }
 
+export type ExpenseAnalyticsFilters = Pick<
+  ExpenseFilters,
+  'status' | 'category_id' | 'date_from' | 'date_to'
+>
+
+export interface ExpenseAnalyticsTiles {
+  total: string
+  count: number
+  unpaid_total: string
+  mom_delta_percent: string | null
+}
+
+export interface ExpenseAnalyticsCategory {
+  category_id: string | null
+  name: string
+  total: string
+  share_percent: string
+}
+
+export interface ExpenseAnalyticsMatrixRow {
+  category_id: string | null
+  name: string
+  months: Record<string, string>
+}
+
+export interface ExpenseAnalyticsVendor {
+  partner_id: string | null
+  vendor_name: string
+  total: string
+}
+
+export interface ExpenseAnalyticsData {
+  tiles: ExpenseAnalyticsTiles
+  by_category: ExpenseAnalyticsCategory[]
+  matrix: ExpenseAnalyticsMatrixRow[]
+  top_vendors: ExpenseAnalyticsVendor[]
+}
+
+export interface ExpenseAnalyticsResponse {
+  data: ExpenseAnalyticsData
+}
+
 /**
  * Expense category filter parameters
  */

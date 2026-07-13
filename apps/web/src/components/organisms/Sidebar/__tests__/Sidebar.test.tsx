@@ -303,6 +303,16 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
   })
 
+  describe('Expense analytics navigation', () => {
+    it('links analytics through the expenses module permission map', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.expenseAnalytics/i }))
+        .toHaveAttribute('href', '/expenses/analytics')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('expenses')
+    })
+  })
+
   describe('Module Key Mapping', () => {
     it('maps "vehicles" sidebar key to "Vehicle" module name', async () => {
       renderSidebar(mechanicCompanyConfig)

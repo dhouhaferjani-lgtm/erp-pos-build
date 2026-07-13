@@ -96,8 +96,43 @@
   "filters": {
     "status": "Statut",
     "category": "Catégorie",
+    "dateRange": "Période",
     "dateFrom": "Date Début",
     "dateTo": "Date Fin"
+  },
+  "analytics": {
+    "title": "Analyse des dépenses",
+    "description": "Repérez où les dépenses se concentrent par catégorie, période et fournisseur.",
+    "open": "Voir l’analyse",
+    "export": "Exporter en CSV",
+    "exportError": "Le fichier des dépenses n’a pas pu être téléchargé.",
+    "loading": "Chargement de l’analyse des dépenses…",
+    "loadError": "Impossible de charger l’analyse des dépenses.",
+    "summary": "Synthèse des dépenses",
+    "searchExcluded": "Les totaux ignorent la recherche textuelle et suivent les filtres de statut, catégorie et période.",
+    "legacyNetCaption": "Les montants hors taxe des anciennes dépenses peuvent inclure de la TVA.",
+    "defaultPosted": "Comptabilisé (par défaut)",
+    "empty": "Aucune donnée de dépense pour cette période",
+    "tiles": {
+      "total": "Dépenses totales",
+      "count": "Dépenses",
+      "unpaid": "Impayé",
+      "change": "Évolution de la période"
+    },
+    "matrix": {
+      "title": "Calendrier des dépenses",
+      "description": "Catégories par mois comptable"
+    },
+    "categories": { "title": "Répartition par catégorie" },
+    "vendors": { "title": "Principaux fournisseurs" },
+    "monthly": { "title": "Totaux mensuels" },
+    "columns": {
+      "category": "Catégorie",
+      "share": "Part",
+      "vendor": "Fournisseur",
+      "month": "Mois",
+      "total": "Total"
+    }
   },
   "list": {
     "noExpenses": "Aucune dépense trouvée",

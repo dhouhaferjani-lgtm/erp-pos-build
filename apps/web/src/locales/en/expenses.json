@@ -96,8 +96,43 @@
   "filters": {
     "status": "Status",
     "category": "Category",
+    "dateRange": "Date range",
     "dateFrom": "Date From",
     "dateTo": "Date To"
+  },
+  "analytics": {
+    "title": "Expense analytics",
+    "description": "See where spending accumulates across categories, periods, and vendors.",
+    "open": "View analytics",
+    "export": "Export CSV",
+    "exportError": "The expense export could not be downloaded.",
+    "loading": "Loading expense analytics…",
+    "loadError": "Expense analytics could not be loaded.",
+    "summary": "Expense summary",
+    "searchExcluded": "Summary totals ignore the text search and follow the status, category, and date filters.",
+    "legacyNetCaption": "Net amounts for older expenses may include embedded VAT.",
+    "defaultPosted": "Posted (default)",
+    "empty": "No expense data for this period",
+    "tiles": {
+      "total": "Total spend",
+      "count": "Expenses",
+      "unpaid": "Unpaid",
+      "change": "Period change"
+    },
+    "matrix": {
+      "title": "Spending calendar",
+      "description": "Categories by accounting month"
+    },
+    "categories": { "title": "Category mix" },
+    "vendors": { "title": "Top vendors" },
+    "monthly": { "title": "Monthly totals" },
+    "columns": {
+      "category": "Category",
+      "share": "Share",
+      "vendor": "Vendor",
+      "month": "Month",
+      "total": "Total"
+    }
   },
   "list": {
     "noExpenses": "No expenses found",
