@@ -408,3 +408,9 @@
   - React Doctor pinned to Task 15 commit `790087799`, including current changes: **No issues found** (84/100 under v0.7.7).
   - `git diff --check`: pass.
 - Scope: necessary Task 15 review repair only. No Task 16 or Gate 3 work started.
+
+## Gate 3 — 2026-07-13
+
+- Autonomous Opus review: **APPROVE**, rc1. Artifact: `docs/handoff/gate-reviews-phase4/GATE-3-rc1.md`.
+- All money-path, tenancy, route-order, streamed-export, analytics/list parity, mutation invalidation, accessibility, i18n, permission-map, and tenantScopedKey checks passed. Findings were LOW/INFO only (analytics-page All selector UX, pre-existing list-label refresh behavior, Content-Disposition fallback, and explanatory MoM labeling).
+- Verification before gate: analytics 10 tests / 69 assertions; widened frontend 23 files / 192 passed / 3 existing todos; root typecheck, full web lint, TanStack/design audits, scoped PHPStan/Pint, React Doctor, and diff check green.
