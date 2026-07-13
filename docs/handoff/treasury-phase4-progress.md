@@ -414,3 +414,12 @@
 - Autonomous Opus review: **APPROVE**, rc1. Artifact: `docs/handoff/gate-reviews-phase4/GATE-3-rc1.md`.
 - All money-path, tenancy, route-order, streamed-export, analytics/list parity, mutation invalidation, accessibility, i18n, permission-map, and tenantScopedKey checks passed. Findings were LOW/INFO only (analytics-page All selector UX, pre-existing list-label refresh behavior, Content-Disposition fallback, and explanatory MoM labeling).
 - Verification before gate: analytics 10 tests / 69 assertions; widened frontend 23 files / 192 passed / 3 existing todos; root typecheck, full web lint, TanStack/design audits, scoped PHPStan/Pint, React Doctor, and diff check green.
+
+## Task 16 — Outbound direction guards (complete)
+
+- Files: `apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php`, `apps/api/app/Modules/Treasury/Application/Services/InstrumentRemittanceService.php`, `apps/api/tests/Feature/Treasury/OutboundInstrumentGuardTest.php`.
+- RED: focused guard suite had 5 failures across the five Outbound guard assertions before implementation; receive/cancel and inbound-clear regressions passed.
+- GREEN: focused guard suite `7 tests, 24 assertions`; combined Treasury regression `51 tests, 188 assertions`.
+- Scoped PHPStan reported no errors; Pint and `git diff --check` passed.
+- Contract: the identical `DomainException` guard is immediately after `findOrFail` in custodyTransfer, deposit, clear, and bounce, and is the first check in `assertEligible`. `receive()`, `cancel()`, and `updateDetails()` remain direction-neutral by deliberate scope; inbound deposit→clear remains green.
+- Deviations: none.
