@@ -54,10 +54,13 @@ const repository = {
 }
 
 let canAdjust = true
+let canTransfer = true
 
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({
-    hasPermission: (permission: string) => permission === 'treasury.adjust' && canAdjust,
+    hasPermission: (permission: string) =>
+      (permission === 'treasury.adjust' && canAdjust)
+      || (permission === 'treasury.transfer' && canTransfer),
   }),
 }))
 
@@ -74,6 +77,20 @@ vi.mock('./components/AdjustBalanceDialog', () => ({
     <div role="dialog">
       <span>{repositoryCurrency}</span>
       <button onClick={onSuccess}>complete adjustment</button>
+    </div>
+  ) : null,
+}))
+
+vi.mock('./components/TransferCashModal', () => ({
+  TransferCashModal: ({
+    isOpen,
+    initialFromRepositoryId,
+  }: {
+    isOpen: boolean
+    initialFromRepositoryId?: string
+  }) => isOpen ? (
+    <div role="dialog" aria-label="transfer cash">
+      {initialFromRepositoryId}
     </div>
   ) : null,
 }))
@@ -127,6 +144,7 @@ describe('RepositoryDetailPage', () => {
   afterEach(() => {
     mockTransactions = [transaction]
     canAdjust = true
+    canTransfer = true
   })
 
   it('renders exactly one h1 (the repository name) via PageHeader', () => {
@@ -181,5 +199,22 @@ describe('RepositoryDetailPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'complete adjustment' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows the transfer action only with treasury.transfer permission', () => {
+    const { rerender } = render(<RepositoryDetailPage />)
+    expect(screen.getByRole('button', { name: 'treasury:repositories.transfer.action' })).toBeInTheDocument()
+
+    canTransfer = false
+    rerender(<RepositoryDetailPage />)
+    expect(screen.queryByRole('button', { name: 'treasury:repositories.transfer.action' })).not.toBeInTheDocument()
+  })
+
+  it('opens the transfer modal with the current repository preselected', () => {
+    render(<RepositoryDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'treasury:repositories.transfer.action' }))
+
+    expect(screen.getByRole('dialog', { name: 'transfer cash' })).toHaveTextContent('repo-1')
   })
 })

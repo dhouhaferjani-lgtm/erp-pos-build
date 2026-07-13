@@ -53,20 +53,31 @@ export interface TransferCashModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  initialFromRepositoryId?: string
 }
 
-export function TransferCashModal({ isOpen, onClose, onSuccess }: TransferCashModalProps) {
+export function TransferCashModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialFromRepositoryId,
+}: TransferCashModalProps) {
   if (!isOpen) return null
 
   return (
     <OpenTransferCashModal
       onClose={onClose}
       {...(onSuccess === undefined ? {} : { onSuccess })}
+      {...(initialFromRepositoryId === undefined ? {} : { initialFromRepositoryId })}
     />
   )
 }
 
-function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalProps, 'isOpen'>) {
+function OpenTransferCashModal({
+  onClose,
+  onSuccess,
+  initialFromRepositoryId,
+}: Omit<TransferCashModalProps, 'isOpen'>) {
   const { t } = useTranslation(['treasury', 'common'])
   const repositoriesQuery = useActivePaymentRepositories()
   const transfer = useTransferCash()
@@ -74,7 +85,7 @@ function OpenTransferCashModal({ onClose, onSuccess }: Omit<TransferCashModalPro
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
     defaultValues: {
-      from_repository_id: '',
+      from_repository_id: initialFromRepositoryId ?? '',
       to_repository_id: '',
       amount: '',
       notes: '',

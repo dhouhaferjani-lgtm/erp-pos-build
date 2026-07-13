@@ -79,6 +79,23 @@ describe('TransferCashModal', () => {
     expect(screen.getAllByText(/100[,.]000 TND/).length).toBeGreaterThan(0)
   })
 
+  it('default-selects the requested source repository and keeps it changeable', async () => {
+    const user = userEvent.setup()
+    render(
+      <TransferCashModal
+        isOpen
+        onClose={vi.fn()}
+        initialFromRepositoryId="11111111-1111-4111-8111-111111111111"
+      />,
+    )
+
+    const from = screen.getByRole('combobox', { name: /treasury:repositories\.transfer\.from/ })
+    expect(from).toHaveValue('11111111-1111-4111-8111-111111111111')
+
+    await user.selectOptions(from, '22222222-2222-4222-8222-222222222222')
+    expect(from).toHaveValue('22222222-2222-4222-8222-222222222222')
+  })
+
   it('rejects zero and four-decimal amounts without submitting', async () => {
     const user = userEvent.setup()
     render(<TransferCashModal isOpen onClose={vi.fn()} />)

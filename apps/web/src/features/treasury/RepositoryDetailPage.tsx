@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink, BookOpen, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink, BookOpen, Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -22,6 +22,7 @@ import { useAccounts } from '../finance/hooks/useAccounts'
 import { usePermissions } from '@/hooks/usePermissions'
 import { AdjustBalanceDialog } from './components/AdjustBalanceDialog'
 import { RepositoryMovementsTab } from './components/RepositoryMovementsTab'
+import { TransferCashModal } from './components/TransferCashModal'
 
 interface Repository {
   id: string
@@ -229,6 +230,7 @@ export function RepositoryDetailPage() {
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const { hasPermission } = usePermissions()
   const [isAdjustBalanceOpen, setIsAdjustBalanceOpen] = useState(false)
+  const [isTransferCashOpen, setIsTransferCashOpen] = useState(false)
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -311,6 +313,16 @@ export function RepositoryDetailPage() {
                 {t('treasury:repositories.adjustBalance.action')}
               </Button>
             )}
+            {hasPermission('treasury.transfer') && (
+              <Button
+                variant="secondary"
+                className="gap-2"
+                onClick={() => { setIsTransferCashOpen(true) }}
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+                {t('treasury:repositories.transfer.action')}
+              </Button>
+            )}
             <div className={cn('rounded-xl p-3', typeIconBg[repository.type])}>
               <Icon className="h-8 w-8" />
             </div>
@@ -332,6 +344,11 @@ export function RepositoryDetailPage() {
           toast.success(t('treasury:repositories.adjustBalance.success'))
           setIsAdjustBalanceOpen(false)
         }}
+      />
+      <TransferCashModal
+        isOpen={isTransferCashOpen}
+        onClose={() => { setIsTransferCashOpen(false) }}
+        initialFromRepositoryId={repository.id}
       />
       <p className={cn('-mt-4 text-sm font-mono', textColors.tertiary)}>{repository.code}</p>
 
