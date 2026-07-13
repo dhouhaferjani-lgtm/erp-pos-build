@@ -438,3 +438,13 @@
 - Preflight: `./scripts/preflight.sh` — exit 1 at the initial Pint check because 18 pre-existing unrelated Product/Fiscal/Inventory/Company test files require formatting; no Phase ④ file was reported. The exact preflight output is retained in `/tmp/task17-preflight.log` during this run; no environment workaround or source mutation was applied.
 - Closeout docs: the outbound handoff records the exact §12 first-bullet deferral and the five Phase ④ inbound-lifecycle guards; the deploy checklist reproduces spec §10 verbatim, including tenant migration, permission reseed/cache reset, scheduler verification, `VatDeductible` presence verification, and no Horizon change.
 - Deviations: none from the Phase ④ plan. Preflight remains blocked by repository-wide pre-existing formatting drift as documented above; Gate 4 is intentionally not run in Task 17.
+
+## Gate 4 — 2026-07-13
+
+- Final four-lane review: **ALL APPROVE**, rc1.
+  - Treasury Fable W1/W4: `docs/handoff/gate-reviews-phase4/GATE-4-treasury-fable-rc1.md` — APPROVE, LOW/INFO polish only.
+  - Treasury Opus W2/W3: `docs/handoff/gate-reviews-phase4/GATE-4-treasury-opus-rc1.md` — APPROVE, LOW/INFO only.
+  - Tenancy/authz Opus: `docs/handoff/gate-reviews-phase4/GATE-4-tenancy-authz-rc1.md` — APPROVE, INFO only.
+  - Frontend-conventions Opus: `docs/handoff/gate-reviews-phase4/GATE-4-frontend-conventions-rc1.md` — APPROVE, LOW/INFO only.
+- Gate 4 verification: Expense `111 tests / 699 assertions`; Accounting `484 / 2202` (4 skipped, 1 deprecation); Unit Expense `7 / 11`; Treasury `610 / 2435` (25 skipped, 39 deprecations); PHPStan `--memory-limit=1G` clean; Pint clean; frontend typecheck/lint exit 0; required Vitest `19 files / 122 passed / 3 todos`; TanStack/design audits green.
+- Non-blocking lane observations: explicitly list the analytics index migration and VatDeductible query in deploy notes; retain pre-existing AR pay-key and minor currency/nullsafe observations. No blocker/high/medium finding and no Fable escalation.
