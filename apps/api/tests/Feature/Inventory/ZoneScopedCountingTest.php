@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -11,16 +12,20 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Application\Services\LocationNodeService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -29,6 +34,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -37,8 +43,8 @@ use Tests\Traits\AssertsApiValidation;
 /**
  * Task C1: zone-scoped counting + assign-as-you-count + zero-stock inclusion.
  *
- * - Zone scope sources items from `product_zone_assignments` for the given
- *   zone_ids; theoretical qty is the current on-hand (incl. 0 / no stock row).
+ * - Node scope sources items from live product placements under each selected
+ *   node subtree; theoretical qty is current location-level on-hand.
  * - Submitting the first count of a zone-scoped session (single zone) upserts
  *   the counted product into that zone via LocationNodeService::assignProduct.
  * - `block_sales=true` is rejected for a zone scope (soft advisory only).
@@ -157,6 +163,97 @@ final class ZoneScopedCountingTest extends TestCase
         );
     }
 
+    private function makeChildNode(LocationNode $parent, string $code, LocationNodeType $type): LocationNode
+    {
+        return $this->zoneService->createNode(
+            tenantId: $this->tenant->id,
+            locationId: $parent->location_id,
+            parentId: $parent->id,
+            type: $type,
+            name: $type->value.' '.$code,
+            code: $code,
+        );
+    }
+
+    private function makeVariant(Product $product, string $code, bool $isActive = true): ProductVariant
+    {
+        return ProductVariant::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'variant_code' => $code,
+            'sku' => $product->sku.'-'.$code,
+            'name_suffix' => $code,
+            'is_active' => $isActive,
+        ]);
+    }
+
+    private function setVariantStock(Product $product, ProductVariant $variant, string $quantity): StockLevel
+    {
+        return StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'variant_id' => $variant->id,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved' => '0.0000',
+        ]);
+    }
+
+    public function test_node_scope_seeds_its_entire_subtree_and_expands_all_variants_without_prefix_collision(): void
+    {
+        $aisleA1 = $this->makeZone('A1');
+        $rackA1 = $this->makeChildNode($aisleA1, 'R1', LocationNodeType::Rack);
+        $binA1 = $this->makeChildNode($rackA1, 'B1', LocationNodeType::Bin);
+
+        $aisleA10 = $this->makeZone('A10');
+        $rackA10 = $this->makeChildNode($aisleA10, 'R10', LocationNodeType::Rack);
+
+        $variantProduct = $this->makeProduct('VARIANT-SUBTREE');
+        $small = $this->makeVariant($variantProduct, 'SMALL');
+        $largeInactive = $this->makeVariant($variantProduct, 'LARGE', false);
+        $this->setVariantStock($variantProduct, $small, '3.0000');
+        $this->setVariantStock($variantProduct, $largeInactive, '7.0000');
+        $this->zoneService->assignProduct($this->tenant->id, $variantProduct->id, $this->location->id, $binA1->id);
+
+        $plainProduct = $this->makeProduct('PLAIN-SUBTREE');
+        $this->setStock($plainProduct, '5.0000');
+        $this->zoneService->assignProduct($this->tenant->id, $plainProduct->id, $this->location->id, $rackA1->id);
+
+        $prefixCollision = $this->makeProduct('PREFIX-A10');
+        $this->setStock($prefixCollision, '11.0000');
+        $this->zoneService->assignProduct($this->tenant->id, $prefixCollision->id, $this->location->id, $rackA10->id);
+
+        $counting = $this->service->create([
+            'scope_type' => CountingScopeType::Zone->value,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$aisleA1->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ], $this->user, $this->company->id);
+
+        $items = $counting->items()->orderBy('product_id')->orderBy('variant_id')->get();
+        $this->assertCount(3, $items);
+        $this->assertFalse($items->contains('product_id', $prefixCollision->id), 'A1 must not include the A10 subtree.');
+
+        $variantItems = $items->where('product_id', $variantProduct->id)->keyBy('variant_id');
+        $this->assertCount(2, $variantItems, 'A placed variant product must expand to all live variants.');
+        $smallItem = $variantItems->get($small->id);
+        $largeItem = $variantItems->get($largeInactive->id);
+        $this->assertInstanceOf(InventoryCountingItem::class, $smallItem);
+        $this->assertInstanceOf(InventoryCountingItem::class, $largeItem);
+        $this->assertSame('3.0000', (string) $smallItem->theoretical_qty);
+        $this->assertSame('7.0000', (string) $largeItem->theoretical_qty);
+        $this->assertFalse($items->contains(
+            static fn (InventoryCountingItem $item): bool => $item->product_id === $variantProduct->id && $item->variant_id === null,
+        ));
+
+        $plainItem = $items->firstWhere('product_id', $plainProduct->id);
+        $this->assertNotNull($plainItem);
+        $this->assertNull($plainItem->variant_id);
+        $this->assertSame('5.0000', (string) $plainItem->theoretical_qty);
+    }
+
     public function test_zone_count_generates_only_assigned_products_with_current_or_zero_theoretical(): void
     {
         $zoneA = $this->makeZone('A');
@@ -186,19 +283,28 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertCount(2, $items, 'Only products assigned to zone A should be counted.');
 
         $byProduct = $items->keyBy('product_id');
-        $this->assertTrue($byProduct->has($withStock->id));
-        $this->assertTrue($byProduct->has($noStock->id));
+        $withStockItem = $byProduct->get($withStock->id);
+        $noStockItem = $byProduct->get($noStock->id);
+        $this->assertInstanceOf(InventoryCountingItem::class, $withStockItem);
+        $this->assertInstanceOf(InventoryCountingItem::class, $noStockItem);
         $this->assertFalse($byProduct->has($otherZone->id), 'Zone B product must not appear.');
 
-        $this->assertSame('5.0000', (string) $byProduct[$withStock->id]->theoretical_qty);
-        $this->assertSame('0.0000', (string) $byProduct[$noStock->id]->theoretical_qty,
+        $this->assertSame('5.0000', (string) $withStockItem->theoretical_qty);
+        $this->assertSame('0.0000', (string) $noStockItem->theoretical_qty,
             'A product with no stock row must have theoretical 0.0000.');
     }
 
     public function test_submit_count_assigns_scanned_in_product_to_the_single_zone(): void
     {
         $zoneA = $this->makeZone('A');
+        $child = $this->makeChildNode($zoneA, 'R1', LocationNodeType::Rack);
         $unassigned = $this->makeProduct('UNASSIGNED');
+
+        // Selecting an ancestor is valid: subtree membership determines what
+        // is seeded, while assign-as-count labels the product with the exact
+        // single node selected by the user (not an arbitrary descendant).
+        $this->zoneService->assignProduct($this->tenant->id, $unassigned->id, $this->location->id, $child->id);
+        $this->zoneService->unassignProduct($unassigned->id, $this->location->id);
 
         // Zone counting with a manually-added item for a product NOT yet
         // assigned to any zone (the scan-in / unexpected-item shape).
@@ -236,6 +342,7 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertDatabaseMissing('product_placements', [
             'product_id' => $unassigned->id,
             'location_id' => $this->location->id,
+            'deleted_at' => null,
         ]);
 
         $this->service->submitCount($item, 1, '3.0000', null, $this->user);
@@ -247,6 +354,93 @@ final class ZoneScopedCountingTest extends TestCase
 
         $this->assertNotNull($assignment, 'Submitting a count must assign the product to the zone.');
         $this->assertSame($zoneA->id, $assignment->node_id);
+    }
+
+    public function test_location_hierarchy_counting_flow_keeps_variant_stock_at_location_grain(): void
+    {
+        $aisle = $this->makeZone('A1');
+        $rack = $this->makeChildNode($aisle, 'R1', LocationNodeType::Rack);
+        $binFrom = $this->makeChildNode($rack, 'B1', LocationNodeType::Bin);
+        $binTo = $this->makeChildNode($rack, 'B2', LocationNodeType::Bin);
+
+        $product = $this->makeProduct('E2E-VARIANT');
+        $small = $this->makeVariant($product, 'SMALL');
+        $large = $this->makeVariant($product, 'LARGE');
+        $this->setVariantStock($product, $small, '3.0000');
+        $this->setVariantStock($product, $large, '7.0000');
+
+        // End-to-end placement flow: create a hierarchy, assign in the node
+        // panel, then bulk-move before opening the subtree count.
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $binFrom->id);
+        $this->zoneService->bulkMove($this->tenant->id, [$product->id], $binTo->id);
+
+        $this->assertDatabaseHas('product_placements', [
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'node_id' => $binTo->id,
+            'deleted_at' => null,
+        ]);
+
+        $counting = $this->service->create([
+            'scope_type' => CountingScopeType::Zone->value,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$aisle->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ], $this->user, $this->company->id);
+
+        $items = $counting->items()->orderBy('variant_id')->get();
+        $this->assertCount(2, $items, 'Selecting A1 must include the product placed in descendant B2.');
+        $this->assertEqualsCanonicalizing([$small->id, $large->id], $items->pluck('variant_id')->all());
+
+        $this->service->activate($counting, $this->user);
+        foreach ($items as $item) {
+            $this->service->submitCount(
+                $item,
+                1,
+                (string) $item->theoretical_qty,
+                null,
+                $this->user,
+            );
+        }
+
+        $counting->refresh();
+        $this->assertSame(CountingStatus::PendingReview, $counting->status);
+
+        Event::fake([InventoryCountingCompleted::class]);
+        $this->service->finalize($counting, $this->user);
+
+        // Execute the queued stock listener under worker-like context. Equal
+        // physical counts must not manufacture node-grain stock or corrections.
+        app(CompanyContext::class)->clear();
+        app(ApplyStockAdjustmentsOnCountingCompleted::class)->handle(new InventoryCountingCompleted(
+            countingId: $counting->id,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            locationId: $this->location->id,
+            countingNumber: (string) $counting->counting_number,
+            itemsCount: $items->count(),
+            totalVariance: '0.0000',
+            completedBy: (string) $this->user->id,
+            completedAt: now()->toIso8601String(),
+        ));
+
+        $this->assertSame('3.0000', (string) StockLevel::query()->where('variant_id', $small->id)->value('quantity'));
+        $this->assertSame('7.0000', (string) StockLevel::query()->where('variant_id', $large->id)->value('quantity'));
+        $corrections = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::CountCorrection)
+            ->get();
+        $this->assertCount(2, $corrections);
+        foreach ($corrections as $correction) {
+            $this->assertSame('0.0000', (string) $correction->quantity);
+            $this->assertSame((string) $correction->quantity_before, (string) $correction->quantity_after);
+        }
+        $this->assertDatabaseHas('product_placements', [
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'node_id' => $aisle->id,
+            'deleted_at' => null,
+        ]);
     }
 
     public function test_zone_scope_rejects_block_sales(): void
@@ -389,10 +583,12 @@ final class ZoneScopedCountingTest extends TestCase
             'Onboarding full count must flag includes_zero_stock.');
 
         $byProduct = $counting->items()->get()->keyBy('product_id');
-        $this->assertTrue($byProduct->has($noStock->id), 'Never-received product must be counted.');
-        $this->assertTrue($byProduct->has($negative->id));
-        $this->assertSame('0.0000', (string) $byProduct[$noStock->id]->theoretical_qty);
-        $this->assertSame('-3.0000', (string) $byProduct[$negative->id]->theoretical_qty);
+        $noStockItem = $byProduct->get($noStock->id);
+        $negativeItem = $byProduct->get($negative->id);
+        $this->assertInstanceOf(InventoryCountingItem::class, $noStockItem, 'Never-received product must be counted.');
+        $this->assertInstanceOf(InventoryCountingItem::class, $negativeItem);
+        $this->assertSame('0.0000', (string) $noStockItem->theoretical_qty);
+        $this->assertSame('-3.0000', (string) $negativeItem->theoretical_qty);
     }
 
     public function test_non_onboarding_location_count_excludes_zero_stock(): void
@@ -460,11 +656,13 @@ final class ZoneScopedCountingTest extends TestCase
         $draft->refresh();
         $items = $draft->items()->get()->keyBy('product_id');
 
-        $this->assertCount(2, $items, 'Zone draft must generate one item per product_zone_assignment.');
-        $this->assertTrue($items->has($assigned1->id));
-        $this->assertTrue($items->has($assigned2->id));
-        $this->assertSame('4.0000', (string) $items[$assigned1->id]->theoretical_qty);
-        $this->assertSame('0.0000', (string) $items[$assigned2->id]->theoretical_qty);
+        $this->assertCount(2, $items, 'Node draft must generate one item per placed product.');
+        $assignedItem1 = $items->get($assigned1->id);
+        $assignedItem2 = $items->get($assigned2->id);
+        $this->assertInstanceOf(InventoryCountingItem::class, $assignedItem1);
+        $this->assertInstanceOf(InventoryCountingItem::class, $assignedItem2);
+        $this->assertSame('4.0000', (string) $assignedItem1->theoretical_qty);
+        $this->assertSame('0.0000', (string) $assignedItem2->theoretical_qty);
     }
 
     /**
@@ -549,7 +747,9 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertFalse($counterViewResponse->json('data.counting.includes_zero_stock'));
 
         // The blind counter-view must still never leak theoretical_qty.
-        $this->assertStringNotContainsString('theoretical_qty', $counterViewResponse->getContent());
+        $counterContent = $counterViewResponse->getContent();
+        $this->assertIsString($counterContent);
+        $this->assertStringNotContainsString('theoretical_qty', $counterContent);
     }
 
     /**

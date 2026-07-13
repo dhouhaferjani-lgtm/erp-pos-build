@@ -61,6 +61,7 @@ import {
   type ProductSectionKey,
 } from '../products/sections/sectionRegistry'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
+import { ProductPlacementFields } from '../placement/components/ProductPlacementFields'
 
 interface Product {
   id: string
@@ -936,6 +937,9 @@ export function ProductForm() {
                   media: { bufferedImages, onBufferedImagesChange: setBufferedImages },
                 },
               }}
+              placement={hasModule('Inventory') && isEditing && watchIsPhysical ? (
+                <ProductPlacementFields productId={id} canEdit={canAdjustInventory} />
+              ) : undefined}
               automotive={isOtospex ? (
               <div className={tokens.card.base}>
                 <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>

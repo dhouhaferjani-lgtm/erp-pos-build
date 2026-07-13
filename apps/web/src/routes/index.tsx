@@ -99,6 +99,7 @@ const CashMovementsReportPage = lazy(() => import('../features/finance/pages/Cas
 // Inventory module
 const ProductListPage = lazy(() => import('../features/inventory/ProductListPage').then((m) => ({ default: m.ProductListPage })))
 const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage })))
+const PlacementPage = lazy(() => import('../features/placement/PlacementPage').then((m) => ({ default: m.PlacementPage })))
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
@@ -1021,6 +1022,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <StockLevelsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="placement"
+            element={
+              <RequirePermission permission="inventory.view">
+                <SuspenseWrapper>
+                  <PlacementPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

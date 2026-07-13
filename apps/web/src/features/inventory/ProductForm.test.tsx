@@ -435,6 +435,7 @@ describe('ProductForm (canonical layout)', () => {
 
     await screen.findByTestId('category-select')
     expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'placement.productField.title' })).toBeInTheDocument()
     mockParams = {}
   })
 

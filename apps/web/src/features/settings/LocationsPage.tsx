@@ -22,7 +22,6 @@ import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
-import { ZonesPanel } from './zones/ZonesPanel'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
@@ -105,7 +104,6 @@ export function LocationsPage() {
   const [editingLocation, setEditingLocation] = useState<LocationApiResponse | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LocationApiResponse | null>(null)
   const [formData, setFormData] = useState<LocationFormData>(emptyForm)
-  const [zonesLocation, setZonesLocation] = useState<LocationApiResponse | null>(null)
 
   const { data: locations, isLoading } = useQuery({
     queryKey: tenantScopedKey(['locations']),
@@ -338,15 +336,13 @@ export function LocationsPage() {
 
                 {/* Actions */}
                 <div className={cn('mt-4 flex items-center gap-2 border-t pt-4', borderColors.light)}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => { setZonesLocation(location) }}
+                  <a
+                    href={`/inventory/placement?location_id=${location.id}`}
+                    className={cn(tokens.button.base, tokens.button.ghost, tokens.button.sizes.sm, 'gap-1')}
                   >
                     <Layers className="h-3.5 w-3.5" />
-                    {t('inventory:zones.navLabel')}
-                  </Button>
+                    {t('inventory:placement.navLabel')}
+                  </a>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -595,17 +591,6 @@ export function LocationsPage() {
         isLoading={deleteMutation.isPending}
       />
 
-      {/* Zones Panel */}
-      <Modal
-        isOpen={zonesLocation !== null}
-        onClose={() => { setZonesLocation(null) }}
-        title={t('inventory:zones.panelTitle', { location: zonesLocation?.name ?? '' })}
-        size="xl"
-      >
-        <ModalContent>
-          {zonesLocation && <ZonesPanel locationId={zonesLocation.id} />}
-        </ModalContent>
-      </Modal>
     </div>
   )
 }

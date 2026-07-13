@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   BookOpen,
   ClipboardList,
+  MapPinned,
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '../../../components/molecules/PageHeader'
@@ -69,6 +70,13 @@ const baseCards: HubCardDef[] = [
     descriptionKey: 'hub.cards.inventoryCounting.description',
     icon: ClipboardCheck,
     href: '/inventory/counting',
+    permissionModule: 'inventory',
+  },
+  {
+    titleKey: 'placement.title',
+    descriptionKey: 'placement.subtitle',
+    icon: MapPinned,
+    href: '/inventory/placement',
     permissionModule: 'inventory',
   },
   {

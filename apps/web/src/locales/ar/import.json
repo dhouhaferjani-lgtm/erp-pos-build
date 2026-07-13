@@ -1,4 +1,26 @@
 {
+  "options": {
+    "placementTitle": "تخطيط مواقع التخزين",
+    "placementHint": "يتطلب الوضع الصارم وجود جميع أجزاء المسار. تعرض ميزة الإنشاء التلقائي العقد الناقصة وتستخدم نوع العقدة المحدد لكل مستوى.",
+    "placementMode": "طريقة معالجة المسار",
+    "placementModes": {
+      "strict": "صارم — العقد الموجودة فقط",
+      "autoCreate": "إنشاء العقد الناقصة تلقائيًا"
+    },
+    "placementDepth": "نوع العقدة في المستوى {{depth}}",
+    "nodeTypes": {
+      "zone": "منطقة",
+      "aisle": "ممر",
+      "rack": "رف تخزين",
+      "shelf": "رف",
+      "bin": "حاوية",
+      "section": "قسم"
+    }
+  },
+  "preview": {
+    "nodesToCreate": "{{count}} عقد تخزين سيتم إنشاؤها",
+    "placementsToSet": "{{count}} مواقع منتجات سيتم تعيينها"
+  },
   "mapping": {
     "skippedColumnsNotice": "سيتم تخطي هذه الأعمدة ما لم تقم بربطها: {{columns}}"
   }

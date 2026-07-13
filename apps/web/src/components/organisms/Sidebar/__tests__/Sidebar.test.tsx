@@ -124,6 +124,13 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(bankingButton).toBeInTheDocument()
     })
 
+    it('shows placement management under Inventory', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const placementLink = await screen.findByRole('link', { name: /navigation\.placement/i })
+      expect(placementLink).toHaveAttribute('href', '/inventory/placement')
+    })
+
     it('shows treasury overview as the first accounting and reports child', async () => {
       renderSidebar(mechanicFullConfig)
 

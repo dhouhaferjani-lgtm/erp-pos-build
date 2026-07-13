@@ -229,6 +229,7 @@
     "batches": "Batches",
     "expiryWriteOff": "Expiry Write-off",
     "stockLevels": "Stock Levels",
+    "placement": "Storage & locations",
     "stockMovements": "Stock Movements",
     "counting": "Inventory Counting",
     "enrichmentQueue": "Enrichment Queue",

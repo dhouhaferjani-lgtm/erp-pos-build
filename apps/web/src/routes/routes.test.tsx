@@ -27,6 +27,14 @@ describe('route module guards', () => {
     expect(idx).toBeGreaterThanOrEqual(0)
   })
 
+  it('registers placement management with inventory.view permission', () => {
+    const idx = routesSource.indexOf('path="placement"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(idx, idx + 350)
+    expect(fragment).toContain('permission="inventory.view"')
+    expect(fragment).toContain('<PlacementPage />')
+  })
+
   it('guards expiry-write-off route with BatchExpiry module gate', () => {
     const idx = routesSource.indexOf('path="expiry-write-off"')
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)

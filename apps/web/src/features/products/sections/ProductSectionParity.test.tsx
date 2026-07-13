@@ -152,6 +152,7 @@ function EditStack({ withExtensions = false }: { withExtensions?: boolean }) {
       {...(withExtensions
         ? {
             automotive: <div>automotive</div>,
+            placement: <div>placement</div>,
             pharmacy: <div>pharmacy</div>,
             loyalty: <div>loyalty</div>,
             variants: <div>variants</div>,
@@ -190,6 +191,7 @@ describe('ProductSectionStack parity', () => {
       'general',
       'pricing',
       'inventory',
+      'placement',
       'automotive',
       'pharmacy',
       'loyalty',

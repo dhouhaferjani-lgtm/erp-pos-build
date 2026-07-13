@@ -17,6 +17,7 @@ use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
+use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -91,6 +92,9 @@ class ImportController extends Controller
             'options.location_code' => ['sometimes', 'string', 'max:100'],
             'options.enrichment_enabled' => ['sometimes', 'boolean'],
             'options.price_authority' => ['sometimes', 'in:ttc,ht,margin'],
+            'options.placement_mode' => ['sometimes', 'in:strict,auto_create'],
+            'options.placement_node_types' => ['sometimes', 'array'],
+            'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
         ]);
 
         /** @var User $user */
@@ -189,6 +193,7 @@ class ImportController extends Controller
 
             // Validate rows
             $this->importService->validateJob($job);
+            $this->importService->prepareProductPlacements($job, $companyId);
 
             /** @var ImportJob $freshJob */
             $freshJob = $job->fresh();
@@ -257,14 +262,23 @@ class ImportController extends Controller
         // Get headers from first row or column mapping
         $headers = $job->column_mapping
             ? array_keys($job->column_mapping)
-            : ($sampleRows->first() ? array_keys($sampleRows->first()->data) : []);
+            : ($sampleRows->first()
+                ? array_values(array_filter(
+                    array_keys($sampleRows->first()->data),
+                    static fn (string $header): bool => ! str_starts_with($header, '_'),
+                ))
+                : []);
 
         return response()->json([
             'data' => [
                 'headers' => $headers,
                 'rows' => $sampleRows->map(fn ($row) => [
                     'row_number' => $row->row_number,
-                    'data' => $row->data,
+                    'data' => array_filter(
+                        $row->data,
+                        static fn (string $header): bool => ! str_starts_with($header, '_'),
+                        ARRAY_FILTER_USE_KEY,
+                    ),
                     'is_valid' => $row->is_valid,
                     'errors' => $row->errors ?? [],
                 ]),
@@ -273,6 +287,7 @@ class ImportController extends Controller
                     'valid_rows' => $job->successful_rows,
                     'invalid_rows' => $job->failed_rows,
                 ],
+                'placement' => $this->importService->productPlacementPreview($job),
             ],
         ]);
     }
@@ -317,7 +332,11 @@ class ImportController extends Controller
         return response()->json([
             'data' => $errorRows->map(fn ($row) => [
                 'row_number' => $row->row_number,
-                'data' => $row->data,
+                'data' => array_filter(
+                    $row->data,
+                    static fn (string $header): bool => ! str_starts_with($header, '_'),
+                    ARRAY_FILTER_USE_KEY,
+                ),
                 'errors' => $row->errors ?? [],
                 'warnings' => $row->warnings,
                 'import_error' => $row->import_error,
@@ -358,6 +377,9 @@ class ImportController extends Controller
             'options.location_code' => ['sometimes', 'string', 'max:100'],
             'options.enrichment_enabled' => ['sometimes', 'boolean'],
             'options.price_authority' => ['sometimes', 'in:ttc,ht,margin'],
+            'options.placement_mode' => ['sometimes', 'in:strict,auto_create'],
+            'options.placement_node_types' => ['sometimes', 'array'],
+            'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
         ]);
 
         $requestOptions = $this->optionsFromRequest($request) ?? [];
@@ -365,6 +387,9 @@ class ImportController extends Controller
         $job->update([
             'options' => array_merge($job->options ?? [], $requestOptions),
         ]);
+
+        $this->importService->validateJob($job);
+        $this->importService->prepareProductPlacements($job, $companyId);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();
@@ -618,7 +643,7 @@ class ImportController extends Controller
     }
 
     /**
-     * @return array<string, string|bool>|null
+     * @return array<string, mixed>|null
      */
     private function optionsFromRequest(Request $request): ?array
     {
@@ -640,6 +665,16 @@ class ImportController extends Controller
         $priceAuthority = $request->input('options.price_authority');
         if (is_string($priceAuthority)) {
             $options['price_authority'] = $priceAuthority;
+        }
+
+        $placementMode = $request->input('options.placement_mode');
+        if (is_string($placementMode)) {
+            $options['placement_mode'] = $placementMode;
+        }
+
+        $placementNodeTypes = $request->input('options.placement_node_types');
+        if (is_array($placementNodeTypes)) {
+            $options['placement_node_types'] = array_values($placementNodeTypes);
         }
 
         return $options;

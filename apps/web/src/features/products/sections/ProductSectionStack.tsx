@@ -21,6 +21,7 @@ export interface ProductSectionStackAdapters<TMode extends ProductSectionMode> {
 }
 
 interface ProductSectionExtensions {
+  placement?: ReactNode
   automotive?: ReactNode
   pharmacy?: ReactNode
   loyalty?: ReactNode
@@ -68,6 +69,7 @@ export function ProductSectionStack(props: ProductSectionStackProps) {
           <SharedSection sectionKey={sectionKey}>{sharedSections[sectionKey]}</SharedSection>
           {sectionKey === 'inventory' && (
             <>
+              <ExtensionSection extensionKey="placement">{props.placement}</ExtensionSection>
               <ExtensionSection extensionKey="automotive">{props.automotive}</ExtensionSection>
               <ExtensionSection extensionKey="pharmacy">{props.pharmacy}</ExtensionSection>
               <ExtensionSection extensionKey="loyalty">{props.loyalty}</ExtensionSection>

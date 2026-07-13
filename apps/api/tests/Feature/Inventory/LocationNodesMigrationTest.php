@@ -7,11 +7,14 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\LocationNode;
+use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +40,35 @@ final class LocationNodesMigrationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('product_placements', 'node_id'));
         $this->assertTrue(Schema::hasColumn('product_placements', 'deleted_at'));
         $this->assertFalse(Schema::hasColumn('product_placements', 'zone_id'));
+    }
+
+    public function test_runtime_references_and_generated_contract_use_hierarchy_names(): void
+    {
+        $this->assertSame('location_nodes', (new LocationNode)->getTable());
+        $this->assertSame('product_placements', (new ProductPlacement)->getTable());
+
+        $runtimeFiles = [
+            app_path('Modules/Inventory/Application/DTOs/LocationNodeDto.php'),
+            app_path('Modules/Inventory/Application/DTOs/ProductPlacementDto.php'),
+            app_path('Modules/Inventory/Application/Services/CountingBlockService.php'),
+            app_path('Modules/Inventory/Application/Services/InventoryCountingService.php'),
+            app_path('Modules/Inventory/Presentation/Controllers/InventoryCountingController.php'),
+            app_path('Modules/Inventory/Presentation/Requests/CreateCountingRequest.php'),
+        ];
+
+        foreach ($runtimeFiles as $runtimeFile) {
+            $source = file_get_contents($runtimeFile);
+            $this->assertIsString($source, "Unable to read runtime reference {$runtimeFile}");
+            $this->assertStringNotContainsString('location_zones', $source, $runtimeFile);
+            $this->assertStringNotContainsString('product_zone_assignments', $source, $runtimeFile);
+            $this->assertDoesNotMatchRegularExpression('/[\'\"]zone_id[\'\"]/', $source, $runtimeFile);
+        }
+
+        $generated = file_get_contents(base_path('../../packages/shared/types/generated.d.ts'));
+        $this->assertIsString($generated);
+        $this->assertStringContainsString('export type LocationNodeDto = {', $generated);
+        $this->assertStringContainsString('export type ProductPlacementDto = {', $generated);
+        $this->assertMatchesRegularExpression('/export type ProductPlacementDto = \{[^}]*node_id: string;/s', $generated);
     }
 
     public function test_partial_unique_allows_reassign_after_tombstone(): void
@@ -103,9 +135,9 @@ final class LocationNodesMigrationTest extends TestCase
         [$tenantId, $locationId] = $this->seedLocation();
         $productId = $this->seedProduct($tenantId);
 
-        /** @var object{up: callable, down: callable} $migration */
         $migration = require database_path('migrations/tenant/2026_07_07_100001_rename_zones_to_location_nodes.php');
-        $migration->down();
+        $this->assertInstanceOf(Migration::class, $migration);
+        (new \ReflectionMethod($migration, 'down'))->invoke($migration);
 
         $this->assertTrue(Schema::hasTable('location_zones'));
         $this->assertFalse(Schema::hasTable('location_nodes'));
@@ -135,7 +167,7 @@ final class LocationNodesMigrationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $migration->up();
+        (new \ReflectionMethod($migration, 'up'))->invoke($migration);
 
         // The zone survived as a top-level node with the backfilled hierarchy columns.
         $node = DB::table('location_nodes')->where('id', $zoneId)->first();

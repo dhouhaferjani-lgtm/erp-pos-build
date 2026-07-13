@@ -39,7 +39,8 @@ final class ImportService
         private readonly PartiesBalancesPhase $partiesBalancesPhase,
         private readonly ProductPriceResolver $productPriceResolver,
         private readonly TaxDefaultResolverInterface $taxDefaultResolver,
-        private readonly ProductOpeningStockPhase $productOpeningStockPhase
+        private readonly ProductOpeningStockPhase $productOpeningStockPhase,
+        private readonly ProductPlacementImportService $productPlacementImportService,
     ) {}
 
     /**
@@ -183,6 +184,19 @@ final class ImportService
         if ($job->type === ImportType::Parties) {
             $this->applyPartiesExtraValidation($job);
         }
+    }
+
+    public function prepareProductPlacements(ImportJob $job, string $companyId): void
+    {
+        $this->productPlacementImportService->prepareJob($job, $companyId);
+    }
+
+    /**
+     * @return array{max_depth: int, nodes_to_create: list<array<string, mixed>>, placements_to_set: list<array<string, mixed>>}
+     */
+    public function productPlacementPreview(ImportJob $job): array
+    {
+        return $this->productPlacementImportService->preview($job);
     }
 
     private function applyPartiesExtraValidation(ImportJob $job): void
@@ -505,6 +519,8 @@ final class ImportService
         foreach ($price['warnings'] as $warning) {
             $this->addRowWarning($row, $warning['code'], $warning['detail']);
         }
+
+        $this->productPlacementImportService->commitRow($job, $row, $productId);
 
         return $productId;
     }
