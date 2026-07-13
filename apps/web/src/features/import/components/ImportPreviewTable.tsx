@@ -14,6 +14,7 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
   const { t } = useTranslation('import')
 
   const { headers, rows, summary } = preview
+  const placement = preview.placement ?? { max_depth: 0, nodes_to_create: [], placements_to_set: [] }
 
   return (
     <div className="space-y-4">
@@ -35,6 +36,29 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
           </div>
         )}
       </div>
+
+      {(placement.nodes_to_create.length > 0 || placement.placements_to_set.length > 0) && (
+        <div className={`grid gap-3 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4 sm:grid-cols-2`}>
+          <div>
+            <p className={`text-sm font-medium ${colorTokens.text.secondary}`}>
+              {t('preview.nodesToCreate', { count: placement.nodes_to_create.length })}
+            </p>
+            {placement.nodes_to_create.map((node) => (
+              <code key={node.path} className={`mt-1 block text-xs ${colorTokens.text.muted}`}>{node.path}</code>
+            ))}
+          </div>
+          <div>
+            <p className={`text-sm font-medium ${colorTokens.text.secondary}`}>
+              {t('preview.placementsToSet', { count: placement.placements_to_set.length })}
+            </p>
+            {placement.placements_to_set.map((plannedPlacement) => (
+              <code key={`${String(plannedPlacement.row_number)}-${plannedPlacement.location_code}`} className={`mt-1 block text-xs ${colorTokens.text.muted}`}>
+                {plannedPlacement.location_code}: {plannedPlacement.path}
+              </code>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Preview table */}
       <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>

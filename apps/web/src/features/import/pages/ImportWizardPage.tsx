@@ -21,9 +21,10 @@ import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
-import type { ImportJobOptions, ImportType } from '../types'
+import type { ImportJobOptions, ImportType, LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Select } from '@/components/atoms/Select/Select'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -37,6 +38,20 @@ const STEPS: { key: WizardStep; label: string }[] = [
 ]
 
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
+const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
+const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'bin', 'shelf', 'section', 'zone']
+
+function isPlacementMode(value: string): value is NonNullable<ImportJobOptions['placement_mode']> {
+  return value === 'strict' || value === 'auto_create'
+}
+
+function isLocationNodeType(value: string): value is LocationNodeType {
+  return PLACEMENT_NODE_TYPES.some((nodeType) => nodeType === value)
+}
+
+function defaultPlacementNodeType(depth: number): LocationNodeType {
+  return DEFAULT_PLACEMENT_DEPTH_TYPES[depth] ?? 'section'
+}
 
 // Target columns per import type
 const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; description?: string }[]> = {
@@ -79,6 +94,7 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'purchase_price', required: false, description: 'Cost price' },
     { name: 'quantity', required: false },
     { name: 'location_code', required: false },
+    { name: 'placement_path', required: false, description: 'A1 > R2 > B7' },
     { name: 'barcode', required: false },
     { name: 'brand', required: false },
     { name: 'category_name', required: false, description: 'Category name (must exist)' },
@@ -133,6 +149,8 @@ export function ImportWizardPage() {
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
   const [suggestions, setSuggestions] = useState<Record<string, string | null>>({})
   const [priceAuthority, setPriceAuthority] = useState<NonNullable<ImportJobOptions['price_authority']>>('ttc')
+  const [placementMode, setPlacementMode] = useState<NonNullable<ImportJobOptions['placement_mode']>>('strict')
+  const [placementNodeTypeOverrides, setPlacementNodeTypeOverrides] = useState<Record<number, LocationNodeType>>({})
 
   // Job state
   const [jobId, setJobId] = useState<string | null>(null)
@@ -190,17 +208,22 @@ export function ImportWizardPage() {
     return apiJobData
   }, [apiJobData, realtimeProgress])
 
-  const shouldShowOptionsStep = useMemo(() => {
+  const optionVisibility = useMemo(() => {
     if (importType !== 'products') {
-      return false
+      return { prices: false, placement: false }
     }
 
     const mappedPriceColumns = new Set(
       Object.values(columnMapping).filter((target) => PRODUCT_PRICE_COLUMNS.has(target))
     )
 
-    return mappedPriceColumns.size >= 2
+    return {
+      prices: mappedPriceColumns.size >= 2,
+      placement: Object.values(columnMapping).includes('placement_path'),
+    }
   }, [columnMapping, importType])
+
+  const shouldShowOptionsStep = optionVisibility.prices || optionVisibility.placement
 
   const visibleSteps = useMemo(() => {
     return STEPS.filter((step) => step.key !== 'options' || shouldShowOptionsStep)
@@ -293,16 +316,30 @@ export function ImportWizardPage() {
   }, [realtimeProgress?.status, apiJobData?.status, currentStep, markStepCompleted])
 
   // Fetch validation errors when on validation step
-  const { data: errorsData } = useImportErrors(jobId ?? '')
+  const { data: errorsData } = useImportErrors(
+    currentStep === 'validation' && jobId ? jobId : ''
+  )
   const validationRows = errorsData?.data ?? []
 
   // Fetch preview data when on validation step
   const {
     data: previewData,
     isLoading: isPreviewLoading,
-    isError: isPreviewError
+    isError: isPreviewError,
+    refetch: refetchPreview,
   } = useImportPreview(
-    currentStep === 'validation' && jobId ? jobId : ''
+    jobId && (
+      currentStep === 'validation'
+      || (currentStep === 'options' && optionVisibility.placement)
+    ) ? jobId : ''
+  )
+  const placementDepthCount = Math.max(previewData?.placement?.max_depth ?? 1, 1)
+  const placementNodeTypes = useMemo(
+    () => Array.from(
+      { length: placementDepthCount },
+      (_, depth) => placementNodeTypeOverrides[depth] ?? defaultPlacementNodeType(depth),
+    ),
+    [placementDepthCount, placementNodeTypeOverrides],
   )
 
   // Get step index
@@ -379,10 +416,17 @@ export function ImportWizardPage() {
   const handleOptionsComplete = useCallback(async () => {
     if (!jobId) return
 
-    await importApi.updateOptions(jobId, { price_authority: priceAuthority })
+    await importApi.updateOptions(jobId, {
+      ...(optionVisibility.prices ? { price_authority: priceAuthority } : {}),
+      ...(optionVisibility.placement ? {
+        placement_mode: placementMode,
+        ...(placementMode === 'auto_create' ? { placement_node_types: placementNodeTypes } : {}),
+      } : {}),
+    })
+    await refetchPreview()
     markStepCompleted('options')
     setCurrentStep('validation')
-  }, [jobId, markStepCompleted, priceAuthority])
+  }, [jobId, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, priceAuthority, refetchPreview])
 
   // Handle validation step completion
   const handleValidationComplete = useCallback(() => {
@@ -575,16 +619,16 @@ export function ImportWizardPage() {
       case 'options':
         return (
           <div className="space-y-6">
-            <div>
+            {optionVisibility.prices && <div>
               <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('options.priceAuthorityTitle')}
               </h2>
               <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('options.priceAuthorityHint')}
               </p>
-            </div>
+            </div>}
 
-            <fieldset className="space-y-3">
+            {optionVisibility.prices && <fieldset className="space-y-3">
               {(['ttc', 'ht', 'margin'] as const).map((authority) => (
                 <label
                   key={authority}
@@ -601,7 +645,60 @@ export function ImportWizardPage() {
                   <span>{t(`options.priceAuthority.${authority}`)}</span>
                 </label>
               ))}
-            </fieldset>
+            </fieldset>}
+
+            {optionVisibility.placement && (
+              <section className="space-y-4" aria-labelledby="placement-import-options">
+                <div>
+                  <h2 id="placement-import-options" className={`text-lg font-semibold ${colorTokens.text.primary}`}>
+                    {t('options.placementTitle')}
+                  </h2>
+                  <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>{t('options.placementHint')}</p>
+                </div>
+                <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+                  {t('options.placementMode')}
+                  <Select
+                    className="mt-1"
+                    value={placementMode}
+                    onChange={(event) => {
+                      if (isPlacementMode(event.target.value)) {
+                        setPlacementMode(event.target.value)
+                      }
+                    }}
+                  >
+                    <option value="strict">{t('options.placementModes.strict')}</option>
+                    <option value="auto_create">{t('options.placementModes.autoCreate')}</option>
+                  </Select>
+                </label>
+                {placementMode === 'auto_create' && (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {placementNodeTypes.map((type, depth) => (
+                      <label key={String(depth)} className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+                        {t('options.placementDepth', { depth: depth + 1 })}
+                        <Select
+                          className="mt-1"
+                          value={type}
+                          onChange={(event) => {
+                            const nodeType = event.target.value
+                            if (!isLocationNodeType(nodeType)) {
+                              return
+                            }
+                            setPlacementNodeTypeOverrides((current) => ({
+                              ...current,
+                              [depth]: nodeType,
+                            }))
+                          }}
+                        >
+                          {PLACEMENT_NODE_TYPES.map((nodeType) => (
+                            <option key={nodeType} value={nodeType}>{t(`options.nodeTypes.${nodeType}`)}</option>
+                          ))}
+                        </Select>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button

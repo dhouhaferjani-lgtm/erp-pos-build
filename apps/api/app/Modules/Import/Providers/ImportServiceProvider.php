@@ -15,6 +15,7 @@ use App\Modules\Import\Services\NumericFieldNormalizer;
 use App\Modules\Import\Services\PartiesBalancesPhase;
 use App\Modules\Import\Services\PartiesRowMapper;
 use App\Modules\Import\Services\ProductOpeningStockPhase;
+use App\Modules\Import\Services\ProductPlacementImportService;
 use App\Modules\Import\Services\ProductPriceResolver;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
@@ -50,7 +51,8 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(PartiesBalancesPhase::class),
                 $app->make(ProductPriceResolver::class),
                 $app->make(TaxDefaultResolverInterface::class),
-                $app->make(ProductOpeningStockPhase::class)
+                $app->make(ProductOpeningStockPhase::class),
+                $app->make(ProductPlacementImportService::class),
             );
         });
 

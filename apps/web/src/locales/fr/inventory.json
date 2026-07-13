@@ -1020,6 +1020,7 @@
     "picker": { "label": "Choisir un emplacement" },
     "productField": { "title": "Emplacement de stockage", "description": "Choisissez où ce produit est rangé dans chaque site.", "loading": "Chargement des emplacements…", "loadingPath": "Chargement du chemin…", "unassigned": "Non attribué", "change": "Choisir l’emplacement", "clear": "Effacer", "saved": "Emplacement de stockage enregistré.", "cleared": "Emplacement de stockage effacé." },
     "subtitle": "Cartographiez le parcours physique de l’allée au bac, puis indiquez où chaque produit est rangé.",
+    "importExplainer": "Vous importez des produits ? Ajoutez les colonnes location_code et placement_path (par exemple A1 > R2 > B7) pour prévisualiser les rangements avant validation.",
     "empty": {
       "title": "Aucun emplacement",
       "description": "Commencez par une allée, une zone ou une section, puis ajoutez le niveau de détail utile."

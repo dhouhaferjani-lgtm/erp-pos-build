@@ -1020,6 +1020,7 @@
     "picker": { "label": "Choose a storage node" },
     "productField": { "title": "Storage location", "description": "Choose where this product is stored at each location.", "loading": "Loading storage locations…", "loadingPath": "Loading path…", "unassigned": "Not assigned", "change": "Choose location", "clear": "Clear", "saved": "Storage location saved.", "cleared": "Storage location cleared." },
     "subtitle": "Map the physical path from aisle to bin, then place products where teams can find them.",
+    "importExplainer": "Importing products? Add location_code and placement_path columns (for example A1 > R2 > B7) to preview placements before committing them.",
     "empty": {
       "title": "No storage nodes yet",
       "description": "Start with an aisle, zone, or section, then add the detail your layout needs."

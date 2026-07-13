@@ -176,6 +176,9 @@ export function PlacementPage() {
   return (
     <div className="space-y-5">
       <PageHeader title={t('placement.title')} subtitle={t('placement.subtitle')} />
+      <p className={cn('rounded-lg border px-4 py-3 text-sm', colors.border.subtle, colors.surface.page, colors.text.secondary)}>
+        {t('placement.importExplainer')}
+      </p>
       <div className={cn('rounded-xl border', colors.border.subtle, colors.surface.base)}>
         <div className={cn('flex flex-wrap items-center gap-3 border-b p-4', colors.border.subtle)}>
           <Warehouse className={cn('h-5 w-5', colors.intent.primary.text)} />
