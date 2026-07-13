@@ -60,6 +60,7 @@ Vitest exited 1 because `PERMISSIONS['expense-recurrences.view']` was `undefined
 - Focused ESLint over the modified hook and new test: exit 0.
 - Design-system audit: 753 acknowledged, 0 new, 0 stale.
 - TanStack key audit: 0 acknowledged/new/stale violations.
+- React Doctor pinned to Task 9 base `3ad776504`: exit 0, 98/100, no issues. The required deprecated `--diff` form compared the full phase branch to `main` and reported unrelated branch-wide diagnostics; the pinned changed-scope scan isolates this task.
 - `php artisan route:list --path=expense-recurrences`: seven routes.
 - `git diff --check`: exit 0.
 

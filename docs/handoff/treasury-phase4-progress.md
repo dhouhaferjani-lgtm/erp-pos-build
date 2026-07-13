@@ -239,5 +239,6 @@
   - Scoped PHPStan level 8: no errors; scoped Pint test: pass; focused ESLint: 0 errors.
   - Design audit: 753 acknowledged / 0 new / 0 stale; TanStack key audit: 0 violations; `git diff --check`: exit 0.
   - `php artisan route:list --path=expense-recurrences`: exactly 7 required routes.
+  - React Doctor pinned to the Task 9 base `3ad776504` exited 0 at 98/100 with no issues. The deprecated unpinned `--diff` invocation compared the full phase branch to `main` and surfaced 330 unrelated branch-wide issues; the base-pinned Task 9 scan is the relevant regression result.
 - Scope: no generation command, scheduler, notifications, forecast projection, Task 12 UI, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed.
 - Deviations: none.
