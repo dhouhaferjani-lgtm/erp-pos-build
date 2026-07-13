@@ -73,6 +73,8 @@ final class ExpenseService
         $scale = $this->scaleResolver->getScale($companyCurrency);
         $total = (string) ($data['total'] ?? '0.00');
         $vatAmount = isset($data['vat_amount']) ? (string) $data['vat_amount'] : null;
+        $vatRate = isset($data['vat_rate']) ? (string) $data['vat_rate'] : null;
+        $vatDeductiblePercent = isset($data['vat_deductible_percent']) ? (string) $data['vat_deductible_percent'] : null;
         if (! is_numeric($total) || ($vatAmount !== null && ! is_numeric($vatAmount))) {
             throw new \InvalidArgumentException('Expense amounts must be numeric strings.');
         }
@@ -80,7 +82,12 @@ final class ExpenseService
         $linked = $this->prepareLinkedCost($data, $user->tenant_id, $data['company_id'], $companyCurrency);
 
         $this->assertVatInvariants(
-            ['total' => $total, 'vat_amount' => $vatAmount],
+            [
+                'total' => $total,
+                'vat_amount' => $vatAmount,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
+            ],
             $linked === null ? ExpenseKind::Generic : ExpenseKind::LinkedCost,
             $scale,
         );
@@ -89,12 +96,11 @@ final class ExpenseService
             $vatAmount = null;
         }
         $vatAmount = $vatAmount !== null ? CurrencyScale::bcformatStrict($vatAmount, $scale) : null;
-        $vatDeductiblePercent = $vatAmount !== null
-            ? ($data['vat_deductible_percent'] ?? '100.00')
-            : null;
+        $vatRate = $vatAmount !== null ? $vatRate : null;
+        $vatDeductiblePercent = $vatAmount !== null ? ($vatDeductiblePercent ?? '100.00') : null;
         $subtotal = $vatAmount !== null ? bcsub($total, $vatAmount, $scale) : $total;
 
-        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency, $linked, $subtotal, $total, $vatAmount, $vatDeductiblePercent): Document {
+        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency, $linked, $subtotal, $total, $vatAmount, $vatRate, $vatDeductiblePercent): Document {
             // Create the expense document
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
@@ -120,7 +126,7 @@ final class ExpenseService
                 'is_paid' => $data['is_paid'] ?? true,
                 'receipt_number' => $data['receipt_number'] ?? null,
                 'vendor_name' => $data['vendor_name'] ?? null,
-                'vat_rate' => $vatAmount !== null ? ($data['vat_rate'] ?? null) : null,
+                'vat_rate' => $vatRate,
                 'vat_deductible_percent' => $vatDeductiblePercent,
                 'expense_kind' => $linked === null ? ExpenseKind::Generic : ExpenseKind::LinkedCost,
                 'idempotency_key' => $idempotencyKey,
@@ -168,9 +174,20 @@ final class ExpenseService
         if ($metadata === null) {
             throw new \RuntimeException('Expense metadata is required for expense updates.');
         }
+        $vatRate = array_key_exists('vat_rate', $data)
+            ? ($data['vat_rate'] !== null ? (string) $data['vat_rate'] : null)
+            : $metadata->vat_rate;
+        $vatDeductiblePercent = array_key_exists('vat_deductible_percent', $data)
+            ? ($data['vat_deductible_percent'] !== null ? (string) $data['vat_deductible_percent'] : null)
+            : $metadata->vat_deductible_percent;
         $kind = $metadata->expense_kind;
         $this->assertVatInvariants(
-            ['total' => $total, 'vat_amount' => $vatAmount],
+            [
+                'total' => $total,
+                'vat_amount' => $vatAmount,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
+            ],
             $kind,
             $scale,
         );
@@ -179,10 +196,8 @@ final class ExpenseService
             $vatAmount = null;
         }
         $vatAmount = $vatAmount !== null ? CurrencyScale::bcformatStrict($vatAmount, $scale) : null;
-        $vatRate = $vatAmount !== null ? ($data['vat_rate'] ?? $metadata->vat_rate) : null;
-        $vatDeductiblePercent = $vatAmount !== null
-            ? ($data['vat_deductible_percent'] ?? $metadata->vat_deductible_percent ?? '100.00')
-            : null;
+        $vatRate = $vatAmount !== null ? $vatRate : null;
+        $vatDeductiblePercent = $vatAmount !== null ? ($vatDeductiblePercent ?? '100.00') : null;
         $subtotal = $vatAmount !== null ? bcsub($total, $vatAmount, $scale) : $total;
 
         return DB::transaction(function () use ($expense, $data, $metadata, $subtotal, $total, $vatAmount, $vatRate, $vatDeductiblePercent): Document {
@@ -218,11 +233,18 @@ final class ExpenseService
     }
 
     /**
-     * @param  array{total: numeric-string, vat_amount: numeric-string|null}  $effective
+     * @param  array{total: numeric-string, vat_amount: numeric-string|null, vat_rate: string|null, vat_deductible_percent: string|null}  $effective
      */
     private function assertVatInvariants(array $effective, ExpenseKind $kind, int $scale): void
     {
         $vat = $effective['vat_amount'];
+        if (
+            $kind === ExpenseKind::LinkedCost
+            && ($vat !== null || $effective['vat_rate'] !== null || $effective['vat_deductible_percent'] !== null)
+        ) {
+            throw new \DomainException('VAT fields are not supported on linked-cost expenses; landed-cost capitalization consumes the full amount. Record VAT-bearing costs as generic expenses.');
+        }
+
         if ($vat === null) {
             return;
         }
@@ -237,10 +259,6 @@ final class ExpenseService
 
         if ($this->amountExceedsCurrencyScale($effective['total'], $scale)) {
             throw new \DomainException('Amount precision exceeds the currency scale.');
-        }
-
-        if ($kind === ExpenseKind::LinkedCost) {
-            throw new \DomainException('VAT fields are not supported on linked-cost expenses; landed-cost capitalization consumes the full amount. Record VAT-bearing costs as generic expenses.');
         }
 
         $total = $effective['total'];

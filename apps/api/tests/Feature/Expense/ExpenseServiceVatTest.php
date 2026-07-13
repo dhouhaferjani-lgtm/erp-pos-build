@@ -24,6 +24,8 @@ final class ExpenseServiceVatTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const LINKED_COST_VAT_MESSAGE = 'VAT fields are not supported on linked-cost expenses; landed-cost capitalization consumes the full amount. Record VAT-bearing costs as generic expenses.';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -105,6 +107,38 @@ final class ExpenseServiceVatTest extends TestCase
         $this->createExpense([
             'total' => '119.000',
             'vat_amount' => '19.000',
+            'expense_kind' => ExpenseKind::LinkedCost->value,
+            'linked_invoice_id' => $supplierInvoice->id,
+            'linked_operation_id' => $purchaseOrder->id,
+        ]);
+    }
+
+    public function test_create_rejects_rate_only_on_a_linked_cost(): void
+    {
+        [$purchaseOrder, $supplierInvoice] = $this->linkedCostDocuments();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage(self::LINKED_COST_VAT_MESSAGE);
+
+        $this->createExpense([
+            'total' => '100.000',
+            'vat_rate' => '19.00',
+            'expense_kind' => ExpenseKind::LinkedCost->value,
+            'linked_invoice_id' => $supplierInvoice->id,
+            'linked_operation_id' => $purchaseOrder->id,
+        ]);
+    }
+
+    public function test_create_rejects_deductible_percent_only_on_a_linked_cost(): void
+    {
+        [$purchaseOrder, $supplierInvoice] = $this->linkedCostDocuments();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage(self::LINKED_COST_VAT_MESSAGE);
+
+        $this->createExpense([
+            'total' => '100.000',
+            'vat_deductible_percent' => '50.00',
             'expense_kind' => ExpenseKind::LinkedCost->value,
             'linked_invoice_id' => $supplierInvoice->id,
             'linked_operation_id' => $purchaseOrder->id,
@@ -285,6 +319,26 @@ final class ExpenseServiceVatTest extends TestCase
         $this->service->update($expense->load('expenseMetadata'), ['vat_amount' => '10.000']);
     }
 
+    public function test_update_rejects_rate_only_against_the_stored_linked_cost_kind(): void
+    {
+        $expense = $this->storedLinkedCostExpense();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage(self::LINKED_COST_VAT_MESSAGE);
+
+        $this->service->update($expense, ['vat_rate' => '19.00']);
+    }
+
+    public function test_update_rejects_deductible_percent_only_against_the_stored_linked_cost_kind(): void
+    {
+        $expense = $this->storedLinkedCostExpense();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage(self::LINKED_COST_VAT_MESSAGE);
+
+        $this->service->update($expense, ['vat_deductible_percent' => '50.00']);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -319,6 +373,18 @@ final class ExpenseServiceVatTest extends TestCase
             'subtotal' => '100.000',
             'total' => '100.000',
         ], $overrides));
+    }
+
+    private function storedLinkedCostExpense(): Document
+    {
+        $expense = $this->draftExpense();
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'expense_kind' => ExpenseKind::LinkedCost,
+            'is_paid' => false,
+        ]);
+
+        return $expense->load('expenseMetadata');
     }
 
     /**

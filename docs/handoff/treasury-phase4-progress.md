@@ -47,3 +47,13 @@
   - `git diff --check` exited 0.
 - Invariants: create resolves `Company` from explicit `company_id`; update resolves it from the stored document; all scale lookups receive that explicit currency; VAT math remains string/bcmath-based; a full fractional-digit check rejects every nonzero digit beyond the currency grid before exact-zero normalization or strict formatting; zero VAT becomes the VAT-less shape; update guards use merged total/VAT and stored expense kind; clearing VAT clears the full metadata trio.
 - Implementation deviations: none. Posting, settlement, linked-cost capitalization, treasury movement, and fiscal surfaces were not changed. The broad repository preflight was intentionally not run per the Task 3 brief.
+
+### Task 3 post-commit review fix — effective linked-cost VAT trio
+
+- Accepted finding: the initial invariant shape omitted `vat_rate` and `vat_deductible_percent`, allowing rate-only or deductible-percent-only linked-cost create/update payloads to bypass the stored-kind guard and be silently cleared.
+- RED: `php artisan test tests/Feature/Expense/ExpenseServiceVatTest.php --display-warnings` exited 1 with 4 failed and 17 passed (34 assertions). Rate-only and deductible-percent-only cases failed on both valid linked-cost create and stored-kind update.
+- GREEN: the focused command exited 0 with 21 passed tests (38 assertions) in 10.21s. Each new case pins the exact linked-cost `DomainException` message.
+- Expense cutoff: `php artisan test tests/Feature/Expense --display-warnings` exited 0 with 63 passed tests (250 assertions) in 39.99s.
+- Scoped verification: focused PHPStan exited 0 with no errors; focused Pint exited 0 (`{"result":"pass"}`).
+- Implementation: `assertVatInvariants()` now receives the effective merged VAT trio. Any non-null trio field on a linked-cost create or stored-kind update throws before persistence can clear it. Generic zero VAT still normalizes the entire trio to null.
+- Review disposition: the VAT-less-total finding was not implemented. The binding brief states, **"When VAT is present, total and vat_amount must be ON THE CURRENCY GRID,"** and separately requires zero VAT to normalize to null for the VAT-less backward-compatible path. Rejecting VAT-less EUR `119.005` here would add an unplanned breaking validation change outside Task 3.
