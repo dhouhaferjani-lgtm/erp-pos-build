@@ -332,7 +332,11 @@ class ImportController extends Controller
         return response()->json([
             'data' => $errorRows->map(fn ($row) => [
                 'row_number' => $row->row_number,
-                'data' => $row->data,
+                'data' => array_filter(
+                    $row->data,
+                    static fn (string $header): bool => ! str_starts_with($header, '_'),
+                    ARRAY_FILTER_USE_KEY,
+                ),
                 'errors' => $row->errors ?? [],
                 'warnings' => $row->warnings,
                 'import_error' => $row->import_error,

@@ -6,6 +6,9 @@ namespace Tests\Feature\Import;
 
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\ProcessImportJob;
+use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Services\ImportService;
 use App\Modules\Inventory\Application\Services\LocationNodeService;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\LocationNode;
@@ -140,6 +143,56 @@ final class ProductPlacementImportTest extends TestCase
         );
         $this->assertSame(3, LocationNode::query()->count());
         $this->assertSame($aisleOne->id, LocationNode::query()->where('code', 'A1')->value('id'));
+    }
+
+    public function test_errors_endpoint_hides_the_internal_plan_for_other_invalid_fields(): void
+    {
+        $this->nodes->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Aisle, 'Aisle 1', 'A1');
+
+        $upload = $this->upload("name,sku,sale_price,location_code,placement_path\nInvalid Price,IMP-PLC-6,nope,MAIN,A1");
+        $upload->assertCreated();
+
+        $errors = $this->actingAs($this->user)->getJson('/api/v1/imports/'.$upload->json('data.id').'/errors');
+        $errors->assertOk();
+        $errors->assertJsonPath('data.0.errors.sale_price.0', 'The sale price field must be a number.');
+        $this->assertArrayNotHasKey('_placement_plan', $errors->json('data.0.data'));
+    }
+
+    public function test_strict_commit_does_not_recreate_a_node_deleted_after_preview(): void
+    {
+        $aisle = $this->nodes->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Aisle, 'Aisle 1', 'A1');
+        $upload = $this->upload("name,sku,location_code,placement_path\nStrict Guard,IMP-PLC-7,MAIN,A1");
+        $upload->assertCreated();
+        $jobId = (string) $upload->json('data.id');
+
+        $this->actingAs($this->user)->getJson("/api/v1/imports/{$jobId}/preview")->assertOk();
+        $this->nodes->softDeleteSubtree($aisle);
+
+        $execute = $this->actingAs($this->user)->postJson("/api/v1/imports/{$jobId}/execute");
+        $execute->assertOk();
+        $execute->assertJsonPath('import_result.execution_error_count', 1);
+        $this->assertSame(0, LocationNode::query()->count());
+        $this->assertSame(1, LocationNode::withTrashed()->count());
+        $this->assertDatabaseMissing('products', ['sku' => 'IMP-PLC-7']);
+    }
+
+    public function test_queued_processor_commits_the_persisted_placement_plan(): void
+    {
+        $aisle = $this->nodes->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Aisle, 'Aisle 1', 'A1');
+        $upload = $this->upload("name,sku,location_code,placement_path\nAsync Product,IMP-PLC-8,MAIN,A1");
+        $upload->assertCreated();
+
+        $job = ImportJob::query()->findOrFail((string) $upload->json('data.id'));
+        (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
+            ->handle(app(ImportService::class));
+
+        $product = Product::query()->where('sku', 'IMP-PLC-8')->firstOrFail();
+        $this->assertDatabaseHas('product_placements', [
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'node_id' => $aisle->id,
+            'deleted_at' => null,
+        ]);
     }
 
     public function test_commit_rejects_tree_drift_after_preview_without_partial_product_write(): void

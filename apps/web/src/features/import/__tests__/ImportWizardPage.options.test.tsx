@@ -181,7 +181,7 @@ describe('ImportWizardPage product options step', () => {
     await waitFor(() => {
       expect(mockUpdateOptions).toHaveBeenCalledWith('job-1', expect.objectContaining({
         placement_mode: 'auto_create',
-        placement_node_types: ['aisle', 'rack', 'bin'],
+        placement_node_types: ['aisle', 'rack', 'shelf'],
       }))
     })
     expect(mockRefetchPreview).toHaveBeenCalledOnce()

@@ -133,6 +133,12 @@ final class ProductPlacementImportService
             }
 
             if ($node === null) {
+                if (($plan['mode'] ?? 'strict') !== 'auto_create') {
+                    throw new RuntimeException(
+                        "Placement node '{$segment['path']}' no longer exists. Run preview again."
+                    );
+                }
+
                 $type = LocationNodeType::tryFrom((string) $segment['node_type']);
                 if ($type === null) {
                     throw new RuntimeException('Invalid node type in persisted placement plan.');
@@ -276,6 +282,7 @@ final class ProductPlacementImportService
         }
 
         return [
+            'mode' => $mode,
             'location_id' => $location->id,
             'location_code' => $locationCode,
             'path' => implode('/', $pathParts),

@@ -39,7 +39,7 @@ const STEPS: { key: WizardStep; label: string }[] = [
 
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
-const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'bin', 'shelf', 'section', 'zone']
+const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'shelf', 'bin', 'section', 'zone']
 
 function isPlacementMode(value: string): value is NonNullable<ImportJobOptions['placement_mode']> {
   return value === 'strict' || value === 'auto_create'
