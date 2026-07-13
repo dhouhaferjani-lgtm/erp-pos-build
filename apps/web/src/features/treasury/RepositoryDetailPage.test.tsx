@@ -55,6 +55,8 @@ const repository = {
 
 let canAdjust = true
 let canTransfer = true
+let repositoryIsActive = true
+let repositoryType: 'cash_register' | 'virtual' = 'cash_register'
 
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({
@@ -134,7 +136,17 @@ vi.mock('@tanstack/react-query', () => ({
     if (flat.includes('payment-repository-transactions')) {
       return { data: { data: mockTransactions }, isLoading: false }
     }
-    return { data: { data: repository }, isLoading: false, error: null }
+    return {
+      data: {
+        data: {
+          ...repository,
+          is_active: repositoryIsActive,
+          type: repositoryType,
+        },
+      },
+      isLoading: false,
+      error: null,
+    }
   },
   useMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
@@ -145,6 +157,8 @@ describe('RepositoryDetailPage', () => {
     mockTransactions = [transaction]
     canAdjust = true
     canTransfer = true
+    repositoryIsActive = true
+    repositoryType = 'cash_register'
   })
 
   it('renders exactly one h1 (the repository name) via PageHeader', () => {
@@ -208,6 +222,24 @@ describe('RepositoryDetailPage', () => {
     canTransfer = false
     rerender(<RepositoryDetailPage />)
     expect(screen.queryByRole('button', { name: 'treasury:repositories.transfer.action' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['inactive', { isActive: false, type: 'cash_register' as const }],
+    ['virtual', { isActive: true, type: 'virtual' as const }],
+  ])('hides the transfer action when the repository is %s', (_label, repositoryState) => {
+    repositoryIsActive = repositoryState.isActive
+    repositoryType = repositoryState.type
+
+    render(<RepositoryDetailPage />)
+
+    expect(screen.queryByRole('button', { name: 'treasury:repositories.transfer.action' })).not.toBeInTheDocument()
+  })
+
+  it('shows the transfer action for an active physical repository with permission', () => {
+    render(<RepositoryDetailPage />)
+
+    expect(screen.getByRole('button', { name: 'treasury:repositories.transfer.action' })).toBeInTheDocument()
   })
 
   it('opens the transfer modal with the current repository preselected', () => {

@@ -313,7 +313,7 @@ export function RepositoryDetailPage() {
                 {t('treasury:repositories.adjustBalance.action')}
               </Button>
             )}
-            {hasPermission('treasury.transfer') && (
+            {hasPermission('treasury.transfer') && repository.is_active && repository.type !== 'virtual' && (
               <Button
                 variant="secondary"
                 className="gap-2"
