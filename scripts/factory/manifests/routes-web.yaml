@@ -195,6 +195,10 @@ routes:
     component: BalanceSheetPage
     module_gate: null
     permission: accounts.view
+  - path: /finance/cash-movements
+    component: CashMovementsReportPage
+    module_gate: null
+    permission: reports.view
   - path: /finance/chart-of-accounts
     component: ChartOfAccountsPage
     module_gate: null
@@ -350,7 +354,7 @@ routes:
   - path: /inventory/products/:id/edit
     component: ProductForm
     module_gate: null
-    permission: inventory.edit
+    permission: products.update
   - path: /inventory/products/new
     component: ProductForm
     module_gate: null
@@ -610,7 +614,7 @@ routes:
   - path: /purchases/orders/:id/edit
     component: DocumentForm
     module_gate: null
-    permission: purchases.edit
+    permission: purchase-orders.update
   - path: /purchases/orders/new
     component: DocumentForm
     module_gate: null
@@ -674,7 +678,7 @@ routes:
   - path: /purchases/suppliers/:id/edit
     component: CustomerForm
     module_gate: null
-    permission: purchases.edit
+    permission: contacts.update
   - path: /purchases/suppliers/new
     component: CustomerForm
     module_gate: null
@@ -722,7 +726,7 @@ routes:
   - path: /sales/customers/:id/edit
     component: CustomerForm
     module_gate: null
-    permission: sales.edit
+    permission: contacts.update
   - path: /sales/customers/new
     component: CustomerForm
     module_gate: null
@@ -738,7 +742,7 @@ routes:
   - path: /sales/invoices/:id/edit
     component: DocumentForm
     module_gate: null
-    permission: sales.edit
+    permission: invoices.update
   - path: /sales/invoices/new
     component: DocumentForm
     module_gate: null
@@ -754,7 +758,7 @@ routes:
   - path: /sales/orders/:id/edit
     component: DocumentForm
     module_gate: null
-    permission: sales.edit
+    permission: orders.update
   - path: /sales/orders/new
     component: DocumentForm
     module_gate: null
@@ -770,7 +774,7 @@ routes:
   - path: /sales/quotes/:id/edit
     component: DocumentForm
     module_gate: null
-    permission: sales.edit
+    permission: quotes.update
   - path: /sales/quotes/new
     component: DocumentForm
     module_gate: null
@@ -810,7 +814,7 @@ routes:
   - path: /services/:id/edit
     component: ServiceForm
     module_gate: Workshop
-    permission: services.edit
+    permission: null
   - path: /services/categories
     component: ServiceCategoryListPage
     module_gate: Workshop
@@ -818,7 +822,7 @@ routes:
   - path: /services/new
     component: ServiceForm
     module_gate: Workshop
-    permission: services.create
+    permission: null
   - path: /settings
     component: SettingsPage
     module_gate: settings
@@ -913,12 +917,12 @@ routes:
     permission: null
   - path: /treasury/instruments
     component: InstrumentListPage
-    module_gate: treasury
-    permission: null
+    module_gate: null
+    permission: instruments.view
   - path: /treasury/instruments/:id
     component: InstrumentDetailPage
-    module_gate: treasury
-    permission: null
+    module_gate: null
+    permission: instruments.view
   - path: /treasury/payment-methods
     component: PaymentMethodsPage
     module_gate: treasury
@@ -939,6 +943,18 @@ routes:
     component: BankReconciliationPage
     module_gate: null
     permission: repositories.view
+  - path: /treasury/remittances
+    component: RemittanceListPage
+    module_gate: null
+    permission: instruments.remit
+  - path: /treasury/remittances/:id
+    component: RemittanceDetailPage
+    module_gate: null
+    permission: instruments.remit
+  - path: /treasury/remittances/new
+    component: RemittanceCreatePage
+    module_gate: null
+    permission: instruments.remit
   - path: /treasury/repositories
     component: RepositoryListPage
     module_gate: treasury
@@ -970,7 +986,7 @@ routes:
   - path: /vehicles/:id/edit
     component: VehicleForm
     module_gate: Vehicle
-    permission: vehicles.edit
+    permission: vehicles.update
   - path: /vehicles/new
     component: VehicleForm
     module_gate: Vehicle
