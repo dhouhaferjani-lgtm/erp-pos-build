@@ -214,3 +214,30 @@
 - Quality gates: scoped PHPStan level 8 clean; scoped Pint clean. Final syntax/diff/scope checks are recorded in the Task 8 report.
 - Scope: no Task 9+ CRUD, permissions, generation, scheduling, notification, forecast, frontend, Treasury, fiscal, posting, or settlement behavior changed.
 - Deviations: none.
+
+## Task 9 — Recurrence CRUD and permission maps — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Presentation/Requests/ExpenseRecurrenceRequest.php`
+  - `apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseRecurrenceController.php`
+  - `apps/api/app/Modules/Expense/Domain/ExpenseRecurrenceTemplate.php`
+  - `apps/api/app/Modules/Expense/routes.php`
+  - `apps/api/database/seeders/RolesAndPermissionsSeeder.php`
+  - `apps/api/tests/Feature/Expense/ExpenseRecurrenceCrudTest.php`
+  - `apps/web/src/hooks/usePermissions.ts`
+  - `apps/web/src/hooks/__tests__/usePermissions.expenseRecurrences.test.ts`
+- Backend RED: focused PHPUnit exited 2 with 6 tests: five expected 404 failures for the absent routes and one missing-permission error for `expense-recurrences.view`. The test already pinned full CRUD, tenant/company isolation, all four scoped default FKs, validation boundaries, exact role grants/denials, cursor recomputation, and pause/resume semantics.
+- Frontend RED: focused Vitest exited 1 with the new permission-map assertion receiving `undefined` for `expense-recurrences.view`.
+- Backend GREEN: focused PHPUnit exited 0 with 7 tests / 106 assertions. Manager CRUD is green; accountant and manager receive the full seeded grant set; cashier/operator/viewer receive view only; mutation denies return 403; sibling-company and foreign-tenant templates return no list/show/update/delete disclosure; all four sibling-company FK values return 422.
+- Cursor semantics: create computes the first origin-cadence occurrence on/after today; edits to either `frequency` or `start_date` recompute from the origin; resume moves a stale paused cursor directly to the first occurrence on/after today and returns Active without materializing/backfilling missed periods.
+- Validation: money values remain decimal strings with at most three places, VAT percentages remain decimal strings with at most two places and a 0–100 bound, dates/enums are validated, merged update dates cannot place `end_date` before `start_date`, and `lead_days` consumes `ExpenseRecurrenceTemplate::MAX_LEAD_DAYS` (`60`). Every optional default FK uses `ScopedExists::tenantAndCompany`.
+- Permission alignment: backend and frontend both grant recurrence CRUD plus `expenses.export` to admin/manager/accountant only; cashier/operator/viewer get recurrence view only. The frontend module map also gates the future recurrence route on `.view`.
+- Regression and quality evidence:
+  - Full Expense feature path: 80 tests / 434 assertions, exit 0.
+  - All focused frontend permission tests: 6 files / 28 tests, exit 0.
+  - Root `pnpm typecheck`: all participating workspaces exited 0.
+  - Scoped PHPStan level 8: no errors; scoped Pint test: pass; focused ESLint: 0 errors.
+  - Design audit: 753 acknowledged / 0 new / 0 stale; TanStack key audit: 0 violations; `git diff --check`: exit 0.
+  - `php artisan route:list --path=expense-recurrences`: exactly 7 required routes.
+- Scope: no generation command, scheduler, notifications, forecast projection, Task 12 UI, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed.
+- Deviations: none.

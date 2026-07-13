@@ -53,6 +53,8 @@ final class ExpenseRecurrenceTemplate extends Model
 {
     use HasUuids;
 
+    public const int MAX_LEAD_DAYS = 60;
+
     protected $table = 'expense_recurrence_templates';
 
     /** @var list<string> */
