@@ -99,6 +99,18 @@ describe('PartnerPicker', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
+  it('connects the visible label to the combobox', () => {
+    renderWithProviders(
+      <PartnerPicker value={null} onChange={() => undefined} label="Supplier" />,
+    )
+
+    const combobox = screen.getByRole('combobox', { name: 'Supplier' })
+    const label = screen.getByText('Supplier').closest('label')
+
+    expect(combobox).toHaveAttribute('id')
+    expect(label).toHaveAttribute('for', combobox.getAttribute('id'))
+  })
+
   it('debounces the search and issues a request after the user types', async () => {
     mockApiGet.mockResolvedValue(response([acme]))
     const user = userEvent.setup()

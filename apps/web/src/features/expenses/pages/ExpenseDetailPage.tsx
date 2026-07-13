@@ -4,6 +4,7 @@ import { ArrowLeft, CreditCard, Edit, Trash2, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { entityRoutes } from '@/lib/entityRoutes'
 import { borderColors, tokens, textColors } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button'
 import {
@@ -184,7 +185,7 @@ export function ExpenseDetailPage() {
               <dd className={cn('mt-1 text-sm', textColors.primary)}>
                 {expense.partner ? (
                   <Link
-                    to={`/partners/${expense.partner.id}`}
+                    to={entityRoutes.supplier(expense.partner.id)}
                     className={cn(textColors.brand, textColors.hoverBrand)}
                   >
                     {expense.partner.name}
@@ -217,7 +218,9 @@ export function ExpenseDetailPage() {
                     {t('expenses:form.netAmount')}
                   </dt>
                   <dd className={cn('text-sm tabular-nums', textColors.primary)}>
-                    {expense.subtotal ?? '-'} {expense.currency}
+                    {expense.subtotal === null
+                      ? '-'
+                      : `${expense.subtotal} ${expense.currency}`}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
@@ -233,7 +236,9 @@ export function ExpenseDetailPage() {
                     {t('expenses:form.vatRate')}
                   </dt>
                   <dd className={cn('text-sm tabular-nums', textColors.primary)}>
-                    {expense.metadata?.vat_rate ?? '-'}%
+                    {expense.metadata === null || expense.metadata.vat_rate === null
+                      ? '-'
+                      : `${expense.metadata.vat_rate}%`}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
@@ -241,7 +246,9 @@ export function ExpenseDetailPage() {
                     {t('expenses:form.vatDeductible')}
                   </dt>
                   <dd className={cn('text-sm tabular-nums', textColors.primary)}>
-                    {expense.metadata?.vat_deductible_percent ?? '-'}%
+                    {expense.metadata === null || expense.metadata.vat_deductible_percent === null
+                      ? '-'
+                      : `${expense.metadata.vat_deductible_percent}%`}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4 border-t pt-2">

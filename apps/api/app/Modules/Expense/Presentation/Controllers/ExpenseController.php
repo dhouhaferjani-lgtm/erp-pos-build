@@ -16,12 +16,17 @@ use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
 use App\Modules\Expense\Presentation\Requests\PayExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\Document\OperationResolverInterface;
+use Closure;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Controller for expense management endpoints.
@@ -44,7 +49,7 @@ class ExpenseController extends Controller
         $query = Document::where('type', DocumentType::Expense)
             ->where('company_id', $companyId)
             ->with([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -119,7 +124,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.created', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -138,7 +143,7 @@ class ExpenseController extends Controller
             ->where('id', $id)
             ->where('company_id', $companyId)
             ->with([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -176,7 +181,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.updated', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -244,7 +249,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_posted'),
             'data' => new ExpenseResource($expense->load([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -285,7 +290,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_settled'),
             'data' => new ExpenseResource($expense->load([
-                'partner:id,name',
+                'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -315,6 +320,21 @@ class ExpenseController extends Controller
         }
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * @return Closure(Relation<*, *, *>): void
+     */
+    private function partnerForCompany(string $companyId): Closure
+    {
+        return static function (Relation $relation) use ($companyId): void {
+            if (! $relation instanceof BelongsTo || ! $relation->getRelated() instanceof Partner) {
+                throw new LogicException('Expense partner eager load must use the partner relation.');
+            }
+
+            $relation->select(['id', 'name'])
+                ->whereRaw('company_id = ?', [$companyId]);
+        };
     }
 
     public function linkableInvoices(Request $request): JsonResponse

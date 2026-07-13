@@ -86,6 +86,35 @@ final class ExpenseShowTest extends TestCase
             ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00');
     }
 
+    public function test_show_does_not_disclose_an_inconsistent_cross_company_partner(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+        $otherCompany = Company::factory()->create([
+            'tenant_id' => $user->tenant_id,
+        ]);
+        $foreignSupplier = Partner::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Foreign Company Supplier',
+            'type' => PartnerType::Supplier,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+            'partner_id' => $foreignSupplier->id,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.partner_id', null)
+            ->assertJsonPath('data.partner', null)
+            ->assertJsonMissing(['name' => 'Foreign Company Supplier']);
+    }
+
     /**
      * @param  list<string>  $permissions
      * @return array{0: User, 1: Company}

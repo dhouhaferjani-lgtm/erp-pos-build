@@ -292,6 +292,36 @@ final class ExpenseServiceVatTest extends TestCase
         $this->assertSame($partner->id, $expense->partner_id);
     }
 
+    public function test_update_replaces_partner_on_document(): void
+    {
+        $originalPartner = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $replacementPartner = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $expense = $this->createExpense(['partner_id' => $originalPartner->id]);
+
+        $updated = $this->service->update($expense, ['partner_id' => $replacementPartner->id]);
+
+        $this->assertSame($replacementPartner->id, $updated->partner_id);
+    }
+
+    public function test_update_clears_partner_on_explicit_null(): void
+    {
+        $partner = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $expense = $this->createExpense(['partner_id' => $partner->id]);
+
+        $updated = $this->service->update($expense, ['partner_id' => null]);
+
+        $this->assertNull($updated->partner_id);
+    }
+
     public function test_create_uses_explicit_company_when_no_company_context_is_bound(): void
     {
         app(CompanyContext::class)->clear();

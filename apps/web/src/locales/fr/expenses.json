@@ -48,6 +48,7 @@
     "vatBreakdown": "Détail de la TVA",
     "vatRate": "Taux de TVA",
     "selectVatRate": "Sélectionner un taux de TVA",
+    "historicalVatRate": "Taux historique",
     "vatAmount": "Montant de TVA",
     "vatDeductible": "TVA déductible",
     "vatDeductibleHint": "Part de la TVA récupérable pour ce justificatif",

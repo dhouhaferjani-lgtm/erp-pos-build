@@ -206,6 +206,9 @@ final class ExpenseService
         return DB::transaction(function () use ($expense, $data, $metadata, $subtotal, $total, $vatAmount, $vatRate, $vatDeductiblePercent): Document {
             // Update document
             $expense->update([
+                'partner_id' => array_key_exists('partner_id', $data)
+                    ? $data['partner_id']
+                    : $expense->partner_id,
                 'document_date' => $data['document_date'] ?? $data['payment_date'] ?? $expense->document_date,
                 'total' => $total,
                 'subtotal' => $subtotal,

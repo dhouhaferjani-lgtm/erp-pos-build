@@ -48,6 +48,7 @@
     "vatBreakdown": "VAT breakdown",
     "vatRate": "VAT rate",
     "selectVatRate": "Select a VAT rate",
+    "historicalVatRate": "Historical rate",
     "vatAmount": "VAT amount",
     "vatDeductible": "Deductible VAT",
     "vatDeductibleHint": "Share of VAT recoverable for this receipt",

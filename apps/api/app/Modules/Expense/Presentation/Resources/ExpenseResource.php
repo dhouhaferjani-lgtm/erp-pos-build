@@ -22,20 +22,21 @@ class ExpenseResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $partner = $this->resource->relationLoaded('partner')
+            ? $this->resource->partner
+            : null;
+
         return [
             'id' => $this->resource->id,
             'type' => $this->resource->type,
             'status' => $this->resource->status,
             'document_number' => $this->resource->document_number,
             'document_date' => $this->resource->document_date->toDateString(),
-            'partner_id' => $this->resource->partner_id,
-            'partner' => $this->when(
-                $this->resource->relationLoaded('partner'),
-                fn () => $this->resource->partner ? [
-                    'id' => $this->resource->partner->id,
-                    'name' => $this->resource->partner->name,
-                ] : null
-            ),
+            'partner_id' => $partner?->id,
+            'partner' => $partner ? [
+                'id' => $partner->id,
+                'name' => $partner->name,
+            ] : null,
             'subtotal' => $this->resource->subtotal,
             'tax_amount' => $this->resource->tax_amount,
             'total' => $this->resource->total,

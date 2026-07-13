@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/lib/i18n'
 import type { PartnerPickerValue } from '@/components/molecules/pickers'
-import type { CreateExpenseDTO } from '../../types'
+import type { CreateExpenseDTO, Expense, ExpenseMetadata } from '../../types'
 import { ExpenseFormFields } from './ExpenseFormFields'
 
 vi.mock('../../../treasury/hooks/usePaymentMethods', () => ({
@@ -48,19 +48,64 @@ const supplier: PartnerPickerValue = {
 
 vi.mock('@/components/molecules/pickers', () => ({
   PartnerPicker: ({
+    value,
     onChange,
     partnerType,
   }: {
+    value: PartnerPickerValue | string | null
     onChange: (value: PartnerPickerValue | null) => void
     partnerType: string
   }) => (
-    <button type="button" data-partner-type={partnerType} onClick={() => onChange(supplier)}>
-      Choose supplier
-    </button>
+    <div data-partner-type={partnerType}>
+      <span data-testid="selected-supplier">
+        {typeof value === 'string' ? value : value?.id ?? 'none'}
+      </span>
+      <button type="button" onClick={() => { onChange(supplier) }}>
+        Choose supplier
+      </button>
+      <button type="button" onClick={() => { onChange(null) }}>
+        Clear supplier
+      </button>
+    </div>
   ),
 }))
 
-function renderForm(onSave = vi.fn<(data: CreateExpenseDTO) => void>()) {
+const editExpenseMetadata: ExpenseMetadata = {
+  vendor_name: 'Papeterie Atlas receipt desk',
+  receipt_number: null,
+  payment_date: null,
+  is_paid: false,
+  expense_category_id: null,
+  payment_method_id: null,
+  payment_repository_id: null,
+  expense_kind: 'generic',
+  vat_rate: '19.00',
+  vat_deductible_percent: '100.00',
+}
+
+const editExpense: Expense = {
+  id: 'expense-1',
+  type: 'expense',
+  status: 'draft',
+  document_number: 'EXP-0001',
+  document_date: '2026-07-13',
+  partner_id: supplier.id,
+  partner: { id: supplier.id, name: supplier.name },
+  subtotal: '100.000',
+  tax_amount: '19.000',
+  total: '119.000',
+  currency: 'TND',
+  notes: null,
+  internal_notes: null,
+  created_at: '2026-07-13T00:00:00Z',
+  updated_at: '2026-07-13T00:00:00Z',
+  metadata: editExpenseMetadata,
+}
+
+function renderForm(
+  onSave = vi.fn<(data: CreateExpenseDTO) => void>(),
+  expense?: Expense,
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -70,7 +115,10 @@ function renderForm(onSave = vi.fn<(data: CreateExpenseDTO) => void>()) {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <ExpenseFormFields onSave={onSave} />
+      <ExpenseFormFields
+        onSave={onSave}
+        {...(expense !== undefined ? { expense } : {})}
+      />
     </QueryClientProvider>,
   )
 
@@ -86,7 +134,7 @@ describe('ExpenseFormFields supplier and VAT capture', () => {
     const { user } = renderForm()
 
     const picker = screen.getByRole('button', { name: 'Choose supplier' })
-    expect(picker).toHaveAttribute('data-partner-type', 'supplier')
+    expect(picker.parentElement).toHaveAttribute('data-partner-type', 'supplier')
 
     await user.click(picker)
 
@@ -96,6 +144,25 @@ describe('ExpenseFormFields supplier and VAT capture', () => {
     await user.clear(vendorName)
     await user.type(vendorName, 'Papeterie Atlas — Lac 1')
     expect(vendorName).toHaveValue('Papeterie Atlas — Lac 1')
+  })
+
+  it('synchronizes the selected supplier in edit mode while keeping its snapshot editable', async () => {
+    const onSave = vi.fn<(data: CreateExpenseDTO) => void>()
+    const { user } = renderForm(onSave, editExpense)
+
+    expect(screen.getByTestId('selected-supplier')).toHaveTextContent('supplier-1')
+    const vendorName = screen.getByRole('textbox', { name: 'Vendor Name' })
+    expect(vendorName).toHaveValue('Papeterie Atlas receipt desk')
+
+    await user.clear(vendorName)
+    await user.type(vendorName, 'Papeterie Atlas corrected receipt')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1) })
+    expect(onSave.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      partner_id: 'supplier-1',
+      vendor_name: 'Papeterie Atlas corrected receipt',
+    }))
   })
 
   it('suggests inclusive VAT with decimal strings and submits corrected receipt arithmetic', async () => {
@@ -134,13 +201,53 @@ describe('ExpenseFormFields supplier and VAT capture', () => {
     expect(typeof payload?.vat_deductible_percent).toBe('string')
   })
 
-  it('hides VAT receipt arithmetic for linked costs', async () => {
-    const { user } = renderForm()
+  it('clears VAT receipt arithmetic before submitting a linked cost', async () => {
+    const onSave = vi.fn<(data: CreateExpenseDTO) => void>()
+    const { user } = renderForm(onSave)
 
-    expect(screen.getByRole('combobox', { name: 'VAT rate' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('spinbutton', { name: /^Amount/ }), {
+      target: { value: '119.000' },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'VAT rate' }), {
+      target: { value: '19.00' },
+    })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Deductible VAT' }), {
+      target: { value: '80.00' },
+    })
+
     await user.click(screen.getByRole('radio', { name: 'Cost linked to an operation' }))
 
     expect(screen.queryByRole('combobox', { name: 'VAT rate' })).not.toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: 'VAT amount' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1) })
+    const payload = onSave.mock.calls[0]?.[0]
+    expect(payload?.vat_amount).toBeUndefined()
+    expect(payload?.vat_rate).toBeUndefined()
+    expect(payload?.vat_deductible_percent).toBeUndefined()
+  })
+
+  it('keeps a historical VAT rate visible and submittable in edit mode', async () => {
+    const onSave = vi.fn<(data: CreateExpenseDTO) => void>()
+    const historicalExpense: Expense = {
+      ...editExpense,
+      tax_amount: '7.500',
+      subtotal: '92.500',
+      total: '100.000',
+      metadata: {
+        ...editExpenseMetadata,
+        vat_rate: '7.50',
+      },
+    }
+    const { user } = renderForm(onSave, historicalExpense)
+
+    const rate = screen.getByRole('combobox', { name: 'VAT rate' })
+    expect(rate).toHaveValue('7.50')
+    expect(screen.getByRole('option', { name: /Historical rate.*7[.,]50%/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1) })
+    expect(onSave.mock.calls[0]?.[0]?.vat_rate).toBe('7.50')
   })
 })

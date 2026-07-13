@@ -91,7 +91,9 @@ export function ExpenseFormFields({
           receipt_number: expense.metadata?.receipt_number || '',
           total: expense.total,
           vat_amount: expense.tax_amount ?? '',
-          vat_rate: expense.metadata?.vat_rate ?? '',
+          vat_rate: expense.metadata?.vat_rate
+            ? bcadd(expense.metadata.vat_rate, '0', 2)
+            : '',
           vat_deductible_percent: expense.metadata?.vat_deductible_percent || '100',
           notes: expense.notes || '',
           internal_notes: expense.internal_notes || '',
@@ -173,6 +175,14 @@ export function ExpenseFormFields({
       configuration.applies_to === 'LINE_ITEMS' &&
       configuration.percentage_rate !== null,
   )
+  const historicalVatRate = vatRate !== '' && !percentageTaxConfigurations.some(
+    (configuration) => bccomp(
+      bcadd(configuration.percentage_rate ?? '0', '0', 2),
+      vatRate,
+    ) === 0,
+  )
+    ? vatRate
+    : null
 
   return (
     <form onSubmit={handleSubmit(onSave)} className="space-y-6">
@@ -409,6 +419,11 @@ export function ExpenseFormFields({
                     ? t('common:loading')
                     : t('expenses:form.selectVatRate')}
                 </option>
+                {historicalVatRate !== null ? (
+                  <option value={historicalVatRate}>
+                    {t('expenses:form.historicalVatRate')} ({historicalVatRate}%)
+                  </option>
+                ) : null}
                 {percentageTaxConfigurations.map((configuration) => {
                   const rate = bcadd(configuration.percentage_rate ?? '0', '0', 2)
                   return (
