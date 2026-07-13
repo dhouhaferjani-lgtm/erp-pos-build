@@ -330,7 +330,10 @@ class PaymentController extends Controller
             'instrument.reference' => ['required_with:instrument', 'string', 'max:100'],
             'instrument.maturity_date' => ['nullable', 'date'],
             'instrument.drawer_name' => ['nullable', 'string', 'max:150'],
-            'instrument.bank_id' => ['nullable', 'uuid'],
+            'instrument.bank_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenant('banks', $tenantId),
+            ],
             'instrument.bank_name' => ['nullable', 'string', 'max:100'],
             'instrument.bank_branch' => ['nullable', 'string', 'max:100'],
             'instrument.bank_account' => ['nullable', 'string', 'max:50'],

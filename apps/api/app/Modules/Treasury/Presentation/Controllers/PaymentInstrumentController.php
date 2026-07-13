@@ -148,7 +148,10 @@ final class PaymentInstrumentController extends Controller
                 'required', 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
-            'bank_id' => ['nullable', 'uuid'],
+            'bank_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenant('banks', $company->tenant_id),
+            ],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'bank_branch' => ['nullable', 'string', 'max:100'],
             'bank_account' => ['nullable', 'string', 'max:50'],
@@ -216,7 +219,10 @@ final class PaymentInstrumentController extends Controller
             'reference' => ['sometimes', 'string', 'max:100'],
             'maturity_date' => ['sometimes', 'nullable', 'date'],
             'drawer_name' => ['sometimes', 'nullable', 'string', 'max:150'],
-            'bank_id' => ['sometimes', 'nullable', 'uuid'],
+            'bank_id' => [
+                'sometimes', 'nullable', 'uuid',
+                ScopedExists::tenant('banks', $company->tenant_id),
+            ],
             'bank_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'bank_branch' => ['sometimes', 'nullable', 'string', 'max:100'],
             'bank_account' => ['sometimes', 'nullable', 'string', 'max:50'],
