@@ -29,6 +29,10 @@ vi.mock('@/hooks/usePageTitle', () => ({
   usePageTitle: vi.fn(),
 }))
 
+vi.mock('@/features/treasury/components/CashPositionWidget', () => ({
+  CashPositionWidget: () => null,
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: mockTranslate,

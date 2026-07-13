@@ -94,6 +94,7 @@ const InventoryHubPage = lazy(() => import('../features/inventory/pages/Inventor
 const PosHubPage = lazy(() => import('../features/pos/pages/PosHubPage').then((m) => ({ default: m.PosHubPage })))
 const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
 const FinanceHubPage = lazy(() => import('../features/finance/pages/FinanceHubPage').then((m) => ({ default: m.FinanceHubPage })))
+const CashMovementsReportPage = lazy(() => import('../features/finance/pages/CashMovementsReportPage').then((m) => ({ default: m.CashMovementsReportPage })))
 
 // Inventory module
 const ProductListPage = lazy(() => import('../features/inventory/ProductListPage').then((m) => ({ default: m.ProductListPage })))
@@ -1872,6 +1873,16 @@ export function AppRoutes() {
                   <TreasuryOverviewPage />
                 </SuspenseWrapper>
               </RequirePermission>
+            }
+          />
+          <Route
+            path="cash-movements"
+            element={
+              <SuspenseWrapper>
+                <RequirePermission permission="reports.view">
+                  <CashMovementsReportPage />
+                </RequirePermission>
+              </SuspenseWrapper>
             }
           />
           <Route

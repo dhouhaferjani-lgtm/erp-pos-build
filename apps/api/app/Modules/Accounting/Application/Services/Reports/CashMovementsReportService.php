@@ -73,7 +73,15 @@ final readonly class CashMovementsReportService
      *         counterparty: string|null,
      *         gl_account: string
      *     }>,
-     *     meta: array{current_page: int, per_page: int, total: int, last_page: int, from: int|null, to: int|null}
+     *     meta: array{
+     *         current_page: int,
+     *         per_page: int,
+     *         total: int,
+     *         last_page: int,
+     *         from: int|null,
+     *         to: int|null,
+     *         totals: array<string, array{in: string, out: string, net: string}>
+     *     }
      * }
      */
     public function generate(
@@ -82,6 +90,7 @@ final readonly class CashMovementsReportService
         ?CarbonImmutable $from,
         ?CarbonImmutable $to,
         ?string $repositoryId,
+        ?string $direction,
         int $page,
         int $perPage,
     ): array {
@@ -89,9 +98,46 @@ final readonly class CashMovementsReportService
             ->unionAll($this->journalLinesQuery($companyId, $companyCurrency, $from, $to, $repositoryId));
 
         $base = DB::query()->fromSub($union, 'cash_movements');
+
+        if ($direction !== null) {
+            $base->where('direction', $direction);
+        }
+
         $total = (clone $base)->count();
         $lastPage = $total === 0 ? 1 : (int) ceil($total / $perPage);
         $offset = ($page - 1) * $perPage;
+
+        $totalsRows = (clone $base)
+            ->selectRaw('currency, direction, SUM(CAST(amount AS NUMERIC)) AS total')
+            ->groupBy('currency', 'direction')
+            ->get();
+
+        $totals = [];
+        foreach ($totalsRows as $row) {
+            $currency = (string) $row->currency;
+            $scale = $this->scaleResolver->getScale($currency);
+            $totals[$currency] ??= [
+                'in' => CurrencyScale::bcformatStrict('0', $scale),
+                'out' => CurrencyScale::bcformatStrict('0', $scale),
+                'net' => CurrencyScale::bcformatStrict('0', $scale),
+            ];
+
+            $rowDirection = (string) $row->direction;
+            if ($rowDirection === CashMovementDirection::In->value) {
+                $totals[$currency]['in'] = CurrencyScale::bcformatStrict((string) $row->total, $scale);
+            } elseif ($rowDirection === CashMovementDirection::Out->value) {
+                $totals[$currency]['out'] = CurrencyScale::bcformatStrict((string) $row->total, $scale);
+            }
+        }
+
+        foreach ($totals as $currency => &$currencyTotals) {
+            $scale = $this->scaleResolver->getScale($currency);
+            $currencyTotals['net'] = CurrencyScale::bcformatStrict(
+                bcsub($currencyTotals['in'], $currencyTotals['out'], $scale + 1),
+                $scale,
+            );
+        }
+        unset($currencyTotals);
 
         $rows = $base
             ->orderByDesc('date')
@@ -118,6 +164,7 @@ final readonly class CashMovementsReportService
                 'last_page' => $lastPage,
                 'from' => $firstItem,
                 'to' => $lastItem,
+                'totals' => $totals,
             ],
         ];
     }

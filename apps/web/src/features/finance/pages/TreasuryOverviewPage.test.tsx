@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { EChartsOption } from 'echarts'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { TreasuryOverviewPage } from './TreasuryOverviewPage'
 import type { CashPosition } from '@/features/treasury/hooks/useCashPosition'
 import { formatCurrency } from '@/lib/format'
@@ -80,6 +81,14 @@ function normalizeSpaces(value: string | null): string {
   return (value ?? '').replace(/\s/g, ' ')
 }
 
+function renderOverview() {
+  return render(
+    <MemoryRouter>
+      <TreasuryOverviewPage />
+    </MemoryRouter>,
+  )
+}
+
 const cashPositionFixture: CashPosition = {
   as_of: '2026-07-03T00:00:00Z',
   currency: 'TND',
@@ -149,8 +158,16 @@ const profitLossFixture: ProfitLossData = {
 }
 
 describe('TreasuryOverviewPage', () => {
+  it('links the page header to the unified cash movements report', () => {
+    renderOverview()
+
+    expect(screen.getByRole('link', {
+      name: 'finance:cashMovements.navTitle',
+    })).toHaveAttribute('href', '/finance/cash-movements')
+  })
+
   it('sums repository balance strings into cash-position StatCards and mounts FinanceWidget', () => {
-    render(<TreasuryOverviewPage />)
+    renderOverview()
 
     expect(screen.getByText('finance:overview.cash.totalCash')).toBeInTheDocument()
     expect(screen.getByText('finance:overview.cash.cashRegisters')).toBeInTheDocument()
@@ -189,7 +206,7 @@ describe('TreasuryOverviewPage', () => {
       refetch: vi.fn(),
     })
 
-    const { container } = render(<TreasuryOverviewPage />)
+    const { container } = renderOverview()
 
     expect(screen.getByText('finance:overview.upcoming.moneyIn')).toBeInTheDocument()
     expect(screen.getByText('finance:overview.upcoming.moneyOut')).toBeInTheDocument()
@@ -208,14 +225,14 @@ describe('TreasuryOverviewPage', () => {
   })
 
   it('renders empty upcoming payment states when no lines are due', () => {
-    render(<TreasuryOverviewPage />)
+    renderOverview()
 
     expect(screen.getByText('finance:overview.upcoming.emptyIn')).toBeInTheDocument()
     expect(screen.getByText('finance:overview.upcoming.emptyOut')).toBeInTheDocument()
   })
 
   it('renders an OwnerChart with an honest current-period revenue-vs-expenses option', () => {
-    render(<TreasuryOverviewPage />)
+    renderOverview()
 
     expect(screen.getByTestId('owner-chart')).toHaveTextContent(
       'finance:overview.trend.revenueVsExpenses'

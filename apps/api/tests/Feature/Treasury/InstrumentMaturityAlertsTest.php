@@ -6,7 +6,9 @@ namespace Tests\Feature\Treasury;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -14,9 +16,12 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 final class InstrumentMaturityAlertsTest extends TestCase
@@ -93,6 +98,62 @@ final class InstrumentMaturityAlertsTest extends TestCase
         $this->assertSame(2, AuditEvent::query()
             ->where('company_id', $company->id)
             ->where('event_type', 'treasury.instrument.maturity_alert')
+            ->count());
+    }
+
+    public function test_maturity_alert_sends_one_notification_per_user_per_company(): void
+    {
+        Carbon::setTestNow('2026-07-11 05:00:00');
+
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $manager = $this->createTreasuryManager($tenant, $company);
+        $secondCompany = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        UserCompanyMembership::query()->create([
+            'user_id' => $manager->id,
+            'company_id' => $secondCompany->id,
+            'role' => 'manager',
+            'status' => 'active',
+        ]);
+        $method = $this->method($tenant, $company);
+        $secondMethod = $this->method($tenant, $secondCompany);
+        $this->instrument($tenant, $company, $method, ['reference' => 'DUE-ONE']);
+        $this->instrument($tenant, $company, $method, ['reference' => 'DUE-TWO']);
+        $this->instrument($tenant, $secondCompany, $secondMethod, ['reference' => 'DUE-OTHER-COMPANY']);
+
+        $this->assertSame(0, Artisan::call('treasury:instrument-maturity-alerts'));
+
+        $notifications = DB::table('notifications')
+            ->where('notifiable_id', $manager->id)
+            ->where('type', 'treasury.instrument.maturity_alert')
+            ->get();
+        $this->assertCount(2, $notifications);
+        $notification = $notifications->first(
+            static fn (object $row): bool => json_decode((string) $row->data, true, flags: JSON_THROW_ON_ERROR)['company_id'] === $company->id,
+        );
+        $this->assertNotNull($notification);
+        $data = json_decode((string) $notification->data, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($company->id, $data['company_id']);
+        $this->assertSame(2, $data['received_due_count']);
+        $this->assertSame('/treasury/instruments?maturing=1', $data['deep_link']);
+    }
+
+    public function test_maturity_alert_sends_no_notification_when_counts_are_zero(): void
+    {
+        Carbon::setTestNow('2026-07-11 05:00:00');
+
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $manager = $this->createTreasuryManager($tenant, $company);
+
+        $this->assertSame(0, Artisan::call('treasury:instrument-maturity-alerts'));
+        $this->assertDatabaseHas('audit_events', [
+            'company_id' => $company->id,
+            'event_type' => 'treasury.instrument.maturity_alert',
+        ]);
+        $this->assertSame(0, DB::table('notifications')
+            ->where('notifiable_id', $manager->id)
+            ->where('type', 'treasury.instrument.maturity_alert')
             ->count());
     }
 
@@ -175,6 +236,25 @@ final class InstrumentMaturityAlertsTest extends TestCase
             'company_id' => $company->id,
             'has_maturity' => true,
         ]);
+    }
+
+    private function createTreasuryManager(Tenant $tenant, Company $company): User
+    {
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($tenant->id);
+        $registrar->forgetCachedPermissions();
+        Permission::findOrCreate('treasury.manage', 'sanctum');
+
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        $user->givePermissionTo('treasury.manage');
+        UserCompanyMembership::query()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => 'manager',
+            'status' => 'active',
+        ]);
+
+        return $user;
     }
 
     /** @param array<string, mixed> $overrides */

@@ -103,6 +103,7 @@ class PaymentRepositoryTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'data');
+        $response->assertJsonPath('data.0.currency', 'EUR');
     }
 
     public function test_can_create_cash_register(): void

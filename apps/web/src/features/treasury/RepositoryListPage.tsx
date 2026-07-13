@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Vault, Building2, CreditCard, Wallet } from 'lucide-react'
+import Big from 'big.js'
+import { ArrowLeftRight, Plus, Vault, Building2, CreditCard, Wallet } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
@@ -11,14 +12,13 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { usePermissions } from '../../hooks/usePermissions'
-import { AddRepositoryModal } from '../../components/organisms'
-import { Button, StatusBadge, type StatusTone } from '../../components/atoms'
-import {
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-  ListPageLayout,
-} from '../../components/molecules'
+import { AddRepositoryModal } from '../../components/organisms/AddRepositoryModal/AddRepositoryModal'
+import { Button } from '../../components/atoms/Button/Button'
+import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
+import { TransferCashModal } from './components/TransferCashModal'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
+import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPageLayout'
 
 interface Repository {
   id: string
@@ -30,6 +30,7 @@ interface Repository {
   iban: string | null
   bic: string | null
   balance: string
+  currency: string
   is_active: boolean
 }
 
@@ -66,8 +67,10 @@ export function RepositoryListPage() {
   const { t } = useTranslation(['common', 'treasury'])
   const queryClient = useQueryClient()
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showTransferModal, setShowTransferModal] = useState(false)
   const { hasPermission } = usePermissions()
   const canManageRepositories = hasPermission('repositories.manage')
+  const canTransferCash = hasPermission('treasury.transfer')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -85,17 +88,16 @@ export function RepositoryListPage() {
     queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<RepositoriesResponse>('/payment-repositories')
-      return response.data
+      return response.data.data
     },
     enabled: tenantId !== null && companyId !== null,
   })
 
-  const repositories = data?.data ?? []
+  const repositories = data ?? []
 
   // Format currency using company settings
-  const formatAmount = (amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return formatCurrency(num, {
+  const formatAmount = (amount: string) => {
+    return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
     })
@@ -117,9 +119,9 @@ export function RepositoryListPage() {
 
   // Calculate total balance
   const totalBalance = repositories.reduce(
-    (sum, repo) => sum + parseFloat(repo.balance),
-    0
-  )
+    (sum, repo) => sum.plus(repo.balance),
+    new Big(0),
+  ).toFixed(3)
 
   const columns: DataTableColumn<Repository>[] = [
     {
@@ -184,7 +186,7 @@ export function RepositoryListPage() {
       numeric: true,
       cellClassName: 'font-semibold',
       render: (repo) => (
-        <span className={parseFloat(repo.balance) >= 0 ? textColors.success : textColors.error}>
+        <span className={new Big(repo.balance).gte(0) ? textColors.success : textColors.error}>
           {formatAmount(repo.balance)}
         </span>
       ),
@@ -198,6 +200,20 @@ export function RepositoryListPage() {
     </Button>
   ) : undefined
 
+  const transferButton = canTransferCash ? (
+    <Button variant="secondary" className="gap-2" onClick={() => { setShowTransferModal(true) }}>
+      <ArrowLeftRight className="h-4 w-4" />
+      {t('treasury:repositories.transfer.action')}
+    </Button>
+  ) : undefined
+
+  const actions = addButton !== undefined || transferButton !== undefined ? (
+    <>
+      {transferButton}
+      {addButton}
+    </>
+  ) : undefined
+
   return (
     <ListPageLayout
       title={t('navigation.repositories', 'Repositories')}
@@ -206,7 +222,7 @@ export function RepositoryListPage() {
           ? t('treasury:repositories.singular')
           : t('treasury:repositories.plural')
       } | ${t('common:fields.total')}: ${formatAmount(totalBalance)}`}
-      {...(addButton !== undefined ? { actions: addButton } : {})}
+      {...(actions !== undefined ? { actions } : {})}
     >
       {error ? (
         <div className={cn(tokens.alert.base, tokens.alert.error)}>
@@ -220,7 +236,10 @@ export function RepositoryListPage() {
               {(['cash_register', 'safe', 'bank_account', 'virtual'] as const).map((type) => {
                 const repos = groupedRepos[type] ?? ([] as Repository[])
                 const Icon = typeIcons[type]
-                const typeBalance = repos.reduce((sum, r) => sum + parseFloat(r.balance), 0)
+                const typeBalance = repos.reduce(
+                  (sum, repository) => sum.plus(repository.balance),
+                  new Big(0),
+                ).toFixed(3)
                 return (
                   <div key={type} className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
                     <div className="flex items-center gap-3">
@@ -284,6 +303,10 @@ export function RepositoryListPage() {
         onSuccess={() => {
           void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
         }}
+      />
+      <TransferCashModal
+        isOpen={showTransferModal}
+        onClose={() => { setShowTransferModal(false) }}
       />
     </ListPageLayout>
   )

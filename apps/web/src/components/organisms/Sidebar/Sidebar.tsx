@@ -282,6 +282,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'accounts',
       children: [
         { key: 'treasuryOverview', labelKey: 'finance:hub.cards.treasuryOverview.title', href: '/finance/overview', icon: Wallet, permission: 'reports' },
+        { key: 'cashMovements', labelKey: 'finance:cashMovements.navTitle', href: '/finance/cash-movements', icon: ArrowLeftRight, permission: 'reports' },
         { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, permission: 'accounts' },
         { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'accounts' },
         { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, permission: 'accounts' },

@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Server-side cash-position aggregation (Treasury spine Task 25).
@@ -100,12 +101,44 @@ class CashPositionController extends Controller
             ];
         }
 
+        $flows = null;
+        $windowRaw = $request->query('flows_window');
+
+        if ($windowRaw !== null) {
+            if (! is_string($windowRaw)
+                || ! ctype_digit($windowRaw)
+                || (int) $windowRaw < 1
+                || (int) $windowRaw > 90) {
+                throw new \DomainException('flows_window must be an integer between 1 and 90.');
+            }
+
+            $window = (int) $windowRaw;
+            $sums = DB::table('repository_movements as m')
+                ->join('payment_repositories as r', 'r.id', '=', 'm.payment_repository_id')
+                ->where('r.tenant_id', $tenantId)
+                ->where('r.company_id', $companyId)
+                ->where('r.is_active', true)
+                ->whereIn('r.type', $cashTypeValues)
+                ->where('r.currency', $company->currency)
+                ->where('m.occurred_at', '>=', Carbon::now()->subDays($window))
+                ->selectRaw('m.direction, SUM(m.amount) AS total')
+                ->groupBy('m.direction')
+                ->pluck('total', 'direction');
+
+            $flows = [
+                'window_days' => $window,
+                'in' => CurrencyScale::bcformatStrict((string) ($sums['in'] ?? '0'), $scale),
+                'out' => CurrencyScale::bcformatStrict((string) ($sums['out'] ?? '0'), $scale),
+            ];
+        }
+
         return response()->json([
             'data' => [
                 'as_of' => Carbon::now()->toIso8601String(),
                 'currency' => $company->currency,
                 'groups' => $groups,
                 'grand_total' => $grandTotal,
+                ...($flows !== null ? ['flows' => $flows] : []),
             ],
         ]);
     }

@@ -9,12 +9,15 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Notifications\TreasuryAlertNotification;
+use App\Modules\Treasury\Application\Services\TreasuryAlertRecipients;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
@@ -30,6 +33,7 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
     public function __construct(
         CompanyContext $companyContext,
         private readonly AuditService $auditService,
+        private readonly TreasuryAlertRecipients $alertRecipients,
     ) {
         parent::__construct($companyContext);
     }
@@ -135,6 +139,34 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
             payload: $payload,
             metadata: ['source' => 'treasury:instrument-maturity-alerts'],
         );
+
+        if ($payload['received_due_count'] + $payload['deposited_overdue_count'] > 0) {
+            try {
+                $recipients = $this->alertRecipients->forCompany($company->tenant_id, $company->id);
+                if ($recipients->isNotEmpty()) {
+                    Notification::send($recipients, new TreasuryAlertNotification(
+                        alertType: self::EVENT_TYPE,
+                        data: [
+                            'company_id' => $company->id,
+                            'company_name' => $company->name,
+                            'severity' => 'warning',
+                            'window_days' => $payload['window_days'],
+                            'received_due_count' => $payload['received_due_count'],
+                            'deposited_overdue_count' => $payload['deposited_overdue_count'],
+                            'deep_link' => '/treasury/instruments?maturing=1',
+                        ],
+                    ));
+                }
+            } catch (Throwable $e) {
+                Log::error('treasury.instrument.maturity_alert_failed', [
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'channel' => 'notification',
+                    'exception_class' => $e::class,
+                    'exception_message' => $e->getMessage(),
+                ]);
+            }
+        }
 
         Log::warning(self::EVENT_TYPE, [
             'tenant_id' => $company->tenant_id,

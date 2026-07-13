@@ -25,6 +25,7 @@ import { EntityLink } from '../../components/molecules/EntityLink'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { CashPositionWidget } from '@/features/treasury/components/CashPositionWidget'
 
 interface DashboardStats {
   revenue: {
@@ -304,6 +305,7 @@ export function Dashboard() {
 
       {/* Recent Activity */}
       <div className="grid gap-6 lg:grid-cols-2">
+        <CashPositionWidget />
         {/* Recent Documents */}
         <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
           <div className={`flex items-center justify-between border-b ${colorTokens.border.subtle} px-6 py-4`}>

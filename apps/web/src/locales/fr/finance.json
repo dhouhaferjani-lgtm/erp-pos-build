@@ -367,5 +367,60 @@
       "filed": "Période de TVA marquée comme déclarée",
       "exported": "Export téléchargé avec succès"
     }
+  },
+  "cashMovements": {
+    "navTitle": "Mouvements de trésorerie",
+    "title": "Mouvements de trésorerie",
+    "subtitle": "Vue unifiée des entrées et sorties de trésorerie par dépôt",
+    "loading": "Chargement des mouvements de trésorerie...",
+    "loadError": "Impossible de charger les mouvements de trésorerie",
+    "copySourceRef": "Copier la référence source",
+    "filters": {
+      "dateRange": "Période",
+      "repository": "Dépôt",
+      "allRepositories": "Tous les dépôts",
+      "direction": "Sens",
+      "allDirections": "Tous les sens"
+    },
+    "directions": {
+      "in": "Entrée",
+      "out": "Sortie"
+    },
+    "totals": {
+      "title": "Totaux par devise",
+      "currency": "Devise",
+      "in": "Entrées",
+      "out": "Sorties",
+      "net": "Net",
+      "empty": "Aucun total pour cette période"
+    },
+    "columns": {
+      "date": "Date",
+      "direction": "Sens",
+      "amount": "Montant",
+      "sourceType": "Type de source",
+      "counterparty": "Contrepartie",
+      "glAccount": "Compte général",
+      "sourceRef": "Référence source"
+    },
+    "sourceTypes": {
+      "payment": "Paiement",
+      "customer_payment": "Paiement client",
+      "supplier_payment": "Paiement fournisseur",
+      "advance": "Avance",
+      "supplier_advance_refund": "Remboursement d'avance fournisseur",
+      "journal_entry": "Écriture comptable",
+      "expense": "Dépense",
+      "income": "Recette",
+      "pos_receipt": "Ticket de caisse",
+      "pos_receipt_refund": "Remboursement caisse",
+      "repository_adjustment": "Ajustement de dépôt",
+      "treasury_transfer": "Virement de trésorerie",
+      "instrument": "Instrument"
+    },
+    "empty": {
+      "title": "Aucun mouvement de trésorerie",
+      "description": "Aucun mouvement ne correspond aux filtres sélectionnés."
+    }
   }
 }

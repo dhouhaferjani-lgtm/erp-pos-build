@@ -1,0 +1,34 @@
+{
+  "title": "Notifications",
+  "ariaLabel": "Notifications",
+  "ariaLabelWithCount": "Notifications, {{count}} non lues",
+  "markAllRead": "Tout marquer comme lu",
+  "empty": "Aucune notification pour le moment",
+  "loading": "Chargement des notifications…",
+  "error": "Impossible de charger les notifications.",
+  "unread": "non lue",
+  "types": {
+    "generic": "Notification",
+    "treasury": {
+      "reconcile": {
+        "drift": "Écart de trésorerie détecté",
+        "portfolio_drift": "Alerte sur le portefeuille de trésorerie"
+      },
+      "instrument": {
+        "maturity_alert": "Alerte d’échéance des instruments"
+      }
+    }
+  },
+  "messages": {
+    "generic": "Ouvrez cette notification pour afficher les détails.",
+    "treasury": {
+      "reconcile": {
+        "drift": "Le dépôt {{repositoryCode}} a été bloqué après la détection d’un écart de trésorerie.",
+        "portfolio_drift": "Des incohérences de trésorerie ont été détectées pour {{companyName}}."
+      },
+      "instrument": {
+        "maturity_alert": "{{receivedCount}} instruments reçus et {{depositedCount}} instruments déposés nécessitent votre attention."
+      }
+    }
+  }
+}

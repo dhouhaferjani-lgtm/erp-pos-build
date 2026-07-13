@@ -12,7 +12,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Notifications\TreasuryAlertNotification;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Application\Services\TreasuryAlertRecipients;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
@@ -27,6 +29,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 /**
@@ -120,6 +123,7 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         private readonly AuditService $auditService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly InstrumentAccountResolver $instrumentAccountResolver,
+        private readonly TreasuryAlertRecipients $alertRecipients,
     ) {
         parent::__construct($companyContext);
     }
@@ -438,6 +442,24 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             payload: ['mismatches' => $mismatches],
             metadata: ['source' => 'treasury:reconcile'],
         );
+
+        try {
+            $recipients = $this->alertRecipients->forCompany($company->tenant_id, $company->id);
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, new TreasuryAlertNotification(
+                    alertType: self::PORTFOLIO_DRIFT_EVENT_TYPE,
+                    data: [
+                        'company_id' => $company->id,
+                        'company_name' => $company->name,
+                        'severity' => 'warning',
+                        'mismatches' => $mismatches,
+                        'deep_link' => '/finance/overview',
+                    ],
+                ));
+            }
+        } catch (Throwable $e) {
+            $this->logPortfolioAlertFailure($company, 'notification', $e);
+        }
 
         $this->error(sprintf('PORTFOLIO DRIFT company %s — %d mismatch(es); cash repositories were not frozen.', $company->id, count($mismatches)));
     }
@@ -820,6 +842,25 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             $this->logAlertFailure($repository, $reason, 'audit_event', $e);
         }
 
+        try {
+            $recipients = $this->alertRecipients->forCompany($repository->tenant_id, $repository->company_id);
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, new TreasuryAlertNotification(
+                    alertType: self::DRIFT_EVENT_TYPE,
+                    data: [
+                        'company_id' => $repository->company_id,
+                        'company_name' => $repository->company->name,
+                        'severity' => 'critical',
+                        'repository_code' => $repository->code,
+                        'reason' => $reason,
+                        'deep_link' => "/treasury/repositories/{$repository->id}",
+                    ],
+                ));
+            }
+        } catch (Throwable $e) {
+            $this->logAlertFailure($repository, $reason, 'notification', $e);
+        }
+
         $this->error(sprintf('FROZEN repository %s — %s', $repository->id, $reason));
     }
 
@@ -845,6 +886,24 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             'Alert delivery FAILED (%s) for frozen repository %s: %s',
             $channel,
             $repository->id,
+            $e->getMessage(),
+        ));
+    }
+
+    private function logPortfolioAlertFailure(Company $company, string $channel, Throwable $e): void
+    {
+        Log::error(self::ALERT_FAILURE_EVENT_TYPE, [
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'check' => 'portfolio_gl_coherence',
+            'channel' => $channel,
+            'exception_class' => $e::class,
+            'exception_message' => $e->getMessage(),
+        ]);
+        $this->error(sprintf(
+            'Alert delivery FAILED (%s) for company portfolio %s: %s',
+            $channel,
+            $company->id,
             $e->getMessage(),
         ));
     }

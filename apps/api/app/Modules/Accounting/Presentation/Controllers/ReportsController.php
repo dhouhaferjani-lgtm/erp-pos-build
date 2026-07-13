@@ -241,6 +241,7 @@ class ReportsController extends Controller
             from: $request->fromDate(),
             to: $request->toDate(),
             repositoryId: $request->repositoryId(),
+            direction: $request->direction(),
             page: $request->page(),
             perPage: $request->perPage(),
         ));

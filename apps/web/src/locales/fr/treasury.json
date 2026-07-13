@@ -310,6 +310,25 @@
     "singular": "dépôt",
     "plural": "dépôts",
     "add": "Ajouter un dépôt",
+    "transfer": {
+      "action": "Transférer des fonds",
+      "title": "Transférer des fonds",
+      "from": "Dépôt source",
+      "to": "Dépôt destinataire",
+      "amount": "Montant",
+      "notes": "Notes",
+      "submit": "Transférer",
+      "success": "Fonds transférés avec succès",
+      "sameRepository": "Choisissez deux dépôts différents",
+      "zeroAmount": "Le montant doit être supérieur à zéro",
+      "invalidAmount": "Saisissez un montant avec 3 décimales maximum",
+      "differentCurrency": "Les dépôts doivent utiliser la même devise",
+      "balanceHint": "Solde actuel : {{balance}}",
+      "selectRepository": "Sélectionner un dépôt",
+      "fromRequired": "Sélectionnez le dépôt source",
+      "toRequired": "Sélectionnez le dépôt destinataire",
+      "notesTooLong": "Les notes ne peuvent pas dépasser 1000 caractères"
+    },
     "cash": "Caisse",
     "bank": "Compte bancaire",
     "safe": "Coffre",
@@ -652,6 +671,25 @@
     "maturity": "Échéance",
     "statuses": { "draft": "Brouillon", "remitted": "Remis", "closed": "Clôturé" },
     "lineStatuses": { "pending": "En attente", "cleared": "Encaissé", "bounced": "Impayé" }
+  },
+  "cashWidget": {
+    "title": "Position de trésorerie",
+    "subtitle": "Trésorerie disponible dans les comptes",
+    "types": {
+      "cashRegisters_one": "{{count}} caisse",
+      "cashRegisters_other": "{{count}} caisses",
+      "bankAccounts_one": "{{count}} compte bancaire",
+      "bankAccounts_other": "{{count}} comptes bancaires",
+      "safes_one": "{{count}} coffre",
+      "safes_other": "{{count}} coffres"
+    },
+    "window": "{{days}} derniers jours",
+    "in": "Entrées",
+    "out": "Sorties",
+    "viewOverview": "Voir l’aperçu",
+    "viewMovements": "Voir les mouvements",
+    "loading": "Chargement de la position de trésorerie…",
+    "unavailable": "La position de trésorerie est indisponible."
   },
   "reconciliation": {
     "openingBalance": "Solde d'ouverture",

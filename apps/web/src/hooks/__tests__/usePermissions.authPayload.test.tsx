@@ -20,6 +20,18 @@ afterEach(() => {
 })
 
 describe('usePermissions auth payload', () => {
+  it('accepts treasury transfers from the server permission list', () => {
+    useAuthStore.getState().setUser({
+      ...baseUser,
+      permissions: ['treasury.transfer'],
+      roles: [],
+    })
+
+    const { result } = renderHook(() => usePermissions())
+
+    expect(result.current.hasPermission('treasury.transfer')).toBe(true)
+  })
+
   it('treats the server permission list as authoritative', () => {
     useAuthStore.getState().setUser({
       ...baseUser,

@@ -278,6 +278,7 @@ class PaymentRepositoryController extends Controller
             'iban' => $repository->iban,
             'bic' => $repository->bic,
             'balance' => $repository->balance,
+            'currency' => $repository->currency,
             'is_active' => $repository->is_active,
             'gl_account_id' => $repository->gl_account_id,
             'gl_account' => $repository->glAccount?->only(['id', 'code', 'name']),

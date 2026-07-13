@@ -23,6 +23,7 @@ use App\Modules\Loyalty\Providers\LoyaltyServiceProvider;
 use App\Modules\Marketplace\Providers\MarketplaceServiceProvider;
 use App\Modules\Media\MediaServiceProvider;
 use App\Modules\Menu\Providers\MenuServiceProvider;
+use App\Modules\Notification\Providers\NotificationServiceProvider;
 use App\Modules\Partner\PartnerServiceProvider;
 use App\Modules\PlatformIntegration\Providers\PlatformIntegrationServiceProvider;
 use App\Modules\POS\Providers\HeldOrderServiceProvider;
@@ -93,6 +94,7 @@ return [
     CatalogServiceProvider::class,
     ChannelServiceProvider::class,
     MenuServiceProvider::class,
+    NotificationServiceProvider::class,
     PromotionServiceProvider::class,
     CouponServiceProvider::class,
     PlatformIntegrationServiceProvider::class,

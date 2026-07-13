@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
+import { CashPositionWidget } from '@/features/treasury/components/CashPositionWidget'
 import { BranchLeaderboard } from './components/BranchLeaderboard'
 import { CashRegisterReconciliationTable } from './components/CashRegisterReconciliationTable'
 import { LiveSalesFeed } from './components/LiveSalesFeed'
@@ -149,6 +150,7 @@ export function OwnerDashboardPage() {
         />
         <LowStockAlertsList data={stockAlerts.data ?? []} />
         <CashRegisterReconciliationTable data={cash.data ?? []} />
+        <CashPositionWidget />
       </div>
     </section>
   )

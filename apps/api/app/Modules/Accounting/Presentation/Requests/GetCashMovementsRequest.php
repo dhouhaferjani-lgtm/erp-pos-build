@@ -23,6 +23,7 @@ final class GetCashMovementsRequest extends FormRequest
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'repository_id' => ['nullable', 'uuid'],
+            'direction' => ['nullable', 'in:in,out'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ];
@@ -47,6 +48,13 @@ final class GetCashMovementsRequest extends FormRequest
         $repositoryId = $this->validated('repository_id');
 
         return is_string($repositoryId) ? $repositoryId : null;
+    }
+
+    public function direction(): ?string
+    {
+        $direction = $this->validated('direction');
+
+        return is_string($direction) ? $direction : null;
     }
 
     public function page(): int

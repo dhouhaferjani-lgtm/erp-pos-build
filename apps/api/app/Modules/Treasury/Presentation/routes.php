@@ -17,6 +17,7 @@ use App\Modules\Treasury\Presentation\Controllers\PaymentRefundController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
+use App\Modules\Treasury\Presentation\Controllers\RepositoryTransferController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
 use Illuminate\Support\Facades\Route;
 
@@ -95,6 +96,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/payment-repositories/{repository}/adjustments', [RepositoryAdjustmentController::class, 'store'])
         ->middleware('can:treasury.adjust')
         ->name('payment-repositories.adjustments.store');
+
+    Route::post('/payment-repositories/transfers', [RepositoryTransferController::class, 'store'])
+        ->middleware('can:treasury.transfer')
+        ->name('payment-repositories.transfers.store');
 
     // Payment Instruments
     Route::get('/payment-instruments', [PaymentInstrumentController::class, 'index'])
