@@ -361,20 +361,22 @@ final class ExpenseService
                     $deductiblePercent = (string) ($metadata->vat_deductible_percent ?? '100.00');
                     $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
                     $vatRate = $metadata?->vat_rate;
+                    $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
+                    $taxBase = (string) ($expense->subtotal ?? '0');
 
                     DocumentTaxDetail::query()->firstOrCreate(
                         [
                             'document_id' => $expense->id,
                             'tax_type' => TaxType::Percentage->value,
+                            'tax_name' => $taxName,
+                            'tax_rate' => $vatRate,
+                            'tax_base' => $taxBase,
+                            'tax_amount' => $deductibleVat,
                         ],
                         [
                             'sequence_order' => 1,
                             'tax_code' => null,
-                            'tax_name' => $vatRate !== null ? "TVA {$vatRate}%" : 'TVA',
-                            'tax_rate' => $vatRate,
                             'tax_fixed_amount' => null,
-                            'tax_base' => (string) ($expense->subtotal ?? '0'),
-                            'tax_amount' => $deductibleVat,
                             'is_stamp_duty' => false,
                         ],
                     );

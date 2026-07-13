@@ -77,3 +77,14 @@
 - Reconcile harness note: this `TenantScopedCommand` run returns no captured `Artisan::output()`. The test therefore pins exit 0 plus authoritative cash-line matching, movement ordinal/balance continuity, Posted JE linkage, unfrozen/unflagged repository state, and absence of cash/portfolio drift audit events.
 - Deliberate architecture edge: `ExpenseService` writes `DocumentTaxDetail` directly as accepted by the binding plan; the shared math remains in `Shared\Domain` to avoid an Accounting-to-Expense dependency.
 - Implementation deviations: none. Settlement, linked-cost posting/capitalization, `TreasuryMovementService`, fiscal surfaces, and migrations were not changed. Broad preflight/full repository suites were intentionally not run per the Task 4 brief.
+
+### Task 4 post-commit review fix — collision-safe TVA detail identity
+
+- Accepted finding: `firstOrCreate` keyed only on `document_id + tax_type` could reuse an unrelated stacked percentage detail and silently drop the expense TVA defaults, breaking the required equality between the 4456 debit and declared deductible VAT.
+- RED: the focused posting suite exited 1 with 1 failed and 9 passed (31 assertions). The new fixture pre-seeded an unrelated percentage detail and proved posting left only that row instead of creating the required TVA snapshot.
+- GREEN: the focused suite exited 0 with 10 passed tests (40 assertions). `firstOrCreate` now identifies an already-correct TVA row by the complete required semantic/calculated identity: document, type, name, rate, base, and deductible amount. Sequence, tax code, fixed amount, and stamp-duty flag remain creation defaults; no tax-code identity convention was introduced.
+- Test strengthening: the EUR case now uses `0.01 VAT × 50%`, proving scale-2 half-up produces `0.010` at rest rather than a scale-3 `0.005`; the VAT-less regression now compares every deterministic line business attribute and order, excluding only IDs/timestamps that are nondeterministic.
+- Idempotency: the collision test proves the upstream Posted-state guard rejects a replay before another TVA detail can be created, and the detail count remains exactly two (the unrelated row plus the required TVA row).
+- Scoped regression cutoff: the required four-file command exited 0 with 79 passed tests (240 assertions). Its first run had one transient pre-existing `ReconcileTreasuryTest` one-millime tolerance failure; that case passed alone, the full reconcile file passed 20/20, and the exact four-file command passed on immediate rerun. No Treasury code or test was changed.
+- Scoped PHPStan and Pint over the modified service/test exited 0; final fresh verification is recorded in the Task 4 report.
+- Scope: no changes to GL split math, settlement, linked costs, treasury services, fiscal surfaces, or migrations.

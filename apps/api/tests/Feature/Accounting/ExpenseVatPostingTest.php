@@ -26,6 +26,7 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
@@ -112,6 +113,59 @@ final class ExpenseVatPostingTest extends TestCase
         $this->assertFalse($detail->is_stamp_duty);
     }
 
+    public function test_unrelated_percentage_detail_does_not_absorb_the_expense_tva_snapshot(): void
+    {
+        $expense = $this->createExpense([
+            'total' => '119.000',
+            'vat_amount' => '19.000',
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+            'is_paid' => false,
+        ]);
+        $unrelated = DocumentTaxDetail::query()->create([
+            'document_id' => $expense->id,
+            'sequence_order' => 7,
+            'tax_code' => null,
+            'tax_type' => TaxType::Percentage,
+            'tax_name' => 'Local levy 5%',
+            'tax_rate' => '5.00',
+            'tax_fixed_amount' => null,
+            'tax_base' => '100.000',
+            'tax_amount' => '5.000',
+            'is_stamp_duty' => false,
+        ]);
+
+        $posted = $this->service->post($expense, $this->user);
+        $entry = $this->entryForExpense($expense);
+        $vatLine = $entry->lines()
+            ->where('account_id', $this->account(SystemAccountPurpose::VatDeductible)->id)
+            ->firstOrFail();
+        $details = DocumentTaxDetail::query()
+            ->where('document_id', $expense->id)
+            ->orderBy('sequence_order')
+            ->get();
+
+        $this->assertCount(2, $details);
+        $this->assertTrue($details->contains('id', $unrelated->id));
+        $tvaDetail = $details->first(
+            static fn (DocumentTaxDetail $detail): bool => $detail->tax_name === 'TVA 19.00%',
+        );
+        $this->assertInstanceOf(DocumentTaxDetail::class, $tvaDetail);
+        $this->assertSame(TaxType::Percentage, $tvaDetail->tax_type);
+        $this->assertSame('19.00', $tvaDetail->tax_rate);
+        $this->assertSame($vatLine->debit, $tvaDetail->tax_amount);
+        $this->assertSame('15.200', $tvaDetail->tax_amount);
+        $this->assertSame('100.000', $tvaDetail->tax_base);
+
+        try {
+            $this->service->post($posted, $this->user);
+            $this->fail('Posted expenses must be rejected before another TVA detail can be created.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Only draft expenses can be posted', $exception->getMessage());
+        }
+        $this->assertCount(2, DocumentTaxDetail::query()->where('document_id', $expense->id)->get());
+    }
+
     public function test_half_millime_deductible_vat_rounds_half_up_to_one_millime(): void
     {
         [, $entry] = $this->postVatExpense([
@@ -151,29 +205,54 @@ final class ExpenseVatPostingTest extends TestCase
             'is_paid' => false,
         ]);
 
-        $this->assertSame([
-            $this->expectedLine(SystemAccountPurpose::GeneralExpense, null, '119.000', '0.000', 'VAT Vendor', 0),
-            $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '119.000', 'Expense payable', 1),
-        ], $this->linePayloads($entry));
+        $expectedLegacyLines = [
+            [
+                'journal_entry_id' => $entry->id,
+                'account_id' => $this->account(SystemAccountPurpose::GeneralExpense)->id,
+                'partner_id' => null,
+                'debit' => '119.000',
+                'credit' => '0.000',
+                'description' => 'VAT Vendor',
+                'line_order' => 0,
+            ],
+            [
+                'journal_entry_id' => $entry->id,
+                'account_id' => $this->account(SystemAccountPurpose::SupplierPayable)->id,
+                'partner_id' => $this->supplier->id,
+                'debit' => '0.000',
+                'credit' => '119.000',
+                'description' => 'Expense payable',
+                'line_order' => 1,
+            ],
+        ];
+        $this->assertSame(
+            $this->canonicalizeLineAttributes($expectedLegacyLines),
+            $this->deterministicLineAttributes($entry),
+        );
         $this->assertFalse(DocumentTaxDetail::query()->where('document_id', $expense->id)->exists());
     }
 
-    public function test_eur_expense_uses_two_decimal_currency_scale_for_the_split(): void
+    public function test_eur_half_cent_split_rounds_at_two_decimal_currency_scale(): void
     {
         $this->company->update(['currency' => 'EUR']);
         app(CompanyContext::class)->clear();
 
-        [, $entry] = $this->postVatExpense([
-            'total' => '119.00',
-            'vat_amount' => '19.00',
-            'vat_deductible_percent' => '80.00',
+        [$expense, $entry] = $this->postVatExpense([
+            'total' => '1.01',
+            'vat_amount' => '0.01',
+            'vat_rate' => '1.00',
+            'vat_deductible_percent' => '50.00',
         ]);
 
         $this->assertSame([
-            $this->expectedLine(SystemAccountPurpose::GeneralExpense, null, '103.800', '0.000', 'VAT Vendor', 0),
-            $this->expectedLine(SystemAccountPurpose::VatDeductible, null, '15.200', '0.000', 'TVA déductible', 1),
-            $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '119.000', 'Expense payable', 2),
+            $this->expectedLine(SystemAccountPurpose::GeneralExpense, null, '1.000', '0.000', 'VAT Vendor', 0),
+            $this->expectedLine(SystemAccountPurpose::VatDeductible, null, '0.010', '0.000', 'TVA déductible', 1),
+            $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '1.010', 'Expense payable', 2),
         ], $this->linePayloads($entry));
+        $this->assertSame('0.010', DocumentTaxDetail::query()
+            ->where('document_id', $expense->id)
+            ->firstOrFail()
+            ->tax_amount);
     }
 
     public function test_supplier_payable_balance_increases_by_gross_total_then_returns_to_prior_after_settlement(): void
@@ -259,20 +338,31 @@ final class ExpenseVatPostingTest extends TestCase
      */
     private function postExpense(array $overrides): array
     {
-        $expense = $this->service->create(array_merge([
+        $expense = $this->createExpense($overrides);
+        $posted = $this->service->post($expense, $this->user);
+
+        return [$posted, $this->entryForExpense($expense)];
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createExpense(array $overrides): Document
+    {
+        return $this->service->create(array_merge([
             'company_id' => $this->company->id,
             'partner_id' => $this->supplier->id,
             'document_date' => '2026-07-13',
             'vendor_name' => 'VAT Vendor',
         ], $overrides), $this->user);
+    }
 
-        $posted = $this->service->post($expense, $this->user);
-        $entry = JournalEntry::query()
+    private function entryForExpense(Document $expense): JournalEntry
+    {
+        return JournalEntry::query()
             ->where('source_type', 'expense')
             ->where('source_id', $expense->id)
             ->firstOrFail();
-
-        return [$posted, $entry];
     }
 
     private function cashRepository(): PaymentRepository
@@ -328,5 +418,35 @@ final class ExpenseVatPostingTest extends TestCase
             ])
             ->values()
             ->all());
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function deterministicLineAttributes(JournalEntry $entry): array
+    {
+        $attributes = array_values($entry->lines()
+            ->orderBy('line_order')
+            ->get()
+            ->map(static fn (JournalLine $line): array => Arr::except(
+                $line->attributesToArray(),
+                ['id', 'created_at', 'updated_at'],
+            ))
+            ->all());
+
+        return $this->canonicalizeLineAttributes($attributes);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return list<array<string, mixed>>
+     */
+    private function canonicalizeLineAttributes(array $lines): array
+    {
+        return array_map(static function (array $line): array {
+            ksort($line);
+
+            return $line;
+        }, $lines);
     }
 }
