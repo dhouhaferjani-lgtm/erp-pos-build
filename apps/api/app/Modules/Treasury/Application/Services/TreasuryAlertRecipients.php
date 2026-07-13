@@ -31,8 +31,8 @@ final class TreasuryAlertRecipients
             return User::query()
                 ->where('tenant_id', $tenantId)
                 ->whereHas('companyMemberships', function ($query) use ($companyId): void {
-                    $query->whereRaw('company_id = ?', [$companyId])
-                        ->whereRaw('status = ?', ['active']);
+                    $query->where('company_id', $companyId)
+                        ->where('status', 'active');
                 })
                 ->permission($permission)
                 ->get();
