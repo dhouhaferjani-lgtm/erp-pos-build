@@ -44,8 +44,11 @@ export function NodeProductsPanel({ node, nodes, canEdit }: NodeProductsPanelPro
     enabled: tenantId !== null && companyId !== null,
   })
 
-  const invalidate = async (): Promise<void> => {
+  const invalidate = async (additionalNodeId?: string): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: [...productPrefix(node.id)] })
+    if (additionalNodeId !== undefined) {
+      await queryClient.invalidateQueries({ queryKey: [...productPrefix(additionalNodeId)] })
+    }
     await queryClient.invalidateQueries({ queryKey: ['placement', 'nodes', node.location_id] })
   }
 
@@ -61,7 +64,7 @@ export function NodeProductsPanel({ node, nodes, canEdit }: NodeProductsPanelPro
   })
   const move = useMutation({
     mutationFn: () => bulkMoveProducts(targetId, [...selected]),
-    onSuccess: async () => { await invalidate(); setSelected(new Set()); setTargetId(''); toast.success(t('placement.messages.productsMoved')) },
+    onSuccess: async () => { await invalidate(targetId); setSelected(new Set()); setTargetId(''); toast.success(t('placement.messages.productsMoved')) },
     onError: (error: unknown) => { toast.error(getErrorMessage(error)) },
   })
 

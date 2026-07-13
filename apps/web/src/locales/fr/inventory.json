@@ -1018,6 +1018,7 @@
     "views": { "tree": "Arbre", "table": "Tableau" },
     "tree": { "label": "Arbre des emplacements", "expand": "Développer", "collapse": "Réduire" },
     "picker": { "label": "Choisir un emplacement" },
+    "productField": { "title": "Emplacement de stockage", "description": "Choisissez où ce produit est rangé dans chaque site.", "loading": "Chargement des emplacements…", "loadingPath": "Chargement du chemin…", "unassigned": "Non attribué", "change": "Choisir l’emplacement", "clear": "Effacer", "saved": "Emplacement de stockage enregistré.", "cleared": "Emplacement de stockage effacé." },
     "subtitle": "Cartographiez le parcours physique de l’allée au bac, puis indiquez où chaque produit est rangé.",
     "empty": {
       "title": "Aucun emplacement",
@@ -1048,8 +1049,8 @@
     "table": { "label": "Emplacements de rangement", "select": "Sélectionner", "selectNode": "Sélectionner {{name}}", "selected": "{{count}} nœuds sélectionnés", "code": "Code", "name": "Nom", "type": "Type", "products": "Produits", "active": "État" },
     "status": { "active": "Actif", "inactive": "Inactif" },
     "messages": {
-      "created": "Zone créée.",
-      "updated": "Zone mise à jour.",
+      "created": "Emplacement créé.",
+      "updated": "Emplacement mis à jour.",
       "moved": "Emplacement déplacé.",
       "deleted": "Emplacement supprimé.",
       "restored": "Emplacement restauré.",

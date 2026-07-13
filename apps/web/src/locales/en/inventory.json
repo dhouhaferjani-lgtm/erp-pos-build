@@ -1018,6 +1018,7 @@
     "views": { "tree": "Tree", "table": "Table" },
     "tree": { "label": "Storage node tree", "expand": "Expand", "collapse": "Collapse" },
     "picker": { "label": "Choose a storage node" },
+    "productField": { "title": "Storage location", "description": "Choose where this product is stored at each location.", "loading": "Loading storage locations…", "loadingPath": "Loading path…", "unassigned": "Not assigned", "change": "Choose location", "clear": "Clear", "saved": "Storage location saved.", "cleared": "Storage location cleared." },
     "subtitle": "Map the physical path from aisle to bin, then place products where teams can find them.",
     "empty": {
       "title": "No storage nodes yet",
@@ -1048,8 +1049,8 @@
     "table": { "label": "Storage nodes", "select": "Select", "selectNode": "Select {{name}}", "selected": "{{count}} nodes selected", "code": "Code", "name": "Name", "type": "Type", "products": "Products", "active": "Status" },
     "status": { "active": "Active", "inactive": "Inactive" },
     "messages": {
-      "created": "Zone created.",
-      "updated": "Zone updated.",
+      "created": "Storage node created.",
+      "updated": "Storage node updated.",
       "moved": "Storage node moved.",
       "deleted": "Storage node deleted.",
       "restored": "Storage node restored.",

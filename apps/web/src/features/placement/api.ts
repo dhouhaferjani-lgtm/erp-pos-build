@@ -1,4 +1,4 @@
-import { api, apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
+import { api, apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api'
 
 export type LocationNode = App.Modules.Inventory.Application.DTOs.LocationNodeDto
 export type ProductPlacement = App.Modules.Inventory.Application.DTOs.ProductPlacementDto
@@ -76,5 +76,20 @@ export function bulkMoveProducts(nodeId: string, productIds: string[]): Promise<
   return apiPost<{ moved: number }>('/inventory/placements/bulk-move', {
     node_id: nodeId,
     product_ids: productIds,
+  })
+}
+
+export function listProductPlacements(productId: string): Promise<ProductPlacement[]> {
+  return apiGet<ProductPlacement[]>(`/inventory/products/${productId}/placements`)
+}
+
+export function setProductPlacement(
+  productId: string,
+  locationId: string,
+  nodeId: string | null,
+): Promise<ProductPlacement | null> {
+  return apiPut<ProductPlacement | null>(`/inventory/products/${productId}/placements`, {
+    location_id: locationId,
+    node_id: nodeId,
   })
 }
