@@ -11,8 +11,11 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -41,6 +44,46 @@ final class ExpenseShowTest extends TestCase
             ->getJson("/api/v1/expenses/{$expense->id}")
             ->assertOk()
             ->assertJsonPath('data.id', $expense->id);
+    }
+
+    public function test_show_exposes_supplier_and_vat_response_contract_as_strings(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $supplier = Partner::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'name' => 'Papeterie Atlas',
+            'type' => PartnerType::Supplier,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+            'partner_id' => $supplier->id,
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'vendor_name' => 'Atlas receipt counter',
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.partner_id', $supplier->id)
+            ->assertJsonPath('data.partner.id', $supplier->id)
+            ->assertJsonPath('data.partner.name', 'Papeterie Atlas')
+            ->assertJsonPath('data.subtotal', '100.000')
+            ->assertJsonPath('data.tax_amount', '19.000')
+            ->assertJsonPath('data.metadata.vat_rate', '19.00')
+            ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00');
     }
 
     /**

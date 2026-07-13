@@ -44,6 +44,7 @@ class ExpenseController extends Controller
         $query = Document::where('type', DocumentType::Expense)
             ->where('company_id', $companyId)
             ->with([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -118,6 +119,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.created', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -136,6 +138,7 @@ class ExpenseController extends Controller
             ->where('id', $id)
             ->where('company_id', $companyId)
             ->with([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -173,6 +176,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.updated', ['resource' => 'Expense']),
             'data' => new ExpenseResource($expense->load([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -240,6 +244,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_posted'),
             'data' => new ExpenseResource($expense->load([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -280,6 +285,7 @@ class ExpenseController extends Controller
         return response()->json([
             'message' => __('messages.expense_settled'),
             'data' => new ExpenseResource($expense->load([
+                'partner:id,name',
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
@@ -325,7 +331,7 @@ class ExpenseController extends Controller
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
                 'document_number' => $document->document_number,
-                'partner_name' => $document->partner->name,
+                'partner_name' => $document->partner?->name,
                 'document_date' => $document->document_date->toDateString(),
                 'total' => $document->total,
                 'currency' => $document->currency,

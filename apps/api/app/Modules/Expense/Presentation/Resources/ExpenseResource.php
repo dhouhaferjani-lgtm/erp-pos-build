@@ -28,6 +28,16 @@ class ExpenseResource extends JsonResource
             'status' => $this->resource->status,
             'document_number' => $this->resource->document_number,
             'document_date' => $this->resource->document_date->toDateString(),
+            'partner_id' => $this->resource->partner_id,
+            'partner' => $this->when(
+                $this->resource->relationLoaded('partner'),
+                fn () => $this->resource->partner ? [
+                    'id' => $this->resource->partner->id,
+                    'name' => $this->resource->partner->name,
+                ] : null
+            ),
+            'subtotal' => $this->resource->subtotal,
+            'tax_amount' => $this->resource->tax_amount,
             'total' => $this->resource->total,
             'currency' => $this->resource->currency,
             'notes' => $this->resource->notes,
@@ -48,6 +58,8 @@ class ExpenseResource extends JsonResource
                     'payment_method_id' => $this->resource->expenseMetadata->payment_method_id,
                     'payment_repository_id' => $this->resource->expenseMetadata->payment_repository_id,
                     'expense_kind' => $this->resource->expenseMetadata->expense_kind->value,
+                    'vat_rate' => $this->resource->expenseMetadata->vat_rate,
+                    'vat_deductible_percent' => $this->resource->expenseMetadata->vat_deductible_percent,
 
                     // Nested relationships
                     'category' => $this->when(

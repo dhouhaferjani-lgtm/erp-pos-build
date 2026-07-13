@@ -88,3 +88,32 @@
 - Scoped regression cutoff: the required four-file command exited 0 with 79 passed tests (240 assertions). Its first run had one transient pre-existing `ReconcileTreasuryTest` one-millime tolerance failure; that case passed alone, the full reconcile file passed 20/20, and the exact four-file command passed on immediate rerun. No Treasury code or test was changed.
 - Scoped PHPStan and Pint over the modified service/test exited 0; final fresh verification is recorded in the Task 4 report.
 - Scope: no changes to GL split math, settlement, linked costs, treasury services, fiscal surfaces, or migrations.
+
+## Task 5 — Supplier picker + VAT expense entry/detail — 2026-07-13
+
+- Files:
+  - `apps/web/src/features/expenses/components/organisms/ExpenseFormFields.tsx`
+  - `apps/web/src/features/expenses/components/organisms/ExpenseFormFields.test.tsx`
+  - `apps/web/src/features/expenses/components/organisms/ExpenseFormFields.linkedCost.test.tsx`
+  - `apps/web/src/features/expenses/pages/ExpenseDetailPage.tsx`
+  - `apps/web/src/features/expenses/pages/ExpenseDetailPage.test.tsx`
+  - `apps/web/src/features/expenses/components/PayExpenseDialog.test.tsx`
+  - `apps/web/src/features/expenses/types/index.ts`
+  - `apps/web/src/locales/{en,fr,ar}/expenses.json`
+  - `apps/api/app/Modules/Expense/Presentation/Resources/ExpenseResource.php`
+  - `apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseController.php`
+  - `apps/api/app/Modules/Document/Domain/Document.php`
+  - `apps/api/tests/Feature/Expense/ExpenseShowTest.php`
+  - `apps/api/tests/Feature/Expense/ExpenseRequestVatValidationTest.php`
+- Frontend RED: the focused Vitest command exited 1 with 4 new failures and 15 existing passes. The three form cases failed on the absent supplier/VAT controls; the detail case failed on the absent partner link and receipt arithmetic.
+- Backend contract RED: the focused show/create response command exited 1 with 2 failed tests (4 assertions reached), both at absent `data.partner_id`.
+- Frontend GREEN: focused form/detail Vitest exited 0 with 19/19; the full expense feature path exited 0 with 65 passed and 3 todo across 9 files. Existing tenant-scope `act(...)` and Node local-storage warnings remain unchanged.
+- Backend GREEN: focused response contract exited 0 with 2 tests and 16 assertions; `php artisan test tests/Feature/Expense --display-warnings` exited 0 with 65 tests and 266 assertions in 38.43s.
+- Verification:
+  - `pnpm --filter @autoerp/web typecheck` exited 0; final root `pnpm typecheck` is recorded in the Task 5 report.
+  - Focused ESLint exited 0 with 0 errors (the touched legacy files/tests still report their existing warning inventory).
+  - `pnpm --filter @autoerp/web audit:design-system` reported 753 acknowledged, 0 new, 0 stale.
+  - Scoped PHPStan over `Document`, `ExpenseController`, and `ExpenseResource` exited 0 with no errors; scoped Pint over the PHP implementation/tests passed.
+  - The required deprecated `npx react-doctor@latest --verbose --diff` invocation compared the full phase branch to `main` and scored 49/100 from 143 branch-wide findings. The authoritative Task 5 scan, `npx react-doctor@latest apps/web --verbose --scope changed --base ef4cea39e --blocking none`, exited 0 at 93/100 with two pre-existing whole-file warnings: the form atoms barrel import and the already-over-300-line detail page. The Task 5 base versions were already 427 and 310 lines respectively, so this is no diagnostic regression.
+- Behavior: selecting a supplier writes `partner_id` and snapshots its name into an independently editable `vendor_name`; configured active line-percentage taxes feed the rate select; inclusive VAT suggestion uses only decimal-string helpers; the receipt VAT amount remains editable; deductible VAT defaults to `100`; linked costs render without the VAT block and have their trio cleared; all fields validate inline through RHF; detail shows linked supplier plus net/VAT/rate/deductible/total.
+- Necessary plan deviation: Task 2/3 persisted supplier/VAT values but the existing `ExpenseResource` omitted `partner_id`, partner snapshot, `subtotal`, `tax_amount`, `vat_rate`, and deductible percent, leaving the required detail UI disconnected. With task-owner approval, Task 5 added focused response-contract tests, minimal resource serialization, and eager loading on shared expense responses. No service/posting logic or generated package types were touched. The `Document` PHPDoc was corrected to match the existing nullable `documents.partner_id` migration; the already-nullable linkable-invoice partner label was made null-safe as the corresponding scoped PHPStan fix.

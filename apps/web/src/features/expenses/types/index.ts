@@ -38,6 +38,8 @@ export interface ExpenseMetadata {
   payment_method_id: string | null
   payment_repository_id: string | null
   expense_kind: ExpenseKind
+  vat_rate: string | null
+  vat_deductible_percent: string | null
   linked_invoice_id?: string | null
   linked_operation_id?: string | null
   cost_type?: AdditionalCostType | null
@@ -68,6 +70,13 @@ export interface Expense {
   status: DocumentStatus
   document_number: string | null
   document_date: string
+  partner_id: string | null
+  partner: {
+    id: string
+    name: string
+  } | null
+  subtotal: string | null
+  tax_amount: string | null
   total: string
   currency: string
   notes: string | null
@@ -119,12 +128,16 @@ export interface ExpenseCategory {
  */
 export interface CreateExpenseDTO {
   vendor_name?: string
+  partner_id?: string
   expense_category_id?: string
   payment_method_id?: string
   payment_repository_id?: string
   payment_date?: string
   receipt_number?: string
   total: string
+  vat_amount?: string
+  vat_rate?: string
+  vat_deductible_percent?: string
   notes?: string
   internal_notes?: string
   is_paid?: boolean

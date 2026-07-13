@@ -157,7 +157,7 @@ describe('ExpenseFormFields linked cost controls', () => {
     await user.click(screen.getByRole('radio', { name: 'Dépense générale' }))
     expect(screen.queryByRole('combobox', { name: 'Facture liée' })).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: /Montant/ }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: /^Montant\*/ }), {
       target: { value: '42.500' },
     })
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
@@ -213,7 +213,7 @@ describe('ExpenseFormFields linked cost controls', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Méthode de répartition' }), {
       target: { value: 'by_quantity' },
     })
-    fireEvent.change(screen.getByRole('spinbutton', { name: /Montant/ }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: /^Montant\*/ }), {
       target: { value: '100.000' },
     })
 
@@ -252,7 +252,7 @@ describe('ExpenseFormFields linked cost controls', () => {
     expect(screen.getByRole('radio', { name: 'Dépense générale' })).toBeChecked()
     expect(screen.queryByRole('combobox', { name: 'Facture liée' })).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: /Montant/ }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: /^Montant\*/ }), {
       target: { value: '77.250' },
     })
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))

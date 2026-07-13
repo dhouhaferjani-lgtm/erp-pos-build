@@ -4,7 +4,7 @@ import { ArrowLeft, CreditCard, Edit, Trash2, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { tokens, textColors } from '@/lib/designTokens'
+import { borderColors, tokens, textColors } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button'
 import {
   StatusBadge,
@@ -182,7 +182,16 @@ export function ExpenseDetailPage() {
                 {t('expenses:vendorName')}
               </dt>
               <dd className={cn('mt-1 text-sm', textColors.primary)}>
-                {expense.metadata?.vendor_name ?? '-'}
+                {expense.partner ? (
+                  <Link
+                    to={`/partners/${expense.partner.id}`}
+                    className={cn(textColors.brand, textColors.hoverBrand)}
+                  >
+                    {expense.partner.name}
+                  </Link>
+                ) : (
+                  expense.metadata?.vendor_name ?? '-'
+                )}
               </dd>
             </div>
             <div>
@@ -201,14 +210,59 @@ export function ExpenseDetailPage() {
                 {expense.metadata?.category?.name ?? '-'}
               </dd>
             </div>
-            <div>
-              <dt className={cn('text-sm font-medium', textColors.tertiary)}>
-                {t('expenses:amount')}
-              </dt>
-              <dd className={cn('mt-1 text-lg font-semibold tabular-nums', textColors.primary)}>
-                {expense.total} {expense.currency}
-              </dd>
-            </div>
+            {expense.tax_amount !== null ? (
+              <div className={cn('space-y-2 border-t pt-4 md:col-span-2', borderColors.light)}>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className={cn('text-sm font-medium', textColors.tertiary)}>
+                    {t('expenses:form.netAmount')}
+                  </dt>
+                  <dd className={cn('text-sm tabular-nums', textColors.primary)}>
+                    {expense.subtotal ?? '-'} {expense.currency}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className={cn('text-sm font-medium', textColors.tertiary)}>
+                    {t('expenses:form.vatAmount')}
+                  </dt>
+                  <dd className={cn('text-sm tabular-nums', textColors.primary)}>
+                    {expense.tax_amount} {expense.currency}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className={cn('text-sm font-medium', textColors.tertiary)}>
+                    {t('expenses:form.vatRate')}
+                  </dt>
+                  <dd className={cn('text-sm tabular-nums', textColors.primary)}>
+                    {expense.metadata?.vat_rate ?? '-'}%
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className={cn('text-sm font-medium', textColors.tertiary)}>
+                    {t('expenses:form.vatDeductible')}
+                  </dt>
+                  <dd className={cn('text-sm tabular-nums', textColors.primary)}>
+                    {expense.metadata?.vat_deductible_percent ?? '-'}%
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4 border-t pt-2">
+                  <dt className={cn('font-medium', textColors.primary)}>
+                    {t('expenses:form.totalAmount')}
+                  </dt>
+                  <dd className={cn('text-lg font-semibold tabular-nums', textColors.primary)}>
+                    {expense.total} {expense.currency}
+                  </dd>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>
+                  {t('expenses:amount')}
+                </dt>
+                <dd className={cn('mt-1 text-lg font-semibold tabular-nums', textColors.primary)}>
+                  {expense.total} {expense.currency}
+                </dd>
+              </div>
+            )}
           </div>
         </div>
 

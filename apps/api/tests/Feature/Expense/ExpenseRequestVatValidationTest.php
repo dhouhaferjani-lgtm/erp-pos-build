@@ -122,6 +122,25 @@ final class ExpenseRequestVatValidationTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_create_response_exposes_supplier_and_vat_response_contract(): void
+    {
+        $this->postExpense([
+            'partner_id' => $this->partner->id,
+            'vendor_name' => 'Primary Supplier receipt',
+            'total' => '119.000',
+            'vat_amount' => '19.000',
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ])->assertCreated()
+            ->assertJsonPath('data.partner_id', $this->partner->id)
+            ->assertJsonPath('data.partner.id', $this->partner->id)
+            ->assertJsonPath('data.partner.name', 'Primary Supplier')
+            ->assertJsonPath('data.subtotal', '100.000')
+            ->assertJsonPath('data.tax_amount', '19.000')
+            ->assertJsonPath('data.metadata.vat_rate', '19.00')
+            ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00');
+    }
+
     /**
      * @param  array<string, string>  $overrides
      * @return TestResponse<array<string, mixed>>

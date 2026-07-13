@@ -55,7 +55,11 @@ const fixtureExpense = {
   status: 'posted' as const,
   document_number: 'EXP-0001',
   document_date: '2026-06-01',
-  total: '120.000',
+  partner_id: 'supplier-1',
+  partner: { id: 'supplier-1', name: 'Acme Supplies' },
+  subtotal: '100.000',
+  tax_amount: '19.000',
+  total: '119.000',
   currency: 'TND',
   notes: null,
   internal_notes: null,
@@ -69,6 +73,8 @@ const fixtureExpense = {
     expense_category_id: null,
     payment_method_id: null,
     payment_repository_id: null,
+    vat_rate: '19.00',
+    vat_deductible_percent: '80.00',
   },
 }
 
@@ -104,6 +110,20 @@ describe('ExpenseDetailPage shell', () => {
   it('renders the attachments organism', () => {
     render(<ExpenseDetailPage />)
     expect(screen.getByTestId('document-attachments')).toBeInTheDocument()
+  })
+
+  it('renders the supplier link and receipt-order net, VAT, deductible, and total rows', () => {
+    render(<ExpenseDetailPage />)
+
+    expect(screen.getByRole('link', { name: 'Acme Supplies' })).toHaveAttribute(
+      'href',
+      '/partners/supplier-1',
+    )
+    expect(screen.getByText('100.000 TND')).toBeInTheDocument()
+    expect(screen.getByText('19.000 TND')).toBeInTheDocument()
+    expect(screen.getByText('19.00%')).toBeInTheDocument()
+    expect(screen.getByText('80.00%')).toBeInTheDocument()
+    expect(screen.getByText('119.000 TND')).toBeInTheDocument()
   })
 })
 
