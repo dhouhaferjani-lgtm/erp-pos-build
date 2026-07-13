@@ -331,6 +331,7 @@
     "validation": {
       "validRib": "RIB tunisien valide",
       "invalidRibWarning": "La clé du RIB n'a pas pu être vérifiée. Vous pouvez tout de même enregistrer.",
+      "unsupportedCountry": "La validation automatique du RIB n'est pas disponible pour ce pays.",
       "validIban": "IBAN valide",
       "invalidIbanWarning": "La clé de l'IBAN n'a pas pu être vérifiée. Vous pouvez tout de même enregistrer."
     },

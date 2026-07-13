@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { format } from 'date-fns'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Expense } from '../types'
+import { formatCurrency } from '@/lib/format'
 import { PayExpenseDialog } from './PayExpenseDialog'
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
@@ -55,7 +56,7 @@ describe('PayExpenseDialog', () => {
   it('shows the total read-only and populates repository and optional method fields', () => {
     render(<PayExpenseDialog isOpen onClose={vi.fn()} expense={expense} />)
 
-    expect(screen.getByText('120.000 TND')).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(expense.total, { currency: expense.currency }))).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
     expect(within(screen.getByLabelText(/expenses:pay\.repository/)).getByRole('option', { name: 'Main Register' })).toBeInTheDocument()
     const method = screen.getByLabelText('expenses:pay.method')

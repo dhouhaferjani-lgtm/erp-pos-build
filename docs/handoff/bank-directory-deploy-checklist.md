@@ -10,7 +10,9 @@ php artisan tenants:migrate --force
 
 Three new tenant migrations (all guarded, re-runnable-safe): `2026_07_12_110000_create_banks_table`, `2026_07_12_111000_add_bank_id_to_payment_repositories`, `2026_07_12_120000_create_partner_bank_accounts_table`.
 
-## 2. Seed the bank directory on EXISTING tenants (REQUIRED)
+## 2. Seed the bank directory on EXISTING tenants (pre-launch: test tenants only)
+
+> **Owner clarification 2026-07-12:** there are NO production tenants yet. This step only applies to tenants that predate this code — the 5 staging test tenants and the local demo tenant (local demo seeded 2026-07-12, 32 banks confirmed). Every tenant created after this code deploys gets banks automatically via `TenantInitializationService` (test-pinned) — no backfill will ever be needed for real tenants.
 
 `BanksSeeder` is wired into `TenantInitializationService` for **new** tenants only. Existing tenants get **zero** banks rows unless this step runs — the BankPicker will render an empty list and `PaymentRepositorySeeder`-style `rib_bank_code` lookups will find nothing.
 
@@ -27,9 +29,9 @@ php artisan tinker --execute='tenancy()->runForMultiple(null, function ($t) {
 });'
 ```
 
-Idempotent for row **existence** (updateOrCreate on `(tenant_id, country_code, rib_bank_code)`, name-keyed for the 7 null-code banks); custom banks (`is_custom=true`) are never touched.
+Idempotent for row **existence** (matched on `(tenant_id, country_code, rib_bank_code)`, name-keyed for the 7 null-code banks); custom banks (`is_custom=true`) are never touched.
 
-> **⚠️ Re-seed clobber caution:** a re-run unconditionally rewrites `is_active`, `is_custom`, `name`, `bic`, `position`, `city` on the 32 canonical rows — an admin-deactivated or admin-renamed canonical bank is reverted. Fine for a first backfill; do NOT wire this into a repeating deploy hook until the seeder preserves admin edits on update (follow-up ticket).
+On re-run, canonical rows preserve admin-managed `is_active`, `is_custom`, `name`, and `short_name` values. The seeder refreshes only directory-owned `bic`, `position`, and `city` fields, so repeating the backfill does not reactivate or rename a bank.
 
 ## 3. Verify
 

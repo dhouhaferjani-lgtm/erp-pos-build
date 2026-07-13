@@ -45,7 +45,7 @@ final class BankDirectoryTest extends TestCase
         $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    public function test_tunisian_bank_seed_is_idempotent_and_repairs_changed_fields(): void
+    public function test_tunisian_bank_seed_is_idempotent_and_preserves_admin_edits(): void
     {
         self::assertTrue(class_exists(BanksSeeder::class), 'BanksSeeder must exist.');
 
@@ -59,8 +59,9 @@ final class BankDirectoryTest extends TestCase
         self::assertSame('CFCTTNTT', $amen->bic);
 
         $amen->forceFill([
-            'name' => 'Stale Amen Name',
+            'name' => 'Admin Amen Name',
             'bic' => 'STALETNT',
+            'is_active' => false,
         ])->save();
 
         $seeder->run($this->company);
@@ -72,8 +73,9 @@ final class BankDirectoryTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'country_code' => 'TN',
             'rib_bank_code' => '07',
-            'name' => 'AMEN BANK',
+            'name' => 'Admin Amen Name',
             'bic' => 'CFCTTNTT',
+            'is_active' => false,
             'is_custom' => false,
         ]);
     }

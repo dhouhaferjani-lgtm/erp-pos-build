@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -18,6 +19,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use ReflectionMethod;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -266,6 +268,17 @@ final class PartnerBankAccountTest extends TestCase
     public function test_partner_relation_exposes_bank_accounts(): void
     {
         self::assertSame('partner_bank_accounts', (new Partner)->bankAccounts()->getRelated()->getTable());
+    }
+
+    public function test_partner_data_requires_a_non_null_bank_account_validator(): void
+    {
+        $parameter = (new ReflectionMethod(
+            PartnerData::class,
+            'fromModel',
+        ))->getParameters()[1];
+
+        self::assertFalse($parameter->isOptional());
+        self::assertFalse($parameter->allowsNull());
     }
 
     public function test_tenant_migration_does_not_reference_the_central_tenants_table(): void

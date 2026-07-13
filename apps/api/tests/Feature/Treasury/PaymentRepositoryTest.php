@@ -352,7 +352,7 @@ class PaymentRepositoryTest extends TestCase
 
     public function test_can_show_single_repository(): void
     {
-        $repository = PaymentRepository::create([
+        $repository = new PaymentRepository([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH_REG_01',
@@ -360,11 +360,13 @@ class PaymentRepositoryTest extends TestCase
             'type' => 'cash_register',
             'is_active' => true,
         ]);
+        $repository->forceFill(['currency' => 'USD'])->save();
 
         $response = $this->actingAs($this->user)->getJson("/api/v1/payment-repositories/{$repository->id}");
 
         $response->assertStatus(200);
         $response->assertJsonPath('data.code', 'CASH_REG_01');
+        $response->assertJsonPath('data.currency', 'USD');
     }
 
     public function test_can_get_repository_balance(): void

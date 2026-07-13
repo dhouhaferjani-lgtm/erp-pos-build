@@ -62,7 +62,7 @@ class PartnerData extends Data
 
     public static function fromModel(
         Partner $partner,
-        ?BankAccountValidatorInterface $bankAccountValidator = null,
+        BankAccountValidatorInterface $bankAccountValidator,
         string $bankCountry = 'TN',
     ): self {
         return new self(
@@ -106,7 +106,7 @@ class PartnerData extends Data
             primary_contact_name: $partner->relationLoaded('contacts')
                 ? $partner->contacts->first(fn ($c) => (bool) $c->getAttribute('pivot')?->getAttribute('is_primary'))?->full_name
                 : null,
-            bank_accounts: $partner->relationLoaded('bankAccounts') && $bankAccountValidator !== null
+            bank_accounts: $partner->relationLoaded('bankAccounts')
                 ? $partner->bankAccounts
                     ->map(fn ($account): PartnerBankAccountData => PartnerBankAccountData::fromModel(
                         $account,

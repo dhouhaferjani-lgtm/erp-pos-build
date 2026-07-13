@@ -10,6 +10,7 @@ import { Select } from '@/components/atoms/Select'
 import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/organisms/Modal'
 import { cn } from '@/lib/utils'
 import { semanticColorTokens, textColors } from '@/lib/designTokens'
+import { formatCurrency } from '@/lib/format'
 import { useActivePaymentMethods } from '../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../treasury/hooks/usePaymentRepositories'
 import { usePayExpense } from '../hooks/useExpenses'
@@ -90,7 +91,7 @@ export function PayExpenseDialog({
                 {t('expenses:pay.total')}
               </div>
               <div className={cn('mt-1 text-lg font-semibold tabular-nums', textColors.primary)}>
-                {expense.total} {expense.currency}
+                {formatCurrency(expense.total, { currency: expense.currency })}
               </div>
             </div>
 

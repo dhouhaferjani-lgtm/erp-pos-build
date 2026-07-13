@@ -33,6 +33,7 @@ interface Repository {
   iban: string | null
   bic: string | null
   balance: string
+  currency: string
   is_active: boolean
   gl_account_id: string | null
   gl_account: { id: string; code: string; name: string } | null
@@ -326,7 +327,7 @@ export function RepositoryDetailPage() {
         isOpen={isAdjustBalanceOpen}
         onClose={() => { setIsAdjustBalanceOpen(false) }}
         repositoryId={repository.id}
-        repositoryCurrency={companyCurrency}
+        repositoryCurrency={repository.currency}
         onSuccess={() => {
           toast.success(t('treasury:repositories.adjustBalance.success'))
           setIsAdjustBalanceOpen(false)
