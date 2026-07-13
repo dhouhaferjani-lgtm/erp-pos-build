@@ -29,3 +29,21 @@
 - RED: `php artisan test tests/Feature/Expense/ExpenseRequestVatValidationTest.php --display-warnings` exited 1 with 4 failed and 1 passed (5 assertions): the endpoint returned 201 for a cross-company partner and each invalid VAT-format/range payload.
 - GREEN: the same focused command exited 0 with 5 passed tests (13 assertions).
 - Implementation deviations: none. Task 3 service/persistence semantics were not implemented.
+
+## Task 3 — VAT-aware ExpenseService totals and merged guards — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php`
+  - `apps/api/tests/Feature/Expense/ExpenseServiceVatTest.php`
+  - `docs/handoff/treasury-phase4-progress.md`
+- RED: `php artisan test tests/Feature/Expense/ExpenseServiceVatTest.php --display-warnings` exited 1 with 11 failed and 3 passed (22 assertions). Failures directly showed missing VAT subtotal/tax persistence, document-date and partner passthrough, merged/equality/currency-grid guards, stored linked-cost-kind rejection, and console-safe company resolution.
+- Review-fix RED: the same focused command exited 1 with 3 failed and 14 passed (30 assertions), proving that EUR subminor VAT, zero-decimal-currency fractions, and digits beyond `$scale + 1` could bypass the initial grid comparison.
+- GREEN: the final focused command exited 0 with 17 passed tests (30 assertions) in 11.21s.
+- Expense cutoff: `php artisan test tests/Feature/Expense --display-warnings` initially exited 0 with 56 passed tests (239 assertions); the fresh final rerun after the grid-edge fix exited 0 with 59 passed tests (242 assertions) in 61.51s.
+- Scoped verification:
+  - `./vendor/bin/phpstan analyse app/Modules/Expense/Application/Services/ExpenseService.php --no-progress` exited 0 with no errors; this includes the configured `ForbidHardcodedBcmathScale` rule.
+  - `./vendor/bin/pint --test app/Modules/Expense/Application/Services/ExpenseService.php tests/Feature/Expense/ExpenseServiceVatTest.php` exited 0 (`{"result":"pass"}`).
+  - `php -l` on both changed PHP files exited 0 with no syntax errors.
+  - `git diff --check` exited 0.
+- Invariants: create resolves `Company` from explicit `company_id`; update resolves it from the stored document; all scale lookups receive that explicit currency; VAT math remains string/bcmath-based; a full fractional-digit check rejects every nonzero digit beyond the currency grid before exact-zero normalization or strict formatting; zero VAT becomes the VAT-less shape; update guards use merged total/VAT and stored expense kind; clearing VAT clears the full metadata trio.
+- Implementation deviations: none. Posting, settlement, linked-cost capitalization, treasury movement, and fiscal surfaces were not changed. The broad repository preflight was intentionally not run per the Task 3 brief.
