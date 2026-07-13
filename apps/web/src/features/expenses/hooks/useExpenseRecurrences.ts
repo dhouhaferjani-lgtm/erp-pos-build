@@ -100,8 +100,8 @@ export function useDeleteExpenseRecurrence() {
   const invalidate = useRecurrenceInvalidation()
   return useMutation({
     mutationFn: (id: string) => recurrenceApi.delete(id),
-    onSuccess: async () => {
-      await invalidate()
+    onSuccess: async (_data, id) => {
+      await invalidate(id)
       toast.success(t('recurrences.messages.deleted'))
     },
     onError: () => toast.error(t('recurrences.messages.error')),

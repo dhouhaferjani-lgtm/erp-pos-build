@@ -6,9 +6,11 @@ namespace Tests\Feature\Expense;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Domain\Enums\RecurrenceFrequency;
 use App\Modules\Expense\Domain\Enums\RecurrenceStatus;
 use App\Modules\Expense\Domain\ExpenseCategory;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Expense\Domain\ExpenseRecurrenceTemplate;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -18,6 +20,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -213,6 +216,165 @@ final class ExpenseRecurrenceCrudTest extends TestCase
                 'lead_days',
                 'end_date',
             ], 'error.errors');
+    }
+
+    public function test_create_enforces_the_company_currency_grid_and_complete_vat_tuple(): void
+    {
+        $this->company->update(['currency' => 'EUR']);
+
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'amount' => '119.001',
+            'vat_amount' => null,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('amount', 'error.errors');
+
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'amount' => '119.00',
+            'vat_amount' => '19.001',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('vat_amount', 'error.errors');
+
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'amount' => '119.00',
+            'vat_amount' => '19.00',
+            'vat_rate' => null,
+            'vat_deductible_percent' => null,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'vat_rate',
+                'vat_deductible_percent',
+            ], 'error.errors');
+
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'amount' => '19.00',
+            'vat_amount' => '19.00',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('vat_amount', 'error.errors');
+
+        self::assertSame(0, ExpenseRecurrenceTemplate::query()->count());
+    }
+
+    public function test_create_without_vat_normalizes_the_entire_tuple_to_null(): void
+    {
+        $payload = $this->validPayload();
+        unset($payload['vat_amount']);
+
+        $created = $this->as($this->manager)->postJson('/api/v1/expense-recurrences', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.vat_amount', null)
+            ->assertJsonPath('data.vat_rate', null)
+            ->assertJsonPath('data.vat_deductible_percent', null);
+
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+        $template = ExpenseRecurrenceTemplate::query()->findOrFail($id);
+        self::assertNull($template->vat_amount);
+        self::assertNull($template->vat_rate);
+        self::assertNull($template->vat_deductible_percent);
+    }
+
+    public function test_update_validates_merged_vat_values_and_explicit_null_clears_the_tuple(): void
+    {
+        $created = $this->as($this->manager)->postJson('/api/v1/expense-recurrences', $this->validPayload())
+            ->assertCreated();
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$id}", [
+            'amount' => '100.000',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('vat_amount', 'error.errors');
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$id}", [
+            'vat_rate' => null,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('vat_rate', 'error.errors');
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$id}", [
+            'vat_amount' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.vat_amount', null)
+            ->assertJsonPath('data.vat_rate', null)
+            ->assertJsonPath('data.vat_deductible_percent', null);
+    }
+
+    public function test_partial_updates_keep_vatless_and_legacy_zero_templates_fully_normalized(): void
+    {
+        $payload = $this->validPayload();
+        unset(
+            $payload['vat_amount'],
+            $payload['vat_rate'],
+            $payload['vat_deductible_percent'],
+        );
+        $created = $this->as($this->manager)->postJson('/api/v1/expense-recurrences', $payload)
+            ->assertCreated();
+        $id = $created->json('data.id');
+        self::assertIsString($id);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$id}", [
+            'vat_rate' => '7.50',
+        ])->assertOk()
+            ->assertJsonPath('data.vat_amount', null)
+            ->assertJsonPath('data.vat_rate', null)
+            ->assertJsonPath('data.vat_deductible_percent', null);
+
+        $template = ExpenseRecurrenceTemplate::query()->findOrFail($id);
+        $template->update([
+            'vat_amount' => '0.000',
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '100.00',
+        ]);
+
+        $this->as($this->manager)->putJson("/api/v1/expense-recurrences/{$id}", [
+            'notes' => 'Normalize legacy zero VAT',
+        ])->assertOk()
+            ->assertJsonPath('data.vat_amount', null)
+            ->assertJsonPath('data.vat_rate', null)
+            ->assertJsonPath('data.vat_deductible_percent', null);
+
+        $template->refresh();
+        self::assertNull($template->vat_amount);
+        self::assertNull($template->vat_rate);
+        self::assertNull($template->vat_deductible_percent);
+    }
+
+    public function test_invalid_vat_is_rejected_before_persistence_and_cannot_poison_generation(): void
+    {
+        $this->as($this->manager)->postJson('/api/v1/expense-recurrences', [
+            ...$this->validPayload(),
+            'name' => 'Poison template',
+            'amount' => '10.000',
+            'vat_amount' => '20.000',
+            'start_date' => '2026-07-13',
+            'lead_days' => 0,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('vat_amount', 'error.errors');
+
+        $validPayload = $this->validPayload();
+        unset(
+            $validPayload['vat_amount'],
+            $validPayload['vat_rate'],
+            $validPayload['vat_deductible_percent'],
+        );
+        $validPayload['name'] = 'Safe later template';
+        $validPayload['start_date'] = '2026-07-13';
+        $validPayload['lead_days'] = 0;
+        $created = $this->as($this->manager)->postJson('/api/v1/expense-recurrences', $validPayload)
+            ->assertCreated();
+        $validId = $created->json('data.id');
+        self::assertIsString($validId);
+
+        self::assertSame(1, ExpenseRecurrenceTemplate::query()->count());
+        self::assertSame(0, Artisan::call('expenses:generate-recurring'), Artisan::output());
+        self::assertSame(1, Document::query()->count());
+        self::assertSame(
+            $validId,
+            ExpenseMetadata::query()->whereNotNull('recurrence_template_id')->sole()->recurrence_template_id,
+        );
     }
 
     public function test_update_enforces_end_date_against_the_merged_existing_start_date(): void

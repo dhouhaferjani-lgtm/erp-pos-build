@@ -37,7 +37,11 @@ export function RecurringExpensesPage() {
 
   const removeTemplate = async (template: ExpenseRecurrenceTemplate) => {
     if (!window.confirm(t('expenses:recurrences.confirmDelete', { name: template.name }))) return
-    await deleteTemplate.mutateAsync(template.id)
+    try {
+      await deleteTemplate.mutateAsync(template.id)
+    } catch {
+      // The mutation hook owns user-facing error reporting.
+    }
   }
 
   return (
@@ -145,7 +149,7 @@ export function RecurringExpensesPage() {
                           size="sm"
                           aria-label={t('expenses:recurrences.pauseNamed', { name: template.name })}
                           onClick={() => {
-                            void pauseTemplate.mutateAsync(template.id)
+                            void pauseTemplate.mutateAsync(template.id).catch(() => undefined)
                           }}
                         >
                           <Pause className="h-4 w-4" />
@@ -158,7 +162,7 @@ export function RecurringExpensesPage() {
                           size="sm"
                           aria-label={t('expenses:recurrences.resumeNamed', { name: template.name })}
                           onClick={() => {
-                            void resumeTemplate.mutateAsync(template.id)
+                            void resumeTemplate.mutateAsync(template.id).catch(() => undefined)
                           }}
                         >
                           <Play className="h-4 w-4" />

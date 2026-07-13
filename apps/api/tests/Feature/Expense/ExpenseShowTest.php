@@ -12,6 +12,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Domain\ExpenseMetadata;
+use App\Modules\Expense\Domain\ExpenseRecurrenceTemplate;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -83,7 +84,41 @@ final class ExpenseShowTest extends TestCase
             ->assertJsonPath('data.subtotal', '100.000')
             ->assertJsonPath('data.tax_amount', '19.000')
             ->assertJsonPath('data.metadata.vat_rate', '19.00')
-            ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00');
+            ->assertJsonPath('data.metadata.vat_deductible_percent', '80.00')
+            ->assertJsonPath('data.metadata.recurrence_template_id', null)
+            ->assertJsonStructure(['data' => ['metadata' => ['recurrence_template_id']]]);
+    }
+
+    public function test_show_exposes_the_recurring_template_origin_from_real_metadata(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.view']);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $template = ExpenseRecurrenceTemplate::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'name' => 'Office rent',
+            'amount' => '1250.000',
+            'frequency' => 'monthly',
+            'start_date' => '2026-07-31',
+            'next_due_date' => '2026-08-31',
+            'created_by' => $user->id,
+        ]);
+        $expense = Document::factory()->create([
+            'type' => DocumentType::Expense,
+            'company_id' => $company->id,
+            'tenant_id' => $user->tenant_id,
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'recurrence_template_id' => $template->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/expenses/{$expense->id}")
+            ->assertOk()
+            ->assertJsonPath('data.metadata.recurrence_template_id', $template->id);
     }
 
     public function test_show_does_not_disclose_an_inconsistent_cross_company_partner(): void

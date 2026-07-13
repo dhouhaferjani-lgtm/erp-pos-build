@@ -9,6 +9,7 @@ import { createTestQueryClient } from '@/test/renderWithProviders'
 
 import {
   recurrenceKeys,
+  useDeleteExpenseRecurrence,
   useExpenseRecurrences,
   usePauseExpenseRecurrence,
   useResumeExpenseRecurrence,
@@ -19,11 +20,14 @@ import {
 } from '../_invalidation'
 
 const mockList = vi.hoisted(() => vi.fn())
+const mockDelete = vi.hoisted(() => vi.fn())
 const mockPause = vi.hoisted(() => vi.fn())
 const mockResume = vi.hoisted(() => vi.fn())
+const mockToastError = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/recurrenceApi', () => ({
   recurrenceApi: {
+    delete: mockDelete,
     list: mockList,
     pause: mockPause,
     resume: mockResume,
@@ -35,7 +39,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: mockToastError },
 }))
 
 function wrapper(client: ReturnType<typeof createTestQueryClient>) {
@@ -69,6 +73,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   setScope()
   mockList.mockResolvedValue([])
+  mockDelete.mockResolvedValue(undefined)
   mockPause.mockResolvedValue({ id: 'rec-1', status: 'paused' })
   mockResume.mockResolvedValue({ id: 'rec-1', status: 'active' })
 })
@@ -136,5 +141,50 @@ describe('expense recurrence query scope and mutation cascades', () => {
     expect(predicate({
       queryKey: ['expense-recurrences', 'detail', 'rec-1', 'tenant-b', 'company-a'],
     })).toBe(false)
+  })
+
+  it('delete invalidates the exact recurrence detail in the active scope', async () => {
+    const client = createTestQueryClient()
+    const deletedKey = ['expense-recurrences', 'detail', 'rec-1', 'tenant-a', 'company-a'] as const
+    const otherIdKey = ['expense-recurrences', 'detail', 'rec-2', 'tenant-a', 'company-a'] as const
+    const otherTenantKey = ['expense-recurrences', 'detail', 'rec-1', 'tenant-b', 'company-a'] as const
+    client.setQueryData(deletedKey, {})
+    client.setQueryData(otherIdKey, {})
+    client.setQueryData(otherTenantKey, {})
+    const deletedQuery = client.getQueryCache().find({ queryKey: deletedKey, exact: true })
+    const otherIdQuery = client.getQueryCache().find({ queryKey: otherIdKey, exact: true })
+    const otherTenantQuery = client.getQueryCache().find({ queryKey: otherTenantKey, exact: true })
+    if (!deletedQuery || !otherIdQuery || !otherTenantQuery) {
+      throw new Error('Expected recurrence detail queries to be seeded')
+    }
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteExpenseRecurrence(), {
+      wrapper: wrapper(client),
+    })
+
+    await result.current.mutateAsync('rec-1')
+
+    expect(mockDelete).toHaveBeenCalledWith('rec-1')
+    const predicates = invalidate.mock.calls
+      .map(([filters]) => filters?.predicate)
+      .filter((predicate): predicate is NonNullable<typeof predicate> => (
+        typeof predicate === 'function'
+      ))
+
+    expect(predicates.some((predicate) => predicate(deletedQuery))).toBe(true)
+    expect(predicates.some((predicate) => predicate(otherIdQuery))).toBe(false)
+    expect(predicates.some((predicate) => predicate(otherTenantQuery))).toBe(false)
+  })
+
+  it('keeps the hook error toast when a lifecycle mutation rejects', async () => {
+    mockPause.mockRejectedValueOnce(new Error('pause failed'))
+    const client = createTestQueryClient()
+    const { result } = renderHook(() => usePauseExpenseRecurrence(), {
+      wrapper: wrapper(client),
+    })
+
+    await expect(result.current.mutateAsync('rec-1')).rejects.toThrow('pause failed')
+
+    expect(mockToastError).toHaveBeenCalledWith('recurrences.messages.error')
   })
 })

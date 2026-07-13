@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RecurringExpensesPage } from './RecurringExpensesPage'
 import { formatCurrency, formatDate } from '@/lib/format'
+import type { ExpenseRecurrenceTemplate } from '../types'
 
 const mockCreate = vi.hoisted(() => vi.fn())
 const mockDelete = vi.hoisted(() => vi.fn())
@@ -12,7 +13,7 @@ const mockResume = vi.hoisted(() => vi.fn())
 const mockUpdate = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn((_permission: string) => true))
 
-const template = {
+const template: ExpenseRecurrenceTemplate = {
   id: 'rec-1',
   name: 'Tunis office rent',
   expense_category_id: 'category-1',
@@ -25,11 +26,11 @@ const template = {
   vat_deductible_percent: '80.00',
   vat_amount: '199.580',
   notes: 'Main office',
-  frequency: 'monthly' as const,
+  frequency: 'monthly',
   start_date: '2026-07-31',
   end_date: null,
   lead_days: 3,
-  status: 'active' as const,
+  status: 'active',
   next_due_date: '2026-08-31',
   created_by: 'user-1',
 }
@@ -93,6 +94,9 @@ vi.mock('@/components/molecules/pickers', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  template.vat_rate = '19.00'
+  template.vat_amount = '199.580'
+  template.status = 'active'
   mockHasPermission.mockReturnValue(true)
   mockCreate.mockResolvedValue(template)
   mockUpdate.mockResolvedValue(template)
@@ -147,18 +151,72 @@ describe('RecurringExpensesPage', () => {
 
     await user.type(within(dialog).getByRole('textbox', { name: /Schedule name/ }), 'Monthly hosting')
     fireEvent.change(within(dialog).getByRole('spinbutton', { name: 'Amount' }), {
-      target: { value: '49.900' },
+      target: { value: '119.000' },
     })
+    const vatRate = within(dialog).getByRole('spinbutton', { name: 'VAT rate' })
+    const vatAmount = within(dialog).getByRole('spinbutton', { name: 'VAT amount' })
+    fireEvent.change(vatRate, { target: { value: '19.00' } })
+    expect(vatAmount).toHaveValue(19)
+
+    fireEvent.change(vatRate, { target: { value: '' } })
+    expect(vatAmount).toHaveValue(null)
+
+    fireEvent.change(vatRate, { target: { value: '19.00' } })
     await user.click(within(dialog).getByRole('button', { name: 'Supplier' }))
     await user.click(within(dialog).getByRole('button', { name: 'Save schedule' }))
 
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Monthly hosting',
-      amount: '49.900',
+      amount: '119.000',
       partner_id: 'supplier-2',
       vendor_name: 'Chosen Supplier',
+      vat_rate: '19.00',
+      vat_amount: '19.000',
       vat_deductible_percent: '100',
       frequency: 'monthly',
     }))
+  })
+
+  it('keeps a historical VAT rate representable when editing a schedule', async () => {
+    template.vat_rate = '7.50'
+    template.vat_amount = '87.209'
+    const user = userEvent.setup()
+    render(<RecurringExpensesPage />)
+
+    await user.click(screen.getByRole('button', { name: /Edit Tunis office rent/i }))
+
+    expect(screen.getByRole('spinbutton', { name: 'VAT rate' })).toHaveValue(7.5)
+  })
+
+  it('contains a rejected pause mutation after the hook reports the error', async () => {
+    const user = userEvent.setup()
+    mockPause.mockRejectedValueOnce(new Error('pause failed'))
+    render(<RecurringExpensesPage />)
+
+    await user.click(screen.getByRole('button', { name: /Pause Tunis office rent/i }))
+
+    await waitFor(() => { expect(mockPause).toHaveBeenCalledWith('rec-1') })
+  })
+
+  it('contains a rejected resume mutation after the hook reports the error', async () => {
+    const user = userEvent.setup()
+    template.status = 'paused'
+    mockResume.mockRejectedValueOnce(new Error('resume failed'))
+    render(<RecurringExpensesPage />)
+
+    await user.click(screen.getByRole('button', { name: /Resume Tunis office rent/i }))
+
+    await waitFor(() => { expect(mockResume).toHaveBeenCalledWith('rec-1') })
+  })
+
+  it('contains a rejected delete mutation after the hook reports the error', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    mockDelete.mockRejectedValueOnce(new Error('delete failed'))
+    render(<RecurringExpensesPage />)
+
+    await user.click(screen.getByRole('button', { name: /Delete Tunis office rent/i }))
+
+    await waitFor(() => { expect(mockDelete).toHaveBeenCalledWith('rec-1') })
   })
 })

@@ -9,38 +9,27 @@ import { useCurrency } from '../../../../hooks/useCurrency'
 import { getDecimals } from '../../../../hooks/useCurrency'
 import { useTaxConfigurations } from '../../../../hooks/useTaxConfigurations'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers'
-import {
-  Button,
-  Checkbox,
-  FormField,
-  Input,
-  MoneyInput,
-  QuantityInput,
-  Select,
-  Textarea,
-} from '../../../../components/atoms'
+import { Button } from '../../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../../components/atoms/Checkbox/Checkbox'
+import { FormField } from '../../../../components/atoms/FormField/FormField'
+import { Input } from '../../../../components/atoms/Input/Input'
+import { MoneyInput } from '../../../../components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '../../../../components/atoms/QuantityInput/QuantityInput'
+import { Select } from '../../../../components/atoms/Select/Select'
+import { Textarea } from '../../../../components/atoms/Textarea/Textarea'
 import { StickyFormFooter } from '../../../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { tokens, textColors } from '../../../../lib/designTokens'
-import { bcadd, bccomp, bcdiv, bcmul } from '../../../../lib/decimal'
+import { bcadd, bccomp } from '../../../../lib/decimal'
 import { formatPercent } from '../../../../lib/format'
 import type { CreateExpenseDTO, Expense } from '../../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { computeVatFromInclusive } from '../../computeVatFromInclusive'
 
 interface ExpenseFormFieldsProps {
   expense?: Expense
   onSave: (data: CreateExpenseDTO) => void
   onCancel?: () => void
   isSubmitting?: boolean
-}
-
-function computeVatFromInclusive(total: string, rate: string, scale: number): string {
-  if (total.trim() === '' || rate.trim() === '') return ''
-
-  const workingScale = scale + 4
-  const denominator = bcadd('100', rate, workingScale)
-  if (bccomp(denominator, '0') === 0) return ''
-
-  return bcdiv(bcmul(total, rate, workingScale), denominator, scale)
 }
 
 /**

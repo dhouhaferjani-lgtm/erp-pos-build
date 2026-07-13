@@ -12,13 +12,14 @@ import {
 } from '@/components/atoms'
 import { PartnerPicker } from '@/components/molecules/pickers'
 import { Modal } from '@/components/organisms/Modal'
-import { useCurrency } from '@/hooks/useCurrency'
+import { getDecimals, useCurrency } from '@/hooks/useCurrency'
 import { useTaxConfigurations } from '@/hooks/useTaxConfigurations'
 import { tokens } from '@/lib/designTokens'
 import { useActivePaymentMethods } from '@/features/treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '@/features/treasury/hooks/usePaymentRepositories'
 
 import { useExpenseCategories } from '../../hooks/useExpenseCategories'
+import { computeVatFromInclusive } from '../../computeVatFromInclusive'
 import {
   useCreateExpenseRecurrence,
   useUpdateExpenseRecurrence,
@@ -313,7 +314,18 @@ export function ExpenseRecurrenceForm({ editing, onClose }: ExpenseRecurrenceFor
                   max="100"
                   value={form.vat_rate ?? ''}
                   onChange={(vatRate) => {
-                    setValue('vat_rate', nullableValue(vatRate))
+                    const normalizedRate = nullableValue(vatRate)
+                    setValue('vat_rate', normalizedRate)
+                    setValue(
+                      'vat_amount',
+                      normalizedRate === null
+                        ? null
+                        : nullableValue(computeVatFromInclusive(
+                            form.amount,
+                            normalizedRate,
+                            getDecimals(currency),
+                          )),
+                    )
                   }}
                   list="recurrence-vat-rates"
                 />
