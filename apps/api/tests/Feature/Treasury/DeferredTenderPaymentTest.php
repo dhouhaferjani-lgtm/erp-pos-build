@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
@@ -28,6 +29,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
@@ -158,6 +160,42 @@ final class DeferredTenderPaymentTest extends TestCase
             'instrument' => ['reference' => 'CH-WHT'],
             'withholding_enabled' => true,
         ])->assertUnprocessable();
+    }
+
+    public function test_payment_with_nested_instrument_rejects_a_nonexistent_bank_id(): void
+    {
+        $invoice = $this->invoice('20.000');
+        $method = $this->method(InstrumentKind::Cheque);
+
+        $this->pay($method, '20.000', $invoice, [
+            'instrument' => [
+                'reference' => 'CH-BANK-VALIDATION',
+                'bank_id' => Str::uuid()->toString(),
+            ],
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['instrument.bank_id']],
+        ]);
+    }
+
+    public function test_payment_with_nested_instrument_rejects_a_bank_from_another_tenant(): void
+    {
+        $invoice = $this->invoice('20.000');
+        $method = $this->method(InstrumentKind::Cheque);
+        $tenant = Tenant::factory()->create();
+        $bank = Bank::query()->create([
+            'tenant_id' => $tenant->id,
+            'country_code' => 'TN',
+            'name' => 'Other Tenant Bank',
+        ]);
+
+        $this->pay($method, '20.000', $invoice, [
+            'instrument' => [
+                'reference' => 'CH-BANK-CROSS-TENANT',
+                'bank_id' => $bank->id,
+            ],
+        ])->assertUnprocessable()->assertJsonStructure([
+            'error' => ['errors' => ['instrument.bank_id']],
+        ]);
     }
 
     public function test_supplied_instrument_must_be_received_unlinked_and_partner_matching(): void

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +14,7 @@ const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockWithholdingPreviewMutate = vi.hoisted(() => vi.fn())
+const mockUseBanks = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -39,12 +41,21 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-vi.mock('@/components/organisms', () => ({
-  AddPartnerModal: () => null,
-  AddRepositoryModal: () => null,
-}))
+vi.mock('@/components/organisms/AddPartnerModal/AddPartnerModal', () => ({ AddPartnerModal: () => null }))
+vi.mock('@/components/organisms/AddRepositoryModal/AddRepositoryModal', () => ({ AddRepositoryModal: () => null }))
 vi.mock('@/features/withholding/hooks/useWithholding', () => ({
   useWithholdingPreview: () => ({ data: undefined, mutate: mockWithholdingPreviewMutate }),
+}))
+vi.mock('@/hooks/useBanks', () => ({
+  useBanks: mockUseBanks,
+}))
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfigOptional: () => ({
+    config: { country_code: 'TN' },
+    isLoading: false,
+    error: null,
+    hasModule: () => true,
+  }),
 }))
 vi.mock('@/hooks/useCurrency', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useCurrency')>()
@@ -104,6 +115,17 @@ const PARTNER = {
   name: 'Customer A',
 }
 
+const AMEN_BANK = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  country_code: 'TN',
+  name: 'AMEN BANK',
+  short_name: 'AMEN',
+  bic: 'CFCTTNTT',
+  rib_bank_code: '07',
+  city: 'TUNIS',
+  is_custom: false,
+}
+
 function renderForm(methods: unknown[] = [CHEQUE_METHOD]) {
   mockApiGet.mockImplementation(async (url: string) => {
     if (url === '/payment-methods') return { data: { data: methods } }
@@ -125,22 +147,18 @@ function renderForm(methods: unknown[] = [CHEQUE_METHOD]) {
 }
 
 async function selectMethod(methodId: string) {
+  const user = userEvent.setup()
   const select = await screen.findByLabelText('treasury:payments.form.paymentMethod *')
   await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(2))
-  fireEvent.change(select, { target: { value: methodId } })
+  await user.selectOptions(select, methodId)
 }
 
 async function fillRequiredPaymentFields(methodId: string) {
+  const user = userEvent.setup()
   await selectMethod(methodId)
-  fireEvent.change(screen.getByLabelText('treasury:payments.form.amount *'), {
-    target: { value: '150.000' },
-  })
-  fireEvent.change(screen.getByLabelText('treasury:payments.form.repository *'), {
-    target: { value: BANK_REPOSITORY.id },
-  })
-  fireEvent.change(screen.getByLabelText('treasury:payments.partner *'), {
-    target: { value: PARTNER.id },
-  })
+  await user.type(screen.getByLabelText('treasury:payments.form.amount *'), '150.000')
+  await user.selectOptions(screen.getByLabelText('treasury:payments.form.repository *'), BANK_REPOSITORY.id)
+  await user.selectOptions(screen.getByLabelText('treasury:payments.partner *'), PARTNER.id)
 }
 
 beforeEach(() => {
@@ -160,6 +178,7 @@ beforeEach(() => {
   })
   useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
   mockApiPost.mockResolvedValue({ id: 'payment-1', payment_number: 'PAY-1', amount: 150 })
+  mockUseBanks.mockReturnValue({ data: [AMEN_BANK], isLoading: false, isError: false })
 })
 
 afterEach(() => {
@@ -169,6 +188,7 @@ afterEach(() => {
 
 describe('PaymentForm deferred-tender instrument payload', () => {
   it('shows the instrument fieldset and blocks submission without a reference', async () => {
+    const user = userEvent.setup()
     renderForm()
     await fillRequiredPaymentFields(CHEQUE_METHOD.id)
 
@@ -176,27 +196,24 @@ describe('PaymentForm deferred-tender instrument payload', () => {
     expect(screen.getByLabelText('treasury:instruments.reference *')).toBeRequired()
     expect(screen.getByLabelText('treasury:instruments.maturityDate')).not.toBeRequired()
 
-    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
 
     await waitFor(() => expect(screen.getByLabelText('treasury:instruments.reference *')).toBeInvalid())
     expect(mockApiPost).not.toHaveBeenCalled()
   })
 
   it('posts the payment and inline instrument together in one API call', async () => {
+    const user = userEvent.setup()
     renderForm()
     await fillRequiredPaymentFields(CHEQUE_METHOD.id)
 
-    fireEvent.change(screen.getByLabelText('treasury:instruments.reference *'), {
-      target: { value: 'CHK-2026-0042' },
-    })
-    fireEvent.change(screen.getByLabelText('treasury:instruments.drawerName'), {
-      target: { value: 'Nadia Ben Ali' },
-    })
-    fireEvent.change(screen.getByLabelText('treasury:instruments.bankName'), {
-      target: { value: 'Banque de Tunisie' },
-    })
+    await user.type(screen.getByLabelText('treasury:instruments.reference *'), 'CHK-2026-0042')
+    await user.type(screen.getByLabelText('treasury:instruments.drawerName'), 'Nadia Ben Ali')
+    await user.click(screen.getByRole('combobox', { name: 'treasury:instruments.bankName' }))
+    await user.click(screen.getByRole('button', { name: 'bank.notListed' }))
+    await user.type(screen.getByLabelText('treasury:instruments.bankName'), 'Banque de Tunisie')
 
-    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
 
     await waitFor(() => expect(mockApiPost).toHaveBeenCalledTimes(1))
     expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
@@ -206,6 +223,7 @@ describe('PaymentForm deferred-tender instrument payload', () => {
         reference: 'CHK-2026-0042',
         maturity_date: undefined,
         drawer_name: 'Nadia Ben Ali',
+        bank_id: undefined,
         bank_name: 'Banque de Tunisie',
         bank_branch: undefined,
         bank_account: undefined,
@@ -213,27 +231,74 @@ describe('PaymentForm deferred-tender instrument payload', () => {
     }))
   })
 
+  it('selects a directory bank, derives IBAN feedback, and posts bank_id', async () => {
+    const user = userEvent.setup()
+    renderForm()
+    await fillRequiredPaymentFields(CHEQUE_METHOD.id)
+    await user.type(screen.getByLabelText('treasury:instruments.reference *'), 'CHK-BANK-0042')
+
+    const bankSearch = screen.getByRole('combobox', { name: 'treasury:instruments.bankName' })
+    await user.type(bankSearch, 'Amen')
+    await user.click(await screen.findByRole('option', { name: /AMEN BANK/ }))
+    await user.type(screen.getByLabelText('treasury:instruments.bankAccount'), '07040005810111129653')
+
+    expect(screen.getByLabelText('treasury:repositories.iban')).toHaveValue('TN5907040005810111129653')
+
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+        instrument: expect.objectContaining({
+          bank_id: AMEN_BANK.id,
+          bank_name: AMEN_BANK.name,
+          bank_account: '07040005810111129653',
+        }),
+      }))
+    })
+  })
+
+  it('clears auto-derived IBAN and allows submission when the RIB checksum is invalid', async () => {
+    const user = userEvent.setup()
+    renderForm()
+    await fillRequiredPaymentFields(CHEQUE_METHOD.id)
+    await user.type(screen.getByLabelText('treasury:instruments.reference *'), 'CHK-WARN-0042')
+    const bankAccount = screen.getByLabelText('treasury:instruments.bankAccount')
+
+    await user.type(bankAccount, '07040005810111129653')
+    expect(screen.getByLabelText('treasury:repositories.iban')).toHaveValue('TN5907040005810111129653')
+
+    await user.clear(bankAccount)
+    await user.type(bankAccount, '07040005810111129654')
+
+    expect(screen.getByText('treasury:repositories.validation.invalidRibWarning')).toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:repositories.iban')).toHaveValue('')
+
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledTimes(1))
+  })
+
   it('requires a maturity date for effet methods', async () => {
+    const user = userEvent.setup()
     renderForm([EFFET_METHOD])
     await fillRequiredPaymentFields(EFFET_METHOD.id)
-    fireEvent.change(screen.getByLabelText('treasury:instruments.reference *'), {
-      target: { value: 'EFF-2026-0042' },
-    })
+    await user.type(screen.getByLabelText('treasury:instruments.reference *'), 'EFF-2026-0042')
 
     const maturity = screen.getByLabelText('treasury:instruments.maturityDate *')
     expect(maturity).toBeRequired()
-    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
 
     await waitFor(() => expect(maturity).toBeInvalid())
     expect(mockApiPost).not.toHaveBeenCalled()
   })
 
   it('keeps immediate payments free of instrument UI and payload changes', async () => {
+    const user = userEvent.setup()
     renderForm([CASH_METHOD])
     await fillRequiredPaymentFields(CASH_METHOD.id)
 
     expect(screen.queryByRole('group', { name: 'treasury:instruments.formTitle' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+    await user.click(screen.getByRole('button', { name: 'common:save' }))
 
     await waitFor(() => expect(mockApiPost).toHaveBeenCalledTimes(1))
     const [, payload] = mockApiPost.mock.calls[0]
