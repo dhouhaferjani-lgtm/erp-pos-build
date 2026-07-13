@@ -316,3 +316,12 @@
 - Final frontend verification: focused recurrence/page/W1 suites passed; widened expense/notification/route/sidebar coverage passed 20 files / 157 tests with 3 existing todo tests; root typecheck passed. Full lint passed with 0 errors and existing warnings; TanStack audit reported 0 violations, design audit reported 753 acknowledged / 0 new / 0 stale, and custom ESLint rule tests passed. Scoped review-file ESLint passed with 0 warnings. React Doctor pinned to Task 12 commit `508729847` reported **No issues found** (84/100 under v0.7.7).
 - React Doctor follow-up: extracting the W1 helper brought its existing atoms barrel import into the changed scope. The canonical rule check confirmed a true positive; direct atom imports removed the only diagnostic without changing behavior.
 - Deviations: none. The backend additions close independently reviewed Task 10/12 integration gaps; they do not alter recurrence generation, cursor semantics, posting, Treasury, fiscal, settlement, or forecast contracts.
+
+## Gate 2 RC1 verification — 2026-07-13
+
+- Backend: Expense passed 96 tests / 599 assertions; Accounting passed 484 tests / 2202 assertions with 4 existing skips and 1 existing deprecation; Unit/Expense passed 7 tests / 11 assertions.
+- Full PHPStan first exhausted its configured 512 MB parallel-worker limit after scanning 2536 files and produced no code diagnostic. The exact rerun with `--memory-limit=1G` completed 2536/2536 with no errors. Dirty Pint passed.
+- Gate-specific command coverage: `expenses:generate-recurring` appears in `schedule:list` at 05:30; its replay/no-double-notify path passed 7 tests / 70 assertions. `TreasuryMovementService` remains byte-identical to `origin/dev`.
+- Frontend: typecheck and full lint exited 0. The expense/notification/permission matrix passed 16 files / 106 tests with 3 existing todo tests. Design audit remained 753 acknowledged / 0 new / 0 stale; TanStack query-key audit remained 0.
+- Task 12 independent re-review: APPROVE after commits `508729847..670619180`; no remaining money-path BLOCKER/HIGH and no Fable escalation trigger before the formal Gate 2 Opus review.
+- Deviations: none.
