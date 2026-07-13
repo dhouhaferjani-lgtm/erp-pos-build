@@ -18,7 +18,7 @@
 | 1 | Tree management UI | `0ea41e1ad`, `023e04fe3` | `plc-gate-1-rc1` | APPROVE | `plc-gate-1` | Six LOW observations accepted as non-blocking; F4 is explicitly Wave 4 scope. |
 | 2 | Product-page placement field | `a61951409` | `plc-gate-2-rc1` | APPROVE | `plc-gate-2` | Frontend-only as required; five LOW defensive/cosmetic observations accepted. |
 | 3 | CSV `placement_path` | `e4f705093`, `0608dbcd7` | `plc-gate-3-rc2` | APPROVE | `plc-gate-3` | RC1 HIGH metadata leak and three LOW findings fixed test-first; RC2 approved with one LOW informational permission note. |
-| 4 | Counting node scope | Pending | Pending | Pending | Pending | None |
+| 4 | Counting node scope | `d7283af61` | `plc-gate-4-rc1` | APPROVE | `plc-gate-4` | Two LOW non-blocking observations accepted: multi-select row highlighting and legacy mixed-grain stock handling. No inventory-spine escalation. |
 
 ## Gate evidence
 
@@ -43,3 +43,10 @@ Gate reviews are written to `docs/handoff/gate-reviews-plc/GATE-<N>-rc<attempt>.
 - Backend: the final focused run passed 20 tests / 128 assertions across placement import, preview, failed-row export, and async processor paths; PHPStan L8 and Pint passed on changed PHP paths.
 - Static gates: design audit remained 752 acknowledged / 0 new / 0 stale; TanStack key audit remained 0; React Doctor reported no issues against `plc-gate-2`.
 - Review: RC1 returned CHANGES-REQUIRED for one HIGH validation-grid metadata leak (explicitly not a CSV bulk-write-integrity escalation) plus three LOW findings. All four were fixed test-first. RC2 returned APPROVE with one LOW informational note about retaining the import module's existing `imports.manage` permission contract.
+
+### Gate 4 verification
+
+- Frontend: 7 focused Vitest tests passed for the expandable hierarchy picker, legacy enum payload, subtree copy, and en/fr/ar terminology; TypeScript passed and targeted ESLint reported 0 errors (the page's existing warnings remain unchanged).
+- Backend: the final focused run passed 39 tests / 193 assertions across subtree/variant seeding, reference migration, assign-as-count, draft activation, advisories, and the end-to-end stock-math flow. PHPStan L8 and Pint passed on all changed PHP paths.
+- Static gates: `typescript:transform --force` produced no generated diff; design audit reported 751 acknowledged / 0 new / 0 stale after removing the deleted raw-checkbox baseline; TanStack key audit remained 0; React Doctor reported no Wave 4 issues and scored 89/100 against `plc-gate-3`.
+- Review: RC1 returned APPROVE with no BLOCKER/HIGH and therefore no inventory-spine escalation. Two LOW observations (multi-select row highlighting and a legacy mixed stock-grain edge case) were accepted as non-blocking; inactive live variants are intentionally counted.
