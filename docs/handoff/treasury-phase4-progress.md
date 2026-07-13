@@ -359,3 +359,19 @@
 - Fix: the vendor grouping key and selected partner ID now derive from the successfully company-scoped joined `partners.id`. When that join misses, both identity and label fall back to `expense_metadata.vendor_name`; no sibling identifier or name survives. Existing same-company partner grouping and snapshot-only grouping remain covered.
 - GREEN: the exact regression passed 1 test / 5 assertions; the full analytics file passed 9 tests / 65 assertions; full Expense passed 105 tests / 664 assertions with no errors, failures, or skips. Scoped production PHPStan and scoped Pint passed; the fix diff check was clean.
 - Deviations: none.
+
+## Task 14 — Permission-gated streamed CSV export — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Application/Queries/ExpenseIndexQuery.php`;
+  - `apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseExportController.php`;
+  - `apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseController.php`;
+  - `apps/api/app/Modules/Expense/routes.php`;
+  - `apps/api/tests/Feature/Expense/ExpenseExportTest.php`.
+- RED: focused PHPUnit exited 1 with 5/5 failures before production code existed. Four requests were swallowed by `expenses/{id}` and returned 404; the deny path also returned 404 instead of the required permission 403. The parity case additionally exposed the pre-existing PostgreSQL-only `ilike` operator under SQLite. The tests already pinned the complete 45-row export despite `per_page=20`, UTF-8 BOM, exact column order, filename, raw decimal strings, VAT fields, status/category/date/search parity with the JSON index, inclusive `date_to`, sibling-company/type exclusion, malformed cross-company partner suppression, legacy null stability, and permission denial.
+- Shared query contract: `ExpenseIndexQuery` now owns the Expense type, explicit company scope, status/category/date/search filters for both `ExpenseController::index` and export. `whereLike(..., caseSensitive: false)` preserves PostgreSQL `ILIKE` semantics while making the same search executable in SQLite. The inclusive `date_to` predicate uses an index-friendly exclusive next-day upper bound, covering SQLite's time-suffixed Eloquent test dates without changing the production date-column result.
+- Export contract: `GET /api/v1/expenses/export` is registered above `expenses/{id}`, inside the existing authenticated tenant middleware stack, and gated by `expenses.export`. It uses `response()->streamDownload`, emits the UTF-8 BOM and one header row, then iterates the full company-scoped query with `cursor()` regardless of pagination parameters. The filename is `expenses-{date_from}-{date_to}.csv` for filtered dates (`all` for an omitted endpoint bound).
+- Data isolation and money: Expense type and owning company are mandatory predicates. Partner/category joins are company-scoped; a malformed sibling-company partner ID cannot disclose its UUID or name and falls back to the stored vendor snapshot. Subtotal, tax/VAT, total, and deductible-percent cells remain strings; the metadata decimal cast normalizes the test database's DECIMAL representation without float conversion. Missing legacy metadata/tax/percent/receipt/category fields serialize as stable empty CSV cells.
+- GREEN and verification: focused export/list/show coverage passed 11 tests / 53 assertions. Full Expense feature regression passed 110 tests / 695 assertions. Scoped PHPStan level 8 passed with no errors; scoped Pint passed; `git diff --check` passed. `php artisan route:list --path=api/v1/expenses/export -vv` showed exactly one GET route with the full authenticated tenant middleware chain and `Authorize:expenses.export`.
+- Scope: Task 14 only. No Task 15 frontend, analytics aggregation, recurrence, Treasury, fiscal, posting, settlement, migration, or generated-type behavior changed.
+- Deviations: none.
