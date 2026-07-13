@@ -251,3 +251,21 @@
 - Transition contract: Paused→Active always rolls to the first origin-cadence occurrence on/after today (dedicated endpoint or generic PUT); Active→Paused is allowed; direct Ended is allowed; Ended cannot return to Active or Paused. Dedicated pause requires Active and dedicated resume requires Paused; invalid calls return 422 without changing status or cursor.
 - GREEN and regression: focused CRUD passed 10 tests / 139 assertions; full Expense passed 83 tests / 467 assertions; scoped PHPStan level 8 and Pint passed; all frontend permission tests remained green at 28/28; `git diff --check` passed.
 - Scope: no Task 10 generation/backfill behavior, permission map, TypeScript, route, request enum rule, Treasury, fiscal, posting, or settlement behavior changed.
+
+## Task 10 — Recurring draft generation command and notifications — 2026-07-13
+
+- Files:
+  - `apps/api/app/Modules/Expense/Presentation/Console/GenerateRecurringExpensesCommand.php`
+  - `apps/api/app/Modules/Expense/Providers/ExpenseServiceProvider.php`
+  - `apps/api/routes/console.php`
+  - `apps/api/tests/Feature/Expense/GenerateRecurringExpensesCommandTest.php`
+- RED: focused PHPUnit exited 2 with 7 tests: six expected missing-command errors and one expected schedule-list failure before production code existed. The test file already pinned full template passthrough, Draft/unpaid/null-payment semantics, Jan-31 clamp, atomic cursor/end behavior, prefixed period idempotency, fresh-vs-replayed `wasRecentlyCreated`, no duplicate notification, exact notification data, permission/company recipient filtering, missing-author fallback, tenant/company isolation, timezone/MAX-lead boundaries, partial failure exit, schedule shape, and no CompanyContext access.
+- Boundary fix: the first implementation run showed that parsing date-only due values in the application timezone skipped a template exactly at company-local `due - lead_days == today`. The command now parses that due date in the company's timezone before the exact lead comparison.
+- GREEN: final focused PHPUnit passed 7 tests / 70 assertions. Full Expense passed 90 tests / 537 assertions.
+- Generation contract: ordered tenant/company Active scans; shared `MAX_LEAD_DAYS` SQL prefilter; one outer transaction around console-safe `ExpenseService::create`, metadata recurrence link, and origin-anchored cursor advancement; Ended only when next is strictly after the inclusive end; notification after commit and only for a fresh document.
+- Actor/recipient isolation: author lookup is tenant-qualified; missing authors fall back to the first lexically ordered Active tenant admin under a temporarily set-and-restored Spatie tenant team. Notifications use `TreasuryAlertRecipients::forCompany(tenant, company, 'expenses.post')`, exclude inactive/sibling memberships, and store exact recurring payload plus the alert-type convention.
+- Scheduler: `php artisan schedule:list` shows `30 5 * * * php artisan expenses:generate-recurring`; schedule is `withoutOverlapping` and in-process, with no `runInBackground`.
+- Verification: maturity-alert plus Horizon queue regression passed 8 tests / 37 assertions; explicit PHPStan level 8 clean; Pint pass; syntax/diff checks clean; `TreasuryMovementService` and Horizon configuration untouched.
+- Existing architecture baseline: the combined console architecture path still flags only `ScanPercentScaleDrift` and `RunEnrichmentCommand` as unclassified. Those files, the test, and deferral fixture are byte-clean against Task 10 base `13388cf94`; the new command extends `TenantScopedCommand`. No unrelated fix was made.
+- Necessary file-list deviation: the Expense module provider now registers the command because module console classes are not auto-discovered. This is registration-only; no service or behavior outside Task 10 was added.
+- Task report: `.superpowers/sdd/task-10-report.md`.
