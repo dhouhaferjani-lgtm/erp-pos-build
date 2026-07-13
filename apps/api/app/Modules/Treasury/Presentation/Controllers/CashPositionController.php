@@ -113,6 +113,7 @@ class CashPositionController extends Controller
             }
 
             $window = (int) $windowRaw;
+            // SUM stays exact because repository_movements.amount is decimal(15,3).
             $sums = DB::table('repository_movements as m')
                 ->join('payment_repositories as r', 'r.id', '=', 'm.payment_repository_id')
                 ->where('r.tenant_id', $tenantId)
