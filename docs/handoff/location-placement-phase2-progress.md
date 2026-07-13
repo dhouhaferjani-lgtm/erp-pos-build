@@ -15,7 +15,7 @@
 
 | Wave | Scope | Commit(s) | RC tag | Gate verdict | Final tag | Notes / deviations |
 |---|---|---|---|---|---|---|
-| 1 | Tree management UI | Pending | Pending | Pending | Pending | None |
+| 1 | Tree management UI | `0ea41e1ad`, `023e04fe3` | `plc-gate-1-rc1` | APPROVE | `plc-gate-1` | Six LOW observations accepted as non-blocking; F4 is explicitly Wave 4 scope. |
 | 2 | Product-page placement field | Pending | Pending | Pending | Pending | None |
 | 3 | CSV `placement_path` | Pending | Pending | Pending | Pending | None |
 | 4 | Counting node scope | Pending | Pending | Pending | Pending | None |
@@ -23,3 +23,10 @@
 ## Gate evidence
 
 Gate reviews are written to `docs/handoff/gate-reviews-plc/GATE-<N>-rc<attempt>.md` by the mandated Opus review command. Counting-seed or CSV bulk-write BLOCKER/HIGH findings stop execution for owner escalation, per the brief.
+
+### Gate 1 verification
+
+- Frontend: 65 scoped Vitest tests passed (placement, stale terminology, counting compatibility, location reachability, sidebar, routes).
+- Backend: `LocationNodeApiTest.php` passed with 8 tests / 43 assertions; PHPStan L8 and Pint passed on changed PHP paths.
+- Static gates: TypeScript passed; design audit reported 752 acknowledged / 0 new / 0 stale; TanStack key audit reported 0 violations; React Doctor reported no issues against the branch diff.
+- Review: Opus returned APPROVE. Its CLI sandbox blocked only creation of the new review directory, so the executor preserved the returned review verbatim in `GATE-1-rc1.md`.
