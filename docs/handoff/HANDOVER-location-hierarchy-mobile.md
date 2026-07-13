@@ -26,7 +26,7 @@ id           TEXT  PK (uuid)
 location_id  TEXT
 parent_id    TEXT  NULL      -- self-reference; NULL = top-level
 node_type    TEXT            -- 'zone'|'aisle'|'rack'|'shelf'|'bin'|'section'
-code         TEXT            -- grammar: ^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$  (NO '/','%','_',space)
+code         TEXT            -- grammar: ^[A-Za-z0-9][A-Za-z0-9.\-]{0,49}$  (NO '/','%','_',space — underscore NOT allowed; matches shipped NodeCode::PATTERN)
 name         TEXT
 path         TEXT            -- server-authoritative ancestor CODE chain, e.g. 'A1/R2/B7'  (§3)
 depth        INTEGER
@@ -100,8 +100,8 @@ Tree-management UI (master-detail + tree-table), CSV `placement_path` import, pr
 3. **Together:** confirm page size at your device's memory profile; agree the base endpoint path when it's pinned (I'll append the endpoint reference to this doc once implemented).
 4. **Your ERP catalog/stock delta groundwork** should finish first — placement delta reuses the same cursor shape, so it drops in.
 
-## 7. One genuinely-open question (not blocking your schema)
-- **Does the device ever WRITE placements offline** (a device user re-shelving a product)? If yes, you need an outbox for placements (same pattern as your other offline writes) and we add server conflict handling. If read-only for v1, skip it. Your call on the mobile side — tell me and I'll spec the server side to match.
+## 7. ✅ RESOLVED (owner, 2026-07-13): device DOES write placements — re-shelving is in scope
+Owner decision: offline re-shelving is wanted. Feasibility verified against shipped code (dev `2f31b2d73`): **server-side increment is ZERO** — the endpoint, idempotency, validation, permission, and delta echo-back all already exist. The entire build is mobile-side (one outbox). Contract: **§10**. Dispatch scope: §9 wave 3.
 
 ---
 
@@ -120,14 +120,29 @@ Three wire-level corrections vs §2.1's prose, verified against the shipped `Pro
 - ⚠️ **Watermark echo:** on pages 2..N of a run, send the first page's watermark back as query param **`sync_high_watermark=<iso8601>`** (same name). If omitted the server re-captures `now()` and you lose the mid-pagination drift guarantee.
 | Node products (if you build a browse surface) | `GET /inventory/nodes/{node}/products` (paginated) |
 
-Write endpoints exist (`POST /inventory/nodes`, `move`, `assign-products`, …) but are **web-scoped for now** — see §7; do not build against them until the offline-write question is decided. Page size remains the only tunable on the delta endpoint. Generated type shapes: `LocationNodeDto`, `ProductPlacementDto`, `LocationNodeType` (`'zone'|'aisle'|'rack'|'shelf'|'bin'|'section'`) in the ERP repo `packages/shared/types/generated.d.ts` — mirror them, don't invent fields.
+Write endpoints: the device uses **exactly one** — `PUT /inventory/products/{product}/placements` per the §10 contract (§7 resolved 2026-07-13). The other write endpoints (`POST /inventory/nodes`, `move`, `assign-products`, `bulk-move`, …) remain web-scoped; do not build against them. Page size remains the only tunable on the delta endpoint. Generated type shapes: `LocationNodeDto`, `ProductPlacementDto`, `LocationNodeType` (`'zone'|'aisle'|'rack'|'shelf'|'bin'|'section'`) in the ERP repo `packages/shared/types/generated.d.ts` — mirror them, don't invent fields.
 
 ## 9. Dispatch instructions (Codex, mobile repo — end-to-end)
 
 Implement the consumer end-to-end, autonomously, with checkpoints:
 
-- **Scope (v1 = READ-ONLY sync + read surfaces):** (1) SQLite migration adding the two §1 tables (check the current schema-version max and bump — never reuse a version); (2) full-sync of `location_nodes` per active location + delta-sync loop for `product_placements` per §2.1 (strict tuple `>` cursor, `<=` high-water-mark, tombstone application), wired into the existing sync scheduler alongside catalog/stock; (3) timestamp normalization per §4 (`toSqliteUtc` equivalent) — this is the #1 historical bug class, test it explicitly with a same-day boundary row; (4) read surfaces: product detail shows its placement `path` per location; counting/browse can filter by subtree using the §3 `= path OR LIKE path/%` form (test `A1` vs `A10`).
-- **NOT in scope:** any placement WRITE from the device (outbox) — blocked on §7's owner decision; the web write endpoints; inventing quantity-per-node anywhere (nodes NEVER carry stock).
-- **Checkpoints:** hard-stop gate after (a) schema+sync plumbing, (b) read surfaces — each gate = `claude -p --model claude-opus-4-8` adversarial review of the diff against THIS document (§1 shapes, §2.1 comparisons, §4 timestamps), verdict file committed in the mobile repo, CHANGES-REQUIRED → fix test-first → re-run. No Fable escalation expected (no money/quantity math in scope).
-- **Tests:** delta boundary (row updated exactly at the watermark is caught next run), tombstone removal, timestamp round-trip, subtree filter collision, offline cold-start with populated tables.
+- **Scope — three sequential waves:**
+  - **Wave 1 (read sync):** (1) SQLite migration adding the two §1 tables (check the current schema-version max and bump — never reuse a version); (2) full-sync of `location_nodes` per active location + delta-sync loop for `product_placements` per §2.1 (strict tuple `>` cursor, `<=` high-water-mark, tombstone application), wired into the existing sync scheduler alongside catalog/stock; (3) timestamp normalization per §4 (`toSqliteUtc` equivalent) — this is the #1 historical bug class, test it explicitly with a same-day boundary row.
+  - **Wave 2 (read surfaces):** product detail shows its placement `path` per location; counting/browse can filter by subtree using the §3 `= path OR LIKE path/%` form (test `A1` vs `A10`).
+  - **Wave 3 (re-shelve write — §7 resolved, owner-approved):** offline re-shelve/unassign via outbox against the single §10 endpoint. Clone the existing outbox pattern (`apps/pos/src/lib/replenishment/replenishmentSyncService.ts` + `RequestRefillSheet` driver — queue offline, replay on reconnect). Optimistic local update of the placement row; server replay is idempotent (§10) — do NOT invent client op-ids or conflict UIs.
+- **NOT in scope:** any write endpoint other than §10's PUT; node tree mutation from device; inventing quantity-per-node anywhere (nodes NEVER carry stock); `updated_at` preconditions / batch replay (explicitly deferred hardening, see §10).
+- **Checkpoints:** hard-stop gate after (a) Wave 1 schema+sync plumbing, (b) Wave 2 read surfaces, (c) Wave 3 write outbox — each gate = `claude -p --model claude-opus-4-8` adversarial review of the diff against THIS document (§1 shapes, §2.1 comparisons, §4 timestamps, §10 write semantics), verdict file committed in the mobile repo, CHANGES-REQUIRED → fix test-first → re-run. No Fable escalation expected (no money/quantity math in scope).
+- **Tests:** delta boundary (row updated exactly at the watermark is caught next run), tombstone removal, timestamp round-trip, subtree filter collision, offline cold-start with populated tables; Wave 3: replay-twice is a no-op, offline queue → reconnect replay, unassign replay after already-unassigned, cross-device convergence via the delta loop, LWW behavior documented in the test (stale queued move CAN override a newer one — accepted for shelf labels).
 - Verification per that repo's standard preflight; leave the branch for the ERP-side session's final review before merge.
+
+## 10. Device write contract (re-shelve) — verified against shipped code, dev `2f31b2d73`
+
+**Endpoint (the ONLY device write):** `PUT /inventory/products/{product}/placements` — body `{location_id, node_id}`. `node_id` = uuid → move/create placement; `node_id` = null → unassign. Same middleware stack + bearer auth as your reads; permission `inventory.adjust` (already device-granted for counting drafts).
+
+**Server semantics (already shipped — build against, don't rebuild):**
+- Move = in-place `UPDATE` of the live `(product,location)` row's `node_id` under `FOR UPDATE` lock (NOT tombstone+insert — no churn). Create-if-absent with unique-violation recovery. Unassign = soft-delete tombstone.
+- **Naturally idempotent:** replaying "set P@L → N" when already N is a true no-op (`updated_at` not even bumped); replaying unassign matches zero rows. **No client_operation_id needed** — idempotency is by target state.
+- **Conflict rule = last-write-wins by arrival order** on `(product,location)`. Accepted anomaly for shelf labels: a stale queued move can override a newer one from another user. If this ever matters, the hardening is a server-side `updated_at` precondition — explicitly OUT of scope now.
+- **Validation is server-side** (node LIVE, same tenant, belongs to the location — re-checked inside the transaction): surface a 422 as a sync-error row, don't pre-validate beyond basics on device.
+- **Convergence:** every real write bumps `updated_at` → your own §2.1 delta loop picks it up on all devices, including tombstones. After a successful replay, let the delta loop reconcile — don't hand-patch other tables.
+- **No stock/quantity/money is touched** by this write path (verified) — placements are labels.
