@@ -170,6 +170,7 @@
     "batches": "Lots",
     "expiryWriteOff": "Radiation de lots périmés",
     "stockLevels": "Niveaux de stock",
+    "placement": "Rangement & emplacements",
     "stockMovements": "Mouvements de stock",
     "counting": "Inventaire physique",
     "enrichmentQueue": "File d'enrichissement",

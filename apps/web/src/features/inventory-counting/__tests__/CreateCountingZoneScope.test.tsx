@@ -70,8 +70,8 @@ vi.mock('@/features/users/components/UserSelector', () => ({
 }))
 
 const mockListZones = vi.hoisted(() => vi.fn())
-vi.mock('@/features/settings/zones/api', () => ({
-  listZones: mockListZones,
+vi.mock('@/features/placement/api', () => ({
+  listLocationNodes: mockListZones,
 }))
 
 function zone(overrides: Partial<{ id: string; name: string; code: string }> = {}) {

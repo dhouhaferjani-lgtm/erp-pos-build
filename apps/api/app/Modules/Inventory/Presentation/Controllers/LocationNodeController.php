@@ -50,6 +50,7 @@ class LocationNodeController extends Controller
         $query = LocationNode::query()
             ->forTenant($company->tenant_id)
             ->atLocation($location)
+            ->withCount('productPlacements')
             ->orderBy('sort_order')
             ->orderBy('name');
 

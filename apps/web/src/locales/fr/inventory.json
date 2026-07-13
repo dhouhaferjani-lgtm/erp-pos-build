@@ -915,6 +915,8 @@
       "loading": "Chargement des catégories…"
     },
     "form": {
+      "addTitle": "Ajouter un emplacement",
+      "editTitle": "Modifier l’emplacement",
       "basicInfo": "Informations de base",
       "hierarchy": "Hiérarchie",
       "settings": "Paramètres",
@@ -1008,54 +1010,52 @@
     "resetSuccess": "Le stock initial a été réinitialisé.",
     "resetError": "Impossible de réinitialiser le stock initial. Veuillez réessayer."
   },
-  "zones": {
-    "navLabel": "Zones",
-    "panelTitle": "Zones — {{location}}",
-    "subtitle": "Étiquettes de rayon/section pour le comptage et le placement des produits",
-    "addZone": "Ajouter une zone",
-    "editZone": "Modifier la zone",
+  "placement": {
+    "navLabel": "Rangement & emplacements",
+    "title": "Rangement & emplacements",
+    "productCount": "Produits",
+    "location": { "label": "Site", "empty": "Créez un site avant de définir son organisation de stockage." },
+    "views": { "tree": "Arbre", "table": "Tableau" },
+    "tree": { "label": "Arbre des emplacements", "expand": "Développer", "collapse": "Réduire" },
+    "picker": { "label": "Choisir un emplacement" },
+    "subtitle": "Cartographiez le parcours physique de l’allée au bac, puis indiquez où chaque produit est rangé.",
     "empty": {
-      "title": "Aucune zone",
-      "description": "Ajoutez une zone pour cadrer les comptages par rayon ou section."
-    },
-    "list": {
-      "sortOrder": "Ordre {{order}}",
-      "active": "Active",
-      "inactive": "Inactive"
+      "title": "Aucun emplacement",
+      "description": "Commencez par une allée, une zone ou une section, puis ajoutez le niveau de détail utile."
     },
     "form": {
+      "addTitle": "Ajouter un emplacement",
+      "editTitle": "Modifier l’emplacement",
       "name": "Nom",
-      "namePlaceholder": "ex. Allée 3",
       "nameRequired": "Le nom est requis",
       "code": "Code",
-      "codePlaceholder": "ex. A3",
-      "codeRequired": "Le code est requis",
+      "codeInvalid": "Utilisez 1 à 50 lettres, chiffres, points ou tirets. Les barres obliques et espaces sont interdits.",
+      "type": "Type",
       "sortOrder": "Ordre de tri",
-      "isActive": "Active"
+      "active": "Actif"
     },
     "actions": {
-      "assignProducts": "Assigner des produits"
+      "addRoot": "Ajouter un nœud principal",
+      "addChild": "Ajouter un sous-nœud",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "restore": "Restaurer",
+      "showDeleted": "Afficher les supprimés"
     },
-    "deleteConfirm": {
-      "title": "Supprimer la zone",
-      "message": "Supprimer la zone \"{{name}}\" ? Les produits qui y sont assignés devront être réassignés."
-    },
-    "bulkAssign": {
-      "title": "Assigner des produits — {{zone}}",
-      "currentlyAssigned": "Actuellement assignés",
-      "noneAssigned": "Aucun produit assigné à cette zone pour le moment.",
-      "addProducts": "Ajouter des produits",
-      "removeProduct": "Retirer {{name}}",
-      "pendingCount": "{{count}} produit sélectionné",
-      "pendingCount_other": "{{count}} produits sélectionnés",
-      "submit": "Assigner",
-      "success": "Produits assignés à la zone.",
-      "productIdsRequired": "Sélectionnez au moins un produit à assigner."
-    },
+    "detail": { "title": "Détails de l’emplacement", "breadcrumb": "Chemin de rangement", "productsTab": "Produits", "selectPrompt": "Sélectionnez un nœud pour consulter son chemin et gérer les produits qui y sont rangés.", "close": "Fermer les détails" },
+    "types": { "zone": "Zone", "aisle": "Allée", "rack": "Rayonnage", "shelf": "Étagère", "bin": "Bac", "section": "Section" },
+    "products": { "search": "Rechercher par nom, référence ou code-barres", "loading": "Chargement des produits…", "empty": "Aucun produit n’est rangé directement dans ce nœud.", "addPlaceholder": "Rechercher un produit", "assign": "Ranger le produit", "unassign": "Retirer l’emplacement", "moveTarget": "Déplacer les produits sélectionnés vers", "chooseTarget": "Choisir la destination", "bulkMove": "Déplacer la sélection", "previous": "Précédent", "next": "Suivant" },
+    "table": { "label": "Emplacements de rangement", "select": "Sélectionner", "selectNode": "Sélectionner {{name}}", "selected": "{{count}} nœuds sélectionnés", "code": "Code", "name": "Nom", "type": "Type", "products": "Produits", "active": "État" },
+    "status": { "active": "Actif", "inactive": "Inactif" },
     "messages": {
       "created": "Zone créée.",
       "updated": "Zone mise à jour.",
-      "deleted": "Zone supprimée."
+      "moved": "Emplacement déplacé.",
+      "deleted": "Emplacement supprimé.",
+      "restored": "Emplacement restauré.",
+      "productsAssigned": "Produit rangé.",
+      "productUnassigned": "Emplacement retiré.",
+      "productsMoved": "Produits sélectionnés déplacés."
     }
   }
 }

@@ -887,13 +887,14 @@ export type LocationNodeDto = {
 id: string;
 location_id: string;
 parent_id: string | null;
-node_type: string;
+node_type: App.Modules.Inventory.Domain.Enums.LocationNodeType;
 name: string;
 code: string;
 path: string;
 depth: number;
 sort_order: number;
 is_active: boolean;
+product_count: number;
 deleted_at: string | null;
 created_at: string;
 updated_at: string;

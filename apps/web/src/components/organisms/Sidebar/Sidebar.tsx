@@ -62,6 +62,7 @@ import {
   Repeat,
   Globe,
   Trash2,
+  MapPinned,
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -209,6 +210,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'inventory',
       children: [
         { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
+        { key: 'placement', href: '/inventory/placement', icon: MapPinned, permission: 'inventory' },
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat, permission: 'inventory.transfers.view' },
         { key: 'replenishment', labelKey: 'replenishment:title', href: '/inventory/replenishment', icon: PackagePlus, permission: 'replenishment.view' },

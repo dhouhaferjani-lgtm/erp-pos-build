@@ -72,6 +72,8 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void
   /** Opt-in row selection. When provided, a leading checkbox column renders. */
   selection?: DataTableSelection<T>
+  /** Accessible name for the rendered table. */
+  ariaLabel?: string
   className?: string
 }
 
@@ -136,6 +138,7 @@ export function DataTable<T>(props: DataTableProps<T> | DataTableMarkupProps): R
     emptyState,
     onRowClick,
     selection,
+    ariaLabel,
     className,
   } = props
 
@@ -284,7 +287,7 @@ export function DataTable<T>(props: DataTableProps<T> | DataTableMarkupProps): R
 
   return (
     <div className={cn('overflow-x-auto', className)}>
-      <table className="min-w-full border-collapse text-left">
+      <table className="min-w-full border-collapse text-left" aria-label={ariaLabel}>
         {renderHeader()}
         {isLoading ? renderSkeletonBody() : !showEmpty ? renderBody() : null}
       </table>

@@ -19,7 +19,7 @@ import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { listZones } from '@/features/settings/zones/api'
+import { listLocationNodes } from '@/features/placement/api'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Button } from '@/components/atoms/Button'
@@ -484,8 +484,8 @@ function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
   const zoneIds = data.scope_filters?.zone_ids ?? []
 
   const { data: zones, isLoading } = useQuery({
-    queryKey: tenantScopedKey(['inventory-zones', locationId]),
-    queryFn: () => listZones(locationId),
+    queryKey: tenantScopedKey(['placement', 'nodes', locationId]),
+    queryFn: () => listLocationNodes(locationId),
     enabled: locationId !== '' && tenantId !== null && companyId !== null,
   })
 
