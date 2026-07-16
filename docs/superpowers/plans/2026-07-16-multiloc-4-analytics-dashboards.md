@@ -366,9 +366,9 @@ Inject `LocationScopeResolver $locationScope` into `ReportController` (construct
 1. **CashAcrossStoresWidget** ← §3 (`CashPositionController.php:136`)
    - Hook: `useCashPosition({ group_by: 'location', location_ids: effectiveLocationIds })` (§3-delivered, `@/features/treasury/hooks`).
    - Endpoint: `GET /treasury/cash-position?group_by=location&location_ids[]=...`
-   - Response type: `{ data: { as_of: string; currency: string; groups: CashPositionGroup[]; grand_total: string; flows?: { window_days: number; in: string; out: string } } }` — consume **`data.groups`** (one entry per location; amounts are decimal strings) and **`data.grand_total`** (decimal string) for the footer total.
+   - Response type: `{ data: { as_of: string; currency: string; groups_by_location: CashPositionGroup[]; grand_total: string; flows?: { window_days: number; in: string; out: string } } }` — consume **`data.groups_by_location`** (§3 Task 8's pinned key — one entry per location incl. the Unattributed group; amounts are decimal strings) and **`data.grand_total`** (decimal string) for the footer total.
    - Aggregation grain: one row per location group; total row = `grand_total`. Numbers via `formatCurrency` (strings — never `Number()`).
-   - Route target (deep-link `to`): `/treasury/cash-position` (registered by §3 — confirm the exact registered path in §3's routing task before wiring; do not invent a divergent path).
+   - Route target (deep-link `to`): `/finance/overview` (the existing Finance hub route at `apps/web/src/routes/index.tsx:1893,1903`, which §3 Task 12 scopes — there is no separate `/treasury/cash-position` page route).
    - Query key: `locationScopedKey(['treasury', 'cash-position', { group_by: 'location' }], scope)`.
 
 2. **DueThisWeekWidget** ← §3 (`MaturingInstrumentsController.php:102`)
@@ -376,13 +376,13 @@ Inject `LocationScopeResolver $locationScope` into `ReportController` (construct
    - Endpoint: `GET /treasury/maturing-instruments?location_ids[]=...`
    - Response type: `{ data: MaturingInstrumentRow[]; meta: { buckets: Record<'overdue'|'d0_7'|'d8_30'|'d31_60'|'d61_90'|'d90_plus', { count: number; total_in: string; total_out: string }>; grand_total: { count: number; total_in: string; total_out: string } } }`. Each `MaturingInstrumentRow` = `{ id, reference, amount: string, currency, maturity_date: string|null, received_date: string, status, direction, kind, repository_id, partner_id, needs_details, certainty, bucket }`.
    - Aggregation grain: "due this week" = rows where `bucket` ∈ `{'overdue','d0_7'}`; the widget summary line reads `meta.buckets.overdue` + `meta.buckets.d0_7` (`count`, `total_in`, `total_out` as decimal strings). Amounts via `formatCurrency` (strings).
-   - Route target (deep-link `to`): `/treasury/maturing-instruments` (échéancier page registered by §3 — confirm exact path in §3's routing task; do not invent).
+   - Route target (deep-link `to`): `/treasury/instruments` (the existing instrument list route at `apps/web/src/routes/index.tsx:1741,1746` — `/treasury/maturing-instruments` is an API endpoint, not a page route). Pass the scope + maturity filter as search params so the list opens pre-filtered.
    - Query key: `locationScopedKey(['treasury', 'maturing-instruments', 'due-this-week'], scope)`.
 
 3. **RebalanceAlertsWidget** ← §2 rebalance endpoint (finding 3 — the §2-pinned contract, VERBATIM)
    - Hook: `useRebalanceSuggestions({ location_ids: effectiveLocationIds })` (§2-delivered, `@/features/inventory/hooks`).
    - Endpoint: `GET /inventory/stock-matrix/rebalance?location_ids[]=...`
-   - Response type: `{ data: RebalanceRow[] }` where `RebalanceRow = { product_id: string; variant_id: string | null; name: string; sku: string; deficits: { location_id: string; available: string; min_quantity: string }[]; surpluses: { location_id: string; available: string; max_quantity: string; excess: string }[] }`. **All quantities are decimal strings** — render via `formatQuantity`, never `parseFloat`/`Number()`.
+   - Response type: `{ data: RebalanceRow[] }` where `RebalanceRow = { product_id: string; variant_id: string | null; name: string; sku: string; deficits: { location_id: string; available: string; min_quantity: string | null }[]; surpluses: { location_id: string; available: string; max_quantity: string | null; excess: string }[] }` (nullable thresholds — §2's NULL-threshold fallback rows carry `null`; render a threshold dash, never coerce). **All quantities are decimal strings** — render via `formatQuantity`, never `parseFloat`/`Number()`.
    - Aggregation grain: one alert row per product/variant that has ≥1 `deficit` AND ≥1 `surplus` ("out/below-min at A, surplus at B"); the widget shows the top-N such rows.
    - Route target (deep-link `to`): `/inventory/stock-by-location` — the rebalancing view mounts as a section on that page (§2 Task 7).
    - Query key: `locationScopedKey(['inventory', 'stock-matrix', 'rebalance'], scope)`.
@@ -390,7 +390,7 @@ Inject `LocationScopeResolver $locationScope` into `ReportController` (construct
 **Scope + deep-link rule (drillable-rollup):** each widget reads `useViewScope()`; each "view all"/row link navigates to the detail route above carrying the current scope (§1's picker persists it globally, so links need only preserve the route — verify the target page reads the global scope on mount and do NOT pass ad-hoc location query params that would diverge from the picker).
 
 **TDD steps (per widget — substitute the widget's exact test path from the Files list above; no `<placeholder>`):**
-- [ ] **RED** — widget test: mock its pinned hook to return the pinned response shape, assert it renders the scoped rows against that shape (e.g. `RebalanceAlertsWidget` renders `formatQuantity(row.deficits[0].available)`; `CashAcrossStoresWidget` renders `data.groups` + `grand_total`), an empty state, and a deep-link whose `to` equals the pinned route target. Run the exact path, e.g. `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/CashAcrossStoresWidget.test.tsx` → RED.
+- [ ] **RED** — widget test: mock its pinned hook to return the pinned response shape, assert it renders the scoped rows against that shape (e.g. `RebalanceAlertsWidget` renders `formatQuantity(row.deficits[0].available)`; `CashAcrossStoresWidget` renders `data.groups_by_location` + `grand_total`), an empty state, and a deep-link whose `to` equals the pinned route target. Run the exact path, e.g. `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/CashAcrossStoresWidget.test.tsx` → RED.
 - [ ] **GREEN** — implement the widget (canonical card container, tokens, `t()`, `formatCurrency`/`formatQuantity` for numbers, `DataTable` if tabular). Wire into a new consolidated grid row on `OwnerDashboardPage`. Re-run the exact path → GREEN.
 - [ ] Scoped lint/typecheck: `cd apps/web && pnpm lint src/features/owner-dashboard && pnpm typecheck`; confirm each query key uses `locationScopedKey` with the raw `scope`.
 - [ ] **Commit**: `feat(owner-dashboard): consolidated home widgets (cash/due/rebalance, scope-preserving)`
