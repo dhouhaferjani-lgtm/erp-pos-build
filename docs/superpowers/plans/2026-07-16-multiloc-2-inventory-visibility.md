@@ -45,12 +45,12 @@ This plan maps to spec §2 and closes gaps G3, G4, G5, G6, G7, G10 (destination 
 These are §1 deliverables. If a §2 task starts before §1 lands, that task is BLOCKED — flag it, do not stub these.
 
 **Backend**
-- `App\Modules\Company\Services\LocationScopeResolver::resolve(User $user, array $requestedIds = [], ?string $bypassPermission = null): array` — returns the effective allowed location-id list (fail-closed `AuthorizationException` on out-of-scope ids; single-company; HTTP-only, requires bound `CompanyContext`). Every §2 read endpoint calls this with the request's `location_ids[]` and passes NO bypass permission (inventory visibility has no processor carve-out) unless a task states otherwise.
+- `App\Modules\Company\Services\LocationScopeResolver::resolve(User $user, array $requestedIds = [], ?string $bypassPermission = null): array` (§1 pinned namespace — `App\Modules\Company\Services`, NOT `…\Application\Services`) — returns the effective allowed location-id list (fail-closed `AuthorizationException` on out-of-scope ids; single-company; HTTP-only, requires bound `CompanyContext`; an empty `$requestedIds` returns the caller's FULL effective allowed set). Every §2 read endpoint ALWAYS calls `resolve($user, $requested)` and ALWAYS applies the returned ids, and passes `bypassPermission = null` **always** (inventory visibility has no processor carve-out — no §2 endpoint ever passes a bypass permission).
 - `GET /company/locations` — module-agnostic, broad read gate, returns only the caller's allowed locations (the picker's allowed set). §2 backend never re-implements location listing.
 
-**Frontend**
-- `useViewScope(): { scope, effectiveLocationIds: string[], isAll, setScope }` from `apps/web/src/stores/viewScopeStore.ts` — the global multi-select view scope.
-- `locationScopedKey(segments: readonly unknown[], scope): readonly unknown[]` from `apps/web/src/lib/locationScopedKey.ts` — wraps `tenantScopedKey`, bakes scope as a non-leading segment.
+**Frontend** (§1 pinned shapes — consumed verbatim)
+- `useViewScope(): { scope: 'all' | string[], effectiveLocationIds: string[], isAll: boolean, setScope }` from `apps/web/src/stores/viewScopeStore.ts` — the global multi-select view scope.
+- `locationScopedKey(segments, scope)` — `locationScopedKey(segments: readonly unknown[], scope: 'all' | readonly string[]): QueryKey` from `apps/web/src/lib/locationScopedKey.ts` — wraps `tenantScopedKey`, bakes scope as a non-leading segment.
 - The picker sends reads as `location_ids[]` query params. §2 pages read `effectiveLocationIds` from `useViewScope()` and pass them as `location_ids[]`.
 
 ---
@@ -140,13 +140,58 @@ $stockRows = DB::table('stock_levels')
 //     Mirror LocationStockQueryService::incoming() exactly (TransferStatus::InTransit, PO Confirmed, remainder>received).
 ```
 
-**Grain / no-double-count discipline (I3 — mirror `LocationStockQueryService.php:120-122`):**
-- Build a variant-child row per `(product_id, variant_id NOT NULL, ...)` and a rollup parent per product.
-- **Parent rollup cell** = `bcadd` over ALL of that product's `stock_levels` rows for the location (a well-formed product stores stock EITHER on the `variant_id IS NULL` row OR on variant rows, never both — so summing all rows does not double-count). `is_variant_parent = true` iff the product has ≥1 `variant_id IS NOT NULL` stock row. `min_quantity`/`max_quantity` on a variant-parent rollup cell = `null` (thresholds live at leaf grain).
-- **Non-variant product** → single row (`variant_id: null`, `is_variant_parent: false`), thresholds from its `variant_id IS NULL` row.
-- **Variant child rows** carry their own `variant_id`, thresholds, and per-location cells.
+**Grain / rollup discipline (I3 — CORRECT-BY-CONSTRUCTION for MIXED grains; do NOT assume a product stores stock at only one grain):**
+- **Parent rollup cell** = `bcadd` over **ALL** of that product's `stock_levels` rows for the location — the `variant_id IS NULL` (base) row AND every `variant_id IS NOT NULL` row each contribute **exactly once**. This is correct whether the product stores stock only at base grain, only at variant grain, or **BOTH at once** (mixed): no double-count is possible because every physical row is summed into the parent once and surfaces under exactly one child. `is_variant_parent = true` iff the product has ≥1 `variant_id IS NOT NULL` stock row. `min_quantity`/`max_quantity` on a variant-parent rollup cell = `null` (thresholds live at leaf grain).
+- **Child rows under a variant-parent** = one leaf per distinct `variant_id IS NOT NULL` (its own `variant_id`, thresholds, per-location cells) **PLUS** one **"(base)" leaf** for the `variant_id IS NULL` stock (name suffixed `t('stockByLocation.baseGrainSuffix')` → " (base)"), emitted **only when that base row is nonzero at some scoped location**. The base leaf carries `variant_id: null`, `is_variant_parent: false`, and thresholds from the `variant_id IS NULL` row; it is disambiguated from the parent rollup by `is_variant_parent` (`false` on the base leaf, `true` on the parent). By construction `bcadd`(all child cells) **===** parent cell at every location.
+- **Non-variant product** (no variant rows) → a single row (`variant_id: null`, `is_variant_parent: false`), thresholds from its `variant_id IS NULL` row; no rollup/base split.
 - Zero-fill: every scoped location gets a cell (`on_hand:'0.0000'`, etc.) even with no stock row.
 - All quantity math via `bcadd`/`bcsub` at scale 4 (`QuantityScale`); `available = bcsub(on_hand, reserved, 4)`.
+
+**Assembly (correct-by-construction rollup — every row counted once):**
+```php
+// $stockRows: all stock_levels for the page's products × scoped locations.
+// Group by product; within each product, EVERY row (base + variants) lands
+// in the parent sum and under exactly one child.
+$byProduct = collect($stockRows)->groupBy('product_id');
+$rows = [];
+foreach ($productIds as $pid) {                       // preserve page order
+    $rowsForProduct = $byProduct->get($pid, collect());
+    $hasVariantRows = $rowsForProduct->contains(fn ($r) => $r->variant_id !== null);
+
+    // Parent (or single non-variant) cell = bcadd over ALL rows for the location.
+    $parentCells = $this->zeroFilledCells($locationIds);
+    foreach ($rowsForProduct as $r) {
+        $loc = (string) $r->location_id;
+        $parentCells[$loc]['on_hand']  = bcadd($parentCells[$loc]['on_hand'],  (string) $r->quantity, 4);
+        $parentCells[$loc]['reserved'] = bcadd($parentCells[$loc]['reserved'], (string) $r->reserved, 4);
+    }
+    $parentCells = $this->finalizeCells($parentCells, thresholdsNull: $hasVariantRows);
+
+    if (! $hasVariantRows) {
+        // Non-variant product → thresholds from the variant_id IS NULL row.
+        $rows[] = $this->row($pid, null, $products[$pid], isVariantParent: false,
+            cells: $this->withThresholds($parentCells, $rowsForProduct->firstWhere('variant_id', null)));
+        continue;
+    }
+
+    // Variant-parent rollup (thresholds null).
+    $rows[] = $this->row($pid, null, $products[$pid], isVariantParent: true, cells: $parentCells);
+
+    // One leaf per variant_id …
+    foreach ($rowsForProduct->whereNotNull('variant_id')->groupBy('variant_id') as $vid => $vRows) {
+        $rows[] = $this->row($pid, (string) $vid, $variantLabels[$vid], isVariantParent: false,
+            cells: $this->cellsFor($vRows, $locationIds));
+    }
+    // … PLUS a single "(base)" leaf for the variant_id IS NULL row, only when nonzero.
+    $baseRows = $rowsForProduct->whereNull('variant_id');
+    if ($baseRows->contains(fn ($r) => bccomp((string) $r->quantity, '0', 4) !== 0
+        || bccomp((string) $r->reserved, '0', 4) !== 0)) {
+        $rows[] = $this->row($pid, null, $products[$pid].' '.__('inventory.stockByLocation.baseGrainSuffix'),
+            isVariantParent: false, cells: $this->cellsFor($baseRows, $locationIds));
+    }
+    // Invariant (guarded in tests): bcadd(all child cells) === parent cell, per location.
+}
+```
 
 **Controller** resolves scope then delegates:
 
@@ -181,6 +226,7 @@ Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
 - [ ] Write `StockMatrixEndpointTest` (PostgreSQL, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs). Cases:
   - **pivot correctness:** 2 products × 2 locations with distinct on-hand/reserved → assert `cells[locA].available == on_hand−reserved` per row; zero-filled cell for a location with no row.
   - **variant no-double-count (I3):** a variant product with 2 variants (stock on variant rows) + a non-variant product (stock on null row) → assert parent rollup cell `on_hand == bcadd(variantA, variantB)`, `is_variant_parent==true`, parent `min_quantity==null`; two variant child rows present with their own thresholds; non-variant product single row, `is_variant_parent==false`.
+  - **MIXED grains (I3 — the correct-by-construction case):** ONE product at ONE location holding BOTH a `variant_id IS NULL` (base) stock row AND two variant stock rows (all nonzero) → assert parent rollup cell `on_hand == bcadd(base, variantA, variantB)` (base counted exactly once, `is_variant_parent==true`, thresholds null); children = 2 variant leaves + one **"(base)" leaf** (`is_variant_parent==false`, `variant_id==null`, name ends with the base suffix, thresholds from the null-variant row); and the invariant `bcadd(all child cells) === parent cell` holds at that location. A product whose base row is zero at every scoped location emits NO "(base)" leaf.
   - **search + pagination stability:** seed 30 products, `per_page=10`, assert `meta.total==<matches search>`, `meta.last_page` correct, page 2 disjoint from page 1, `search` matches name/sku/barcode.
   - **resolver scoping:** user restricted (via §1 membership) to location A requesting `location_ids[]=B` → `403` (fail-closed); requesting nothing → cells only for A.
   - **include=incoming:** in-transit transfer to loc A + confirmed-PO remainder at loc A → `cells[A].incoming` equals their sum; absent when `include` omitted.
@@ -216,14 +262,26 @@ PUT /api/v1/inventory/stock-levels/thresholds
   200 → { data: { product_id, variant_id, location_id, min_quantity, max_quantity } }
 ```
 
-**FormRequest rules (rule 5 — regex ceiling; nullable-to-clear; both present ⇒ min ≤ max):**
+**FormRequest rules (rule 5 — regex ceiling; nullable-to-clear; both present ⇒ min ≤ max; §1 `ValidLocationAccess` on `location_id`):**
 ```php
+// Constructor-inject the contexts (like §1's StoreStockTransferRequest):
+//   public function __construct(
+//       private readonly LocationContext $locationContext,
+//       private readonly CompanyContext $companyContext,
+//   ) { parent::__construct(); }
 public function rules(): array
 {
+    $companyId = $this->companyContext->requireCompanyId();
+
     return [
         'product_id'   => ['required', 'uuid'],
         'variant_id'   => ['nullable', 'uuid'],
-        'location_id'  => ['required', 'uuid'],
+        'location_id'  => [
+            'required', 'uuid',
+            // Finding 7: authorize via the shared §1 rule, NOT a direct
+            // LocationContext::validateLocationAccess call in the controller.
+            new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext, $companyId),
+        ],
         'min_quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
         'max_quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
     ];
@@ -241,7 +299,9 @@ public function withValidator(Validator $v): void
 ```
 Messages: `min_quantity.regex`/`max_quantity.regex` → "must have at most 4 decimal places."
 
-**Service** — upsert the `stock_levels` row at `(tenant, company, product, variant IS NULL-safe, location)`; if no row exists yet, create one with `quantity:'0.0000', reserved:'0.0000'` and the thresholds (so thresholds can be set before any stock lands). `variant_id === null` MUST match `whereNull('variant_id')` (never collapse variant grains). Persist via `CurrencyScale`/`QuantityScale` — store `QuantityScale::bcformatStrict($value, 4)` (or `null`) — no float. Validate location membership by calling `LocationContext::validateLocationAccess($locationId, $companyId, $user)` (same pattern as `StockMovementController@receive`) so a user cannot edit thresholds outside their allowed set.
+**Service** — upsert the `stock_levels` row at `(tenant, company, product, variant IS NULL-safe, location)`; if no row exists yet, create one with `quantity:'0.0000', reserved:'0.0000'` and the thresholds (so thresholds can be set before any stock lands). `variant_id === null` MUST match `whereNull('variant_id')` (never collapse variant grains). Normalize each threshold to scale-4 with the REAL `QuantityScale` API — `QuantityScale::round($value, QuantityScale::SCALE, QuantityScale::FLOOR)` (or persist `null` to clear) — no float, no nonexistent `bcformatStrict`.
+
+**Location-access authorization (Finding 7 — use the shared §1 rule, NOT a direct context call):** authorize `location_id` via the post-§1 `App\Rules\ValidLocationAccess` rule inside `UpdateStockThresholdsRequest::rules()` (constructor-inject `LocationContext` like §1's `StoreStockTransferRequest`, resolve `company_id` from `CompanyContext`, and add `new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext, $company->id)` to the `location_id` rule array) — do NOT call `LocationContext::validateLocationAccess` imperatively in the controller/service. This aligns the write path with §1's refactored rule contract and yields a 422 (not an ad-hoc 403) on out-of-scope writes.
 
 **Route:**
 ```php
@@ -251,7 +311,7 @@ Route::put('/inventory/stock-levels/thresholds', [StockLevelController::class, '
 ```
 
 **TDD steps**
-- [ ] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row); out-of-scope location → 403. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
+- [ ] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row). **ValidLocationAccess (Finding 7) — all → 422 with a `location_id` error, no `stock_levels` write:** (a) restricted membership editing a location outside the allowed set; (b) absent membership (no `user_company_memberships` row for this company); (c) NULL membership (`allowed_location_ids = NULL`) → ACCEPTED (all-access, post-backfill parity with §1); (d) foreign-company location id (belongs to another company) → 422. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
 - [ ] Implement request, service, controller method, route → GREEN.
 - [ ] `./vendor/bin/phpstan analyse` the 3 new/edited files → 0; `./vendor/bin/pint app/Modules/Inventory`.
 - [ ] Commit: `feat(inventory): per-location min/max threshold editor endpoint (multiloc §2 I1)`.
@@ -304,7 +364,7 @@ export async function updateThresholds(body: {
 
 **Component contract (F7 — canonical only):**
 - Columns = scoped locations (from `useViewScope().effectiveLocationIds`, resolved to names via `useLocations()`), product/variant label column pinned start. Wide → wrap in `overflow-x: auto` (page body never scrolls horizontally).
-- Rows = product-rollup; `is_variant_parent` rows are expandable (chevron) to reveal variant child rows (fetched inline within the same matrix response — variant rows are already in `data`, grouped by `product_id`; expand toggles visibility, no extra fetch).
+- Rows = product-rollup; `is_variant_parent` rows are expandable (chevron) to reveal child rows (fetched inline within the same matrix response — children are already in `data`, grouped by `product_id`; expand toggles visibility, no extra fetch). Children are the variant leaves plus the optional "(base)" leaf (both carry `is_variant_parent: false`; the "(base)" leaf has `variant_id: null` and its name ends with the base suffix — render it as an ordinary editable leaf).
 - **Metric toggle** (available / on-hand / vs min-max) — segmented control using `tokens`; default `available`.
 - Every quantity through `formatQuantity` — NEVER `parseFloat`.
 - **Deficit/surplus tinting via tokens:** cell below `min_quantity` → `tokens.alert.warning` (or `textColors.error`); above `max_quantity` → `tokens.alert.success`; comparisons via `bccomp` from `@/lib/decimal`, guarded on non-null thresholds. No hardcoded Tailwind color classes (rule 18).
@@ -320,8 +380,8 @@ export async function updateThresholds(body: {
 
 **TDD steps**
 - [ ] Write `ProductLocationMatrix.test.tsx` (Vitest + RTL; may `vi.mock` `useViewScope`, `useLocations`, and the matrix query hook per memory's frontend-test convention): renders one column per scoped location; renders `formatQuantity` output (assert rendered text, not classes — rule 17); metric toggle switches displayed value; below-min cell gets the warning token (assert via rendered element/role, not raw class string where avoidable); expand reveals variant rows; threshold input hidden without `inventory.adjust`. Run `pnpm vitest run src/components/organisms/ProductLocationMatrix/ProductLocationMatrix.test.tsx` → RED.
-- [ ] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination. RED.
-- [ ] Implement component, page, api, i18n keys, routing/nav → GREEN both files.
+- [ ] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination; also a **mixed-grain expand** assertion (a variant-parent expands to variant leaves + a "(base)" leaf whose name ends with the base suffix). Run `pnpm vitest run src/features/inventory/pages/StockByLocationPage.test.tsx` → RED.
+- [ ] Implement component, page, api, i18n keys (incl. `stockByLocation.baseGrainSuffix`), routing/nav → GREEN both files.
 - [ ] `cd apps/web && pnpm typecheck && pnpm lint` (or scoped `pnpm lint src/components/organisms/ProductLocationMatrix src/features/inventory`) → 0.
 - [ ] Commit: `feat(web): ProductLocationMatrix + Stock-by-location page with inline thresholds (multiloc §2 F7)`.
 
@@ -350,12 +410,14 @@ Port the `RequestContextPanel` per-location vector into `CreateStockTransferPage
 // available already excludes reserved and in-transit (I6) — do NOT re-subtract anything.
 ```
 
-**UI:** beneath each transfer line, `TransferSourceSuggestion` renders the full per-location vector (reuse the `getProductStock` fetch already in the file via `productStock.ts`) with destination stock + min/max shown, suggested source highlighted (token tint), and an "Use this source" action that sets the line's source. When `suggestSource` returns null, show `t('create.suggestion.none')` empty state. Highlighting: destination row `tokens.alert.warning`, suggested source `tokens.alert.success` — mirror `RequestContextPanel`.
+**Grain — HEADER, not per-line (Finding 2):** transfers carry exactly ONE header `source_location_id` (submitted as `source_location_id`; lines have NO source field — `CreateStockTransferPage.tsx:487,649`). The suggestion is therefore a per-line *advisory* that acts on the shared header source. There is no per-line source and none is introduced.
+
+**UI:** beneath each transfer line, `TransferSourceSuggestion` renders that line's full per-location vector (reuse the `getProductStock` fetch already in the file via `productStock.ts`) with destination stock + min/max shown and the suggested source highlighted (token tint). When `suggestSource` returns null, show `t('create.suggestion.none')` empty state. Highlighting: destination row `tokens.alert.warning`, suggested source `tokens.alert.success` — mirror `RequestContextPanel`. The **"Use this source"** action sets the **header** `source_location_id` (the page's single source state), guarded by a canonical `Modal` confirm dialog — `t('create.suggestion.confirmSwitch', { count: lineCount })` → "This recomputes availability for all {count} lines." On confirm, applying the new header source MUST trigger the existing per-line recompute that already keys off the header source: availability (`quantityAtSource`) AND batch-allocation reallocation (`computeBatchAllocations(batches, sourceLocationId, …)`) for **every** line — reuse the same effect/handler the source `<Select>` already fires; do not special-case a single line. Because sources conflict across lines (each line may suggest a different donor), the confirm dialog is the single point where the user accepts one header source for all lines.
 
 **TDD steps**
 - [ ] Write `suggestSource.test.ts`: surplus wins over fallback; largest-excess tie-break; NULL-threshold fallback picks largest available; below-need excluded; empty → null. `pnpm vitest run src/features/stock-transfers/lib/suggestSource.test.ts` → RED.
 - [ ] Implement `suggestSource.ts` → GREEN.
-- [ ] Wire `TransferSourceSuggestion` into `CreateStockTransferPage`; extend the page test if present (assert suggestion shown, "use source" sets source). Reuse `formatQuantity` for all values.
+- [ ] Wire `TransferSourceSuggestion` into `CreateStockTransferPage`. Extend `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.batchAllocations.test.tsx` (multi-line fixture): assert the suggestion vector renders per line; "Use this source" opens the confirm `Modal`; on confirm the **header** `source_location_id` changes AND **every** line's availability + batch allocations recompute against the new source (assert the reallocated `batchAllocations` on all lines, not just the acting line); on cancel nothing changes. Reuse `formatQuantity` for all values. Run `pnpm vitest run src/features/stock-transfers/__tests__/CreateStockTransferPage.batchAllocations.test.tsx` → GREEN.
 - [ ] `pnpm typecheck && pnpm lint src/features/stock-transfers` → 0.
 - [ ] Commit: `feat(web): suggested transfer source with NULL-threshold fallback (multiloc §2 G3)`.
 
@@ -411,41 +473,82 @@ Schema::table('goods_receipts', function (Blueprint $t): void {
 - In `post()`: resolve destination = `$destinationLocationId ? Location::findScoped(...) : ($purchaseOrder->location ?? getDefaultLocation())`. Persist `$lockedReceipt->location_id = $location->id`. Pass `$location` to `processReceiptLines` (unchanged signature already takes `Location $location`).
 - In `processReceiptLines`, for each PO line that actually receives (paid or free qty > 0), set `$line->location_id = $location->id` and save (the line is already loaded/locked in scope). This is the reconciliation write. Guard: only update when the destination differs, to avoid needless writes.
 
+**Repeated partial receipts — single-destination remainder semantics (Finding 6 — the same PO line can be received A-then-B):** `GoodsReceiptService` supports partial-receipt counters on ONE PO line (`GoodsReceiptService.php:300,438`), while the incoming projection reads exactly ONE `document_lines.location_id` per line (`LocationStockQueryService.php:254`). The projection therefore needs a single destination per remainder, so define:
+- **Posted stock history is per-receipt and immutable:** each receipt's `stock_movements` row keeps the destination it actually posted to (receipt 1 → A stays at A; receipt 2 → B stays at B). No historical movement is rewritten.
+- **The PO line's `location_id` reflects the LATEST receipt's destination.** After receipt→A the line reads A; after a subsequent receipt→B the line reads B.
+- **The remaining (still-unreceived) projected incoming quantity follows the PO line — i.e. the latest destination.** After receipt→A of a partial qty, the remainder projects to A; after a later receipt→B, the remainder projects to B (the line's `location_id` now = B). This is a deliberate single-destination rule: the unreceived remainder is assumed to arrive where the most recent receipt landed, keeping the projection unambiguous with zero projection-layer change.
+
 **Frontend:**
 - `ReceiveGoodsDialog`: add a destination `<Select>` (canonical `Select`) at the top of the form, options from `useLocations()` (allowed set), default = PO location if provided. Show per-location context (on-hand / min-max) for the selected destination by reading the receipt's product stock (optional inline panel; keep it lightweight — a single `getProductStock` per line is already the AvailabilityCell pattern). Thread `location_id` into `ReceiveGoodsRequest` and the post call.
 - `StandaloneReceiptPage`: the location `<Select>` (line 377-388) already exists and is required; add the per-location stock/min-max context hint beside it (reuse `getProductStock` for the first line's product or a compact helper). No contract change (already sends `location_id`).
 
 **TDD steps**
 - [ ] Write `GoodsReceiptDestinationTest` (PG): confirmed PO with header/default location A; post receipt with `location_id = B` → assert (a) the stock movement `location_id == B` (via `stock_movements`), (b) each received `document_lines.location_id == B`, (c) `goods_receipts.location_id == B`, (d) projected incoming for the unreceived remainder reads B (query `LocationStockQueryService` or the incoming projection). Also: omitting `location_id` → falls back to PO/default A (unchanged behavior). Out-of-scope B → 403. Run `./vendor/bin/pest tests/Feature/Inventory/GoodsReceiptDestinationTest.php` → RED.
+- [ ] **Repeated partial receipts A-then-B (Finding 6)** — same test file, one PO line ordered qty 10: receipt 1 of qty 4 → destination A, THEN receipt 2 of qty 3 → destination B. Assert AFTER receipt 1: a `stock_movements` row of 4 at A, `document_lines.location_id == A`, projected incoming remainder (10−4=6) reads A. Assert AFTER receipt 2: the receipt-1 movement STILL at A (immutable history) plus a new movement of 3 at B, `document_lines.location_id == B` (latest destination), and projected incoming remainder (10−7=3) reads B (follows the line). This pins the single-destination remainder semantics above.
 - [ ] Implement migration, model, service, controller → GREEN. Run migration on the test PG connection via `RefreshDatabase`.
 - [ ] `./vendor/bin/phpstan analyse` edited backend files → 0; `./vendor/bin/pint`.
-- [ ] FE: add destination select + context; extend `ReceiveGoodsDialog` test to assert `location_id` in the emitted request. `pnpm vitest run src/features/purchases` (scoped), `pnpm typecheck && pnpm lint src/features/purchases`.
+- [ ] FE: add destination select + context; extend `ReceiveGoodsDialog` test to assert `location_id` in the emitted request. Run `pnpm vitest run src/features/purchases/components/ReceiveGoodsDialog.test.tsx`, then `pnpm typecheck && pnpm lint src/features/purchases`.
 - [ ] Commit: `feat(inventory): explicit receiving destination reconciled with incoming projection (multiloc §2 I2)`.
 
 ---
 
-## Task 7 — Rebalancing view (G7)
+## Task 7 — Rebalancing endpoint + view (G7; Finding 3 — SERVER-SIDE classification, pinned contract consumed by §4)
 
-Owner-facing "below-min/out at A, surplus at B" grouped-by-product list on the Stock-by-location page, with a prefilled-transfer CTA and empty states.
+Owner-facing "below-min/out at A, surplus at B" grouped-by-product list on the Stock-by-location page, with a prefilled-transfer CTA and empty states. Classification runs on the SERVER (a real endpoint §4 Task 6 consumes verbatim — not a frontend-only derivation), over the same grouped queries Task 1 uses.
 
 **Files**
+- `apps/api/app/Modules/Inventory/Application/Services/StockRebalanceQueryService.php` (new — server-side classification; reuses Task 1's grouped stock/threshold read)
+- `apps/api/app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` (edit — add `rebalance`)
+- `apps/api/app/Modules/Inventory/Presentation/routes.php` (edit — add route)
+- `apps/api/tests/Feature/Inventory/StockRebalanceEndpointTest.php` (new)
+- `apps/web/src/features/inventory/api/stockMatrix.ts` (edit — add `getRebalance` fetcher + `RebalanceRow` type)
 - `apps/web/src/features/inventory/components/RebalancingView.tsx` (new)
-- `apps/web/src/features/inventory/lib/rebalance.ts` (new — pure grouping fn)
+- `apps/web/src/features/inventory/lib/rebalance.ts` (new — pure pairing/sort of the endpoint rows for display)
 - `apps/web/src/features/inventory/lib/rebalance.test.ts` (new)
 - `apps/web/src/features/inventory/pages/StockByLocationPage.tsx` (edit — mount section)
 - `apps/web/src/i18n/locales/{en,fr,ar}/inventory.json` (edit)
 
-**Logic (pure, bccomp only):** consume the same `MatrixRow[]` (with `include=incoming` optional). For each leaf row, classify each location cell:
-- **deficit:** `min_quantity != null && bccomp(available, min_quantity) < 0` (or `available <= 0` = out).
-- **surplus:** `max_quantity != null && bccomp(available, max_quantity) > 0`.
-Emit only products having ≥1 deficit AND ≥1 surplus location (a genuine rebalance opportunity). Fallback when thresholds unset mirrors Task 4's rule (largest-available donor vs zero/negative receiver). Sort by severity (largest deficit first).
+**Endpoint (PINNED CONTRACT — §4 Task 6 consumes this VERBATIM; do not deviate):**
+```
+GET /api/v1/inventory/stock-matrix/rebalance
+  ?location_ids[]=<uuid>&include=incoming
+  middleware: group + can:inventory.view; location_ids[] resolver-scoped (ALWAYS resolve+apply, no bypass)
 
-**UI:** grouped list per product → "Move from {surplus store} → {deficit store}" with quantities via `formatQuantity`; CTA "Create transfer" prefills `CreateStockTransferPage` (`?source_location_id=&destination_location_id=&product_id=&quantity=`). Empty state `t('stockByLocation.rebalance.empty')` when no opportunities. Gate CTA behind `inventory.transfers.create`.
+Response (hand-built JSON):
+{ "data": RebalanceRow[] }
+
+RebalanceRow = {
+  "product_id": string,
+  "variant_id": string | null,             // null = base/non-variant grain (same grain rules as Task 1)
+  "name": string,
+  "sku": string,
+  "deficits":  [{ "location_id": string, "available": string, "min_quantity": string | null }],
+  "surpluses": [{ "location_id": string, "available": string, "max_quantity": string | null, "excess": string }]
+}
+// ALL quantities are scale-4 numeric STRINGS. Only products with ≥1 deficit AND ≥1 surplus are emitted.
+```
+
+**Server-side classification (`StockRebalanceQueryService`, `bccomp`/`bcsub` only, PG):** run over the SAME grouped `stock_levels` read as Task 1 (leaf grain, resolver-scoped locations), classifying each leaf's location cell (`available = bcsub(quantity, reserved, 4)`):
+- **deficit:** `min_quantity != null && bccomp(available, min_quantity) < 0` (or `bccomp(available, '0', 4) <= 0` = out).
+- **surplus:** `max_quantity != null && bccomp(available, max_quantity) > 0`; `excess = bcsub(available, max_quantity, 4)`.
+- **NULL-threshold fallback:** when a product has no thresholds set anywhere, mirror Task 4's rule — the largest-available location is the donor (surplus, `excess = available`, `max_quantity: null`), a location with `available <= 0` is the receiver (deficit, `min_quantity: null`). Only surface the fallback pair when it yields ≥1 donor AND ≥1 receiver.
+- Emit only products with ≥1 deficit AND ≥1 surplus. Sort `data` by severity (largest single deficit magnitude first).
+
+**Route (edit `routes.php`, inside the existing group):**
+```php
+Route::get('/inventory/stock-matrix/rebalance', [StockMatrixController::class, 'rebalance'])
+    ->middleware('can:inventory.view')
+    ->name('inventory.stock-matrix.rebalance');
+```
+
+**FE:** `RebalancingView` fetches `getRebalance({ locationIds, includeIncoming })` (key `locationScopedKey(['inventory-rebalance'], scope)`); `rebalance.ts` is now a PURE pairing/formatting of `RebalanceRow[]` → "Move from {surplus store} → {deficit store}" display rows (quantities via `formatQuantity`), no classification (that is the server's job). CTA "Create transfer" prefills `CreateStockTransferPage` (`?source_location_id=&destination_location_id=&product_id=&quantity=`). Empty state `t('stockByLocation.rebalance.empty')` when `data` empty. Gate CTA behind `inventory.transfers.create`.
 
 **TDD steps**
-- [ ] `rebalance.test.ts`: deficit+surplus pair emitted; product with only deficit (no donor) excluded; NULL-threshold fallback; severity sort. `pnpm vitest run src/features/inventory/lib/rebalance.test.ts` → RED → GREEN.
+- [ ] Write `StockRebalanceEndpointTest` (PG, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs): deficit-at-A + surplus-at-B for one product → one `RebalanceRow` with the deficit/surplus arrays and `excess` correct; product with only a deficit (no donor) → NOT emitted; **NULL-threshold fallback classification** (no thresholds anywhere → largest-available donor + `available<=0` receiver emitted); resolver scoping (restricted user + no param → only allowed locations classified, out-of-scope id → 403); severity sort. Run `./vendor/bin/pest tests/Feature/Inventory/StockRebalanceEndpointTest.php` → RED → GREEN.
+- [ ] `./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockRebalanceQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0; `./vendor/bin/pint app/Modules/Inventory`.
+- [ ] `rebalance.test.ts`: endpoint rows paired into move-from→to display rows; empty → empty state; formatting/severity order preserved. `pnpm vitest run src/features/inventory/lib/rebalance.test.ts` → RED → GREEN.
 - [ ] Implement `RebalancingView`, mount on the page. `pnpm typecheck && pnpm lint src/features/inventory` → 0.
-- [ ] Commit: `feat(web): rebalancing view (below-min/surplus) on Stock-by-location page (multiloc §2 G7)`.
+- [ ] Commit: `feat(inventory): server-side rebalancing endpoint + Stock-by-location view (multiloc §2 G7)`.
 
 ---
 
@@ -456,16 +559,20 @@ Emit only products having ≥1 deficit AND ≥1 surplus location (a genuine reba
 - `apps/web/src/features/inventory/components/ProductMovementsTab.tsx` (edit — send `location_ids[]`, delete client filter, replace `parseFloat`)
 - `apps/api/tests/Feature/Inventory/StockMovementLocationFilterTest.php` (new)
 
-**Backend:** in `index()`, after the existing `product_id`/`movement_type` filters, accept `location_ids[]`:
+**Backend (Finding 5 — ALWAYS resolve, ALWAYS apply; never conditional):** in `index()`, after the existing `product_id`/`movement_type` filters, accept `location_ids[]` and unconditionally scope:
 ```php
+/** @var User $user */
+$user = $request->user();
 $requested = array_values(array_filter((array) $request->input('location_ids', [])));
 if ($request->has('location_id')) { $requested[] = (string) $request->input('location_id'); } // back-compat single
-if ($requested !== []) {
-    $scoped = $this->scopeResolver->resolve($user, array_values(array_unique($requested))); // fail-closed
-    $query->whereIn('location_id', $scoped);
-}
+// ALWAYS call resolve() and ALWAYS apply its result — including the no-param case.
+// Empty $requested → resolver returns the user's FULL effective allowed set, which we
+// still apply, so a restricted user can never see movements outside their locations and
+// an unrestricted user sees every company location. No `if ($requested !== [])` guard.
+$scoped = $this->scopeResolver->resolve($user, array_values(array_unique($requested))); // fail-closed
+$query->whereIn('location_id', $scoped);
 ```
-Inject `LocationScopeResolver` and the `User` (`$request->user()`) — keep constructor injection for the resolver.
+Inject `LocationScopeResolver` via the constructor (`private readonly`); read `$user` from `$request->user()`.
 
 **Frontend (`ProductMovementsTab.tsx`):**
 - Send every selected id as `location_ids[]` (loop `params.append('location_ids[]', id)`), delete lines 114-120 (single-only) and the client-side `useMemo` filter (130-137) — the server now filters. Use `movements = data?.data ?? []` directly.
@@ -473,8 +580,8 @@ Inject `LocationScopeResolver` and the `User` (`$request->user()`) — keep cons
 - Query key becomes `locationScopedKey(['product-movements', productId, page, perPage], scope)` — the scope segment carries the selected ids (or drive the tab's local multi-select through `useViewScope` narrowing per §1 F3; at minimum stop keying on the raw array as a leading segment).
 
 **TDD steps**
-- [ ] `StockMovementLocationFilterTest` (PG): movements at A, B, C; request `location_ids[]=A,B` → only A,B returned; out-of-scope id → 403; no param → all (company-scoped). Run `./vendor/bin/pest tests/Feature/Inventory/StockMovementLocationFilterTest.php` → RED → GREEN.
-- [ ] Edit `ProductMovementsTab`; extend/adjust its test to assert multi-location request hits the server (no client filter) and no `parseFloat` remains (`grep -n parseFloat` on the file returns nothing). `pnpm vitest run src/features/inventory/components/ProductMovementsTab.test.tsx` if present.
+- [ ] `StockMovementLocationFilterTest` (PG): movements at A, B, C. Cases: unrestricted user `location_ids[]=A,B` → only A,B; out-of-scope id → 403 (fail-closed); **unrestricted user NO param → all three (A,B,C), proving the applied full-allowed-set equals the company set**; **restricted user (allowed=[A]) NO param → ONLY A (proves no-param does NOT leak B/C — Finding 5)**; restricted user `location_ids[]=B` → 403. Run `./vendor/bin/pest tests/Feature/Inventory/StockMovementLocationFilterTest.php` → RED → GREEN.
+- [ ] Edit `ProductMovementsTab`; extend/adjust `apps/web/src/features/inventory/components/__tests__/ProductMovementsTab.test.tsx` to assert multi-location request hits the server (no client filter) and no `parseFloat` remains (`grep -n parseFloat` on the file returns nothing). Run `pnpm vitest run src/features/inventory/components/__tests__/ProductMovementsTab.test.tsx`.
 - [ ] `./vendor/bin/phpstan analyse app/Modules/Inventory/Presentation/Controllers/StockMovementController.php` → 0; `pnpm typecheck && pnpm lint src/features/inventory`.
 - [ ] Commit: `fix(inventory): server-side movements location filter + bccomp cleanup (multiloc §2 G15)`.
 
@@ -499,7 +606,7 @@ Run at the END of the package, after all 8 tasks are committed on the feature br
 - [ ] Receive flow with an explicit destination selection; assert the movement landed at the chosen store (via product movements tab filtered to that store).
 - [ ] Visual pass of the matrix page in BOTH light and dark themes (F7 — tint tokens must read correctly in both).
 
-**Backend end-to-end (rule 5):** run each task's `pest` file by path once more together (still by path, not the suite): `./vendor/bin/pest tests/Feature/Inventory/StockMatrixEndpointTest.php tests/Feature/Inventory/StockThresholdTest.php tests/Feature/Inventory/GoodsReceiptDestinationTest.php tests/Feature/Inventory/StockMovementLocationFilterTest.php` → all green; `./vendor/bin/phpstan analyse app/Modules/Inventory` → 0.
+**Backend end-to-end (rule 5):** run each task's `pest` file by path once more together (still by path, not the suite): `./vendor/bin/pest tests/Feature/Inventory/StockMatrixEndpointTest.php tests/Feature/Inventory/StockThresholdTest.php tests/Feature/Inventory/StockRebalanceEndpointTest.php tests/Feature/Inventory/GoodsReceiptDestinationTest.php tests/Feature/Inventory/StockMovementLocationFilterTest.php` → all green; `./vendor/bin/phpstan analyse app/Modules/Inventory` → 0.
 
 **Deploy owes (record in a §2 deploy checklist, do not run on staging without owner sign-off):** `tenants:migrate` for `goods_receipts.location_id` (Task 6). No permission reseed (Tasks reuse existing `inventory.view`/`inventory.adjust`/`inventory.transfers.*`). Historical `document_lines.location_id` on pre-cutover POs stays default-attributed (documented caveat, no destructive backfill — consistent with §3's documents-header ruling).
 
@@ -507,13 +614,23 @@ Run at the END of the package, after all 8 tasks are committed on the feature br
 
 ## Self-review (coverage vs spec §2 + findings)
 
-- **G3 / I6 / I1-fallback** → Task 4 (suggested source, available-excludes-reserved pinned, NULL-threshold fallback).
-- **G4 / I3 / I4 / I8 / I9** → Tasks 1+3 (bulk endpoint paginated over products, ≤3 grouped queries, variant no-double-count, Postgres tests, new data path budgeted).
+- **G3 / I6 / I1-fallback** → Task 4 (suggested source at HEADER grain, available-excludes-reserved pinned, NULL-threshold fallback).
+- **G4 / I3 / I4 / I8 / I9** → Tasks 1+3 (bulk endpoint paginated over products, ≤3 grouped queries, correct-by-construction rollup, Postgres tests, new data path budgeted).
 - **G5 / I5** → Task 5 (wiring only; backend already serves the fields).
-- **G6 / G10 / I2** → Task 6 (per-receipt destination, reconciled via PO-line `location_id` update — choice stated with code rationale; projection test).
-- **G7** → Task 7 (rebalancing view, empty states, NULL-threshold fallback).
+- **G6 / G10 / I2** → Task 6 (per-receipt destination, reconciled via PO-line `location_id` update — choice stated with code rationale; projection + A-then-B partial-receipt test).
+- **G7** → Task 7 (SERVER-SIDE rebalancing endpoint + view, empty states, NULL-threshold fallback).
 - **G15 / I7** → Task 8 (server-side `location_ids[]`, client filter deleted, `parseFloat`→`bccomp`).
 - **I1 (keystone)** → Task 2 endpoint + Task 3/Task 5 inline editors (thresholds no longer NULL-only).
 - **F7** → Task 3 contract (DataTable/token grid, PageHeader, `t()`/RTL, `formatQuantity`, token tinting) + light/dark visual gate.
-- **§1 dependencies** → "Consumes from §1" section (resolver signature `resolve(user, requestedIds, ?bypassPermission)`, `useViewScope`, `locationScopedKey`, `GET /company/locations`) — all consumed, none rebuilt; signatures match §1 pinned contracts.
+- **§1 dependencies** → "Consumes from §1" section (resolver `App\Modules\Company\Services\LocationScopeResolver::resolve(user, requestedIds, ?bypassPermission)` with `bypassPermission=null` always, `useViewScope`, `locationScopedKey`, `GET /company/locations`) — all consumed verbatim, none rebuilt.
+
+**Codex adversarial-review resolutions (Plan 2, findings 1–7 + cross-cutting):**
+- **Finding 1** (rollup double-count) → Task 1 grain discipline is now correct-by-construction (parent = SUM over ALL rows once; children = per-variant leaves + optional "(base)" leaf; `sum(children)===parent`) + a mixed-data test (base row AND variant rows at one location).
+- **Finding 2** (nonexistent line-level source) → Task 4 operates at the transfer HEADER grain; "Use this source" sets `source_location_id` behind a confirm dialog that recomputes availability + batch allocations for ALL lines; test asserts all-line recompute.
+- **Finding 3** (§4 needs a rebalance endpoint) → Task 7 now ships `GET /inventory/stock-matrix/rebalance` with a PINNED response contract §4 consumes verbatim + PHPUnit incl. NULL-threshold fallback.
+- **Finding 4** (nonexistent `QuantityScale::bcformatStrict`) → Task 2 uses the real API `QuantityScale::round($v, QuantityScale::SCALE, QuantityScale::FLOOR)`.
+- **Finding 5** (resolver bypassed on no-param) → Task 8 ALWAYS resolves + applies; restricted-user/no-param test proves only allowed locations return.
+- **Finding 6** (partial-receipt A-then-B untested) → Task 6 defines single-destination remainder semantics (line = latest destination; history immutable per receipt) + a walking A-then-B test.
+- **Finding 7** (threshold auth off-contract) → Task 2 authorizes `location_id` via the §1 `ValidLocationAccess` FormRequest rule; tests cover absent/NULL/foreign-company/restricted membership.
+- **Cross-cutting 1/2** → "Consumes from §1" quotes §1's exact contracts and pins `bypassPermission=null` always; every read endpoint always resolves+applies. **Cross-cutting 5** → all test commands are exact file paths (verified against the repo).
 - No placeholders, no `// TODO`; every task has failing-test-first steps, exact by-path commands, real contract/migration/query code, and a commit.
