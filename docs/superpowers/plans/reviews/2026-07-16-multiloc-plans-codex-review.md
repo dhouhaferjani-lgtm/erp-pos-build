@@ -285,3 +285,12 @@
 
 Codex session ID: 019f6a1e-03b3-78a1-ba67-e1722c192b71
 Resume in Codex: codex resume 019f6a1e-03b3-78a1-ba67-e1722c192b71
+
+---
+
+## Re-review record (same Codex thread, 019f6a1e-03b3-78a1-ba67-e1722c192b71)
+
+- **Round 2** (plans @ c369c0641): §2 APPROVE, §3 APPROVE; §1 REJECT (bulk-grant command semantics; wrong Spatie guard `api` vs `sanctum`), §4 REJECT (cash widget field `data.groups` vs real `groups_by_location`; deep links to nonexistent routes; non-null threshold retype vs §2 contract).
+- **Round 3** (@ 649a3e057): §1 guard + per-user mapping fixed → residual: `--force-multi` missing from declared signature + untested; §4 échéancier params unpinned. Fixed @ 6d5176439 (+ bulk-refusal/forced-bulk tests; `maturity_from`/`maturity_to` pinned to `InstrumentListPage.tsx:113-114`).
+- **Round 4** (@ 6d5176439): §4 APPROVE; §1 residual = implementation-step signature drift. Fixed @ 552aa3da7.
+- **FINAL: §1 APPROVE · §2 APPROVE · §3 APPROVE · §4 APPROVE** — plans are dispatch-ready at `552aa3da7`.
