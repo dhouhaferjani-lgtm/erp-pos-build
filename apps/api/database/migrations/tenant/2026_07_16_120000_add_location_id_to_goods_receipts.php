@@ -12,14 +12,14 @@ return new class extends Migration
     {
         Schema::table('goods_receipts', function (Blueprint $table): void {
             $table->uuid('location_id')->nullable()->after('purchase_order_id');
-            $table->index(['company_id', 'location_id']);
+            $table->index(['tenant_id', 'company_id', 'location_id'], 'goods_receipts_tenant_company_location_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('goods_receipts', function (Blueprint $table): void {
-            $table->dropIndex('goods_receipts_company_id_location_id_index');
+            $table->dropIndex('goods_receipts_tenant_company_location_idx');
             $table->dropColumn('location_id');
         });
     }
