@@ -114,7 +114,7 @@ final class OutboundInstrumentEndpointsTest extends TestCase
             ->assertOk();
     }
 
-    public function test_manager_is_forbidden_from_clear_and_cancel_outbound(): void
+    public function test_manager_is_forbidden_from_all_outbound_actions(): void
     {
         $instrument = $this->instrument();
 
@@ -122,8 +122,66 @@ final class OutboundInstrumentEndpointsTest extends TestCase
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/clear-outbound")
             ->assertForbidden();
         $this->actingAs($this->manager)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/bounce-outbound")
+            ->assertForbidden();
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/represent")
+            ->assertForbidden();
+        $this->actingAs($this->manager)
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/cancel-outbound", ['reason' => 'No authority'])
             ->assertForbidden();
+    }
+
+    public function test_all_outbound_actions_hide_another_company_instrument(): void
+    {
+        $otherCompany = Company::factory()->tunisia()->create(['tenant_id' => $this->tenant->id]);
+        app(ChartOfAccountsService::class)->seedForCompany($otherCompany);
+        $otherPartner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+        ]);
+        $otherBank = PaymentRepository::factory()->for($otherCompany)->create([
+            'tenant_id' => $this->tenant->id,
+            'type' => RepositoryType::BankAccount,
+            'gl_account_id' => Account::findByPurposeOrFail($otherCompany->id, SystemAccountPurpose::Bank)->id,
+            'currency' => 'TND',
+            'balance' => '500.000',
+        ]);
+        $otherMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+        $instrument = PaymentInstrument::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'payment_method_id' => $otherMethod->id,
+            'partner_id' => $otherPartner->id,
+            'reference' => 'OTHER-COMPANY-'.Str::upper(Str::random(8)),
+            'amount' => '25.000',
+            'currency' => 'TND',
+            'received_date' => '2026-07-18',
+            'status' => InstrumentStatus::Received,
+            'kind' => InstrumentKind::Cheque,
+            'direction' => InstrumentDirection::Outbound,
+            'origin' => InstrumentOrigin::Web,
+            'repository_id' => $otherBank->id,
+            'created_by' => $this->admin->id,
+        ]);
+
+        foreach ([
+            ['clear-outbound', []],
+            ['bounce-outbound', []],
+            ['represent', []],
+            ['cancel-outbound', ['reason' => 'No cross-company mutation']],
+        ] as [$action, $payload]) {
+            $this->actingAs($this->admin)
+                ->postJson("/api/v1/payment-instruments/{$instrument->id}/{$action}", $payload)
+                ->assertNotFound();
+        }
+
+        $this->assertSame(InstrumentStatus::Received, $instrument->fresh()?->status);
     }
 
     public function test_inbound_instrument_and_invalid_outbound_transition_return_422(): void
