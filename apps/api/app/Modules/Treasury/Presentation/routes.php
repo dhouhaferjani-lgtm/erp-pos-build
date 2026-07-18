@@ -142,6 +142,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:instruments.cancel')
         ->name('payment-instruments.cancel');
 
+    Route::post('/payment-instruments/{instrument}/clear-outbound', [PaymentInstrumentController::class, 'clearOutbound'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.clear-outbound');
+
+    Route::post('/payment-instruments/{instrument}/bounce-outbound', [PaymentInstrumentController::class, 'bounceOutbound'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.bounce-outbound');
+
+    Route::post('/payment-instruments/{instrument}/represent', [PaymentInstrumentController::class, 'represent'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.represent');
+
+    Route::post('/payment-instruments/{instrument}/cancel-outbound', [PaymentInstrumentController::class, 'cancelOutbound'])
+        ->middleware('can:instruments.cancel-outbound')
+        ->name('payment-instruments.cancel-outbound');
+
     Route::get('/instrument-remittances', [InstrumentRemittanceController::class, 'index'])
         ->middleware('can:instruments.remit')->name('instrument-remittances.index');
     Route::post('/instrument-remittances', [InstrumentRemittanceController::class, 'store'])

@@ -179,7 +179,7 @@ final readonly class OutboundInstrumentService
 
 **Interfaces:**
 - Produces: `POST /payment-instruments/{instrument}/clear-outbound | bounce-outbound | represent | cancel-outbound` → thin delegations. **Permissions: `instruments.clear-outbound`** (clear/bounce/represent — one operational capability) **and `instruments.cancel-outbound`** (cancel — heavier: reopens AP; parity with the inbound `clear`/`cancel` split). **Grants: `admin` + `accountant`** (the roles holding the inbound analogs, seeder `:476-482`/`:700-706`; there is NO `owner` role).
-- [ ] Steps: failing tests (happy path ×4; 403 for `manager`; inbound instrument 422; invalid transition 422; malformed UUID → 404 not 500) → implement → green → commit `feat(treasury): outbound lifecycle endpoints + split permissions`.
+- [x] Steps: failing tests (happy path ×4; 403 for `manager`; inbound instrument 422; invalid transition 422; malformed UUID → 404 not 500) → implement → green → commit `feat(treasury): outbound lifecycle endpoints + split permissions`.
 
 ### Task 8: Reconcile check-4 outbound + maturity alerts
 
