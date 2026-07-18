@@ -381,7 +381,7 @@ final class LocationScopeResolver
 
 **Steps**
 
-- [ ] Write the failing test. `apps/api/tests/Feature/Company/LocationScopeResolverTest.php`. Build a tenant/company + two locations (A, B) + a bound `CompanyContext` (`app(CompanyContext::class)->setCompany($company)` in setUp is fine for an HTTP-context test), then:
+- [x] Write the failing test. `apps/api/tests/Feature/Company/LocationScopeResolverTest.php`. Build a tenant/company + two locations (A, B) + a bound `CompanyContext` (`app(CompanyContext::class)->setCompany($company)` in setUp is fine for an HTTP-context test), then:
 ```php
 public function test_fail_closed_when_requesting_out_of_scope_location(): void
 {
@@ -418,8 +418,8 @@ public function test_bypass_permission_grants_full_company_set_despite_restricti
     $this->assertSame([$this->locationB->id], $this->resolver()->resolve($user, [$this->locationB->id], 'replenishment.process'));
 }
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationScopeResolverTest.php`
-- [ ] Implement. `apps/api/app/Modules/Company/Services/LocationScopeResolver.php`:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationScopeResolverTest.php`
+- [x] Implement. `apps/api/app/Modules/Company/Services/LocationScopeResolver.php`:
 ```php
 <?php
 
@@ -503,9 +503,9 @@ final class LocationScopeResolver
     }
 }
 ```
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Services/LocationScopeResolver.php`
-- [ ] Commit: `feat(multiloc): LocationScopeResolver shared read-scope contract (§1 step 4a)`
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Services/LocationScopeResolver.php`
+- [x] Commit: `feat(multiloc): LocationScopeResolver shared read-scope contract (§1 step 4a)`
 
 ---
 
