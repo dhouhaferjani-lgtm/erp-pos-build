@@ -16,6 +16,9 @@
       },
       "instrument": {
         "maturity_alert": "Alerte d’échéance des instruments"
+      },
+      "maturity": {
+        "outbound_due": "Instruments sortants à échéance"
       }
     },
     "expense": {
@@ -33,6 +36,9 @@
       },
       "instrument": {
         "maturity_alert": "{{receivedCount}} instruments reçus et {{depositedCount}} instruments déposés nécessitent votre attention."
+      },
+      "maturity": {
+        "outbound_due": "{{count}} instruments sortants doivent être provisionnés avant leur date d’échéance."
       }
     },
     "expense": {

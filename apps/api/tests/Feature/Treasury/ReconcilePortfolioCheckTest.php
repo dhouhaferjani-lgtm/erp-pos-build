@@ -114,6 +114,56 @@ final class ReconcilePortfolioCheckTest extends TestCase
         $this->assertNull($repository->fresh()?->frozen_reason);
     }
 
+    public function test_linked_outbound_received_and_bounced_match_payable_liability_balances(): void
+    {
+        $context = $this->context();
+
+        $this->linkedInstrument(
+            $context,
+            InstrumentKind::Cheque,
+            InstrumentStatus::Received,
+            '75.000',
+            InstrumentDirection::Outbound,
+        );
+        $this->linkedInstrument(
+            $context,
+            InstrumentKind::Effet,
+            InstrumentStatus::Bounced,
+            '45.000',
+            InstrumentDirection::Outbound,
+        );
+        $this->postPortfolioCredit($context, '4035', '75.000');
+        $this->postPortfolioCredit($context, '403', '45.000');
+
+        $this->assertSame(0, Artisan::call('treasury:reconcile', ['--tenant' => $context['tenant']->id]));
+        $this->assertSame(0, AuditEvent::query()->where('event_type', 'treasury.reconcile.portfolio_drift')->count());
+    }
+
+    public function test_outbound_payable_drift_alerts_but_never_freezes_a_repository(): void
+    {
+        $context = $this->context();
+
+        $this->linkedInstrument(
+            $context,
+            InstrumentKind::Cheque,
+            InstrumentStatus::Received,
+            '40.000',
+            InstrumentDirection::Outbound,
+        );
+
+        $this->assertSame(1, Artisan::call('treasury:reconcile', ['--tenant' => $context['tenant']->id]));
+
+        $event = AuditEvent::query()
+            ->where('company_id', $context['company']->id)
+            ->where('event_type', 'treasury.reconcile.portfolio_drift')
+            ->sole();
+        $this->assertSame('checks_to_pay', $event->payload['mismatches'][0]['purpose']);
+        $this->assertSame('40.000', $event->payload['mismatches'][0]['instrument_total']);
+        $this->assertSame('0.000', $event->payload['mismatches'][0]['gl_balance']);
+        $this->assertNull($context['bank']->fresh()?->frozen_at);
+        $this->assertNull($context['bank']->fresh()?->frozen_reason);
+    }
+
     public function test_cutover_watermark_excludes_older_instrument_rows_and_gl_noise(): void
     {
         Carbon::setTestNow('2026-07-01 10:00:00');
@@ -210,8 +260,9 @@ final class ReconcilePortfolioCheckTest extends TestCase
         InstrumentKind $kind,
         InstrumentStatus $status,
         string $amount,
+        InstrumentDirection $direction = InstrumentDirection::Inbound,
     ): PaymentInstrument {
-        $instrument = $this->instrument($context, $kind, $status, $amount);
+        $instrument = $this->instrument($context, $kind, $status, $amount, $direction);
         $payment = Payment::query()->create([
             'tenant_id' => $context['tenant']->id,
             'company_id' => $context['company']->id,
@@ -246,6 +297,7 @@ final class ReconcilePortfolioCheckTest extends TestCase
         InstrumentKind $kind,
         InstrumentStatus $status,
         string $amount,
+        InstrumentDirection $direction = InstrumentDirection::Inbound,
     ): PaymentInstrument {
         return PaymentInstrument::query()->create([
             'tenant_id' => $context['tenant']->id,
@@ -257,7 +309,7 @@ final class ReconcilePortfolioCheckTest extends TestCase
             'received_date' => now()->toDateString(),
             'maturity_date' => now()->addMonth()->toDateString(),
             'status' => $status,
-            'direction' => InstrumentDirection::Inbound,
+            'direction' => $direction,
             'kind' => $kind,
             'origin' => InstrumentOrigin::Web,
             'repository_id' => $context['safe']->id,
@@ -299,6 +351,46 @@ final class ReconcilePortfolioCheckTest extends TestCase
         JournalLine::query()->create([
             'journal_entry_id' => $entry->id,
             'account_id' => $offset->id,
+            'debit' => '0',
+            'credit' => $amount,
+            'line_order' => 1,
+        ]);
+    }
+
+    /**
+     * @param  array{tenant: Tenant, company: Company, partner: Partner, method: PaymentMethod, user: User, bank: PaymentRepository, safe: PaymentRepository}  $context
+     */
+    private function postPortfolioCredit(array $context, string $accountCode, string $amount): void
+    {
+        $portfolio = Account::query()
+            ->where('company_id', $context['company']->id)
+            ->where('code', $accountCode)
+            ->firstOrFail();
+        $offset = Account::query()
+            ->where('company_id', $context['company']->id)
+            ->where('code', '401')
+            ->firstOrFail();
+        $entry = JournalEntry::query()->create([
+            'tenant_id' => $context['tenant']->id,
+            'company_id' => $context['company']->id,
+            'entry_number' => 'EF-'.Str::upper(Str::random(8)),
+            'entry_date' => now()->toDateString(),
+            'description' => 'Outbound portfolio reconcile fixture',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'instrument',
+            'source_id' => (string) Str::uuid(),
+            'posted_at' => now(),
+        ]);
+        JournalLine::query()->create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $offset->id,
+            'debit' => $amount,
+            'credit' => '0',
+            'line_order' => 0,
+        ]);
+        JournalLine::query()->create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $portfolio->id,
             'debit' => '0',
             'credit' => $amount,
             'line_order' => 1,

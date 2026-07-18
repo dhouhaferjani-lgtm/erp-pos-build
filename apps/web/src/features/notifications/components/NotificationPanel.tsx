@@ -21,6 +21,7 @@ const KNOWN_TYPES = new Set([
   'treasury.reconcile.drift',
   'treasury.reconcile.portfolio_drift',
   'treasury.instrument.maturity_alert',
+  'treasury.maturity.outbound_due',
   'expense.recurring.generated',
 ])
 
@@ -30,6 +31,11 @@ function stringValue(value: unknown): string {
 
 function countValue(value: unknown): string {
   return typeof value === 'number' || typeof value === 'string' ? String(value) : '0'
+}
+
+function numericCountValue(value: unknown): number {
+  const count = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(count) ? count : 0
 }
 
 function displayMessage(notification: AppNotification, t: ReturnType<typeof useTranslation>['t']): string {
@@ -49,6 +55,10 @@ function displayMessage(notification: AppNotification, t: ReturnType<typeof useT
       return t('messages.treasury.instrument.maturity_alert', {
         depositedCount: countValue(notification.data['deposited_overdue_count']),
         receivedCount: countValue(notification.data['received_due_count']),
+      })
+    case 'treasury.maturity.outbound_due':
+      return t('messages.treasury.maturity.outbound_due', {
+        count: numericCountValue(notification.data['outbound_due_count']),
       })
     case 'expense.recurring.generated': {
       const currency = stringValue(notification.data['currency']) || 'EUR'

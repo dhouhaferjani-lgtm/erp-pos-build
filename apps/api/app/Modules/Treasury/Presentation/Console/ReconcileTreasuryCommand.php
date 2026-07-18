@@ -46,9 +46,9 @@ use Throwable;
  *      (a Posted `journal_entries` row) with a matching amount. Exemptions:
  *      `opening_balance` legs and same-GL-account transfer legs.
  *   3. Every `transfer_group_id` nets to zero across its legs.
- *   4. Linked, post-cutover inbound portfolio nominal value matches the full
- *      balance of each reserved portfolio account. Manual no-receipt paper and
- *      pre-watermark rows/JEs are excluded.
+ *   4. Linked, post-cutover instrument portfolio nominal value matches the
+ *      normal balance of each reserved receivable/payable portfolio account.
+ *      Manual no-receipt paper and pre-watermark rows/JEs are excluded.
  *
  * Checks 1–3 freeze the affected cash repository and raise
  * `treasury.reconcile.drift`. Check 4 has no repository target: it raises
@@ -241,8 +241,8 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
 
     /**
      * Check #4 is company-level and alert-only: it never freezes a repository.
-     * Manual inbound instruments remain intentionally unlinked until supplied to
-     * a payment, so only `payment_id`-linked paper participates in the equality.
+     * Manual instruments remain intentionally unlinked until supplied to a
+     * payment or expense, so only financially linked paper participates.
      *
      * @return list<array{purpose: string, account_id: string, instrument_total: numeric-string, gl_balance: numeric-string}>
      */
@@ -250,13 +250,15 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     {
         $scale = $this->scaleResolver->getScaleSafe($company->currency, 3);
         $comparisons = [
-            [InstrumentAccountPurpose::ChecksToCollect, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Deposited]],
-            [InstrumentAccountPurpose::EffectsReceivable, InstrumentKind::Effet, [InstrumentStatus::Received]],
-            [InstrumentAccountPurpose::EffectsInCollection, InstrumentKind::Effet, [InstrumentStatus::Deposited]],
+            [InstrumentAccountPurpose::ChecksToCollect, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Deposited], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::EffectsReceivable, InstrumentKind::Effet, [InstrumentStatus::Received], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::EffectsInCollection, InstrumentKind::Effet, [InstrumentStatus::Deposited], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::ChecksToPay, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Bounced], InstrumentDirection::Outbound, true],
+            [InstrumentAccountPurpose::EffetsPayable, InstrumentKind::Effet, [InstrumentStatus::Received, InstrumentStatus::Bounced], InstrumentDirection::Outbound, true],
         ];
         $mismatches = [];
 
-        foreach ($comparisons as [$purpose, $kind, $statuses]) {
+        foreach ($comparisons as [$purpose, $kind, $statuses, $direction, $creditNormal]) {
             $accountId = $this->instrumentAccountResolver->resolve($purpose, $company->id);
             if ($accountId === null) {
                 Log::info('treasury.reconcile.portfolio_account_missing', [
@@ -268,8 +270,8 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 continue;
             }
 
-            $instrumentTotal = $this->pendingInstrumentTotal($company, $kind, $statuses, $scale);
-            $glBalance = $this->portfolioAccountBalance($company, $accountId, $scale);
+            $instrumentTotal = $this->pendingInstrumentTotal($company, $kind, $statuses, $direction, $scale);
+            $glBalance = $this->portfolioAccountBalance($company, $accountId, $direction, $creditNormal, $scale);
             if (bccomp($instrumentTotal, $glBalance, $scale) !== 0) {
                 $mismatches[] = [
                     'purpose' => $purpose->value,
@@ -287,15 +289,27 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
      * @param  list<InstrumentStatus>  $statuses
      * @return numeric-string
      */
-    private function pendingInstrumentTotal(Company $company, InstrumentKind $kind, array $statuses, int $scale): string
-    {
+    private function pendingInstrumentTotal(
+        Company $company,
+        InstrumentKind $kind,
+        array $statuses,
+        InstrumentDirection $direction,
+        int $scale,
+    ): string {
         $query = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->where('direction', InstrumentDirection::Inbound)
+            ->where('direction', $direction)
             ->where('kind', $kind)
             ->whereIn('status', $statuses)
-            ->whereNotNull('payment_id');
+            ->where(function ($linked): void {
+                $linked->whereNotNull('payment_id')
+                    ->orWhereExists(function ($expenseMetadata): void {
+                        $expenseMetadata->selectRaw('1')
+                            ->from('expense_metadata')
+                            ->whereColumn('expense_metadata.payment_instrument_id', 'payment_instruments.id');
+                    });
+            });
 
         if ($company->phase2_cutover_at !== null) {
             $query->where('created_at', '>=', $company->phase2_cutover_at);
@@ -311,8 +325,13 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     }
 
     /** @return numeric-string */
-    private function portfolioAccountBalance(Company $company, string $accountId, int $scale): string
-    {
+    private function portfolioAccountBalance(
+        Company $company,
+        string $accountId,
+        InstrumentDirection $direction,
+        bool $creditNormal,
+        int $scale,
+    ): string {
         $query = JournalLine::query()
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.tenant_id', $company->tenant_id)
@@ -340,18 +359,35 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         // and pre-cutover rows) have no included receipt-side GL. Their later,
         // post-cutover lifecycle entries must be removed as the same excluded
         // circuit or they create permanent false drift.
-        return bcsub($fullBalance, $this->excludedInstrumentGlNet($company, $accountId, $scale), $scale);
+        $comparableBalance = bcsub(
+            $fullBalance,
+            $this->excludedInstrumentGlNet($company, $accountId, $direction, $scale),
+            $scale,
+        );
+
+        return $creditNormal ? bcsub('0', $comparableBalance, $scale) : $comparableBalance;
     }
 
     /** @return numeric-string */
-    private function excludedInstrumentGlNet(Company $company, string $accountId, int $scale): string
-    {
+    private function excludedInstrumentGlNet(
+        Company $company,
+        string $accountId,
+        InstrumentDirection $direction,
+        int $scale,
+    ): string {
         $excludedQuery = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->where('direction', InstrumentDirection::Inbound)
+            ->where('direction', $direction)
             ->where(function ($query) use ($company): void {
-                $query->whereNull('payment_id');
+                $query->where(function ($unlinked): void {
+                    $unlinked->whereNull('payment_id')
+                        ->whereNotExists(function ($expenseMetadata): void {
+                            $expenseMetadata->selectRaw('1')
+                                ->from('expense_metadata')
+                                ->whereColumn('expense_metadata.payment_instrument_id', 'payment_instruments.id');
+                        });
+                });
                 if ($company->phase2_cutover_at !== null) {
                     $query->orWhere('created_at', '<', $company->phase2_cutover_at);
                 }
@@ -385,6 +421,10 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             ),
             '0',
         );
+
+        if ($direction === InstrumentDirection::Outbound) {
+            return $net;
+        }
 
         /** @var Collection<int, InstrumentRemittanceLine> $excludedRemittanceLines */
         $excludedRemittanceLines = InstrumentRemittanceLine::query()

@@ -184,7 +184,7 @@ final readonly class OutboundInstrumentService
 ### Task 8: Reconcile check-4 outbound + maturity alerts
 
 As Rev 1: extend `ReconcileTreasuryCommand:249-424` with Σ(outbound Received+Bounced by kind) vs payable-purpose GL balances, alert-only; verify `InstrumentMaturityAlertsCommand` outbound coverage first (`MaturingInstrumentsController` already filters both directions `:27-46` — no controller work), extend only if absent; outbound copy `treasury.maturity.outbound_due`.
-- [ ] Steps: failing (seeded outbound drift → alert; clean → silent; inbound regression) → implement → commit `feat(treasury): reconcile outbound portfolio check + maturity alerts`.
+- [x] Steps: failing (seeded outbound drift → alert; clean → silent; inbound regression) → implement → commit `feat(treasury): reconcile outbound portfolio check + maturity alerts`.
 
 🚦 **GATE 3 — treasury-reviewer (Opus).** Focus: the `:975-996` suppression (the double-post), regressions, permission split coverage, alert-only invariant.
 
