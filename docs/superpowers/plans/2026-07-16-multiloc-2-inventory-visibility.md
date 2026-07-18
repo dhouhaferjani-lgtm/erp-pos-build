@@ -485,10 +485,10 @@ Schema::table('goods_receipts', function (Blueprint $t): void {
 **TDD steps**
 - [ ] Write `GoodsReceiptDestinationTest` (PG): confirmed PO with header/default location A; post receipt with `location_id = B` → assert (a) the stock movement `location_id == B` (via `stock_movements`), (b) each received `document_lines.location_id == B`, (c) `goods_receipts.location_id == B`, (d) projected incoming for the unreceived remainder reads B (query `LocationStockQueryService` or the incoming projection). Also: omitting `location_id` → falls back to PO/default A (unchanged behavior). Out-of-scope B → 403. Run `./vendor/bin/pest tests/Feature/Inventory/GoodsReceiptDestinationTest.php` → RED.
 - [ ] **Repeated partial receipts A-then-B (Finding 6)** — same test file, one PO line ordered qty 10: receipt 1 of qty 4 → destination A, THEN receipt 2 of qty 3 → destination B. Assert AFTER receipt 1: a `stock_movements` row of 4 at A, `document_lines.location_id == A`, projected incoming remainder (10−4=6) reads A. Assert AFTER receipt 2: the receipt-1 movement STILL at A (immutable history) plus a new movement of 3 at B, `document_lines.location_id == B` (latest destination), and projected incoming remainder (10−7=3) reads B (follows the line). This pins the single-destination remainder semantics above.
-- [ ] Implement migration, model, service, controller → GREEN. Run migration on the test PG connection via `RefreshDatabase`.
-- [ ] `./vendor/bin/phpstan analyse` edited backend files → 0; `./vendor/bin/pint`.
-- [ ] FE: add destination select + context; extend `ReceiveGoodsDialog` test to assert `location_id` in the emitted request. Run `pnpm vitest run src/features/purchases/components/ReceiveGoodsDialog.test.tsx`, then `pnpm typecheck && pnpm lint src/features/purchases`.
-- [ ] Commit: `feat(inventory): explicit receiving destination reconciled with incoming projection (multiloc §2 I2)`.
+- [x] Migration, model, service, controller, and PO receive path now persist/reconcile the selected destination; default fallback remains unchanged. (The dedicated Postgres A-then-B destination test remains a coverage gap.)
+- [x] PHPStan and Pint pass on edited backend files.
+- [x] FE destination selector threads `location_id` into the request; `ReceiveGoodsDialog.test.tsx` 5 tests pass and web typecheck/scoped ESLint pass.
+- [x] Commits `acda986cf` and `21a4d125d`.
 
 ---
 
