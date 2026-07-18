@@ -17,6 +17,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -122,8 +123,116 @@ final class OutboundInstrumentConcurrencyTest extends TestCase
         }
     }
 
+    public function test_concurrent_cancel_and_clear_serialize_with_exactly_one_winner(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Two-process outbound lifecycle contention requires PostgreSQL.');
+        }
+        if (! function_exists('pcntl_fork')) {
+            $this->markTestSkipped('pcntl is required for the two-process lifecycle proof.');
+        }
+
+        [$instrument, $tenant, $company, $user] = $this->instrument();
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        self::assertNotFalse($sockets);
+        [$parentSocket, $childSocket] = $sockets;
+        $resultFile = tempnam(sys_get_temp_dir(), 'outbound-cancel-clear-');
+        self::assertIsString($resultFile);
+
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parentSocket);
+            DB::disconnect();
+            fread($childSocket, 1);
+            fclose($childSocket);
+
+            try {
+                $result = app(OutboundInstrumentService::class)->cancel(
+                    $instrument->id,
+                    $tenant->id,
+                    $company->id,
+                    $user->id,
+                    'Concurrent cancellation',
+                );
+                file_put_contents($resultFile, json_encode([
+                    'succeeded' => true,
+                    'toStatus' => $result->toStatus,
+                ], JSON_THROW_ON_ERROR));
+                exit(0);
+            } catch (Throwable $exception) {
+                file_put_contents($resultFile, json_encode([
+                    'succeeded' => false,
+                    'error' => $exception::class,
+                ], JSON_THROW_ON_ERROR));
+                exit(0);
+            }
+        }
+
+        fclose($childSocket);
+        try {
+            fwrite($parentSocket, '1');
+            fclose($parentSocket);
+            $parentSucceeded = true;
+            try {
+                app(OutboundInstrumentService::class)->clear(
+                    $instrument->id,
+                    $tenant->id,
+                    $company->id,
+                    $user->id,
+                    '2026-07-18',
+                );
+            } catch (Throwable) {
+                $parentSucceeded = false;
+            }
+
+            $status = 0;
+            pcntl_waitpid($pid, $status);
+            self::assertSame(0, pcntl_wexitstatus($status));
+            $childPayload = json_decode((string) file_get_contents($resultFile), true, 512, JSON_THROW_ON_ERROR);
+            self::assertIsArray($childPayload);
+            $childSucceeded = ($childPayload['succeeded'] ?? null) === true;
+            self::assertCount(1, array_filter(
+                [$parentSucceeded, $childSucceeded],
+                static fn (bool $value): bool => $value,
+            ));
+
+            $fresh = PaymentInstrument::query()->findOrFail($instrument->id);
+            self::assertContains($fresh->status, [InstrumentStatus::Cleared, InstrumentStatus::Cancelled]);
+            self::assertSame(
+                1,
+                InstrumentEvent::query()
+                    ->where('instrument_id', $instrument->id)
+                    ->whereNotNull('action_key')
+                    ->count(),
+            );
+        } finally {
+            if (is_resource($parentSocket)) {
+                fclose($parentSocket);
+            }
+            if (is_file($resultFile)) {
+                unlink($resultFile);
+            }
+        }
+    }
+
     /** @return array{0: PaymentInstrument, 1: Tenant, 2: Company, 3: User} */
     private function clearedInstrument(): array
+    {
+        [$instrument, $tenant, $company, $user] = $this->instrument();
+        app(OutboundInstrumentService::class)->clear(
+            $instrument->id,
+            $tenant->id,
+            $company->id,
+            $user->id,
+            '2026-07-18',
+        );
+
+        return [$instrument, $tenant, $company, $user];
+    }
+
+    /** @return array{0: PaymentInstrument, 1: Tenant, 2: Company, 3: User} */
+    private function instrument(): array
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
@@ -159,13 +268,6 @@ final class OutboundInstrumentConcurrencyTest extends TestCase
             'repository_id' => $bank->id,
             'created_by' => $user->id,
         ]);
-        app(OutboundInstrumentService::class)->clear(
-            $instrument->id,
-            $tenant->id,
-            $company->id,
-            $user->id,
-            '2026-07-18',
-        );
 
         return [$instrument, $tenant, $company, $user];
     }

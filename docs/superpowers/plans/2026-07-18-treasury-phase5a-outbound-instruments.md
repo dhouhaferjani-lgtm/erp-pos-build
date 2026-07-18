@@ -150,8 +150,8 @@ final readonly class OutboundInstrumentService
 - Consumes: deferred-supplier issue artifacts (`Payment` Completed + positive allocations + document `balance_due` reduction + optional paid status — `PaymentController.php:790-813,905-920`).
 - Produces: cancel = ONE transaction (lock order: instrument → payment → allocations → documents): cancellation JE via builder → **negative allocations** appended → document `balance_due`/status recomputed (multi-document and partial-allocation payments included) → payment `Reversed` → `instrument_events` row → afterCommit `InstrumentCancelled` + audit. Replay via action key returns original (Task 2 store — cancel produces no movement, so the event row IS the replay anchor).
 
-- [ ] **Step 1: failing tests** — cancel from Received reopens document balance atomically; from Bounced allowed; from Cleared throws; multi-document allocation reversal; partial-failure injection between JE and allocations ⇒ nothing survives; replay returns original; concurrent cancel+clear on same instrument → exactly one wins.
-- [ ] Steps 2-5 → commit `feat(treasury): outbound cancel with atomic subledger reopen`.
+- [x] **Step 1: failing tests** — cancel from Received reopens document balance atomically; from Bounced allowed; from Cleared throws; multi-document allocation reversal; partial-failure injection between JE and allocations ⇒ nothing survives; replay returns original; concurrent cancel+clear on same instrument → exactly one wins.
+- [x] Steps 2-5 → commit `feat(treasury): outbound cancel with atomic subledger reopen`.
 
 🚦 **GATE 2 — treasury-reviewer (Opus).** Focus: replay-before-validation ordering, builder correctness incl. partner tags, rollback proofs, lock order, event emission.
 
