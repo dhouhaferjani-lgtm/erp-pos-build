@@ -119,7 +119,7 @@ No new `MovementSourceType`: matching never creates movements directly; created/
 
 ### 5.4 Legacy scaffold
 
-Legacy `bank_reconciliations` **mutation routes are removed at ⑤b cutover** (`routes.php:249-279`) — not merely hidden; index/show may remain read-only if anything consumes them (trace first). Only the new completion action may stamp `payment_repositories.last_reconciled_*`. Tables kept (no data migration); `BankReconciliationService` deprecated and deleted in a cleanup task once the workspace ships.
+Legacy `bank_reconciliations` **mutation routes are removed only after the replacement workspace ships** (Wave-5 cutover; `Presentation/routes.php:249-279`) — not merely hidden; index/show may remain read-only if anything consumes them (trace first). The cutover includes the FE surface: delete `features/treasury/api/reconciliation.ts` + `BankReconciliationPage.tsx` (+tests/types/i18n) and repoint the FinanceHub card. Only the new completion action may stamp `payment_repositories.last_reconciled_*`. Tables kept (no data migration); `BankReconciliationService` deleted in the same cutover.
 
 ## 6. Phase ⑤b — matching
 
@@ -194,7 +194,7 @@ Alert-only additions (no freeze): (a) reconciled statements whose stored sums no
 ## 10. Delivery & gates
 
 - One umbrella spec; **two implementation plans**: ⑤a (outbound instruments) → ⑤b (import + reconciliation, whose wave 0 = payment-method routing). ⑤b's aggregate/parser/workspace tasks may start once ⑤a's plan is locked; tier-3 outbound matching needs ⑤a shipped.
-- Standing gates: adversarial review of each plan **before dispatch**; `treasury-reviewer` at every milestone; expert-comptable confirmation of §4.1 chart codes before ⑤a build; human merges only.
+- Standing gates: adversarial review of each plan **before dispatch**; `treasury-reviewer` at every milestone; expert-comptable confirmation of §4.1 chart codes — **build may proceed on the provisional codes; nothing merges to dev until confirmed** (plan-aligned wording); human merges only.
 - Execution in worktree `../erp.treasury-phase5` (branch `feat/treasury-phase5-design`, based on local dev `e948ccaaf`); promotion via batched fast-forward discipline.
 - Deploy notes (stacking on the owed ③/④ checklists): ⑤a = purposes seeder migration + backfill command + perm reseed; ⑤b = 5 migrations + routing backfill + perm reseed + cache-reset.
 
