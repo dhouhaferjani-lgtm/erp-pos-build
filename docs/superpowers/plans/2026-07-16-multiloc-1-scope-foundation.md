@@ -673,17 +673,17 @@ public function __construct(
 
 **Steps**
 
-- [ ] Write the failing test. Assert: a user restricted to location B is rejected (422) when creating a transfer with `source_location_id = A`; a NULL-membership (post-backfill) user is accepted; and grep-guard that `ValidLocationAccess.php` contains no `app(` token. Semantics reminder: stock transfer requires access to SOURCE only (destination may be anywhere) — apply the rule to `source_location_id`, not `destination_location_id`.
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php`
-- [ ] Implement — rule. Replace the two `app(...)` calls with the injected `$this->locationContext` / `$this->companyContext`; keep `Auth::user()` (facade, allowed). Resolve company id via `$this->companyId ?? ($this->companyContext->hasCompany() ? $this->companyContext->requireCompanyId() : null)`; fail on null.
-- [ ] Implement — request. In `StoreStockTransferRequest`, inject `LocationContext $locationContext` alongside the existing `CompanyContext`, and add to the `source_location_id` rule array (after `ScopedExists::company(...)`):
+- [x] Write the failing test. Assert: a user restricted to location B is rejected (422) when creating a transfer with `source_location_id = A`; a NULL-membership (post-backfill) user is accepted; and grep-guard that `ValidLocationAccess.php` contains no `app(` token. Semantics reminder: stock transfer requires access to SOURCE only (destination may be anywhere) — apply the rule to `source_location_id`, not `destination_location_id`.
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php`
+- [x] Implement — rule. Replace the two `app(...)` calls with the injected `$this->locationContext` / `$this->companyContext`; keep `Auth::user()` (facade, allowed). Resolve company id via `$this->companyId ?? ($this->companyContext->hasCompany() ? $this->companyContext->requireCompanyId() : null)`; fail on null.
+- [x] Implement — request. In `StoreStockTransferRequest`, inject `LocationContext $locationContext` alongside the existing `CompanyContext`, and add to the `source_location_id` rule array (after `ScopedExists::company(...)`):
 ```php
 new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext, $company->id),
 ```
 (Keep the controller's existing `canAccessLocation` check as defense-in-depth.)
-- [ ] Run it (green): same command. Also re-run the existing per-user scope suite by exact path to confirm no regression: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationScopeTest.php`. This file already pins the enforcement contract activated here — the load-bearing regression cases are `test_unrestricted_user_can_initiate_from_anywhere` (NULL-membership admin still creates from any source — must stay green post-backfill), `test_restricted_user_cannot_initiate_from_location_they_lack` (restricted user blocked from a source outside their set → 403 `LOCATION_ACCESS_DENIED`), and `test_restricted_user_can_initiate_from_their_location_to_any_destination` (source access is what's checked, destination may be anywhere).
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Rules/ValidLocationAccess.php app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php`
-- [ ] Commit: `refactor(multiloc): ValidLocationAccess off app(), activate on stock-transfer source (§1 step 4b)`
+- [x] Run it (green): same command. Also re-run the existing per-user scope suite by exact path to confirm no regression: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationScopeTest.php`. This file already pins the enforcement contract activated here — the load-bearing regression cases are `test_unrestricted_user_can_initiate_from_anywhere` (NULL-membership admin still creates from any source — must stay green post-backfill), `test_restricted_user_cannot_initiate_from_location_they_lack` (restricted user blocked from a source outside their set → 403 `LOCATION_ACCESS_DENIED`), and `test_restricted_user_can_initiate_from_their_location_to_any_destination` (source access is what's checked, destination may be anywhere).
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Rules/ValidLocationAccess.php app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php`
+- [x] Commit: `refactor(multiloc): ValidLocationAccess off app(), activate on stock-transfer source (§1 step 4b)`
 
 ---
 
