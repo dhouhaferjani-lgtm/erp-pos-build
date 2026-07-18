@@ -16,6 +16,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
+use App\Modules\Treasury\Application\Projections\Concerns\ResolvesTerminalLocation;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -127,6 +128,8 @@ use RuntimeException;
  */
 final class TreasuryReceiptBridge implements FiscalEventProjector
 {
+    use ResolvesTerminalLocation;
+
     public function __construct(
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CanonicalPayloadReader $canonicalReader,
@@ -253,7 +256,9 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // above as defensive bail-out for quarantine rows.
         unset($payload);
 
-        DB::transaction(function () use ($event, $receipt): void {
+        $terminalLocationId = $this->resolveTerminalLocationId($event);
+
+        DB::transaction(function () use ($event, $receipt, $terminalLocationId): void {
             // Task 22 round-2 (Codex F1 P1) — PG transaction-scoped
             // advisory lock keyed on (event_id, projector_name). The lock
             // is held until the transaction commits or rolls back, then
@@ -345,6 +350,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     $totalLines,
                     $isRefund,
                     $originalEventId,
+                    $terminalLocationId,
                 );
                 $index++;
             }
@@ -389,6 +395,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         int $totalLines,
         bool $isRefund,
         ?string $originalEventId,
+        ?string $terminalLocationId,
     ): void {
         $amount = $line->amount;
         $methodCode = $line->methodCode;
@@ -547,6 +554,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                             partnerId: $receipt->partner_id,
                             receivedDate: $receipt->posted_at->toDateString(),
                             createdBy: $receipt->cashier_id,
+                            locationId: $terminalLocationId,
                         ),
                     );
                     if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
@@ -589,6 +597,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                         partnerId: $receipt->partner_id,
                         receivedDate: $receipt->posted_at->toDateString(),
                         createdBy: $receipt->cashier_id,
+                        locationId: $terminalLocationId,
                     ),
                 );
                 $instrument = $result->instrument;
@@ -609,6 +618,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'payment_method_id' => $paymentMethod->id,
                 'instrument_id' => $instrument?->id,
                 'repository_id' => $repository->id,
+                'location_id' => $terminalLocationId,
                 'amount' => $amount,
                 'currency' => $receipt->currency,
                 'payment_date' => $receipt->posted_at,

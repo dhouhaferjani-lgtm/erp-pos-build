@@ -90,6 +90,7 @@ final readonly class HandlesMaturityTenderLeg
                     idempotencyKey: $idempotencyKey,
                     needsDetails: true,
                     createdBy: $context->createdBy,
+                    locationId: $context->locationId,
                 ));
             } catch (UniqueConstraintViolationException) {
                 // receive() owns a nested transaction/savepoint. Query only

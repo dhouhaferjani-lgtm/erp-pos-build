@@ -22,6 +22,7 @@ use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
 use App\Modules\Treasury\Application\DTOs\MaturityLegResult;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
+use App\Modules\Treasury\Application\Projections\Concerns\ResolvesTerminalLocation;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
@@ -62,6 +63,8 @@ use Illuminate\Support\Str;
  */
 final class TreasuryDepositBridge implements FiscalEventProjector
 {
+    use ResolvesTerminalLocation;
+
     public function __construct(
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentAllocationService $allocationService,
@@ -93,7 +96,9 @@ final class TreasuryDepositBridge implements FiscalEventProjector
     {
         $view = $this->canonicalReader->forDepositReceipt($event);
 
-        DB::transaction(function () use ($event, $view): void {
+        $terminalLocationId = $this->resolveTerminalLocationId($event);
+
+        DB::transaction(function () use ($event, $view, $terminalLocationId): void {
             if (DB::getDriverName() === 'pgsql') {
                 DB::statement(
                     'SELECT pg_advisory_xact_lock(hashtext(?))',
@@ -135,7 +140,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     if ($debitAccountId === $repository->gl_account_id) {
                         $isMaturityLeg = false;
                     } elseif ($debitAccountId === $this->maturityLegHandler->portfolioAccountId($paymentMethod, $event->company_id)) {
-                        $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId);
+                        $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId);
                         if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
                             throw $this->invariant($event, 'maturity_payment_instrument_conflict');
                         }
@@ -162,7 +167,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 }
             } else {
                 if ($isMaturityLeg) {
-                    $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId);
+                    $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId);
                     $instrument = $result->instrument;
                     $cashAccountOverrideId = $result->portfolioAccountId;
                     $shouldRecordMovement = false;
@@ -176,6 +181,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     'payment_method_id' => $paymentMethod->id,
                     'instrument_id' => $instrument?->id,
                     'repository_id' => $repository->id,
+                    'location_id' => $terminalLocationId ?? $repository->location_id,
                     'amount' => $this->paymentAmount($event, $view),
                     'currency' => $view->payload->currencyCode,
                     'payment_date' => $view->payload->businessDate,
@@ -272,6 +278,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
         PaymentRepository $repository,
         Partner $partner,
         string $actorUserId,
+        ?string $locationId,
     ): MaturityLegResult {
         return $this->maturityLegHandler->handleMaturityLeg(
             $event,
@@ -291,6 +298,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 partnerId: $partner->id,
                 receivedDate: $view->payload->businessDate,
                 createdBy: $actorUserId,
+                locationId: $locationId,
             ),
         );
     }
