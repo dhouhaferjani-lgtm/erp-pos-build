@@ -20,6 +20,7 @@ import { getNetBalance } from './partnerNetBalance'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -40,14 +41,7 @@ interface Partner {
 
 interface PartnersResponse {
   data: Partner[]
-  meta: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-    from: number | null
-    to: number | null
-  }
+  meta: OffsetPaginationMeta
   aggregates?: {
     total_partners: number
     total_active: number

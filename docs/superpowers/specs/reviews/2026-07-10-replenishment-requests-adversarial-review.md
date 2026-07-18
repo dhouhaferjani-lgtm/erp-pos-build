@@ -203,3 +203,15 @@ Target: `feat/permission-map-generator` delta `e948ccaaf..4f5e930dd` (impl `7ef7
 3. Minor: partner edit routes gate on `contacts.update` while backend enforces `partners.update` — operator hidden from partner edit UI (net-neutral vs dev; align if operator parity wanted).
 
 Verdict: **MERGE APPROVED** at `7126703e2` (post-fix).
+
+---
+
+## Round 9 — Wave B pagination-meta consolidation, pre-merge gate (2026-07-18)
+
+Target: `chore/pagination-meta-consolidation` @ `8c59d6d2a` (squashed, on dev `5af99f65d`). frontend-conventions lane (Opus).
+
+**Verdict: APPROVE — zero BLOCKER/MAJOR.** Adversarially verified: diff fully TS-erasable (type-only claim holds, incl. all 4 .tsx sites); canonical `types/pagination.ts` byte-matches backend `PaginatesResults.php:80-85` envelope incl. `from`/`to: number | null`; 14-file old-vs-new sample shows no silent widening/narrowing (extra meta via intersection, optional meta via `Partial<>`, no cursor endpoints force-fitted); both deprecated aliases (`AggregateChannelOrdersMeta`, `ReplenishmentPaginationMeta`) correct + barrel-exported, deleted local types have zero refs; AST guard scans all of src by SHAPE (rename-proof, cursor-safe, wired into vitest); rule 7 satisfied (lives in apps/web, distinct from generated `PaginationData` DTO); pre-existing failures structurally unrelated (no touched routing/sidebar/manifest files). Controller independently re-ran: typecheck 0, guard 3/3, TanStack audit 0.
+
+Minors (recorded, no action): (1) required-meta sites assume endpoints route through `PaginatesResults` — wrap in `Partial<>` if any hand-builds meta; (2) `import type` at bottom of ~15 files (cosmetic, `import/first` not enabled); (3) guard excludes test fixtures by design.
+
+Verdict: **MERGE APPROVED** at `8c59d6d2a`.

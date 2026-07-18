@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 /**
  * A single recorded back-office customer-account deposit, as returned by
@@ -23,12 +24,7 @@ export interface PartnerDeposit {
 
 interface PartnerDepositsResponse {
   data: PartnerDeposit[]
-  meta: {
-    current_page: number
-    per_page: number
-    total: number
-    last_page: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 /**

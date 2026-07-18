@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { KeyComponentData } from '../types';
+import type { OffsetPaginationMeta } from '@/types/pagination';
 
 export interface KeyComponentTranslation {
   id?: string;
@@ -22,14 +23,7 @@ export interface UpdateKeyComponentInput {
 
 export interface KeyComponentsListResponse {
   data: KeyComponentData[];
-  meta: {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-    from: number | null;
-    to: number | null;
-  };
+  meta: OffsetPaginationMeta;
 }
 
 export async function fetchKeyComponents(params?: {

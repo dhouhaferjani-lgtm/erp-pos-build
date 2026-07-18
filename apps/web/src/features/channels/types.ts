@@ -62,16 +62,12 @@ export interface AggregateChannelOrderRow extends ChannelOrder {
   channel: AggregateChannelOrderChannel
 }
 
-export interface AggregateChannelOrdersMeta {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-}
+/** @deprecated Use OffsetPaginationMeta. */
+export type AggregateChannelOrdersMeta = OffsetPaginationMeta
 
 export interface AggregateChannelOrdersResponse {
   data: AggregateChannelOrderRow[]
-  meta: AggregateChannelOrdersMeta
+  meta: OffsetPaginationMeta
 }
 
 export interface AggregateChannelOrdersParams {
@@ -92,3 +88,4 @@ export interface ChannelSyncOperation {
   attempt_count: number
   next_retry_at: string | null
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

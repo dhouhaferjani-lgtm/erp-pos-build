@@ -35,15 +35,11 @@ import {
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { UserEditModal } from './components/UserEditModal'
 import type { User } from '../users/types'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface UsersResponse {
   data: User[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 interface Role {

@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 /**
  * Mirrors `App\Modules\Treasury\Domain\Enums\MovementDirection`.
@@ -50,16 +51,9 @@ export interface RepositoryMovement {
   recorded_while_frozen: boolean
 }
 
-export interface RepositoryMovementsMeta {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-}
-
 export interface RepositoryMovementsResponse {
   data: RepositoryMovement[]
-  meta: RepositoryMovementsMeta
+  meta: OffsetPaginationMeta
 }
 
 export interface RepositoryMovementsFilters {

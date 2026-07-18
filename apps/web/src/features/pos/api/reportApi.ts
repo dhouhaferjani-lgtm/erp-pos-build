@@ -1,4 +1,5 @@
 import { api, apiGet, apiPost } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface VatBreakdownEntry {
   rate: string
@@ -75,12 +76,7 @@ export interface ZReportListFilters {
 
 export interface PaginatedZReports {
   data: ZReportItem[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface ChainVerificationResult {

@@ -9,6 +9,8 @@
  * data. Tests mock `api.get` / `apiGet` against these shapes.
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 /**
  * Row shape returned by `/partners` list endpoint.
  *
@@ -29,15 +31,6 @@ export interface PartnerListRow {
   created_at: string
 }
 
-export interface PartnersListMeta {
-  total: number
-  current_page: number
-  per_page: number
-  last_page: number
-  from: number | null
-  to: number | null
-}
-
 export interface PartnersListAggregates {
   total_partners: number
   total_active: number
@@ -50,7 +43,7 @@ export interface PartnersListAggregates {
  */
 export interface PartnersListResponse {
   data: PartnerListRow[]
-  meta: PartnersListMeta
+  meta: OffsetPaginationMeta
   aggregates?: PartnersListAggregates
 }
 

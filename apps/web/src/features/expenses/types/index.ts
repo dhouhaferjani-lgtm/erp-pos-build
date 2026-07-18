@@ -259,12 +259,7 @@ export interface ExpenseResponse {
  */
 export interface ExpenseListResponse {
   data: Expense[]
-  meta?: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 /**
@@ -349,3 +344,4 @@ export interface ExpenseCategoryFilters {
   parent_id?: string
   search?: string
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

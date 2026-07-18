@@ -1,3 +1,5 @@
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export type VoucherSource =
@@ -130,16 +132,9 @@ export interface VoucherDetail extends Voucher {
 
 // ─── List response ────────────────────────────────────────────────────────────
 
-export interface VoucherListMeta {
-  current_page: number
-  last_page: number
-  total: number
-  per_page: number
-}
-
 export interface VoucherListResponse {
   data: Voucher[]
-  meta: VoucherListMeta
+  meta: OffsetPaginationMeta
 }
 
 // ─── Query params ─────────────────────────────────────────────────────────────

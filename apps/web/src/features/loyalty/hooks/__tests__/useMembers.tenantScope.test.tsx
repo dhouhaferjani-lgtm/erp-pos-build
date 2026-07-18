@@ -111,7 +111,14 @@ function memberFixture(id: string): LoyaltyMember {
 function memberListResponse(data: LoyaltyMember[] = []): MemberListResponse {
   return {
     data,
-    meta: { current_page: 1, last_page: 1, per_page: 20, total: data.length },
+    meta: {
+      current_page: 1,
+      last_page: 1,
+      per_page: 20,
+      total: data.length,
+      from: data.length > 0 ? 1 : null,
+      to: data.length > 0 ? data.length : null,
+    },
   }
 }
 

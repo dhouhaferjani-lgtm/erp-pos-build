@@ -99,16 +99,9 @@ export interface DocumentIngestionDetail extends DocumentIngestionSummary {
   error?: { code?: string; message?: string } | null
 }
 
-export interface DocumentIngestionListMeta {
-  current_page?: number
-  last_page?: number
-  per_page?: number
-  total?: number
-}
-
 export interface DocumentIngestionListResponse {
   data: DocumentIngestionSummary[]
-  meta?: DocumentIngestionListMeta
+  meta?: Partial<OffsetPaginationMeta>
 }
 
 export interface UploadDocumentIngestionInput {
@@ -152,3 +145,4 @@ export interface LocationOption {
   id: string
   name: string
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

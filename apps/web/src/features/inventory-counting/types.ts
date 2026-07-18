@@ -3,6 +3,8 @@
  * Types for the inventory counting/reconciliation module
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type CountingScopeType =
   | 'product_location'
   | 'product'
@@ -312,12 +314,7 @@ export interface ManualOverrideFormData {
 // API Response types
 export interface PaginatedResponse<T> {
   data: T[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
   links: {
     first: string
     last: string

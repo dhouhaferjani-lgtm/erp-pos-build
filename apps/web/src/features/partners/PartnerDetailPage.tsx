@@ -38,6 +38,7 @@ import { PartnerLoyaltyCard } from '@/features/loyalty'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -76,23 +77,14 @@ interface Payment {
   unallocated_amount: string
 }
 
-interface OffsetMeta {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-  from?: number | null
-  to?: number | null
-}
-
 interface DocumentsResponse {
   data: Document[]
-  meta?: Partial<OffsetMeta>
+  meta?: Partial<OffsetPaginationMeta>
 }
 
 interface PaymentsResponse {
   data: Payment[]
-  meta?: Partial<OffsetMeta>
+  meta?: Partial<OffsetPaginationMeta>
 }
 
 const typeColors = {

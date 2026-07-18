@@ -120,6 +120,8 @@ const shifts: PaginatedShifts = {
     last_page: 1,
     per_page: 20,
     total: 0,
+    from: null,
+    to: null,
   },
 }
 
@@ -166,6 +168,8 @@ const zReports: PaginatedZReports = {
     last_page: 1,
     per_page: 20,
     total: 1,
+    from: 1,
+    to: 1,
   },
 }
 
