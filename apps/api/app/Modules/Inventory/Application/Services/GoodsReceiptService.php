@@ -69,8 +69,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         array $receivedUnitPrices = [],
         ?string $priceOverrideReason = null,
         ?string $actorId = null,
+        ?string $destinationLocationId = null,
     ): GoodsReceiptResult {
-        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId): GoodsReceiptResult {
+        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $destinationLocationId): GoodsReceiptResult {
             $draft = $this->createDraft(
                 $purchaseOrder,
                 $receivedQuantities,
@@ -79,9 +80,12 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 $receivedUnitPrices,
                 $priceOverrideReason,
                 (string) ($actorId ?? ''),
+                null,
+                null,
+                $destinationLocationId,
             );
 
-            $posted = $this->post($draft, (string) ($actorId ?? ''));
+            $posted = $this->post($draft, (string) ($actorId ?? ''), $destinationLocationId);
 
             /** @var Document $freshOrder */
             $freshOrder = $posted->purchaseOrder->fresh(['lines']);
@@ -109,10 +113,11 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         string $actorId,
         ?string $externalReference = null,
         ?string $externalDate = null,
+        ?string $destinationLocationId = null,
     ): GoodsReceipt {
         $this->assertReceivablePurchaseOrder($po);
 
-        return DB::transaction(function () use ($po, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $externalReference, $externalDate): GoodsReceipt {
+        return DB::transaction(function () use ($po, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $externalReference, $externalDate, $destinationLocationId): GoodsReceipt {
             $priceScale = $this->scaleResolver->getScale((string) ($po->currency ?? 'TND'));
             $hasDraftLines = false;
 
@@ -120,6 +125,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 'tenant_id' => $po->tenant_id,
                 'company_id' => $po->company_id,
                 'purchase_order_id' => $po->id,
+                'location_id' => $destinationLocationId,
                 'receipt_number' => null,
                 'status' => GoodsReceiptStatus::Draft,
                 'received_at' => now(),
@@ -193,9 +199,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         });
     }
 
-    public function post(GoodsReceipt $receipt, string $actorId, bool $failClosedGrir = false): GoodsReceipt
+    public function post(GoodsReceipt $receipt, string $actorId, ?string $destinationLocationId = null, bool $failClosedGrir = false): GoodsReceipt
     {
-        return DB::transaction(function () use ($receipt, $actorId, $failClosedGrir): GoodsReceipt {
+        return DB::transaction(function () use ($receipt, $actorId, $destinationLocationId, $failClosedGrir): GoodsReceipt {
             /** @var GoodsReceipt $lockedReceipt */
             $lockedReceipt = GoodsReceipt::query()
                 ->whereKey($receipt->id)
@@ -212,7 +218,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             $this->assertCanApplyDraftPriceOverrides($lockedReceipt, $actorId);
 
             // Get the default location for this company
-            $location = $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
+            $location = $this->resolveDestinationLocation($purchaseOrder, $destinationLocationId ?? $lockedReceipt->location_id);
+            $lockedReceipt->location_id = $location->id;
+            $lockedReceipt->save();
 
             // Re-allocate costs if they were modified after initial confirmation
             if ($this->landedCostService->hasAllocatedCosts($purchaseOrder)) {
@@ -623,6 +631,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 $line->batch_id = $batch->id;
             }
 
+            // The latest receipt destination owns the unreceived remainder for this PO line.
+            $line->location_id = $location->id;
+
             $line->save();
 
             /** @var GoodsReceiptLine|null $receiptLine */
@@ -693,7 +704,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
      *
      * @param  Document  $purchaseOrder  The confirmed purchase order
      */
-    public function receiveAll(Document $purchaseOrder, ?string $actorId = null): GoodsReceiptResult
+    public function receiveAll(Document $purchaseOrder, ?string $actorId = null, ?string $destinationLocationId = null): GoodsReceiptResult
     {
         $receivedQuantities = [];
 
@@ -717,7 +728,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             }
         }
 
-        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, [], null, $actorId);
+        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, [], null, $actorId, $destinationLocationId);
     }
 
     /**
@@ -904,5 +915,22 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         }
 
         return $location;
+    }
+
+    private function resolveDestinationLocation(Document $purchaseOrder, ?string $destinationLocationId): Location
+    {
+        if ($destinationLocationId !== null) {
+            $location = Location::query()
+                ->where('company_id', $purchaseOrder->company_id)
+                ->where('is_active', true)
+                ->find($destinationLocationId);
+            if ($location === null) {
+                throw new \DomainException('Receiving destination is not available for this company.');
+            }
+
+            return $location;
+        }
+
+        return $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
     }
 }

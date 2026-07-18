@@ -1,12 +1,13 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Input, MoneyInput, QuantityInput, Textarea } from '@/components/atoms'
+import { Button, Input, MoneyInput, QuantityInput, Select, Textarea } from '@/components/atoms'
 import { ProductCell } from '@/components/molecules/line-items'
 import { Modal } from '@/components/organisms/Modal'
 import { bccomp, bcdiv, bcmul, bcsub, formatQuantity } from '@/lib/decimal'
 import { tokens, textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useLocations } from '@/features/locations/hooks/useLocations'
 
 export interface ReceiveBatchPayload {
   batch_number: string
@@ -20,6 +21,7 @@ export interface ReceiveGoodsRequest {
   received_unit_prices?: Record<string, string>
   price_override_reason?: string
   batches?: Record<string, ReceiveBatchPayload>
+  location_id?: string
 }
 
 export interface ReceivableLine {
@@ -40,6 +42,7 @@ export interface ReceivableLine {
 
 export interface ReceivablePurchaseOrder {
   currency?: string | null
+  location_id?: string | null
   lines?: ReceivableLine[]
 }
 
@@ -105,6 +108,7 @@ export function ReceiveGoodsDialog({
 }) {
   const { t } = useTranslation(['sales', 'common'])
   const { hasPermission } = usePermissions()
+  const { data: locations = [] } = useLocations()
   const canEditReceiptPrice = hasPermission('goods-receipt.edit-price')
   const currency = purchaseOrder.currency ?? 'TND'
   const receivableLines = useMemo(
@@ -118,6 +122,13 @@ export function ReceiveGoodsDialog({
     initialReceiveState(receivableLines),
   )
   const [priceOverrideReason, setPriceOverrideReason] = useState('')
+  const [destinationLocationId, setDestinationLocationId] = useState(purchaseOrder.location_id ?? '')
+
+  useEffect(() => {
+    if (destinationLocationId === '' && locations.length > 0) {
+      setDestinationLocationId(purchaseOrder.location_id ?? locations.find((location) => location.isDefault)?.id ?? locations[0].id)
+    }
+  }, [destinationLocationId, locations, purchaseOrder.location_id])
 
   const hasEditedUnitPrice = receivableLines.some((line) =>
     (lineState[line.id]?.deliveredUnitPrice.trim() ?? '') !== ''
@@ -210,6 +221,7 @@ export function ReceiveGoodsDialog({
 
     return {
       quantities,
+      ...(destinationLocationId !== '' ? { location_id: destinationLocationId } : {}),
       ...(saveAsDraft ? { save_as_draft: true } : {}),
       ...(Object.keys(freeQuantities).length > 0 ? { free_quantities: freeQuantities } : {}),
       ...(Object.keys(receivedUnitPrices).length > 0 ? { received_unit_prices: receivedUnitPrices } : {}),
@@ -259,6 +271,19 @@ export function ReceiveGoodsDialog({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('purchaseOrders.receiveGoodsTitle')} size="xl">
       <form className="space-y-4" onSubmit={handleSubmit}>
+        <label className={tokens.label.base}>
+          {t('purchaseOrders.receive.destination')}
+          <Select
+            value={destinationLocationId}
+            onChange={(event) => { setDestinationLocationId(event.target.value) }}
+            aria-label={t('purchaseOrders.receive.destination')}
+          >
+            <option value="">{t('purchaseOrders.receive.selectDestination')}</option>
+            {locations.filter((location) => location.isActive).map((location) => (
+              <option key={location.id} value={location.id}>{location.name}</option>
+            ))}
+          </Select>
+        </label>
         {receivableLines.map((line) => {
           const label = lineLabel(line)
           const remaining = remainingQuantity(line)
