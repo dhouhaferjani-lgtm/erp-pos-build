@@ -304,7 +304,7 @@ Closes the source of memberless staff (review A2) so the Task 1 backfill isn't r
 
 **Steps**
 
-- [ ] Write the failing test. Add to `CreateUserTest.php`:
+- [x] Write the failing test. Add to `CreateUserTest.php`:
 ```php
 public function test_store_creates_null_membership_for_new_staff(): void
 {
@@ -328,8 +328,8 @@ public function test_store_creates_null_membership_for_new_staff(): void
 }
 ```
 (Use the file's existing auth helper — mirror the header/`Sanctum::actingAs` + `X-Company-Id` pattern already used by other tests in this class for `withAuth`.)
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/CreateUserTest.php`
-- [ ] Implement. In `UserController::store`, inside the `DB::transaction` closure, after `$user->assignRole(...)` and the null-email activation, add (import `UserCompanyMembership`, `MembershipRole`, `MembershipStatus`):
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/CreateUserTest.php`
+- [x] Implement. In `UserController::store`, inside the `DB::transaction` closure, after `$user->assignRole(...)` and the null-email activation, add (import `UserCompanyMembership`, `MembershipRole`, `MembershipStatus`):
 ```php
 UserCompanyMembership::create([
     'user_id' => $user->id,
@@ -340,9 +340,9 @@ UserCompanyMembership::create([
     'status' => MembershipStatus::Active,
 ]);
 ```
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php`
-- [ ] Commit: `feat(multiloc): create NULL membership for staff on UserController::store (§1 step 2)`
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php`
+- [x] Commit: `feat(multiloc): create NULL membership for staff on UserController::store (§1 step 2)`
 
 ---
 
