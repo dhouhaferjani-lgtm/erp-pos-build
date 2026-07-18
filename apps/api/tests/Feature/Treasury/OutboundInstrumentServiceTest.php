@@ -30,6 +30,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Exceptions\InstrumentActionConflictException;
 use App\Modules\Treasury\Domain\Exceptions\InvalidInstrumentTransitionException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -440,6 +441,54 @@ final class OutboundInstrumentServiceTest extends TestCase
         self::assertSame($first->journalEntryId, $second->journalEntryId);
         self::assertSame($first->movementId, $second->movementId);
         self::assertSame(1, InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:bounce:1")->count());
+    }
+
+    public function test_represent_on_a_never_bounced_cleared_instrument_is_an_invalid_transition(): void
+    {
+        $instrument = $this->instrument();
+        $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+
+        $this->expectException(InvalidInstrumentTransitionException::class);
+        $this->service()->represent(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+        );
+    }
+
+    public function test_movement_port_failure_rolls_back_the_preceding_gl_post_and_clear_state(): void
+    {
+        $instrument = $this->instrument();
+        $journalCount = JournalEntry::query()->count();
+        $this->context['bank']->forceFill([
+            'frozen_at' => now(),
+            'frozen_reason' => 'Injected movement-port rejection',
+        ])->save();
+
+        try {
+            $this->service()->clear(
+                $instrument->id,
+                $this->context['tenant']->id,
+                $this->context['company']->id,
+                $this->context['user']->id,
+                '2026-07-18',
+            );
+            $this->fail('Frozen repository must reject the movement after GL drafting/posting.');
+        } catch (RepositoryFrozenException) {
+            $this->addToAssertionCount(1);
+        }
+
+        self::assertSame(InstrumentStatus::Received, $instrument->fresh()?->status);
+        self::assertSame($journalCount, JournalEntry::query()->count());
+        self::assertSame(0, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
+        self::assertSame(0, InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:1")->count());
     }
 
     private function instrument(InstrumentDirection $direction = InstrumentDirection::Outbound): PaymentInstrument

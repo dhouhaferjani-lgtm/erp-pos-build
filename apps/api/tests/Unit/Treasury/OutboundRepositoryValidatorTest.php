@@ -85,6 +85,9 @@ final class OutboundRepositoryValidatorTest extends TestCase
             'cross-company' => $repository->forceFill([
                 'company_id' => Company::factory()->tunisia()->create(['tenant_id' => $this->tenant->id])->id,
             ])->save(),
+            'cross-tenant' => $repository->forceFill([
+                'tenant_id' => Tenant::factory()->create()->id,
+            ])->save(),
             default => throw new \InvalidArgumentException("Unknown repository mutation {$mutation}."),
         };
 
@@ -108,6 +111,7 @@ final class OutboundRepositoryValidatorTest extends TestCase
             'repository currency must equal instrument currency' => ['wrong-currency'],
             'instrument bank must equal repository bank' => ['wrong-bank'],
             'repository must belong to the requested company' => ['cross-company'],
+            'repository must belong to the requested tenant' => ['cross-tenant'],
         ];
     }
 

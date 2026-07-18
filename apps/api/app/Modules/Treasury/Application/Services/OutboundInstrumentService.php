@@ -382,6 +382,9 @@ final readonly class OutboundInstrumentService
                 ->where('instrument_id', $instrument->id)
                 ->where('action_key', $actionKey)
                 ->first();
+            if ($replay instanceof InstrumentEvent && $replay->event_type !== InstrumentEventType::RePresented) {
+                $replay = null;
+            }
             $entryDate = $replay instanceof InstrumentEvent ? $replay->occurred_at : CarbonImmutable::now();
             $digest = $this->semanticDigest(
                 action: 'represent',
@@ -561,14 +564,23 @@ final readonly class OutboundInstrumentService
                 throw new DomainException('Outbound instrument has no settlement repository.');
             }
 
+            $scale = $this->scaleResolver->getScale($instrument->currency);
             $payment = Payment::query()
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->whereKey($instrument->payment_id)
                 ->lockForUpdate()
                 ->first();
+            if ($instrument->payment_id !== null && ! $payment instanceof Payment) {
+                throw new DomainException('Outbound instrument linked payment could not be resolved.');
+            }
             if ($payment instanceof Payment && $payment->status !== PaymentStatus::Completed) {
                 throw new DomainException('Only a completed linked payment can be reopened by cancellation.');
+            }
+            if ($payment instanceof Payment
+                && ($payment->currency !== $instrument->currency
+                    || bccomp($payment->amount, $instrument->amount, $scale) !== 0)) {
+                throw new DomainException('Outbound instrument and linked payment amount or currency do not match.');
             }
 
             $allocations = $payment instanceof Payment
@@ -594,6 +606,11 @@ final readonly class OutboundInstrumentService
             if ($documents->count() !== $documentIds->count()) {
                 throw new DomainException('A payment allocation references a document outside the instrument company.');
             }
+            foreach ($documents as $document) {
+                if ($document->currency !== $instrument->currency) {
+                    throw new DomainException('Outbound cancellation document currency does not match the instrument.');
+                }
+            }
 
             $this->repositoryValidator->validate(
                 repositoryId: $instrument->repository_id,
@@ -605,7 +622,6 @@ final readonly class OutboundInstrumentService
             $purpose = $instrument->kind === InstrumentKind::Cheque
                 ? InstrumentAccountPurpose::ChecksToPay
                 : InstrumentAccountPurpose::EffetsPayable;
-            $scale = $this->scaleResolver->getScale($instrument->currency);
             $amount = CurrencyScale::bcformatStrict($instrument->amount, $scale);
             $entry = $this->generalLedger->createOutboundInstrumentCancellationEntry(
                 companyId: $companyId,

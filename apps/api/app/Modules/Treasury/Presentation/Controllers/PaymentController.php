@@ -18,14 +18,17 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
+use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -35,6 +38,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
+use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -63,6 +67,7 @@ class PaymentController extends Controller
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly InstrumentLifecycleService $instrumentLifecycle,
         private readonly InstrumentAccountResolver $instrumentAccountResolver,
+        private readonly OutboundRepositoryValidator $outboundRepositoryValidator,
     ) {}
 
     private function scale(): int
@@ -616,6 +621,28 @@ class PaymentController extends Controller
                     'error' => ['code' => 'MATURITY_REQUIRED', 'message' => 'Effet instruments require a maturity date.'],
                 ], 422);
             }
+            try {
+                $repositoryId = $validated['repository_id'] ?? null;
+                if (! is_string($repositoryId)) {
+                    throw new \DomainException('Outbound instrument settlement repository is required.');
+                }
+                $this->outboundRepositoryValidator->validate(
+                    repositoryId: $repositoryId,
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    currency: $paymentCurrency,
+                    instrumentBankId: isset($instrumentData['bank_id'])
+                        ? (string) $instrumentData['bank_id']
+                        : null,
+                );
+            } catch (\DomainException $exception) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'INVALID_OUTBOUND_REPOSITORY',
+                        'message' => $exception->getMessage(),
+                    ],
+                ], 422);
+            }
         }
 
         // Supplier payments require a ledgered repository (a gl_account_id to post
@@ -976,7 +1003,69 @@ class PaymentController extends Controller
                         ? $portfolioDebitAccountId
                         : $repository->gl_account_id;
 
-                    if ($postingDebitAccountId !== null && $isSupplierPayment) {
+                    if ($postingDebitAccountId !== null && $isDeferredSupplier) {
+                        if (! $instrument instanceof PaymentInstrument) {
+                            throw new \LogicException('Deferred supplier payment is missing its outbound instrument.');
+                        }
+                        $instrument = PaymentInstrument::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->whereKey($instrument->id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+                        $issueDate = new \DateTimeImmutable($validated['payment_date']);
+                        $actionKey = "instrument:{$instrument->id}:issue";
+                        $canonical = json_encode([
+                            'action' => 'issue',
+                            'instrumentId' => $instrument->id,
+                            'amount' => $instrument->amount,
+                            'currency' => $instrument->currency,
+                            'repositoryId' => $instrument->repository_id,
+                            'occurredAt' => $issueDate->format('Y-m-d'),
+                        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                        $digest = hash('sha256', $canonical);
+                        $issueEvent = InstrumentEvent::query()
+                            ->where('instrument_id', $instrument->id)
+                            ->where('action_key', $actionKey)
+                            ->first();
+                        if ($issueEvent instanceof InstrumentEvent) {
+                            $issueEvent->assertSemanticDigest($digest);
+                            if ($issueEvent->journal_entry_id === null) {
+                                throw new \LogicException('Replayed outbound issue has no journal entry.');
+                            }
+                            $journalEntry = JournalEntry::query()->findOrFail($issueEvent->journal_entry_id);
+                        } else {
+                            $purpose = $instrument->kind === InstrumentKind::Cheque
+                                ? InstrumentAccountPurpose::ChecksToPay
+                                : InstrumentAccountPurpose::EffetsPayable;
+                            $journalEntry = $this->glService->createOutboundInstrumentIssueEntry(
+                                companyId: $companyId,
+                                tenantId: $tenantId,
+                                instrumentId: $instrument->id,
+                                partnerId: $validated['partner_id'],
+                                payableAccountId: $this->instrumentAccountResolver->resolveOrFail($purpose, $companyId),
+                                amount: $totalAllocatedForGL,
+                                date: $issueDate,
+                            );
+                            $this->glService->postEntryNow($journalEntry, $user, $payment->currency);
+                            InstrumentEvent::query()->create([
+                                'tenant_id' => $tenantId,
+                                'company_id' => $companyId,
+                                'instrument_id' => $instrument->id,
+                                'event_type' => InstrumentEventType::Issued,
+                                'action_key' => $actionKey,
+                                'semantic_digest' => $digest,
+                                'from_status' => null,
+                                'to_status' => InstrumentStatus::Received->value,
+                                'to_repository_id' => $instrument->repository_id,
+                                'journal_entry_id' => $journalEntry->id,
+                                'movement_id' => null,
+                                'payload' => (new InstrumentEventPayload)->toArray(),
+                                'occurred_at' => $issueDate,
+                                'created_by' => $user->id,
+                            ]);
+                        }
+                    } elseif ($postingDebitAccountId !== null && $isSupplierPayment) {
                         // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
                         // Posted synchronously in-transaction so it returns the POSTED entry;
                         // its JournalEntryPosted event fires afterCommit and the
@@ -1093,7 +1182,7 @@ class PaymentController extends Controller
                 // posted (a misconfigured null-gl_account_id repository), fail loud with a
                 // 422 rather than record a null-JE cash movement that would freeze the repo
                 // at reconcile.
-                if ($repository instanceof PaymentRepository && ! $isDeferredCustomer) {
+                if ($repository instanceof PaymentRepository && ! $isDeferredCustomer && ! $isDeferredSupplier) {
                     /** @var string|null $movementJournalEntryId */
                     $movementJournalEntryId = $primaryJournalEntryId ?? $advanceJournalEntryId;
 

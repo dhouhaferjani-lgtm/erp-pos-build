@@ -168,8 +168,8 @@ final readonly class OutboundInstrumentService
 **Interfaces:**
 - Produces, for `$isDeferredSupplier`: (a) ⛔ **the `:975-996` branch must NOT call `createSupplierPaymentJournalEntry`** (today it posts `Dr 401 / Cr bank` — immediate settlement — which combined with a new issue JE would double-debit 401 and wrongly credit bank); the **issue JE replaces it**: `createOutboundInstrumentIssueEntry` (partner-tagged 401 / Cr payable-purpose by `kind`: `cheque→ChecksToPay`, `effet→EffetsPayable`), action-keyed `instrument:{instrument_id}:issue` via the Task-2 store; (b) movement guard becomes `! $isDeferredCustomer && ! $isDeferredSupplier` — **no movement at issue**; (c) `OutboundRepositoryValidator` invoked at issue (422 envelope on violation).
 
-- [ ] **Step 1: failing tests** — deferred-supplier cheque: **exactly ONE JE**, **zero journal lines on the bank account**, repository balance unchanged, zero movements, instrument outbound Received linked; effet variant hits EffetsPayable; non-BankAccount repository 422; deferred-customer AND immediate-supplier full regression (JE shape + movement present as today); retry with the same client `Idempotency-Key` header ⇒ no second JE/instrument (test states its reliance on the header + `:1131` recovery path).
-- [ ] Steps 2-5 (minimal diff; no controller restructure) → commit `fix(treasury): deferred-supplier issues payable-instrument JE — suppress immediate-settlement posting`.
+- [x] **Step 1: failing tests** — deferred-supplier cheque: **exactly ONE JE**, **zero journal lines on the bank account**, repository balance unchanged, zero movements, instrument outbound Received linked; effet variant hits EffetsPayable; non-BankAccount repository 422; deferred-customer AND immediate-supplier full regression (JE shape + movement present as today); retry with the same client `Idempotency-Key` header ⇒ no second JE/instrument (test states its reliance on the header + `:1131` recovery path).
+- [x] Steps 2-5 (minimal diff; no controller restructure) → commit `fix(treasury): deferred-supplier issues payable-instrument JE — suppress immediate-settlement posting`.
 
 ### Task 7: Outbound HTTP actions + permissions
 
