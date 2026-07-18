@@ -1043,15 +1043,15 @@ The spec-required create/edit assignment surface for `allowed_location_ids`, wit
 
 **Steps**
 
-- [ ] Write the failing tests (render + payload; assert rendered text via `t()` keys, not classes):
+- [x] Write the failing tests (render + payload; assert rendered text via `t()` keys, not classes):
   - `LocationAccessField.test.tsx`: renders an "All locations" option + one row per management location (mock `useManagementLocations`); choosing "All" yields value `null`; selecting a subset yields the sorted id array; `disabled`/`readOnly` blocks changes.
   - `UsersPage.locationAccess.test.tsx`: with the permission, `AddUserModal` renders the field and the create mutation body includes `allowed_location_ids`; WITHOUT the permission the field is absent and no `allowed_location_ids` key is sent.
   - `UserEditModal.locationAccess.test.tsx`: editing another user sends `allowed_location_ids`; editing OWN row (`user.id === currentUserId`) renders the field disabled and omits `allowed_location_ids` from the payload.
-- [ ] Run them (red) by exact path: `cd apps/web && pnpm vitest run src/features/settings/components/LocationAccessField.test.tsx src/features/settings/UsersPage.locationAccess.test.tsx src/features/settings/components/UserEditModal.locationAccess.test.tsx`
-- [ ] Implement `usePermissions.ts` map entry, `useManagementLocations.ts`, `LocationAccessField.tsx`, then wire it into `AddUserModal` (UsersPage) and `UserEditModal` per the Files notes. Add the `locations` namespace keys used by the field (e.g. `locations:staffAccess.allLocations`, `locations:staffAccess.subset`, `locations:staffAccess.selfDisabledHint`) to every locale in `apps/web/src/i18n`.
-- [ ] Run them (green): same command. Then `cd apps/web && pnpm vitest run src/features/settings/UsersPage.test.tsx` if that file exists, to confirm no regression to the existing create flow.
-- [ ] `cd apps/web && pnpm audit:keys` (must pass) then `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): staff location-assignment UI (create + edit, self-edit disabled) (§1 FE, finding 2)`
+- [x] Run them (red) by exact path: `cd apps/web && pnpm vitest run src/features/settings/components/LocationAccessField.test.tsx src/features/settings/UsersPage.locationAccess.test.tsx src/features/settings/components/UserEditModal.locationAccess.test.tsx`
+- [x] Implement `usePermissions.ts` map entry, `useManagementLocations.ts`, `LocationAccessField.tsx`, then wire it into `AddUserModal` (UsersPage) and `UserEditModal` per the Files notes. Add the `locations` namespace keys used by the field (e.g. `locations:staffAccess.allLocations`, `locations:staffAccess.subset`, `locations:staffAccess.selfDisabledHint`) to every locale in `apps/web/src/i18n`.
+- [x] Run them (green): same command. Then `cd apps/web && pnpm vitest run src/features/settings/UsersPage.test.tsx` if that file exists, to confirm no regression to the existing create flow.
+- [x] `cd apps/web && pnpm audit:keys` (must pass) then `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): staff location-assignment UI (create + edit, self-edit disabled) (§1 FE, finding 2)`
 
 ---
 
