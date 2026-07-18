@@ -1069,17 +1069,17 @@ Spec §1 "behavioral-change surface must be listed": the endpoints that already 
 
 **Steps**
 
-- [ ] Write the failing tests. `ReplenishmentLocationScopeTest.php`: (a) restricted requester (allowed=[A]) index returns only A rows; (b) processor sees A and B; (c) restricted requester passing `location_ids[]=[B]` gets 403 (resolver fail-closed). `StockTransferRestrictedMembershipTest.php`: restricted user (allowed=[A]) sees only transfers touching A (list), can create a transfer from A, and is denied creating from B (Task 5 rule) — documents the pre-existing enforcement still holds post-backfill.
-- [ ] Run them (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php`
-- [ ] Implement. In `ReplenishmentRequestController::index`, inject `LocationScopeResolver` and replace the `if (! $user->can('replenishment.process')) { $allowed = ...; whereIn(...); }` block plus the separate `location_ids` filter with a single resolver call:
+- [x] Write the failing tests. `ReplenishmentLocationScopeTest.php`: (a) restricted requester (allowed=[A]) index returns only A rows; (b) processor sees A and B; (c) restricted requester passing `location_ids[]=[B]` gets 403 (resolver fail-closed). `StockTransferRestrictedMembershipTest.php`: restricted user (allowed=[A]) sees only transfers touching A (list), can create a transfer from A, and is denied creating from B (Task 5 rule) — documents the pre-existing enforcement still holds post-backfill.
+- [x] Run them (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php`
+- [x] Implement. In `ReplenishmentRequestController::index`, inject `LocationScopeResolver` and replace the `if (! $user->can('replenishment.process')) { $allowed = ...; whereIn(...); }` block plus the separate `location_ids` filter with a single resolver call:
 ```php
 $scoped = $this->scopeResolver->resolve($user, $validated['location_ids'] ?? [], 'replenishment.process');
 $query->whereIn('replenishment_requests.location_id', $scoped);
 ```
 (Keep `LocationContext` for the `validateLocationAccess` used on create at `:120`, or migrate that to the resolver too if trivial — but do NOT expand scope beyond index here.)
-- [ ] Run them (green): same command. Re-run the existing endpoint suite by exact path to confirm the processor path is unchanged: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentRequestEndpointsTest.php` (its `test_list_open_returns_pending_and_in_progress_and_scopes_non_processors` covers the processor-vs-non-processor split the resolver now drives).
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Replenishment/Presentation/Controllers/ReplenishmentRequestController.php`
-- [ ] Commit: `refactor(multiloc): replenishment index via LocationScopeResolver; regression-cover restricted memberships (§1 step 4d)`
+- [x] Run them (green): same command. Re-run the existing endpoint suite by exact path to confirm the processor path is unchanged: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentRequestEndpointsTest.php` (its `test_list_open_returns_pending_and_in_progress_and_scopes_non_processors` covers the processor-vs-non-processor split the resolver now drives).
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Replenishment/Presentation/Controllers/ReplenishmentRequestController.php`
+- [x] Commit: `refactor(multiloc): replenishment index via LocationScopeResolver; regression-cover restricted memberships (§1 step 4d)`
 
 ---
 
