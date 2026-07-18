@@ -201,8 +201,8 @@ As Rev 1: extend `ReconcileTreasuryCommand:249-424` with Σ(outbound Received+Bo
 
 **Interfaces:**
 - Produces: `POST /expenses/{id}/pay` accepts `mode: 'instrument'` + `instrument: {kind, reference, bank_id?, maturity_date?, drawer_name?}`. Settlement: issue JE via `createOutboundInstrumentIssueEntry`, instrument registered via `InstrumentLifecycleService::receive()` (GL-free — verified `:67-131`), **`expense_metadata.payment_instrument_id` set (Task 2 column)**, NO movement, `is_paid` stays false. **Idempotency/second-payment guard:** settle (any mode) REJECTS when `payment_instrument_id` references an instrument in `Received`/`Bounced` (pending) — closes both the retry double-post and the pay-cash-while-check-outstanding hole (the existing `$alreadySettled` movement probe `:480-497` cannot see instrument mode). **Listener** consumes `InstrumentCleared` (sets `is_paid=true, paid_at=cleared date`, repository/method from the instrument) and `InstrumentCancelled` (clears `payment_instrument_id`, resets paid fields) — Treasury never writes `ExpenseMetadata` (rule 6).
-- [ ] **Step 1: failing tests** — instrument settle: correct JE, no movement, metadata linked, `is_paid` false; retry rejected; cash-mode settle while instrument pending rejected; clear → listener flips `is_paid` (+ movement exists via Task 3); cancel → listener resets metadata; cash-mode regression; LinkedCost still rejected (`:468-478`).
-- [ ] Steps 2-5 → commit `feat(expense): pay-by-instrument settlement + lifecycle listener`.
+- [x] **Step 1: failing tests** — instrument settle: correct JE, no movement, metadata linked, `is_paid` false; retry rejected; cash-mode settle while instrument pending rejected; clear → listener flips `is_paid` (+ movement exists via Task 3); cancel → listener resets metadata; cash-mode regression; LinkedCost still rejected (`:468-478`).
+- [x] Steps 2-5 → commit `feat(expense): pay-by-instrument settlement + lifecycle listener`.
 
 ### Task 10: FE — pay dialog mode + échéancier grouping
 

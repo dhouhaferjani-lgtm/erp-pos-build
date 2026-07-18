@@ -23,10 +23,24 @@ use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Enums\TaxType;
+use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
+use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
+use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\InstrumentEvent;
+use App\Modules\Treasury\Domain\PaymentInstrument;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -51,6 +65,9 @@ final class ExpenseService
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly InstrumentLifecycleService $instrumentLifecycleService,
+        private readonly InstrumentAccountResolver $instrumentAccountResolver,
+        private readonly OutboundRepositoryValidator $outboundRepositoryValidator,
     ) {}
 
     /**
@@ -477,6 +494,24 @@ final class ExpenseService
                 throw new \DomainException('Only standard expenses booking an accounts-payable liability can be settled via /pay; linked-cost expenses are settled at capitalization.');
             }
 
+            if ($metadata->payment_instrument_id !== null) {
+                $linkedInstrument = PaymentInstrument::query()
+                    ->where('tenant_id', $expense->tenant_id)
+                    ->where('company_id', $expense->company_id)
+                    ->whereKey($metadata->payment_instrument_id)
+                    ->first();
+                if (! $linkedInstrument instanceof PaymentInstrument) {
+                    throw new \DomainException('The linked payment instrument could not be resolved for this company.');
+                }
+                if (in_array($linkedInstrument->status, [
+                    InstrumentStatus::Received,
+                    InstrumentStatus::Bounced,
+                    InstrumentStatus::Cleared,
+                ], true)) {
+                    throw new \DomainException('This expense already has an outstanding or cleared payment instrument.');
+                }
+            }
+
             $settlementKey = MovementSourceType::Expense->value.':'.$expense->id.':settlement';
             $alreadySettled = RepositoryMovement::query()
                 ->where('tenant_id', $expense->tenant_id)
@@ -498,6 +533,10 @@ final class ExpenseService
 
             if ($metadata->is_paid === true) {
                 throw new \DomainException('This expense has already been paid.');
+            }
+
+            if ($data->isInstrument()) {
+                return $this->settleByInstrument($expense, $metadata, $data, $user, $settlementKey);
             }
 
             // Business-rule failure (unknown/foreign repository) → 422, matching
@@ -579,6 +618,133 @@ final class ExpenseService
 
             return $fresh;
         });
+    }
+
+    private function settleByInstrument(
+        Document $expense,
+        ExpenseMetadata $metadata,
+        PayExpenseRequestData $data,
+        User $user,
+        string $settlementKey,
+    ): Document {
+        if ($data->paymentMethodId === null
+            || $data->instrumentKind === null
+            || $data->instrumentReference === null) {
+            throw new \DomainException('Instrument settlement details are incomplete.');
+        }
+        if (! in_array($data->instrumentKind, [InstrumentKind::Cheque, InstrumentKind::Effet], true)) {
+            throw new \DomainException('Expense settlement supports cheque or effet instruments only.');
+        }
+
+        $method = PaymentMethod::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $expense->company_id)
+            ->whereKey($data->paymentMethodId)
+            ->first();
+        if (! $method instanceof PaymentMethod || ! $method->is_active) {
+            throw new \DomainException('The selected payment method is not active for this company.');
+        }
+        if ($method->instrument_kind !== $data->instrumentKind) {
+            throw new \DomainException('The selected payment method does not match the instrument kind.');
+        }
+
+        $repository = $this->outboundRepositoryValidator->validate(
+            repositoryId: $data->paymentRepositoryId,
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+            currency: (string) $expense->currency,
+            instrumentBankId: $data->instrumentBankId,
+        );
+        $amount = CurrencyScale::bcformatStrict(
+            (string) ($expense->total ?? '0'),
+            $this->scaleResolver->getScale((string) $expense->currency),
+        );
+        $instrument = $this->instrumentLifecycleService->receive(new ReceiveInstrumentData(
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+            paymentMethodId: $method->id,
+            kind: $data->instrumentKind,
+            direction: InstrumentDirection::Outbound,
+            origin: InstrumentOrigin::Web,
+            reference: $data->instrumentReference,
+            amount: $amount,
+            currency: (string) $expense->currency,
+            repositoryId: $repository->id,
+            partnerId: $expense->partner_id,
+            drawerName: $data->instrumentDrawerName,
+            maturityDate: $data->instrumentMaturityDate,
+            receivedDate: $data->paymentDate,
+            bankId: $data->instrumentBankId,
+            idempotencyKey: $settlementKey,
+            createdBy: $user->id,
+        ));
+
+        $issueDate = Carbon::parse($data->paymentDate);
+        $actionKey = "instrument:{$instrument->id}:issue";
+        $canonical = json_encode([
+            'action' => 'issue',
+            'instrumentId' => $instrument->id,
+            'amount' => $instrument->amount,
+            'currency' => $instrument->currency,
+            'repositoryId' => $instrument->repository_id,
+            'occurredAt' => $issueDate->format('Y-m-d'),
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $digest = hash('sha256', $canonical);
+
+        // The action anchor is checked before GL. A created instrument has no
+        // issue event yet; finding one means this orchestration is replaying an
+        // already-posted issue and must never create a second journal entry.
+        $existingIssue = InstrumentEvent::query()
+            ->where('instrument_id', $instrument->id)
+            ->where('action_key', $actionKey)
+            ->first();
+        if ($existingIssue instanceof InstrumentEvent) {
+            $existingIssue->assertSemanticDigest($digest);
+            throw new \DomainException('This expense instrument has already been issued.');
+        }
+
+        $purpose = $data->instrumentKind === InstrumentKind::Cheque
+            ? InstrumentAccountPurpose::ChecksToPay
+            : InstrumentAccountPurpose::EffetsPayable;
+        $entry = $this->glService->createOutboundInstrumentIssueEntry(
+            companyId: $expense->company_id,
+            tenantId: $expense->tenant_id,
+            instrumentId: $instrument->id,
+            partnerId: $expense->partner_id,
+            payableAccountId: $this->instrumentAccountResolver->resolveOrFail($purpose, $expense->company_id),
+            amount: $amount,
+            date: $issueDate,
+        );
+        $this->glService->postEntryNow($entry, $user, (string) $expense->currency);
+        InstrumentEvent::query()->create([
+            'tenant_id' => $expense->tenant_id,
+            'company_id' => $expense->company_id,
+            'instrument_id' => $instrument->id,
+            'event_type' => InstrumentEventType::Issued,
+            'action_key' => $actionKey,
+            'semantic_digest' => $digest,
+            'from_status' => null,
+            'to_status' => InstrumentStatus::Received->value,
+            'to_repository_id' => $repository->id,
+            'journal_entry_id' => $entry->id,
+            'movement_id' => null,
+            'payload' => (new InstrumentEventPayload)->toArray(),
+            'occurred_at' => $issueDate,
+            'created_by' => $user->id,
+        ]);
+
+        $metadata->update([
+            'payment_instrument_id' => $instrument->id,
+            'is_paid' => false,
+            'paid_at' => null,
+        ]);
+
+        $fresh = $expense->fresh(['expenseMetadata']);
+        if ($fresh === null) {
+            throw new \RuntimeException('Failed to refresh expense after instrument settlement.');
+        }
+
+        return $fresh;
     }
 
     /**

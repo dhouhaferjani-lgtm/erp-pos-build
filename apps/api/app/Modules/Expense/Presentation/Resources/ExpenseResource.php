@@ -58,6 +58,7 @@ class ExpenseResource extends JsonResource
                     'expense_category_id' => $this->resource->expenseMetadata->expense_category_id,
                     'payment_method_id' => $this->resource->expenseMetadata->payment_method_id,
                     'payment_repository_id' => $this->resource->expenseMetadata->payment_repository_id,
+                    'payment_instrument_id' => $this->resource->expenseMetadata->payment_instrument_id,
                     'recurrence_template_id' => $this->resource->expenseMetadata->recurrence_template_id,
                     'expense_kind' => $this->resource->expenseMetadata->expense_kind->value,
                     'vat_rate' => $this->resource->expenseMetadata->vat_rate,

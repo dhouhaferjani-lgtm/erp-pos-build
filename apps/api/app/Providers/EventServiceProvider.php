@@ -12,6 +12,7 @@ use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Expense\Application\Listeners\SyncExpenseOnInstrumentLifecycle;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
@@ -27,6 +28,8 @@ use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrder
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderClosed;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderCompleted;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderStarted;
+use App\Modules\Treasury\Domain\Events\InstrumentCancelled;
+use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Vehicle\Domain\Events\VehicleOwnerChanged;
 use App\Modules\Vehicle\Infrastructure\Listeners\CloseOwnershipsOnPartnerDeleted;
 use App\Modules\Vehicle\Infrastructure\Listeners\RecordVehicleOwnerChangedAuditEvent;
@@ -62,6 +65,12 @@ class EventServiceProvider extends ServiceProvider
         ],
         JournalEntryPosted::class => [
             RefreshPartnerBalanceOnJournalEntryPosted::class,
+        ],
+        InstrumentCleared::class => [
+            SyncExpenseOnInstrumentLifecycle::class,
+        ],
+        InstrumentCancelled::class => [
+            SyncExpenseOnInstrumentLifecycle::class,
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,
