@@ -27,7 +27,7 @@ export function ViewScopePicker({ className = '' }: ViewScopePickerProps) {
     return () => { document.removeEventListener('mousedown', handleOutside) }
   }, [])
 
-  const selectedIds = isAll ? locations.map((location) => location.id) : scope
+  const selectedIds: string[] = scope === 'all' ? locations.map((location) => location.id) : scope
   const toggleLocation = (id: string): void => {
     const next = selectedIds.includes(id)
       ? selectedIds.filter((locationId) => locationId !== id)

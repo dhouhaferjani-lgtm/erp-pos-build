@@ -73,7 +73,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
           : null,
       }
       if (canManageLocationAccess && !isSelf) {
-        data.allowed_location_ids = allowedLocationIds
+        data['allowed_location_ids'] = allowedLocationIds
       }
       return updateUser(user.id, data)
     },
