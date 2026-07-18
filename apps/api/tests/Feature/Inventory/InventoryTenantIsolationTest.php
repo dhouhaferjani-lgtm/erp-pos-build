@@ -645,6 +645,97 @@ final class InventoryTenantIsolationTest extends TestCase
         );
     }
 
+    public function test_stock_level_location_ids_filter_and_restricted_scope_are_enforced(): void
+    {
+        $locationA2 = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->companyA->id,
+            'name' => 'Loc A2 read scope',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $levelA = StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => '5.0',
+            'reserved' => '0.0',
+        ]);
+        $levelA2 = StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $locationA2->id,
+            'quantity' => '7.0',
+            'reserved' => '0.0',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-levels?location_ids[]='.$locationA2->id);
+
+        $response->assertOk();
+        $this->assertSame([$levelA2->id], array_column($response->json('data') ?? [], 'id'));
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->userA->id)
+            ->where('company_id', $this->companyA->id)
+            ->update(['allowed_location_ids' => [$this->locationA->id]]);
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-levels?location_ids[]='.$locationA2->id)
+            ->assertForbidden();
+
+        $this->assertNotNull($levelA);
+    }
+
+    public function test_stock_movement_location_ids_filter_returns_only_requested_locations(): void
+    {
+        $locationA2 = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->companyA->id,
+            'name' => 'Loc A2 movement read scope',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        StockMovement::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'movement_type' => 'receipt',
+            'quantity' => '1.0',
+            'quantity_before' => '0.0',
+            'quantity_after' => '1.0',
+            'reference' => 'scope-A',
+            'user_id' => (string) $this->userA->id,
+        ]);
+        $movementA2 = StockMovement::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $locationA2->id,
+            'movement_type' => 'receipt',
+            'quantity' => '2.0',
+            'quantity_before' => '0.0',
+            'quantity_after' => '2.0',
+            'reference' => 'scope-A2',
+            'user_id' => (string) $this->userA->id,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-movements?location_ids[]='.$locationA2->id);
+
+        $response->assertOk();
+        $this->assertSame([$movementA2->id], array_column($response->json('data') ?? [], 'id'));
+    }
+
     /**
      * Codex round-2 Finding 1 — StockReservationService::reserveForWorkOrder
      * derived Company from an unscoped StockLevel lookup-by-product_id,

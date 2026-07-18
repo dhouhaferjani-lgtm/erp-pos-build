@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Domain\StockLevel;
 use Illuminate\Http\JsonResponse;
@@ -15,11 +17,25 @@ class StockLevelController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationScopeResolver $locationScopeResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+
+        $validated = $request->validate([
+            'location_id' => ['sometimes', 'nullable', 'string', 'uuid'],
+            'location_ids' => ['sometimes', 'array', 'list'],
+            'location_ids.*' => ['string', 'uuid'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $requestedLocationIds = array_key_exists('location_ids', $validated)
+            ? array_values($validated['location_ids'])
+            : (($validated['location_id'] ?? null) !== null ? [(string) $validated['location_id']] : []);
+        $locationIds = $this->locationScopeResolver->resolve($user, $requestedLocationIds);
 
         // Both predicates required: tenant_id alone leaks same-tenant
         // cross-company stock data when a user with multi-company
@@ -35,9 +51,7 @@ class StockLevelController extends Controller
             $query->where('product_id', $request->input('product_id'));
         }
 
-        if ($request->has('location_id')) {
-            $query->where('location_id', $request->input('location_id'));
-        }
+        $query->whereIn('location_id', $locationIds);
 
         $stockLevels = $query->orderBy('created_at', 'desc')->paginate(20);
 
