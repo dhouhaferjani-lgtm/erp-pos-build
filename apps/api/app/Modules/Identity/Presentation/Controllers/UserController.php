@@ -304,6 +304,14 @@ class UserController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
+        if ($hasLocationGrant && $user->id === $currentUser->id) {
+            return $this->forbidden(
+                'SELF_LOCATION_ESCALATION',
+                'You cannot change your own location access.',
+                $request,
+            );
+        }
+
         if (
             $hasLocationGrant
             && ! UserCompanyMembership::where('user_id', $user->id)
