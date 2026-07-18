@@ -24,6 +24,7 @@ use App\Modules\Treasury\Application\Services\OutboundInstrumentService;
 use App\Modules\Treasury\Domain\Bank;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -116,7 +117,7 @@ final class ExpensePayByInstrumentTest extends TestCase
         self::assertSame(InstrumentStatus::Received, $instrument->status);
         self::assertSame(InstrumentKind::Cheque, $instrument->kind);
         self::assertSame($this->context['repository']->id, $instrument->repository_id);
-        self::assertSame("expense:{$expense->id}:settlement", $instrument->idempotency_key);
+        self::assertSame("expense:{$expense->id}:settlement:instrument:1", $instrument->idempotency_key);
         self::assertSame(0, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
         self::assertSame('500.000', $this->context['repository']->fresh()?->balance);
 
@@ -124,6 +125,7 @@ final class ExpensePayByInstrumentTest extends TestCase
             ->where('source_type', 'instrument')
             ->where('source_id', $instrument->id)
             ->sole();
+        self::assertCount(2, $issue->lines);
         $supplierPayable = Account::findByPurposeOrFail($this->context['company']->id, SystemAccountPurpose::SupplierPayable);
         $checksToPay = app(InstrumentAccountResolver::class)->resolveOrFail(
             InstrumentAccountPurpose::ChecksToPay,
@@ -173,6 +175,37 @@ final class ExpensePayByInstrumentTest extends TestCase
             ->sole();
         self::assertSame('125.000', $issue->lines->firstWhere('account_id', $effetsPayable)?->credit);
         self::assertSame(0, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
+    }
+
+    public function test_effet_settlement_rejects_a_missing_maturity_date_before_mutation(): void
+    {
+        $expense = $this->expense();
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->context['tenant']->id,
+            'company_id' => $this->context['company']->id,
+            'code' => 'EXP-EFFET-NODATE-'.Str::upper(Str::random(6)),
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Effet,
+        ]);
+
+        $this->actingAs($this->context['user'], 'sanctum')
+            ->postJson("/api/v1/expenses/{$expense->id}/pay", [
+                'mode' => 'instrument',
+                'payment_repository_id' => $this->context['repository']->id,
+                'payment_method_id' => $method->id,
+                'payment_date' => '2026-07-18',
+                'instrument' => [
+                    'kind' => InstrumentKind::Effet->value,
+                    'reference' => 'EFF-NO-DATE',
+                    'bank_id' => $this->context['bank']->id,
+                ],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['instrument.maturity_date']]]);
+
+        self::assertSame(0, PaymentInstrument::query()->count());
+        self::assertSame(0, JournalEntry::query()->where('source_type', 'instrument')->count());
     }
 
     public function test_retry_and_cash_settlement_are_rejected_while_linked_instrument_is_pending(): void
@@ -239,6 +272,31 @@ final class ExpensePayByInstrumentTest extends TestCase
         self::assertNull($metadata->payment_instrument_id);
     }
 
+    public function test_cancelled_instrument_can_be_replaced_without_reusing_its_row_key(): void
+    {
+        $expense = $this->expense();
+        $this->payByInstrument($expense)->assertOk();
+        $cancelled = $this->linkedInstrument($expense);
+
+        app(OutboundInstrumentService::class)->cancel(
+            $cancelled->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'Replace damaged cheque',
+        );
+
+        $this->payByInstrument($expense, 'CHK-EXP-REPLACEMENT')->assertOk();
+        $replacement = $this->linkedInstrument($expense);
+
+        self::assertNotSame($cancelled->id, $replacement->id);
+        self::assertSame(InstrumentStatus::Cancelled, $cancelled->fresh()?->status);
+        self::assertSame(InstrumentStatus::Received, $replacement->status);
+        self::assertSame("expense:{$expense->id}:settlement:instrument:1", $cancelled->idempotency_key);
+        self::assertSame("expense:{$expense->id}:settlement:instrument:2", $replacement->idempotency_key);
+        self::assertSame(2, InstrumentEvent::query()->where('event_type', InstrumentEventType::Issued)->count());
+    }
+
     public function test_cash_mode_regression_still_records_one_settlement_movement(): void
     {
         $expense = $this->expense();
@@ -291,7 +349,7 @@ final class ExpensePayByInstrumentTest extends TestCase
     }
 
     /** @return TestResponse<Response> */
-    private function payByInstrument(Document $expense): TestResponse
+    private function payByInstrument(Document $expense, string $reference = 'CHK-EXP-001'): TestResponse
     {
         return $this->actingAs($this->context['user'], 'sanctum')
             ->postJson("/api/v1/expenses/{$expense->id}/pay", [
@@ -301,7 +359,7 @@ final class ExpensePayByInstrumentTest extends TestCase
                 'payment_date' => '2026-07-18',
                 'instrument' => [
                     'kind' => InstrumentKind::Cheque->value,
-                    'reference' => 'CHK-EXP-001',
+                    'reference' => $reference,
                     'bank_id' => $this->context['bank']->id,
                     'maturity_date' => '2026-07-25',
                     'drawer_name' => 'Test Vendor',

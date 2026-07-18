@@ -503,10 +503,9 @@ final class ExpenseService
                 if (! $linkedInstrument instanceof PaymentInstrument) {
                     throw new \DomainException('The linked payment instrument could not be resolved for this company.');
                 }
-                if (in_array($linkedInstrument->status, [
-                    InstrumentStatus::Received,
-                    InstrumentStatus::Bounced,
-                    InstrumentStatus::Cleared,
+                if (! in_array($linkedInstrument->status, [
+                    InstrumentStatus::Cancelled,
+                    InstrumentStatus::Expired,
                 ], true)) {
                     throw new \DomainException('This expense already has an outstanding or cleared payment instrument.');
                 }
@@ -635,6 +634,9 @@ final class ExpenseService
         if (! in_array($data->instrumentKind, [InstrumentKind::Cheque, InstrumentKind::Effet], true)) {
             throw new \DomainException('Expense settlement supports cheque or effet instruments only.');
         }
+        if ($data->instrumentKind === InstrumentKind::Effet && $data->instrumentMaturityDate === null) {
+            throw new \DomainException('An effet settlement requires a maturity date.');
+        }
 
         $method = PaymentMethod::query()
             ->where('tenant_id', $expense->tenant_id)
@@ -659,6 +661,17 @@ final class ExpenseService
             (string) ($expense->total ?? '0'),
             $this->scaleResolver->getScale((string) $expense->currency),
         );
+        // The base settlement key remains the expense-level financial anchor.
+        // Each issued paper receives its own deterministic cycle key so a
+        // cancelled cheque/effet can be replaced without colliding with the
+        // retained portfolio row. The metadata row lock in settle() serializes
+        // this count and the subsequent link update for the expense.
+        $issueCycle = PaymentInstrument::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $expense->company_id)
+            ->where('idempotency_key', 'like', $settlementKey.':instrument:%')
+            ->count() + 1;
+        $instrumentIssueKey = "{$settlementKey}:instrument:{$issueCycle}";
         $instrument = $this->instrumentLifecycleService->receive(new ReceiveInstrumentData(
             tenantId: $expense->tenant_id,
             companyId: $expense->company_id,
@@ -675,7 +688,7 @@ final class ExpenseService
             maturityDate: $data->instrumentMaturityDate,
             receivedDate: $data->paymentDate,
             bankId: $data->instrumentBankId,
-            idempotencyKey: $settlementKey,
+            idempotencyKey: $instrumentIssueKey,
             createdBy: $user->id,
         ));
 
@@ -690,18 +703,6 @@ final class ExpenseService
             'occurredAt' => $issueDate->format('Y-m-d'),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $digest = hash('sha256', $canonical);
-
-        // The action anchor is checked before GL. A created instrument has no
-        // issue event yet; finding one means this orchestration is replaying an
-        // already-posted issue and must never create a second journal entry.
-        $existingIssue = InstrumentEvent::query()
-            ->where('instrument_id', $instrument->id)
-            ->where('action_key', $actionKey)
-            ->first();
-        if ($existingIssue instanceof InstrumentEvent) {
-            $existingIssue->assertSemanticDigest($digest);
-            throw new \DomainException('This expense instrument has already been issued.');
-        }
 
         $purpose = $data->instrumentKind === InstrumentKind::Cheque
             ? InstrumentAccountPurpose::ChecksToPay

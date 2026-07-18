@@ -61,8 +61,6 @@ export function PayExpenseDialog({
   const companyConfig = useCompanyConfigOptional()
   const payExpense = usePayExpense()
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null)
-  const [bankFallback, setBankFallback] = useState(false)
-  const [bankFallbackName, setBankFallbackName] = useState('')
   const { data: repositories, isLoading: repositoriesLoading } =
     useActivePaymentRepositories()
   const { data: methods, isLoading: methodsLoading } = useActivePaymentMethods()
@@ -81,14 +79,12 @@ export function PayExpenseDialog({
     : repositories
   const availableMethods = mode === 'instrument'
     ? methods.filter((method) => method.instrument_kind === instrumentKind)
-    : methods
+    : methods.filter((method) => method.instrument_kind === null)
 
   useEffect(() => {
     if (isOpen) {
       reset(defaultValues())
       setSelectedBank(null)
-      setBankFallback(false)
-      setBankFallbackName('')
     }
   }, [isOpen, reset])
 
@@ -98,7 +94,10 @@ export function PayExpenseDialog({
   }, [mode, setValue])
 
   useEffect(() => {
-    if (mode === 'instrument') setValue('payment_method_id', '')
+    if (mode === 'instrument') {
+      setValue('payment_method_id', '')
+      setValue('instrument_maturity_date', '')
+    }
   }, [instrumentKind, mode, setValue])
 
   const onSubmit = (form: PayExpenseFormData) => {
@@ -112,7 +111,9 @@ export function PayExpenseDialog({
             kind: form.instrument_kind,
             reference: form.instrument_reference,
             bank_id: selectedBank?.id ?? null,
-            maturity_date: form.instrument_maturity_date || null,
+            maturity_date: form.instrument_kind === 'effet'
+              ? form.instrument_maturity_date || null
+              : null,
             drawer_name: form.instrument_drawer_name || null,
           },
         }
@@ -237,7 +238,7 @@ export function PayExpenseDialog({
                   >
                     <Select
                       id="pay-expense-instrument-kind"
-                      {...register('instrument_kind', { required: true })}
+                      {...register('instrument_kind')}
                       disabled={payExpense.isPending}
                     >
                       <option value="cheque">{t('expenses:pay.instrument.kinds.cheque')}</option>
@@ -271,10 +272,11 @@ export function PayExpenseDialog({
                     country={companyConfig?.config?.country_code ?? ''}
                     value={selectedBank}
                     onChange={setSelectedBank}
-                    isFallback={bankFallback}
-                    fallbackValue={bankFallbackName}
-                    onFallbackChange={setBankFallback}
-                    onFallbackValueChange={setBankFallbackName}
+                    isFallback={false}
+                    fallbackValue=""
+                    onFallbackChange={() => undefined}
+                    onFallbackValueChange={() => undefined}
+                    allowFallback={false}
                     disabled={payExpense.isPending}
                   />
                 </FormField>

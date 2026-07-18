@@ -77,7 +77,11 @@ class PayExpenseRequest extends FormRequest
                 'uuid',
                 ScopedExists::tenant('banks', $tenantId),
             ],
-            'instrument.maturity_date' => ['nullable', 'date'],
+            'instrument.maturity_date' => [
+                'required_if:instrument.kind,'.InstrumentKind::Effet->value,
+                'nullable',
+                'date',
+            ],
             'instrument.drawer_name' => ['nullable', 'string', 'max:255'],
         ];
     }

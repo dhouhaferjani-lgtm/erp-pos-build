@@ -16,6 +16,7 @@ interface BankPickerProps {
   fallbackValue: string
   onFallbackChange: (isFallback: boolean) => void
   onFallbackValueChange: (value: string) => void
+  allowFallback?: boolean
   disabled?: boolean
   'aria-label'?: string
 }
@@ -29,6 +30,7 @@ export function BankPicker({
   fallbackValue,
   onFallbackChange,
   onFallbackValueChange,
+  allowFallback = true,
   disabled = false,
   'aria-label': ariaLabel,
 }: BankPickerProps) {
@@ -213,18 +215,20 @@ export function BankPicker({
               )
             })
           )}
-          <div className={`border-t ${borderColors.light} px-3 py-2`}>
-            <button
-              type="button"
-              className={`text-sm ${textColors.brand} ${textColors.hoverPrimary}`}
-              onClick={() => {
-                setIsOpen(false)
-                onFallbackChange(true)
-              }}
-            >
-              {t('bank.notListed')}
-            </button>
-          </div>
+          {allowFallback ? (
+            <div className={`border-t ${borderColors.light} px-3 py-2`}>
+              <button
+                type="button"
+                className={`text-sm ${textColors.brand} ${textColors.hoverPrimary}`}
+                onClick={() => {
+                  setIsOpen(false)
+                  onFallbackChange(true)
+                }}
+              >
+                {t('bank.notListed')}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
