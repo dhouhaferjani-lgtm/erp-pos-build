@@ -12,7 +12,7 @@ final class StockRebalanceQueryService
     private const SCALE = QuantityScale::SCALE;
 
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return array{data: list<array<string, mixed>>}
      */
     public function rebalance(string $tenantId, string $companyId, array $locationIds): array
@@ -69,7 +69,8 @@ final class StockRebalanceQueryService
                 }
             }
             if (! $hasThreshold) {
-                $donor = null; $receiver = null;
+                $donor = null;
+                $receiver = null;
                 foreach ($cells as $locationId => $cell) {
                     if ($donor === null || $this->compare($cell['available'], $donor['available']) > 0) {
                         $donor = ['location_id' => $locationId, 'available' => $cell['available'], 'max_quantity' => null, 'excess' => $cell['available']];
@@ -90,7 +91,10 @@ final class StockRebalanceQueryService
             $result[] = ['product_id' => $productId, 'variant_id' => $group['variant_id'], 'name' => $names[$productId]['name'], 'sku' => $names[$productId]['sku'], 'deficits' => $deficits, 'surpluses' => $surpluses, '_severity' => $severity];
         }
         usort($result, fn (array $a, array $b): int => $this->compare($b['_severity'], $a['_severity']));
-        foreach ($result as &$row) { unset($row['_severity']); }
+        foreach ($result as &$row) {
+            unset($row['_severity']);
+        }
+
         return ['data' => $result];
     }
 
