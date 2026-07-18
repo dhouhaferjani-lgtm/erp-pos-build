@@ -38,9 +38,9 @@ class StoreStockTransferRequest extends FormRequest
     protected function failedValidation(Validator $validator): void
     {
         $message = 'You do not have permission to access this location.';
-        $sourceErrors = $validator->errors()->get('source_location_id');
+        $errors = $validator->errors()->toArray();
 
-        if (in_array($message, $sourceErrors, true)) {
+        if (count($errors) === 1 && ($errors['source_location_id'] ?? null) === [$message]) {
             $sourceLocationId = (string) $this->input('source_location_id');
             $user = $this->user();
 

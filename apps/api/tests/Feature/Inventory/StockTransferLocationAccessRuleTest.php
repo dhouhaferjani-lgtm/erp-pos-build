@@ -128,6 +128,17 @@ class StockTransferLocationAccessRuleTest extends TestCase
         self::assertSame(422, $validationException->status);
     }
 
+    public function test_restricted_inaccessible_source_with_missing_destination_stays_validation_error(): void
+    {
+        $payload = $this->payload($this->source, $this->destination);
+        unset($payload['destination_location_id']);
+
+        $this->actingAs($this->restricted)
+            ->postJson('/api/v1/stock-transfers', $payload)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
+
     public function test_null_membership_caller_can_create_from_any_source(): void
     {
         $this->seedStock($this->source);
