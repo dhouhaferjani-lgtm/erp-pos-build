@@ -103,6 +103,18 @@ class UserController extends Controller
         $perPage = min((int) $request->get('per_page', 15), 100);
         $users = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
+        // The users table is tenant-scoped, while location assignments live on
+        // the current company's membership row. Load the assignments for this
+        // page in one query so the edit form can round-trip a restricted user's
+        // existing access without accidentally clearing it.
+        $companyId = $this->companyContext->requireCompanyId();
+        $userIds = $users->getCollection()->pluck('id')->all();
+        $memberships = UserCompanyMembership::query()
+            ->where('company_id', $companyId)
+            ->whereIn('user_id', $userIds)
+            ->get()
+            ->keyBy('user_id');
+
         $data = $users->getCollection()->map(fn (User $user) => [
             'id' => $user->id,
             'name' => $user->name,
@@ -110,6 +122,7 @@ class UserController extends Controller
             'phone' => $user->phone,
             'status' => $user->status->value,
             'roles' => $user->getRoleNames()->values()->all(),
+            'allowed_location_ids' => $memberships->get($user->id)?->allowed_location_ids,
             'lastLoginAt' => $user->last_login_at?->toIso8601String(),
             'createdAt' => $user->created_at->toIso8601String(),
         ]);

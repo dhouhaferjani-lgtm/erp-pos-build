@@ -6,6 +6,7 @@ namespace Tests\Feature\Identity\UserManagement;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -124,6 +125,45 @@ class ListUsersTest extends TestCase
         $this->assertCount(3, $response->json('data'));
     }
 
+    public function test_list_includes_current_company_location_assignments(): void
+    {
+        $location = Location::factory()->create([
+            'company_id' => $this->company->id,
+            'name' => 'Main Shop',
+            'code' => 'MAIN',
+        ]);
+        $restrictedUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Restricted User',
+            'email' => 'restricted@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $restrictedUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+            'allowed_location_ids' => [$location->id],
+        ]);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/users');
+
+        $response->assertOk()
+            ->assertJsonStructure(['data' => ['*' => ['allowed_location_ids']]]);
+
+        $restrictedRow = null;
+        foreach ($response->json('data') as $row) {
+            if (is_array($row) && ($row['email'] ?? null) === 'restricted@example.com') {
+                $restrictedRow = $row;
+                break;
+            }
+        }
+
+        $this->assertIsArray($restrictedRow);
+        $this->assertSame([$location->id], $restrictedRow['allowed_location_ids']);
+    }
+
     public function test_users_are_paginated(): void
     {
         // Create 15 additional users
@@ -238,7 +278,12 @@ class ListUsersTest extends TestCase
 
         $response->assertOk();
         // Should only see users from the same tenant
-        $emails = collect($response->json('data'))->pluck('email')->toArray();
+        $emails = [];
+        foreach ($response->json('data') as $row) {
+            if (is_array($row) && is_string($row['email'] ?? null)) {
+                $emails[] = $row['email'];
+            }
+        }
         $this->assertContains('admin@example.com', $emails);
         $this->assertNotContains('other@example.com', $emails);
     }
