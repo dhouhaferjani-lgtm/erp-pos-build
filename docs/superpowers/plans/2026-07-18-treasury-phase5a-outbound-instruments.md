@@ -130,8 +130,8 @@ final readonly class OutboundInstrumentService
 
 **Per-action skeleton (all four):** one `DB::transaction`: `lockForUpdate` instrument (tenant+company-scoped) → **replay check via `instrument_events.action_key` (Task 2) — BEFORE anything else**; digest match ⇒ return original; mismatch ⇒ throw → assert `direction === Outbound` → assert transition per §4.3 table (else `InvalidInstrumentTransitionException`) → `OutboundRepositoryValidator` → build JE (Task-3 builder) + `postEntryNow()` → movement via port where the table says so → write the `instrument_events` row (action_key, digest, produced ids) → status/timestamps → afterCommit domain event + audit.
 
-- [ ] **Step 1: failing tests** — clear posts Dr payable / Cr `repository.gl_account_id` + out movement keyed `instrument:{id}:clear:1`, status Cleared, fires `InstrumentCleared`; **replay returns original ids, posts nothing new, even though status is already Cleared** (the ordering fix); digest-mismatch replay throws; inbound instrument rejected; GL-failure injection ⇒ full rollback (status Received, zero JEs/movements/events); validator unit matrix: cash-register / inactive / null-GL / wrong-currency / wrong-bank / cross-company each rejected.
-- [ ] Steps 2-5: red → implement → green → commit `feat(treasury): outbound GL builders, repository validator, clearing`.
+- [x] **Step 1: failing tests** — clear posts Dr payable / Cr `repository.gl_account_id` + out movement keyed `instrument:{id}:clear:1`, status Cleared, fires `InstrumentCleared`; **replay returns original ids, posts nothing new, even though status is already Cleared** (the ordering fix); digest-mismatch replay throws; inbound instrument rejected; GL-failure injection ⇒ full rollback (status Received, zero JEs/movements/events); validator unit matrix: cash-register / inactive / null-GL / wrong-currency / wrong-bank / cross-company each rejected.
+- [x] Steps 2-5: red → implement → green → commit `feat(treasury): outbound GL builders, repository validator, clearing`.
 
 ### Task 4: `bounce()` + `represent()`
 
