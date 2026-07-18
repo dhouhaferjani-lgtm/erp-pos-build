@@ -7,6 +7,7 @@ namespace App\Modules\Replenishment\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
@@ -28,6 +29,7 @@ final class ReplenishmentRequestController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
+        private readonly LocationScopeResolver $scopeResolver,
         private readonly ReplenishmentCaptureService $captureService,
     ) {}
 
@@ -47,20 +49,10 @@ final class ReplenishmentRequestController extends Controller
         $user = $request->user();
         abort_unless($user instanceof User, 401);
 
-        if (! $user->can('replenishment.process')) {
-            $allowed = $this->locationContext->getAllowedLocationIds($companyId, $user);
-            if ($allowed === []) {
-                return response()->json(['data' => [], 'meta' => ['truncated' => false]]);
-            }
-            if ($allowed !== null) {
-                $query->whereIn('replenishment_requests.location_id', $allowed);
-            }
-            // Processors deliberately bypass membership limits: reviewers see all shops.
-        }
-
-        if (isset($validated['location_ids'])) {
-            $query->whereIn('replenishment_requests.location_id', $validated['location_ids']);
-        }
+        /** @var list<string> $requestedLocationIds */
+        $requestedLocationIds = array_values($validated['location_ids'] ?? []);
+        $scopedLocationIds = $this->scopeResolver->resolve($user, $requestedLocationIds, 'replenishment.process');
+        $query->whereIn('replenishment_requests.location_id', $scopedLocationIds);
         if (isset($validated['product_id'])) {
             $query->where('replenishment_requests.product_id', $validated['product_id']);
         }
