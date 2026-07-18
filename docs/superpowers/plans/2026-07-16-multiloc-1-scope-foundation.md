@@ -706,7 +706,7 @@ Review A4/A5/A6: a module-agnostic scoped picker endpoint, a management-gated un
 
 **Steps**
 
-- [ ] Write the failing test. `LocationListEndpointsTest.php`:
+- [x] Write the failing test. `LocationListEndpointsTest.php`:
 ```php
 public function test_scoped_company_locations_excludes_unassigned_for_restricted_user(): void; // restricted=[A] → /company/locations returns only A
 public function test_scoped_company_locations_returns_all_for_null_membership(): void;         // NULL → both A and B
@@ -714,8 +714,8 @@ public function test_management_all_returns_full_set_with_permission(): void;   
 public function test_management_all_forbidden_without_permission(): void;                       // 403
 public function test_wired_inventory_locations_index_honors_allowed_set(): void;               // GET /locations restricted=[A] → only A
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php`
-- [ ] Implement — controller. Inject `LocationScopeResolver $scopeResolver`. Add:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php`
+- [x] Implement — controller. Inject `LocationScopeResolver $scopeResolver`. Add:
 ```php
 public function scopedIndex(Request $request): JsonResponse
 {
@@ -733,17 +733,17 @@ public function managementIndex(Request $request): JsonResponse
 }
 ```
 where `pickerPayload(array $ids, Request $request)` loads `Location::whereIn('id', $ids)->where('company_id', $companyId)->orderByDesc('is_default')->orderBy('name')->get()` and maps to `['id','name','code' => $l->code, 'type' => $l->type->value, 'is_default' => $l->is_default]`. Also scope the existing `index()`: replace its `Location::where('company_id',...)` fetch with `whereIn('id', $this->scopeResolver->resolve($request->user()))` (NULL-membership users are unaffected — resolver returns the full set).
-- [ ] Implement — routes. In `apps/api/app/Modules/Company/routes.php`, inside the existing `Route::prefix('api/v1')->middleware([...])->group(...)`:
+- [x] Implement — routes. In `apps/api/app/Modules/Company/routes.php`, inside the existing `Route::prefix('api/v1')->middleware([...])->group(...)`:
 ```php
 Route::get('company/locations', [LocationController::class, 'scopedIndex'])->name('company.locations.scoped');
 Route::get('company/locations/all', [LocationController::class, 'managementIndex'])
     ->middleware('can:users.manage_location_access')->name('company.locations.all');
 ```
 (Import `App\Modules\Company\Presentation\Controllers\LocationController`.)
-- [ ] Implement — delete the dead duplicate `app/Modules/Inventory/Presentation/Controllers/LocationController.php`. Re-verify no references: `cd apps/api && grep -rn "Inventory\\\\Presentation\\\\Controllers\\\\LocationController" app routes` returns nothing.
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Presentation/Controllers/LocationController.php app/Modules/Company/routes.php`
-- [ ] Commit: `feat(multiloc): scoped + management locations endpoints, drop duplicate controller (§1 step 4c)`
+- [x] Implement — delete the dead duplicate `app/Modules/Inventory/Presentation/Controllers/LocationController.php`. Re-verify no references: `cd apps/api && grep -rn "Inventory\\\\Presentation\\\\Controllers\\\\LocationController" app routes` returns nothing.
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Presentation/Controllers/LocationController.php app/Modules/Company/routes.php`
+- [x] Commit: `feat(multiloc): scoped + management locations endpoints, drop duplicate controller (§1 step 4c)`
 
 ---
 
