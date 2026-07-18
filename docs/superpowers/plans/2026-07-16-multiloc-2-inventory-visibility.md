@@ -379,11 +379,11 @@ export async function updateThresholds(body: {
 **Routing + nav** (per `docs/conventions/02-NAVIGATION-ROUTING.md`): register route `/inventory/stock-by-location` (lazy import), add a sidebar/nav entry gated by `inventory.view`, wire breadcrumb. Confirm the exact router + nav files by reading the convention doc; add there only (no bespoke nav).
 
 **TDD steps**
-- [ ] Write `ProductLocationMatrix.test.tsx` (Vitest + RTL; may `vi.mock` `useViewScope`, `useLocations`, and the matrix query hook per memory's frontend-test convention): renders one column per scoped location; renders `formatQuantity` output (assert rendered text, not classes — rule 17); metric toggle switches displayed value; below-min cell gets the warning token (assert via rendered element/role, not raw class string where avoidable); expand reveals variant rows; threshold input hidden without `inventory.adjust`. Run `pnpm vitest run src/components/organisms/ProductLocationMatrix/ProductLocationMatrix.test.tsx` → RED.
-- [ ] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination; also a **mixed-grain expand** assertion (a variant-parent expands to variant leaves + a "(base)" leaf whose name ends with the base suffix). Run `pnpm vitest run src/features/inventory/pages/StockByLocationPage.test.tsx` → RED.
-- [ ] Implement component, page, api, i18n keys (incl. `stockByLocation.baseGrainSuffix`), routing/nav → GREEN both files.
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint` (or scoped `pnpm lint src/components/organisms/ProductLocationMatrix src/features/inventory`) → 0.
-- [ ] Commit: `feat(web): ProductLocationMatrix + Stock-by-location page with inline thresholds (multiloc §2 F7)`.
+- [x] Write `ProductLocationMatrix.test.tsx` (Vitest + RTL; may `vi.mock` `useViewScope`, `useLocations`, and the matrix query hook per memory's frontend-test convention): renders one column per scoped location; renders `formatQuantity` output (assert rendered text, not classes — rule 17); metric toggle switches displayed value; below-min cell gets the warning token (assert via rendered element/role, not raw class string where avoidable); expand reveals variant rows; threshold input hidden without `inventory.adjust`. Run `pnpm vitest run src/components/organisms/ProductLocationMatrix/ProductLocationMatrix.test.tsx` → RED.
+- [x] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination; also a **mixed-grain expand** assertion (a variant-parent expands to variant leaves + a "(base)" leaf whose name ends with the base suffix). Run `pnpm vitest run src/features/inventory/pages/StockByLocationPage.test.tsx` → RED.
+- [x] Implement component, page, api, i18n keys (incl. `stockByLocation.baseGrainSuffix`), routing/nav → GREEN both files.
+- [x] `cd apps/web && pnpm typecheck && pnpm lint` (or scoped `pnpm lint src/components/organisms/ProductLocationMatrix src/features/inventory`) → 0.
+- [x] Commit: `feat(web): ProductLocationMatrix + Stock-by-location page with inline thresholds (multiloc §2 F7)`.
 
 ---
 
