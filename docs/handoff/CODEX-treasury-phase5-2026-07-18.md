@@ -66,7 +66,7 @@ Commit `.gates/` — the audit trail. **Escalate any gate to Fable when:** (a) y
 - Module boundaries: Treasury never writes Expense models — `InstrumentCleared`/`InstrumentCancelled` events + Expense listener.
 - Rules 19/20 everywhere: bcmath strings, injected scale resolver with explicit currency, no CompanyContext in projections/queue paths.
 - Migration order is load-bearing: ⑤b profiles → statements → lines → allocations → executions; all migrations idempotent + self-guarding.
-- **Two merge gates enforced at exit, before ANY dev merge:** (1) expert-comptable confirmation of the `403`/`4035` codes (build on provisional codes is fine; merge is not); (2) the multi-location §3 package landed on dev (⑤b location contract dependency).
+- **One merge gate enforced at the ⑤b exit, before ANY dev merge:** the multi-location §3 package landed on dev (⑤b location contract dependency). The `403`/`4035` chart codes are **seeder-owned and final for this build** (owner ruling 2026-07-18: seeded codes are re-mappable later via seeder + `treasury:backfill-payable-instrument-accounts` — no external confirmation blocks the merge; keep the codes documented in the spec §4.1 table).
 
 ## Deliverables (both exits passed)
 

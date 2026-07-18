@@ -176,7 +176,7 @@ Alert-only §6.7 checks (tampered reconciled statement; stale unreconciled > 30d
 
 Full spec §9 flow (upload → preview reports → import → tier-1 confirm → tier-3 outbound clear → tier-4 card batch + fee → create-from-line agio → ignore+acknowledge → complete → checkpoint stamped → backdated adjustment rejected → reconcile clean).
 
-🚦 **GATE 5 — treasury-reviewer + frontend-conventions-reviewer (Opus); ⑤b exit = full-branch review (CRITICAL — Fable arbitration only on reviewer deadlock, ask owner first). Exit checklist includes: multi-location §3 landed (merge gate), deploy checklist produced, expert-comptable confirmation on file.**
+🚦 **GATE 5 — treasury-reviewer + frontend-conventions-reviewer (Opus); ⑤b exit = full-branch review (CRITICAL — Fable arbitration only on reviewer deadlock, ask owner first). Exit checklist includes: multi-location §3 landed (merge gate), deploy checklist produced. Chart codes are seeder-owned and final for this build (owner ruling 2026-07-18 — no accounting sign-off gates the exit).**
 
 ---
 

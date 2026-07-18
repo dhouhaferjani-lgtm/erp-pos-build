@@ -48,7 +48,7 @@ Close the loop between the ERP's internal money ledger and the bank's version of
 
 Extend **`InstrumentAccountPurpose`** (NOT `SystemAccountPurpose`) with `ChecksToPay` and `EffetsPayable`; extend `InstrumentAccountResolver` country-aware, exhaustively (every enum `match` branch — no default-arm silence). Both purposes resolve to **liability** accounts; resolver behavior on a missing account = throw the canonical missing-purpose-account domain error (fail loud, never fall back to an inbound account).
 
-**Chart codes (provisional — expert-comptable confirmation is a ⑤a gate before build):**
+**Chart codes (owner ruling 2026-07-18: seeder-owned and final for this build — re-mappable later via seeder + backfill command if the expert-comptable prefers different numbers; no external confirmation gates the build or merge):**
 
 | Purpose | TN | FR | Generic |
 |---|---|---|---|
@@ -194,14 +194,14 @@ Alert-only additions (no freeze): (a) reconciled statements whose stored sums no
 ## 10. Delivery & gates
 
 - One umbrella spec; **two implementation plans**: ⑤a (outbound instruments) → ⑤b (import + reconciliation, whose wave 0 = payment-method routing). ⑤b's aggregate/parser/workspace tasks may start once ⑤a's plan is locked; tier-3 outbound matching needs ⑤a shipped.
-- Standing gates: adversarial review of each plan **before dispatch**; `treasury-reviewer` at every milestone; expert-comptable confirmation of §4.1 chart codes — **build may proceed on the provisional codes; nothing merges to dev until confirmed** (plan-aligned wording); human merges only.
+- Standing gates: adversarial review of each plan **before dispatch**; `treasury-reviewer` at every milestone; human merges only. §4.1 chart codes are seeder-owned and final for this build (owner ruling 2026-07-18) — no accounting sign-off gates build or merge.
 - Execution in worktree `../erp.treasury-phase5` (branch `feat/treasury-phase5-design`, based on local dev `e948ccaaf`); promotion via batched fast-forward discipline.
 - Deploy notes (stacking on the owed ③/④ checklists): ⑤a = purposes seeder migration + backfill command + perm reseed; ⑤b = 5 migrations + routing backfill + perm reseed + cache-reset.
 
 ## 11. Open questions for the plans (not design blockers)
 
 1. Outbound clearing implementation shape: dedicated `OutboundInstrumentService` vs direction-branched methods on `InstrumentLifecycleService` — decide after tracing; must not weaken the Phase-④ inbound guards or the §4.3 rejection of inbound internals.
-2. TN bank-fee VAT treatment for §6.4/create-from-line defaults (confirm against Phase ④ VAT-split rules with the expert-comptable alongside the §4.1 codes).
+2. TN bank-fee VAT treatment for §6.4/create-from-line defaults — implement VAT-exempt default behind a config seam (plan ⑤b Task 7); refine later against Phase ④ VAT-split rules if the expert-comptable advises (non-blocking, same seeder-owned logic as the §4.1 codes).
 3. `column_map` DTO shape — finalize against 2–3 real TN bank exports collected before the ⑤b plan is written.
 4. Parser implementation: extend `SpreadsheetParserService` with a raw-row/profile mode vs Treasury-local parser on the same library.
 5. Legacy `bank_reconciliations` read endpoints: any consumers? (trace; delete vs keep read-only).
