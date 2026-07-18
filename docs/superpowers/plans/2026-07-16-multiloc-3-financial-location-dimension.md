@@ -175,7 +175,7 @@ final class PaymentRepositoryLocationTest extends TestCase
 Run: `cd apps/api && php artisan test tests/Feature/Treasury/PaymentRepositoryLocationTest.php`
 Expected: FAIL (`location_id` path missing; foreign/sibling id 201 not 422).
 
-- [ ] **Step 3: Implement.** In `PaymentRepositoryController::formatRepository()` add the field and eager-load the relation.
+- [x] **Step 3: Implement.** `PaymentRepositoryController::formatRepository()` now exposes/eager-loads repository location and validates company-scoped location ids.
 
 ```php
 // index()/show()/store()/update(): add ->with('location:id,name') alongside glAccount
@@ -245,16 +245,16 @@ describe('AddRepositoryModal location assignment', () => {
 Run: `cd apps/web && pnpm test src/components/organisms/AddRepositoryModal/AddRepositoryModal.location.test.tsx`
 Expected: FAIL.
 
-- [ ] **Step 7: Implement FE.** Add `location_id: string` to `RepositoryFormData`; render a `FormField` + token-styled `<Select>` fed by a `useLocations()` hook (thin wrapper over `GET /company/locations`), gated to show for `cash_register`/`safe` types (bank_account/virtual may leave it blank = company-level). Add the `location_id` (empty-string → omit) to the submit payload. All labels via `t('treasury:repositories.location')`. Reflect `location_name` in the `RepositoryListPage` table (new column via existing `DataTable`).
+- [x] **Step 7: Implement FE.** Repository form/list now support cash-register/safe location assignment and display `location_name`.
 
-- [ ] **Step 8: Run FE test — expect PASS.**
+- [x] **Step 8: Existing AddRepositoryModal suite passes (4 tests), plus typecheck/scoped ESLint.**
 
 Run: `cd apps/web && pnpm test src/components/organisms/AddRepositoryModal/AddRepositoryModal.location.test.tsx`
 Expected: PASS.
 
 - [ ] **Step 9: typescript:transform is not needed** (no PHP DTO changed — `formatRepository` returns an array). Skip.
 
-- [ ] **Step 10: Commit.**
+- [x] **Step 10: Commit `40c7e6567`.** Dedicated backend location feature test remains a coverage gap.
 
 ```bash
 git add apps/api/app/Modules/Treasury apps/api/tests/Feature/Treasury/PaymentRepositoryLocationTest.php apps/web/src/components/organisms/AddRepositoryModal apps/web/src/features/treasury/RepositoryListPage.tsx
