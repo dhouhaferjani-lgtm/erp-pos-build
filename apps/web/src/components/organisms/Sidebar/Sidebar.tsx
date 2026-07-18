@@ -211,6 +211,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'inventory',
       children: [
         { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
+        { key: 'stockByLocation', href: '/inventory/stock-by-location', icon: Layers, permission: 'inventory.view' },
         { key: 'placement', href: '/inventory/placement', icon: MapPinned, permission: 'inventory' },
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat, permission: 'inventory.transfers.view' },

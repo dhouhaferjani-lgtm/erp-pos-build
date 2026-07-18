@@ -1,0 +1,1 @@
+export { ProductLocationMatrix } from './ProductLocationMatrix'

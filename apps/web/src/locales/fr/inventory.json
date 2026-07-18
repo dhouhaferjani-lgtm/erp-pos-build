@@ -253,6 +253,8 @@
     "viewByLocation": "Voir par emplacement ({{count}})",
     "noStock": "Aucune information de stock disponible",
     "product": "Produit",
+    "minQuantity": "Quantité minimale",
+    "maxQuantity": "Quantité maximale",
     "adjust": "Ajuster le stock",
     "transfer": "Transférer le stock",
     "receive": "Réceptionner le stock",
@@ -1059,5 +1061,15 @@
       "productUnassigned": "Emplacement retiré.",
       "productsMoved": "Produits sélectionnés déplacés."
     }
+  },
+  "stockByLocation": {
+    "title": "Stock par emplacement",
+    "subtitle": "Consultez la disponibilité et les seuils par emplacement.",
+    "search": "Rechercher des produits",
+    "empty": "Aucun stock trouvé",
+    "product": "Produit",
+    "thresholdsNotApplicable": "Seuils définis par variante",
+    "metric": { "label": "Indicateur de stock", "available": "Disponible", "onHand": "En stock", "thresholds": "Min / max" },
+    "baseGrainSuffix": " (base)"
   }
 }
