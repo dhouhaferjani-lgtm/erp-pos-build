@@ -251,6 +251,14 @@
     "projectedAvailable": "Disponible prévu",
     "stockValue": "Valeur du stock",
     "viewByLocation": "Voir par emplacement ({{count}})",
+    "locationOnHand": "En stock",
+    "locationReserved": "Réservé",
+    "locationAvailable": "Disponible",
+    "locationIncoming": "En cours de réception",
+    "thresholds": "Min / Max",
+    "actions": "Actions",
+    "transferFromHere": "Transférer depuis cet emplacement",
+    "noLocations": "Aucun emplacement configuré",
     "noStock": "Aucune information de stock disponible",
     "product": "Produit",
     "minQuantity": "Quantité minimale",
@@ -1070,6 +1078,7 @@
     "product": "Produit",
     "thresholdsNotApplicable": "Seuils définis par variante",
     "metric": { "label": "Indicateur de stock", "available": "Disponible", "onHand": "En stock", "thresholds": "Min / max" },
-    "baseGrainSuffix": " (base)"
+    "baseGrainSuffix": " (base)",
+    "rebalance": { "title": "Suggestions de rééquilibrage", "empty": "Aucune suggestion de rééquilibrage" }
   }
 }

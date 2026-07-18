@@ -69,6 +69,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
         ->middleware('can:inventory.view')
         ->name('inventory.stock-matrix');
+    Route::get('/inventory/stock-matrix/rebalance', [StockMatrixController::class, 'rebalance'])
+        ->middleware('can:inventory.view')
+        ->name('inventory.stock-matrix.rebalance');
 
     // Stock Movements
     Route::get('/stock-movements', [StockMovementController::class, 'index'])

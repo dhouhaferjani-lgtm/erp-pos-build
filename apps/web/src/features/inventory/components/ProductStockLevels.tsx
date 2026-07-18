@@ -8,6 +8,10 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import { bccomp, bcmul } from '@/lib/decimal'
+import { RequirePermission } from '@/components/auth'
+import { Link } from 'react-router-dom'
+import { ThresholdEditCell } from './ThresholdEditCell'
+import type { MatrixCell, MatrixRow } from '../api/stockMatrix'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -161,39 +165,73 @@ export function ProductStockLevels({
         </div>
       </div>
 
-      {/* Per-Location Breakdown (Collapsible) */}
-      {locations.length > 1 && (
-        <details className={`border-t ${borderColors.light}`}>
-          <summary className={`cursor-pointer px-6 py-3 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50}`}>
+      {/* Per-location stock is always visible so product availability is never hidden. */}
+      <section className={`border-t ${borderColors.light}`} aria-labelledby="product-stock-by-location">
+        <div className="flex items-center justify-between gap-3 px-6 py-3">
+          <h3 id="product-stock-by-location" className={`text-sm font-semibold ${textColors.primary}`}>
             {t('stock.viewByLocation', { count: locations.length })}
-          </summary>
-          <div className={`divide-y ${borderColors.divideLight} px-6 pb-4`}>
-            {locations.map((loc) => (
-              <div key={loc.id} className="py-3">
-                <div className={`mb-2 font-medium ${textColors.primary}`}>{loc.location_name}</div>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.onHand')}:</span>{' '}
-                    <span className="font-medium">{formatQuantity(loc.quantity)}</span>
-                  </div>
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.available')}:</span>{' '}
-                    <span className={`font-medium ${textColors.success}`}>
-                      {formatQuantity(loc.available)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.incoming')}:</span>{' '}
-                    <span className={`font-medium ${textColors.brand}`}>
-                      {formatQuantity(loc.incoming)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+          </h3>
+        </div>
+        <div className="overflow-x-auto px-6 pb-4">
+          <table className={`min-w-full divide-y ${borderColors.divideLight} text-sm`}>
+            <thead>
+              <tr className={textColors.tertiary}>
+                <th scope="col" className="py-2 pr-4 text-left font-medium">{t('stock.location')}</th>
+                <th scope="col" className="px-2 py-2 text-right font-medium">{t('stock.locationOnHand')}</th>
+                <th scope="col" className="px-2 py-2 text-right font-medium">{t('stock.locationReserved')}</th>
+                <th scope="col" className="px-2 py-2 text-right font-medium">{t('stock.locationAvailable')}</th>
+                <th scope="col" className="px-2 py-2 text-right font-medium">{t('stock.locationIncoming')}</th>
+                <th scope="col" className="px-2 py-2 text-left font-medium">{t('stock.thresholds')}</th>
+                <th scope="col" className="py-2 pl-2 text-right font-medium">{t('stock.actions')}</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${borderColors.divideLight}`}>
+              {locations.map((loc) => {
+                const cell: MatrixCell = {
+                  on_hand: loc.quantity,
+                  reserved: loc.reserved,
+                  available: loc.available,
+                  min_quantity: loc.min_quantity,
+                  max_quantity: loc.max_quantity,
+                  incoming: loc.incoming,
+                }
+                const row: MatrixRow = {
+                  product_id: productId,
+                  variant_id: null,
+                  name: '',
+                  sku: '',
+                  is_variant_parent: false,
+                  cells: { [loc.location_id]: cell },
+                }
+
+                return (
+                  <tr key={loc.id}>
+                    <th scope="row" className={`whitespace-nowrap py-3 pr-4 text-left font-medium ${textColors.primary}`}>
+                      {loc.location_name}
+                    </th>
+                    <td className="px-2 py-3 text-right font-medium">{formatQuantity(loc.quantity)}</td>
+                    <td className={`px-2 py-3 text-right font-medium ${textColors.warningDark}`}>{formatQuantity(loc.reserved)}</td>
+                    <td className={`px-2 py-3 text-right font-medium ${textColors.success}`}>{formatQuantity(loc.available)}</td>
+                    <td className={`px-2 py-3 text-right font-medium ${textColors.brand}`}>{formatQuantity(loc.incoming)}</td>
+                    <td className="px-2 py-3"><ThresholdEditCell row={row} locationId={loc.location_id} cell={cell} /></td>
+                    <td className="py-3 pl-2 text-right">
+                      <RequirePermission permission="inventory.transfers.create">
+                        <Link
+                          className={`whitespace-nowrap text-sm font-medium ${textColors.brand} underline-offset-2 hover:underline`}
+                          to={`/inventory/stock-transfers/new?source_location_id=${encodeURIComponent(loc.location_id)}&product_id=${encodeURIComponent(productId)}`}
+                        >
+                          {t('stock.transferFromHere')}
+                        </Link>
+                      </RequirePermission>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {locations.length === 0 && <p className={`py-4 text-center text-sm ${textColors.tertiary}`}>{t('stock.noLocations')}</p>}
+        </div>
+      </section>
     </StockLevelsFrame>
   )
 }

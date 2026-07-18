@@ -251,6 +251,14 @@
     "projectedAvailable": "Projected Available",
     "stockValue": "Stock Value",
     "viewByLocation": "View by Location ({{count}})",
+    "locationOnHand": "On Hand",
+    "locationReserved": "Reserved",
+    "locationAvailable": "Available",
+    "locationIncoming": "Incoming",
+    "thresholds": "Min / Max",
+    "actions": "Actions",
+    "transferFromHere": "Transfer from here",
+    "noLocations": "No locations configured",
     "noStock": "No stock information available",
     "product": "Product",
     "minQuantity": "Minimum quantity",
@@ -1070,6 +1078,7 @@
     "product": "Product",
     "thresholdsNotApplicable": "Thresholds are set per variant",
     "metric": { "label": "Stock metric", "available": "Available", "onHand": "On hand", "thresholds": "Min / max" },
-    "baseGrainSuffix": " (base)"
+    "baseGrainSuffix": " (base)",
+    "rebalance": { "title": "Rebalancing suggestions", "empty": "No rebalancing suggestions" }
   }
 }

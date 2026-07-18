@@ -10,6 +10,7 @@ import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
 import { ProductLocationMatrix } from '@/components/organisms/ProductLocationMatrix'
 import { getStockMatrix } from '../api/stockMatrix'
+import { RebalancingView } from '../components/RebalancingView'
 
 export function StockByLocationPage() {
   const { t } = useTranslation('inventory')
@@ -27,6 +28,7 @@ export function StockByLocationPage() {
       <input aria-label={t('stockByLocation.search')} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder={t('stockByLocation.search')} className={tokens.input.base} />
       {query.isLoading ? <div role="status">{t('common.loading')}</div> : rows.length === 0 ? <EmptyState title={t('stockByLocation.empty')} /> : <ProductLocationMatrix rows={rows} locations={locations} />}
       {query.data ? <OffsetPagination currentPage={query.data.meta.current_page} lastPage={query.data.meta.last_page} total={query.data.meta.total} perPage={perPage} from={rows.length ? ((page - 1) * perPage) + 1 : null} to={rows.length ? ((page - 1) * perPage) + rows.length : null} onPageChange={setPage} onPerPageChange={(value) => { setPerPage(value); setPage(1) }} /> : null}
+      <RebalancingView />
     </div>
   )
 }
