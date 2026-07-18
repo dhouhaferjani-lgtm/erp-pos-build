@@ -108,6 +108,7 @@ export const PERMISSIONS = {
   'settings.view': ['admin', 'manager'],
   'settings.edit': ['admin'],
   'settings.manage': ['admin', 'manager'],
+  'users.manage_location_access': ['admin'],
 
   // Dashboard (everyone can view)
   'dashboard.view': ['admin', 'sales', 'purchases', 'inventory', 'treasury', 'accountant', 'manager', 'user'],

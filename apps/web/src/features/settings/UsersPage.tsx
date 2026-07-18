@@ -34,6 +34,8 @@ import {
 } from '../../components/molecules'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { UserEditModal } from './components/UserEditModal'
+import { LocationAccessField } from './components/LocationAccessField'
+import { usePermissions } from '../../hooks/usePermissions'
 import type { User } from '../users/types'
 
 interface UsersResponse {
@@ -58,6 +60,7 @@ interface CreateUserData {
   role: string
   locale?: string | undefined
   timezone?: string | undefined
+  allowed_location_ids?: string[] | null
 }
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'pending_verification'
@@ -100,6 +103,8 @@ export function UsersPage() {
   const currentUserId = useAuthStore((state) => state.user?.id ?? null)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { hasPermission } = usePermissions()
+  const canManageLocationAccess = hasPermission('users.manage_location_access')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -490,6 +495,7 @@ export function UsersPage() {
         onClose={() => { setShowAddModal(false) }}
         onSubmit={(data) => { createUserMutation.mutate(data) }}
         isLoading={createUserMutation.isPending}
+        canManageLocationAccess={canManageLocationAccess}
       />
 
       {/* Edit User Modal */}
@@ -521,6 +527,7 @@ interface AddUserModalProps {
   onClose: () => void
   onSubmit: (data: CreateUserData) => void
   isLoading: boolean
+  canManageLocationAccess: boolean
 }
 
 interface PosPinModalProps {
@@ -635,13 +642,14 @@ function PosPinModal({ isOpen, onClose, onSubmit, onClear, isLoading }: PosPinMo
   )
 }
 
-function AddUserModal({ isOpen, roles, onClose, onSubmit, isLoading }: AddUserModalProps) {
+function AddUserModal({ isOpen, roles, onClose, onSubmit, isLoading, canManageLocationAccess }: AddUserModalProps) {
   const { t } = useTranslation()
   const [formData, setFormData] = useState<CreateUserData>({
     name: '',
     email: '',
     phone: '',
     role: 'operator',
+    allowed_location_ids: null,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -669,11 +677,15 @@ function AddUserModal({ isOpen, roles, onClose, onSubmit, isLoading }: AddUserMo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (validate()) {
-      onSubmit({
+      const payload: CreateUserData = {
         ...formData,
         email: (formData.email ?? '').trim() || undefined,
         phone: formData.phone || undefined,
-      })
+      }
+      if (!canManageLocationAccess) {
+        delete payload.allowed_location_ids
+      }
+      onSubmit(payload)
     }
   }
 
@@ -738,6 +750,13 @@ function AddUserModal({ isOpen, roles, onClose, onSubmit, isLoading }: AddUserMo
               ? t('users.modal.cashierPinNote')
               : t('users.modal.invitationNote')}
           </p>
+
+          {canManageLocationAccess && (
+            <LocationAccessField
+              value={formData.allowed_location_ids ?? null}
+              onChange={(allowed_location_ids) => { setFormData({ ...formData, allowed_location_ids }) }}
+            />
+          )}
         </ModalContent>
 
         <ModalFooter>

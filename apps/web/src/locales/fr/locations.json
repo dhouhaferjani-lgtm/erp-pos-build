@@ -11,5 +11,15 @@
     "all": "Tous les sites",
     "selected": "{{count}} sites",
     "loading": "Chargement des sites…"
+  },
+  "staffAccess": {
+    "label": "Accès aux sites",
+    "allLocations": "Tous les sites",
+    "allLocationsHint": "Cet utilisateur peut travailler sur tous les sites de l’entreprise.",
+    "subset": "Sites sélectionnés",
+    "subsetHint": "Choisissez les sites auxquels cet utilisateur peut accéder.",
+    "loading": "Chargement des sites…",
+    "noLocations": "Aucun site disponible.",
+    "selfDisabledHint": "Vous ne pouvez pas modifier votre propre accès aux sites."
   }
 }

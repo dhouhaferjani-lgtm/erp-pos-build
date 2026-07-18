@@ -16,6 +16,7 @@ export interface User {
   maxDiscountPercent?: string | null
   lastLoginAt: string | null
   createdAt: string
+  allowed_location_ids?: string[] | null
 }
 
 export interface GetUsersParams {

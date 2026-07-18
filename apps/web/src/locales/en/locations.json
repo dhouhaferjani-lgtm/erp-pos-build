@@ -11,5 +11,15 @@
     "all": "All locations",
     "selected": "{{count}} locations",
     "loading": "Loading locations…"
+  },
+  "staffAccess": {
+    "label": "Location access",
+    "allLocations": "All locations",
+    "allLocationsHint": "This user can work in every location in the company.",
+    "subset": "Selected locations",
+    "subsetHint": "Choose the locations this user can access.",
+    "loading": "Loading locations…",
+    "noLocations": "No locations available.",
+    "selfDisabledHint": "You cannot change your own location access."
   }
 }
