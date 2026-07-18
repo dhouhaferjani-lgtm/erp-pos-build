@@ -32,6 +32,7 @@ import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Input, Select, Textarea } from '@/components/atoms'
+import { TransferSourceSuggestion } from '../components/TransferSourceSuggestion'
 
 interface DraftBatchAllocation {
   batch_id: number
@@ -726,7 +727,19 @@ export function CreateStockTransferPage() {
       header: t('create.field.availableAtSource'),
       headerClassName: 'w-36 text-start md:text-end',
       cellClassName: 'md:text-end',
-      Cell: ({ line }) => <AvailabilityCell line={line} sourceLocationId={sourceLocationId} />,
+      Cell: ({ line }) => (
+        <div>
+          <AvailabilityCell line={line} sourceLocationId={sourceLocationId} />
+          {line.product ? <TransferSourceSuggestion
+            productId={line.product.id}
+            variantId={line.variantId}
+            destinationLocationId={destinationLocationId}
+            requestedQuantity={line.quantity}
+            lineCount={lines.length}
+            onUseSource={setSourceLocationId}
+          /> : null}
+        </div>
+      ),
     },
     {
       id: 'quantity',
@@ -782,7 +795,7 @@ export function CreateStockTransferPage() {
         />
       ),
     },
-  ], [t, sourceLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine, handleVariantsLoaded])
+  ], [t, sourceLocationId, destinationLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine, handleVariantsLoaded])
 
   return (
     <div className="space-y-6">
