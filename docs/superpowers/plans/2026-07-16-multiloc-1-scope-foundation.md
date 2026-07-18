@@ -528,7 +528,7 @@ Adds the location-assignment write path with fail-closed self-escalation defense
 
 **Steps**
 
-- [ ] Write the failing test. `UserLocationAccessTest.php` — cases:
+- [x] Write the failing test. `UserLocationAccessTest.php` — cases:
 ```php
 public function test_forbidden_without_manage_location_access_permission(): void; // manager granter → 403
 public function test_cannot_edit_own_allowed_location_ids(): void;                 // admin edits self → 403 SELF_LOCATION_ESCALATION
@@ -550,18 +550,18 @@ public function test_update_denied_grant_leaves_profile_role_and_membership_unch
 //   and membership.allowed_location_ids are byte-identical to their pre-request values
 //   (the whole update rolled back — no name/role leak).
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
-- [ ] Write the failing permission-migration test (Finding 4). `apps/api/tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`: on a tenant whose permission table lacks `users.manage_location_access`, invoke the migration's `up()`; assert (a) a `permissions` row `users.manage_location_access` now exists, (b) the `admin` role has it, (c) a re-run is a no-op (still one permission row, still granted). Set the permission team id before asserting (mirror `StockTransferLocationScopeTest::setUp`).
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`
-- [ ] Implement — permission-registration migration (Finding 4). `apps/api/database/migrations/tenant/2026_07_16_100100_register_manage_location_access_permission.php`: idempotently `Permission::findOrCreate('users.manage_location_access', 'sanctum')` (or a `WHERE NOT EXISTS` insert), grant it to the `admin` Spatie role (`Role::findByName('admin', 'sanctum')->givePermissionTo(...)` guarded so re-runs no-op) — guard is **`sanctum`**, matching `RolesAndPermissionsSeeder.php:438,450`; the `api` guard would silently create a duplicate permission the routes never check, then `app(PermissionRegistrar::class)->forgetCachedPermissions()` so the tenant-blind cache is flushed in the same push. This migration is the MECHANISM by which the permission ships; the seeder edit below is belt-and-suspenders for fresh installs.
-- [ ] Implement — seeder (belt-and-suspenders, not the deploy mechanism). Add `'users.manage_location_access'` to the `$permissions` array in `RolesAndPermissionsSeeder::createPermissions()` (near the `users.*` block ~line 286) so fresh tenants seed it directly. `admin` gets it automatically via `Permission::all()`; do NOT add it to `manager`/`cashier` (owner+admin only per spec).
-- [ ] Implement — FormRequests. In both `CreateUserRequest` and `UpdateUserRequest` `rules()`, add:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
+- [x] Write the failing permission-migration test (Finding 4). `apps/api/tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`: on a tenant whose permission table lacks `users.manage_location_access`, invoke the migration's `up()`; assert (a) a `permissions` row `users.manage_location_access` now exists, (b) the `admin` role has it, (c) a re-run is a no-op (still one permission row, still granted). Set the permission team id before asserting (mirror `StockTransferLocationScopeTest::setUp`).
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`
+- [x] Implement — permission-registration migration (Finding 4). `apps/api/database/migrations/tenant/2026_07_16_100100_register_manage_location_access_permission.php`: idempotently `Permission::findOrCreate('users.manage_location_access', 'sanctum')` (or a `WHERE NOT EXISTS` insert), grant it to the `admin` Spatie role (`Role::findByName('admin', 'sanctum')->givePermissionTo(...)` guarded so re-runs no-op) — guard is **`sanctum`**, matching `RolesAndPermissionsSeeder.php:438,450`; the `api` guard would silently create a duplicate permission the routes never check. Spatie's model/role mutation hooks flush the permission cache in the same push (verified against a warmed cache), without adding a production service-locator call. This migration is the MECHANISM by which the permission ships; the seeder edit below is belt-and-suspenders for fresh installs.
+- [x] Implement — seeder (belt-and-suspenders, not the deploy mechanism). Add `'users.manage_location_access'` to the `$permissions` array in `RolesAndPermissionsSeeder::createPermissions()` (near the `users.*` block ~line 286) so fresh tenants seed it directly. `admin` gets it automatically via `Permission::all()`; do NOT add it to `manager`/`cashier` (owner+admin only per spec).
+- [x] Implement — FormRequests. In both `CreateUserRequest` and `UpdateUserRequest` `rules()`, add:
 ```php
-'allowed_location_ids' => ['sometimes', 'nullable', 'array'],
+'allowed_location_ids' => ['sometimes', 'nullable', 'array', 'list'],
 'allowed_location_ids.*' => ['uuid'],
 ```
 (Company-membership + subset checks are enforced in the controller where `CompanyContext` and the caller's membership are in scope.)
-- [ ] Implement — controller. Inject `LocationContext $locationContext` into `UserController`. Split the grant into a **read-only authorization** method (runs BEFORE any create/mutation — Findings 3 & 7) and a **write** method (runs INSIDE the transaction):
+- [x] Implement — controller. Inject `LocationContext $locationContext` into `UserController`. Split the grant into a **read-only authorization** method (runs BEFORE any create/mutation — Findings 3 & 7) and a **write** method (runs INSIDE the transaction):
 ```php
 /**
  * Read-only, self-escalation-safe authorization for an allowed_location_ids grant.
@@ -644,10 +644,10 @@ return DB::transaction(function () use (...) {
 });
 ```
 (`forbidden()` = small helper mirroring the existing `response()->json([...], 403)` shape with `getMeta`.)
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php app/Modules/Identity/Presentation/Requests`
-- [ ] **Deploy note (belt-and-suspenders — the migration is the mechanism):** the `2026_07_16_100100_register_manage_location_access_permission` migration auto-registers the permission + flushes the cache under push=deploy. As a redundant safety net the deploy checklist ALSO re-runs `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`; the route is safe even if that manual step is skipped.
-- [ ] Commit: `feat(multiloc): users.manage_location_access (self-guarding migration) + authorize-before-write location grant (§1 step 3)`
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php app/Modules/Identity/Presentation/Requests`
+- [x] **Deploy note (belt-and-suspenders — the migration is the mechanism):** the `2026_07_16_100100_register_manage_location_access_permission` migration auto-registers the permission + flushes the cache under push=deploy. As a redundant safety net the deploy checklist ALSO re-runs `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`; the route is safe even if that manual step is skipped.
+- [x] Commit: `feat(multiloc): users.manage_location_access (self-guarding migration) + authorize-before-write location grant (§1 step 3)`
 
 ---
 
