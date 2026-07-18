@@ -72,7 +72,7 @@ final class StockThresholdTest extends TestCase
     public function test_rejects_invalid_order_and_decimal_ceiling(): void
     {
         $this->actingAs($this->user)->putJson('/api/v1/inventory/stock-levels/thresholds', $this->payload('5', '2'))->assertUnprocessable()->assertJsonPath('error.errors.max_quantity.0', 'max_quantity must be ≥ min_quantity.');
-        $this->actingAs($this->user)->putJson('/api/v1/inventory/stock-levels/thresholds', $this->payload('1', '1.23456'))->assertUnprocessable()->assertJsonPath('error.errors.max_quantity.0', 'The max quantity field format is invalid.');
+        $this->actingAs($this->user)->putJson('/api/v1/inventory/stock-levels/thresholds', $this->payload('1', '1.23456'))->assertUnprocessable()->assertJsonPath('error.errors.max_quantity.0', 'must have at most 4 decimal places.');
     }
 
     public function test_restricted_location_is_rejected_by_shared_access_rule(): void

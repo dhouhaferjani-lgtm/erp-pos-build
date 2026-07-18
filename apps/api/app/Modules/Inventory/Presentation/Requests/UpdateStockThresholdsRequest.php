@@ -40,6 +40,15 @@ final class UpdateStockThresholdsRequest extends FormRequest
         ];
     }
 
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'min_quantity.regex' => 'must have at most 4 decimal places.',
+            'max_quantity.regex' => 'must have at most 4 decimal places.',
+        ];
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
