@@ -6,6 +6,8 @@ export const UI_ALIAS_PERMISSIONS = {
   'purchases.view': ['admin', 'purchases', 'manager'],
   'purchases.create': ['admin', 'purchases', 'manager'],
   'services.view': ['admin', 'sales', 'manager'],
+  'services.create': ['admin', 'sales', 'manager'],
+  'services.edit': ['admin', 'sales', 'manager'],
   'inventory.create': ['admin', 'inventory', 'manager'],
   'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
 } as const

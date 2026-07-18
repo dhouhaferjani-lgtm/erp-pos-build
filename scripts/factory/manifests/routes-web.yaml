@@ -814,7 +814,7 @@ routes:
   - path: /services/:id/edit
     component: ServiceForm
     module_gate: Workshop
-    permission: null
+    permission: services.edit
   - path: /services/categories
     component: ServiceCategoryListPage
     module_gate: Workshop
@@ -822,7 +822,7 @@ routes:
   - path: /services/new
     component: ServiceForm
     module_gate: Workshop
-    permission: null
+    permission: services.create
   - path: /settings
     component: SettingsPage
     module_gate: settings

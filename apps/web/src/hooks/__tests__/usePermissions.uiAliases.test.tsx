@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 describe('usePermissions UI aliases', () => {
-  it('exports only the eight approved UI grouping gates with unchanged role lists', () => {
+  it('exports only the ten approved UI grouping gates with unchanged role lists', () => {
     const exports = permissionsModule as Record<string, unknown>
 
     expect(exports['UI_ALIAS_PERMISSIONS']).toEqual({
@@ -29,6 +29,8 @@ describe('usePermissions UI aliases', () => {
       'purchases.view': ['admin', 'purchases', 'manager'],
       'purchases.create': ['admin', 'purchases', 'manager'],
       'services.view': ['admin', 'sales', 'manager'],
+      'services.create': ['admin', 'sales', 'manager'],
+      'services.edit': ['admin', 'sales', 'manager'],
       'inventory.create': ['admin', 'inventory', 'manager'],
       'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
     })

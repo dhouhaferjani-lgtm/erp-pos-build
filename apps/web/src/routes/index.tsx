@@ -1431,9 +1431,11 @@ export function AppRoutes() {
             path="new"
             element={
               <ModuleGuard module="Workshop">
-                <SuspenseWrapper>
-                  <ServiceForm />
-                </SuspenseWrapper>
+                <RequirePermission permission="services.create">
+                  <SuspenseWrapper>
+                    <ServiceForm />
+                  </SuspenseWrapper>
+                </RequirePermission>
               </ModuleGuard>
             }
           />
@@ -1465,9 +1467,11 @@ export function AppRoutes() {
             path=":id/edit"
             element={
               <ModuleGuard module="Workshop">
-                <SuspenseWrapper>
-                  <ServiceForm />
-                </SuspenseWrapper>
+                <RequirePermission permission="services.edit">
+                  <SuspenseWrapper>
+                    <ServiceForm />
+                  </SuspenseWrapper>
+                </RequirePermission>
               </ModuleGuard>
             }
           />
