@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 final class BackfillPayableInstrumentAccountsCommand extends Command
@@ -22,8 +23,17 @@ final class BackfillPayableInstrumentAccountsCommand extends Command
 
     public function handle(): int
     {
+        if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
+            $this->error(
+                'Tenant treasury tables are unavailable. Run this command inside each tenant context (for example via tenants:run).',
+            );
+
+            return self::FAILURE;
+        }
+
         $dryRun = (bool) $this->option('dry-run');
         $created = 0;
+        $promoted = 0;
         $invalid = 0;
 
         $companies = $this->database->table('companies')
@@ -72,10 +82,19 @@ final class BackfillPayableInstrumentAccountsCommand extends Command
                         continue;
                     }
 
-                    if (! $dryRun && ! (bool) $existing->is_system) {
-                        $this->database->table('accounts')
-                            ->where('id', $existing->id)
-                            ->update(['is_system' => true, 'updated_at' => now()]);
+                    if (! (bool) $existing->is_system) {
+                        if ($dryRun) {
+                            $this->line(sprintf(
+                                '[DRY-RUN] Company %s: would promote account %s to system-managed.',
+                                $companyId,
+                                $definition['code'],
+                            ));
+                        } else {
+                            $this->database->table('accounts')
+                                ->where('id', $existing->id)
+                                ->update(['is_system' => true, 'updated_at' => now()]);
+                        }
+                        $promoted++;
                     }
 
                     continue;
@@ -115,10 +134,11 @@ final class BackfillPayableInstrumentAccountsCommand extends Command
 
         $prefix = $dryRun ? '[DRY-RUN] ' : '';
         $this->info(sprintf(
-            '%sPayable instrument account backfill: %d account(s) %s; %d invalid account(s).',
+            '%sPayable instrument account backfill: %d account(s) %s; %d promoted; %d invalid account(s).',
             $prefix,
             $created,
             $dryRun ? 'would be created' : 'created',
+            $promoted,
             $invalid,
         ));
 

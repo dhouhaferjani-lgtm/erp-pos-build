@@ -47,6 +47,22 @@ final class OutboundIdempotencyStoreTest extends TestCase
         $this->event($instrument, $actionKey, hash('sha256', 'cancel'));
     }
 
+    public function test_action_key_requires_a_semantic_digest(): void
+    {
+        $instrument = $this->instrument();
+
+        $this->expectException(QueryException::class);
+        InstrumentEvent::query()->create([
+            'tenant_id' => $instrument->tenant_id,
+            'company_id' => $instrument->company_id,
+            'instrument_id' => $instrument->id,
+            'event_type' => InstrumentEventType::Cleared,
+            'action_key' => 'instrument:'.$instrument->id.':clear:1',
+            'payload' => [],
+            'occurred_at' => now(),
+        ]);
+    }
+
     public function test_presentation_cycle_defaults_to_one_and_is_integer_cast(): void
     {
         $instrument = $this->instrument();

@@ -65,6 +65,28 @@ final class PayableInstrumentAccountsTest extends TestCase
         $resolver->resolveOrFail(InstrumentAccountPurpose::ChecksToPay, $company->id);
     }
 
+    public function test_resolver_rejects_wrong_type_and_inactive_payable_accounts(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        (new TunisiaChartOfAccountsSeeder)->run($company->id, $tenant->id);
+        $resolver = $this->app->make(InstrumentAccountResolver::class);
+
+        Account::query()->where('company_id', $company->id)->where('code', '403')->update([
+            'type' => AccountType::Asset->value,
+        ]);
+        self::assertNull($resolver->resolve(InstrumentAccountPurpose::EffetsPayable, $company->id));
+
+        Account::query()->where('company_id', $company->id)->where('code', '403')->update([
+            'type' => AccountType::Liability->value,
+            'is_active' => false,
+        ]);
+        self::assertNull($resolver->resolve(InstrumentAccountPurpose::EffetsPayable, $company->id));
+
+        $this->expectException(MissingInstrumentAccountException::class);
+        $resolver->resolveOrFail(InstrumentAccountPurpose::EffetsPayable, $company->id);
+    }
+
     public function test_backfill_is_dry_run_safe_and_idempotent(): void
     {
         $tenant = Tenant::factory()->create();
@@ -104,6 +126,22 @@ final class PayableInstrumentAccountsTest extends TestCase
             AccountType::Asset,
             Account::query()->where('company_id', $company->id)->where('code', '403')->sole()->type,
         );
+    }
+
+    public function test_backfill_dry_run_previews_system_account_promotion(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        (new TunisiaChartOfAccountsSeeder)->run($company->id, $tenant->id);
+        Account::query()->where('company_id', $company->id)->where('code', '403')->update(['is_system' => false]);
+
+        $this->artisanCommand('treasury:backfill-payable-instrument-accounts', ['--dry-run' => true])
+            ->expectsOutputToContain('would promote account 403 to system-managed')
+            ->assertSuccessful();
+        self::assertFalse(Account::query()->where('company_id', $company->id)->where('code', '403')->sole()->is_system);
+
+        $this->artisanCommand('treasury:backfill-payable-instrument-accounts')->assertSuccessful();
+        self::assertTrue(Account::query()->where('company_id', $company->id)->where('code', '403')->sole()->is_system);
     }
 
     /**

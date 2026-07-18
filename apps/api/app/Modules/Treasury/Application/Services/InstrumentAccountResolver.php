@@ -25,6 +25,8 @@ final readonly class InstrumentAccountResolver
         $accountId = $this->database->table('accounts')
             ->where('company_id', $companyId)
             ->where('code', $this->accountCode($purpose, $countryCode))
+            ->where('type', $this->accountType($purpose))
+            ->where('is_active', true)
             ->value('id');
 
         return is_string($accountId) ? $accountId : null;
@@ -50,6 +52,21 @@ final readonly class InstrumentAccountResolver
             InstrumentAccountPurpose::InstrumentBankFees => $isTunisia ? '6275' : '627',
             InstrumentAccountPurpose::VatRecoverableOnFees => $isTunisia ? '43666' : '44566',
             InstrumentAccountPurpose::DoubtfulReceivables => '416',
+        };
+    }
+
+    private function accountType(InstrumentAccountPurpose $purpose): string
+    {
+        return match ($purpose) {
+            InstrumentAccountPurpose::ChecksToPay,
+            InstrumentAccountPurpose::EffetsPayable => 'liability',
+            InstrumentAccountPurpose::InstrumentBankFees => 'expense',
+            InstrumentAccountPurpose::ChecksToCollect,
+            InstrumentAccountPurpose::EffectsReceivable,
+            InstrumentAccountPurpose::EffectsInCollection,
+            InstrumentAccountPurpose::EffectsDiscounted,
+            InstrumentAccountPurpose::VatRecoverableOnFees,
+            InstrumentAccountPurpose::DoubtfulReceivables => 'asset',
         };
     }
 }
