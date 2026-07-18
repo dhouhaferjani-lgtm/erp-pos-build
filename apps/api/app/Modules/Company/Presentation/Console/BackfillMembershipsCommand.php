@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Str;
 
@@ -23,7 +24,7 @@ final class BackfillMembershipsCommand extends Command
     protected $description = 'Map memberless active users into a company on the current tenant connection.';
 
     public function __construct(
-        private readonly ConnectionInterface $db,
+        private readonly ConnectionResolverInterface $connections,
     ) {
         parent::__construct();
     }
@@ -38,7 +39,8 @@ final class BackfillMembershipsCommand extends Command
         }
 
         $companyId = $companyOption;
-        if (! $this->db->table('companies')->where('id', $companyId)->exists()) {
+        $db = $this->connections->connection();
+        if (! $db->table('companies')->where('id', $companyId)->exists()) {
             $this->error("Company {$companyId} does not exist on the current tenant connection.");
 
             return self::FAILURE;
@@ -60,10 +62,10 @@ final class BackfillMembershipsCommand extends Command
         }
 
         if ($userIds !== []) {
-            return $this->mapNamedUsers($userIds, $companyId);
+            return $this->mapNamedUsers($db, $userIds, $companyId);
         }
 
-        return $this->mapAllMemberlessUsers($companyId);
+        return $this->mapAllMemberlessUsers($db, $companyId);
     }
 
     /**
@@ -71,11 +73,19 @@ final class BackfillMembershipsCommand extends Command
      */
     private function userIds(): array
     {
-        $userOption = $this->option('user');
+        $userOption = $this->input->getOption('user');
+        $rawUserOptions = is_array($userOption) ? $userOption : [$userOption];
         $userIds = [];
-        foreach ($userOption as $userId) {
-            if (is_string($userId) && $userId !== '') {
-                $userIds[$userId] = $userId;
+        foreach ($rawUserOptions as $rawUserOption) {
+            if (! is_string($rawUserOption)) {
+                continue;
+            }
+
+            foreach (explode(',', $rawUserOption) as $userId) {
+                $userId = trim($userId);
+                if ($userId !== '') {
+                    $userIds[$userId] = $userId;
+                }
             }
         }
 
@@ -85,10 +95,10 @@ final class BackfillMembershipsCommand extends Command
     /**
      * @param  list<string>  $userIds
      */
-    private function mapNamedUsers(array $userIds, string $companyId): int
+    private function mapNamedUsers(ConnectionInterface $db, array $userIds, string $companyId): int
     {
         foreach ($userIds as $userId) {
-            $status = $this->db->table('users')->where('id', $userId)->value('status');
+            $status = $db->table('users')->where('id', $userId)->value('status');
             if ($status === null) {
                 $this->error("User {$userId} does not exist on the current tenant connection.");
 
@@ -103,23 +113,23 @@ final class BackfillMembershipsCommand extends Command
         }
 
         foreach ($userIds as $userId) {
-            $inserted = $this->insertMembership($userId, $companyId);
+            $inserted = $this->insertMembership($db, $userId, $companyId);
             $this->info("User {$userId}: inserted {$inserted} membership(s).");
         }
 
         return self::SUCCESS;
     }
 
-    private function mapAllMemberlessUsers(string $companyId): int
+    private function mapAllMemberlessUsers(ConnectionInterface $db, string $companyId): int
     {
-        $companyCount = $this->db->table('companies')->count();
+        $companyCount = $db->table('companies')->count();
         if ($companyCount > 1 && ! (bool) $this->option('force-multi')) {
             $this->error('Multi-company bulk mapping requires --force-multi.');
 
             return self::FAILURE;
         }
 
-        $memberlessUserIds = $this->db->table('users')
+        $memberlessUserIds = $db->table('users')
             ->where('status', UserStatus::Active->value)
             ->whereNotExists(function (Builder $query): void {
                 $query->selectRaw('1')
@@ -131,16 +141,16 @@ final class BackfillMembershipsCommand extends Command
             ->all();
 
         foreach ($memberlessUserIds as $userId) {
-            $inserted = $this->insertMembership($userId, $companyId);
+            $inserted = $this->insertMembership($db, $userId, $companyId);
             $this->info("User {$userId}: inserted {$inserted} membership(s).");
         }
 
         return self::SUCCESS;
     }
 
-    private function insertMembership(string $userId, string $companyId): int
+    private function insertMembership(ConnectionInterface $db, string $userId, string $companyId): int
     {
-        if ($this->db->table('user_company_memberships')
+        if ($db->table('user_company_memberships')
             ->where('user_id', $userId)
             ->where('company_id', $companyId)
             ->exists()) {
@@ -149,7 +159,7 @@ final class BackfillMembershipsCommand extends Command
 
         $now = now();
 
-        return $this->db->table('user_company_memberships')->insertOrIgnore([
+        return $db->table('user_company_memberships')->insertOrIgnore([
             'id' => (string) Str::uuid(),
             'user_id' => $userId,
             'company_id' => $companyId,

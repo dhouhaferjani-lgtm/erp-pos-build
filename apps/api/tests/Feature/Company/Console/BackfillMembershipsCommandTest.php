@@ -92,6 +92,25 @@ final class BackfillMembershipsCommandTest extends TestCase
             ->where('company_id', $companyA->id)->count());
     }
 
+    public function test_comma_separated_user_option_maps_each_explicitly_named_user(): void
+    {
+        $tenant = $this->makeTenant();
+        $company = $this->makeCompanyFor($tenant, 'A');
+        $firstUser = $this->makeMemberlessUser($tenant);
+        $secondUser = $this->makeMemberlessUser($tenant);
+
+        $this->artisan(sprintf(
+            'users:backfill-memberships --company=%s --user=%s,%s',
+            $company->id,
+            $firstUser->id,
+            $secondUser->id,
+        ))->assertSuccessful();
+
+        self::assertSame(2, UserCompanyMembership::whereIn('user_id', [$firstUser->id, $secondUser->id])
+            ->where('company_id', $company->id)
+            ->count());
+    }
+
     public function test_unknown_company_fails_without_writing_rows(): void
     {
         $tenant = $this->makeTenant();
