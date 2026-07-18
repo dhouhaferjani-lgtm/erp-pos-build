@@ -223,7 +223,7 @@ Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
 ```
 
 **TDD steps**
-- [ ] Write `StockMatrixEndpointTest` (PostgreSQL, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs). Cases:
+- [x] Write `StockMatrixEndpointTest` (PostgreSQL, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs). Cases:
   - **pivot correctness:** 2 products × 2 locations with distinct on-hand/reserved → assert `cells[locA].available == on_hand−reserved` per row; zero-filled cell for a location with no row.
   - **variant no-double-count (I3):** a variant product with 2 variants (stock on variant rows) + a non-variant product (stock on null row) → assert parent rollup cell `on_hand == bcadd(variantA, variantB)`, `is_variant_parent==true`, parent `min_quantity==null`; two variant child rows present with their own thresholds; non-variant product single row, `is_variant_parent==false`.
   - **MIXED grains (I3 — the correct-by-construction case):** ONE product at ONE location holding BOTH a `variant_id IS NULL` (base) stock row AND two variant stock rows (all nonzero) → assert parent rollup cell `on_hand == bcadd(base, variantA, variantB)` (base counted exactly once, `is_variant_parent==true`, thresholds null); children = 2 variant leaves + one **"(base)" leaf** (`is_variant_parent==false`, `variant_id==null`, name ends with the base suffix, thresholds from the null-variant row); and the invariant `bcadd(all child cells) === parent cell` holds at that location. A product whose base row is zero at every scoped location emits NO "(base)" leaf.
@@ -231,9 +231,9 @@ Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
   - **resolver scoping:** user restricted (via §1 membership) to location A requesting `location_ids[]=B` → `403` (fail-closed); requesting nothing → cells only for A.
   - **include=incoming:** in-transit transfer to loc A + confirmed-PO remainder at loc A → `cells[A].incoming` equals their sum; absent when `include` omitted.
   - Run: `cd apps/api && ./vendor/bin/pest tests/Feature/Inventory/StockMatrixEndpointTest.php` → RED.
-- [ ] Implement `StockMatrixQueryService`, `StockMatrixController`, route. Run the same command → GREEN.
-- [ ] `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockMatrixQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0 errors. `./vendor/bin/pint app/Modules/Inventory`.
-- [ ] Commit: `feat(inventory): bulk product×location stock-matrix endpoint (multiloc §2 I4)`.
+- [x] Implement `StockMatrixQueryService`, `StockMatrixController`, route. Run the same command → GREEN.
+- [x] `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockMatrixQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0 errors. `./vendor/bin/pint app/Modules/Inventory`.
+- [x] Commit: `feat(inventory): bulk product×location stock-matrix endpoint (multiloc §2 I4)`.
 
 ---
 
