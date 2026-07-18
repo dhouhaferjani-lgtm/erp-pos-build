@@ -32,6 +32,7 @@ import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface PurchaseOrderLine {
   id: string
@@ -67,12 +68,7 @@ interface PurchaseOrder {
 
 interface ApiResponse {
   data: PurchaseOrder[]
-  meta?: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 interface DetailApiResponse {

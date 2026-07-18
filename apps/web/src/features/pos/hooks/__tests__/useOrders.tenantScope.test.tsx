@@ -139,6 +139,8 @@ const listResponse: OrderListResponse = {
     last_page: 1,
     per_page: 20,
     total: 1,
+    from: 1,
+    to: 1,
     timestamp: '2026-05-11T10:00:00Z',
   },
 }

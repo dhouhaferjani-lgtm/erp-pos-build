@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from '../../../lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 /**
  * Breadcrumb item in category path
@@ -34,14 +35,7 @@ export interface CategoryApiResponse {
  */
 export interface CategoriesListResponse {
   data: CategoryApiResponse[]
-  meta?: {
-    current_page: number
-    from: number
-    last_page: number
-    per_page: number
-    to: number
-    total: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 /**

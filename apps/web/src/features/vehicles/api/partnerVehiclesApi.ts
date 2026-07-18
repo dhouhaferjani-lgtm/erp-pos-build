@@ -1,14 +1,10 @@
 import { api } from '../../../lib/api'
 import type { VehicleData } from '../types'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 interface PaginatedResponse<T> {
   data: T[]
-  meta: {
-    current_page: number
-    per_page: number
-    total: number
-    last_page: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export async function fetchVehiclesForPartner(

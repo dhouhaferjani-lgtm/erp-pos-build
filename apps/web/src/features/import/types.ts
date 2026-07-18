@@ -1,5 +1,7 @@
 // Import Types - matches backend API
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type ImportType =
   | 'parties'
   | 'partners'
@@ -94,21 +96,12 @@ export interface ImportJobResponse {
 
 export interface ImportJobListResponse {
   data: ImportJob[]
-  meta: {
-    current_page: number
-    per_page: number
-    total: number
-    last_page: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface ImportErrorsResponse {
   data: ImportRow[]
-  meta?: {
-    current_page?: number
-    last_page?: number
-    per_page?: number
-    total?: number
+  meta?: Partial<OffsetPaginationMeta> & {
     job_error_message: string | null
     validation_errors: number
     execution_errors: number

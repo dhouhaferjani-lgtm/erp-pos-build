@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface RemittanceRepository {
   id: string
@@ -53,7 +54,7 @@ export interface Remittance {
 
 interface RemittanceListResponse {
   data: Remittance[]
-  meta: { current_page: number; last_page: number; per_page: number; total: number }
+  meta: OffsetPaginationMeta
 }
 
 function useScope() {

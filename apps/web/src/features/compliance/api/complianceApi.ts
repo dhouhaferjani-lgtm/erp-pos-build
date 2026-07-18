@@ -1,4 +1,5 @@
 import { api } from '../../../lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface ChainVerificationResult {
   terminal_code: string
@@ -35,12 +36,7 @@ export interface ReprintLogEntry {
 
 export interface ReprintLogResponse {
   data: ReprintLogEntry[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 /**

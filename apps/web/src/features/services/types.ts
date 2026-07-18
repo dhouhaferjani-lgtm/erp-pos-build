@@ -1,3 +1,5 @@
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type PricingType = 'flat_rate' | 'hourly' | 'percentage'
 
 export interface ServiceCategory {
@@ -34,22 +36,12 @@ export interface Service {
 
 export interface ServicesResponse {
   data: Service[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 export interface CategoriesResponse {
   data: ServiceCategory[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 export interface CreateServiceData {

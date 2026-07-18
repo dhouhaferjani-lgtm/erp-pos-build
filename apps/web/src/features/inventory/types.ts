@@ -9,14 +9,11 @@
  * allowed but must NOT re-declare a backend DTO.
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type StockLevel = App.Modules.Inventory.Application.DTOs.StockLevelData
 
 export interface StockLevelsResponse {
   data: StockLevel[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
+  meta?: OffsetPaginationMeta
 }

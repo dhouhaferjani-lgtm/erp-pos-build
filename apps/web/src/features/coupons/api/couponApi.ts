@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface CouponData {
   id: string
@@ -26,12 +27,7 @@ export interface CouponData {
 
 export interface CouponListResponse {
   data: CouponData[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface CouponListParams {

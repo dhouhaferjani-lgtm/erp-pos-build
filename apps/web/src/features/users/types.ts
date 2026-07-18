@@ -3,6 +3,8 @@
  * Matches backend Identity module User model
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type UserStatus = 'active' | 'inactive' | 'pending_verification' | 'locked'
 
 export interface User {
@@ -26,11 +28,7 @@ export interface GetUsersParams {
 
 export interface PaginatedUsersResponse {
   data: User[]
-  meta: {
-    current_page: number
-    per_page: number
-    total: number
-    last_page: number
+  meta: OffsetPaginationMeta & {
     timestamp: string
     request_id: string
   }

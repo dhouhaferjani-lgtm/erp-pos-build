@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,11 +64,7 @@ export interface OrderData {
 
 export interface OrderListResponse {
   data: OrderData[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
+  meta: OffsetPaginationMeta & {
     timestamp: string
   }
 }
