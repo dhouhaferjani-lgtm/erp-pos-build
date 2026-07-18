@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -474,6 +474,7 @@ function VariantSelectCell({ line, onSelect, onVariantsLoaded }: VariantSelectCe
 }
 
 export function CreateStockTransferPage() {
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
   const { handleSubmit: handleFormSubmit } = useForm()
@@ -485,7 +486,7 @@ export function CreateStockTransferPage() {
   })
   const locations: LocationApiResponse[] = locationsQuery.data ?? []
 
-  const [sourceLocationId, setSourceLocationId] = useState('')
+  const [sourceLocationId, setSourceLocationId] = useState(() => searchParams.get('source_location_id') ?? '')
   const [destinationLocationId, setDestinationLocationId] = useState('')
   const [notes, setNotes] = useState('')
   const [transferCost, setTransferCost] = useState('0')
