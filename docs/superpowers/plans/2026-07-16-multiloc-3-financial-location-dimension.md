@@ -380,19 +380,19 @@ return new class extends Migration
 };
 ```
 
-- [ ] **Step 4: Add `'location_id'` to both `$fillable` arrays** (`Payment.php`, `PaymentInstrument.php`) and the `@property string|null $location_id` docblock line on each.
+- [x] **Step 4: Add `location_id` to both model fillable arrays and property docs.**
 
-- [ ] **Step 5: Migrate + run test — expect PASS.**
+- [x] **Step 5: Migration and `PaymentLocationSchemaTest` pass (2 tests / 4 assertions).**
 
 Run: `cd apps/api && php artisan migrate --path=database/migrations/tenant --database=tenant && php artisan test tests/Feature/Treasury/PaymentLocationSchemaTest.php`
 Expected: PASS.
 
-- [ ] **Step 6: PHPStan the touched models.**
+- [x] **Step 6: PHPStan and Pint pass.**
 
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Treasury/Domain/Payment.php app/Modules/Treasury/Domain/PaymentInstrument.php`
 Expected: no errors.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit `34c522443`.**
 
 ```bash
 git add apps/api/database/migrations/tenant/2026_07_16_110000_add_location_id_to_payments_and_instruments.php apps/api/app/Modules/Treasury/Domain/Payment.php apps/api/app/Modules/Treasury/Domain/PaymentInstrument.php apps/api/tests/Feature/Treasury/PaymentLocationSchemaTest.php
