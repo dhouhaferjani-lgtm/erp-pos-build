@@ -311,10 +311,10 @@ Route::put('/inventory/stock-levels/thresholds', [StockLevelController::class, '
 ```
 
 **TDD steps**
-- [ ] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row). **ValidLocationAccess (Finding 7) — all → 422 with a `location_id` error, no `stock_levels` write:** (a) restricted membership editing a location outside the allowed set; (b) absent membership (no `user_company_memberships` row for this company); (c) NULL membership (`allowed_location_ids = NULL`) → ACCEPTED (all-access, post-backfill parity with §1); (d) foreign-company location id (belongs to another company) → 422. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
-- [ ] Implement request, service, controller method, route → GREEN.
-- [ ] `./vendor/bin/phpstan analyse` the 3 new/edited files → 0; `./vendor/bin/pint app/Modules/Inventory`.
-- [ ] Commit: `feat(inventory): per-location min/max threshold editor endpoint (multiloc §2 I1)`.
+- [x] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row). **ValidLocationAccess (Finding 7) — all → 422 with a `location_id` error, no `stock_levels` write:** (a) restricted membership editing a location outside the allowed set; (b) absent membership (no `user_company_memberships` row for this company); (c) NULL membership (`allowed_location_ids = NULL`) → ACCEPTED (all-access, post-backfill parity with §1); (d) foreign-company location id (belongs to another company) → 422. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
+- [x] Implement request, service, controller method, route → GREEN.
+- [x] `./vendor/bin/phpstan analyse` the 3 new/edited files → 0; `./vendor/bin/pint app/Modules/Inventory`.
+- [x] Commit: `feat(inventory): per-location min/max threshold editor endpoint (multiloc §2 I1)`.
 
 ---
 
