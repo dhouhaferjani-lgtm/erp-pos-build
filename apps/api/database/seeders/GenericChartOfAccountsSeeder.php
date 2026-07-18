@@ -127,6 +127,8 @@ class GenericChartOfAccountsSeeder extends Seeder
             ['code' => '4000', 'name' => 'Third Parties', 'type' => 'asset', 'parent_code' => null, 'is_system' => true],
             ['code' => '4010', 'name' => 'Supplier Payable', 'type' => 'liability', 'parent_code' => '4000',
                 'system_purpose' => SystemAccountPurpose::SupplierPayable->value, 'is_system' => true],
+            ['code' => '403', 'name' => 'Supplier Effects Payable', 'type' => 'liability', 'parent_code' => '4000', 'is_system' => true],
+            ['code' => '4035', 'name' => 'Supplier Checks Payable', 'type' => 'liability', 'parent_code' => '4000', 'is_system' => true],
             ['code' => '4080', 'name' => 'Goods Received Not Invoiced', 'type' => 'liability', 'parent_code' => '4000',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
             ['code' => '4090', 'name' => 'Advance to Suppliers', 'type' => 'asset', 'parent_code' => '4000',

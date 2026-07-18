@@ -42,7 +42,9 @@ final readonly class InstrumentAccountResolver
 
         return match ($purpose) {
             InstrumentAccountPurpose::ChecksToCollect => $isTunisia ? '5312' : '5112',
+            InstrumentAccountPurpose::ChecksToPay => '4035',
             InstrumentAccountPurpose::EffectsReceivable => '413',
+            InstrumentAccountPurpose::EffetsPayable => '403',
             InstrumentAccountPurpose::EffectsInCollection => $isTunisia ? '5313' : '5113',
             InstrumentAccountPurpose::EffectsDiscounted => $isTunisia ? '5314' : '5114',
             InstrumentAccountPurpose::InstrumentBankFees => $isTunisia ? '6275' : '627',

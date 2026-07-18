@@ -67,8 +67,8 @@ apps/web/src/features/…                                (Wave 4: pay-dialog mod
 **Interfaces:**
 - Produces: `InstrumentAccountPurpose::ChecksToPay` (`'checks_to_pay'`, code `'4035'` all charts), `::EffetsPayable` (`'effets_payable'`, code `'403'` all charts); artisan `treasury:backfill-payable-instrument-accounts {--dry-run}` (idempotent, iterates companies explicitly — never a nullable `Company` param, per the seeder-trap memory; creates missing accounts as **liability** type under the supplier parent).
 
-- [ ] **Step 1: failing tests** — resolver resolves both purposes on TN/FR/generic-seeded companies; resolved accounts are liability-type; `resolveOrFail` throws `MissingInstrumentAccountException` on a gutted chart; backfill idempotent (delete 4035 → run twice → exactly one liability 4035); **backfill flags an existing wrong-type `403`/`4035` account instead of silently reusing it** (report + skip, non-zero exit).
-- [ ] **Step 2:** run by path → FAIL. **Step 3:** implement. **Step 4:** PASS + PHPStan/Pint. **Step 5:** commit `feat(treasury): payable instrument purposes + chart seeds + backfill`.
+- [x] **Step 1: failing tests** — resolver resolves both purposes on TN/FR/generic-seeded companies; resolved accounts are liability-type; `resolveOrFail` throws `MissingInstrumentAccountException` on a gutted chart; backfill idempotent (delete 4035 → run twice → exactly one liability 4035); **backfill flags an existing wrong-type `403`/`4035` account instead of silently reusing it** (report + skip, non-zero exit).
+- [x] **Step 2:** run by path → FAIL. **Step 3:** implement. **Step 4:** PASS + PHPStan/Pint. **Step 5:** commit `feat(treasury): payable instrument purposes + chart seeds + backfill`.
 
 ### Task 2: Idempotency + linkage migrations
 
