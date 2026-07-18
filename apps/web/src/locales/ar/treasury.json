@@ -63,5 +63,10 @@
       "toRequired": "اختر المستودع الوجهة",
       "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
     }
+  },
+  "repositories": {
+    "location": "الموقع",
+    "selectLocation": "اختر الموقع",
+    "table": { "location": "الموقع" }
   }
 }

@@ -35,7 +35,7 @@ class PaymentRepositoryController extends Controller
 
         $repositories = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
-            ->with('glAccount:id,code,name')
+            ->with(['glAccount:id,code,name', 'location:id,name'])
             ->orderBy('name')
             ->get();
 
@@ -54,7 +54,7 @@ class PaymentRepositoryController extends Controller
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->with('glAccount:id,code,name')
+            ->with(['glAccount:id,code,name', 'location:id,name'])
             ->findOrFail($id);
 
         return response()->json([
@@ -82,7 +82,7 @@ class PaymentRepositoryController extends Controller
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
-            'location_id' => ['nullable', 'uuid'],
+            'location_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)],
             'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
@@ -108,7 +108,7 @@ class PaymentRepositoryController extends Controller
             'is_active' => true,
         ]);
 
-        $repository->load('glAccount:id,code,name');
+        $repository->load(['glAccount:id,code,name', 'location:id,name']);
 
         return response()->json([
             'data' => $this->formatRepository($repository, $company->country_code),
@@ -143,7 +143,7 @@ class PaymentRepositoryController extends Controller
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
-            'location_id' => ['nullable', 'uuid'],
+            'location_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)],
             'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
@@ -192,7 +192,7 @@ class PaymentRepositoryController extends Controller
                 $lockedRepository->update($lockedAttributes);
 
                 /** @var PaymentRepository $freshRepository */
-                $freshRepository = $lockedRepository->fresh(['glAccount:id,code,name']);
+                $freshRepository = $lockedRepository->fresh(['glAccount:id,code,name', 'location:id,name']);
 
                 return $freshRepository;
             });
@@ -205,7 +205,7 @@ class PaymentRepositoryController extends Controller
             $repository->update($validated);
 
             /** @var PaymentRepository $freshRepository */
-            $freshRepository = $repository->fresh(['glAccount:id,code,name']);
+            $freshRepository = $repository->fresh(['glAccount:id,code,name', 'location:id,name']);
         }
 
         return response()->json([
@@ -333,6 +333,8 @@ class PaymentRepositoryController extends Controller
             'is_active' => $repository->is_active,
             'gl_account_id' => $repository->gl_account_id,
             'gl_account' => $repository->glAccount?->only(['id', 'code', 'name']),
+            'location_id' => $repository->location_id,
+            'location_name' => $repository->location?->name,
             'bank_account_validation' => $this->bankAccountValidation($repository, $countryCode),
         ];
     }

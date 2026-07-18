@@ -310,6 +310,8 @@
     "singular": "dépôt",
     "plural": "dépôts",
     "add": "Ajouter un dépôt",
+    "location": "Emplacement",
+    "selectLocation": "Sélectionner un emplacement",
     "transfer": {
       "action": "Transférer des fonds",
       "title": "Transférer des fonds",
@@ -364,6 +366,7 @@
       "repository": "Dépôt",
       "type": "Type",
       "bankInfo": "Informations bancaires",
+      "location": "Emplacement",
       "status": "Statut",
       "balance": "Solde"
     },

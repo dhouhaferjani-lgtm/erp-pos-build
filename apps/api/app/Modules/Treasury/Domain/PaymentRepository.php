@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Domain;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -49,6 +50,7 @@ use Illuminate\Support\Carbon;
  * @property-read Company $company
  * @property-read Account|null $glAccount
  * @property-read User|null $responsibleUser
+ * @property-read Location|null $location
  * @property-read Bank|null $bank
  */
 class PaymentRepository extends Model
@@ -175,6 +177,14 @@ class PaymentRepository extends Model
     public function glAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'gl_account_id');
+    }
+
+    /**
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     /**

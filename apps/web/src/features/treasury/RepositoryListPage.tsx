@@ -32,6 +32,8 @@ interface Repository {
   balance: string
   currency: string
   is_active: boolean
+  location_id: string | null
+  location_name: string | null
 }
 
 interface RepositoriesResponse {
@@ -179,6 +181,11 @@ export function RepositoryListPage() {
           {repo.is_active ? t('status.active') : t('status.inactive')}
         </StatusBadge>
       ),
+    },
+    {
+      key: 'location',
+      header: t('treasury:repositories.table.location'),
+      render: (repo) => <span className={textColors.tertiary}>{repo.location_name ?? '-'}</span>,
     },
     {
       key: 'balance',

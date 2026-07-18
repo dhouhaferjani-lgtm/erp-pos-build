@@ -310,6 +310,8 @@
     "singular": "repository",
     "plural": "repositories",
     "add": "Add Repository",
+    "location": "Location",
+    "selectLocation": "Select location",
     "transfer": {
       "action": "Transfer cash",
       "title": "Transfer cash",
@@ -364,6 +366,7 @@
       "repository": "Repository",
       "type": "Type",
       "bankInfo": "Bank Info",
+      "location": "Location",
       "status": "Status",
       "balance": "Balance"
     },
