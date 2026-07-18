@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
@@ -28,11 +29,13 @@ use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Exceptions\InstrumentActionConflictException;
+use App\Modules\Treasury\Domain\Exceptions\InvalidInstrumentTransitionException;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -275,6 +278,170 @@ final class OutboundInstrumentServiceTest extends TestCase
         self::assertSame(0, InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:1")->count());
     }
 
+    public function test_bounce_posts_dishonor_and_compensating_in_movement_without_touching_401(): void
+    {
+        $instrument = $this->instrument();
+        $clear = $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+
+        $bounce = $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'Insufficient funds',
+        );
+
+        self::assertSame(InstrumentStatus::Bounced->value, $bounce->toStatus);
+        self::assertSame(InstrumentStatus::Bounced, $instrument->fresh()?->status);
+        $movement = RepositoryMovement::query()->findOrFail($bounce->movementId);
+        self::assertSame(MovementDirection::In, $movement->direction);
+        self::assertSame($clear->movementId, $movement->reverses_movement_id);
+        self::assertSame("instrument:{$instrument->id}:bounce:1", $movement->idempotency_key);
+        $entry = JournalEntry::query()->with('lines')->findOrFail($bounce->journalEntryId);
+        self::assertSame('125.000', $entry->lines->firstWhere('account_id', $this->context['bank']->gl_account_id)?->debit);
+        $supplierPayableId = Account::findByPurposeOrFail(
+            $this->context['company']->id,
+            SystemAccountPurpose::SupplierPayable,
+        )->id;
+        self::assertSame(0, JournalLine::query()->where('journal_entry_id', $entry->id)->where('account_id', $supplierPayableId)->count());
+    }
+
+    public function test_represent_increments_cycle_and_clears_on_new_keys_without_mutating_cycle_one(): void
+    {
+        $instrument = $this->instrument();
+        $clearOne = $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+        $bounceOne = $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'First dishonor',
+        );
+
+        $clearTwo = $this->service()->represent(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+        );
+
+        self::assertSame(2, $instrument->fresh()?->presentation_cycle);
+        self::assertSame(InstrumentStatus::Cleared->value, $clearTwo->toStatus);
+        self::assertNotSame($clearOne->journalEntryId, $clearTwo->journalEntryId);
+        self::assertNotSame($clearOne->movementId, $clearTwo->movementId);
+        self::assertNotNull(InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:1")->first());
+        self::assertNotNull(InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:bounce:1")->first());
+        self::assertNotNull(InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:2")->first());
+        self::assertNotNull(RepositoryMovement::query()->find($clearOne->movementId));
+        self::assertNotNull(RepositoryMovement::query()->find($bounceOne->movementId));
+
+        $bounceTwo = $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'Second dishonor',
+        );
+        self::assertNotNull(InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:bounce:2")->first());
+        self::assertSame($clearTwo->movementId, RepositoryMovement::query()->findOrFail($bounceTwo->movementId)->reverses_movement_id);
+    }
+
+    public function test_bounce_from_received_is_rejected(): void
+    {
+        $instrument = $this->instrument();
+
+        $this->expectException(InvalidInstrumentTransitionException::class);
+        $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+        );
+    }
+
+    public function test_representation_gl_failure_rolls_back_cycle_increment(): void
+    {
+        $instrument = $this->instrument();
+        $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+        $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+        );
+        $this->replaceFiscalCalendarWithClosedJuly2025();
+        $this->travelTo(CarbonImmutable::parse('2025-07-18 12:00:00'));
+
+        try {
+            $this->service()->represent(
+                $instrument->id,
+                $this->context['tenant']->id,
+                $this->context['company']->id,
+                $this->context['user']->id,
+            );
+            $this->fail('A closed fiscal period must reject re-presentation.');
+        } catch (ClosedFiscalPeriodException) {
+            $this->addToAssertionCount(1);
+        } finally {
+            $this->travelBack();
+        }
+
+        $freshInstrument = $instrument->fresh();
+        self::assertNotNull($freshInstrument);
+        self::assertSame(1, $freshInstrument->presentation_cycle);
+        self::assertSame(InstrumentStatus::Bounced, $freshInstrument->status);
+        self::assertNull(InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:2")->first());
+    }
+
+    public function test_identical_bounce_retry_returns_the_original_artifacts(): void
+    {
+        $instrument = $this->instrument();
+        $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+        $first = $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'Retry-safe',
+        );
+        $second = $this->service()->bounce(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            'Retry-safe',
+        );
+
+        self::assertTrue($second->replayed);
+        self::assertSame($first->journalEntryId, $second->journalEntryId);
+        self::assertSame($first->movementId, $second->movementId);
+        self::assertSame(1, InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:bounce:1")->count());
+    }
+
     private function instrument(InstrumentDirection $direction = InstrumentDirection::Outbound): PaymentInstrument
     {
         return PaymentInstrument::query()->create([
@@ -298,5 +465,28 @@ final class OutboundInstrumentServiceTest extends TestCase
     private function service(): OutboundInstrumentService
     {
         return app(OutboundInstrumentService::class);
+    }
+
+    private function replaceFiscalCalendarWithClosedJuly2025(): void
+    {
+        FiscalPeriod::query()->where('company_id', $this->context['company']->id)->delete();
+        FiscalYear::query()->where('company_id', $this->context['company']->id)->delete();
+        $year = FiscalYear::query()->create([
+            'company_id' => $this->context['company']->id,
+            'name' => '2025',
+            'start_date' => '2025-01-01',
+            'end_date' => '2025-12-31',
+        ]);
+        FiscalPeriod::query()->create([
+            'fiscal_year_id' => $year->id,
+            'company_id' => $this->context['company']->id,
+            'name' => 'July 2025',
+            'period_number' => 7,
+            'start_date' => '2025-07-01',
+            'end_date' => '2025-07-31',
+            'status' => PeriodStatus::Closed,
+            'closed_at' => now(),
+            'closed_by' => $this->context['user']->id,
+        ]);
     }
 }

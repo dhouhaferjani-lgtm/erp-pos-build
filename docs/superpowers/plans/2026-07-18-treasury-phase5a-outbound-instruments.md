@@ -137,8 +137,8 @@ final readonly class OutboundInstrumentService
 
 **Files/Test:** as Task 3.
 
-- [ ] **Step 1: failing tests** — bounce posts dishonor JE + compensating **in** movement (`reverses_movement_id` = clear movement) keyed `:bounce:1`, status Bounced, **AP(401) balance unchanged**; represent increments `presentation_cycle` → clear semantics on `:clear:2`, cycle-1 artifacts untouched; bounce→represent→bounce lands `:bounce:2`; bounce from Received throws; **representation failure (GL injection) rolls back the cycle increment**; concurrent identical bounce requests → one executes, one replays.
-- [ ] Steps 2-5 → commit `feat(treasury): outbound bounce + re-presentation cycles`.
+- [x] **Step 1: failing tests** — bounce posts dishonor JE + compensating **in** movement (`reverses_movement_id` = clear movement) keyed `:bounce:1`, status Bounced, **AP(401) balance unchanged**; represent increments `presentation_cycle` → clear semantics on `:clear:2`, cycle-1 artifacts untouched; bounce→represent→bounce lands `:bounce:2`; bounce from Received throws; **representation failure (GL injection) rolls back the cycle increment**; concurrent identical bounce requests → one executes, one replays.
+- [x] Steps 2-5 → commit `feat(treasury): outbound bounce + re-presentation cycles`.
 
 ### Task 5: `cancel()` — atomic subledger reopen
 
