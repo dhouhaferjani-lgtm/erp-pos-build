@@ -10,6 +10,8 @@ use App\Modules\Company\Presentation\Requests\CreateLocationRequest;
 use App\Modules\Company\Presentation\Requests\UpdateLocationRequest;
 use App\Modules\Company\Presentation\Resources\LocationResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -19,7 +21,35 @@ class LocationController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationScopeResolver $scopeResolver,
     ) {}
+
+    /**
+     * List locations visible to the authenticated user as a picker payload.
+     */
+    public function scopedIndex(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return $this->pickerPayload($this->scopeResolver->resolve($user));
+    }
+
+    /**
+     * List every location in the bound company for location-access management.
+     */
+    public function managementIndex(): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $ids = Location::query()
+            ->where('company_id', $companyId)
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id)
+            ->values()
+            ->all();
+
+        return $this->pickerPayload($ids);
+    }
 
     /**
      * List all locations for the current company.
@@ -27,8 +57,11 @@ class LocationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        /** @var User $user */
+        $user = $request->user();
 
         $locations = Location::where('company_id', $companyId)
+            ->whereIn('id', $this->scopeResolver->resolve($user))
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get();
@@ -39,6 +72,31 @@ class LocationController extends Controller
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
+        ]);
+    }
+
+    /**
+     * @param  array<int, string>  $ids
+     */
+    private function pickerPayload(array $ids): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $locations = Location::query()
+            ->whereIn('id', $ids)
+            ->where('company_id', $companyId)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $locations->map(static fn (Location $location): array => [
+                'id' => $location->id,
+                'name' => $location->name,
+                'code' => $location->code,
+                'type' => $location->type->value,
+                'is_default' => $location->is_default,
+            ])->values()->all(),
         ]);
     }
 
