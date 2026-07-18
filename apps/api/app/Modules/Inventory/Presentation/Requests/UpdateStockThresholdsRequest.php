@@ -45,7 +45,7 @@ final class UpdateStockThresholdsRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $min = $this->input('min_quantity');
             $max = $this->input('max_quantity');
-            if (is_string($min) && is_string($max)
+            if (is_string($min) && is_string($max) && is_numeric($min) && is_numeric($max)
                 && bccomp(
                     QuantityScale::round($min, QuantityScale::SCALE, QuantityScale::FLOOR),
                     QuantityScale::round($max, QuantityScale::SCALE, QuantityScale::FLOOR),

@@ -29,9 +29,13 @@ final class StockThresholdTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Product $product;
 
     protected function setUp(): void
