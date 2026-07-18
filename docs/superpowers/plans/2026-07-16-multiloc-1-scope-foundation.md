@@ -45,7 +45,7 @@ Idempotent, self-guarding, non-reversible.
 
 **Steps**
 
-- [ ] Write the failing test. `apps/api/tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`:
+- [x] Write the failing test. `apps/api/tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`:
 ```php
 <?php
 
@@ -178,8 +178,8 @@ final class BackfillUserCompanyMembershipsTest extends TestCase
     }
 }
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
-- [ ] Implement the migration. `apps/api/database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php`:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
+- [x] Implement the migration. `apps/api/database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php`:
 ```php
 <?php
 
@@ -280,13 +280,13 @@ return new class extends Migration
     }
 };
 ```
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
-- [ ] Write the companion command's failing test. `apps/api/tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`: in a MULTI-company tenant, a memberless active user is skipped by the migration; running `$this->artisan('users:backfill-memberships', ['--company' => $companyA->id, '--user' => [$user->id]])` (with the tenant DB active) then creates exactly one NULL-membership row for THAT user in `$companyA`, exit 0, and does NOT touch a second memberless user not named in `--user`; asserts a second run is a no-op (still one row); asserts `--company=<unknown-uuid>` exits non-zero and writes no rows; asserts bare `--company` without `--user`/`--all-memberless` exits non-zero in a multi-company tenant (no implicit bulk grant); asserts `--all-memberless` WITHOUT `--force-multi` exits non-zero in a multi-company tenant and writes no rows; asserts `--all-memberless --force-multi` in a multi-company tenant backfills all memberless users into the named company (and is idempotent on re-run).
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
-- [ ] Implement the command. `apps/api/app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php` — signature `users:backfill-memberships {--company= : Company UUID to map memberless active users into} {--user=* : User UUID(s) to map (auditable per-user path)} {--all-memberless : Bulk-map every memberless active user} {--force-multi : Required with --all-memberless in a multi-company tenant}`. In `handle()`: require `--company`; verify it is a `companies.id` row in the current tenant connection (else `error()` + `return self::FAILURE`). If `--user` given: for each id verify the user exists, is active, and is memberless for that company, then insert one NULL-membership row (VIEWER, is_primary false, active) — this is the auditable per-user path. If `--all-memberless` given instead: require single-company tenant OR `--force-multi`, then apply the same insert to every memberless active user (same `whereNotExists` predicate as the migration). Bare `--company` with neither flag: `error()` + FAILURE. `info()` per-user results; `return self::SUCCESS`. Constructor injection only; no `app()`.
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php app/Modules/Company/Domain`
-- [ ] Commit: `feat(multiloc): guarded backfill (single-company) + users:backfill-memberships mapping command (§1 step 1)`
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
+- [x] Write the companion command's failing test. `apps/api/tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`: in a MULTI-company tenant, a memberless active user is skipped by the migration; running `$this->artisan('users:backfill-memberships', ['--company' => $companyA->id, '--user' => [$user->id]])` (with the tenant DB active) then creates exactly one NULL-membership row for THAT user in `$companyA`, exit 0, and does NOT touch a second memberless user not named in `--user`; asserts a second run is a no-op (still one row); asserts `--company=<unknown-uuid>` exits non-zero and writes no rows; asserts bare `--company` without `--user`/`--all-memberless` exits non-zero in a multi-company tenant (no implicit bulk grant); asserts `--all-memberless` WITHOUT `--force-multi` exits non-zero in a multi-company tenant and writes no rows; asserts `--all-memberless --force-multi` in a multi-company tenant backfills all memberless users into the named company (and is idempotent on re-run).
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
+- [x] Implement the command. `apps/api/app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php` — signature `users:backfill-memberships {--company= : Company UUID to map memberless active users into} {--user=* : User UUID(s) to map (auditable per-user path)} {--all-memberless : Bulk-map every memberless active user} {--force-multi : Required with --all-memberless in a multi-company tenant}`. In `handle()`: require `--company`; verify it is a `companies.id` row in the current tenant connection (else `error()` + `return self::FAILURE`). If `--user` given: for each id verify the user exists, is active, and is memberless for that company, then insert one NULL-membership row (VIEWER, is_primary false, active) — this is the auditable per-user path. If `--all-memberless` given instead: require single-company tenant OR `--force-multi`, then apply the same insert to every memberless active user (same `whereNotExists` predicate as the migration). Bare `--company` with neither flag: `error()` + FAILURE. `info()` per-user results; `return self::SUCCESS`. Constructor injection only; no `app()`.
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php app/Modules/Company/Domain`
+- [x] Commit: `feat(multiloc): guarded backfill (single-company) + users:backfill-memberships mapping command (§1 step 1)`
 
 ---
 
@@ -1098,6 +1098,6 @@ $query->whereIn('replenishment_requests.location_id', $scoped);
 
 **Deploy checklist owed (record in the branch deploy note; stacks on prior treasury/location owes):**
 1. `php artisan tenants:migrate` (runs `2026_07_16_100000_backfill_user_company_memberships` — single-company backfill / multi-company skip+log — AND `2026_07_16_100100_register_manage_location_access_permission`, which registers `users.manage_location_access` + grants `admin` + flushes cache. Both idempotent/self-guarding — the permission is live from this push alone).
-2. **Multi-company tenants only:** grep the deploy logs for `multiloc.backfill.skipped_ambiguous_users`; for each such tenant, decide the correct company PER USER (from the skip log's user list) and run `php artisan tenants:run --tenants=<uuid> "users:backfill-memberships --company=<companyId> --user=<userId> [--user=<userId2> ...]"` — per-user mapping, never a bulk grant into one company. Until run, those users stay deny-all (no regression). Single-company tenants need nothing here.
+2. **Multi-company tenants only:** grep the deploy logs for `multiloc.backfill.skipped_ambiguous_users`; for each such tenant, decide the correct company PER USER (from the skip log's user list) and run `php artisan tenants:run users:backfill-memberships --tenants=<uuid> --option=company=<companyId> --option=user=<userId>[,<userId2>...]` — Stancl collapses duplicate forwarded option keys, so multiple explicitly selected users are comma-separated in one `user` option. This is still per-user mapping, never a bulk grant into one company. Until run, those users stay deny-all (no regression). Single-company tenants need nothing here.
 3. Belt-and-suspenders (NOT the mechanism): optionally re-run `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`. The route is already safe via step 1's migration.
 4. Verify the four migrated pages, the two new locations endpoints, and the staff location-assignment UI (create + edit) on staging with a deliberately restricted membership before considering the deploy done.
