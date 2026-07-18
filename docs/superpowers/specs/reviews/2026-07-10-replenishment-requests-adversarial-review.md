@@ -186,3 +186,20 @@ Guardrail matrix fully PASS (component reuse incl. PartnerSearchSelect exact imp
 - **Fix (commits `1aa80d210`, `6892fbe36`, `cad0da96e`):** FEFO auto-allocation INSIDE Inventory — extracted the existing validator's algorithm into shared `computeFefoSplit()` (provably identical: ordering incl. id tie-break, `canBeSold()` filter, scale-4, locks); opt-in `autoAllocateBatchesFefo` on `InitiateTransferData` (all 9 call sites named-args, zero callers affected); insufficient sellable batches → existing 422 path; + fulfilled-row links to the fulfilling transfer/PO; + lock-order contract documented (caller must lock stock_levels first — ABBA risk for future flag-true callers otherwise). Domain-reviewed CONFIRMED (behavior-identity, gating, lock geometry, honest tests).
 - **Browser pass 2 (@ cad0da96e):** batch-tracked transfer → 200; FEFO allocation verified at DB grain (earliest-expiry batch, qty split, source batch stock 200→195); history link → transfer detail. PASS.
 - **Follow-ups recorded:** StockTransferDetailPage does not render batch allocations (PRE-EXISTING UI gap, applies to manual transfers too); multi-batch FEFO ordering exercised in backend tests only (single batch in demo data); demo-tenant browser pass on real vertical data promoted to a standing Gate-D requirement.
+
+---
+
+## Round 8 — Wave A permission-map generator, pre-merge gate (2026-07-18)
+
+Target: `feat/permission-map-generator` delta `e948ccaaf..4f5e930dd` (impl `7ef795cbd` + dev-merge/regen `4f5e930dd`). Two Opus lanes.
+
+**frontend-conventions: APPROVE.** Verified by replay: exporter output byte-identical to committed map (incl. Phase-4 `expenses.export`/`expense-recurrences.*`); seeder grant sets net-zero vs dev for all roles; 5 dead FE roles removed from fallback map; alias file matches owner ruling; typecheck + 31 web tests green. Minors: `reports.view` admin-only narrowing is backend-truth (tiered-reporting ticket covers manager/accountant restore); drift-guard .mjs is wiring-only meta-test (real guard = CI/preflight regen+diff); "Source hash" header hashes emitted body, not seeder (cosmetic).
+
+**tenancy-authz: APPROVE-WITH-FIXES.** Proved seeder restructure grant-neutral (280 perms, 7 roles byte-identical) and drift guards cannot false-pass. MAJOR: `services.create`/`services.edit` FE gates deleted rather than migrated — Workshop service catalog write UI reachable by all roles; backend `/services` store/update/destroy have NO `can:` gate (pre-existing), so FE was de-facto authz. **FIXED @ `7126703e2`**: both keys restored as UI aliases (admin/sales/manager = dev behavior), routes re-wrapped, manifest mirrored; tests+typecheck re-verified green.
+
+**Follow-up tickets (not Wave A scope):**
+1. 🎫 Real `services.view/create/update/delete` permissions in seeder + `can:` middleware on `Service/Presentation/routes.php` store/update/destroy (both-layer gating per rule 12); then drop the two alias keys.
+2. 🎫 Tiered reporting (already owner-directed): seeder grants for manager=operational / accountant=financial; restores Finance nav for those roles.
+3. Minor: partner edit routes gate on `contacts.update` while backend enforces `partners.update` — operator hidden from partner edit UI (net-neutral vs dev; align if operator parity wanted).
+
+Verdict: **MERGE APPROVED** at `7126703e2` (post-fix).

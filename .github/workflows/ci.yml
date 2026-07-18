@@ -987,6 +987,27 @@ jobs:
             exit 1
           fi
 
+      - name: Regenerate frontend permission map
+        run: php artisan permissions:export-frontend-map
+
+      - name: Fail if frontend permission map is out of sync
+        working-directory: ${{ github.workspace }}
+        run: |
+          if ! git diff --quiet -- apps/web/src/hooks/permissionsMap.generated.ts; then
+            echo "::error::apps/web/src/hooks/permissionsMap.generated.ts is out of date. RolesAndPermissionsSeeder changed without a matching regen."
+            echo ""
+            echo "To fix:"
+            echo "  (cd apps/api && php artisan permissions:export-frontend-map)"
+            echo "  git add apps/web/src/hooks/permissionsMap.generated.ts"
+            echo ""
+            echo "Diff summary:"
+            git --no-pager diff --stat -- apps/web/src/hooks/permissionsMap.generated.ts
+            echo ""
+            echo "First 200 lines of the diff:"
+            git --no-pager diff -- apps/web/src/hooks/permissionsMap.generated.ts | head -200
+            exit 1
+          fi
+
   all-checks-pass:
     name: All Checks Pass
     runs-on: ubuntu-latest
