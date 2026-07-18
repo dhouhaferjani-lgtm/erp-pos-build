@@ -62,6 +62,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('stock-levels.show');
 
+    Route::put('/inventory/stock-levels/thresholds', [StockLevelController::class, 'updateThresholds'])
+        ->middleware('can:inventory.adjust')
+        ->name('stock-levels.thresholds.update');
+
     Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
         ->middleware('can:inventory.view')
         ->name('inventory.stock-matrix');

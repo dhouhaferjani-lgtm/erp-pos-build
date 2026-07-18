@@ -8,7 +8,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
+use App\Modules\Inventory\Application\Services\StockThresholdService;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Presentation\Requests\UpdateStockThresholdsRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -18,6 +20,7 @@ class StockLevelController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly StockThresholdService $stockThresholdService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -67,6 +70,25 @@ class StockLevelController extends Controller
                 'total' => $stockLevels->total(),
             ],
         ]);
+    }
+
+    public function updateThresholds(UpdateStockThresholdsRequest $request): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $data = $request->validated();
+        $variantValue = $data['variant_id'] ?? null;
+        $minValue = $data['min_quantity'] ?? null;
+        $maxValue = $data['max_quantity'] ?? null;
+
+        return response()->json(['data' => $this->stockThresholdService->update(
+            $company->tenant_id,
+            $company->id,
+            (string) $data['product_id'],
+            is_string($variantValue) ? $variantValue : null,
+            (string) $data['location_id'],
+            is_string($minValue) ? $minValue : null,
+            is_string($maxValue) ? $maxValue : null,
+        )]);
     }
 
     public function show(Request $request, string $productId, string $locationId): JsonResponse
