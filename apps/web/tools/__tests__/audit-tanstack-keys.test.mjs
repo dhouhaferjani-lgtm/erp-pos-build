@@ -33,6 +33,16 @@ describe('Gate C — TanStack queryKey scanner', () => {
       expect(v).toEqual([]);
     });
 
+    it('approves locationScopedKey factory call', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: locationScopedKey(['stock-levels'], scope),
+          queryFn: () => fetch('/stock-levels'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
     it('approves array containing currentCompanyId identifier', () => {
       const v = scanCode(`
         useQuery({
@@ -292,6 +302,15 @@ describe('Gate C — TanStack queryKey scanner', () => {
         expect(v).toEqual([]);
       });
     }
+
+    it('flags queryClient.invalidateQueries with a locationScopedKey(...) filter', () => {
+      const v = scanCode(`
+        queryClient.invalidateQueries({ queryKey: locationScopedKey(['stock-levels'], scope) });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('no-op');
+      expect(v[0].factory).toBe('invalidateQueries');
+    });
 
     it('flags a parenthesized tenantScopedKey(...) filter', () => {
       const v = scanCode(`
