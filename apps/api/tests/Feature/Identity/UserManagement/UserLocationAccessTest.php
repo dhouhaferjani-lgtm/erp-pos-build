@@ -24,9 +24,11 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 final class UserLocationAccessTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -96,11 +98,81 @@ final class UserLocationAccessTest extends TestCase
         $response = $this->actingAs($granter, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
             ->patchJson("/api/v1/users/{$this->target->id}", [
+                'allowed_location_ids' => null,
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN');
+    }
+
+    public function test_forbidden_location_grant_does_not_reveal_nonexistent_target(): void
+    {
+        $granter = $this->createUser(
+            email: 'nonexistent-target-granter@example.com',
+            spatieRole: 'viewer',
+            membershipRole: MembershipRole::Manager,
+            allowedLocations: [$this->locationA->id],
+        );
+        $granter->givePermissionTo('users.update');
+
+        $response = $this->actingAs($granter, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/users/00000000-0000-0000-0000-000000000000', [
                 'allowed_location_ids' => [$this->locationA->id],
             ]);
 
         $response->assertForbidden()
             ->assertJsonPath('error.code', 'FORBIDDEN');
+    }
+
+    public function test_store_manage_permission_is_checked_before_location_list_validation(): void
+    {
+        $granter = $this->createUser(
+            email: 'malformed-store-granter@example.com',
+            spatieRole: 'viewer',
+            membershipRole: MembershipRole::Manager,
+            allowedLocations: [$this->locationA->id],
+        );
+        $granter->givePermissionTo('users.create');
+        $userCountBefore = User::count();
+
+        $response = $this->actingAs($granter, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Malformed Store',
+                'email' => 'malformed-store@example.com',
+                'role' => 'viewer',
+                'allowed_location_ids' => 'not-a-list',
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN');
+        $this->assertSame($userCountBefore, User::count());
+    }
+
+    public function test_update_manage_permission_is_checked_before_location_list_validation(): void
+    {
+        $granter = $this->createUser(
+            email: 'malformed-update-granter@example.com',
+            spatieRole: 'viewer',
+            membershipRole: MembershipRole::Manager,
+            allowedLocations: [$this->locationA->id],
+        );
+        $granter->givePermissionTo('users.update');
+        $membershipBefore = $this->membershipFor($this->target)->getRawOriginal('allowed_location_ids');
+
+        $response = $this->actingAs($granter, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/users/{$this->target->id}", [
+                'allowed_location_ids' => 'not-a-list',
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN');
+        $this->assertSame(
+            $membershipBefore,
+            $this->membershipFor($this->target)->getRawOriginal('allowed_location_ids'),
+        );
     }
 
     public function test_cannot_edit_own_allowed_location_ids(): void
@@ -238,6 +310,45 @@ final class UserLocationAccessTest extends TestCase
         $this->assertSame($before['audits'], AuditEvent::count());
     }
 
+    public function test_store_authorized_grant_creates_membership_with_exact_location_list(): void
+    {
+        Notification::fake();
+
+        $response = $this->actingAs($this->ownerAdmin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Restricted New User',
+                'email' => 'restricted-new-user@example.com',
+                'role' => 'viewer',
+                'allowed_location_ids' => [$this->locationB->id, $this->locationA->id],
+            ]);
+
+        $response->assertCreated();
+        $created = User::where('email', 'restricted-new-user@example.com')->firstOrFail();
+        $this->assertSame(
+            [$this->locationB->id, $this->locationA->id],
+            $this->membershipFor($created)->allowed_location_ids,
+        );
+    }
+
+    public function test_store_authorized_explicit_null_creates_unrestricted_membership(): void
+    {
+        Notification::fake();
+
+        $response = $this->actingAs($this->ownerAdmin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Unrestricted New User',
+                'email' => 'unrestricted-new-user@example.com',
+                'role' => 'viewer',
+                'allowed_location_ids' => null,
+            ]);
+
+        $response->assertCreated();
+        $created = User::where('email', 'unrestricted-new-user@example.com')->firstOrFail();
+        $this->assertNull($this->membershipFor($created)->allowed_location_ids);
+    }
+
     public function test_update_denied_grant_leaves_profile_role_and_membership_unchanged(): void
     {
         $granter = $this->createRestrictedAdmin('atomic-update@example.com', [$this->locationA->id]);
@@ -259,6 +370,80 @@ final class UserLocationAccessTest extends TestCase
         $this->assertSame('target@example.com', $this->target->email);
         $this->assertSame('target@example.com', $this->target->name);
         $this->assertSame($rolesBefore, $this->target->getRoleNames()->values()->all());
+        $this->assertSame(
+            $membershipBefore,
+            $this->membershipFor($this->target)->getRawOriginal('allowed_location_ids'),
+        );
+        $this->assertSame($auditCountBefore, AuditEvent::count());
+    }
+
+    public function test_update_location_grant_requires_active_target_membership_before_any_mutation(): void
+    {
+        $membership = $this->membershipFor($this->target);
+        $membership->update(['status' => MembershipStatus::Suspended]);
+
+        $nameBefore = $this->target->name;
+        $rolesBefore = $this->target->getRoleNames()->values()->all();
+        $membershipBefore = $membership->fresh()->getRawOriginal('allowed_location_ids');
+        $auditCountBefore = AuditEvent::count();
+
+        $response = $this->actingAs($this->ownerAdmin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/users/{$this->target->id}", [
+                'name' => 'Membership Leak',
+                'role' => 'manager',
+                'allowed_location_ids' => [$this->locationB->id],
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'TARGET_MEMBERSHIP_REQUIRED');
+        $this->assertSame($nameBefore, $this->target->refresh()->name);
+        $this->assertSame($rolesBefore, $this->target->getRoleNames()->values()->all());
+        $this->assertSame(
+            $membershipBefore,
+            $membership->fresh()->getRawOriginal('allowed_location_ids'),
+        );
+        $this->assertSame($auditCountBefore, AuditEvent::count());
+    }
+
+    public function test_store_rejects_associative_allowed_location_ids_without_writes(): void
+    {
+        Notification::fake();
+        $before = [
+            'users' => User::count(),
+            'memberships' => UserCompanyMembership::count(),
+            'roles' => DB::table('model_has_roles')->count(),
+            'audits' => AuditEvent::count(),
+        ];
+
+        $response = $this->actingAs($this->ownerAdmin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Associative Locations',
+                'email' => 'associative-locations@example.com',
+                'role' => 'viewer',
+                'allowed_location_ids' => ['primary' => $this->locationA->id],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['allowed_location_ids']);
+        $this->assertSame($before['users'], User::count());
+        $this->assertSame($before['memberships'], UserCompanyMembership::count());
+        $this->assertSame($before['roles'], DB::table('model_has_roles')->count());
+        $this->assertSame($before['audits'], AuditEvent::count());
+    }
+
+    public function test_update_rejects_associative_allowed_location_ids_without_writes(): void
+    {
+        $membershipBefore = $this->membershipFor($this->target)->getRawOriginal('allowed_location_ids');
+        $auditCountBefore = AuditEvent::count();
+
+        $response = $this->actingAs($this->ownerAdmin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/users/{$this->target->id}", [
+                'allowed_location_ids' => ['primary' => $this->locationB->id],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['allowed_location_ids']);
         $this->assertSame(
             $membershipBefore,
             $this->membershipFor($this->target)->getRawOriginal('allowed_location_ids'),

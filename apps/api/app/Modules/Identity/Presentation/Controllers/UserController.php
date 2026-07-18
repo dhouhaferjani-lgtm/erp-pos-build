@@ -277,6 +277,19 @@ class UserController extends Controller
         /** @var User $currentUser */
         $currentUser = $request->user();
 
+        $validated = $request->validated();
+
+        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated);
+        /** @var list<string>|null $requestedLocations */
+        $requestedLocations = $hasLocationGrant ? $validated['allowed_location_ids'] : null;
+
+        if ($hasLocationGrant) {
+            $denied = $this->authorizeLocationGrant($currentUser, $id, $requestedLocations, $request);
+            if ($denied !== null) {
+                return $denied;
+            }
+        }
+
         $user = User::where('tenant_id', $currentUser->tenant_id)
             ->where('id', $id)
             ->first();
@@ -291,17 +304,18 @@ class UserController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        $validated = $request->validated();
-
-        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated);
-        /** @var list<string>|null $requestedLocations */
-        $requestedLocations = $hasLocationGrant ? $validated['allowed_location_ids'] : null;
-
-        if ($hasLocationGrant) {
-            $denied = $this->authorizeLocationGrant($currentUser, $user->id, $requestedLocations, $request);
-            if ($denied !== null) {
-                return $denied;
-            }
+        if (
+            $hasLocationGrant
+            && ! UserCompanyMembership::where('user_id', $user->id)
+                ->where('company_id', $this->companyContext->requireCompanyId())
+                ->where('status', MembershipStatus::Active->value)
+                ->exists()
+        ) {
+            return $this->forbidden(
+                'TARGET_MEMBERSHIP_REQUIRED',
+                'The target user must have an active membership in this company.',
+                $request,
+            );
         }
 
         return DB::transaction(function () use (
@@ -873,9 +887,14 @@ class UserController extends Controller
      */
     private function writeLocationGrant(string $targetUserId, ?array $requested, string $companyId): void
     {
-        UserCompanyMembership::where('user_id', $targetUserId)
+        $updated = UserCompanyMembership::where('user_id', $targetUserId)
             ->where('company_id', $companyId)
+            ->where('status', MembershipStatus::Active->value)
             ->update(['allowed_location_ids' => $requested]);
+
+        if ($updated !== 1) {
+            throw new \RuntimeException('Expected exactly one active target company membership for location grant.');
+        }
     }
 
     private function forbidden(string $code, string $message, Request $request): JsonResponse
