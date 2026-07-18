@@ -4,5 +4,12 @@
   "noAvailableLocations": "Aucun emplacement disponible",
   "selectedLocations": "{{count}} emplacement sélectionné",
   "selectedLocations_plural": "{{count}} emplacements sélectionnés",
-  "selectLocations": "Sélectionner des emplacements"
+  "selectLocations": "Sélectionner des emplacements",
+  "viewScope": {
+    "label": "Périmètre d’affichage",
+    "open": "Choisir les sites",
+    "all": "Tous les sites",
+    "selected": "{{count}} sites",
+    "loading": "Chargement des sites…"
+  }
 }

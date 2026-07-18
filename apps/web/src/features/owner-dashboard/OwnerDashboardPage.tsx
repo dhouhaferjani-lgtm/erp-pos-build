@@ -22,6 +22,7 @@ import {
   useSalesSummary,
   useTopSkus,
 } from './hooks/useOwnerReports'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 
 function defaultFilters(): OwnerDashboardFiltersValue {
   const today = formatDateInput(new Date())
@@ -30,7 +31,6 @@ function defaultFilters(): OwnerDashboardFiltersValue {
     from: today,
     to: today,
     granularity: 'hour',
-    locationIds: [],
   }
 }
 
@@ -64,6 +64,7 @@ export function OwnerDashboardPage() {
   const [filters, setFilters] = useState<OwnerDashboardFiltersValue>(() => defaultFilters())
   const [topSkuSortBy, setTopSkuSortBy] = useState<'revenue' | 'quantity'>('revenue')
   const [paymentMode, setPaymentMode] = useState<'amount' | 'percentage'>('amount')
+  const { effectiveLocationIds } = useViewScope()
 
   const canViewOwnerDashboard = hasPermission('dashboard.owner')
   const isLiveRange = dateRangeIncludesToday(filters.from, filters.to)
@@ -72,17 +73,17 @@ export function OwnerDashboardPage() {
     () => ({
       from: filters.from,
       to: filters.to,
-      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
     }),
-    [filters.from, filters.to, filters.locationIds],
+    [filters.from, filters.to, effectiveLocationIds],
   )
 
   const stockParams = useMemo(
     () => ({
       threshold_pct: 100,
-      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
     }),
-    [filters.locationIds],
+    [effectiveLocationIds],
   )
 
   const summary = useSalesSummary(dateParams, canViewOwnerDashboard)
@@ -94,9 +95,9 @@ export function OwnerDashboardPage() {
     () => ({
       from: shiftDateInput(filters.from, -7),
       to: shiftDateInput(filters.to, -7),
-      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
     }),
-    [filters.from, filters.to, filters.locationIds],
+    [filters.from, filters.to, effectiveLocationIds],
   )
   const comparisonSales = useSalesByLocation(
     { ...comparisonDateParams, granularity: 'hour' },

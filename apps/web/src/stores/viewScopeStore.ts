@@ -88,9 +88,11 @@ if (typeof window !== 'undefined') {
   }
 
   syncForCompany(useCompanyStore.getState().currentCompanyId)
-  useCompanyStore.subscribe((state) => {
-    syncForCompany(state.currentCompanyId)
-  })
+  if (typeof useCompanyStore.subscribe === 'function') {
+    useCompanyStore.subscribe((state) => {
+      syncForCompany(state.currentCompanyId)
+    })
+  }
 
   window.addEventListener('storage', (event: StorageEvent) => {
     const companyId = useCompanyStore.getState().currentCompanyId

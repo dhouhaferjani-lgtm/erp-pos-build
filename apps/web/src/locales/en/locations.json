@@ -4,5 +4,12 @@
   "noAvailableLocations": "No locations available",
   "selectedLocations": "{{count}} location selected",
   "selectedLocations_plural": "{{count}} locations selected",
-  "selectLocations": "Select Locations"
+  "selectLocations": "Select Locations",
+  "viewScope": {
+    "label": "View scope",
+    "open": "Choose locations",
+    "all": "All locations",
+    "selected": "{{count}} locations",
+    "loading": "Loading locations…"
+  }
 }

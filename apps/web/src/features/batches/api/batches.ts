@@ -164,10 +164,10 @@ export async function getProductBatches(
  *
  * @param locationId - Optional UUID to scope results to a single storage location.
  */
-export async function getExpiredBatches(locationId?: string): Promise<ExpiredBatch[]> {
+export async function getExpiredBatches(locationIds?: string[]): Promise<ExpiredBatch[]> {
   return apiGet<ExpiredBatch[]>(
     '/batches/expired',
-    locationId !== undefined ? { location_id: locationId } : undefined,
+    locationIds && locationIds.length > 0 ? { location_ids: locationIds } : undefined,
   )
 }
 

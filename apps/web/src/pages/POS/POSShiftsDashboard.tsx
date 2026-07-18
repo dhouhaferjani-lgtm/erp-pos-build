@@ -17,7 +17,8 @@ import type { XReportResponse } from '@/features/pos/api/shiftApi'
 import { useLocation } from '@/hooks/useLocation'
 import { Loader2, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -32,6 +33,7 @@ export function POSShiftsDashboard() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { currentLocationId, isLoading: isLocationLoading } = useLocation()
+  const { scope, effectiveLocationIds } = useViewScope()
   const [xReportData, setXReportData] = useState<XReportResponse | null>(null)
 
   // Resolve web terminal for the active location
@@ -55,7 +57,7 @@ export function POSShiftsDashboard() {
     data: shift,
     isLoading: isLoadingShift,
   } = useQuery({
-    queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
+    queryKey: locationScopedKey(['pos', 'shift', terminalCode], scope),
     queryFn: () => getCurrentShift(terminalCode!),
     refetchInterval: 30000,
     enabled: !!terminalCode && !!tenantId && !!companyId,
@@ -63,7 +65,7 @@ export function POSShiftsDashboard() {
 
   // Fetch cash drawer balance when shift is open
   const { data: balance } = useQuery({
-    queryKey: tenantScopedKey(['pos', 'shift-balance', shift?.id]),
+    queryKey: locationScopedKey(['pos', 'shift-balance', shift?.id], scope),
     queryFn: () => getShiftBalance(shift!.id),
     refetchInterval: 30000,
     enabled: !!shift?.id && !!tenantId && !!companyId,
@@ -134,7 +136,7 @@ export function POSShiftsDashboard() {
   }
 
   // No location selected
-  if (!isLocationLoading && !currentLocationId) {
+  if (!isLocationLoading && effectiveLocationIds.length === 0) {
     return (
       <div className={`flex items-center justify-center h-screen ${colorTokens.surface.page}`}>
         <div className="text-center max-w-md">

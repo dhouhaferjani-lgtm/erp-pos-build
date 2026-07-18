@@ -1,14 +1,12 @@
-import { CalendarDays, MapPin } from 'lucide-react'
+import { CalendarDays } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { borderColors, colors, textColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { Input, Select } from '@/components/atoms'
-import { useLocationStore } from '@/stores/locationStore'
 
 export interface OwnerDashboardFiltersValue {
   from: string
   to: string
   granularity: 'hour' | 'day' | 'week' | 'month'
-  locationIds: string[]
 }
 
 interface OwnerDashboardFiltersProps {
@@ -18,7 +16,6 @@ interface OwnerDashboardFiltersProps {
 
 export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFiltersProps) {
   const { t } = useTranslation(['reports'])
-  const locations = useLocationStore((s) => s.locations)
 
   function applyPreset(days: 1 | 7 | 30) {
     const to = new Date()
@@ -39,17 +36,6 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
       ...nextValue,
       granularity: isSingleDay(nextValue.from, nextValue.to) ? 'hour' : value.granularity,
     })
-  }
-
-  function handleLocationToggle(id: string) {
-    const next = value.locationIds.includes(id)
-      ? value.locationIds.filter((l) => l !== id)
-      : [...value.locationIds, id]
-    onChange({ ...value, locationIds: next })
-  }
-
-  function handleAllLocations() {
-    onChange({ ...value, locationIds: [] })
   }
 
   return (
@@ -121,32 +107,6 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           <option value="month">{t('reports:ownerDashboard.filters.month')}</option>
         </Select>
       </label>
-      {locations.length > 0 && (
-        <div className={`flex items-center gap-2 border-s ${borderColors.light} ps-3`}>
-          <MapPin className={`h-4 w-4 ${textColors.tertiary}`} />
-          <button
-            type="button"
-            onClick={handleAllLocations}
-            className={`text-sm ${value.locationIds.length === 0 ? textColors.primary : textColors.tertiary} ${colorTokens.variants.hoverTextGray700}`}
-          >
-            {t('reports:ownerDashboard.filters.allLocations')}
-          </button>
-          {locations.map((loc) => (
-            <label key={loc.id} className={`flex cursor-pointer items-center gap-1 text-sm ${textColors.secondary}`}>
-              <input
-                type="checkbox"
-                aria-label={loc.name}
-                checked={value.locationIds.includes(loc.id)}
-                onChange={() => {
-                  handleLocationToggle(loc.id)
-                }}
-                className={`rounded border ${borderColors.default}`}
-              />
-              {loc.name}
-            </label>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
