@@ -462,7 +462,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
 Run: `cd apps/api && php artisan test tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement.** In `TreasuryReceiptBridge`, add a resolver mirroring `PosCoreReceiptProjection::resolveTerminal`, compute once in `apply()`, thread into `projectPaymentLineFromCanonical`.
+- [x] **Step 3: Implement.** All three queued POS bridges now resolve terminal location once per event and thread it into payment/instrument writes via a shared worker-safe resolver.
 
 ```php
 // TreasuryReceiptBridge — new private method
@@ -490,9 +490,9 @@ In `apply()` compute `$terminalLocationId = $this->resolveTerminalLocationId($ev
 
 and in **both** `MaturityLegContext` constructions add `locationId: $terminalLocationId,`.
 
-- [ ] **Step 4: Thread `locationId` through the DTOs + handler.** Add `public ?string $locationId = null,` to `MaturityLegContext` and `ReceiveInstrumentData`. In `HandlesMaturityTenderLeg::handleMaturityLeg`, pass `locationId: $context->locationId,` into the `ReceiveInstrumentData` at :76. In `InstrumentLifecycleService::receive()` add `'location_id' => $data->locationId,` to the `PaymentInstrument::query()->create([...])` (Task 6 owns the freeze test, but the write goes in here).
+- [x] **Step 4: Thread `locationId` through the DTOs + handler and instrument write.**
 
-- [ ] **Step 5: Repeat the Payment.create + context change** in `TreasuryAccountPaymentBridge` and `TreasuryDepositBridge`. Both resolve the terminal the same way. **Note:** `DEPOSIT_RECEIPT` is server-authored/`isServerOnly()` and may carry a null/absent `terminal_id` — `resolveTerminalLocationId` returns null and we **fall back to `$repository->location_id`** for the deposit bridge:
+- [x] **Step 5: Repeat the Payment.create + context change** in the account-payment and deposit bridges, with repository fallback for server-authored deposits.
 
 ```php
 // TreasuryDepositBridge::apply() Payment::create
@@ -501,17 +501,17 @@ and in **both** `MaturityLegContext` constructions add `locationId: $terminalLoc
 
 Add the identical `resolveTerminalLocationId` helper to both bridges (or extract to a shared trait `ResolvesTerminalLocation` in `App\Modules\Treasury\Application\Projections\Concerns` — preferred, DRY).
 
-- [ ] **Step 6: Extend the test** to cover the account-payment + deposit bridges (deposit falls back to repository location when terminal is absent). Run — expect PASS.
+- [ ] **Step 6: Add the dedicated three-bridge attribution test** (existing TreasuryReceiptBridge regression passes; dedicated coverage remains).
 
 Run: `cd apps/api && php artisan test tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php`
 Expected: PASS.
 
-- [ ] **Step 7: PHPStan.**
+- [x] **Step 7: PHPStan and Pint pass on the projections/DTOs.**
 
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Treasury/Application/Projections app/Modules/Treasury/Application/DTOs/MaturityLegContext.php app/Modules/Treasury/Application/DTOs/ReceiveInstrumentData.php`
 Expected: no errors.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit `dc818e945`.**
 
 ```bash
 git add apps/api/app/Modules/Treasury/Application/Projections apps/api/app/Modules/Treasury/Application/DTOs apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php apps/api/tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php
