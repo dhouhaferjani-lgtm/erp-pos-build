@@ -265,6 +265,32 @@ class CreateUserTest extends TestCase
         $this->assertTrue($user->hasRole('operator'));
     }
 
+    public function test_store_creates_null_membership_for_new_staff(): void
+    {
+        Notification::fake();
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'New Cashier',
+                'role' => 'cashier',
+                'phone' => '+33612345678',
+            ]);
+
+        $response->assertCreated();
+        $userId = $response->json('data.id');
+
+        $membership = UserCompanyMembership::where('user_id', $userId)
+            ->where('company_id', $this->company->id)
+            ->first();
+
+        $this->assertNotNull($membership);
+        $this->assertNull($membership->allowed_location_ids);
+        $this->assertSame(MembershipRole::Cashier, $membership->role);
+        $this->assertTrue($membership->is_primary);
+        $this->assertSame(MembershipStatus::Active, $membership->status);
+    }
+
     public function test_new_user_receives_invitation_email(): void
     {
         Notification::fake();

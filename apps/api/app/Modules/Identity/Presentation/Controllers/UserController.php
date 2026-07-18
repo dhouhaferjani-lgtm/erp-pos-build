@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Controllers;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
@@ -195,6 +197,15 @@ class UserController extends Controller
             if ($user->email === null) {
                 $user->update(['status' => UserStatus::Active]);
             }
+
+            UserCompanyMembership::create([
+                'user_id' => $user->id,
+                'company_id' => $this->companyContext->requireCompanyId(),
+                'role' => MembershipRole::tryFrom($validated['role']) ?? MembershipRole::Viewer,
+                'allowed_location_ids' => null,
+                'is_primary' => UserCompanyMembership::where('user_id', $user->id)->count() === 0,
+                'status' => MembershipStatus::Active,
+            ]);
 
             // Maintain the central identity index (topology §9.1) so invited
             // users can do email-first login / org recovery. No-op for PIN-only
