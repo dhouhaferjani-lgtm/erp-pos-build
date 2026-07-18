@@ -7,8 +7,10 @@ namespace App\Modules\Identity\Presentation\Controllers;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Application\DTOs\UserData;
 use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
@@ -51,6 +53,7 @@ class UserController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly IdentityIndexService $identityIndexService,
         private readonly TenantLinkSigner $tenantLinkSigner,
     ) {}
@@ -171,10 +174,21 @@ class UserController extends Controller
         $currentUser = $request->user();
         $validated = $request->validated();
 
+        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated);
+        /** @var list<string>|null $requestedLocations */
+        $requestedLocations = $hasLocationGrant ? $validated['allowed_location_ids'] : null;
+
+        if ($hasLocationGrant) {
+            $denied = $this->authorizeLocationGrant($currentUser, null, $requestedLocations, $request);
+            if ($denied !== null) {
+                return $denied;
+            }
+        }
+
         /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($currentUser->tenant_id);
 
-        $user = DB::transaction(function () use ($validated, $currentUser) {
+        $user = DB::transaction(function () use ($validated, $currentUser, $hasLocationGrant, $requestedLocations) {
             // Generate a random password (user will set it via invitation email)
             $tempPassword = Str::random(32);
 
@@ -206,6 +220,14 @@ class UserController extends Controller
                 'is_primary' => UserCompanyMembership::where('user_id', $user->id)->count() === 0,
                 'status' => MembershipStatus::Active,
             ]);
+
+            if ($hasLocationGrant) {
+                $this->writeLocationGrant(
+                    $user->id,
+                    $requestedLocations,
+                    $this->companyContext->requireCompanyId(),
+                );
+            }
 
             // Maintain the central identity index (topology §9.1) so invited
             // users can do email-first login / org recovery. No-op for PIN-only
@@ -271,7 +293,25 @@ class UserController extends Controller
 
         $validated = $request->validated();
 
-        return DB::transaction(function () use ($user, $validated, $currentUser, $request) {
+        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated);
+        /** @var list<string>|null $requestedLocations */
+        $requestedLocations = $hasLocationGrant ? $validated['allowed_location_ids'] : null;
+
+        if ($hasLocationGrant) {
+            $denied = $this->authorizeLocationGrant($currentUser, $user->id, $requestedLocations, $request);
+            if ($denied !== null) {
+                return $denied;
+            }
+        }
+
+        return DB::transaction(function () use (
+            $user,
+            $validated,
+            $currentUser,
+            $request,
+            $hasLocationGrant,
+            $requestedLocations,
+        ) {
             $changes = [];
             $previousEmail = $user->email;
 
@@ -299,6 +339,14 @@ class UserController extends Controller
             }
 
             $user->save();
+
+            if ($hasLocationGrant) {
+                $this->writeLocationGrant(
+                    $user->id,
+                    $requestedLocations,
+                    $this->companyContext->requireCompanyId(),
+                );
+            }
 
             // Keep the central identity index in sync on email change
             // (topology §9.1). syncEmail() is a no-op when the email is
@@ -757,6 +805,88 @@ class UserController extends Controller
             'timestamp' => now()->toIso8601String(),
             'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
         ];
+    }
+
+    /**
+     * Perform read-only authorization before any target user data is mutated.
+     *
+     * @param  list<string>|null  $requested
+     */
+    private function authorizeLocationGrant(
+        User $currentUser,
+        ?string $targetUserId,
+        ?array $requested,
+        Request $request,
+    ): ?JsonResponse {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        if (! $currentUser->can('users.manage_location_access')) {
+            return $this->forbidden(
+                'FORBIDDEN',
+                'You do not have permission to manage location access.',
+                $request,
+            );
+        }
+
+        if ($targetUserId !== null && $targetUserId === $currentUser->id) {
+            return $this->forbidden(
+                'SELF_LOCATION_ESCALATION',
+                'You cannot change your own location access.',
+                $request,
+            );
+        }
+
+        if ($requested !== null) {
+            $companyLocationIds = Location::where('company_id', $companyId)->pluck('id')->all();
+            if (array_diff($requested, $companyLocationIds) !== []) {
+                return $this->forbidden(
+                    'INVALID_LOCATION',
+                    'A selected location does not belong to this company.',
+                    $request,
+                );
+            }
+        }
+
+        $membership = $this->locationContext->getCurrentMembership($companyId, $currentUser);
+        $isOwner = $membership?->isOwner() ?? false;
+        $callerAllowed = $this->locationContext->getAllowedLocationIds($companyId, $currentUser);
+
+        if (
+            ! $isOwner
+            && $callerAllowed !== null
+            && ($requested === null || array_diff($requested, $callerAllowed) !== [])
+        ) {
+            return $this->forbidden(
+                'LOCATION_ESCALATION',
+                'You cannot grant locations outside your own access.',
+                $request,
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Persist a previously authorized location grant inside the caller's transaction.
+     *
+     * @param  list<string>|null  $requested
+     */
+    private function writeLocationGrant(string $targetUserId, ?array $requested, string $companyId): void
+    {
+        UserCompanyMembership::where('user_id', $targetUserId)
+            ->where('company_id', $companyId)
+            ->update(['allowed_location_ids' => $requested]);
+    }
+
+    private function forbidden(string $code, string $message, Request $request): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => $code,
+                'message' => $message,
+            ],
+            'meta' => $this->getMeta($request),
+        ], Response::HTTP_FORBIDDEN);
     }
 
     /**

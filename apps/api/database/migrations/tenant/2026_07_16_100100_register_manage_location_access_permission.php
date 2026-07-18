@@ -1,0 +1,29 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        $permission = Permission::findOrCreate('users.manage_location_access', 'sanctum');
+
+        $admin = Role::query()
+            ->where('name', 'admin')
+            ->where('guard_name', 'sanctum')
+            ->first();
+
+        if ($admin !== null && ! $admin->hasPermissionTo($permission)) {
+            $admin->givePermissionTo($permission);
+        }
+    }
+
+    public function down(): void
+    {
+        // Permission-registration migrations are intentionally non-destructive.
+    }
+};

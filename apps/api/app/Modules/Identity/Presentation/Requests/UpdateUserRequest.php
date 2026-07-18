@@ -49,6 +49,8 @@ class UpdateUserRequest extends FormRequest
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'can_discount' => ['sometimes', 'boolean'],
             'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'allowed_location_ids' => ['sometimes', 'nullable', 'array'],
+            'allowed_location_ids.*' => ['uuid'],
         ];
     }
 

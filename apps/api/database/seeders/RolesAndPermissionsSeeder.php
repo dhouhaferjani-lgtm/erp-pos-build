@@ -288,6 +288,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'users.update',
             'users.delete',
             'users.assign-roles',
+            'users.manage_location_access',
 
             'roles.view',
             'roles.manage',

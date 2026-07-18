@@ -41,6 +41,8 @@ class CreateUserRequest extends FormRequest
             'role' => ['required', 'string', 'exists:roles,name', new AssignableRole($currentUser)],
             'locale' => ['nullable', 'string', 'max:10'],
             'timezone' => ['nullable', 'string', 'max:50'],
+            'allowed_location_ids' => ['sometimes', 'nullable', 'array'],
+            'allowed_location_ids.*' => ['uuid'],
         ];
     }
 
