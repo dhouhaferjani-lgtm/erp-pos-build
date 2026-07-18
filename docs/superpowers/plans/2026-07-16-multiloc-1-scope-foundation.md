@@ -759,7 +759,7 @@ Route::get('company/locations/all', [LocationController::class, 'managementIndex
 
 **Steps**
 
-- [ ] Write the failing test. `viewScopeStore.test.ts` (Vitest, jsdom):
+- [x] Write the failing test. `viewScopeStore.test.ts` (Vitest, jsdom):
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
@@ -804,8 +804,8 @@ describe('viewScopeStore', () => {
   })
 })
 ```
-- [ ] Run it (red): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
-- [ ] Implement. `apps/web/src/stores/viewScopeStore.ts`:
+- [x] Run it (red): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
+- [x] Implement. `apps/web/src/stores/viewScopeStore.ts`:
 ```ts
 import { create } from 'zustand'
 import { useCompanyStore } from './companyStore'
@@ -898,9 +898,9 @@ if (typeof window !== 'undefined') {
   })
 }
 ```
-- [ ] Run it (green): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): viewScopeStore — per-company persisted view scope (§1 FE)`
+- [x] Run it (green): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
+- [x] `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): viewScopeStore — per-company persisted view scope (§1 FE)`
 
 ---
 
