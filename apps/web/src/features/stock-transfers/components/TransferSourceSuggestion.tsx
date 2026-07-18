@@ -14,7 +14,7 @@ export function TransferSourceSuggestion({ productId, variantId, destinationLoca
   const { t } = useTranslation('stock-transfers')
   const { scope } = useViewScope()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const query = useQuery({ queryKey: locationScopedKey(['product-stock-suggestion', productId, variantId], scope), queryFn: () => getProductStock(productId), enabled: productId !== '' })
+  const query = useQuery({ queryKey: locationScopedKey(['product-stock-suggestion', productId, variantId], scope), queryFn: () => getProductStock(productId, variantId), enabled: productId !== '' })
   const locations = query.data?.locations ?? []
   const suggestion = suggestSource(locations, destinationLocationId, requestedQuantity)
   if (query.isLoading) return <span className={`text-xs ${textColors.tertiary}`}>{t('create.suggestion.loading')}</span>

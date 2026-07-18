@@ -27,6 +27,9 @@ export interface ProductStockResponse {
   totals: StockTotals
 }
 
-export async function getProductStock(productId: string): Promise<ProductStockResponse> {
-  return apiGet<ProductStockResponse>(`/products/${productId}/stock-levels`)
+export async function getProductStock(productId: string, variantId?: string | null): Promise<ProductStockResponse> {
+  return apiGet<ProductStockResponse>(
+    `/products/${productId}/stock-levels`,
+    variantId ? { variant_id: variantId } : undefined,
+  )
 }
