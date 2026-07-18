@@ -59,7 +59,11 @@ describe('InstrumentListPage filters', () => {
       if (url.startsWith('/treasury/maturing-instruments')) {
         return {
           data: {
-            data: [],
+            data: [
+              { id: 'in-1', direction: 'inbound', bucket: 'overdue' },
+              { id: 'in-2', direction: 'inbound', bucket: 'overdue' },
+              { id: 'out-1', direction: 'outbound', bucket: 'd0_7' },
+            ],
             meta: {
               buckets: {
                 overdue: { count: 2, total_in: '25.000', total_out: '0.000' },
@@ -112,5 +116,17 @@ describe('InstrumentListPage filters', () => {
     for (const key of queryKeys) {
       expect(key.slice(-2)).toEqual(['tenant-A', 'company-A'])
     }
+  })
+
+  it('groups maturity exposure into receivables and payables sections', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<InstrumentListPage />, { wrapper: wrapper(client) })
+
+    expect(await screen.findByRole('region', {
+      name: 'treasury:instruments.schedule.receivables',
+    })).toBeInTheDocument()
+    expect(screen.getByRole('region', {
+      name: 'treasury:instruments.schedule.payables',
+    })).toBeInTheDocument()
   })
 })

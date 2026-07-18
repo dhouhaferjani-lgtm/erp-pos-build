@@ -7,6 +7,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 export interface PaymentMethod {
   id: string
   name: string
+  instrument_kind: 'cheque' | 'effet' | 'other' | null
   is_physical: boolean
   has_maturity: boolean
   requires_third_party: boolean

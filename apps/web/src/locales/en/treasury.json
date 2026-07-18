@@ -203,6 +203,10 @@
       "d61_90": "Due in 61–90 days",
       "d90_plus": "Due after 90 days"
     },
+    "schedule": {
+      "receivables": "Receivables schedule",
+      "payables": "Payables schedule"
+    },
     "kinds": {
       "cheque": "Cheque",
       "effet": "Bill of exchange",

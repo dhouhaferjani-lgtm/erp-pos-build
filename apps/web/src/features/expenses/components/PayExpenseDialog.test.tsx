@@ -13,16 +13,38 @@ vi.mock('../hooks/useExpenses', () => ({
 
 vi.mock('../../treasury/hooks/usePaymentRepositories', () => ({
   useActivePaymentRepositories: () => ({
-    data: [{ id: 'repo-1', name: 'Main Register' }],
+    data: [
+      { id: 'repo-1', name: 'Main Register', type: 'cash_register' },
+      { id: 'repo-bank', name: 'Main Bank', type: 'bank_account' },
+    ],
     isLoading: false,
   }),
 }))
 
 vi.mock('../../treasury/hooks/usePaymentMethods', () => ({
   useActivePaymentMethods: () => ({
-    data: [{ id: 'method-1', name: 'Cash' }],
+    data: [
+      { id: 'method-1', name: 'Cash', instrument_kind: null },
+      { id: 'method-cheque', name: 'Cheque', instrument_kind: 'cheque' },
+      { id: 'method-effet', name: 'Effet', instrument_kind: 'effet' },
+    ],
     isLoading: false,
   }),
+}))
+
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfigOptional: () => ({ config: { country_code: 'TN' } }),
+}))
+
+vi.mock('@/components/molecules/pickers/BankPicker', () => ({
+  BankPicker: ({ onChange, 'aria-label': ariaLabel }: {
+    onChange: (bank: { id: string; name: string }) => void
+    'aria-label'?: string
+  }) => (
+    <button type="button" aria-label={ariaLabel} onClick={() => { onChange({ id: 'bank-1', name: 'BIAT' }) }}>
+      Select BIAT
+    </button>
+  ),
 }))
 
 vi.mock('react-i18next', () => ({
@@ -100,6 +122,56 @@ describe('PayExpenseDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.submit' }))
 
     await waitFor(() => expect(screen.getByText('expenses:pay.repositoryRequired')).toBeInTheDocument())
+    expect(mocks.mutate).not.toHaveBeenCalled()
+  })
+
+  it('submits cheque settlement as a nested string-only instrument contract', async () => {
+    render(<PayExpenseDialog isOpen onClose={vi.fn()} expense={expense} />)
+
+    fireEvent.click(screen.getByLabelText('expenses:pay.modes.instrument'))
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.instrument\.kind/), { target: { value: 'cheque' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.repository/), { target: { value: 'repo-bank' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.method/), { target: { value: 'method-cheque' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.instrument\.reference/), { target: { value: 'CHK-2026-0042' } })
+    fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.instrument.bank' }))
+    fireEvent.change(screen.getByLabelText('expenses:pay.instrument.drawerName'), { target: { value: 'Vendor SARL' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.date/), { target: { value: '2026-07-18' } })
+    fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.submit' }))
+
+    await waitFor(() => {
+      expect(mocks.mutate).toHaveBeenCalledWith({
+        id: 'expense-1',
+        data: {
+          mode: 'instrument',
+          payment_repository_id: 'repo-bank',
+          payment_method_id: 'method-cheque',
+          payment_date: '2026-07-18',
+          instrument: {
+            kind: 'cheque',
+            reference: 'CHK-2026-0042',
+            bank_id: 'bank-1',
+            maturity_date: null,
+            drawer_name: 'Vendor SARL',
+          },
+        },
+      }, expect.objectContaining({ onSuccess: expect.any(Function) }))
+    })
+    expect(JSON.stringify(mocks.mutate.mock.calls[0]?.[0].data)).not.toMatch(/120\.000/)
+  })
+
+  it('requires a maturity date for an effet settlement', async () => {
+    render(<PayExpenseDialog isOpen onClose={vi.fn()} expense={expense} />)
+
+    fireEvent.click(screen.getByLabelText('expenses:pay.modes.instrument'))
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.instrument\.kind/), { target: { value: 'effet' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.repository/), { target: { value: 'repo-bank' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.method/), { target: { value: 'method-effet' } })
+    fireEvent.change(screen.getByLabelText(/expenses:pay\.instrument\.reference/), { target: { value: 'EFF-2026-0042' } })
+    fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.submit' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('expenses:pay.instrument.maturityDateRequired')).toBeInTheDocument()
+    })
     expect(mocks.mutate).not.toHaveBeenCalled()
   })
 })

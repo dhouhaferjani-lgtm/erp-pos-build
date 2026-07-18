@@ -155,10 +155,26 @@
     "repository": "Dépôt de paiement",
     "selectRepository": "Sélectionnez un dépôt",
     "repositoryRequired": "Le dépôt de paiement est requis",
+    "mode": "Type de règlement",
+    "modes": {
+      "cash": "Espèces ou virement",
+      "instrument": "Chèque ou traite"
+    },
     "method": "Mode de paiement",
     "noMethod": "Aucun mode de paiement",
+    "methodRequired": "Le mode de paiement est requis",
     "date": "Date de paiement",
     "dateRequired": "La date de paiement est requise",
+    "instrument": {
+      "kind": "Nature de l’effet",
+      "kinds": { "cheque": "Chèque", "effet": "Traite" },
+      "reference": "Numéro ou référence",
+      "referenceRequired": "La référence de l’effet est requise",
+      "bank": "Banque",
+      "maturityDate": "Date d’échéance",
+      "maturityDateRequired": "La date d’échéance est requise pour une traite",
+      "drawerName": "Nom du tireur"
+    },
     "submit": "Payer",
     "success": "Dépense payée avec succès",
     "error": "Impossible de payer la dépense"

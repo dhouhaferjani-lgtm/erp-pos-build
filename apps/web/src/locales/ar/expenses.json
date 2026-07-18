@@ -149,6 +149,36 @@
   "errors": {
     "notFound": "المصروف غير موجود"
   },
+  "pay": {
+    "title": "دفع المصروف",
+    "total": "إجمالي المصروف",
+    "repository": "مستودع الدفع",
+    "selectRepository": "اختر مستودعًا",
+    "repositoryRequired": "مستودع الدفع مطلوب",
+    "mode": "نوع الدفع",
+    "modes": {
+      "cash": "نقدًا أو تحويلًا",
+      "instrument": "شيك أو كمبيالة"
+    },
+    "method": "طريقة الدفع",
+    "noMethod": "بدون طريقة دفع",
+    "methodRequired": "طريقة الدفع مطلوبة",
+    "date": "تاريخ الدفع",
+    "dateRequired": "تاريخ الدفع مطلوب",
+    "instrument": {
+      "kind": "نوع أداة الدفع",
+      "kinds": { "cheque": "شيك", "effet": "كمبيالة" },
+      "reference": "الرقم أو المرجع",
+      "referenceRequired": "مرجع أداة الدفع مطلوب",
+      "bank": "البنك",
+      "maturityDate": "تاريخ الاستحقاق",
+      "maturityDateRequired": "تاريخ الاستحقاق مطلوب للكمبيالة",
+      "drawerName": "اسم الساحب"
+    },
+    "submit": "دفع",
+    "success": "تم دفع المصروف",
+    "error": "تعذر دفع المصروف"
+  },
   "recurrences": {
     "title": "المصروفات المتكررة",
     "description": "خطط للمدفوعات المتوقعة وجهّز المسودات قبل موعد الاستحقاق.",

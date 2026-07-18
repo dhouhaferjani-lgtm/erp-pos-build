@@ -246,6 +246,12 @@ export function usePayExpense() {
         queryClient.invalidateQueries({
           queryKey: ['treasury-cash-position'],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ['instruments'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['maturing-instruments'],
+        }),
       ])
       toast.success(t('expenses:pay.success'))
     },

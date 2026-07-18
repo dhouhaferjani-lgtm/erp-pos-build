@@ -203,6 +203,10 @@
       "d61_90": "À 61–90 jours",
       "d90_plus": "À plus de 90 jours"
     },
+    "schedule": {
+      "receivables": "Échéancier à recevoir",
+      "payables": "Échéancier à payer"
+    },
     "kinds": {
       "cheque": "Chèque",
       "effet": "Traite",

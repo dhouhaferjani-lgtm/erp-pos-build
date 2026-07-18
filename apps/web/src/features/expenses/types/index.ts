@@ -37,6 +37,7 @@ export interface ExpenseMetadata {
   expense_category_id: string | null
   payment_method_id: string | null
   payment_repository_id: string | null
+  payment_instrument_id?: string | null
   expense_kind: ExpenseKind
   vat_rate: string | null
   vat_deductible_percent: string | null
@@ -195,11 +196,28 @@ export interface CreateExpenseDTO {
   split_method?: LandedCostSplitMethod
 }
 
-export interface PayExpenseRequest {
+interface PayExpenseBaseRequest {
   payment_repository_id: string
-  payment_method_id?: string | null
   payment_date: string
 }
+
+export type PayExpenseRequest = PayExpenseBaseRequest & (
+  | {
+      mode?: 'cash'
+      payment_method_id?: string | null
+    }
+  | {
+      mode: 'instrument'
+      payment_method_id: string
+      instrument: {
+        kind: 'cheque' | 'effet'
+        reference: string
+        bank_id: string | null
+        maturity_date: string | null
+        drawer_name: string | null
+      }
+    }
+)
 
 export interface LinkableInvoice {
   id: string

@@ -207,7 +207,7 @@ As Rev 1: extend `ReconcileTreasuryCommand:249-424` with Σ(outbound Received+Bo
 ### Task 10: FE — pay dialog mode + échéancier grouping
 
 As Rev 1 (locate pay dialog via `expenses.pay` mutation; échéancier via `maturing` usage): mode toggle with instrument fields (reuse `BankPicker`), string payloads, direction-grouped échéancier sections, FR+**AR** i18n in-phase, tokens, `tenantScopedKey`, `typescript:transform` after Task 9.
-- [ ] Steps: failing Vitest → implement → `pnpm lint && pnpm typecheck` → commit.
+- [x] Steps: failing Vitest → implement → `pnpm lint && pnpm typecheck` → commit.
 
 🚦 **GATE 4 — treasury-reviewer + frontend-conventions-reviewer (Opus), then ⑤a exit review:** full-branch treasury pass + E2E (issue → échéancier payable → clear → movement/balance → bounce → represent → cancel-from-bounced second instrument → reconcile clean; expense instrument settle → clear flips paid). Produce the deploy checklist.
 
