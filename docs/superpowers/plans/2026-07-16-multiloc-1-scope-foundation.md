@@ -925,7 +925,7 @@ Resource literal stays `segments[0]`; scope object precedes the tenant/company s
 
 **Steps**
 
-- [ ] Write the failing test. `locationScopedKey.test.ts`:
+- [x] Write the failing test. `locationScopedKey.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest'
 import { locationScopedKey } from './locationScopedKey'
@@ -950,8 +950,8 @@ describe('locationScopedKey', () => {
 })
 ```
 Add to `audit-tanstack-keys.test.mjs` a case asserting `scanCode("useQuery({ queryKey: locationScopedKey(['stock-levels'], scope), queryFn })")` yields zero violations.
-- [ ] Run them (red): `cd apps/web && pnpm vitest run src/lib/locationScopedKey.test.ts tools/__tests__/audit-tanstack-keys.test.mjs`
-- [ ] Implement helper. `apps/web/src/lib/locationScopedKey.ts`:
+- [x] Run them (red): `cd apps/web && pnpm vitest run src/lib/locationScopedKey.test.ts tools/__tests__/audit-tanstack-keys.test.mjs`
+- [x] Implement helper. `apps/web/src/lib/locationScopedKey.ts`:
 ```ts
 import type { QueryKey } from '@tanstack/react-query'
 import { tenantScopedKey } from './tenantScopedKey'
@@ -970,10 +970,10 @@ export function locationScopedKey(
   return tenantScopedKey([...segments, { locScope }]) as unknown as QueryKey
 }
 ```
-- [ ] Implement audit approval. In `audit-tanstack-keys.mjs`: `const APPROVED_FACTORY_CALLS = new Set(['tenantScopedKey', 'locationScopedKey']);`
-- [ ] Run them (green): same command. Then `cd apps/web && pnpm audit:keys` (must exit 0).
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): locationScopedKey helper + audit approval (§1 FE)`
+- [x] Implement audit approval. In `audit-tanstack-keys.mjs`: `const APPROVED_FACTORY_CALLS = new Set(['tenantScopedKey', 'locationScopedKey']);`
+- [x] Run them (green): same command. Then `cd apps/web && pnpm audit:keys` (must exit 0).
+- [x] `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): locationScopedKey helper + audit approval (§1 FE)`
 
 ---
 
