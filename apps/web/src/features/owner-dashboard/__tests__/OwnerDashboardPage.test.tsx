@@ -21,6 +21,15 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({
+    scope: 'all',
+    effectiveLocationIds: [],
+    isAll: true,
+    setScope: vi.fn(),
+  }),
+}))
+
 vi.mock('@/features/treasury/components/CashPositionWidget', () => ({
   CashPositionWidget: () => <div data-testid="cash-position-widget" />,
 }))
