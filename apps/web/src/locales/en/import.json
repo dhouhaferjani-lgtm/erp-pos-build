@@ -162,6 +162,22 @@
     "proceedWithValid": "Import Valid Rows"
   },
   "options": {
+    "placementTitle": "Plan storage placements",
+    "placementHint": "Strict mode requires every path segment to exist. Auto-create previews missing nodes and uses the node type selected for each depth.",
+    "placementMode": "Path handling",
+    "placementModes": {
+      "strict": "Strict — existing nodes only",
+      "autoCreate": "Auto-create missing nodes"
+    },
+    "placementDepth": "Depth {{depth}} node type",
+    "nodeTypes": {
+      "zone": "Zone",
+      "aisle": "Aisle",
+      "rack": "Rack",
+      "shelf": "Shelf",
+      "bin": "Bin",
+      "section": "Section"
+    },
     "priceAuthorityTitle": "Which price is authoritative?",
     "priceAuthority": {
       "ttc": "Price incl. tax (TTC)",
@@ -206,7 +222,9 @@
     "status": "Status",
     "valid": "Valid",
     "error": "Error",
-    "moreRows": "+ {{count}} more rows"
+    "moreRows": "+ {{count}} more rows",
+    "nodesToCreate": "{{count}} storage nodes to create",
+    "placementsToSet": "{{count}} product placements to set"
   },
   "history": {
     "title": "Import History",

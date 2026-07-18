@@ -20,6 +20,7 @@ use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -133,6 +134,9 @@ final readonly class InstrumentLifecycleService
     {
         DB::transaction(function () use ($instrumentId, $toRepositoryId, $userId): void {
             $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId);
+            if ($instrument->direction === InstrumentDirection::Outbound) {
+                throw new DomainException('Outbound (supplier-direction) instruments have no collection lifecycle; deposit/clear/bounce apply to inbound instruments only.');
+            }
             if (! $instrument->status->canTransfer()) {
                 throw new DomainException('Instrument status does not allow custody transfer.');
             }
@@ -173,6 +177,9 @@ final readonly class InstrumentLifecycleService
     {
         DB::transaction(function () use ($instrumentId, $bankRepositoryId, $userId): void {
             $instrument = PaymentInstrument::query()->findOrFail($instrumentId);
+            if ($instrument->direction === InstrumentDirection::Outbound) {
+                throw new DomainException('Outbound (supplier-direction) instruments have no collection lifecycle; deposit/clear/bounce apply to inbound instruments only.');
+            }
             $remittance = $this->remittanceService->createDraft(
                 companyId: $instrument->company_id,
                 tenantId: $instrument->tenant_id,
@@ -192,6 +199,9 @@ final readonly class InstrumentLifecycleService
             // Global order starts with the instrument row. Line/slip reads and GL
             // follow; the repository row is locked only inside the movement port.
             $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($data->instrumentId);
+            if ($instrument->direction === InstrumentDirection::Outbound) {
+                throw new DomainException('Outbound (supplier-direction) instruments have no collection lifecycle; deposit/clear/bounce apply to inbound instruments only.');
+            }
             if (! $instrument->status->canClear()) {
                 throw new DomainException('Instrument cannot clear in its current status.');
             }
@@ -314,6 +324,9 @@ final readonly class InstrumentLifecycleService
     {
         return DB::transaction(function () use ($data): PaymentInstrument {
             $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($data->instrumentId);
+            if ($instrument->direction === InstrumentDirection::Outbound) {
+                throw new DomainException('Outbound (supplier-direction) instruments have no collection lifecycle; deposit/clear/bounce apply to inbound instruments only.');
+            }
             if (! $instrument->status->canBounce()) {
                 throw new DomainException('Instrument cannot bounce in its current status.');
             }

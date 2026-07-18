@@ -150,7 +150,8 @@ class LocationNode extends Model
     public function scopeSubtreeOf(Builder $query, string $path): Builder
     {
         return $query->where(function (Builder $inner) use ($path): void {
-            $inner->where('path', $path)->orWhere('path', 'like', $path.'/%');
+            $inner->where('path', $path)
+                ->orWhereRaw("path LIKE ? ESCAPE '\\'", [$path.'/%']);
         });
     }
 }

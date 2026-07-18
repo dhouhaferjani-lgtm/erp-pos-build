@@ -15,7 +15,9 @@ import {
   useCreateExpense,
   useDeleteExpense,
   useExpense,
+  useExpenseAnalytics,
   useExpenses,
+  usePayExpense,
   usePostExpense,
   useUpdateExpense,
 } from '../hooks/useExpenses'
@@ -36,6 +38,8 @@ const mockExpenseCreate = vi.hoisted(() => vi.fn())
 const mockExpenseUpdate = vi.hoisted(() => vi.fn())
 const mockExpenseDelete = vi.hoisted(() => vi.fn())
 const mockExpensePost = vi.hoisted(() => vi.fn())
+const mockExpensePay = vi.hoisted(() => vi.fn())
+const mockExpenseAnalytics = vi.hoisted(() => vi.fn())
 const mockCategoryList = vi.hoisted(() => vi.fn())
 const mockCategoryGet = vi.hoisted(() => vi.fn())
 const mockCategoryCreate = vi.hoisted(() => vi.fn())
@@ -50,6 +54,8 @@ vi.mock('../api/expenseApi', () => ({
     update: mockExpenseUpdate,
     delete: mockExpenseDelete,
     post: mockExpensePost,
+    pay: mockExpensePay,
+    getAnalytics: mockExpenseAnalytics,
   },
   expenseCategoryApi: {
     list: mockCategoryList,
@@ -104,6 +110,8 @@ beforeEach(() => {
   mockExpenseUpdate.mockReset(); mockExpenseUpdate.mockResolvedValue({ id: 'e-1' })
   mockExpenseDelete.mockReset(); mockExpenseDelete.mockResolvedValue(undefined)
   mockExpensePost.mockReset(); mockExpensePost.mockResolvedValue({ id: 'e-1' })
+  mockExpensePay.mockReset(); mockExpensePay.mockResolvedValue({ id: 'e-1' })
+  mockExpenseAnalytics.mockReset(); mockExpenseAnalytics.mockResolvedValue({ tiles: {} })
   mockCategoryList.mockReset(); mockCategoryList.mockResolvedValue([])
   mockCategoryGet.mockReset(); mockCategoryGet.mockResolvedValue({ id: 'c-1' })
   mockCategoryCreate.mockReset(); mockCategoryCreate.mockResolvedValue({ id: 'c-new' })
@@ -167,6 +175,21 @@ describe('expenseCategoriesInvalidationPredicate', () => {
 // ─── useQuery shape probes ───────────────────────────────────────────────────
 
 describe('expenses hook queryKey shapes', () => {
+  it('useExpenseAnalytics queryKey carries filters, tenant, and company', async () => {
+    setTenant('tenant-A', 'company-1')
+    const client = createTestQueryClient()
+    const wrapper = makeWrapper(client)
+    const filters = { status: 'posted' as const, date_to: '2026-03-31' }
+    const { result } = renderHook(() => useExpenseAnalytics(filters), { wrapper })
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
+
+    const key = client.getQueryCache().getAll()
+      .map((query) => query.queryKey as unknown[])
+      .find((candidate) => candidate[0] === 'expenses' && candidate[1] === 'analytics')
+    expect(key).toEqual(['expenses', 'analytics', filters, 'tenant-A', 'company-1'])
+    expect(mockExpenseAnalytics).toHaveBeenCalledWith(filters)
+  })
+
   it('useExpenses queryKey carries tenant + company at the suffix (.261)', async () => {
     setTenant('tenant-A', 'company-1')
     const client = createTestQueryClient()
@@ -242,14 +265,20 @@ describe('expenses mutation cascades — fetch-count signals', () => {
     ['useUpdateExpense (.264, .265)', 'update', { id: 'e-1', data: {} }],
     ['useDeleteExpense (.266)', 'delete', 'e-1'],
     ['usePostExpense (.267, .268)', 'post', 'e-1'],
-  ])('%s cascades expenses list (and detail when applicable); does NOT touch expense-categories', async (_label, kind, payload) => {
+    ['usePayExpense', 'pay', {
+      id: 'e-1',
+      data: { payment_repository_id: 'repo-1', payment_date: '2026-07-13' },
+    }],
+  ])('%s cascades scoped expense list, analytics, and detail when applicable; does NOT touch expense-categories', async (_label, kind, payload) => {
     setTenant('tenant-A', 'company-1')
     let listCalls = 0
     let detailCalls = 0
     let catListCalls = 0
+    let analyticsCalls = 0
     mockExpenseList.mockImplementation(async () => { listCalls += 1; return [{ id: `e-${listCalls}` }] })
     mockExpenseGet.mockImplementation(async () => { detailCalls += 1; return { id: `e-detail-${detailCalls}` } })
     mockCategoryList.mockImplementation(async () => { catListCalls += 1; return [{ id: `c-${catListCalls}` }] })
+    mockExpenseAnalytics.mockImplementation(async () => { analyticsCalls += 1; return { tiles: {} } })
 
     const client = createTestQueryClient()
     const wrapper = makeWrapper(client)
@@ -257,53 +286,97 @@ describe('expenses mutation cascades — fetch-count signals', () => {
     // Mount production hooks — no inline duplicate probes.
     const { result: list } = renderHook(() => useExpenses(), { wrapper })
     const { result: detail } = renderHook(() => useExpense('e-1'), { wrapper })
+    const { result: analytics } = renderHook(
+      () => useExpenseAnalytics({ status: 'posted' }),
+      { wrapper },
+    )
     const { result: cats } = renderHook(() => useExpenseCategories(), { wrapper })
     const { result: create } = renderHook(() => useCreateExpense(), { wrapper })
     const { result: update } = renderHook(() => useUpdateExpense(), { wrapper })
     const { result: del } = renderHook(() => useDeleteExpense(), { wrapper })
     const { result: post } = renderHook(() => usePostExpense(), { wrapper })
+    const { result: pay } = renderHook(() => usePayExpense(), { wrapper })
 
     await waitFor(() => {
       expect(list.current.isSuccess).toBe(true)
       expect(detail.current.isSuccess).toBe(true)
+      expect(analytics.current.isSuccess).toBe(true)
       expect(cats.current.isSuccess).toBe(true)
     })
     expect(listCalls).toBe(1)
     expect(detailCalls).toBe(1)
     expect(catListCalls).toBe(1)
+    expect(analyticsCalls).toBe(1)
+
+    const siblingAnalyticsKey = [
+      'expenses',
+      'analytics',
+      { status: 'posted' },
+      'tenant-A',
+      'company-2',
+    ]
+    client.setQueryDefaults(siblingAnalyticsKey, { gcTime: Infinity })
+    client.setQueryData(siblingAnalyticsKey, { tiles: { total: '999.00' } })
+    const foreignTenantAnalyticsKey = [
+      'expenses',
+      'analytics',
+      { status: 'posted' },
+      'tenant-B',
+      'company-1',
+    ]
+    client.setQueryDefaults(foreignTenantAnalyticsKey, { gcTime: Infinity })
+    client.setQueryData(foreignTenantAnalyticsKey, { tiles: { total: '888.00' } })
 
     const mutations: Record<string, () => Promise<unknown>> = {
       create: () => create.current.mutateAsync({} as never),
       update: () => update.current.mutateAsync(payload as { id: string; data: Record<string, unknown> }),
       delete: () => del.current.mutateAsync(payload as string),
       post: () => post.current.mutateAsync(payload as string),
+      pay: () => pay.current.mutateAsync(payload as {
+        id: string
+        data: { payment_repository_id: string; payment_date: string }
+      }),
     }
     await mutations[kind]()
 
     // Plural list always cascaded.
     await waitFor(() => { expect(listCalls).toBe(2) })
+    await waitFor(() => { expect(analyticsCalls).toBe(2) })
     // Detail only cascaded by update/post (which mutate the singular).
-    if (kind === 'update' || kind === 'post') {
+    if (kind === 'update' || kind === 'post' || kind === 'pay') {
       await waitFor(() => { expect(detailCalls).toBe(2) })
     } else {
       expect(detailCalls).toBe(1)
     }
     // expense-categories sibling untouched by ANY expense mutation.
     expect(catListCalls).toBe(1)
+    expect(client.getQueryCache().find({
+      queryKey: siblingAnalyticsKey,
+      exact: true,
+    })?.state.isInvalidated).toBe(false)
+    expect(client.getQueryCache().find({
+      queryKey: foreignTenantAnalyticsKey,
+      exact: true,
+    })?.state.isInvalidated).toBe(false)
   })
 
   it.each([
     ['useCreateExpenseCategory (.257)', 'create', undefined as unknown],
-    ['useUpdateExpenseCategory (.258, .259)', 'update', { id: 'c-1', data: {} }],
+    ['useUpdateExpenseCategory (.258, .259)', 'update', {
+      id: 'c-1',
+      data: { name: 'Renamed category' },
+    }],
     ['useDeleteExpenseCategory (.260)', 'delete', 'c-1'],
-  ])('%s cascades expense-categories list (and detail when applicable); does NOT touch expenses', async (_label, kind, payload) => {
+  ])('%s cascades expense-categories plus scoped analytics labels, but not the expense list', async (_label, kind, payload) => {
     setTenant('tenant-A', 'company-1')
     let listCalls = 0
     let detailCalls = 0
     let expListCalls = 0
+    let analyticsCalls = 0
     mockCategoryList.mockImplementation(async () => { listCalls += 1; return [{ id: `c-${listCalls}` }] })
     mockCategoryGet.mockImplementation(async () => { detailCalls += 1; return { id: `c-detail-${detailCalls}` } })
     mockExpenseList.mockImplementation(async () => { expListCalls += 1; return [{ id: `e-${expListCalls}` }] })
+    mockExpenseAnalytics.mockImplementation(async () => { analyticsCalls += 1; return { tiles: {} } })
 
     const client = createTestQueryClient()
     const wrapper = makeWrapper(client)
@@ -311,6 +384,10 @@ describe('expenses mutation cascades — fetch-count signals', () => {
     const { result: list } = renderHook(() => useExpenseCategories(), { wrapper })
     const { result: detail } = renderHook(() => useExpenseCategory('c-1'), { wrapper })
     const { result: exp } = renderHook(() => useExpenses(), { wrapper })
+    const { result: analytics } = renderHook(
+      () => useExpenseAnalytics({ status: 'posted' }),
+      { wrapper },
+    )
     const { result: create } = renderHook(() => useCreateExpenseCategory(), { wrapper })
     const { result: update } = renderHook(() => useUpdateExpenseCategory(), { wrapper })
     const { result: del } = renderHook(() => useDeleteExpenseCategory(), { wrapper })
@@ -319,10 +396,12 @@ describe('expenses mutation cascades — fetch-count signals', () => {
       expect(list.current.isSuccess).toBe(true)
       expect(detail.current.isSuccess).toBe(true)
       expect(exp.current.isSuccess).toBe(true)
+      expect(analytics.current.isSuccess).toBe(true)
     })
     expect(listCalls).toBe(1)
     expect(detailCalls).toBe(1)
     expect(expListCalls).toBe(1)
+    expect(analyticsCalls).toBe(1)
 
     const mutations: Record<string, () => Promise<unknown>> = {
       create: () => create.current.mutateAsync({} as never),
@@ -332,6 +411,7 @@ describe('expenses mutation cascades — fetch-count signals', () => {
     await mutations[kind]()
 
     await waitFor(() => { expect(listCalls).toBe(2) })
+    await waitFor(() => { expect(analyticsCalls).toBe(2) })
     if (kind === 'update') {
       await waitFor(() => { expect(detailCalls).toBe(2) })
     } else {

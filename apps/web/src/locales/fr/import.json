@@ -162,6 +162,22 @@
     "proceedWithValid": "Importer les lignes valides"
   },
   "options": {
+    "placementTitle": "Planifier les emplacements de stockage",
+    "placementHint": "En mode strict, chaque niveau du chemin doit exister. La création automatique affiche les nœuds manquants et utilise le type choisi pour chaque profondeur.",
+    "placementMode": "Traitement du chemin",
+    "placementModes": {
+      "strict": "Strict — nœuds existants uniquement",
+      "autoCreate": "Créer automatiquement les nœuds manquants"
+    },
+    "placementDepth": "Type de nœud au niveau {{depth}}",
+    "nodeTypes": {
+      "zone": "Zone",
+      "aisle": "Allée",
+      "rack": "Rayonnage",
+      "shelf": "Étagère",
+      "bin": "Bac",
+      "section": "Section"
+    },
     "priceAuthorityTitle": "Quel prix fait foi ?",
     "priceAuthority": {
       "ttc": "Prix TTC",
@@ -206,7 +222,9 @@
     "status": "Statut",
     "valid": "Valide",
     "error": "Erreur",
-    "moreRows": "+ {{count}} lignes supplémentaires"
+    "moreRows": "+ {{count}} lignes supplémentaires",
+    "nodesToCreate": "{{count}} nœuds de stockage à créer",
+    "placementsToSet": "{{count}} emplacements produits à définir"
   },
   "history": {
     "title": "Historique des imports",

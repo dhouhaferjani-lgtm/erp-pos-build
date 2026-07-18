@@ -136,6 +136,7 @@ import arNotifications from '../locales/ar/notifications.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
 import arFinance from '../locales/ar/finance.json'
+import arExpenses from '../locales/ar/expenses.json'
 import arImport from '../locales/ar/import.json'
 import arTreasury from '../locales/ar/treasury.json'
 import arSettings from '../locales/ar/settings.json'
@@ -355,7 +356,7 @@ const resources = {
         },
       },
     },
-    expenses: enExpenses,
+    expenses: { ...enExpenses, ...arExpenses },
     income: arIncome,
     import: { ...enImport, ...arImport, mapping: { ...enImport.mapping, ...arImport.mapping } },
     settings: {

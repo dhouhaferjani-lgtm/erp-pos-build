@@ -104,6 +104,7 @@ export function PartnerPicker({
   const { t } = useTranslation('pickers')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const inputId = useId()
   const listboxId = useId()
 
   const [query, setQuery] = useState('')
@@ -242,12 +243,13 @@ export function PartnerPicker({
     <>
       <div ref={containerRef} className="relative" data-testid={testIdAttr}>
         {effectiveLabel !== '' ? (
-          <label className={tokens.label.base}>
+          <label className={tokens.label.base} htmlFor={inputId}>
             {effectiveLabel}
             {required ? <span className={tokens.label.required}> *</span> : null}
           </label>
         ) : null}
         <input
+          id={inputId}
           ref={inputRef}
           type="text"
           role="combobox"

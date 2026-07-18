@@ -56,7 +56,7 @@ enum ImportType: string
                 'reference',
             ],
             self::Partners => ['email', 'phone', 'vat_number', 'address', 'city', 'country'],
-            self::Products => ['sku', 'type', 'description', 'sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin', 'quantity', 'location_code', 'barcode', 'category_name', 'brand', 'tax_rate', 'unit', 'is_active'],
+            self::Products => ['sku', 'type', 'description', 'sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin', 'quantity', 'location_code', 'placement_path', 'barcode', 'category_name', 'brand', 'tax_rate', 'unit', 'is_active'],
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
@@ -103,6 +103,7 @@ enum ImportType: string
                 'margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/'],
                 'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
                 'location_code' => ['nullable', 'string', 'max:100'],
+                'placement_path' => ['nullable', 'string', 'max:1000'],
                 'brand' => ['nullable', 'string', 'max:255'],
                 'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'unit' => ['nullable', 'string', 'max:50'],

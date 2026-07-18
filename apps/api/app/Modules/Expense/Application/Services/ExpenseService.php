@@ -8,7 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Document\Domain\Enums\AdditionalCostType;
@@ -21,6 +21,8 @@ use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
@@ -32,6 +34,7 @@ use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\ExpenseVatSplit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +47,6 @@ final class ExpenseService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
-        private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -69,21 +71,51 @@ final class ExpenseService
             }
         }
 
-        $companyCurrency = $this->companyContext->requireCompany()->currency;
+        $company = Company::query()->whereKey($data['company_id'])->firstOrFail();
+        $companyCurrency = (string) $company->currency;
+        $scale = $this->scaleResolver->getScale($companyCurrency);
+        $total = (string) ($data['total'] ?? '0.00');
+        $vatAmount = isset($data['vat_amount']) ? (string) $data['vat_amount'] : null;
+        $vatRate = isset($data['vat_rate']) ? (string) $data['vat_rate'] : null;
+        $vatDeductiblePercent = isset($data['vat_deductible_percent']) ? (string) $data['vat_deductible_percent'] : null;
+        if (! is_numeric($total) || ($vatAmount !== null && ! is_numeric($vatAmount))) {
+            throw new \InvalidArgumentException('Expense amounts must be numeric strings.');
+        }
 
         $linked = $this->prepareLinkedCost($data, $user->tenant_id, $data['company_id'], $companyCurrency);
 
-        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency, $linked): Document {
+        $this->assertVatInvariants(
+            [
+                'total' => $total,
+                'vat_amount' => $vatAmount,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
+            ],
+            $linked === null ? ExpenseKind::Generic : ExpenseKind::LinkedCost,
+            $scale,
+        );
+
+        if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 0) {
+            $vatAmount = null;
+        }
+        $vatAmount = $vatAmount !== null ? CurrencyScale::bcformatStrict($vatAmount, $scale) : null;
+        $vatRate = $vatAmount !== null ? $vatRate : null;
+        $vatDeductiblePercent = $vatAmount !== null ? ($vatDeductiblePercent ?? '100.00') : null;
+        $subtotal = $vatAmount !== null ? bcsub($total, $vatAmount, $scale) : $total;
+
+        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency, $linked, $subtotal, $total, $vatAmount, $vatRate, $vatDeductiblePercent): Document {
             // Create the expense document
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
+                'partner_id' => $data['partner_id'] ?? null,
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Draft,
                 'currency' => $companyCurrency,
-                'document_date' => $data['payment_date'] ?? now()->toDateString(),
-                'total' => $data['total'] ?? '0.00',
-                'subtotal' => $data['total'] ?? '0.00',
+                'document_date' => $data['document_date'] ?? $data['payment_date'] ?? now()->toDateString(),
+                'total' => $total,
+                'subtotal' => $subtotal,
+                'tax_amount' => $vatAmount,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -97,6 +129,8 @@ final class ExpenseService
                 'is_paid' => $data['is_paid'] ?? true,
                 'receipt_number' => $data['receipt_number'] ?? null,
                 'vendor_name' => $data['vendor_name'] ?? null,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
                 'expense_kind' => $linked === null ? ExpenseKind::Generic : ExpenseKind::LinkedCost,
                 'idempotency_key' => $idempotencyKey,
             ]);
@@ -129,24 +163,70 @@ final class ExpenseService
             throw new \RuntimeException('Only draft expenses can be updated');
         }
 
-        return DB::transaction(function () use ($expense, $data): Document {
+        $company = Company::query()->whereKey($expense->company_id)->firstOrFail();
+        $scale = $this->scaleResolver->getScale((string) $company->currency);
+        $total = (string) ($data['total'] ?? $expense->total);
+        $vatAmount = array_key_exists('vat_amount', $data)
+            ? ($data['vat_amount'] !== null ? (string) $data['vat_amount'] : null)
+            : ($expense->tax_amount !== null ? (string) $expense->tax_amount : null);
+        if (! is_numeric($total) || ($vatAmount !== null && ! is_numeric($vatAmount))) {
+            throw new \InvalidArgumentException('Expense amounts must be numeric strings.');
+        }
+
+        $metadata = $expense->expenseMetadata;
+        if ($metadata === null) {
+            throw new \RuntimeException('Expense metadata is required for expense updates.');
+        }
+        $vatRate = array_key_exists('vat_rate', $data)
+            ? ($data['vat_rate'] !== null ? (string) $data['vat_rate'] : null)
+            : $metadata->vat_rate;
+        $vatDeductiblePercent = array_key_exists('vat_deductible_percent', $data)
+            ? ($data['vat_deductible_percent'] !== null ? (string) $data['vat_deductible_percent'] : null)
+            : $metadata->vat_deductible_percent;
+        $kind = $metadata->expense_kind;
+        $this->assertVatInvariants(
+            [
+                'total' => $total,
+                'vat_amount' => $vatAmount,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
+            ],
+            $kind,
+            $scale,
+        );
+
+        if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 0) {
+            $vatAmount = null;
+        }
+        $vatAmount = $vatAmount !== null ? CurrencyScale::bcformatStrict($vatAmount, $scale) : null;
+        $vatRate = $vatAmount !== null ? $vatRate : null;
+        $vatDeductiblePercent = $vatAmount !== null ? ($vatDeductiblePercent ?? '100.00') : null;
+        $subtotal = $vatAmount !== null ? bcsub($total, $vatAmount, $scale) : $total;
+
+        return DB::transaction(function () use ($expense, $data, $metadata, $subtotal, $total, $vatAmount, $vatRate, $vatDeductiblePercent): Document {
             // Update document
             $expense->update([
-                'document_date' => $data['payment_date'] ?? $expense->document_date,
-                'total' => $data['total'] ?? $expense->total,
-                'subtotal' => $data['total'] ?? $expense->subtotal,
+                'partner_id' => array_key_exists('partner_id', $data)
+                    ? $data['partner_id']
+                    : $expense->partner_id,
+                'document_date' => $data['document_date'] ?? $data['payment_date'] ?? $expense->document_date,
+                'total' => $total,
+                'subtotal' => $subtotal,
+                'tax_amount' => $vatAmount,
                 'notes' => $data['notes'] ?? $expense->notes,
             ]);
 
             // Update metadata
-            $expense->expenseMetadata?->update([
-                'expense_category_id' => $data['expense_category_id'] ?? $expense->expenseMetadata->expense_category_id,
-                'payment_method_id' => $data['payment_method_id'] ?? $expense->expenseMetadata->payment_method_id,
-                'payment_repository_id' => $data['payment_repository_id'] ?? $expense->expenseMetadata->payment_repository_id,
-                'payment_date' => $data['payment_date'] ?? $expense->expenseMetadata->payment_date,
-                'is_paid' => $data['is_paid'] ?? $expense->expenseMetadata->is_paid,
-                'receipt_number' => $data['receipt_number'] ?? $expense->expenseMetadata->receipt_number,
-                'vendor_name' => $data['vendor_name'] ?? $expense->expenseMetadata->vendor_name,
+            $metadata->update([
+                'expense_category_id' => $data['expense_category_id'] ?? $metadata->expense_category_id,
+                'payment_method_id' => $data['payment_method_id'] ?? $metadata->payment_method_id,
+                'payment_repository_id' => $data['payment_repository_id'] ?? $metadata->payment_repository_id,
+                'payment_date' => $data['payment_date'] ?? $metadata->payment_date,
+                'is_paid' => $data['is_paid'] ?? $metadata->is_paid,
+                'receipt_number' => $data['receipt_number'] ?? $metadata->receipt_number,
+                'vendor_name' => $data['vendor_name'] ?? $metadata->vendor_name,
+                'vat_rate' => $vatRate,
+                'vat_deductible_percent' => $vatDeductiblePercent,
             ]);
 
             $freshExpense = $expense->fresh(['expenseMetadata']);
@@ -156,6 +236,54 @@ final class ExpenseService
 
             return $freshExpense;
         });
+    }
+
+    /**
+     * @param  array{total: numeric-string, vat_amount: numeric-string|null, vat_rate: string|null, vat_deductible_percent: string|null}  $effective
+     */
+    private function assertVatInvariants(array $effective, ExpenseKind $kind, int $scale): void
+    {
+        $vat = $effective['vat_amount'];
+        if (
+            $kind === ExpenseKind::LinkedCost
+            && ($vat !== null || $effective['vat_rate'] !== null || $effective['vat_deductible_percent'] !== null)
+        ) {
+            throw new \DomainException('VAT fields are not supported on linked-cost expenses; landed-cost capitalization consumes the full amount. Record VAT-bearing costs as generic expenses.');
+        }
+
+        if ($vat === null) {
+            return;
+        }
+
+        if ($this->amountExceedsCurrencyScale($vat, $scale)) {
+            throw new \DomainException('Amount precision exceeds the currency scale.');
+        }
+
+        if (bccomp($vat, '0', $scale) === 0) {
+            return;
+        }
+
+        if ($this->amountExceedsCurrencyScale($effective['total'], $scale)) {
+            throw new \DomainException('Amount precision exceeds the currency scale.');
+        }
+
+        $total = $effective['total'];
+        if (bccomp($vat, $total, $scale + 1) >= 0) {
+            throw new \DomainException('VAT amount must be less than the expense total.');
+        }
+    }
+
+    private function amountExceedsCurrencyScale(string $amount, int $scale): bool
+    {
+        $decimalPosition = strpos($amount, '.');
+        if ($decimalPosition === false) {
+            return false;
+        }
+
+        $fraction = substr($amount, $decimalPosition + 1);
+        $excess = substr($fraction, $scale);
+
+        return trim($excess, '0') !== '';
     }
 
     /**
@@ -229,6 +357,33 @@ final class ExpenseService
                 // (BLOCKER-1) — takes the GL company advisory lock BEFORE the
                 // movement port takes the repository row lock below.
                 $entry = $this->glService->createFromExpense($expense, $user, PostingMode::SynchronousInTransaction);
+
+                $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
+                $scale = $this->scaleResolver->getScale((string) $expense->currency);
+                if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 1) {
+                    $deductiblePercent = (string) ($metadata->vat_deductible_percent ?? '100.00');
+                    $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
+                    $vatRate = $metadata?->vat_rate;
+                    $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
+                    $taxBase = (string) ($expense->subtotal ?? '0');
+
+                    DocumentTaxDetail::query()->firstOrCreate(
+                        [
+                            'document_id' => $expense->id,
+                            'tax_type' => TaxType::Percentage->value,
+                            'tax_name' => $taxName,
+                            'tax_rate' => $vatRate,
+                            'tax_base' => $taxBase,
+                            'tax_amount' => $deductibleVat,
+                        ],
+                        [
+                            'sequence_order' => 1,
+                            'tax_code' => null,
+                            'tax_fixed_amount' => null,
+                            'is_stamp_duty' => false,
+                        ],
+                    );
+                }
 
                 // Move treasury cash ONLY for a PAID expense linked to a payment
                 // repository. This REPLACES the old inline outflow: the write port

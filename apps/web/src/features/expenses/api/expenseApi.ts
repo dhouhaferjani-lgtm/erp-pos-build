@@ -8,6 +8,9 @@ import type {
   ExpenseCategoryListResponse,
   ExpenseCategoryResponse,
   ExpenseFilters,
+  ExpenseAnalyticsData,
+  ExpenseAnalyticsFilters,
+  ExpenseAnalyticsResponse,
   LinkableInvoice,
   OperationResolution,
   PayExpenseRequest,
@@ -28,6 +31,18 @@ export const expenseApi = {
     })
     return data
   },
+
+  getAnalytics: async (filters?: ExpenseAnalyticsFilters): Promise<ExpenseAnalyticsData> => {
+    const { data } = await api.get<ExpenseAnalyticsResponse>('/expenses/analytics', {
+      params: filters,
+    })
+    return data.data
+  },
+
+  exportCsv: (filters?: ExpenseFilters) => api.get<Blob>('/expenses/export', {
+    params: filters,
+    responseType: 'blob',
+  }),
 
   /**
    * Get a single expense by ID

@@ -35,6 +35,7 @@ use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\ExpenseVatSplit;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -3400,16 +3401,49 @@ final class GeneralLedgerService
 
             $lineOrder = 0;
 
-            // Debit: Expense Account
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $expenseAccount->id,
-                'partner_id' => null, // Expenses typically don't have partner tracking
-                'debit' => $expense->total ?? '0',
-                'credit' => '0',
-                'description' => $vendorName,
-                'line_order' => $lineOrder++,
-            ]);
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
+            $total = (string) ($expense->total ?? '0');
+            $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
+
+            if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 1) {
+                $deductiblePercent = (string) ($metadata->vat_deductible_percent ?? '100.00');
+                $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
+                $nonDeductibleVat = bcsub($vatAmount, $deductibleVat, $scale);
+                $expenseDebit = bcadd((string) ($expense->subtotal ?? '0'), $nonDeductibleVat, $scale);
+
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $expenseAccount->id,
+                    'partner_id' => null,
+                    'debit' => $expenseDebit,
+                    'credit' => '0',
+                    'description' => $vendorName,
+                    'line_order' => $lineOrder++,
+                ]);
+
+                if (bccomp($deductibleVat, '0', $scale) === 1) {
+                    JournalLine::create([
+                        'journal_entry_id' => $entry->id,
+                        'account_id' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatDeductible)->id,
+                        'partner_id' => null,
+                        'debit' => $deductibleVat,
+                        'credit' => '0',
+                        'description' => 'TVA déductible',
+                        'line_order' => $lineOrder++,
+                    ]);
+                }
+            } else {
+                // Debit: Expense Account (legacy VAT-less shape)
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $expenseAccount->id,
+                    'partner_id' => null, // Expenses typically don't have partner tracking
+                    'debit' => $expense->total ?? '0',
+                    'credit' => '0',
+                    'description' => $vendorName,
+                    'line_order' => $lineOrder++,
+                ]);
+            }
 
             // Credit: Cash/Bank (paid) or Accounts-Payable liability (unpaid)
             JournalLine::create([
@@ -3417,7 +3451,7 @@ final class GeneralLedgerService
                 'account_id' => $creditAccount->id,
                 'partner_id' => $creditPartnerId,
                 'debit' => '0',
-                'credit' => $expense->total ?? '0',
+                'credit' => $total,
                 'description' => $creditDescription,
                 'line_order' => $lineOrder,
             ]);

@@ -56,12 +56,14 @@ import {
   Package2,
   PackagePlus,
   Calendar,
+  CalendarClock,
   Download,
   Cable,
   Tags,
   Repeat,
   Globe,
   Trash2,
+  MapPinned,
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -209,6 +211,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'inventory',
       children: [
         { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
+        { key: 'placement', href: '/inventory/placement', icon: MapPinned, permission: 'inventory' },
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat, permission: 'inventory.transfers.view' },
         { key: 'replenishment', labelKey: 'replenishment:title', href: '/inventory/replenishment', icon: PackagePlus, permission: 'replenishment.view' },
@@ -272,6 +275,8 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'remittances', href: '/treasury/remittances', icon: FileStack, permission: 'remittances' },
         { key: 'bankReconciliation', href: '/treasury/reconciliation', icon: ArrowLeftRight, permission: 'treasury' },
         { key: 'expenses', href: '/expenses', icon: Receipt, permission: 'treasury' },
+        { key: 'expenseAnalytics', href: '/expenses/analytics', icon: BarChart3, permission: 'expenses' },
+        { key: 'recurringExpenses', href: '/expenses/recurring', icon: CalendarClock, permission: 'expense-recurrences' },
         { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, permission: 'withholding' },
       ],
     },

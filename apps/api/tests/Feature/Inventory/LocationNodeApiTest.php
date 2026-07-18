@@ -120,6 +120,31 @@ final class LocationNodeApiTest extends TestCase
         $this->assertNotNull(ProductPlacement::withTrashed()->where('product_id', $product->id)->firstOrFail()->deleted_at);
     }
 
+    public function test_tree_reports_only_live_product_placements_in_product_count(): void
+    {
+        $node = $this->service->createNode(
+            $this->tenant->id,
+            $this->location->id,
+            null,
+            LocationNodeType::Rack,
+            'Rack 1',
+            'R1',
+        );
+        $liveProduct = $this->seedProductForCompany('LIVE-PLACEMENT');
+        $removedProduct = $this->seedProductForCompany('REMOVED-PLACEMENT');
+
+        $this->service->assignProduct($this->tenant->id, $liveProduct->id, $this->location->id, $node->id);
+        $this->service->assignProduct($this->tenant->id, $removedProduct->id, $this->location->id, $node->id);
+        $this->service->unassignProduct($removedProduct->id, $this->location->id);
+
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/v1/inventory/locations/{$this->location->id}/nodes");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $node->id);
+        $response->assertJsonPath('data.0.product_count', 1);
+    }
+
     public function test_move_into_own_subtree_returns_422(): void
     {
         $a = $this->service->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Aisle, 'Aisle 1', 'A1');

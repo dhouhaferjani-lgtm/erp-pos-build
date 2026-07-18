@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 
 import { ExpenseDetailPage } from './ExpenseDetailPage'
 
@@ -8,16 +9,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (k: string, s?: unknown) => (typeof s === 'string' ? s : k),
   }),
-}))
-
-// ─── react-router-dom: id param, capture navigate, Link as plain anchor ───────
-const mockNavigate = vi.fn()
-vi.mock('react-router-dom', () => ({
-  useParams: () => ({ id: 'exp-1' }),
-  useNavigate: () => mockNavigate,
-  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
-    <a href={to}>{children}</a>
-  ),
 }))
 
 // ─── expenses hooks → tiny fixtures (presentation-only isolation) ─────────────
@@ -55,7 +46,11 @@ const fixtureExpense = {
   status: 'posted' as const,
   document_number: 'EXP-0001',
   document_date: '2026-06-01',
-  total: '120.000',
+  partner_id: 'supplier-1',
+  partner: { id: 'supplier-1', name: 'Acme Supplies' },
+  subtotal: '100.000',
+  tax_amount: '19.000',
+  total: '119.000',
   currency: 'TND',
   notes: null,
   internal_notes: null,
@@ -69,6 +64,8 @@ const fixtureExpense = {
     expense_category_id: null,
     payment_method_id: null,
     payment_repository_id: null,
+    vat_rate: '19.00',
+    vat_deductible_percent: '80.00',
   },
 }
 
@@ -78,8 +75,24 @@ const fixtureDraftExpense = {
   document_number: 'EXP-DRAFT-0001',
 }
 
+function SupplierDestination() {
+  const { supplierId } = useParams<{ supplierId: string }>()
+
+  return <div>Supplier destination: {supplierId}</div>
+}
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/expenses/exp-1']}>
+      <Routes>
+        <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
+        <Route path="/purchases/suppliers/:supplierId" element={<SupplierDestination />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 beforeEach(() => {
-  mockNavigate.mockReset()
   mockUseExpense.mockReset()
   mockHasPermission.mockReset()
   // Default: grant all permissions
@@ -89,21 +102,105 @@ beforeEach(() => {
 
 describe('ExpenseDetailPage shell', () => {
   it('renders exactly one <h1> (the document number)', () => {
-    render(<ExpenseDetailPage />)
+    renderPage()
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('EXP-0001')
   })
 
   it('renders the status via a StatusBadge pill', () => {
-    render(<ExpenseDetailPage />)
+    renderPage()
     const badge = screen.getByText('expenses:status.posted')
     expect(badge.className).toContain('rounded-full')
   })
 
   it('renders the attachments organism', () => {
-    render(<ExpenseDetailPage />)
+    renderPage()
     expect(screen.getByTestId('document-attachments')).toBeInTheDocument()
+  })
+
+  it('routes the supplier link to the canonical purchase supplier detail', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('link', { name: 'Acme Supplies' }))
+
+    expect(screen.getByText('Supplier destination: supplier-1')).toBeInTheDocument()
+  })
+
+  it('renders receipt-order net, VAT, deductible, and total rows', () => {
+    renderPage()
+
+    expect(screen.getByText('100.000 TND')).toBeInTheDocument()
+    expect(screen.getByText('19.000 TND')).toBeInTheDocument()
+    expect(screen.getByText('19.00%')).toBeInTheDocument()
+    expect(screen.getByText('80.00%')).toBeInTheDocument()
+    expect(screen.getByText('119.000 TND')).toBeInTheDocument()
+  })
+
+  it('renders exact dashes for unavailable legacy VAT values without units', () => {
+    mockUseExpense.mockReturnValue({
+      data: {
+        ...fixtureExpense,
+        subtotal: null,
+        metadata: {
+          ...fixtureExpense.metadata,
+          vat_rate: null,
+          vat_deductible_percent: null,
+        },
+      },
+      isLoading: false,
+    })
+
+    renderPage()
+
+    for (const label of [
+      'expenses:form.netAmount',
+      'expenses:form.vatRate',
+      'expenses:form.vatDeductible',
+    ]) {
+      const value = screen.getByText(label).parentElement?.querySelector('dd')
+      expect(value).toHaveTextContent(/^\s*-\s*$/)
+    }
+    expect(screen.queryByText('- TND')).not.toBeInTheDocument()
+    expect(screen.queryByText('-%')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the editable vendor snapshot when no partner is linked', () => {
+    mockUseExpense.mockReturnValue({
+      data: {
+        ...fixtureExpense,
+        partner_id: null,
+        partner: null,
+        metadata: {
+          ...fixtureExpense.metadata,
+          vendor_name: 'Legacy receipt vendor',
+        },
+      },
+      isLoading: false,
+    })
+
+    renderPage()
+
+    const vendorValue = screen.getByText('expenses:vendorName').parentElement?.querySelector('dd')
+    expect(vendorValue).toHaveTextContent('Legacy receipt vendor')
+    expect(screen.queryByRole('link', { name: 'Legacy receipt vendor' })).not.toBeInTheDocument()
+  })
+
+  it('identifies a draft generated from a recurring template', () => {
+    mockUseExpense.mockReturnValue({
+      data: {
+        ...fixtureDraftExpense,
+        metadata: {
+          ...fixtureDraftExpense.metadata,
+          recurrence_template_id: 'recurrence-1',
+        },
+      },
+      isLoading: false,
+    })
+
+    renderPage()
+
+    expect(screen.getByText('expenses:recurrences.generatedFromTemplate')).toHaveClass('rounded-full')
   })
 })
 
@@ -113,7 +210,7 @@ describe('ExpenseDetailPage — Post button permission gating', () => {
     // Deny expenses.post only
     mockHasPermission.mockImplementation((p: string) => p !== 'expenses.post')
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.queryByText('expenses:postExpense')).not.toBeInTheDocument()
   })
@@ -123,7 +220,7 @@ describe('ExpenseDetailPage — Post button permission gating', () => {
     // Grant all permissions (default)
     mockHasPermission.mockReturnValue(true)
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.getByText('expenses:postExpense')).toBeInTheDocument()
   })
@@ -132,7 +229,7 @@ describe('ExpenseDetailPage — Post button permission gating', () => {
     // fixtureExpense is posted — Post button must not render even with permission
     mockHasPermission.mockReturnValue(true)
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.queryByText('expenses:postExpense')).not.toBeInTheDocument()
   })
@@ -143,7 +240,7 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
     mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
     mockHasPermission.mockImplementation((p: string) => p !== 'expenses.update')
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.queryByText('common:edit')).not.toBeInTheDocument()
   })
@@ -152,7 +249,7 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
     mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
     mockHasPermission.mockReturnValue(true)
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.getByText('common:edit')).toBeInTheDocument()
   })
@@ -161,7 +258,7 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
     mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
     mockHasPermission.mockImplementation((p: string) => p !== 'expenses.delete')
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.queryByText('common:delete')).not.toBeInTheDocument()
   })
@@ -170,7 +267,7 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
     mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
     mockHasPermission.mockReturnValue(true)
 
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     expect(screen.getByText('common:delete')).toBeInTheDocument()
   })
@@ -178,7 +275,7 @@ describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
 
 describe('ExpenseDetailPage — Pay button eligibility and permission gating', () => {
   it('shows Pay for a permitted posted, unpaid, non-linked-cost expense and opens the dialog', () => {
-    render(<ExpenseDetailPage />)
+    renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'expenses:pay.submit' }))
     expect(screen.getByTestId('pay-expense-dialog')).toBeInTheDocument()
@@ -193,7 +290,7 @@ describe('ExpenseDetailPage — Pay button eligibility and permission gating', (
     mockUseExpense.mockReturnValue({ data: candidate, isLoading: false })
     mockHasPermission.mockImplementation(permission)
 
-    render(<ExpenseDetailPage />)
+    renderPage()
     expect(screen.queryByRole('button', { name: 'expenses:pay.submit' })).not.toBeInTheDocument()
   })
 })

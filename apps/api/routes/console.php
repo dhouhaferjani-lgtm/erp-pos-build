@@ -68,6 +68,12 @@ Schedule::command('treasury:instrument-maturity-alerts')
     ->dailyAt('06:30')
     ->withoutOverlapping();
 
+// Schedule: materialize recurring expense drafts + due reminders.
+// Run in-process so the scheduler observes the command's partial-failure exit.
+Schedule::command('expenses:generate-recurring')
+    ->dailyAt('05:30')
+    ->withoutOverlapping();
+
 // Schedule: Expire old stock reservations every 15 minutes
 Schedule::job(ExpireReservationsJob::class)
     ->everyFifteenMinutes()

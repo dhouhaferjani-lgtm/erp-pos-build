@@ -38,7 +38,11 @@ export interface ImportJobOptions {
   location_code?: string
   enrichment_enabled?: boolean
   price_authority?: 'ttc' | 'ht' | 'margin'
+  placement_mode?: 'strict' | 'auto_create'
+  placement_node_types?: LocationNodeType[]
 }
+
+export type LocationNodeType = App.Modules.Inventory.Domain.Enums.LocationNodeType
 
 // Backend returns errors as { fieldName: ['error1', 'error2'] }
 export type ImportRowErrors = Record<string, string[]> | null
@@ -153,6 +157,11 @@ export interface ImportPreview {
     total_rows: number
     valid_rows: number
     invalid_rows: number
+  }
+  placement?: {
+    max_depth: number
+    nodes_to_create: { path: string; node_type: LocationNodeType }[]
+    placements_to_set: { row_number: number; location_code: string; path: string; node_id: string | null }[]
   }
 }
 

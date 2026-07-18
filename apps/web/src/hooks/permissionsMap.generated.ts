@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:e2824873cfec9c066089d7c6ab9b12ffc1a1c079c1d99f405204c77954e28f56
+// Source hash: sha256:0f2ce427d0b2c5d14722bf58d32fd48bb9915ad4735e26516de330e344ed19e8
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -64,8 +64,13 @@ export const PERMISSIONS = {
   'expense-categories.delete': ['accountant', 'admin', 'manager'],
   'expense-categories.update': ['accountant', 'admin', 'manager'],
   'expense-categories.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
+  'expense-recurrences.create': ['accountant', 'admin', 'manager'],
+  'expense-recurrences.delete': ['accountant', 'admin', 'manager'],
+  'expense-recurrences.update': ['accountant', 'admin', 'manager'],
+  'expense-recurrences.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
   'expenses.create': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
   'expenses.delete': ['accountant', 'admin'],
+  'expenses.export': ['accountant', 'admin', 'manager'],
   'expenses.pay': ['accountant', 'admin', 'manager'],
   'expenses.post': ['accountant', 'admin', 'manager'],
   'expenses.update': ['accountant', 'admin', 'manager', 'operator'],

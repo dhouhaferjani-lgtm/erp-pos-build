@@ -124,6 +124,13 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(bankingButton).toBeInTheDocument()
     })
 
+    it('shows placement management under Inventory', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const placementLink = await screen.findByRole('link', { name: /navigation\.placement/i })
+      expect(placementLink).toHaveAttribute('href', '/inventory/placement')
+    })
+
     it('shows treasury overview as the first accounting and reports child', async () => {
       renderSidebar(mechanicFullConfig)
 
@@ -284,6 +291,32 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
 
       // Sidebar should render (even if navigation is empty or loading)
       expect(screen.getByRole('complementary')).toBeInTheDocument()
+    })
+  })
+
+  describe('Recurring expense permission', () => {
+    it('shows the recurring schedules link only through the recurrence view gate', async () => {
+      const allowed = renderSidebar(mechanicFullConfig)
+      expect(await screen.findByRole('link', { name: /navigation\.recurringExpenses/i }))
+        .toHaveAttribute('href', '/expenses/recurring')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('expense-recurrences')
+
+      allowed.unmount()
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'expense-recurrences')
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', { name: /navigation\.recurringExpenses/i }))
+        .not.toBeInTheDocument()
+    })
+  })
+
+  describe('Expense analytics navigation', () => {
+    it('links analytics through the expenses module permission map', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.expenseAnalytics/i }))
+        .toHaveAttribute('href', '/expenses/analytics')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('expenses')
     })
   })
 

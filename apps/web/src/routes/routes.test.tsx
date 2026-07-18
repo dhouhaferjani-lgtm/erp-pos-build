@@ -27,6 +27,14 @@ describe('route module guards', () => {
     expect(idx).toBeGreaterThanOrEqual(0)
   })
 
+  it('registers placement management with inventory.view permission', () => {
+    const idx = routesSource.indexOf('path="placement"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(idx, idx + 350)
+    expect(fragment).toContain('permission="inventory.view"')
+    expect(fragment).toContain('<PlacementPage />')
+  })
+
   it('guards expiry-write-off route with BatchExpiry module gate', () => {
     const idx = routesSource.indexOf('path="expiry-write-off"')
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
@@ -70,5 +78,25 @@ describe('route module guards', () => {
     const fragment = routesSource.slice(Math.max(0, idx - 200), idx + 500)
     expect(fragment).toContain('TreasuryOverviewPage')
     expect(fragment).toContain('permission="reports.view"')
+  })
+
+  it('lazy-loads recurring expenses under an exact view permission guard', () => {
+    expect(routesSource).toContain("import('../features/expenses/pages/RecurringExpensesPage')")
+    const branch = routeBranch('expenses')
+    const idx = branch.indexOf('path="recurring"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(branch.slice(idx, idx + 450)).toContain('permission="expense-recurrences.view"')
+    expect(branch.slice(idx, idx + 450)).toContain('<RecurringExpensesPage />')
+  })
+
+  it('lazy-loads expense analytics before the dynamic id route under expenses.view', () => {
+    expect(routesSource).toContain("import('../features/expenses/pages/ExpenseAnalyticsPage')")
+    const branch = routeBranch('expenses')
+    const analytics = branch.indexOf('path="analytics"')
+    const dynamicId = branch.indexOf('path=":id"')
+    expect(analytics).toBeGreaterThanOrEqual(0)
+    expect(analytics).toBeLessThan(dynamicId)
+    expect(branch.slice(analytics, analytics + 450)).toContain('permission="expenses.view"')
+    expect(branch.slice(analytics, analytics + 450)).toContain('<ExpenseAnalyticsPage />')
   })
 })

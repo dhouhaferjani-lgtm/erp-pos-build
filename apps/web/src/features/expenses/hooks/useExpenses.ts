@@ -6,8 +6,16 @@ import { getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { expenseApi } from '../api/expenseApi'
-import { expensesInvalidationPredicate } from '../_invalidation'
-import type { CreateExpenseDTO, ExpenseFilters, PayExpenseRequest } from '../types'
+import {
+  expenseAnalyticsInvalidationPredicate,
+  expensesInvalidationPredicate,
+} from '../_invalidation'
+import type {
+  CreateExpenseDTO,
+  ExpenseAnalyticsFilters,
+  ExpenseFilters,
+  PayExpenseRequest,
+} from '../types'
 
 function flatErrorMessage(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('response' in error)) return null
@@ -25,6 +33,8 @@ export const expenseKeys = {
   all: ['expenses'] as const,
   lists: () => [...expenseKeys.all, 'list'] as const,
   list: (filters?: ExpenseFilters) => [...expenseKeys.lists(), filters] as const,
+  analytics: (filters?: ExpenseAnalyticsFilters) =>
+    [...expenseKeys.all, 'analytics', filters] as const,
   details: () => [...expenseKeys.all, 'detail'] as const,
   detail: (id: string) => [...expenseKeys.details(), id] as const,
   linkableInvoices: () => [...expenseKeys.all, 'linkable-invoices'] as const,
@@ -41,6 +51,16 @@ export function useExpenses(filters?: ExpenseFilters) {
   return useQuery({
     queryKey: tenantScopedKey([...expenseKeys.list(filters)]),
     queryFn: () => expenseApi.list(filters),
+    enabled: !!tenantId && !!companyId,
+  })
+}
+
+export function useExpenseAnalytics(filters?: ExpenseAnalyticsFilters) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  return useQuery({
+    queryKey: tenantScopedKey([...expenseKeys.analytics(filters)]),
+    queryFn: () => expenseApi.getAnalytics(filters),
     enabled: !!tenantId && !!companyId,
   })
 }
@@ -90,9 +110,14 @@ export function useCreateExpense() {
   return useMutation({
     mutationFn: (data: CreateExpenseDTO) => expenseApi.create(data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expensesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:messages.created'))
     },
     onError: (error: Error) => {
@@ -119,6 +144,9 @@ export function useUpdateExpense() {
           predicate: expensesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(updatedExpense.id)],
         }),
       ])
@@ -142,9 +170,14 @@ export function useDeleteExpense() {
   return useMutation({
     mutationFn: (id: string) => expenseApi.delete(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expensesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:messages.deleted'))
     },
     onError: (error: Error) => {
@@ -168,6 +201,9 @@ export function usePostExpense() {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(postedExpense.id)],
@@ -197,6 +233,9 @@ export function usePayExpense() {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
           queryKey: [...expenseKeys.detail(paidExpense.id)],

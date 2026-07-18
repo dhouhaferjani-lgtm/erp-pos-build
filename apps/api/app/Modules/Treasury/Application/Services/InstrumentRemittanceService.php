@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
 use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -264,6 +265,9 @@ final readonly class InstrumentRemittanceService
 
     private function assertEligible(InstrumentRemittance $remittance, PaymentInstrument $instrument): void
     {
+        if ($instrument->direction === InstrumentDirection::Outbound) {
+            throw new DomainException('Outbound (supplier-direction) instruments have no collection lifecycle; deposit/clear/bounce apply to inbound instruments only.');
+        }
         $received = $instrument->status === InstrumentStatus::Received;
         $rePresentable = $instrument->status === InstrumentStatus::Bounced
             && $instrument->dishonor_routing === DishonorRouting::RePresent;

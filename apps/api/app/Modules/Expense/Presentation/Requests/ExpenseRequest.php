@@ -48,6 +48,10 @@ class ExpenseRequest extends FormRequest
 
         $rules = [
             'vendor_name' => ['nullable', 'string', 'max:255'],
+            'partner_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('partners', $tenantId, $companyId)],
+            'vat_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'vat_deductible_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.unmapped.001 (api.accounting): expense_categories carries
             // tenant_id + company_id; scope the FK validator by both.
             'expense_category_id' => [

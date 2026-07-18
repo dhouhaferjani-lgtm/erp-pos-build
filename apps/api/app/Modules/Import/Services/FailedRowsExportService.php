@@ -101,7 +101,12 @@ final class FailedRowsExportService
         // Get all data columns from the first row
         $firstRow = $failedRows->first();
         /** @var array<string> $dataColumns */
-        $dataColumns = $firstRow ? array_keys($firstRow->data) : [];
+        $dataColumns = $firstRow
+            ? array_values(array_filter(
+                array_keys($firstRow->data),
+                static fn (string $column): bool => ! str_starts_with($column, '_'),
+            ))
+            : [];
 
         // Build header row
         $headers = array_merge(

@@ -99,6 +99,7 @@ const CashMovementsReportPage = lazy(() => import('../features/finance/pages/Cas
 // Inventory module
 const ProductListPage = lazy(() => import('../features/inventory/ProductListPage').then((m) => ({ default: m.ProductListPage })))
 const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage })))
+const PlacementPage = lazy(() => import('../features/placement/PlacementPage').then((m) => ({ default: m.PlacementPage })))
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
@@ -208,6 +209,8 @@ const ExpenseListPage = lazy(() => import('../features/expenses/pages/ExpenseLis
 const ExpenseFormPage = lazy(() => import('../features/expenses/pages/ExpenseFormPage').then((m) => ({ default: m.ExpenseFormPage })))
 const ExpenseDetailPage = lazy(() => import('../features/expenses/pages/ExpenseDetailPage').then((m) => ({ default: m.ExpenseDetailPage })))
 const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/ExpenseCategoryPage').then((m) => ({ default: m.ExpenseCategoryPage })))
+const RecurringExpensesPage = lazy(() => import('../features/expenses/pages/RecurringExpensesPage').then((m) => ({ default: m.RecurringExpensesPage })))
+const ExpenseAnalyticsPage = lazy(() => import('../features/expenses/pages/ExpenseAnalyticsPage').then((m) => ({ default: m.ExpenseAnalyticsPage })))
 const IncomeListPage = lazy(() => import('../features/income/pages/IncomeListPage').then((m) => ({ default: m.IncomeListPage })))
 const IncomeFormPage = lazy(() => import('../features/income/pages/IncomeFormPage').then((m) => ({ default: m.IncomeFormPage })))
 
@@ -1027,6 +1030,17 @@ export function AppRoutes() {
           />
 
           <Route
+            path="placement"
+            element={
+              <RequirePermission permission="inventory.view">
+                <SuspenseWrapper>
+                  <PlacementPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
             path="movements"
             element={
               <RequirePermission moduleKey="inventory">
@@ -1595,6 +1609,26 @@ export function AppRoutes() {
               <RequirePermission permission="expense-categories.view">
                 <SuspenseWrapper>
                   <ExpenseCategoryPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="recurring"
+            element={
+              <RequirePermission permission="expense-recurrences.view">
+                <SuspenseWrapper>
+                  <RecurringExpensesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="analytics"
+            element={
+              <RequirePermission permission="expenses.view">
+                <SuspenseWrapper>
+                  <ExpenseAnalyticsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -778,8 +778,40 @@ declare namespace App.Modules.DocumentIngestion.Domain.Enums {
 export type DocumentKind = 'supplier_invoice' | 'supplier_delivery_note';
 export type IngestionStatus = 'uploaded' | 'extracting' | 'needs_review' | 'committing' | 'committed' | 'rejected' | 'failed';
 }
+declare namespace App.Modules.Expense.Application.DTOs {
+export type ExpenseAnalyticsCategoryData = {
+category_id: string | null;
+name: string;
+total: string;
+share_percent: string;
+};
+export type ExpenseAnalyticsData = {
+tiles: App.Modules.Expense.Application.DTOs.ExpenseAnalyticsTilesData;
+by_category: Array<App.Modules.Expense.Application.DTOs.ExpenseAnalyticsCategoryData>;
+matrix: Array<App.Modules.Expense.Application.DTOs.ExpenseAnalyticsMatrixData>;
+top_vendors: Array<App.Modules.Expense.Application.DTOs.ExpenseAnalyticsVendorData>;
+};
+export type ExpenseAnalyticsMatrixData = {
+category_id: string | null;
+name: string;
+months: Array<any>;
+};
+export type ExpenseAnalyticsTilesData = {
+total: string;
+count: number;
+unpaid_total: string;
+mom_delta_percent: string | null;
+};
+export type ExpenseAnalyticsVendorData = {
+partner_id: string | null;
+vendor_name: string;
+total: string;
+};
+}
 declare namespace App.Modules.Expense.Domain.Enums {
 export type ExpenseKind = 'generic' | 'linked_cost';
+export type RecurrenceFrequency = 'monthly' | 'quarterly' | 'yearly';
+export type RecurrenceStatus = 'active' | 'paused' | 'ended';
 }
 declare namespace App.Modules.Fiscal.Domain.Enums {
 export type DeviceLossIncidentStatus = 'reported' | 'recovering' | 'resolved' | 'unrecoverable';
@@ -887,13 +919,14 @@ export type LocationNodeDto = {
 id: string;
 location_id: string;
 parent_id: string | null;
-node_type: string;
+node_type: App.Modules.Inventory.Domain.Enums.LocationNodeType;
 name: string;
 code: string;
 path: string;
 depth: number;
 sort_order: number;
 is_active: boolean;
+product_count: number;
 deleted_at: string | null;
 created_at: string;
 updated_at: string;

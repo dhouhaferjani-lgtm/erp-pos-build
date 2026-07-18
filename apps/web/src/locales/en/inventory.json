@@ -614,7 +614,7 @@
       "product": "Product",
       "location": "Location",
       "category": "Category",
-      "zone": "Zone / Shelf",
+      "zone": "Node / Zone",
       "full_inventory": "Full Inventory"
     },
     "scopeDescriptions": {
@@ -622,7 +622,7 @@
       "product": "Count specific products across all locations",
       "location": "Count all products in specific locations",
       "category": "Count all products in specific categories",
-      "zone": "Count all products assigned to specific zones/shelves at one location",
+      "zone": "Count products placed in selected nodes and their complete subtrees at one location",
       "full_inventory": "Count all products in all locations"
     },
     "executionModes": {
@@ -673,18 +673,18 @@
       "selectionDescriptionLocation": "Choose which locations to count",
       "selectionTitleCategory": "Select Categories",
       "selectionDescriptionCategory": "Choose which product categories to count",
-      "selectionTitleZone": "Select Location and Zones",
-      "selectionDescriptionZone": "Choose a location, then the zones/shelves to count",
+      "selectionTitleZone": "Select Location and Nodes",
+      "selectionDescriptionZone": "Choose a location, then select nodes from its storage hierarchy",
       "productSelectionHelper": "Search and select products by name, SKU, or barcode",
       "locationSelectionHelper": "Search and select locations to include in the count",
       "categorySelectionComingSoon": "Category Selection Coming Soon",
       "categorySelectionComingSoonHint": "Product categories are not yet implemented. Use Full Inventory or Product scope instead.",
       "zoneLocationLabel": "Location",
-      "zoneLocationHelper": "Zones belong to a single location — pick the location to count first",
-      "zoneSelectLabel": "Zones",
-      "zoneLoadingZones": "Loading zones…",
-      "noZonesForLocation": "This location has no zones yet. Add zones in Settings before creating a zone count.",
-      "zoneSelectionHelper": "Select one or more zones/shelves to count at this location",
+      "zoneLocationHelper": "Storage nodes belong to a single location — pick the location to count first",
+      "zoneSelectLabel": "Nodes / Zones",
+      "zoneLoadingZones": "Loading storage nodes…",
+      "noZonesForLocation": "This location has no storage nodes yet. Define its storage hierarchy before creating a node count.",
+      "zoneSelectionHelper": "Select one or more nodes. Each selection includes its entire subtree.",
       "scopeTitle": "Select Counting Scope",
       "scopeDescription": "Choose what you want to count",
       "scopeType": "Scope Type",
@@ -698,7 +698,7 @@
       "allowUnexpectedItemsHelp": "Counters can add items not in the expected list",
       "blockSales": "Block sales during this count",
       "blockSalesHelp": "Prevent sales at the counted location(s) while the count is in progress",
-      "blockSalesZoneDisabledHint": "Sales blocking is not available for zone counts — sales continue and are reconciled by timestamp replay",
+      "blockSalesZoneDisabledHint": "Sales blocking is not available for node / zone counts — sales continue and are reconciled by timestamp replay",
       "ambiguityWindowMinutes": "Ambiguity window (minutes)",
       "ambiguityWindowMinutesHelp": "Tolerance window used to resolve counter disagreements by replaying sales/movements between count instants",
       "instructions": "Instructions for Counters",
@@ -915,6 +915,8 @@
       "loading": "Loading categories…"
     },
     "form": {
+      "addTitle": "Add storage node",
+      "editTitle": "Edit storage node",
       "basicInfo": "Basic Information",
       "hierarchy": "Hierarchy",
       "settings": "Settings",
@@ -1008,54 +1010,54 @@
     "resetSuccess": "Opening stock has been reset.",
     "resetError": "Could not reset opening stock. Please try again."
   },
-  "zones": {
-    "navLabel": "Zones",
-    "panelTitle": "Zones — {{location}}",
-    "subtitle": "Shelf/section labels for counting and product placement",
-    "addZone": "Add zone",
-    "editZone": "Edit zone",
+  "placement": {
+    "navLabel": "Storage & locations",
+    "title": "Storage & locations",
+    "productCount": "Products",
+    "location": { "label": "Location", "empty": "Create a location before defining its storage layout." },
+    "views": { "tree": "Tree", "table": "Table" },
+    "tree": { "label": "Storage node tree", "expand": "Expand", "collapse": "Collapse" },
+    "picker": { "label": "Choose a storage node" },
+    "productField": { "title": "Storage location", "description": "Choose where this product is stored at each location.", "loading": "Loading storage locations…", "loadingPath": "Loading path…", "unassigned": "Not assigned", "change": "Choose location", "clear": "Clear", "saved": "Storage location saved.", "cleared": "Storage location cleared." },
+    "subtitle": "Map the physical path from aisle to bin, then place products where teams can find them.",
+    "importExplainer": "Importing products? Add location_code and placement_path columns (for example A1 > R2 > B7) to preview placements before committing them.",
     "empty": {
-      "title": "No zones yet",
-      "description": "Add a zone to scope counts by shelf or section."
-    },
-    "list": {
-      "sortOrder": "Order {{order}}",
-      "active": "Active",
-      "inactive": "Inactive"
+      "title": "No storage nodes yet",
+      "description": "Start with an aisle, zone, or section, then add the detail your layout needs."
     },
     "form": {
+      "addTitle": "Add storage node",
+      "editTitle": "Edit storage node",
       "name": "Name",
-      "namePlaceholder": "e.g. Aisle 3",
       "nameRequired": "Name is required",
       "code": "Code",
-      "codePlaceholder": "e.g. A3",
-      "codeRequired": "Code is required",
+      "codeInvalid": "Use 1–50 letters, numbers, dots, or hyphens. Slashes and spaces are not allowed.",
+      "type": "Type",
       "sortOrder": "Sort order",
-      "isActive": "Active"
+      "active": "Active"
     },
     "actions": {
-      "assignProducts": "Assign products"
+      "addRoot": "Add top-level node",
+      "addChild": "Add child",
+      "edit": "Edit",
+      "delete": "Delete",
+      "restore": "Restore",
+      "showDeleted": "Show deleted"
     },
-    "deleteConfirm": {
-      "title": "Delete zone",
-      "message": "Delete zone \"{{name}}\"? Products assigned to it will need to be reassigned."
-    },
-    "bulkAssign": {
-      "title": "Assign products — {{zone}}",
-      "currentlyAssigned": "Currently assigned",
-      "noneAssigned": "No products assigned to this zone yet.",
-      "addProducts": "Add products",
-      "removeProduct": "Remove {{name}}",
-      "pendingCount": "{{count}} product selected",
-      "pendingCount_other": "{{count}} products selected",
-      "submit": "Assign",
-      "success": "Products assigned to zone.",
-      "productIdsRequired": "Select at least one product to assign."
-    },
+    "detail": { "title": "Storage node details", "breadcrumb": "Storage path", "productsTab": "Products", "selectPrompt": "Select a node to inspect its path and manage the products stored there.", "close": "Close details" },
+    "types": { "zone": "Zone", "aisle": "Aisle", "rack": "Rack", "shelf": "Shelf", "bin": "Bin", "section": "Section" },
+    "products": { "search": "Search by name, SKU, or barcode", "loading": "Loading products…", "empty": "No products are placed directly in this node.", "addPlaceholder": "Find a product", "assign": "Place product", "unassign": "Remove placement", "moveTarget": "Move selected products to", "chooseTarget": "Choose destination", "bulkMove": "Move selected", "previous": "Previous", "next": "Next" },
+    "table": { "label": "Storage nodes", "select": "Select", "selectNode": "Select {{name}}", "selected": "{{count}} nodes selected", "code": "Code", "name": "Name", "type": "Type", "products": "Products", "active": "Status" },
+    "status": { "active": "Active", "inactive": "Inactive" },
     "messages": {
-      "created": "Zone created.",
-      "updated": "Zone updated.",
-      "deleted": "Zone deleted."
+      "created": "Storage node created.",
+      "updated": "Storage node updated.",
+      "moved": "Storage node moved.",
+      "deleted": "Storage node deleted.",
+      "restored": "Storage node restored.",
+      "productsAssigned": "Product placed.",
+      "productUnassigned": "Placement removed.",
+      "productsMoved": "Selected products moved."
     }
   }
 }

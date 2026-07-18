@@ -5,7 +5,10 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { expenseCategoryApi } from '../api/expenseApi'
-import { expenseCategoriesInvalidationPredicate } from '../_invalidation'
+import {
+  expenseAnalyticsInvalidationPredicate,
+  expenseCategoriesInvalidationPredicate,
+} from '../_invalidation'
 import type { CreateExpenseCategoryDTO, ExpenseCategoryFilters } from '../types'
 
 /**
@@ -57,9 +60,14 @@ export function useCreateExpenseCategory() {
   return useMutation({
     mutationFn: (data: CreateExpenseCategoryDTO) => expenseCategoryApi.create(data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:categories.messages.created'))
     },
     onError: (error: Error) => {
@@ -86,6 +94,9 @@ export function useUpdateExpenseCategory() {
           predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
           queryKey: [...expenseCategoryKeys.detail(updatedCategory.id)],
         }),
       ])
@@ -109,9 +120,14 @@ export function useDeleteExpenseCategory() {
   return useMutation({
     mutationFn: (id: string) => expenseCategoryApi.delete(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expenseCategoriesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: expenseAnalyticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('expenses:categories.messages.deleted'))
     },
     onError: (error: Error) => {

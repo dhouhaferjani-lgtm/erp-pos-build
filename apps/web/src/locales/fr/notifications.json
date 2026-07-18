@@ -17,6 +17,11 @@
       "instrument": {
         "maturity_alert": "Alerte d’échéance des instruments"
       }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "Dépense récurrente générée"
+      }
     }
   },
   "messages": {
@@ -28,6 +33,11 @@
       },
       "instrument": {
         "maturity_alert": "{{receivedCount}} instruments reçus et {{depositedCount}} instruments déposés nécessitent votre attention."
+      }
+    },
+    "expense": {
+      "recurring": {
+        "generated": "{{name}} a généré un brouillon de dépense de {{amount}}."
       }
     }
   }

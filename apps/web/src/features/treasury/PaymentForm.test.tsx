@@ -422,6 +422,9 @@ describe('PaymentForm check payment persistence', () => {
     fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), { target: { value: 'partner-1' } })
     fireEvent.change(await screen.findByLabelText('treasury:instruments.reference *'), { target: { value: 'CHK-0001' } })
     fireEvent.change(await screen.findByLabelText('treasury:instruments.maturityDate'), { target: { value: '2026-08-01' } })
+    const bankPicker = await screen.findByRole('combobox', { name: 'treasury:instruments.bankName' })
+    fireEvent.focus(bankPicker)
+    fireEvent.click(await screen.findByRole('button', { name: 'bank.notListed' }))
     fireEvent.change(await screen.findByLabelText('treasury:instruments.bankName'), { target: { value: 'Banque Test' } })
 
     fireEvent.click(await screen.findByRole('button', { name: 'common:save' }))

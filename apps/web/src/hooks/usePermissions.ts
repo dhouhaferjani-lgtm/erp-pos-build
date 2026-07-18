@@ -22,6 +22,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'replenishment.view': ['replenishment.view'],
   expenses: ['expenses.view'],
   'expense-categories': ['expense-categories.view'],
+  'expense-recurrences': ['expense-recurrences.view'],
   treasury: ['treasury.view'],
   remittances: ['instruments.remit'],
   vehicles: ['vehicles.view'],
