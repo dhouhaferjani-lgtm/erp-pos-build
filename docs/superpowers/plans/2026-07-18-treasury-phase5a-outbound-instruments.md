@@ -80,7 +80,7 @@ apps/web/src/features/…                                (Wave 4: pay-dialog mod
 **Interfaces:**
 - Produces: **the durable action-key store.** Every ⑤a lifecycle action writes an `instrument_events` row carrying `action_key` (`instrument:{id}:issue|clear:{cycle}|bounce:{cycle}|cancel`), a `semantic_digest` (sha256 of canonical JSON: action, instrumentId, amount, currency, repositoryId, occurredAt-date), and the produced `journal_entry_id`/`movement_id`. Replay lookup = `WHERE action_key = ?` under the instrument lock: digest match ⇒ return original ids (`replayed: true`); digest mismatch ⇒ throw. This is checked **before transition validation** for every action including cancel (uniform return-original contract — supersedes any throw-safe shortcut). `presentation_cycle` = the `{cycle}`, incremented only by `represent()`.
 
-- [ ] Steps: failing tests (unique `action_key` violation; digest mismatch detection; expense-metadata FK + uniqueness) → migrations+models → green → commit `feat(treasury): durable instrument action-key idempotency + expense instrument link`.
+- [x] Steps: failing tests (unique `action_key` violation; digest mismatch detection; expense-metadata FK + uniqueness) → migrations+models → green → commit `feat(treasury): durable instrument action-key idempotency + expense instrument link`.
 
 🚦 **GATE 1 — treasury-reviewer (Opus).** Focus: liability typing, seeder fidelity, action-key/digest design, migration self-guarding.
 

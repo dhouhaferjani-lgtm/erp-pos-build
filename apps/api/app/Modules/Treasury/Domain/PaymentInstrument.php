@@ -35,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $maturity_date
  * @property Carbon|null $expiry_date
  * @property InstrumentStatus $status
+ * @property int $presentation_cycle
  * @property InstrumentDirection $direction
  * @property InstrumentKind|null $kind
  * @property InstrumentOrigin $origin
@@ -85,6 +86,7 @@ class PaymentInstrument extends Model
         'maturity_date',
         'expiry_date',
         'status',
+        'presentation_cycle',
         'direction',
         'kind',
         'origin',
@@ -117,6 +119,7 @@ class PaymentInstrument extends Model
             'maturity_date' => 'date',
             'expiry_date' => 'date',
             'status' => InstrumentStatus::class,
+            'presentation_cycle' => 'integer',
             'direction' => InstrumentDirection::class,
             'kind' => InstrumentKind::class,
             'origin' => InstrumentOrigin::class,

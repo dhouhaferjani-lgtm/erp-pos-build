@@ -6,6 +6,7 @@ namespace App\Modules\Expense\Domain;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $expense_category_id
  * @property string|null $payment_method_id
  * @property string|null $payment_repository_id
+ * @property string|null $payment_instrument_id
  * @property Carbon|null $payment_date
  * @property bool $is_paid
  * @property Carbon|null $paid_at
@@ -35,6 +37,7 @@ use Illuminate\Support\Carbon;
  * @property-read ExpenseCategory|null $category
  * @property-read PaymentMethod|null $paymentMethod
  * @property-read PaymentRepository|null $paymentRepository
+ * @property-read PaymentInstrument|null $paymentInstrument
  */
 class ExpenseMetadata extends Model
 {
@@ -53,6 +56,7 @@ class ExpenseMetadata extends Model
         'expense_category_id',
         'payment_method_id',
         'payment_repository_id',
+        'payment_instrument_id',
         'payment_date',
         'is_paid',
         'paid_at',
@@ -118,5 +122,13 @@ class ExpenseMetadata extends Model
     public function paymentRepository(): BelongsTo
     {
         return $this->belongsTo(PaymentRepository::class);
+    }
+
+    /**
+     * @return BelongsTo<PaymentInstrument, $this>
+     */
+    public function paymentInstrument(): BelongsTo
+    {
+        return $this->belongsTo(PaymentInstrument::class);
     }
 }
