@@ -49,9 +49,9 @@ final class StockMatrixQueryService
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
                 $query->where(function (Builder $nested) use ($like): void {
-                    $nested->where('name', 'ilike', $like)
-                        ->orWhere('sku', 'ilike', $like)
-                        ->orWhere('barcode', 'ilike', $like);
+                    $nested->whereRaw('LOWER(name) LIKE LOWER(?)', [$like])
+                        ->orWhereRaw('LOWER(sku) LIKE LOWER(?)', [$like])
+                        ->orWhereRaw('LOWER(barcode) LIKE LOWER(?)', [$like]);
                 });
             })
             ->orderBy('name')
