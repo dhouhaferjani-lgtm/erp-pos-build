@@ -13,7 +13,7 @@ trait ResolvesTerminalLocation
     private function resolveTerminalLocationId(FiscalEvent $event): ?string
     {
         try {
-            $locationId = DB::table('terminals')
+            $locationId = DB::table('pos_terminals')
                 ->where('tenant_id', $event->tenant_id)
                 ->where('company_id', $event->company_id)
                 ->where('id', $event->terminal_id)

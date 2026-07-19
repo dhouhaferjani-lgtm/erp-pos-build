@@ -82,7 +82,8 @@ class PaymentRepositoryController extends Controller
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
-            'location_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)],
+            // locations are company-owned (the table intentionally has no tenant_id).
+            'location_id' => ['nullable', 'uuid', ScopedExists::company('locations', $companyId)],
             'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
@@ -143,7 +144,7 @@ class PaymentRepositoryController extends Controller
             'account_number' => ['nullable', 'string', 'max:50'],
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
-            'location_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)],
+            'location_id' => ['nullable', 'uuid', ScopedExists::company('locations', $companyId)],
             'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
