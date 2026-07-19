@@ -116,6 +116,28 @@ final class LocationListEndpointsTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_transaction_destinations_include_active_company_locations_for_transfer_permission(): void
+    {
+        $this->locationB->update(['is_active' => false]);
+        $user = $this->createUser([$this->locationA->id]);
+        $this->grant($user, 'inventory.transfers.create');
+
+        $response = $this->request($user, '/api/v1/company/locations/transaction-destinations');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $this->locationA->id)
+            ->assertJsonMissing(['id' => $this->otherCompanyLocation->id]);
+    }
+
+    public function test_transaction_destinations_are_forbidden_without_transaction_permission(): void
+    {
+        $user = $this->createUser([$this->locationA->id]);
+
+        $this->request($user, '/api/v1/company/locations/transaction-destinations')
+            ->assertForbidden();
+    }
+
     public function test_wired_inventory_locations_index_honors_allowed_set(): void
     {
         $user = $this->createUser([$this->locationA->id]);
@@ -139,7 +161,21 @@ final class LocationListEndpointsTest extends TestCase
             ]);
     }
 
-    public function test_absent_membership_returns_an_empty_scoped_list(): void
+    public function test_wired_inventory_locations_index_falls_back_for_memberless_multi_company_user(): void
+    {
+        $user = User::factory()->for($this->tenant)->create(['status' => UserStatus::Active]);
+        $this->grant($user, 'inventory.view');
+
+        $this->withoutMiddleware(CompanyContextMiddleware::class);
+
+        $response = $this->request($user, '/api/v1/locations');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonMissing(['id' => $this->otherCompanyLocation->id]);
+    }
+
+    public function test_absent_membership_returns_active_company_locations_until_backfill(): void
     {
         $user = User::factory()->for($this->tenant)->create();
         $this->grant($user, 'inventory.view');
@@ -148,7 +184,8 @@ final class LocationListEndpointsTest extends TestCase
 
         $this->request($user, '/api/v1/company/locations')
             ->assertOk()
-            ->assertExactJson(['data' => []]);
+            ->assertJsonCount(2, 'data')
+            ->assertJsonMissing(['id' => $this->otherCompanyLocation->id]);
     }
 
     public function test_inactive_membership_returns_an_empty_scoped_list(): void

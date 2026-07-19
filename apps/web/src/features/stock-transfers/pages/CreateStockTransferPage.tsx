@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { fetchLocations, type LocationApiResponse } from '@/features/locations/api'
+import { fetchLocations, fetchTransactionLocations, type LocationApiResponse } from '@/features/locations/api'
 import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -480,11 +480,16 @@ export function CreateStockTransferPage() {
   const { handleSubmit: handleFormSubmit } = useForm()
   const { currency } = useCurrency()
 
-  const locationsQuery = useQuery({
-    queryKey: tenantScopedKey(['locations', 'all']),
+  const scopedLocationsQuery = useQuery({
+    queryKey: tenantScopedKey(['locations', 'scoped']),
     queryFn: () => fetchLocations(),
   })
-  const locations: LocationApiResponse[] = locationsQuery.data ?? []
+  const transactionLocationsQuery = useQuery({
+    queryKey: tenantScopedKey(['locations', 'transaction-destinations']),
+    queryFn: () => fetchTransactionLocations(),
+  })
+  const sourceLocations: LocationApiResponse[] = scopedLocationsQuery.data ?? []
+  const destinationLocations: LocationApiResponse[] = transactionLocationsQuery.data ?? []
 
   const [sourceLocationId, setSourceLocationId] = useState(() => searchParams.get('source_location_id') ?? '')
   const [destinationLocationId, setDestinationLocationId] = useState('')
@@ -836,7 +841,7 @@ export function CreateStockTransferPage() {
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
-                {locations.map((loc) => (
+                {sourceLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
                     {loc.name}
                   </option>
@@ -856,7 +861,7 @@ export function CreateStockTransferPage() {
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
-                {locations
+                {destinationLocations
                   .filter((loc) => loc.id !== sourceLocationId)
                   .map((loc) => (
                     <option key={loc.id} value={loc.id}>

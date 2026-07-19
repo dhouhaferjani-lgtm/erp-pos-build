@@ -15,7 +15,7 @@ import { BankPicker } from '../../molecules/pickers/BankPicker'
 import type { Bank } from '@/hooks/useBanks'
 import { useBankAccountValidation, type BankAccountValidationResult } from '@/hooks/useBankAccountValidation'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
-import { useLocations } from '@/features/locations/hooks/useLocations'
+import { useTransactionLocations } from '@/features/locations/hooks/useTransactionLocations'
 
 interface Repository {
   id: string
@@ -199,7 +199,7 @@ export function AddRepositoryModal({
   // Form state with React Hook Form
   const { data: accountsData } = useAccounts({ active: true })
   const accounts = accountsData ?? []
-  const { data: locations = [] } = useLocations()
+  const { data: locations = [] } = useTransactionLocations()
 
   const {
     register,

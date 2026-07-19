@@ -5,11 +5,14 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
         $permission = Permission::findOrCreate('users.manage_location_access', 'sanctum');
 
         $admin = Role::query()
@@ -20,6 +23,8 @@ return new class extends Migration
         if ($admin !== null && ! $admin->hasPermissionTo($permission)) {
             $admin->givePermissionTo($permission);
         }
+
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
     }
 
     public function down(): void

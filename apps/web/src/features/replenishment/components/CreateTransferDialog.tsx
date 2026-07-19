@@ -6,7 +6,7 @@ import { RequirePermission } from '@/components/auth'
 import { Button } from '@/components/atoms/Button/Button'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { Modal } from '@/components/organisms/Modal/Modal'
-import { useLocations } from '@/features/locations/hooks/useLocations'
+import { useTransactionLocations } from '@/features/locations/hooks/useTransactionLocations'
 import { getProductStock } from '@/features/products/api/productStock'
 import { bccomp, bcsub } from '@/lib/decimal'
 import { getErrorMessage } from '@/lib/api'
@@ -35,7 +35,7 @@ function initialQuantities(selected: ReplenishmentLine[]): Record<string, string
 
 export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransferDialogProps) {
   const { t } = useTranslation('replenishment')
-  const locations = (useLocations().data ?? []).filter((location) => location.isActive)
+  const locations = useTransactionLocations().data ?? []
   const mutation = useCreateTransferAction()
   const [sourceLocationId, setSourceLocationId] = useState('')
   const [quantities, setQuantities] = useState<Record<string, string>>(() => initialQuantities(selected))

@@ -10,6 +10,7 @@ use App\Modules\Company\Presentation\Requests\CreateLocationRequest;
 use App\Modules\Company\Presentation\Requests\UpdateLocationRequest;
 use App\Modules\Company\Presentation\Resources\LocationResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,7 @@ class LocationController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly LocationScopeResolver $scopeResolver,
     ) {}
 
@@ -29,10 +31,15 @@ class LocationController extends Controller
      */
     public function scopedIndex(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
         /** @var User $user */
         $user = $request->user();
+        $membership = $this->locationContext->getCurrentMembership($companyId, $user);
+        $ids = $membership === null
+            ? $this->activeCompanyLocationIds($companyId)
+            : $this->scopeResolver->resolve($user);
 
-        return $this->pickerPayload($this->scopeResolver->resolve($user));
+        return $this->pickerPayload($ids);
     }
 
     /**
@@ -52,6 +59,38 @@ class LocationController extends Controller
     }
 
     /**
+     * List active locations that may be selected as transaction destinations.
+     * Source/read visibility remains enforced by the scoped endpoints; a
+     * destination may be outside the caller's read subset.
+     */
+    public function transactionIndex(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($user->can('inventory.transfers.create')
+            || $user->can('inventory.transfer')
+            || $user->can('purchase-orders.receive')
+            || $user->can('repositories.manage')
+            || $user->can('document-ingestions.create'), 403);
+
+        $companyId = $this->companyContext->requireCompanyId();
+        $ids = Location::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => LocationResource::collection($ids),
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
      * List all locations for the current company.
      */
     public function index(Request $request): JsonResponse
@@ -60,8 +99,14 @@ class LocationController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        $membership = $this->locationContext->getCurrentMembership($companyId, $user);
+        $allowedIds = $membership === null
+            ? $this->activeCompanyLocationIds($companyId)
+            : $this->scopeResolver->resolve($user);
+
         $locations = Location::where('company_id', $companyId)
-            ->whereIn('id', $this->scopeResolver->resolve($user))
+            ->whereIn('id', $allowedIds)
+            ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get();
@@ -85,6 +130,7 @@ class LocationController extends Controller
         $locations = Location::query()
             ->whereIn('id', $ids)
             ->where('company_id', $companyId)
+            ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get();
@@ -98,6 +144,20 @@ class LocationController extends Controller
                 'is_default' => $location->is_default,
             ])->values()->all(),
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeCompanyLocationIds(string $companyId): array
+    {
+        return Location::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id)
+            ->values()
+            ->all();
     }
 
     /**

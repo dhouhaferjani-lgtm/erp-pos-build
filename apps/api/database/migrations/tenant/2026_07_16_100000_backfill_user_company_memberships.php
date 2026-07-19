@@ -25,9 +25,9 @@ use Illuminate\Support\Str;
  *  - SINGLE-company tenant → the target company is unambiguous; backfill.
  *  - MULTI-company tenant → no auditable per-user company signal; SKIP + emit a
  *    structured `multiloc.backfill.skipped_ambiguous_users` log. Skipped users
- *    are already deny-all today (no membership → [] → fail-closed), so this is
- *    NOT a regression. The companion `users:backfill-memberships --company=`
- *    command maps them manually. The migration NEVER fails (push=deploy).
+ *    remain deny-all until an owner explicitly maps them with the companion
+ *    `users:backfill-memberships --company=` command. The migration NEVER fails
+ *    (push=deploy), but deployment must treat the manual mapping as a gate.
  *
  * Idempotent (memberless set already excludes anyone with a membership) and
  * self-guarding. Membership role is the least-privilege VIEWER — the membership

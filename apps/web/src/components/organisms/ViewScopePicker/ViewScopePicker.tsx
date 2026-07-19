@@ -32,6 +32,7 @@ export function ViewScopePicker({ className = '' }: ViewScopePickerProps) {
     const next = selectedIds.includes(id)
       ? selectedIds.filter((locationId) => locationId !== id)
       : [...selectedIds, id]
+    if (next.length === 0) return
     setScope(next.length === locations.length ? 'all' : next)
   }
 

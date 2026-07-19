@@ -544,8 +544,7 @@ Route::get('/inventory/stock-matrix/rebalance', [StockMatrixController::class, '
 **FE:** `RebalancingView` fetches `getRebalance({ locationIds, includeIncoming })` (key `locationScopedKey(['inventory-rebalance'], scope)`); `rebalance.ts` is now a PURE pairing/formatting of `RebalanceRow[]` → "Move from {surplus store} → {deficit store}" display rows (quantities via `formatQuantity`), no classification (that is the server's job). CTA "Create transfer" prefills `CreateStockTransferPage` (`?source_location_id=&destination_location_id=&product_id=&quantity=`). Empty state `t('stockByLocation.rebalance.empty')` when `data` empty. Gate CTA behind `inventory.transfers.create`.
 
 **TDD steps**
-- [ ] Write `StockRebalanceEndpointTest` (PG, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs): deficit-at-A + surplus-at-B for one product → one `RebalanceRow` with the deficit/surplus arrays and `excess` correct; product with only a deficit (no donor) → NOT emitted; **NULL-threshold fallback classification** (no thresholds anywhere → largest-available donor + `available<=0` receiver emitted); resolver scoping (restricted user + no param → only allowed locations classified, out-of-scope id → 403); severity sort. Run `./vendor/bin/pest tests/Feature/Inventory/StockRebalanceEndpointTest.php` → RED → GREEN.
-- [ ] Write and run the planned Postgres `StockRebalanceEndpointTest` (implementation is complete; this remains a coverage gap).
+- [x] Write and run the Postgres `StockRebalanceEndpointTest` (threshold classification and NULL-threshold fallback; 2 tests / 8 assertions).
 - [x] PHPStan for the rebalancing service/controller passes; frontend API/view is wired and typecheck/scoped lint pass.
 - [x] Add `rebalance.test.ts` pairing and empty-state coverage (2 tests pass).
 - [x] Commit: `feat(inventory): server-side rebalancing endpoint + Stock-by-location view (multiloc §2 G7)` (`d20041972`).
@@ -580,7 +579,7 @@ Inject `LocationScopeResolver` via the constructor (`private readonly`); read `$
 - Query key becomes `locationScopedKey(['product-movements', productId, page, perPage], scope)` — the scope segment carries the selected ids (or drive the tab's local multi-select through `useViewScope` narrowing per §1 F3; at minimum stop keying on the raw array as a leading segment).
 
 **TDD steps**
-- [ ] `StockMovementLocationFilterTest` (PG): movements at A, B, C. Cases: unrestricted user `location_ids[]=A,B` → only A,B; out-of-scope id → 403 (fail-closed); **unrestricted user NO param → all three (A,B,C), proving the applied full-allowed-set equals the company set**; **restricted user (allowed=[A]) NO param → ONLY A (proves no-param does NOT leak B/C — Finding 5)**; restricted user `location_ids[]=B` → 403. Run `./vendor/bin/pest tests/Feature/Inventory/StockMovementLocationFilterTest.php` → RED → GREEN.
+- [x] `StockMovementLocationFilterTest` runs against PostgreSQL (2 tests / 6 assertions) and proves multi-id server filtering plus restricted no-param fail-closed behavior.
 - [x] Backend `StockMovementController` always resolves/applies location scope (already delivered in `dadd8a008`); frontend now sends `location_ids[]`, removes client filtering, and uses `bccomp` for sign checks.
 - [x] Existing `ProductMovementsTab` suite passes (12 tests); `grep` confirms no `parseFloat` remains in the component.
 - [x] `pnpm typecheck` and scoped ESLint pass; commit `d8c489854`.

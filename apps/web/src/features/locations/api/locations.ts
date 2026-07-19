@@ -53,9 +53,17 @@ function mapLocation(raw: RawLocation): Location {
 /**
  * Get all locations for the current company
  */
-export async function getLocations(): Promise<Location[]> {
-  const raw = await apiGet<RawLocation[]>('/locations')
+async function getLocationList(path: string): Promise<Location[]> {
+  const raw = await apiGet<RawLocation[]>(path)
   return raw.map(mapLocation)
+}
+
+export async function getLocations(): Promise<Location[]> {
+  return getLocationList('/locations')
+}
+
+export async function getTransactionLocations(): Promise<Location[]> {
+  return getLocationList('/company/locations/transaction-destinations')
 }
 
 /**

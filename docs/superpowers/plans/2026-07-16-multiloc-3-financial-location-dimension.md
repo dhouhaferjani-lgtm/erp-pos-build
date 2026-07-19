@@ -74,7 +74,7 @@ Without this the whole package attributes ~100% to Unattributed (review BLOCKER 
 - Consumes: `GET /company/locations` (§1); `ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)` (existing shared rule — locations are company-scoped, so validation must check **both** axes; `ScopedExists::tenant` would let a sibling company's location pass).
 - Produces: `formatRepository()` output now includes `'location_id'` + `'location_name'`. Every downstream reader (bridges, backfill, cash position) relies on `payment_repositories.location_id` being populated for cash registers/safes.
 
-- [ ] **Step 1: Write the failing BE test** — `formatRepository` exposes `location_id`, and store/update round-trip it with company-scoped validation. **No nonexistent harness:** there is no `SeedsTreasuryCompany` trait in this repo. Anchor to the real treasury feature-test idiom — `use RefreshDatabase;` plus a private `seedTreasuryCompany(): array` helper written in this class that builds `Tenant` + `Country`/`CountryPaymentSettings` + `Company` + authed `User` with direct `::create(...)` calls (copy the `setUp()` body of `apps/api/tests/Feature/Treasury/AuditDiscountsCommandTest.php:41-90` verbatim, returning `[$user, $company]`).
+- [x] **Step 1: Add dedicated `PaymentRepositoryLocationTest`** covering index exposure, store/update round-trip, and sibling-company rejection.
 
 ```php
 <?php
@@ -170,7 +170,7 @@ final class PaymentRepositoryLocationTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run it — expect FAIL** (location_id absent from `formatRepository`; foreign + sibling-company ids currently accepted because validation is `['nullable','uuid']`).
+- [x] **Step 2: PostgreSQL test now passes (3 tests / 8 assertions).**
 
 Run: `cd apps/api && php artisan test tests/Feature/Treasury/PaymentRepositoryLocationTest.php`
 Expected: FAIL (`location_id` path missing; foreign/sibling id 201 not 422).
@@ -202,7 +202,7 @@ public function location(): BelongsTo
 }
 ```
 
-- [ ] **Step 4: Run BE test — expect PASS.**
+- [x] **Step 4: PostgreSQL repository-location test passes.**
 
 Run: `cd apps/api && php artisan test tests/Feature/Treasury/PaymentRepositoryLocationTest.php`
 Expected: PASS.
@@ -254,7 +254,7 @@ Expected: PASS.
 
 - [ ] **Step 9: typescript:transform is not needed** (no PHP DTO changed — `formatRepository` returns an array). Skip.
 
-- [x] **Step 10: Commit `40c7e6567`.** Dedicated backend location feature test remains a coverage gap.
+- [x] **Step 10: Commits `40c7e6567` and `709e99e76`.**
 
 ```bash
 git add apps/api/app/Modules/Treasury apps/api/tests/Feature/Treasury/PaymentRepositoryLocationTest.php apps/web/src/components/organisms/AddRepositoryModal apps/web/src/features/treasury/RepositoryListPage.tsx
@@ -501,7 +501,7 @@ and in **both** `MaturityLegContext` constructions add `locationId: $terminalLoc
 
 Add the identical `resolveTerminalLocationId` helper to both bridges (or extract to a shared trait `ResolvesTerminalLocation` in `App\Modules\Treasury\Application\Projections\Concerns` — preferred, DRY).
 
-- [ ] **Step 6: Add the dedicated three-bridge attribution test** (existing TreasuryReceiptBridge regression passes; dedicated coverage remains).
+- [x] **Step 6: Dedicated three-bridge attribution test passes.**
 
 Run: `cd apps/api && php artisan test tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php`
 Expected: PASS.
@@ -511,7 +511,7 @@ Expected: PASS.
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Treasury/Application/Projections app/Modules/Treasury/Application/DTOs/MaturityLegContext.php app/Modules/Treasury/Application/DTOs/ReceiveInstrumentData.php`
 Expected: no errors.
 
-- [x] **Step 8: Commit `dc818e945`.**
+- [x] **Step 8: Commits `dc818e945` and `709e99e76` (including the corrected `pos_terminals` table lookup).**
 
 ```bash
 git add apps/api/app/Modules/Treasury/Application/Projections apps/api/app/Modules/Treasury/Application/DTOs apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php apps/api/tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php

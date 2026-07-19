@@ -115,17 +115,24 @@ class UserController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        $data = $users->getCollection()->map(fn (User $user) => [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'phone' => $user->phone,
-            'status' => $user->status->value,
-            'roles' => $user->getRoleNames()->values()->all(),
-            'allowed_location_ids' => $memberships->get($user->id)?->allowed_location_ids,
-            'lastLoginAt' => $user->last_login_at?->toIso8601String(),
-            'createdAt' => $user->created_at->toIso8601String(),
-        ]);
+        $canManageLocationAccess = $currentUser->can('users.manage_location_access');
+        $data = $users->getCollection()->map(function (User $user) use ($memberships, $canManageLocationAccess): array {
+            $row = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'status' => $user->status->value,
+                'roles' => $user->getRoleNames()->values()->all(),
+                'lastLoginAt' => $user->last_login_at?->toIso8601String(),
+                'createdAt' => $user->created_at->toIso8601String(),
+            ];
+            if ($canManageLocationAccess) {
+                $row['allowed_location_ids'] = $memberships->get($user->id)?->allowed_location_ids;
+            }
+
+            return $row;
+        });
 
         return response()->json([
             'data' => $data,
@@ -187,9 +194,14 @@ class UserController extends Controller
         $currentUser = $request->user();
         $validated = $request->validated();
 
-        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated);
+        $companyId = $this->companyContext->requireCompanyId();
+        $callerAllowedLocations = $this->locationContext->getAllowedLocationIds($companyId, $currentUser);
+        $hasLocationGrant = array_key_exists('allowed_location_ids', $validated)
+            || $callerAllowedLocations !== null;
         /** @var list<string>|null $requestedLocations */
-        $requestedLocations = $hasLocationGrant ? $validated['allowed_location_ids'] : null;
+        $requestedLocations = array_key_exists('allowed_location_ids', $validated)
+            ? $validated['allowed_location_ids']
+            : $callerAllowedLocations;
 
         if ($hasLocationGrant) {
             $denied = $this->authorizeLocationGrant($currentUser, null, $requestedLocations, $request);
@@ -201,7 +213,7 @@ class UserController extends Controller
         /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($currentUser->tenant_id);
 
-        $user = DB::transaction(function () use ($validated, $currentUser, $hasLocationGrant, $requestedLocations) {
+        $user = DB::transaction(function () use ($validated, $currentUser, $companyId, $hasLocationGrant, $requestedLocations) {
             // Generate a random password (user will set it via invitation email)
             $tempPassword = Str::random(32);
 
@@ -227,8 +239,10 @@ class UserController extends Controller
 
             UserCompanyMembership::create([
                 'user_id' => $user->id,
-                'company_id' => $this->companyContext->requireCompanyId(),
-                'role' => MembershipRole::tryFrom($validated['role']) ?? MembershipRole::Viewer,
+                'company_id' => $companyId,
+                // Spatie role names are tenant-authored labels; never let a
+                // role named "owner" mint ownership in the company scope.
+                'role' => MembershipRole::Viewer,
                 'allowed_location_ids' => null,
                 'is_primary' => UserCompanyMembership::where('user_id', $user->id)->count() === 0,
                 'status' => MembershipStatus::Active,
@@ -238,7 +252,7 @@ class UserController extends Controller
                 $this->writeLocationGrant(
                     $user->id,
                     $requestedLocations,
-                    $this->companyContext->requireCompanyId(),
+                    $companyId,
                 );
             }
 

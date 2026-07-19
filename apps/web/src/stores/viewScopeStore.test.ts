@@ -9,6 +9,13 @@ async function freshStore(companyId = 'c1') {
   vi.resetModules()
 
   const companyModule = await import('./companyStore')
+  const authModule = await import('./authStore')
+  authModule.useAuthStore.setState({
+    user: { id: 'u1', name: 'User', email: 'u@example.test', tenant_id: 't1', roles: [], email_verified_at: null },
+    token: null,
+    isAuthenticated: true,
+    isLoading: false,
+  })
   companyModule.useCompanyStore.setState({
     currentCompanyId: companyId,
     companies: [],
@@ -24,18 +31,18 @@ describe('viewScopeStore', () => {
     localStorage.clear()
   })
 
-  it('persists scope keyed by company id', async () => {
+  it('persists scope keyed by company and user id', async () => {
     const { useViewScopeStore } = await freshStore('c1')
 
     useViewScopeStore.getState().setScope(['loc-a'])
 
-    const persisted = localStorage.getItem('autoerp-view-scope:c1')
+    const persisted = localStorage.getItem('autoerp-view-scope:c1:u1')
     expect(persisted === null ? null : JSON.parse(persisted)).toEqual(['loc-a'])
   })
 
   it('resets to all on a real company change and never rehydrates A under B', async () => {
-    localStorage.setItem('autoerp-view-scope:c1', JSON.stringify(['loc-a']))
-    localStorage.setItem('autoerp-view-scope:c2', JSON.stringify(['loc-b']))
+    localStorage.setItem('autoerp-view-scope:c1:u1', JSON.stringify(['loc-a']))
+    localStorage.setItem('autoerp-view-scope:c2:u1', JSON.stringify(['loc-b']))
 
     const { useViewScopeStore, companyStore } = await freshStore('c1')
     expect(useViewScopeStore.getState().scope).toEqual(['loc-a'])
@@ -43,14 +50,14 @@ describe('viewScopeStore', () => {
     companyStore.setState({ currentCompanyId: 'c2' })
 
     expect(useViewScopeStore.getState().scope).toBe('all')
-    expect(localStorage.getItem('autoerp-view-scope:c1')).toBe(JSON.stringify(['loc-a']))
+    expect(localStorage.getItem('autoerp-view-scope:c1:u1')).toBe(JSON.stringify(['loc-a']))
   })
 
   it('cross-tab storage event adopts a valid payload', async () => {
     const { useViewScopeStore } = await freshStore('c1')
 
     window.dispatchEvent(new StorageEvent('storage', {
-      key: 'autoerp-view-scope:c1',
+      key: 'autoerp-view-scope:c1:u1',
       newValue: JSON.stringify(['loc-b']),
     }))
 
@@ -62,7 +69,7 @@ describe('viewScopeStore', () => {
     useViewScopeStore.getState().setScope(['loc-b'])
 
     window.dispatchEvent(new StorageEvent('storage', {
-      key: 'autoerp-view-scope:c1',
+      key: 'autoerp-view-scope:c1:u1',
       newValue: '{not json',
     }))
 

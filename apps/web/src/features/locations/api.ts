@@ -127,6 +127,11 @@ export async function fetchLocations(): Promise<LocationApiResponse[]> {
   return apiGet<LocationApiResponse[]>('/locations')
 }
 
+/** Fetches active locations available as transaction destinations. */
+export async function fetchTransactionLocations(): Promise<LocationApiResponse[]> {
+  return apiGet<LocationApiResponse[]>('/company/locations/transaction-destinations')
+}
+
 /**
  * Fetches a single location by ID
  */

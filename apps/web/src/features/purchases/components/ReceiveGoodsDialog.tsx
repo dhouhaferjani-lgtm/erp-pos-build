@@ -7,7 +7,7 @@ import { Modal } from '@/components/organisms/Modal'
 import { bccomp, bcdiv, bcmul, bcsub, formatQuantity } from '@/lib/decimal'
 import { tokens, textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
-import { useLocations } from '@/features/locations/hooks/useLocations'
+import { useTransactionLocations } from '@/features/locations/hooks/useTransactionLocations'
 
 export interface ReceiveBatchPayload {
   batch_number: string
@@ -108,7 +108,7 @@ export function ReceiveGoodsDialog({
 }) {
   const { t } = useTranslation(['sales', 'common'])
   const { hasPermission } = usePermissions()
-  const { data: locations = [] } = useLocations()
+  const { data: locations = [] } = useTransactionLocations()
   const canEditReceiptPrice = hasPermission('goods-receipt.edit-price')
   const currency = purchaseOrder.currency ?? 'TND'
   const receivableLines = useMemo(

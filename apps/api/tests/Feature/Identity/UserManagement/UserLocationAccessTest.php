@@ -331,6 +331,25 @@ final class UserLocationAccessTest extends TestCase
         );
     }
 
+    public function test_restricted_creator_omitting_location_grant_inherits_own_location_set(): void
+    {
+        Notification::fake();
+        $granter = $this->createRestrictedAdmin('restricted-implicit@example.com', [$this->locationA->id]);
+        $granter->givePermissionTo('users.create');
+
+        $response = $this->actingAs($granter, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Implicitly Restricted User',
+                'email' => 'implicitly-restricted@example.com',
+                'role' => 'viewer',
+            ]);
+
+        $response->assertCreated();
+        $created = User::where('email', 'implicitly-restricted@example.com')->firstOrFail();
+        $this->assertSame([$this->locationA->id], $this->membershipFor($created)->allowed_location_ids);
+    }
+
     public function test_store_authorized_explicit_null_creates_unrestricted_membership(): void
     {
         Notification::fake();

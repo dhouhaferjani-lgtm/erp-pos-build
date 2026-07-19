@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useCompanyStore } from './companyStore'
+import { useAuthStore } from './authStore'
 
 export type ViewScope = 'all' | string[]
 
@@ -10,7 +11,7 @@ interface ViewScopeState {
   _hydrate: (scope: ViewScope) => void
 }
 
-const keyFor = (companyId: string): string => `autoerp-view-scope:${companyId}`
+const keyFor = (companyId: string, userId: string | null): string => `autoerp-view-scope:${companyId}:${userId ?? 'anonymous'}`
 
 /**
  * Parse a payload into a ViewScope, or return null when it is absent,
@@ -37,17 +38,17 @@ export function parseScope(raw: string | null): ViewScope {
   return tryParseScope(raw) ?? 'all'
 }
 
-function readPersistedScope(companyId: string): ViewScope {
+function readPersistedScope(companyId: string, userId: string | null): ViewScope {
   try {
-    return parseScope(localStorage.getItem(keyFor(companyId)))
+    return parseScope(localStorage.getItem(keyFor(companyId, userId)))
   } catch {
     return 'all'
   }
 }
 
-function persistScope(companyId: string, scope: ViewScope): void {
+function persistScope(companyId: string, userId: string | null, scope: ViewScope): void {
   try {
-    localStorage.setItem(keyFor(companyId), JSON.stringify(scope))
+    localStorage.setItem(keyFor(companyId, userId), JSON.stringify(scope))
   } catch {
     // Ignore persistence failures (quota/private mode); in-memory state still updates.
   }
@@ -57,7 +58,8 @@ export const useViewScopeStore = create<ViewScopeState>()((set) => ({
   scope: 'all',
   setScope: (scope) => {
     const companyId = useCompanyStore.getState().currentCompanyId
-    if (companyId) persistScope(companyId, scope)
+    const userId = useAuthStore.getState().user?.id ?? null
+    if (companyId) persistScope(companyId, userId, scope)
     set({ scope })
   },
   _hydrate: (scope) => {
@@ -69,34 +71,48 @@ export const useViewScopeStore = create<ViewScopeState>()((set) => ({
 // provider's previous-company guard and location-store storage listener.
 if (typeof window !== 'undefined') {
   let previousCompanyId: string | null = null
+  let previousUserId: string | null = null
 
-  const syncForCompany = (companyId: string | null): void => {
+  const syncForCompany = (companyId: string | null, userId: string | null): void => {
     if (companyId === null) {
       previousCompanyId = null
+      previousUserId = null
       return
     }
 
     if (previousCompanyId === null) {
       // First load / refresh: honor this company's persisted scope.
-      useViewScopeStore.getState()._hydrate(readPersistedScope(companyId))
-    } else if (previousCompanyId !== companyId) {
+      useViewScopeStore.getState()._hydrate(readPersistedScope(companyId, userId))
+    } else if (previousCompanyId === companyId && previousUserId === null && userId !== null) {
+      // Auth hydration can happen after the company store. Load the user's
+      // persisted subset instead of resetting it to the company-wide default.
+      useViewScopeStore.getState()._hydrate(readPersistedScope(companyId, userId))
+    } else if (previousCompanyId !== companyId || previousUserId !== userId) {
       // Real company change: reset to all; never carry another company's subset.
       useViewScopeStore.getState()._hydrate('all')
     }
 
     previousCompanyId = companyId
+    previousUserId = userId
   }
 
-  syncForCompany(useCompanyStore.getState().currentCompanyId)
+  syncForCompany(useCompanyStore.getState().currentCompanyId, useAuthStore.getState().user?.id ?? null)
   if (typeof useCompanyStore.subscribe === 'function') {
     useCompanyStore.subscribe((state) => {
-      syncForCompany(state.currentCompanyId)
+      syncForCompany(state.currentCompanyId, useAuthStore.getState().user?.id ?? null)
+    })
+  }
+
+  if (typeof useAuthStore.subscribe === 'function') {
+    useAuthStore.subscribe((state) => {
+      syncForCompany(useCompanyStore.getState().currentCompanyId, state.user?.id ?? null)
     })
   }
 
   window.addEventListener('storage', (event: StorageEvent) => {
     const companyId = useCompanyStore.getState().currentCompanyId
-    if (!companyId || event.key !== keyFor(companyId)) return
+    const userId = useAuthStore.getState().user?.id ?? null
+    if (!companyId || event.key !== keyFor(companyId, userId)) return
     if (event.newValue === null || event.newValue === '') return
 
     // Ignore present-but-malformed/invalid payloads so the current selection is

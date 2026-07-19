@@ -46,6 +46,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('company/locations', [LocationController::class, 'scopedIndex'])
         ->name('company.locations.scoped');
 
+    Route::get('company/locations/transaction-destinations', [LocationController::class, 'transactionIndex'])
+        ->name('company.locations.transaction-destinations');
+
     Route::get('company/locations/all', [LocationController::class, 'managementIndex'])
         ->middleware('can:users.manage_location_access')
         ->name('company.locations.all');
