@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -22,6 +23,24 @@ return new class extends Migration
             ->where('guard_name', 'sanctum')
             ->when($tenantId !== null, static fn ($query) => $query->where($teamColumn, $tenantId))
             ->first();
+
+        if ($admin === null && $tenantId !== null) {
+            // Older tenant seeds could create the admin role before the team
+            // context was initialized. Preserve the deploy guarantee while
+            // recording that legacy row for follow-up reseeding.
+            $admin = Role::query()
+                ->where('name', 'admin')
+                ->where('guard_name', 'sanctum')
+                ->first();
+
+            if ($admin !== null) {
+                Log::warning('multiloc.permission_migration_legacy_admin_role', [
+                    'tenant_id' => $tenantId,
+                    'team_column' => $teamColumn,
+                    'role_id' => $admin->id,
+                ]);
+            }
+        }
 
         if ($admin !== null && ! $admin->hasPermissionTo($permission)) {
             $admin->givePermissionTo($permission);

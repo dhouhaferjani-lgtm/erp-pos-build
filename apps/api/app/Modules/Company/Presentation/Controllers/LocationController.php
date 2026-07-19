@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class LocationController extends Controller
 {
@@ -119,9 +120,9 @@ class LocationController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Location>  $locations
+     * @param  Collection<int, Location>  $locations
      */
-    private function transactionPickerPayload($locations): JsonResponse
+    private function transactionPickerPayload(Collection $locations): JsonResponse
     {
         return response()->json([
             'data' => $locations->map(static fn (Location $location): array => [
