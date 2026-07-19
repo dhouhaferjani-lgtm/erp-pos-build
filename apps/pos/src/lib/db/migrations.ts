@@ -1895,4 +1895,18 @@ export const migrations: Migration[] = [
         ON open_replenishment_cache(tenant_id, company_id, product_id, variant_id);
     `,
   },
+  {
+    version: 61,
+    name: 'add_suggested_qty_to_replenishment_cache',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          'ALTER TABLE open_replenishment_cache ADD COLUMN suggested_qty TEXT',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    },
+  },
 ];

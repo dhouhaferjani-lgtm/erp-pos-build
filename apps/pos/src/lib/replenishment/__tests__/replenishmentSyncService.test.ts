@@ -139,6 +139,22 @@ describe('replenishment sync', () => {
     );
   });
 
+  it.each([
+    ['missing', undefined],
+    ['non-string', 4],
+  ])('rejects a pull row with %s suggested_qty', async (_label, suggestedQty) => {
+    vi.mocked(fetchOpenReplenishment).mockResolvedValueOnce({
+      data: [serverRow({ suggested_qty: suggestedQty })],
+      as_of: '2026-07-10T12:05:00.000Z',
+      truncated: false,
+    });
+
+    await expect(
+      pullOpenReplenishment(db, TENANT_ID, COMPANY_ID, 'terminal-1'),
+    ).rejects.toThrow('invalid suggested_qty');
+    expect(replaceOpenRequests).not.toHaveBeenCalled();
+  });
+
   it('upserts without deleting absent cache rows when the pull feed is truncated', async () => {
     const rows = [serverRow()];
     vi.mocked(fetchOpenReplenishment).mockResolvedValueOnce({
@@ -185,6 +201,7 @@ function serverRow(overrides: Record<string, unknown> = {}) {
     variant_id: null,
     status: 'pending',
     requested_qty: '1.0000',
+    suggested_qty: '6.0000',
     request_count: 1,
     last_requested_at: '2026-07-10T12:01:00.000Z',
     ...overrides,

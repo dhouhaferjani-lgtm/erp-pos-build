@@ -23,6 +23,7 @@ final class ReplenishmentRequestResource extends JsonResource
             'variant_id' => $this->variant_id,
             'variant_name' => $this->variant_name,
             'requested_qty' => $this->requested_qty,
+            'suggested_qty' => $this->suggested_qty,
             'note' => $this->note,
             'request_count' => $this->request_count,
             'status' => $this->status->value,

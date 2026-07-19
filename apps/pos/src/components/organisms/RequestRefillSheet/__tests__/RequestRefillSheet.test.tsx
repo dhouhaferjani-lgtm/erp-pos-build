@@ -127,11 +127,87 @@ describe('RequestRefillSheet', () => {
       request_id: 'server-request-1',
       status: 'pending',
       last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
     });
 
     render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
 
     expect(await screen.findByText('replenishment.already_requested')).toBeInTheDocument();
+  });
+
+  it('prefills and submits the cached suggested quantity', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
+    });
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    await waitFor(() => expect(quantity).toHaveValue('6.0000'));
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => {
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        mocks.db,
+        expect.objectContaining({ requested_qty: '6.0000' }),
+      );
+    });
+  });
+
+  it('keeps the cached suggested quantity editable', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
+    });
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    await waitFor(() => expect(quantity).toHaveValue('6.0000'));
+    fireEvent.change(quantity, { target: { value: '4.5000' } });
+
+    expect(quantity).toHaveValue('4.5000');
+  });
+
+  it('leaves quantity blank when the cached row has no suggestion', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: null,
+    });
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+
+    await screen.findByText('replenishment.already_requested');
+    expect(screen.getByLabelText('replenishment.quantity_optional')).toHaveValue('');
+  });
+
+  it('does not overwrite a user edit while the cache lookup is in flight', async () => {
+    let resolveCache: ((value: {
+      request_id: string;
+      status: string;
+      last_requested_at: string;
+      suggested_qty: string;
+    }) => void) | undefined;
+    mocks.getOpen.mockReturnValueOnce(new Promise((resolve) => {
+      resolveCache = resolve;
+    }));
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    fireEvent.change(quantity, { target: { value: '3.0000' } });
+    resolveCache?.({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
+    });
+
+    await screen.findByText('replenishment.already_requested');
+    expect(quantity).toHaveValue('3.0000');
   });
 
   it('rejects quantities with more than four decimal places', async () => {
