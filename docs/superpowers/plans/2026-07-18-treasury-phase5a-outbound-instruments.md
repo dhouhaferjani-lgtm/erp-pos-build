@@ -22,7 +22,7 @@
 - Tests: PHPUnit by path, `RefreshDatabase` + `RolesAndPermissionsSeeder`; NEVER the full suite. Every task: PHPStan+Pint clean on touched paths, then commit.
 - 🚦 **HARD GATE** after each wave: `treasury-reviewer` (Opus) adversarial pass on the wave diff; REJECT ⇒ fix before next wave. Human merges only.
 - **Chart codes:** `403`/`4035` are seeder-owned and **final for this build** (owner ruling 2026-07-18). If different numbers are ever preferred, that is a later seeder edit + `treasury:backfill-payable-instrument-accounts` re-run — never a blocker here.
-- **Deploy notes (produce `docs/handoff/treasury-phase5a-deploy-checklist.md` in Wave 4, stacking on the owed ③/④ checklists):** 2 tenant migrations + chart-seed/backfill command per tenant + `RolesAndPermissionsSeeder` re-run + `permission:cache-reset` per tenant (tenant-blind Spatie cache bug — otherwise existing tenants silently 403).
+- **Deploy notes (produce `docs/handoff/treasury-phase5a-deploy-checklist.md` in Wave 4, stacking on the owed ③/④ checklists):** 3 tenant migrations (the two lifecycle/idempotency migrations plus Task 9's expense-instrument FK) + chart-seed/backfill command per tenant + `RolesAndPermissionsSeeder` re-run + `permission:cache-reset` per tenant (tenant-blind Spatie cache bug — otherwise existing tenants silently 403).
 
 ## File Structure
 
