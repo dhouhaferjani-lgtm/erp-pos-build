@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $product_id
  * @property string|null $variant_id
  * @property numeric-string|null $requested_qty
+ * @property numeric-string|null $suggested_qty Feed-only POS quantity suggestion
  * @property string|null $note
  * @property int $request_count
  * @property ReplenishmentStatus $status

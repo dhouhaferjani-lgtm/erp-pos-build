@@ -29,6 +29,7 @@ const INITIAL_FORM = {
   quantity: '',
   note: '',
   quantityInvalid: false,
+  quantityEdited: false,
   lastRequestedAt: null as string | null,
 };
 
@@ -65,6 +66,9 @@ export function RequestRefillSheet({
       if (!cancelled) {
         setForm((current) => ({
           ...current,
+          quantity: current.quantityEdited
+            ? current.quantity
+            : (cached?.suggested_qty ?? ''),
           lastRequestedAt: cached?.last_requested_at ?? null,
         }));
       }
@@ -168,6 +172,7 @@ export function RequestRefillSheet({
                 ...current,
                 quantity: event.target.value,
                 quantityInvalid: false,
+                quantityEdited: true,
               }));
             }}
           />

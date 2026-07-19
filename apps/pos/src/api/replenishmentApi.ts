@@ -15,6 +15,7 @@ export interface ServerReplenishmentRow {
   variant_id: string | null;
   status: string;
   requested_qty: string | null;
+  suggested_qty: string | null;
   request_count: number;
   last_requested_at: string;
 }

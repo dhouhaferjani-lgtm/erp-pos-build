@@ -215,3 +215,19 @@ Target: `chore/pagination-meta-consolidation` @ `8c59d6d2a` (squashed, on dev `5
 Minors (recorded, no action): (1) required-meta sites assume endpoints route through `PaginatesResults` — wrap in `Partial<>` if any hand-builds meta; (2) `import type` at bottom of ~15 files (cosmetic, `import/first` not enabled); (3) guard excludes test fixtures by design.
 
 Verdict: **MERGE APPROVED** at `8c59d6d2a`.
+
+---
+
+## Round 10 — Wave C POS refill quantity suggestions, pre-merge gate (2026-07-19)
+
+Target: `feat/pos-replenishment-suggested-qty` @ `6d399384e` (squashed, on dev `28c422cc8`). Two Opus lanes.
+
+**inventory: APPROVE.** Order-up-to math verified (`target = max ?? min`, `bcsub(target, available, 4)`, floor `1.0000`; negative available correctly increases order); variant grain mirrors the two partial unique indexes (no COALESCE); location grain = terminal's shop; `min/max_quantity` are existing per-location `stock_levels` columns — no dependency on unmerged multiloc §4; rule-19 clean (pure bcmath at `QuantityScale::SCALE`, numeric-string end-to-end); rule-6 clean (Inventory public service, constructor-injected, no model imports); single batched query, closed rows nulled without compute. MINOR-1 (two missing branch-coverage cases) **APPLIED post-review**: null-thresholds-with-row → `1.0000`, zero-available → full max (13 tests / 56 assertions green).
+
+**fiscal-pos: APPROVE.** Rule-19 POS side clean (string end-to-end, `bccomp` validation, no parseFloat); migration v61 additive nullable + dup-column-guarded, idempotence genuinely exercised, fresh-install ≡ upgrade schema; rule-20 clean (no new timestamp comparisons; `replaceOpenRequests` keeps upsert-first/delete-absent); sync guard rejects bad batch but caller swallow-and-logs → retries next tick, push outbox separate — no wedge; refill-sheet prefill race guarded by dirty-state functional setState (race test proves it); additive `suggested_qty` field breaks no consumer (web structural typing); zero fiscal surface; push null cannot clobber cached suggestion.
+
+Minors recorded no-action: concrete-service seam (rule-6-compliant; interface if deptrac tightens); overstocked grains suggest `1.0000` by design (floor-one, optional field); wide OR-predicate lookup acceptable (single query).
+
+Verdict: **MERGE APPROVED** (post test-coverage commit).
+
+DEPLOY: standard `tenants:migrate` NOT required (no server migration in this wave — feed computed from existing columns); POS device update REQUIRED (sqlite v61, stacks on owed v60).
