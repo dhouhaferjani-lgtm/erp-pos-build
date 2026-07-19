@@ -350,6 +350,30 @@ final class UserLocationAccessTest extends TestCase
         $this->assertSame([$this->locationA->id], $this->membershipFor($created)->allowed_location_ids);
     }
 
+    public function test_restricted_creator_without_manage_permission_can_create_implicitly_restricted_user(): void
+    {
+        Notification::fake();
+        $granter = $this->createUser(
+            email: 'restricted-basic@example.com',
+            spatieRole: 'viewer',
+            membershipRole: MembershipRole::Manager,
+            allowedLocations: [$this->locationA->id],
+        );
+        $granter->givePermissionTo('users.create');
+
+        $response = $this->actingAs($granter, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/users', [
+                'name' => 'Implicitly Restricted Basic User',
+                'email' => 'implicitly-restricted-basic@example.com',
+                'role' => 'viewer',
+            ]);
+
+        $response->assertCreated();
+        $created = User::where('email', 'implicitly-restricted-basic@example.com')->firstOrFail();
+        $this->assertSame([$this->locationA->id], $this->membershipFor($created)->allowed_location_ids);
+    }
+
     public function test_store_authorized_explicit_null_creates_unrestricted_membership(): void
     {
         Notification::fake();

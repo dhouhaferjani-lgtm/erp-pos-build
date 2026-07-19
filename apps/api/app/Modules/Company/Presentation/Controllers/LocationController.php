@@ -6,11 +6,11 @@ namespace App\Modules\Company\Presentation\Controllers;
 
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Presentation\Requests\CreateLocationRequest;
 use App\Modules\Company\Presentation\Requests\UpdateLocationRequest;
 use App\Modules\Company\Presentation\Resources\LocationResource;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Services\LocationContext;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +22,6 @@ class LocationController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
-        private readonly LocationContext $locationContext,
         private readonly LocationScopeResolver $scopeResolver,
     ) {}
 
@@ -34,8 +33,11 @@ class LocationController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         /** @var User $user */
         $user = $request->user();
-        $membership = $this->locationContext->getCurrentMembership($companyId, $user);
-        $ids = $membership === null
+        $hasMembershipRecord = UserCompanyMembership::query()
+            ->where('user_id', $user->id)
+            ->where('company_id', $companyId)
+            ->exists();
+        $ids = ! $hasMembershipRecord
             ? $this->activeCompanyLocationIds($companyId)
             : $this->scopeResolver->resolve($user);
 
@@ -99,8 +101,11 @@ class LocationController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $membership = $this->locationContext->getCurrentMembership($companyId, $user);
-        $allowedIds = $membership === null
+        $hasMembershipRecord = UserCompanyMembership::query()
+            ->where('user_id', $user->id)
+            ->where('company_id', $companyId)
+            ->exists();
+        $allowedIds = ! $hasMembershipRecord
             ? $this->activeCompanyLocationIds($companyId)
             : $this->scopeResolver->resolve($user);
 
@@ -147,7 +152,7 @@ class LocationController extends Controller
     }
 
     /**
-     * @return list<string>
+     * @return array<int, string>
      */
     private function activeCompanyLocationIds(string $companyId): array
     {

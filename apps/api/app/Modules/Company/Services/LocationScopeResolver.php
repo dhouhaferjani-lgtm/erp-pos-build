@@ -60,7 +60,10 @@ final class LocationScopeResolver
             return $this->allCompanyLocationIds($companyId);
         }
 
-        return array_values($membershipAllowed);
+        return array_values(array_intersect(
+            $membershipAllowed,
+            $this->allCompanyLocationIds($companyId),
+        ));
     }
 
     /**

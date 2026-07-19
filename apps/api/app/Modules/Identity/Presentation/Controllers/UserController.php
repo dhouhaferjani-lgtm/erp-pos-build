@@ -203,7 +203,7 @@ class UserController extends Controller
             ? $validated['allowed_location_ids']
             : $callerAllowedLocations;
 
-        if ($hasLocationGrant) {
+        if (array_key_exists('allowed_location_ids', $validated)) {
             $denied = $this->authorizeLocationGrant($currentUser, null, $requestedLocations, $request);
             if ($denied !== null) {
                 return $denied;
