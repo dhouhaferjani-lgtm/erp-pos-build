@@ -15,7 +15,7 @@ export function ViewScopePicker({ className = '' }: ViewScopePickerProps) {
   const locationQuery = useScopedLocations()
   const locations = Array.isArray(locationQuery.data) ? locationQuery.data : []
   const isLoading = locationQuery.isLoading
-  const { scope, isAll, setScope } = useViewScope()
+  const { effectiveLocationIds, isAll, setScope } = useViewScope()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -27,7 +27,7 @@ export function ViewScopePicker({ className = '' }: ViewScopePickerProps) {
     return () => { document.removeEventListener('mousedown', handleOutside) }
   }, [])
 
-  const selectedIds: string[] = scope === 'all' ? locations.map((location) => location.id) : scope
+  const selectedIds: string[] = isAll ? locations.map((location) => location.id) : effectiveLocationIds
   const toggleLocation = (id: string): void => {
     const next = selectedIds.includes(id)
       ? selectedIds.filter((locationId) => locationId !== id)

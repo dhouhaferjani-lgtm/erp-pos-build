@@ -35,4 +35,12 @@ describe('useViewScope', () => {
     act(() => { result.current.setScope('all') })
     expect(store.__state.setScope).toHaveBeenCalledWith('all')
   })
+
+  it('clamps a persisted subset after an admin removes a location', async () => {
+    const store = await import('@/stores/viewScopeStore') as typeof import('@/stores/viewScopeStore') & { __state: { scope: 'all' | string[]; setScope: ReturnType<typeof vi.fn> } }
+    store.__state.scope = ['removed']
+    const { useViewScope } = await import('./useViewScope')
+    renderHook(() => useViewScope())
+    expect(store.__state.setScope).toHaveBeenCalledWith('all')
+  })
 })
