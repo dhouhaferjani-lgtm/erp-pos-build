@@ -79,7 +79,7 @@ export function PayExpenseDialog({
     : repositories
   const availableMethods = mode === 'instrument'
     ? methods.filter((method) => method.instrument_kind === instrumentKind)
-    : methods.filter((method) => method.instrument_kind === null)
+    : methods.filter((method) => method.instrument_kind === null || method.instrument_kind === 'other')
 
   useEffect(() => {
     if (isOpen) {

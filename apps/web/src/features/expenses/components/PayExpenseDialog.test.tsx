@@ -25,6 +25,7 @@ vi.mock('../../treasury/hooks/usePaymentMethods', () => ({
   useActivePaymentMethods: () => ({
     data: [
       { id: 'method-1', name: 'Cash', instrument_kind: null },
+      { id: 'method-other', name: 'Direct Debit', instrument_kind: 'other' },
       { id: 'method-cheque', name: 'Cheque', instrument_kind: 'cheque' },
       { id: 'method-effet', name: 'Effet', instrument_kind: 'effet' },
     ],
@@ -93,6 +94,7 @@ describe('PayExpenseDialog', () => {
     const method = screen.getByLabelText('expenses:pay.method')
     expect(within(method).getByRole('option', { name: 'expenses:pay.noMethod' })).toHaveValue('')
     expect(within(method).getByRole('option', { name: 'Cash' })).toHaveValue('method-1')
+    expect(within(method).getByRole('option', { name: 'Direct Debit' })).toHaveValue('method-other')
     expect(within(method).queryByRole('option', { name: 'Cheque' })).not.toBeInTheDocument()
     expect(within(method).queryByRole('option', { name: 'Effet' })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/expenses:pay\.date/)).toHaveAttribute('type', 'date')
@@ -136,6 +138,7 @@ describe('PayExpenseDialog', () => {
     render(<PayExpenseDialog isOpen onClose={vi.fn()} expense={expense} />)
 
     fireEvent.click(screen.getByLabelText('expenses:pay.modes.instrument'))
+    expect(within(screen.getByLabelText(/expenses:pay\.method/)).queryByRole('option', { name: 'Direct Debit' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/expenses:pay\.instrument\.kind/), { target: { value: 'cheque' } })
     fireEvent.change(screen.getByLabelText(/expenses:pay\.repository/), { target: { value: 'repo-bank' } })
     fireEvent.change(screen.getByLabelText(/expenses:pay\.method/), { target: { value: 'method-cheque' } })
