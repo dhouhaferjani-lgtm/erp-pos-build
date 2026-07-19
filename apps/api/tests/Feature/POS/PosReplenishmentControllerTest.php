@@ -184,6 +184,24 @@ final class PosReplenishmentControllerTest extends TestCase
         $this->assertSame('1.0000', $rows[$requests[3]->id]['suggested_qty']);
     }
 
+    public function test_pull_feed_floors_to_one_for_null_thresholds_and_orders_full_max_at_zero_available(): void
+    {
+        $nullThresholdProduct = $this->product();
+        $zeroAvailableProduct = $this->product();
+
+        $requests = [
+            $this->captureProduct($nullThresholdProduct),
+            $this->captureProduct($zeroAvailableProduct),
+        ];
+        $this->stock($nullThresholdProduct, quantity: '9.0000', reserved: '0.0000');
+        $this->stock($zeroAvailableProduct, quantity: '6.0000', reserved: '6.0000', max: '12.0000');
+
+        $rows = $this->pullRowsById();
+
+        $this->assertSame('1.0000', $rows[$requests[0]->id]['suggested_qty']);
+        $this->assertSame('12.0000', $rows[$requests[1]->id]['suggested_qty']);
+    }
+
     public function test_pull_feed_suggestions_are_variant_exact_and_open_only(): void
     {
         $variant = ProductVariant::factory()->create([
