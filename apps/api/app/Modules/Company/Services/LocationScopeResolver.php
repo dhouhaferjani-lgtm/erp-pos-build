@@ -73,7 +73,6 @@ final class LocationScopeResolver
     {
         return array_values(Location::query()
             ->where('company_id', $companyId)
-            ->where('is_active', true)
             ->pluck('id')
             ->map(static fn ($id): string => (string) $id)
             ->values()

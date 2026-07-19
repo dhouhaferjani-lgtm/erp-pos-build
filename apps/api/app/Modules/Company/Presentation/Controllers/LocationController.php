@@ -80,7 +80,6 @@ class LocationController extends Controller
 
         $locations = Location::where('company_id', $companyId)
             ->whereIn('id', $this->scopeResolver->resolve($user))
-            ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get();
@@ -104,7 +103,6 @@ class LocationController extends Controller
         $locations = Location::query()
             ->whereIn('id', $ids)
             ->where('company_id', $companyId)
-            ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get();

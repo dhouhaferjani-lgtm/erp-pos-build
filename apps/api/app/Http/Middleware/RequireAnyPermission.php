@@ -18,7 +18,18 @@ final class RequireAnyPermission
             static fn (string $permission): bool => $user->can($permission),
         );
 
-        abort_unless($allowed, 403);
+        if (! $allowed) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => 'You do not have permission to view transaction destinations.',
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 403);
+        }
 
         return $next($request);
     }
