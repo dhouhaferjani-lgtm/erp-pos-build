@@ -2,10 +2,9 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { getTransactionLocations } from '../api/locations'
-import type { Location } from '../types'
+import { getTransactionLocations, type TransactionLocation } from '../api/locations'
 
-export function useTransactionLocations(): UseQueryResult<Location[]> {
+export function useTransactionLocations(): UseQueryResult<TransactionLocation[]> {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 

@@ -161,7 +161,7 @@ final class LocationListEndpointsTest extends TestCase
             ]);
     }
 
-    public function test_wired_inventory_locations_index_falls_back_for_memberless_multi_company_user(): void
+    public function test_wired_inventory_locations_index_fails_closed_for_memberless_multi_company_user(): void
     {
         $user = User::factory()->for($this->tenant)->create(['status' => UserStatus::Active]);
         $this->grant($user, 'inventory.view');
@@ -171,11 +171,10 @@ final class LocationListEndpointsTest extends TestCase
         $response = $this->request($user, '/api/v1/locations');
 
         $response->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonMissing(['id' => $this->otherCompanyLocation->id]);
+            ->assertJsonCount(0, 'data');
     }
 
-    public function test_absent_membership_returns_active_company_locations_until_backfill(): void
+    public function test_absent_membership_returns_an_empty_scoped_list(): void
     {
         $user = User::factory()->for($this->tenant)->create();
         $this->grant($user, 'inventory.view');
@@ -184,8 +183,7 @@ final class LocationListEndpointsTest extends TestCase
 
         $this->request($user, '/api/v1/company/locations')
             ->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonMissing(['id' => $this->otherCompanyLocation->id]);
+            ->assertExactJson(['data' => []]);
     }
 
     public function test_inactive_membership_returns_an_empty_scoped_list(): void

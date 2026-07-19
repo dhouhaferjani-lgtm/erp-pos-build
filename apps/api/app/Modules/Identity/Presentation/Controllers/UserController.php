@@ -886,7 +886,10 @@ class UserController extends Controller
         }
 
         if ($requested !== null) {
-            $companyLocationIds = Location::where('company_id', $companyId)->pluck('id')->all();
+            $companyLocationIds = Location::where('company_id', $companyId)
+                ->where('is_active', true)
+                ->pluck('id')
+                ->all();
             if (array_diff($requested, $companyLocationIds) !== []) {
                 return $this->forbidden(
                     'INVALID_LOCATION',

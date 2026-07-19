@@ -692,7 +692,7 @@ new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext
 Review A4/A5/A6: a module-agnostic scoped picker endpoint, a management-gated unfiltered endpoint, one invariant that every list honors the allowed set.
 
 **Files**
-- Modify: `apps/api/app/Modules/Company/routes.php` (add two routes to the existing group)
+- Modify: `apps/api/app/Modules/Company/routes.php` (add scoped, management, and transaction-destination routes to the existing group)
 - Modify: `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php` (inject `LocationScopeResolver`; add `scopedIndex`, `managementIndex`; scope the wired `index`)
 - Delete: `apps/api/app/Modules/Inventory/Presentation/Controllers/LocationController.php` (dead duplicate — verified no route references it; `/locations` routes use the Company controller)
 - Test: `apps/api/tests/Feature/Company/LocationListEndpointsTest.php`
@@ -702,6 +702,7 @@ Review A4/A5/A6: a module-agnostic scoped picker endpoint, a management-gated un
 - Produces:
   - `GET /api/v1/company/locations` (auth-only, company context required) → `{ data: list<{id,name,code,type,is_default}> }` limited to the caller's allowed set.
   - `GET /api/v1/company/locations/all` (middleware `can:users.manage_location_access`) → same shape, unfiltered company set.
+  - `GET /api/v1/company/locations/transaction-destinations` (middleware `require.any.permission:*`) → reduced active-location picker shape for permitted cross-location destinations; it does not widen source/read scope.
   - Existing `GET /api/v1/locations` (Inventory-gated) `index` now returns only the resolver's effective set.
 
 **Steps**
@@ -755,7 +756,7 @@ Route::get('company/locations/all', [LocationController::class, 'managementIndex
 
 **Interfaces**
 - Consumes: `useCompanyStore` snapshot (`currentCompanyId`), `localStorage`.
-- Produces (PINNED): state `{ scope: 'all' | string[] }` persisted per company to `autoerp-view-scope:<companyId>`; reset to `'all'` ONLY on a real company change (mirror `LocationProvider.previousCompanyIdRef`); cross-tab storage listener with a **malformed-payload guard that PRESERVES the previous scope** (Finding 6 — mirror `locationStore.ts:180-187`: a present-but-malformed `newValue` is IGNORED, it must NOT reset to `'all'`). Only a payload that validates (the literal `'all'` or an array of uuid strings) is applied. Hook `useViewScope()` is added in Task 9's slice but its shape is pinned here: `{ scope: 'all'|string[]; effectiveLocationIds: string[]; isAll: boolean; setScope(s: 'all'|string[]): void }`.
+- Produces (PINNED): state `{ scope: 'all' | string[] }` persisted per company and authenticated user to `autoerp-view-scope:<companyId>:<userId>`; reset to `'all'` ONLY on a real company change (auth hydration loads the user's persisted subset); cross-tab storage listener with a **malformed-payload guard that PRESERVES the previous scope** (Finding 6 — mirror `locationStore.ts:180-187`: a present-but-malformed `newValue` is IGNORED, it must NOT reset to `'all'`). Only a payload that validates (the literal `'all'` or an array of uuid strings) is applied. Hook `useViewScope()` is added in Task 9's slice but its shape is pinned here: `{ scope: 'all'|string[]; effectiveLocationIds: string[]; isAll: boolean; setScope(s: 'all'|string[]): void }`.
 
 **Steps**
 
@@ -776,11 +777,11 @@ describe('viewScopeStore', () => {
     // set currentCompanyId = 'c1' via companyStore before import, then:
     const { useViewScopeStore } = await freshStore()
     useViewScopeStore.getState().setScope(['loc-a'])
-    expect(JSON.parse(localStorage.getItem('autoerp-view-scope:c1')!)).toEqual(['loc-a'])
+    expect(JSON.parse(localStorage.getItem('autoerp-view-scope:c1:u1')!)).toEqual(['loc-a'])
   })
 
   it('resets to all on a real company change and never rehydrates A under B', async () => {
-    localStorage.setItem('autoerp-view-scope:c1', JSON.stringify(['loc-a']))
+    localStorage.setItem('autoerp-view-scope:c1:u1', JSON.stringify(['loc-a']))
     // start on c1 → hydrates ['loc-a']; switch companyStore to c2 → scope becomes 'all'
     // assert getState().scope === 'all' and c1's key is untouched
   })
@@ -797,7 +798,7 @@ describe('viewScopeStore', () => {
     const { useViewScopeStore } = await freshStore()
     useViewScopeStore.getState().setScope(['loc-b'])
     window.dispatchEvent(new StorageEvent('storage', {
-      key: 'autoerp-view-scope:c1',
+      key: 'autoerp-view-scope:c1:u1',
       newValue: '{not json',
     }))
     expect(useViewScopeStore.getState().scope).toEqual(['loc-b'])
@@ -819,7 +820,7 @@ interface ViewScopeState {
   _hydrate: (scope: ViewScope) => void
 }
 
-const keyFor = (companyId: string): string => `autoerp-view-scope:${companyId}`
+const keyFor = (companyId: string, userId: string): string => `autoerp-view-scope:${companyId}:${userId}`
 
 /**
  * Parse a payload into a ViewScope, or return null when it is absent/malformed/invalid.

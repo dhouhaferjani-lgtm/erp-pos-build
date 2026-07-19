@@ -4,6 +4,7 @@ use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\CrossTenantContext;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RequireModule;
+use App\Http\Middleware\RequireAnyPermission;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
@@ -49,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => EnsureSuperAdmin::class,
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,
+            'require.any.permission' => RequireAnyPermission::class,
             'scheduling.captcha' => VerifyCaptcha::class,
             'cross_tenant' => CrossTenantContext::class,
         ]);

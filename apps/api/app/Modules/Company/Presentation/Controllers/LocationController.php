@@ -6,7 +6,6 @@ namespace App\Modules\Company\Presentation\Controllers;
 
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Presentation\Requests\CreateLocationRequest;
 use App\Modules\Company\Presentation\Requests\UpdateLocationRequest;
 use App\Modules\Company\Presentation\Resources\LocationResource;
@@ -30,18 +29,10 @@ class LocationController extends Controller
      */
     public function scopedIndex(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
         /** @var User $user */
         $user = $request->user();
-        $hasMembershipRecord = UserCompanyMembership::query()
-            ->where('user_id', $user->id)
-            ->where('company_id', $companyId)
-            ->exists();
-        $ids = ! $hasMembershipRecord
-            ? $this->activeCompanyLocationIds($companyId)
-            : $this->scopeResolver->resolve($user);
 
-        return $this->pickerPayload($ids);
+        return $this->pickerPayload($this->scopeResolver->resolve($user));
     }
 
     /**
@@ -67,14 +58,6 @@ class LocationController extends Controller
      */
     public function transactionIndex(Request $request): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-        abort_unless($user->can('inventory.transfers.create')
-            || $user->can('inventory.transfer')
-            || $user->can('purchase-orders.receive')
-            || $user->can('repositories.manage')
-            || $user->can('document-ingestions.create'), 403);
-
         $companyId = $this->companyContext->requireCompanyId();
         $ids = Location::query()
             ->where('company_id', $companyId)
@@ -83,13 +66,7 @@ class LocationController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json([
-            'data' => LocationResource::collection($ids),
-            'meta' => [
-                'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
-            ],
-        ]);
+        return $this->transactionPickerPayload($ids);
     }
 
     /**
@@ -101,16 +78,8 @@ class LocationController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $hasMembershipRecord = UserCompanyMembership::query()
-            ->where('user_id', $user->id)
-            ->where('company_id', $companyId)
-            ->exists();
-        $allowedIds = ! $hasMembershipRecord
-            ? $this->activeCompanyLocationIds($companyId)
-            : $this->scopeResolver->resolve($user);
-
         $locations = Location::where('company_id', $companyId)
-            ->whereIn('id', $allowedIds)
+            ->whereIn('id', $this->scopeResolver->resolve($user))
             ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
@@ -152,18 +121,22 @@ class LocationController extends Controller
     }
 
     /**
-     * @return array<int, string>
+     * @param  \Illuminate\Support\Collection<int, Location>  $locations
      */
-    private function activeCompanyLocationIds(string $companyId): array
+    private function transactionPickerPayload($locations): JsonResponse
     {
-        return Location::query()
-            ->where('company_id', $companyId)
-            ->where('is_active', true)
-            ->pluck('id')
-            ->map(static fn ($id): string => (string) $id)
-            ->values()
-            ->all();
+        return response()->json([
+            'data' => $locations->map(static fn (Location $location): array => [
+                'id' => $location->id,
+                'name' => $location->name,
+                'code' => $location->code,
+                'type' => $location->type->value,
+                'is_default' => $location->is_default,
+                'is_active' => $location->is_active,
+            ])->values()->all(),
+        ]);
     }
+
 
     /**
      * Get a single location.

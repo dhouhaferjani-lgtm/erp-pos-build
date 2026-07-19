@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { fetchLocations, fetchTransactionLocations, type LocationApiResponse } from '@/features/locations/api'
+import { fetchLocations, fetchTransactionLocations, type LocationApiResponse, type TransactionLocationApiResponse } from '@/features/locations/api'
 import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -489,7 +489,7 @@ export function CreateStockTransferPage() {
     queryFn: () => fetchTransactionLocations(),
   })
   const sourceLocations: LocationApiResponse[] = scopedLocationsQuery.data ?? []
-  const destinationLocations: LocationApiResponse[] = transactionLocationsQuery.data ?? []
+  const destinationLocations: TransactionLocationApiResponse[] = transactionLocationsQuery.data ?? []
 
   const [sourceLocationId, setSourceLocationId] = useState(() => searchParams.get('source_location_id') ?? '')
   const [destinationLocationId, setDestinationLocationId] = useState('')

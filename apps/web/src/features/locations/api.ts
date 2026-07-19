@@ -34,6 +34,15 @@ export interface LocationApiResponse {
   updated_at: string
 }
 
+export interface TransactionLocationApiResponse {
+  id: string
+  name: string
+  code: string
+  type: LocationType
+  is_default: boolean
+  is_active: boolean
+}
+
 /**
  * Input for creating a new location
  */
@@ -128,8 +137,8 @@ export async function fetchLocations(): Promise<LocationApiResponse[]> {
 }
 
 /** Fetches active locations available as transaction destinations. */
-export async function fetchTransactionLocations(): Promise<LocationApiResponse[]> {
-  return apiGet<LocationApiResponse[]>('/company/locations/transaction-destinations')
+export async function fetchTransactionLocations(): Promise<TransactionLocationApiResponse[]> {
+  return apiGet<TransactionLocationApiResponse[]>('/company/locations/transaction-destinations')
 }
 
 /**

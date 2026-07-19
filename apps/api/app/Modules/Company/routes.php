@@ -47,6 +47,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('company.locations.scoped');
 
     Route::get('company/locations/transaction-destinations', [LocationController::class, 'transactionIndex'])
+        ->middleware('require.any.permission:inventory.transfers.create,inventory.transfer,purchase-orders.receive,repositories.manage,document-ingestions.create')
         ->name('company.locations.transaction-destinations');
 
     Route::get('company/locations/all', [LocationController::class, 'managementIndex'])
