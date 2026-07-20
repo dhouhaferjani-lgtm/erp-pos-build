@@ -30,6 +30,8 @@ use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
+use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
@@ -259,6 +261,7 @@ final class ReconcileTreasuryTest extends TestCase
 
         $repo->refresh();
         self::assertSame('50.000', $repo->balance);
+        $validStatement = $this->statement($repo, BankStatementStatus::Reconciled, now(), '50.000', '50.000');
 
         $exit = $this->reconcile();
 
@@ -266,6 +269,55 @@ final class ReconcileTreasuryTest extends TestCase
         $repo->refresh();
         self::assertNull($repo->frozen_at, 'A cleanly-converged repository must NOT be frozen.');
         self::assertSame(0, $this->driftEventCount($repo->id));
+        self::assertDatabaseMissing('audit_events', [
+            'event_type' => 'treasury.reconcile.statement_tamper',
+            'aggregate_id' => $validStatement->id,
+        ]);
+    }
+
+    public function test_tampered_reconciled_statement_alerts_without_freezing_repository(): void
+    {
+        $repo = $this->seedRepository();
+        $statement = $this->statement($repo, BankStatementStatus::Reconciled, now(), '0.000', '1.000');
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit);
+        self::assertNull($repo->fresh()?->frozen_at);
+        self::assertDatabaseHas('audit_events', [
+            'company_id' => $this->company->id,
+            'event_type' => 'treasury.reconcile.statement_tamper',
+            'aggregate_type' => 'BankStatement',
+            'aggregate_id' => $statement->id,
+        ]);
+    }
+
+    public function test_statement_stale_after_configured_days_alerts_but_recent_statement_is_clean(): void
+    {
+        config()->set('treasury.statement_stale_days', 7);
+        $repo = $this->seedRepository();
+        $stale = $this->statement($repo, BankStatementStatus::Imported, now()->subDays(8));
+        $recent = $this->statement($repo, BankStatementStatus::Reconciling, now()->subDays(6));
+        $voided = $this->statement($repo, BankStatementStatus::Voided, now()->subDays(60));
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit);
+        self::assertNull($repo->fresh()?->frozen_at);
+        self::assertDatabaseHas('audit_events', [
+            'company_id' => $this->company->id,
+            'event_type' => 'treasury.reconcile.statement_stale',
+            'aggregate_type' => 'BankStatement',
+            'aggregate_id' => $stale->id,
+        ]);
+        self::assertDatabaseMissing('audit_events', [
+            'event_type' => 'treasury.reconcile.statement_stale',
+            'aggregate_id' => $recent->id,
+        ]);
+        self::assertDatabaseMissing('audit_events', [
+            'event_type' => 'treasury.reconcile.statement_stale',
+            'aggregate_id' => $voided->id,
+        ]);
     }
 
     // ── (b) balance / continuity drift → freeze + alert ────────────────────────
@@ -1179,6 +1231,31 @@ final class ReconcileTreasuryTest extends TestCase
         ]);
 
         return $user;
+    }
+
+    private function statement(
+        PaymentRepository $repository,
+        BankStatementStatus $status,
+        \DateTimeInterface $importedAt,
+        string $openingBalance = '0.000',
+        string $closingBalance = '0.000',
+    ): BankStatement {
+        return BankStatement::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_repository_id' => $repository->id,
+            'currency' => $repository->currency,
+            'period_start' => '2026-06-01',
+            'period_end' => '2026-06-30',
+            'opening_balance' => $openingBalance,
+            'closing_balance' => $closingBalance,
+            'status' => $status,
+            'source_file_sha256' => hash('sha256', Str::uuid()->toString()),
+            'source_file_path' => 'bank-statements/reconcile-'.Str::uuid()->toString().'.csv',
+            'parser_profile_id' => null,
+            'imported_by' => null,
+            'imported_at' => $importedAt,
+        ]);
     }
 }
 

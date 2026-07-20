@@ -27,6 +27,7 @@ This is the mandatory Gate 2 Fable interpretation of locked Rev 2. Do not restor
 - [ ] Provision `storage/app/private/bank-statements` on node-stable shared storage. Upload preview and confirm are separate requests and may hit different replicas; ephemeral per-node storage causes valid confirms to fail.
 - [ ] Define and enable an abandoned-preview retention/cleanup process before enabling statement upload. It must delete only unreferenced staged files older than the approved retention window; a path referenced by any `bank_statements.source_file_path`, including a voided statement, is audit evidence and must be retained.
 - [ ] Leave `TREASURY_ACQUIRER_FEE_VAT_RATE` unset or set it to the launch value `0.000`. Any non-zero value intentionally fails closed until the Phase ④ VAT-split posting is explicitly wired; do not bypass that guard.
+- [ ] Leave `TREASURY_STATEMENT_STALE_DAYS` unset for the 30-day default, or set an approved positive operational threshold. Values below 1 are clamped to 1 day; document any non-default value in the release record.
 - [ ] For every card method eligible for net-settlement suggestions, confirm it is active, has `has_deducted_fees=true`, has an active expense `fee_account_id`, and maps through `default_repository_id` to the exact active GL-linked bank repository receiving the statement.
 
 ## Deploy order
@@ -68,6 +69,7 @@ For every tenant database:
 - [ ] Verify a new interactive `record()` and `transfer()` on the reconciled-through business date are rejected before any movement write; verify an exact replay of a pre-existing keyed movement still returns the original row.
 - [ ] Drive one controlled offline-device projection behind the checkpoint; verify the movement is preserved with `recorded_behind_checkpoint = true`, `recorded_while_frozen` remains independent, and the warning/audit payload is emitted.
 - [ ] Reopen only the latest reconciled statement as an admin; verify accountant receives 403, the statement returns to `Reconciling`, and the repository checkpoint recomputes to the latest remaining reconciled statement without a gap.
+- [ ] Run `php artisan treasury:reconcile --tenant=<tenant-id>` with one controlled stale open statement and one deliberately tampered reconciled-statement copy. Verify non-zero exit plus `treasury.reconcile.statement_stale` / `treasury.reconcile.statement_tamper` rows in `audit_events`, and verify the associated repository remains unfrozen.
 - [ ] Complete the Wave 3–5 matching, checkpoint, UI, and legacy-cutover checks added before final handback.
 
 ## Rollback and retention notes

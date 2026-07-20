@@ -154,7 +154,7 @@ As Rev 1, corrected/extended:
 ### Task 9: `treasury:reconcile` statement checks
 
 Alert-only §6.7 checks (tampered reconciled statement; stale unreconciled > 30d) — **legacy cutover moved to Task 12**.
-- [ ] Steps: failing → implement → commit.
+- [x] Steps: failing → implement → commit.
 
 🚦 **GATE 4 — treasury-reviewer (Opus).** Lock-order consistency with Wave 3, boundary semantics, no-freeze invariant, port regressions.
 
