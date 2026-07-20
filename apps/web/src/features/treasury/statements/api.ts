@@ -22,6 +22,8 @@ export interface BankStatementSummary {
 export type StatementLineStatus = 'unmatched' | 'partial' | 'matched' | 'resolved_by_creation' | 'ignored'
 export type StatementActionType = 'outbound_clear' | 'inbound_clear' | 'expense_settle' | 'acquirer_fee' | 'create_expense' | 'create_income'
 export type StatementIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other'
+export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument'
+export type StatementSuggestionReasonCode = 'reference_amount_match' | 'unique_amount_window' | 'bounced_instrument' | 'pending_instrument' | 'unsettled_expense' | 'card_batch_fee'
 
 export interface StatementLineAllocation {
   repository_movement_id: string
@@ -67,7 +69,7 @@ export interface StatementSuggestion {
   target_id: string | null
   amount: string
   reason: string
-  reason_code: string | null
+  reason_code: StatementSuggestionReasonCode | null
   reason_params: Record<string, string | number>
   reference_matched: boolean
   action_params: Record<string, unknown>
@@ -82,7 +84,7 @@ export interface RepositoryMovementCandidate {
   currency: string
   balance_after: string
   ordinal: number
-  source_type: string
+  source_type: MovementSourceType
   source_id: string
   journal_entry_id: string | null
   reason_code: string | null
