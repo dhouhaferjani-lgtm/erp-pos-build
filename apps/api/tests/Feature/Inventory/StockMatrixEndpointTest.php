@@ -28,14 +28,6 @@ final class StockMatrixEndpointTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Matrix aggregation is contractually verified on PostgreSQL. */
-    protected array $connectionsToTransact = ['pgsql'];
-
-    protected function beforeRefreshingDatabase(): void
-    {
-        config(['database.default' => 'pgsql']);
-    }
-
     private Tenant $tenant;
 
     private Company $company;

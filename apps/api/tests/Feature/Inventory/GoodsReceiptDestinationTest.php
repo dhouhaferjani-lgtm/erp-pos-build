@@ -40,14 +40,6 @@ final class GoodsReceiptDestinationTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Receipt destination and aggregate semantics are contractually verified on PostgreSQL. */
-    protected array $connectionsToTransact = ['pgsql'];
-
-    protected function beforeRefreshingDatabase(): void
-    {
-        config(['database.default' => 'pgsql']);
-    }
-
     private Tenant $tenant;
 
     private Company $company;

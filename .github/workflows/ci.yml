@@ -287,8 +287,10 @@ jobs:
     # constraint allowlist test, and the fiscal hash-chain immutability tests
     # — all of which call `markTestSkipped` on SQLite.
     #
-    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
-    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # Heavy job: run the PG invariant lane on PR→dev as well as PR→main,
+    # push→main, or manual workflow_dispatch so multi-location contracts are
+    # merge-gated before the dev branch.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.base_ref == 'dev' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/api
@@ -549,8 +551,8 @@ jobs:
           DB_USERNAME: autoerp
           DB_PASSWORD: secret
         run: |
-          php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|PaymentAllocationPrecisionTest|PartnerMoneyPrecisionTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest|ProcurementPolicyCheckConstraintTest"
+          php artisan test -c phpunit-pgsql.xml \
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|PaymentAllocationPrecisionTest|PartnerMoneyPrecisionTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest|ProcurementPolicyCheckConstraintTest|StockRebalanceEndpointTest|StockMovementLocationFilterTest|StockMatrixEndpointTest|StockThresholdTest|GoodsReceiptDestinationTest|PaymentRepositoryLocationTest|PosBridgeLocationAttributionTest"
 
   t6-phase0b-pgsql:
     name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)

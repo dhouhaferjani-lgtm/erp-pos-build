@@ -17,8 +17,8 @@ export function ThresholdEditCell({ row, locationId, cell }: { row: MatrixRow; l
   return (
     <RequirePermission permission="inventory.adjust">
       <div className="flex min-w-36 flex-col gap-1">
-        <QuantityInput aria-label={t('stockByLocation.minQuantity')} value={min} onChange={setMin} decimalPlaces={4} min="0" onBlur={save} placeholder={formatQuantity(cell.min_quantity ?? '0')} />
-        <QuantityInput aria-label={t('stockByLocation.maxQuantity')} value={max} onChange={setMax} decimalPlaces={4} min="0" onBlur={save} placeholder={formatQuantity(cell.max_quantity ?? '0')} />
+        <QuantityInput aria-label={t('stock.minQuantity')} value={min} onChange={setMin} decimalPlaces={4} min="0" onBlur={save} placeholder={formatQuantity(cell.min_quantity ?? '0')} />
+        <QuantityInput aria-label={t('stock.maxQuantity')} value={max} onChange={setMax} decimalPlaces={4} min="0" onBlur={save} placeholder={formatQuantity(cell.max_quantity ?? '0')} />
       </div>
     </RequirePermission>
   )

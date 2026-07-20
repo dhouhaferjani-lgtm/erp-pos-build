@@ -28,14 +28,6 @@ final class StockThresholdTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Threshold precision and uniqueness are contractually verified on PostgreSQL. */
-    protected array $connectionsToTransact = ['pgsql'];
-
-    protected function beforeRefreshingDatabase(): void
-    {
-        config(['database.default' => 'pgsql']);
-    }
-
     private Tenant $tenant;
 
     private Company $company;
