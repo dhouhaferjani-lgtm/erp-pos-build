@@ -14,6 +14,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -171,6 +172,46 @@ class PaymentMethodTest extends TestCase
             'code' => 'CASH',
             'is_physical' => true,
         ]);
+    }
+
+    public function test_can_create_and_expose_default_repository_mapping(): void
+    {
+        $repository = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD-SETTLEMENT',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-methods', [
+            'code' => 'CARD',
+            'name' => 'Card',
+            'default_repository_id' => $repository->id,
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.default_repository_id', $repository->id);
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $response->json('data.id'),
+            'default_repository_id' => $repository->id,
+        ]);
+    }
+
+    public function test_default_repository_mapping_rejects_another_company_repository(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $foreignRepository = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'code' => 'FOREIGN-CARD',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-methods', [
+            'code' => 'CARD',
+            'name' => 'Card',
+            'default_repository_id' => $foreignRepository->id,
+        ]);
+
+        $this->assertApiValidationErrors($response, ['default_repository_id']);
     }
 
     public function test_can_create_card_payment_method_with_fees(): void

@@ -100,6 +100,11 @@ class PaymentMethodController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
             ],
+            'default_repository_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'position' => ['nullable', 'integer', 'min:0'],
         ], [
             'fee_fixed.regex' => 'Fixed fee must have at most 3 decimal places.',
@@ -134,6 +139,7 @@ class PaymentMethodController extends Controller
             'default_journal_id' => $validated['default_journal_id'] ?? null,
             'default_account_id' => $validated['default_account_id'] ?? null,
             'fee_account_id' => $validated['fee_account_id'] ?? null,
+            'default_repository_id' => $validated['default_repository_id'] ?? null,
             'is_active' => true,
             'position' => $validated['position'] ?? 0,
         ]);
@@ -192,6 +198,11 @@ class PaymentMethodController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
             ],
+            'default_repository_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'is_active' => ['sometimes', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],
         ], [
@@ -242,6 +253,7 @@ class PaymentMethodController extends Controller
             'fee_fixed' => $method->fee_fixed,
             'fee_percent' => $method->fee_percent,
             'restriction_type' => $method->restriction_type,
+            'default_repository_id' => $method->default_repository_id,
             'is_active' => $method->is_active,
             'position' => $method->position,
         ];

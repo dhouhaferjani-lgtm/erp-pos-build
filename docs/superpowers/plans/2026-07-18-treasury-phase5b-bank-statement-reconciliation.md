@@ -58,8 +58,8 @@ routes: app/Modules/Treasury/Presentation/routes.php  (correct path — NOT app/
 **Interfaces:**
 - Produces: nullable FK `payment_methods.default_repository_id` (nullOnDelete). **Resolver signature changes** to receive the already-resolved `PaymentMethod` per tender (the current method takes only `FiscalEvent` — it cannot see the method): `resolveRepositoryForTender(FiscalEvent $event, ?PaymentMethod $method): ?PaymentRepository` — mapped+GL-linked ⇒ mapped repository; else today's first-GL-linked-ordered-by-id fallback. **Replay stability:** when the bridge re-processes an event whose `Payment` row already exists, it keeps the payment's stored `repository_id` — a later mapping change must never re-route history. Command `treasury:configure-method-routing {--card-to=} {--dry-run}`: guarded per-tenant mapping setter (explicit company iteration).
 
-- [ ] **Step 1: failing tests** — mapped CARD tender routes to mapped repo, CASH falls back; unmapped method regression (P2-6 deterministic fallback); **replay after mapping change keeps original repository**; projection test clears `CompanyContext`; command idempotent + dry-run.
-- [ ] Steps 2-5 → commit `feat(treasury): per-method default repository routing (replay-stable) + config command`.
+- [x] **Step 1: failing tests** — mapped CARD tender routes to mapped repo, CASH falls back; unmapped method regression (P2-6 deterministic fallback); **replay after mapping change keeps original repository**; projection test clears `CompanyContext`; command idempotent + dry-run.
+- [x] Steps 2-5 → commit `feat(treasury): per-method default repository routing (replay-stable) + config command`.
 
 🚦 **GATE 0 — treasury-reviewer + fiscal-pos-reviewer (Opus).** Fiscal projection touched: replay determinism is the whole gate.
 
