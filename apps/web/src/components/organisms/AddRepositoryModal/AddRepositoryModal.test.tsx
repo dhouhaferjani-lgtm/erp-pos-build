@@ -23,8 +23,8 @@ vi.mock('@/hooks/useBanks', () => ({
 vi.mock('@/features/finance/hooks/useAccounts', () => ({
   useAccounts: () => ({ data: [] }),
 }))
-vi.mock('@/features/locations/hooks/useLocations', () => ({
-  useLocations: () => ({ data: [{ id: 'loc-a', name: 'Store A', isActive: true }] }),
+vi.mock('@/features/locations/hooks/useTransactionLocations', () => ({
+  useTransactionLocations: () => ({ data: [{ id: 'loc-a', name: 'Store A', isActive: true }] }),
 }))
 
 const amenBank = {

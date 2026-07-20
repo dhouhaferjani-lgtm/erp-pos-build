@@ -481,7 +481,7 @@ export function CreateStockTransferPage() {
   const { currency } = useCurrency()
 
   const scopedLocationsQuery = useQuery({
-    queryKey: tenantScopedKey(['locations', 'scoped']),
+    queryKey: tenantScopedKey(['locations', 'all']),
     queryFn: () => fetchLocations(),
   })
   const transactionLocationsQuery = useQuery({

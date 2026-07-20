@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MapPin } from 'lucide-react'
 import { useManagementLocations } from '@/features/locations/hooks/useManagementLocations'
+import { Checkbox, Radio } from '@/components/atoms'
 import { cn } from '@/lib/utils'
 import { borderColors, focusRing, semanticColorTokens as colorTokens, textColors } from '@/lib/designTokens'
 
@@ -43,8 +44,7 @@ export function LocationAccessField({
       </legend>
 
       <label className={cn('flex cursor-pointer items-start gap-3 rounded-md p-2', blocked && 'cursor-not-allowed')}>
-        <input
-          type="radio"
+        <Radio
           name="location-access-mode"
           value="all"
           checked={isAll}
@@ -59,8 +59,7 @@ export function LocationAccessField({
       </label>
 
       <label className={cn('flex cursor-pointer items-start gap-3 rounded-md p-2', blocked && 'cursor-not-allowed')}>
-        <input
-          type="radio"
+        <Radio
           name="location-access-mode"
           value="subset"
           checked={!isAll}
@@ -82,8 +81,7 @@ export function LocationAccessField({
           )}
           {locations.map((location) => (
             <label key={location.id} className={cn('flex cursor-pointer items-center gap-3 rounded-md p-2', blocked && 'cursor-not-allowed')}>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selectedIds.has(location.id)}
                 onChange={() => { toggleLocation(location.id) }}
                 disabled={blocked}

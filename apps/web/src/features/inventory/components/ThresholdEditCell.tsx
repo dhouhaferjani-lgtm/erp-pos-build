@@ -12,7 +12,7 @@ export function ThresholdEditCell({ row, locationId, cell }: { row: MatrixRow; l
   const { t } = useTranslation('inventory')
   const [min, setMin] = useState(cell.min_quantity ?? '')
   const [max, setMax] = useState(cell.max_quantity ?? '')
-  const mutation = useMutation({ mutationFn: updateThresholds, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['inventory-stock-matrix'] }) } })
+  const mutation = useMutation({ mutationFn: updateThresholds, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['inventory-stock-matrix'] }); void queryClient.invalidateQueries({ queryKey: ['product-stock', row.product_id] }) } })
   const save = () => mutation.mutate({ product_id: row.product_id, variant_id: row.variant_id, location_id: locationId, min_quantity: min || null, max_quantity: max || null })
   return (
     <RequirePermission permission="inventory.adjust">

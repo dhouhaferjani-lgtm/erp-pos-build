@@ -258,7 +258,9 @@
     "incoming": "الوارد",
     "projectedAvailable": "المتاح المتوقع",
     "stockValue": "قيمة المخزون",
-    "noStock": "لا تتوفر معلومات عن المخزون"
+    "noStock": "لا تتوفر معلومات عن المخزون",
+    "minQuantity": "الحد الأدنى للكمية",
+    "maxQuantity": "الحد الأقصى للكمية"
   },
   "stockByLocation": {
     "title": "المخزون حسب الموقع",

@@ -1,7 +1,7 @@
 import { CalendarDays } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
-import { Input, Select } from '@/components/atoms'
+import { Button, Input, Select } from '@/components/atoms'
 
 export interface OwnerDashboardFiltersValue {
   from: string
@@ -42,7 +42,9 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
     <div className={`flex flex-wrap items-center gap-3 rounded-lg border ${borderColors.light} ${colors.white} p-3`}>
       <CalendarDays className={`h-4 w-4 ${textColors.tertiary}`} />
       <div className={`inline-flex overflow-hidden rounded-md border ${borderColors.default}`}>
-        <button
+        <Button
+          size="sm"
+          variant={isToday(value.from, value.to) ? 'primary' : 'secondary'}
           type="button"
           onClick={() => {
             applyPreset(1)
@@ -50,8 +52,10 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           className={`px-3 py-1 text-sm ${isToday(value.from, value.to) ? `${colors.primary[600]} ${textColors.inverse}` : `${colors.white} ${textColors.secondary}`}`}
         >
           {t('reports:ownerDashboard.filters.today')}
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
           type="button"
           onClick={() => {
             applyPreset(7)
@@ -59,8 +63,10 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           className={`border-s ${borderColors.default} px-3 py-1 text-sm ${colors.white} ${textColors.secondary} ${textColors.hoverPrimary}`}
         >
           {t('reports:ownerDashboard.filters.last7Days')}
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
           type="button"
           onClick={() => {
             applyPreset(30)
@@ -68,7 +74,7 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           className={`border-s ${borderColors.default} px-3 py-1 text-sm ${colors.white} ${textColors.secondary} ${textColors.hoverPrimary}`}
         >
           {t('reports:ownerDashboard.filters.last30Days')}
-        </button>
+        </Button>
       </div>
       <label className={`text-sm ${textColors.secondary}`}>
         {t('reports:ownerDashboard.filters.from')}
