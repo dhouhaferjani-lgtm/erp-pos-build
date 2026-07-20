@@ -36,13 +36,14 @@ import { shouldRefreshWorkspaceQuery } from './queryScope'
 import { StatementCompletionDialog } from './StatementCompletionDialog'
 import { formatAtCurrencyScale, isResolvedLineStatus, isSuccessfulLineStatus, remainingForLine } from './status'
 
-export function getWorkspaceCompletionState(statement: BankStatementDetail, mutable: boolean) {
+export function getWorkspaceCompletionState(statement: BankStatementDetail, mutable: boolean, canAcknowledgeIgnored = true) {
   const resolved = statement.lines.filter((line) => isResolvedLineStatus(line.match_status)).length
   const remainingTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => total.plus(remainingForLine(line)), new Big(0)).toString(), statement.currency)
   const ignoredTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => line.match_status !== 'ignored' ? total : line.direction === 'in' ? total.plus(line.amount) : total.minus(line.amount), new Big(0)).toString(), statement.currency)
-  const canComplete = resolved === statement.lines.length && statement.status !== 'reconciled' && statement.status !== 'voided' && mutable
+  const hasIgnoredLines = statement.lines.some((line) => line.match_status === 'ignored')
+  const canComplete = resolved === statement.lines.length && statement.status !== 'reconciled' && statement.status !== 'voided' && mutable && (!hasIgnoredLines || canAcknowledgeIgnored)
 
-  return { resolved, remainingTotal, ignoredTotal, canComplete }
+  return { resolved, remainingTotal, ignoredTotal, canComplete, hasIgnoredLines }
 }
 
 export function ReconciliationWorkspacePage() {
@@ -105,13 +106,16 @@ export function ReconciliationWorkspacePage() {
   if (statementQuery.isLoading) return <div className={cn('py-12 text-center', textColors.tertiary)}>{t('common:status.loading')}</div>
   if (!statement) return <div className={cn(tokens.alert.base, tokens.alert.error)}>{t('common:errors.loadingFailed')}</div>
 
-  const { resolved, remainingTotal, ignoredTotal, canComplete } = getWorkspaceCompletionState(statement, mutable)
+  const hasIgnoredLines = statement.lines.some((line) => line.match_status === 'ignored')
+  const canAcknowledgeIgnored = !hasIgnoredLines || hasPermission('bank-statements.reopen')
+  const { resolved, remainingTotal, ignoredTotal, canComplete } = getWorkspaceCompletionState(statement, mutable, canAcknowledgeIgnored)
 
   return (
     <div className="space-y-6">
       <PageHeader title={t('treasury:statements.workspace.title')} subtitle={`${statement.period_start} → ${statement.period_end}`} breadcrumb={<Link className={cn('inline-flex items-center gap-2 text-sm', textColors.tertiary, textColors.hoverPrimary)} to="/treasury/statements"><ArrowLeft className="h-4 w-4" />{t('common:actions.back')}</Link>} actions={<><StatusBadge tone={statement.status === 'reconciled' ? 'success' : statement.status === 'voided' ? 'neutral' : 'info'}>{t(`treasury:statements.status.${statement.status}`)}</StatusBadge>{canComplete ? <Button onClick={() => { setCompleteOpen(true) }}><CheckCircle2 className="me-2 h-4 w-4" />{t('treasury:statements.workspace.complete.action')}</Button> : null}{statement.status === 'reconciled' && hasPermission('bank-statements.reopen') ? <Button variant="secondary" disabled={reopenMutation.isPending} onClick={() => { reopenMutation.mutate() }}><RefreshCcw className="me-2 h-4 w-4" />{t('treasury:statements.workspace.reopen')}</Button> : null}</>} />
 
       {error ? <div className={cn(tokens.alert.base, tokens.alert.error)}>{getErrorMessage(error)}</div> : null}
+      {hasIgnoredLines && !canAcknowledgeIgnored ? <p role="status" className={cn(tokens.alert.base, tokens.alert.warning)}>{t('treasury:statements.workspace.ignoredRequiresAdmin')}</p> : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Metric label={t('treasury:statements.workspace.progress')} value={`${String(resolved)}/${String(statement.lines.length)}`} />
@@ -128,7 +132,7 @@ export function ReconciliationWorkspacePage() {
         {selectedLine ? <LinePanel key={selectedLine.id} line={selectedLine} currency={statement.currency} suggestions={suggestionsQuery.data ?? []} movements={movementsQuery.data ?? []} pending={pending} onSearch={setMovementSearch} onExecute={(action) => { executeMutation.mutate({ lineId: selectedLine.id, action }) }} onCreate={(action) => { executeMutation.mutate({ lineId: selectedLine.id, action }) }} onAllocate={(allocations) => { allocateMutation.mutate({ lineId: selectedLine.id, allocations }) }} onUnallocate={(movementId) => { unallocateMutation.mutate({ lineId: selectedLine.id, movementId }) }} onIgnore={(ignore) => { ignoreMutation.mutate({ lineId: selectedLine.id, ignore }) }} onUnignore={() => { unignoreMutation.mutate(selectedLine.id) }} /> : <p className={cn('py-12 text-center', textColors.tertiary)}>{t('treasury:statements.workspace.noLines')}</p>}
       </div>
 
-      <StatementCompletionDialog key={String(completeOpen)} isOpen={completeOpen} hasIgnoredLines={statement.lines.some((line) => line.match_status === 'ignored')} ignoredTotal={ignoredTotal} currency={statement.currency} pending={completeMutation.isPending} onClose={() => { setCompleteOpen(false) }} onConfirm={(acknowledged) => { completeMutation.mutate(acknowledged) }} />
+      <StatementCompletionDialog key={String(completeOpen)} isOpen={completeOpen} hasIgnoredLines={hasIgnoredLines} ignoredTotal={ignoredTotal} currency={statement.currency} pending={completeMutation.isPending} onClose={() => { setCompleteOpen(false) }} onConfirm={(acknowledged) => { completeMutation.mutate(acknowledged) }} />
     </div>
   )
 }

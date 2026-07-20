@@ -65,4 +65,14 @@ describe('ReconciliationWorkspacePage completion controls', () => {
 
     expect(state.canComplete).toBe(false)
   })
+
+  it('keeps completion unavailable for ignored lines without reopen permission', () => {
+    const state = getWorkspaceCompletionState(statement([
+      line('matched', 'in', '10.000'),
+      line('ignored', 'out', '2.000'),
+    ]), true, false)
+
+    expect(state.hasIgnoredLines).toBe(true)
+    expect(state.canComplete).toBe(false)
+  })
 })

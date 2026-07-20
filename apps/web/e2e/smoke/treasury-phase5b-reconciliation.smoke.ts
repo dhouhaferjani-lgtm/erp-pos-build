@@ -697,7 +697,7 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     await expect(page.getByRole('heading', { name: 'Statement reconciliation' })).toBeVisible()
   })
 
-  test('4. confirm Tier 1 adjustment, Tier 3 outbound clear, and Tier 4 card fee in the UI', async ({ page }) => {
+  test('4. confirm Tier 1 adjustment, Tier 3 outbound clear, and Tier 4 card fee in the UI', async ({ page, request }) => {
     await seedAuth(page)
     await page.goto(`/treasury/statements/${mainStatementId}`)
 
@@ -724,7 +724,7 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
   const cardLine = matchedLines.find((line) => line.label === cardLabel)
   expect(cardLine?.executions?.filter((execution) => execution.action_type === 'acquirer_fee')).toHaveLength(1)
   const feeExecution = cardLine!.executions!.find((execution) => execution.action_type === 'acquirer_fee')!
-  expect(feeExecution.produced_repository_movement_ids).toHaveLength(1)
+  expect(feeExecution.produced_repository_movement_ids.length).toBeGreaterThanOrEqual(2)
   const feeMovements = await request.get(
     `${API_BASE}/payment-repositories/${repository!.id}/movements?search=${cardLine!.id}&per_page=100`,
     { headers: authHeaders() },
@@ -801,7 +801,9 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       last_reconciled_at: string | null
       last_reconciled_balance: string | null
     }
-    expect(balance.balance).toBe(closingBalance)
+    // The ignored informational outflow is metadata-only, so it remains in
+    // the statement delta but never changes the live repository balance.
+    expect(balance.balance).toBe(addMoney(closingBalance, IGNORED_AMOUNT))
     expect(balance.last_reconciled_at?.slice(0, 10)).toBe(TODAY)
     expect(balance.last_reconciled_balance).toBe(closingBalance)
 

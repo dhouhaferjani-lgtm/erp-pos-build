@@ -1826,7 +1826,7 @@ export function AppRoutes() {
           <Route
             path="statements"
             element={
-              <RequirePermission permission="bank-statements.view">
+              <RequirePermission moduleKey="treasury" permission="bank-statements.view">
                 <SuspenseWrapper>
                   <StatementListPage />
                 </SuspenseWrapper>
@@ -1837,7 +1837,7 @@ export function AppRoutes() {
           <Route
             path="statements/:id"
             element={
-              <RequirePermission permission="bank-statements.view">
+              <RequirePermission moduleKey="treasury" permission="bank-statements.view">
                 <SuspenseWrapper>
                   <ReconciliationWorkspacePage />
                 </SuspenseWrapper>

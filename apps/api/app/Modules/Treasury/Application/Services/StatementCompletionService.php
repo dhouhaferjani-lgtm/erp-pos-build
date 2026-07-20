@@ -18,6 +18,7 @@ use App\Modules\Treasury\Domain\Events\BankStatementReopened;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -141,9 +142,12 @@ final readonly class StatementCompletionService
             }
 
             foreach ($movements as $movement) {
-                $globalAllocated = (string) BankStatementLineAllocation::query()
+                $globalAllocated = BankStatementLineAllocation::query()
                     ->where('repository_movement_id', $movement->id)
-                    ->sum('matched_amount');
+                    ->pluck('matched_amount')
+                    ->reduce(function (string $total, mixed $amount) use ($scale): string {
+                        return bcadd($total, CurrencyScale::bcformatStrict((string) $amount, $scale), $scale);
+                    }, '0');
                 if (bccomp($globalAllocated, $movement->amount, $scale) > 0) {
                     throw new DomainException('A repository movement is overallocated.');
                 }

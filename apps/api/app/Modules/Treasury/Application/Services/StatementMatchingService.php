@@ -229,9 +229,12 @@ final readonly class StatementMatchingService
             if (! $allowOppositeDirection && $movement->direction !== $line->direction) {
                 throw new DomainException('Manual allocation movement direction must match the statement line direction.');
             }
-            $allocated = (string) BankStatementLineAllocation::query()
+            $allocated = BankStatementLineAllocation::query()
                 ->where('repository_movement_id', $movementId)
-                ->sum('matched_amount');
+                ->pluck('matched_amount')
+                ->reduce(function (string $total, mixed $amount) use ($scale): string {
+                    return bcadd($total, CurrencyScale::bcformatStrict((string) $amount, $scale), $scale);
+                }, '0');
             if (bccomp(bcadd($allocated, $amount, $scale), $movement->amount, $scale) > 0) {
                 throw new DomainException('Allocation total cannot exceed the repository movement amount.');
             }

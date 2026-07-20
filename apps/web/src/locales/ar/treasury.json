@@ -116,8 +116,9 @@
       "matchType": { "manual": "مطابقة يدوية", "suggestion_confirmed": "اقتراح مؤكد", "created_from_line": "أُنشئ من سطر الكشف" },
       "sourceType": { "payment": "دفعة", "expense": "مصروف", "income": "إيراد", "refund": "استرداد", "fiscal_event": "إيصال جبائي", "transfer": "تحويل", "adjustment": "تسوية", "opening_balance": "رصيد افتتاحي", "instrument": "أداة دفع" },
       "ignore": { "title": "تجاهل السطر", "reason": "السبب", "selectReason": "اختر سببًا", "explanation": "تفسير إلزامي", "submit": "تجاهل السطر", "unignore": "استعادة السطر", "reasons": { "duplicate": "مكرر", "informational": "معلوماتي", "bank_error": "خطأ بنكي", "out_of_scope": "خارج نطاق المطابقة", "other": "أخرى" } },
-      "create": { "expense": "إنشاء مصروف من السطر", "income": "إنشاء إيراد من السطر", "expenseTitle": "إنشاء مصروف وتسويته", "incomeTitle": "إنشاء إيراد وتسجيله", "vendor": "اسم المورد", "source": "مصدر الإيراد", "incomeAccount": "حساب الإيراد", "selectIncomeAccount": "اختر حساب إيراد", "noIncomeAccounts": "لا توجد حسابات إيراد نشطة.", "notes": "ملاحظات", "submit": "إنشاء ومطابقة", "required": "هذا الحقل مطلوب." },
-      "complete": { "action": "إكمال الكشف", "title": "إكمال المطابقة", "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.", "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.", "confirm": "إكمال الكشف" }
+      "create": { "expense": "إنشاء مصروف من السطر", "income": "إنشاء إيراد من السطر", "expenseTitle": "إنشاء مصروف وتسويته", "incomeTitle": "إنشاء إيراد وتسجيله", "vendor": "اسم المورد", "source": "مصدر الإيراد", "incomeAccount": "حساب الإيراد", "selectIncomeAccount": "اختر حساب إيراد", "notes": "ملاحظات", "submit": "إنشاء ومطابقة", "required": "هذا الحقل مطلوب." },
+      "complete": { "action": "إكمال الكشف", "title": "إكمال المطابقة", "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.", "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.", "confirm": "إكمال الكشف" },
+      "ignoredRequiresAdmin": "يجب على مسؤول إقرار الأسطر المتجاهلة قبل إتمام الكشف."
     }
   }
 }

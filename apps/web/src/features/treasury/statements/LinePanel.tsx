@@ -13,6 +13,7 @@ import type { BankStatementLine, RepositoryMovementCandidate, StatementActionTyp
 import { CreateFromLineDialog } from './CreateFromLineDialog'
 import { ManualMatchSearch } from './ManualMatchSearch'
 import { SuggestionList } from './SuggestionList'
+import { StatementReconciliationChips } from './StatementReconciliationChips'
 import { formatAtCurrencyScale, isSuccessfulLineStatus, remainingForLine } from './status'
 
 interface LinePanelProps {
@@ -42,6 +43,10 @@ function provenanceLink(targetType: string | null, targetId: string | null): str
   if (targetType === 'expense_document') return `/expenses/${targetId}/view`
   if (targetType === 'income_document') return `/income/${targetId}/edit`
   return null
+}
+
+function isProvenanceTargetType(value: string | null): value is 'payment_instrument' | 'expense_document' | 'income_document' {
+  return value === 'payment_instrument' || value === 'expense_document' || value === 'income_document'
 }
 
 export function LinePanel({ line, currency, suggestions, movements, pending = false, onSearch, onExecute, onAllocate, onUnallocate, onIgnore, onUnignore, onCreate }: LinePanelProps) {
@@ -81,7 +86,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
         {canIgnore ? <Button variant="secondary" disabled={pending || !new Big(remaining).eq(line.amount)} onClick={() => { setShowCreate(true) }}><FilePlus2 className="me-2 h-4 w-4" />{t(line.direction === 'out' ? 'statements.workspace.create.expense' : 'statements.workspace.create.income')}</Button> : null}
       </>}
 
-      {line.executions.length ? <section className="space-y-2"><h3 className={cn('text-sm font-semibold', textColors.primary)}>{t('statements.workspace.provenance')}</h3>{line.executions.map((execution) => { const link = provenanceLink(execution.target_type, execution.target_id); return <div key={`${execution.action_type}-${execution.target_id ?? ''}`} className={cn('rounded-lg border p-3 text-sm', semanticColorTokens.border.subtle)}><StatusBadge tone="success">{t(`statements.workspace.actions.${execution.action_type}`)}</StatusBadge>{link ? <Link className={cn('ms-2 font-medium hover:underline', textColors.brand)} to={link}>{t('statements.workspace.openTarget')}</Link> : null}<p className={cn('mt-1 text-xs', textColors.tertiary)}>{execution.produced_repository_movement_ids.length} {t('statements.workspace.movementsProduced')}</p></div> })}</section> : null}
+      {line.executions.length ? <section className="space-y-2"><h3 className={cn('text-sm font-semibold', textColors.primary)}>{t('statements.workspace.provenance')}</h3>{line.executions.map((execution) => { const link = provenanceLink(execution.target_type, execution.target_id); return <div key={`${execution.action_type}-${execution.target_id ?? ''}`} className={cn('rounded-lg border p-3 text-sm', semanticColorTokens.border.subtle)}><StatusBadge tone="success">{t(`statements.workspace.actions.${execution.action_type}`)}</StatusBadge>{link ? <Link className={cn('ms-2 font-medium hover:underline', textColors.brand)} to={link}>{t('statements.workspace.openTarget')}</Link> : null}{isProvenanceTargetType(execution.target_type) && execution.target_id ? <div className="mt-2"><StatementReconciliationChips targetType={execution.target_type} targetId={execution.target_id} /></div> : null}<p className={cn('mt-1 text-xs', textColors.tertiary)}>{execution.produced_repository_movement_ids.length} {t('statements.workspace.movementsProduced')}</p></div> })}</section> : null}
 
       {showCreate ? <CreateFromLineDialog isOpen direction={line.direction} pending={pending} onClose={() => { setShowCreate(false) }} onSubmit={(input) => { onCreate(input); setShowCreate(false) }} /> : null}
     </aside>

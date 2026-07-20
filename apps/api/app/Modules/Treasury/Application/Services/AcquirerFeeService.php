@@ -46,12 +46,13 @@ final readonly class AcquirerFeeService
         $idempotencyKey = MovementSourceType::Adjustment->value.":{$line->id}:acquirer_fee";
         $existing = RepositoryMovement::query()->where('idempotency_key', $idempotencyKey)->first();
         if ($existing instanceof RepositoryMovement) {
-            $replayedFee = CurrencyScale::bcformatStrict($feeAmount, CurrencyScale::for($existing->currency));
+            $replayScale = $this->scaleResolver->getScale($existing->currency);
+            $replayedFee = CurrencyScale::bcformatStrict($feeAmount, $replayScale);
             if ($existing->payment_repository_id !== $line->payment_repository_id
                 || $existing->direction !== MovementDirection::Out
                 || $existing->source_type !== MovementSourceType::Adjustment
                 || $existing->source_id !== $line->id
-                || bccomp($existing->amount, $replayedFee, CurrencyScale::for($existing->currency)) !== 0) {
+                || bccomp($existing->amount, $replayedFee, $replayScale) !== 0) {
                 throw new DomainException('Acquirer fee idempotency replay does not match the recorded movement.');
             }
 
