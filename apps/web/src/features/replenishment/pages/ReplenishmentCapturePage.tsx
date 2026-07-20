@@ -75,6 +75,7 @@ export function ReplenishmentCapturePage() {
               id="replenishment-quantity"
               value={quantity}
               onChange={setQuantity}
+              // eslint-disable-next-line precision/no-literal-decimal-places -- pre-product standing field, intentionally scale-4 (spec 2026-07-20 §3.3): no product bound yet to derive precision from
               decimalPlaces={4}
             />
           </div>
