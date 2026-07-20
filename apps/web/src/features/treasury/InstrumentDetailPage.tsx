@@ -186,6 +186,7 @@ export function InstrumentDetailPage() {
   const canCancel = instrument.status === 'received' && hasPermission('instruments.cancel')
   const canClear = ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
   const canBounce = ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
+  const isOutbound = instrument.direction === 'outbound'
 
   return (
     <div className="space-y-6">
@@ -246,7 +247,7 @@ export function InstrumentDetailPage() {
             <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>{instrument.partner?.name ?? instrument.drawer_name ?? '—'}</dd>
           </div>
           <div>
-            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}><Calendar className="h-4 w-4" />{t('treasury:instruments.receivedDate')}</dt>
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}><Calendar className="h-4 w-4" />{t(isOutbound ? 'treasury:instruments.issuedDate' : 'treasury:instruments.receivedDate')}</dt>
             <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>{formatDate(instrument.received_date)}</dd>
           </div>
           <div>
@@ -257,7 +258,7 @@ export function InstrumentDetailPage() {
       </section>
 
       <section className={tokens.card.base}>
-        <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}><MapPin className={cn('h-5 w-5', textColors.disabled)} />{t('treasury:instruments.location')}</h2>
+        <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}><MapPin className={cn('h-5 w-5', textColors.disabled)} />{t(isOutbound ? 'treasury:instruments.repository' : 'treasury:instruments.location')}</h2>
         <p className={textColors.primary}>{instrument.repository?.name ?? '—'}</p>
       </section>
 

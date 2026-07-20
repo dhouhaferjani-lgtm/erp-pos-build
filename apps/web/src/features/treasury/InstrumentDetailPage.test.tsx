@@ -145,4 +145,31 @@ describe('InstrumentDetailPage canonicalization', () => {
       expect(screen.getByRole('button', { name: /treasury:instruments.remit/ })).toBeInTheDocument()
     })
   })
+
+  it('uses issuance and payment-repository labels for outbound instruments', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/payment-instruments/instrument-1') {
+        return Promise.resolve({
+          data: {
+            data: {
+              ...instrumentFixture(),
+              direction: 'outbound',
+              kind: 'cheque',
+            },
+          },
+        })
+      }
+      if (url === '/payment-repositories') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('treasury:instruments.issuedDate')).toBeInTheDocument()
+    expect(screen.getByText('treasury:instruments.repository')).toBeInTheDocument()
+    expect(screen.queryByText('treasury:instruments.receivedDate')).not.toBeInTheDocument()
+    expect(screen.queryByText('treasury:instruments.location')).not.toBeInTheDocument()
+  })
 })

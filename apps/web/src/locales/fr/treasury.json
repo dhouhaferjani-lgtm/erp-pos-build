@@ -153,6 +153,7 @@
     "amount": "Montant",
     "details": "Détails de l'effet",
     "receivedDate": "Date de réception",
+    "issuedDate": "Date d’émission",
     "maturityDate": "Date d'échéance",
     "repository": "Dépôt",
     "depositedTo": "Déposé à",
@@ -227,6 +228,7 @@
     },
     "events": {
       "created": "Effet reçu",
+      "issued": "Effet émis",
       "details_updated": "Détails modifiés",
       "custody_transferred": "Garde transférée",
       "remitted": "Ajouté au bordereau",

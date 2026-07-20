@@ -179,13 +179,13 @@ final readonly class OutboundInstrumentService
                 'created_by' => $userId,
             ]);
 
-            DB::afterCommit(fn () => event(new InstrumentCleared(
+            event(new InstrumentCleared(
                 instrumentId: $instrument->id,
                 tenantId: $tenantId,
                 companyId: $companyId,
                 amount: $amount,
                 clearedAt: $entryDate->toIso8601String(),
-            )));
+            ));
 
             return new OutboundTransitionResult(
                 instrumentId: $instrument->id,
@@ -489,13 +489,13 @@ final readonly class OutboundInstrumentService
                 'occurred_at' => $entryDate,
                 'created_by' => $userId,
             ]);
-            DB::afterCommit(fn () => event(new InstrumentCleared(
+            event(new InstrumentCleared(
                 instrumentId: $instrument->id,
                 tenantId: $tenantId,
                 companyId: $companyId,
                 amount: $amount,
                 clearedAt: $entryDate->toIso8601String(),
-            )));
+            ));
 
             return new OutboundTransitionResult(
                 instrumentId: $instrument->id,
@@ -693,14 +693,14 @@ final readonly class OutboundInstrumentService
                 'occurred_at' => $entryDate,
                 'created_by' => $userId,
             ]);
-            DB::afterCommit(fn () => event(new InstrumentCancelled(
+            event(new InstrumentCancelled(
                 instrumentId: $instrument->id,
                 tenantId: $tenantId,
                 companyId: $companyId,
                 amount: $amount,
                 reason: $reason,
                 cancelledAt: $entryDate->toIso8601String(),
-            )));
+            ));
 
             return new OutboundTransitionResult(
                 instrumentId: $instrument->id,

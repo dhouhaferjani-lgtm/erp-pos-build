@@ -6,6 +6,10 @@
     }
   },
   "instruments": {
+    "receivedDate": "تاريخ الاستلام",
+    "issuedDate": "تاريخ الإصدار",
+    "repository": "المستودع",
+    "location": "الموقع الحالي",
     "buckets": {
       "label": "فترات الاستحقاق",
       "overdue": "متأخر",
@@ -18,6 +22,17 @@
     "schedule": {
       "receivables": "جدول المقبوضات",
       "payables": "جدول المدفوعات"
+    },
+    "events": {
+      "created": "تم استلام الأداة",
+      "issued": "تم إصدار الأداة",
+      "details_updated": "تم تحديث التفاصيل",
+      "custody_transferred": "تم نقل الحيازة",
+      "remitted": "تمت الإضافة إلى حافظة الإيداع",
+      "cleared": "تم تحصيلها من البنك",
+      "bounced": "مرفوضة",
+      "re_presented": "تمت إعادة التقديم",
+      "cancelled": "ملغاة"
     }
   },
   "cashWidget": {

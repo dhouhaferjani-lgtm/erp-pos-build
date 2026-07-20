@@ -322,7 +322,6 @@ export function InstrumentListPage() {
             return (
               <section
                 key={maturityDirection}
-                role="region"
                 aria-label={t(`treasury:instruments.schedule.${scheduleKey}`)}
                 className={cn(
                   'rounded-lg border p-3',
@@ -334,7 +333,11 @@ export function InstrumentListPage() {
                   <h3 className={cn('text-sm font-semibold', textColors.primary)}>
                     {t(`treasury:instruments.schedule.${scheduleKey}`)}
                   </h3>
-                  <span className={cn('text-sm font-semibold tabular-nums', textColors.secondary)}>
+                  <span
+                    className={cn('text-sm font-semibold tabular-nums', textColors.secondary)}
+                    data-testid={`maturity-${maturityDirection}-total`}
+                    data-total={maturityData.meta.grand_total[totalKey]}
+                  >
                     {formatAmount(maturityData.meta.grand_total[totalKey])}
                   </span>
                 </div>

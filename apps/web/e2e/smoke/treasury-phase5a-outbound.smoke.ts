@@ -268,7 +268,17 @@ test.describe('Treasury Phase 5a — live outbound exit', () => {
     expect(await repositoryBalance(request), 'issue does not move bank cash').toBe(supplierBankBaseline)
   })
 
-  test('3. browser shows the issued cheque in the outbound payable schedule', async ({ page }) => {
+  test('3. browser shows the issued cheque in the outbound payable schedule', async ({ request, page }) => {
+    const maturityResponse = await request.get(`${API_BASE}/treasury/maturing-instruments`, {
+      headers: authHeaders(),
+    })
+    await expectStatus(maturityResponse, 200, 'maturity schedule')
+    const maturity = (await responseJson(maturityResponse)) as unknown as {
+      meta: { grand_total: { count: number; total_out: string } }
+    }
+    expect(maturity.meta.grand_total.count).toBeGreaterThan(0)
+    expect(Number(maturity.meta.grand_total.total_out)).toBeGreaterThan(0)
+
     await seedAuth(page)
     await page.goto('/treasury/instruments')
     await expect(page.getByRole('link', { name: supplierInstrumentReference })).toBeVisible({
@@ -277,9 +287,10 @@ test.describe('Treasury Phase 5a — live outbound exit', () => {
 
     const payableSchedule = page.getByRole('region', { name: /Payables schedule|Échéancier.*payer|الدفع/i })
     await expect(payableSchedule, 'the outbound payable schedule renders').toBeVisible()
-    await expect(payableSchedule, 'outbound payable schedule has a non-zero total').not.toContainText(
-      /^\s*0(?:[.,]0+)?\s*TND\s*$/,
-    )
+    await expect(
+      payableSchedule.getByTestId('maturity-outbound-total'),
+      'the rendered payable total equals the API aggregate',
+    ).toHaveAttribute('data-total', maturity.meta.grand_total.total_out)
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, '01-issued-payable-schedule.png'),
       fullPage: true,
@@ -464,7 +475,9 @@ test.describe('Treasury Phase 5a — live outbound exit', () => {
     await seedAuth(page)
     await page.goto(`/expenses/${expenseId}/view`)
     await expect(page.getByText(expenseNumber, { exact: true })).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByText(/Paid|Payé|مدفوع/).first()).toBeVisible()
+    const paidBadge = page.getByText(/^(Paid|Payé|مدفوع)$/).last()
+    await expect(paidBadge).toBeVisible()
+    await paidBadge.scrollIntoViewIfNeeded()
     await expect(page.getByText(bankRepositoryName, { exact: true })).toBeVisible()
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, '05-expense-paid-after-clear.png'),

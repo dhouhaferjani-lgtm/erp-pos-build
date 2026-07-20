@@ -30,7 +30,7 @@ php artisan tenants:run permission:cache-reset
 The sequence is load-bearing:
 
 1. Migrate before enabling new code paths. The action-key uniqueness and expense FK must exist before outbound lifecycle traffic is accepted.
-2. Run the chart backfill dry-run across every tenant. Any missing supplier parent account or existing `403`/`4035` row with a non-liability type is a deployment stop; investigate it rather than overwriting the row.
+2. Run the chart backfill dry-run across every tenant. Any missing supplier parent account, inactive `403`/`4035`, or existing row with a non-liability type is a deployment stop; investigate it rather than overwriting the row.
 3. Run the idempotent real chart backfill. It creates missing liability children beneath account `40` for TN/FR charts and beneath `4000` for generic charts, or promotes a valid existing row to system-managed.
 4. Re-seed roles and permissions inside every tenant.
 5. Reset the Spatie permission cache inside every tenant. A central-only reset is insufficient because the cache key is tenant-blind.
@@ -41,6 +41,8 @@ Phase ⑤a adds `instruments.clear-outbound` and `instruments.cancel-outbound`; 
 ## Verification before traffic
 
 For every tenant/company:
+
+The lifecycle write checks below are API-driven in Phase ⑤a; the browser ships the outbound register/detail and expense payment surfaces, but dedicated outbound clear/bounce/re-present/cancel controls are not part of this phase.
 
 - [ ] Confirm `403` and `4035` exist, are active liability accounts, are system-managed, and have the correct supplier parent.
 - [ ] Confirm the three migrations are recorded and no Phase ⑤a tenant migration remains pending.

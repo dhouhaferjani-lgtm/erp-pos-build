@@ -28,6 +28,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -36,6 +37,7 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
@@ -247,6 +249,39 @@ final class ExpensePayByInstrumentTest extends TestCase
         self::assertSame($this->context['method']->id, $metadata->payment_method_id);
         self::assertSame(1, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
         self::assertSame('375.000', $this->context['repository']->fresh()?->balance);
+    }
+
+    public function test_clear_listener_failure_rolls_back_gl_movement_instrument_and_expense_metadata(): void
+    {
+        $expense = $this->expense();
+        $this->payByInstrument($expense)->assertOk();
+        $instrument = $this->linkedInstrument($expense);
+        $journalCount = JournalEntry::query()->count();
+
+        Event::listen(InstrumentCleared::class, static function (): never {
+            throw new \RuntimeException('Injected expense projection failure.');
+        });
+
+        try {
+            app(OutboundInstrumentService::class)->clear(
+                $instrument->id,
+                $this->context['tenant']->id,
+                $this->context['company']->id,
+                $this->context['user']->id,
+                '2026-07-18',
+            );
+            $this->fail('A synchronous expense projection failure must abort the clear transaction.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Injected expense projection failure.', $exception->getMessage());
+        }
+
+        self::assertSame(InstrumentStatus::Received, $instrument->fresh()?->status);
+        self::assertSame($journalCount, JournalEntry::query()->count());
+        self::assertSame(0, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
+        self::assertSame('500.000', $this->context['repository']->fresh()?->balance);
+        $metadata = ExpenseMetadata::query()->where('document_id', $expense->id)->firstOrFail();
+        self::assertFalse($metadata->is_paid);
+        self::assertNull($metadata->paid_at);
     }
 
     public function test_cancel_event_unlinks_instrument_and_resets_payment_fields(): void

@@ -82,6 +82,17 @@ final class BackfillPayableInstrumentAccountsCommand extends Command
                         continue;
                     }
 
+                    if (! (bool) $existing->is_active) {
+                        $this->error(sprintf(
+                            'Company %s account %s is inactive; activate it before using payable instruments. Account was skipped.',
+                            $companyId,
+                            $definition['code'],
+                        ));
+                        $invalid++;
+
+                        continue;
+                    }
+
                     if (! (bool) $existing->is_system) {
                         if ($dryRun) {
                             $this->line(sprintf(

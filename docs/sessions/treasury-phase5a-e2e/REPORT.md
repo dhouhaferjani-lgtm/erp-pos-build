@@ -17,7 +17,7 @@ The live Playwright smoke is `apps/web/e2e/smoke/treasury-phase5a-outbound.smoke
 Final successful run:
 
 ```text
-7 passed (23.4s)
+7 passed (25.4s)
 ```
 
 Command:
@@ -31,12 +31,12 @@ pnpm exec playwright test e2e/smoke/treasury-phase5a-outbound.smoke.ts \
 The run proved:
 
 1. A supplier invoice was created from a received purchase order and posted through the procurement API.
-2. Deferred supplier cheque `P5A-SUP-1784446523202-aeec96a3` (`019f794d-2134-7352-b490-f516e5c04692`, `23.800 TND`) was issued against `BANK-01`. Issue left the repository balance unchanged.
-3. The browser rendered the instrument in the outbound payable schedule.
+2. Deferred supplier cheque `P5A-SUP-1784481987747-d3517b94` (`019f7b6a-4e43-724d-b23a-8aa2a54219ae`, `23.800 TND`) was issued against `BANK-01`. Issue left the repository balance unchanged.
+3. The browser rendered the instrument in the outbound payable schedule and its displayed total matched the non-zero API aggregate exactly.
 4. Clearing created the outbound repository movement and reduced the bank balance.
 5. Bouncing restored the bank balance and rendered the bounced state in the browser.
 6. Re-presentation returned the instrument to `cleared`; its public event history contains `re_presented`, `bounced -> cleared`, and the second clear returned the repository to the same post-clear balance.
-7. Expense `EXP-2026-000013` was issued by cheque `P5A-EXP-1784446523202-aeec96a3` (`019f794d-60ec-7178-b8d1-ffe68523ef76`, `37.125 TND`). Clearing marked the expense paid and the browser rendered the paid state with `BANK-01`.
+7. Expense `EXP-2026-000014` was issued by cheque `P5A-EXP-1784481987747-d3517b94` (`019f7b6a-899c-717f-8737-4334e1d1a86b`, `37.125 TND`). Clearing marked the expense paid; the browser assertion targeted the exact `Paid` badge and rendered `BANK-01`.
 8. That second cheque was bounced and cancelled from `bounced`; the final instrument state is `cancelled`, and the expense was reopened with `is_paid=false` and no linked instrument.
 
 Screenshots:

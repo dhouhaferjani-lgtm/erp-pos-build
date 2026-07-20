@@ -153,6 +153,7 @@
     "amount": "Amount",
     "details": "Instrument Details",
     "receivedDate": "Received Date",
+    "issuedDate": "Issued Date",
     "maturityDate": "Maturity Date",
     "repository": "Repository",
     "depositedTo": "Deposited To",
@@ -227,6 +228,7 @@
     },
     "events": {
       "created": "Instrument received",
+      "issued": "Instrument issued",
       "details_updated": "Details updated",
       "custody_transferred": "Custody transferred",
       "remitted": "Added to remittance",

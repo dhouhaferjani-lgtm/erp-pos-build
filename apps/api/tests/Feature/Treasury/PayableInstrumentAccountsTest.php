@@ -128,6 +128,25 @@ final class PayableInstrumentAccountsTest extends TestCase
         );
     }
 
+    public function test_backfill_fails_loudly_on_an_inactive_payable_account(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        (new TunisiaChartOfAccountsSeeder)->run($company->id, $tenant->id);
+        Account::query()
+            ->where('company_id', $company->id)
+            ->where('code', '4035')
+            ->update(['is_active' => false]);
+
+        $this->artisanCommand('treasury:backfill-payable-instrument-accounts')
+            ->expectsOutputToContain('inactive')
+            ->assertFailed();
+
+        self::assertFalse(
+            Account::query()->where('company_id', $company->id)->where('code', '4035')->sole()->is_active,
+        );
+    }
+
     public function test_backfill_dry_run_previews_system_account_promotion(): void
     {
         $tenant = Tenant::factory()->create();
