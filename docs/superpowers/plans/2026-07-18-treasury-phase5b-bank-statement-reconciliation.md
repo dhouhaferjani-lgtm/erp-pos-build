@@ -81,7 +81,7 @@ routes: app/Modules/Treasury/Presentation/routes.php  (correct path — NOT app/
 
 **Files:** `StatementParserInterface.php`, `StatementParserRegistry.php` (constructor-injected map `StatementParserKey → StatementParserInterface`; service-provider binding), `CsvStatementParser.php`, `XlsxStatementParser.php`, DTOs (`ParsedStatement`, `ParsedStatementLine`, `StatementColumnMap`), fixtures.
 **Interfaces:** as Rev 1 DTO shapes, plus: registry dispatch tested for both keys; each behavior fixture-backed (preamble skip, Excel serial dates, configured date formats, locale decimals incl. `7.140` trap, signed vs debit/credit conventions, formula cells evaluated-or-unparseable, encoding/delimiter detection, zero-amount drop + count, canonical normalization for fingerprints — trim/collapse-whitespace/case-fold reference+label before hashing). `SpreadsheetParserService` (`:44-66,129-176` always header-first, string cells) is reused only if a raw-row entry point can be added WITHOUT changing its existing consumers; otherwise parse directly (plan Q4 resolved: prefer direct — no Import-module modification).
-- [ ] Steps: fixture-driven failing tests per behavior + registry dispatch + **two identical legitimate fees in one file get distinct occurrence indexes** → implement → commit `feat(treasury): statement parser registry + csv/xlsx parsers`.
+- [x] Steps: fixture-driven failing tests per behavior + registry dispatch + **two identical legitimate fees in one file get distinct occurrence indexes** → implement → commit `feat(treasury): statement parser registry + csv/xlsx parsers`.
 
 🚦 **GATE 1 — treasury-reviewer (Opus).** Constraint completeness, FK/delete behavior, normalization matrix, registry binding.
 

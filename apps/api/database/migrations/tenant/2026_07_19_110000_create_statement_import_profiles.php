@@ -29,7 +29,7 @@ return new class extends Migration
             $table->string('date_format', 40);
             $table->string('decimal_format', 20);
             $table->string('direction_convention', 30);
-            $table->unsignedSmallInteger('header_rows')->default(1);
+            $table->unsignedSmallInteger('header_rows')->default(0);
             $table->timestampsTz();
 
             $table->index(['tenant_id', 'company_id']);

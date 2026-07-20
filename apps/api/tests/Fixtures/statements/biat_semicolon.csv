@@ -1,0 +1,7 @@
+BIAT account statement export
+Generated for July 2026
+Value Date;Booking Date;Amount;Reference;Transaction ID;Label;Counterparty
+17/07/2026;18/07/2026;1 234,56;VIR-001;BIAT-001;Virement client;Client Alpha
+18/07/2026;;-42,500;FEE-001;;Frais de tenue de compte;BIAT
+19/07/2026;;0,000;INFO-001;;Solde informatif;
+not-a-date;;15,000;BAD-001;;Ligne invalide;

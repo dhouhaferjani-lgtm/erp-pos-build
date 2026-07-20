@@ -9,11 +9,15 @@ use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Application\Services\CsvStatementParser;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
+use App\Modules\Treasury\Application\Services\XlsxStatementParser;
+use App\Modules\Treasury\Domain\Enums\StatementParserKey;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
@@ -22,6 +26,7 @@ use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 class TreasuryServiceProvider extends ServiceProvider
@@ -60,6 +65,13 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(InstrumentLifecycleService::class);
         $this->app->bind(InstrumentRemittanceService::class);
         $this->app->bind(OutboundInstrumentIssuerInterface::class, OutboundInstrumentIssuer::class);
+        $this->app->singleton(
+            StatementParserRegistry::class,
+            static fn (Application $app): StatementParserRegistry => new StatementParserRegistry([
+                StatementParserKey::Csv->value => $app->make(CsvStatementParser::class),
+                StatementParserKey::Xlsx->value => $app->make(XlsxStatementParser::class),
+            ]),
+        );
 
         // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector
         // for `SALE_RECEIPT` fiscal events. Owns the Treasury `Payment` +
