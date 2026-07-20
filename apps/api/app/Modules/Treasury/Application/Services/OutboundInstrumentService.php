@@ -564,6 +564,13 @@ final readonly class OutboundInstrumentService
                 throw new DomainException('Outbound instrument has no settlement repository.');
             }
 
+            $issueEvent = InstrumentEvent::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('instrument_id', $instrument->id)
+                ->where('action_key', "instrument:{$instrument->id}:issue")
+                ->first();
+
             $scale = $this->scaleResolver->getScale($instrument->currency);
             $payment = Payment::query()
                 ->where('tenant_id', $tenantId)
@@ -576,6 +583,9 @@ final readonly class OutboundInstrumentService
             }
             if ($payment instanceof Payment && $payment->status !== PaymentStatus::Completed) {
                 throw new DomainException('Only a completed linked payment can be reopened by cancellation.');
+            }
+            if ($payment instanceof Payment && ! $issueEvent instanceof InstrumentEvent) {
+                throw new DomainException('Outbound instrument linked payment has no durable issue event.');
             }
             if ($payment instanceof Payment
                 && ($payment->currency !== $instrument->currency
@@ -619,24 +629,27 @@ final readonly class OutboundInstrumentService
                 currency: $instrument->currency,
                 instrumentBankId: $instrument->bank_id,
             );
-            $purpose = $instrument->kind === InstrumentKind::Cheque
-                ? InstrumentAccountPurpose::ChecksToPay
-                : InstrumentAccountPurpose::EffetsPayable;
             $amount = CurrencyScale::bcformatStrict($instrument->amount, $scale);
-            $entry = $this->generalLedger->createOutboundInstrumentCancellationEntry(
-                companyId: $companyId,
-                tenantId: $tenantId,
-                instrumentId: $instrument->id,
-                partnerId: $instrument->partner_id,
-                payableAccountId: $this->accountResolver->resolveOrFail($purpose, $companyId),
-                amount: $amount,
-                date: $entryDate,
-            );
-            $this->generalLedger->postEntryNow(
-                $entry,
-                User::query()->where('tenant_id', $tenantId)->findOrFail($userId),
-                $instrument->currency,
-            );
+            $entry = null;
+            if ($issueEvent instanceof InstrumentEvent) {
+                $purpose = $instrument->kind === InstrumentKind::Cheque
+                    ? InstrumentAccountPurpose::ChecksToPay
+                    : InstrumentAccountPurpose::EffetsPayable;
+                $entry = $this->generalLedger->createOutboundInstrumentCancellationEntry(
+                    companyId: $companyId,
+                    tenantId: $tenantId,
+                    instrumentId: $instrument->id,
+                    partnerId: $instrument->partner_id,
+                    payableAccountId: $this->accountResolver->resolveOrFail($purpose, $companyId),
+                    amount: $amount,
+                    date: $entryDate,
+                );
+                $this->generalLedger->postEntryNow(
+                    $entry,
+                    User::query()->where('tenant_id', $tenantId)->findOrFail($userId),
+                    $instrument->currency,
+                );
+            }
 
             foreach ($allocations as $allocation) {
                 PaymentAllocation::query()->create([
@@ -687,7 +700,7 @@ final readonly class OutboundInstrumentService
                 'to_status' => InstrumentStatus::Cancelled->value,
                 'from_repository_id' => $instrument->repository_id,
                 'to_repository_id' => $instrument->repository_id,
-                'journal_entry_id' => $entry->id,
+                'journal_entry_id' => $entry?->id,
                 'movement_id' => null,
                 'payload' => (new InstrumentEventPayload(reason: $reason))->toArray(),
                 'occurred_at' => $entryDate,
@@ -706,7 +719,7 @@ final readonly class OutboundInstrumentService
                 instrumentId: $instrument->id,
                 fromStatus: $fromStatus->value,
                 toStatus: InstrumentStatus::Cancelled->value,
-                journalEntryId: $entry->id,
+                journalEntryId: $entry?->id,
                 movementId: null,
                 replayed: false,
             );

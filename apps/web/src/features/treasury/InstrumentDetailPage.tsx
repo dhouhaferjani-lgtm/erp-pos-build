@@ -92,7 +92,7 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleDateString() : '—'
 }
 
-function formatBankDetails(...values: Array<string | null>) {
+function formatBankDetails(...values: (string | null)[]) {
   let details = ''
   for (const value of values) {
     if (!value) continue
@@ -181,12 +181,12 @@ export function InstrumentDetailPage() {
     return <div className={cn(tokens.alert.base, tokens.alert.error)}>{t('common:errors.loadingFailed')}</div>
   }
 
-  const canRemit = instrument.status === 'received' && hasPermission('instruments.remit')
-  const canTransfer = instrument.status === 'received' && hasPermission('instruments.transfer')
-  const canCancel = instrument.status === 'received' && hasPermission('instruments.cancel')
-  const canClear = ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
-  const canBounce = ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
   const isOutbound = instrument.direction === 'outbound'
+  const canRemit = !isOutbound && instrument.status === 'received' && hasPermission('instruments.remit')
+  const canTransfer = !isOutbound && instrument.status === 'received' && hasPermission('instruments.transfer')
+  const canCancel = !isOutbound && instrument.status === 'received' && hasPermission('instruments.cancel')
+  const canClear = !isOutbound && ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
+  const canBounce = !isOutbound && ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
 
   return (
     <div className="space-y-6">

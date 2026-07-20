@@ -147,6 +147,18 @@ describe('InstrumentDetailPage canonicalization', () => {
   })
 
   it('uses issuance and payment-repository labels for outbound instruments', async () => {
+    useAuthStore.setState((state) => ({
+      user: state.user ? {
+        ...state.user,
+        permissions: [
+          'instruments.remit',
+          'instruments.transfer',
+          'instruments.cancel',
+          'instruments.clear',
+          'instruments.bounce',
+        ],
+      } : null,
+    }))
     mockApiGet.mockImplementation((url: string) => {
       if (url === '/payment-instruments/instrument-1') {
         return Promise.resolve({
@@ -171,5 +183,40 @@ describe('InstrumentDetailPage canonicalization', () => {
     expect(screen.getByText('treasury:instruments.repository')).toBeInTheDocument()
     expect(screen.queryByText('treasury:instruments.receivedDate')).not.toBeInTheDocument()
     expect(screen.queryByText('treasury:instruments.location')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:instruments.remit/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:instruments.transfer/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:instruments.cancel/ })).not.toBeInTheDocument()
+  })
+
+  it('hides inbound clear and bounce actions for an outbound clearing instrument', async () => {
+    useAuthStore.setState((state) => ({
+      user: state.user ? {
+        ...state.user,
+        permissions: ['instruments.clear', 'instruments.bounce'],
+      } : null,
+    }))
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/payment-instruments/instrument-1') {
+        return Promise.resolve({
+          data: {
+            data: {
+              ...instrumentFixture(),
+              direction: 'outbound',
+              status: 'clearing',
+            },
+          },
+        })
+      }
+      if (url === '/payment-repositories') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('button', { name: /treasury:instruments.clear/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /treasury:instruments.bounce/ })).not.toBeInTheDocument()
   })
 })

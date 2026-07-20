@@ -18,6 +18,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceType;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -168,7 +169,7 @@ final class OutboundInstrumentGuardTest extends TestCase
         ));
     }
 
-    public function test_outbound_receive_and_cancel_remain_allowed(): void
+    public function test_outbound_receive_remains_allowed_but_generic_cancel_is_rejected(): void
     {
         $instrument = $this->register('outbound');
 
@@ -177,8 +178,8 @@ final class OutboundInstrumentGuardTest extends TestCase
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/cancel", [
                 'reason' => 'Supplier instrument deferred to outbound lifecycle.',
             ])
-            ->assertOk()
-            ->assertJsonPath('data.status', 'cancelled');
+            ->assertUnprocessable();
+        $this->assertSame(InstrumentStatus::Received, $instrument->fresh()?->status);
     }
 
     public function test_inbound_instrument_still_clears_end_to_end(): void
