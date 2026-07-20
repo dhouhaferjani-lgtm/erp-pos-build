@@ -75,7 +75,7 @@ routes: app/Modules/Treasury/Presentation/routes.php  (correct path — NOT app/
 - `bank_statement_lines`: composite FK `(bank_statement_id, payment_repository_id)` → `bank_statements(id, payment_repository_id)`.
 - `bank_statement_match_executions`: + `semantic_digest` varchar NOT NULL (canonical JSON hash: action_type, line id, target id, amount, value date, repository, method/fee params where applicable).
 - State machines (spec §6.6) implemented as enum methods `canTransitionTo()` on statement + derived-only line status recompute helper.
-- [ ] Steps: failing constraint tests (each unique/CHECK/FK violation incl. cross-statement repository mismatch and **migration rollback order `migrate:rollback` clean**) → implement → commit `feat(treasury): bank statement aggregate schema`.
+- [x] Steps: failing constraint tests (each unique/CHECK/FK violation incl. cross-statement repository mismatch and **migration rollback order `migrate:rollback` clean**) → implement → commit `feat(treasury): bank statement aggregate schema`.
 
 ### Task 3: Parser port + registry + CSV & XLSX parsers
 
