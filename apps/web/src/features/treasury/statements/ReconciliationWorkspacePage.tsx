@@ -25,25 +25,13 @@ import {
   ignoreStatementLine,
   reopenBankStatement,
   searchRepositoryMovements,
-  type BankStatementLine,
   type StatementLineStatus,
   unallocateStatementLine,
   unignoreStatementLine,
 } from './api'
 import { LinePanel } from './LinePanel'
 import { StatementCompletionDialog } from './StatementCompletionDialog'
-import { isResolvedLineStatus, isSuccessfulLineStatus } from './status'
-
-function remainingForLine(line: BankStatementLine): Big {
-  let matched = new Big(0)
-  for (const allocation of line.allocations) {
-    matched = allocation.movement_direction === line.direction
-      ? matched.plus(allocation.matched_amount)
-      : matched.minus(allocation.matched_amount)
-  }
-  const remaining = new Big(line.amount).minus(matched)
-  return remaining.lt(0) ? new Big(0) : remaining
-}
+import { isResolvedLineStatus, isSuccessfulLineStatus, remainingForLine } from './status'
 
 export function ReconciliationWorkspacePage() {
   const { t } = useTranslation(['treasury', 'common'])

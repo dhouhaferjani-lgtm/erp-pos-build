@@ -13,7 +13,7 @@ import type { BankStatementLine, RepositoryMovementCandidate, StatementActionTyp
 import { CreateFromLineDialog } from './CreateFromLineDialog'
 import { ManualMatchSearch } from './ManualMatchSearch'
 import { SuggestionList } from './SuggestionList'
-import { isSuccessfulLineStatus } from './status'
+import { isSuccessfulLineStatus, remainingForLine } from './status'
 
 interface LinePanelProps {
   line: BankStatementLine
@@ -36,17 +36,6 @@ function isIgnoreReason(value: string): value is StatementIgnoreReason {
   return ignoreReasons.some((reason) => reason === value)
 }
 
-function lineRemaining(line: BankStatementLine): string {
-  let signedMatched = new Big(0)
-  for (const allocation of line.allocations) {
-    signedMatched = allocation.movement_direction === line.direction
-      ? signedMatched.plus(allocation.matched_amount)
-      : signedMatched.minus(allocation.matched_amount)
-  }
-  const remaining = new Big(line.amount).minus(signedMatched)
-  return (remaining.lt(0) ? new Big(0) : remaining).toFixed(3)
-}
-
 function provenanceLink(targetType: string | null, targetId: string | null): string | null {
   if (!targetId) return null
   if (targetType === 'payment_instrument') return `/treasury/instruments/${targetId}`
@@ -62,7 +51,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
   const [ignoreReason, setIgnoreReason] = useState<StatementIgnoreReason | ''>('')
   const [ignoreText, setIgnoreText] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const remaining = lineRemaining(line)
+  const remaining = remainingForLine(line).toFixed(3)
   const canIgnore = line.allocations.length === 0 && line.executions.length === 0
 
   function confirmSuggestion(suggestion: StatementSuggestion) {
