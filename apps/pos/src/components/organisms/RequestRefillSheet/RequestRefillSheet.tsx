@@ -7,7 +7,9 @@ import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { getDatabase } from '@/lib/db';
 import { getOpenRequestForProduct } from '@/lib/db/repositories/openReplenishmentRepository';
 import { enqueueReplenishmentRequest } from '@/lib/db/repositories/replenishmentOutboxRepository';
+import { QuantityInput } from '@/components/atoms/QuantityInput';
 import { bccomp } from '@/lib/decimal';
+import { clampQuantityDecimals, formatQuantity } from '@/lib/quantity';
 import { useAuthStore } from '@/stores/authStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -20,7 +22,9 @@ export interface RequestRefillSheetProps {
   variantId?: string | null;
 }
 
-const QUANTITY_PATTERN = /^\d+(\.\d{1,4})?$/;
+function patternForDecimals(dp: number): RegExp {
+  return dp === 0 ? /^\d+$/ : new RegExp(`^\\d+(\\.\\d{1,${dp}})?$`);
+}
 const REQUESTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'short',
   timeStyle: 'short',
@@ -42,6 +46,7 @@ export function RequestRefillSheet({
   const { t } = useTranslation('pos');
   const [form, setForm] = useState(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const dp = clampQuantityDecimals(product.quantity_decimals);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -68,7 +73,9 @@ export function RequestRefillSheet({
           ...current,
           quantity: current.quantityEdited
             ? current.quantity
-            : (cached?.suggested_qty ?? ''),
+            : cached?.suggested_qty !== undefined && cached?.suggested_qty !== null
+              ? formatQuantity(cached.suggested_qty, dp)
+              : '',
           lastRequestedAt: cached?.last_requested_at ?? null,
         }));
       }
@@ -77,14 +84,14 @@ export function RequestRefillSheet({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, product.id, variantId]);
+  }, [isOpen, product.id, variantId, dp]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedQuantity = form.quantity.trim();
     const validQuantity =
       normalizedQuantity === '' ||
-      (QUANTITY_PATTERN.test(normalizedQuantity) && bccomp(normalizedQuantity, '0') > 0);
+      (patternForDecimals(dp).test(normalizedQuantity) && bccomp(normalizedQuantity, '0') > 0);
     if (!validQuantity) {
       setForm((current) => ({ ...current, quantityInvalid: true }));
       return;
@@ -161,16 +168,14 @@ export function RequestRefillSheet({
 
         <label className="block text-sm font-medium text-ink">
           <span>{t('replenishment.quantity_optional')}</span>
-          <input
-            className="mt-1 w-full rounded-ctl border border-border-subtle bg-surface-raised px-3 py-2 text-ink outline-none focus:border-action focus:ring-2 focus:ring-action"
+          <QuantityInput
             value={form.quantity}
-            inputMode="decimal"
-            pattern="^\d+(\.\d{1,4})?$"
-            aria-invalid={form.quantityInvalid}
-            onChange={(event) => {
+            decimalPlaces={product.quantity_decimals}
+            invalid={form.quantityInvalid}
+            onChange={(value) => {
               setForm((current) => ({
                 ...current,
-                quantity: event.target.value,
+                quantity: value,
                 quantityInvalid: false,
                 quantityEdited: true,
               }));
