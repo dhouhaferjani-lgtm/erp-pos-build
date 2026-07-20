@@ -408,19 +408,21 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         }
 
         // Resolve payment_method_id via the Shared/Contracts seam (the
-        // same surface PosCoreReceiptProjection uses). Tenant-scoped
+        // same surface PosCoreReceiptProjection uses). Tenant+company-scoped
         // lookup; null return triggers fail-closed RuntimeException
         // (same security stance as the prior payment_method_id gate).
         $paymentMethodId = $this->paymentMethodResolver->resolveByCode(
             $event->tenant_id,
+            $event->company_id,
             $methodCode,
         );
 
         if ($paymentMethodId === null) {
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: payment_method_not_found:method_code=%s:tenant_id=%s',
+                'TreasuryReceiptBridge: payment_method_not_found:method_code=%s:tenant_id=%s:company_id=%s',
                 $methodCode,
                 $event->tenant_id,
+                $event->company_id,
             ));
         }
 

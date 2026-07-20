@@ -52,7 +52,7 @@ class TreasuryServiceProvider extends ServiceProvider
         // Pass 2A.PHP.2 — bind the PaymentMethodResolver seam (synthesis v5
         // §8.B + dispatch §0 Gap A). The 27-key canonical SALE_RECEIPT
         // payload no longer carries `payment_method_id` per-payment; the POS
-        // projector resolves the tenant-scoped FK from `(tenant_id, method_code)`
+        // projector resolves the company-scoped FK from `(tenant_id, company_id, method_code)`
         // via this interface so POS module never imports Treasury directly
         // (SoT §13.6/D16 bounded-modules asymmetric seam).
         $this->app->singleton(
