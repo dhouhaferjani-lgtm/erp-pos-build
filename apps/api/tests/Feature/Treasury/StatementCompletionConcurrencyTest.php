@@ -32,7 +32,7 @@ final class StatementCompletionConcurrencyTest extends TestCase
         return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
     }
 
-    public function test_matching_racing_completion_cannot_mutate_a_reconciled_statement(): void
+    public function test_matching_and_completion_serialize_without_torn_statement_state(): void
     {
         $this->requireConcurrencyRuntime();
         [$company, $user, $repository] = $this->context();

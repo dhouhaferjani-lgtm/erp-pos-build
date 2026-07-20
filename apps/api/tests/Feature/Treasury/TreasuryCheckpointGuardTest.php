@@ -79,6 +79,23 @@ final class TreasuryCheckpointGuardTest extends TestCase
             ->count());
     }
 
+    public function test_record_accepts_the_first_business_day_after_a_completion_checkpoint(): void
+    {
+        $checkpoint = CarbonImmutable::parse('2026-07-31', 'Africa/Tunis')->endOfDay()->utc();
+        $repository = $this->repository('100.000', $checkpoint->format('Y-m-d H:i:s.u'));
+        $intent = $this->movementIntent(
+            $repository,
+            Str::uuid()->toString(),
+            CarbonImmutable::parse('2026-08-01 00:00:00', 'Africa/Tunis')->utc(),
+        );
+
+        $result = DB::transaction(fn () => $this->service()->record($intent));
+
+        $movement = RepositoryMovement::query()->findOrFail($result->movementId);
+        $this->assertFalse($movement->recorded_behind_checkpoint);
+        $this->assertSame('125.000', $repository->fresh()?->balance);
+    }
+
     public function test_projection_records_behind_checkpoint_with_separate_flag_event_and_alert(): void
     {
         Event::fake([RepositoryMovementRecorded::class]);

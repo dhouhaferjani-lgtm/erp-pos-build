@@ -31,9 +31,12 @@ use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\BankStatementLine;
 use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\StatementLineIgnoreReason;
+use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -261,7 +264,21 @@ final class ReconcileTreasuryTest extends TestCase
 
         $repo->refresh();
         self::assertSame('50.000', $repo->balance);
-        $validStatement = $this->statement($repo, BankStatementStatus::Reconciled, now(), '50.000', '50.000');
+        $validStatement = $this->statement($repo, BankStatementStatus::Reconciled, now(), '50.000', '60.000');
+        BankStatementLine::query()->create([
+            'bank_statement_id' => $validStatement->id,
+            'payment_repository_id' => $repo->id,
+            'line_number' => 1,
+            'value_date' => '2026-06-30',
+            'direction' => MovementDirection::In,
+            'amount' => '10.000',
+            'label' => 'Acknowledged statement discrepancy',
+            'match_status' => StatementLineMatchStatus::Ignored,
+            'ignore_reason' => StatementLineIgnoreReason::Informational,
+            'ignore_text' => 'No treasury movement exists',
+            'fingerprint' => hash('sha256', Str::uuid()->toString()),
+            'dedupe_active' => true,
+        ]);
 
         $exit = $this->reconcile();
 

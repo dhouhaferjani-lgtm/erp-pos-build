@@ -386,6 +386,7 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         }
 
         $signedStatementTotal = '0';
+        $signedIgnoredTotal = '0';
         foreach ($lines as $line) {
             if ($line->payment_repository_id !== $statement->payment_repository_id) {
                 return sprintf('Statement line %s no longer belongs to the statement repository.', $line->id);
@@ -397,6 +398,9 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 if ($lineAllocations->isNotEmpty() || $lineExecutions->isNotEmpty()) {
                     return sprintf('Ignored statement line %s retains allocations or executions.', $line->id);
                 }
+                $signedIgnoredTotal = $line->direction === MovementDirection::In
+                    ? bcadd($signedIgnoredTotal, $line->amount, $scale)
+                    : bcsub($signedIgnoredTotal, $line->amount, $scale);
 
                 continue;
             }
@@ -435,8 +439,9 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         }
 
         $expectedDelta = bcsub($statement->closing_balance, $statement->opening_balance, $scale);
-        if (bccomp($signedStatementTotal, $expectedDelta, $scale) !== 0) {
-            return 'Signed statement line total no longer equals closing balance minus opening balance.';
+        $expectedNonIgnoredDelta = bcsub($expectedDelta, $signedIgnoredTotal, $scale);
+        if (bccomp($signedStatementTotal, $expectedNonIgnoredDelta, $scale) !== 0) {
+            return 'Signed non-ignored statement line total no longer equals closing balance minus opening balance, less ignored lines.';
         }
 
         return null;

@@ -7,6 +7,7 @@ namespace Tests\Feature\Treasury;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\BankStatement;
@@ -81,6 +82,7 @@ final class StatementCompletionHttpTest extends TestCase
     public function test_nonzero_ignored_total_requires_admin_acknowledgment(): void
     {
         $statement = $this->statement();
+        $statement->update(['closing_balance' => '10.000']);
         BankStatementLine::query()->create([
             'bank_statement_id' => $statement->id,
             'payment_repository_id' => $this->repository->id,
@@ -103,11 +105,22 @@ final class StatementCompletionHttpTest extends TestCase
             ->assertUnprocessable();
 
         $this->actingAs($this->admin)
+            ->postJson("/api/v1/bank-statements/{$statement->id}/complete")
+            ->assertUnprocessable();
+
+        $this->actingAs($this->admin)
             ->postJson("/api/v1/bank-statements/{$statement->id}/complete", [
                 'acknowledge_ignored_total' => true,
             ])
             ->assertOk()
             ->assertJsonPath('data.status', 'reconciled');
+
+        $audit = AuditEvent::query()
+            ->where('event_type', 'treasury.bank_statement.reconciled')
+            ->where('aggregate_id', $statement->id)
+            ->sole();
+        $this->assertSame('10.000', $audit->payload['signed_ignored_total']);
+        $this->assertTrue($audit->payload['ignored_total_acknowledged']);
     }
 
     public function test_completion_and_reopen_are_persisted_to_the_audit_log(): void

@@ -150,8 +150,9 @@ final readonly class StatementCompletionService
             }
 
             $expectedDelta = bcsub($statement->closing_balance, $statement->opening_balance, $scale);
-            if (bccomp($signedStatementTotal, $expectedDelta, $scale) !== 0) {
-                throw new DomainException('Signed statement lines do not equal closing balance minus opening balance.');
+            $expectedNonIgnoredDelta = bcsub($expectedDelta, $signedIgnoredTotal, $scale);
+            if (bccomp($signedStatementTotal, $expectedNonIgnoredDelta, $scale) !== 0) {
+                throw new DomainException('Signed non-ignored statement lines do not equal closing balance minus opening balance, less ignored lines.');
             }
             if ($hasIgnoredLines && (! $acknowledgeIgnored || ! $actor->can('bank-statements.reopen'))) {
                 throw new DomainException('Ignored statement lines require explicit acknowledgment by a user allowed to reopen statements.');
