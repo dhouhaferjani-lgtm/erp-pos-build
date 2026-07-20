@@ -72,6 +72,14 @@ describe('route module guards', () => {
     expect(fragment).not.toContain('permission="repositories.manage"')
   })
 
+  it('guards treasury-native statement list with bank statement view permission', () => {
+    const idx = routesSource.indexOf('path="statements"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
+    expect(fragment).toContain('permission="bank-statements.view"')
+    expect(fragment).toContain('<StatementListPage />')
+  })
+
   it('registers treasury overview under finance with reports.view permission', () => {
     const idx = routesSource.indexOf('path="overview"')
     expect(idx).toBeGreaterThanOrEqual(0)

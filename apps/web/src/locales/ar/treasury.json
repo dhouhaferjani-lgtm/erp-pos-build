@@ -93,5 +93,26 @@
       "toRequired": "اختر المستودع الوجهة",
       "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
     }
+  },
+  "statements": {
+    "title": "الكشوف البنكية",
+    "subtitle": "استورد الكشوف وطابق كل حركة بنكية مع دفتر الخزينة.",
+    "columns": { "period": "فترة الكشف", "repository": "الحساب البنكي", "lines": "الأسطر", "delta": "حركة الكشف", "status": "الحالة" },
+    "status": { "imported": "مستورد", "reconciling": "قيد المطابقة", "reconciled": "تمت المطابقة", "voided": "ملغى" },
+    "filters": { "status": "الحالة", "repository": "الحساب البنكي", "allStatuses": "كل الحالات", "allRepositories": "كل الحسابات البنكية" },
+    "empty": { "title": "لا توجد كشوف بنكية", "description": "استورد كشف CSV أو Excel لبدء المطابقة." },
+    "upload": {
+      "action": "استيراد كشف", "title": "استيراد كشف بنكي", "subtitle": "اختر الحساب وحلّل الملف بملف تعريف محفوظ، ثم راجع كل الاستثناءات قبل الاستيراد.",
+      "progress": "تقدم الاستيراد", "steps": { "repository": "1 · الحساب", "file": "2 · الملف", "profile": "3 · التعيين", "preview": "4 · المراجعة" },
+      "repository": "الحساب البنكي", "selectRepository": "اختر حسابًا بنكيًا", "file": "ملف الكشف", "fileHelp": "CSV أو XLSX، حتى 20 ميغابايت.",
+      "profile": "ملف التحليل", "selectProfile": "اختر ملفًا محفوظًا", "newProfile": "تعيين جديد", "next": "متابعة", "back": "رجوع", "preview": "معاينة الكشف", "previewing": "جارٍ قراءة الملف…",
+      "report": { "accepted": "الأسطر المقبولة", "duplicates": "مستوردة سابقًا", "droppedZero": "أسطر صفرية مستبعدة", "unparseable": "أسطر تحتاج مراجعة" },
+      "row": "السطر", "date": "تاريخ القيمة", "label": "بيان البنك", "amount": "المبلغ", "periodStart": "بداية الفترة", "periodEnd": "نهاية الفترة", "openingBalance": "الرصيد الافتتاحي", "closingBalance": "الرصيد الختامي",
+      "emptyGate": "تأكيد الاستيراد الفارغ", "acknowledgeEmpty": "راجعت التقرير وأريد الاحتفاظ بهذا الكشف الخالي من الأسطر كدليل تدقيق.", "confirm": "استيراد الكشف", "importing": "جارٍ الاستيراد…"
+    },
+    "profile": {
+      "name": "اسم ملف التعريف", "parser": "نوع الملف", "direction": "تنسيق المبلغ", "signed": "عمود مبلغ واحد بإشارة", "debitCredit": "عمودا مدين ودائن منفصلان", "decimal": "تنسيق الرقم", "dateFormat": "تنسيق التاريخ", "headerRows": "أسطر الرأس المتجاوزة", "save": "حفظ التعيين",
+      "fields": { "value_date": "عمود تاريخ القيمة", "booking_date": "عمود تاريخ القيد", "amount": "عمود المبلغ", "debit": "عمود المدين", "credit": "عمود الدائن", "reference": "عمود المرجع", "bank_transaction_id": "معرف المعاملة البنكية", "label": "عمود البيان", "counterparty_hint": "عمود الطرف المقابل" }
+    }
   }
 }

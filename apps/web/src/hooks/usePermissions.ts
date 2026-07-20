@@ -88,6 +88,10 @@ export const PERMISSIONS = {
   // Treasury - Repositories
   'repositories.view': ['admin', 'treasury', 'accountant', 'manager'],
   'repositories.manage': ['admin', 'accountant'],
+  'bank-statements.view': ['admin', 'accountant'],
+  'bank-statements.import': ['admin', 'accountant'],
+  'bank-statements.reconcile': ['admin', 'accountant'],
+  'bank-statements.reopen': ['admin'],
 
   // Withholding Certificates
   'withholding.view': ['admin', 'accountant', 'manager'],
@@ -246,6 +250,10 @@ export type Permission = keyof typeof PERMISSIONS
 
 const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'pricing.view_cost_prices',
+  'bank-statements.view',
+  'bank-statements.import',
+  'bank-statements.reconcile',
+  'bank-statements.reopen',
 ])
 
 // Module-level permission mapping for navigation

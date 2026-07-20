@@ -704,5 +704,26 @@
       "openingBalanceHelp": "Defaults to {{amount}} if left blank.",
       "liveDifference": "Current difference"
     }
+  },
+  "statements": {
+    "title": "Bank statements",
+    "subtitle": "Import statements and reconcile each bank movement against the treasury ledger.",
+    "columns": { "period": "Statement period", "repository": "Bank account", "lines": "Lines", "delta": "Statement movement", "status": "Status" },
+    "status": { "imported": "Imported", "reconciling": "Reconciling", "reconciled": "Reconciled", "voided": "Voided" },
+    "filters": { "status": "Status", "repository": "Bank account", "allStatuses": "All statuses", "allRepositories": "All bank accounts" },
+    "empty": { "title": "No bank statements", "description": "Import a CSV or Excel statement to begin reconciliation." },
+    "upload": {
+      "action": "Import statement", "title": "Import a bank statement", "subtitle": "Choose the bank account, parse the file with a saved profile, then review every exception before import.",
+      "progress": "Import progress", "steps": { "repository": "1 · Bank account", "file": "2 · File", "profile": "3 · Mapping", "preview": "4 · Review" },
+      "repository": "Bank account", "selectRepository": "Choose a bank account", "file": "Statement file", "fileHelp": "CSV or XLSX, up to 20 MB.",
+      "profile": "Parsing profile", "selectProfile": "Choose a saved profile", "newProfile": "New mapping", "next": "Continue", "back": "Back", "preview": "Preview statement", "previewing": "Reading file…",
+      "report": { "accepted": "Accepted lines", "duplicates": "Already imported", "droppedZero": "Zero rows dropped", "unparseable": "Rows needing attention" },
+      "row": "Row", "date": "Value date", "label": "Bank label", "amount": "Amount", "periodStart": "Period start", "periodEnd": "Period end", "openingBalance": "Opening balance", "closingBalance": "Closing balance",
+      "emptyGate": "Empty import acknowledgment", "acknowledgeEmpty": "I reviewed the report and want to retain this zero-line statement as audit evidence.", "confirm": "Import statement", "importing": "Importing…"
+    },
+    "profile": {
+      "name": "Profile name", "parser": "File type", "direction": "Amount layout", "signed": "One signed amount column", "debitCredit": "Separate debit and credit columns", "decimal": "Number format", "dateFormat": "Date format", "headerRows": "Header rows to skip", "save": "Save mapping",
+      "fields": { "value_date": "Value-date column", "booking_date": "Booking-date column", "amount": "Amount column", "debit": "Debit column", "credit": "Credit column", "reference": "Reference column", "bank_transaction_id": "Bank transaction ID", "label": "Label column", "counterparty_hint": "Counterparty column" }
+    }
   }
 }

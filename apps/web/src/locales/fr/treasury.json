@@ -704,5 +704,26 @@
       "openingBalanceHelp": "Par défaut {{amount}} si le champ reste vide.",
       "liveDifference": "Différence actuelle"
     }
+  },
+  "statements": {
+    "title": "Relevés bancaires",
+    "subtitle": "Importez les relevés et rapprochez chaque mouvement avec le grand livre de trésorerie.",
+    "columns": { "period": "Période du relevé", "repository": "Compte bancaire", "lines": "Lignes", "delta": "Mouvement du relevé", "status": "Statut" },
+    "status": { "imported": "Importé", "reconciling": "En rapprochement", "reconciled": "Rapproché", "voided": "Annulé" },
+    "filters": { "status": "Statut", "repository": "Compte bancaire", "allStatuses": "Tous les statuts", "allRepositories": "Tous les comptes bancaires" },
+    "empty": { "title": "Aucun relevé bancaire", "description": "Importez un relevé CSV ou Excel pour commencer le rapprochement." },
+    "upload": {
+      "action": "Importer un relevé", "title": "Importer un relevé bancaire", "subtitle": "Choisissez le compte, analysez le fichier avec un profil enregistré, puis contrôlez chaque exception avant l’import.",
+      "progress": "Progression de l’import", "steps": { "repository": "1 · Compte", "file": "2 · Fichier", "profile": "3 · Mappage", "preview": "4 · Contrôle" },
+      "repository": "Compte bancaire", "selectRepository": "Choisir un compte bancaire", "file": "Fichier du relevé", "fileHelp": "CSV ou XLSX, 20 Mo maximum.",
+      "profile": "Profil d’analyse", "selectProfile": "Choisir un profil enregistré", "newProfile": "Nouveau mappage", "next": "Continuer", "back": "Retour", "preview": "Prévisualiser le relevé", "previewing": "Lecture du fichier…",
+      "report": { "accepted": "Lignes acceptées", "duplicates": "Déjà importées", "droppedZero": "Lignes nulles écartées", "unparseable": "Lignes à vérifier" },
+      "row": "Ligne", "date": "Date de valeur", "label": "Libellé bancaire", "amount": "Montant", "periodStart": "Début de période", "periodEnd": "Fin de période", "openingBalance": "Solde d’ouverture", "closingBalance": "Solde de clôture",
+      "emptyGate": "Confirmation d’un import vide", "acknowledgeEmpty": "J’ai contrôlé le rapport et je souhaite conserver ce relevé sans ligne comme preuve d’audit.", "confirm": "Importer le relevé", "importing": "Import en cours…"
+    },
+    "profile": {
+      "name": "Nom du profil", "parser": "Type de fichier", "direction": "Présentation des montants", "signed": "Une colonne de montant signé", "debitCredit": "Colonnes débit et crédit séparées", "decimal": "Format numérique", "dateFormat": "Format de date", "headerRows": "Lignes d’en-tête à ignorer", "save": "Enregistrer le mappage",
+      "fields": { "value_date": "Colonne date de valeur", "booking_date": "Colonne date comptable", "amount": "Colonne montant", "debit": "Colonne débit", "credit": "Colonne crédit", "reference": "Colonne référence", "bank_transaction_id": "ID de transaction bancaire", "label": "Colonne libellé", "counterparty_hint": "Colonne contrepartie" }
+    }
   }
 }
