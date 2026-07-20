@@ -44,7 +44,7 @@ Gate focus:
 Fresh evidence (verify independently):
 
 - Prior live Playwright smoke: 6/6 in 45.0s; the repair commit adds server-state assertions for tier 3/4, balance, and rejected-clear provenance, so rerun before approval.
-- Focused statement Vitest after the repair: 7 files / 29 tests passed; the new create-from-line dialog suite covers account selection and validation. Existing cutover paths remain available for independent rerun.
+- Focused statement Vitest after the repair: 8 files / 32 tests passed; page-level completion-control coverage and the create-from-line account-picker suite cover the prior review gaps. Existing cutover paths remain available for independent rerun.
 - `pnpm typecheck`: pass. Targeted ESLint: 0 errors. React Doctor changed-scope is 92/100 with one pre-existing `StatementUploadWizard` useReducer warning.
 - Fresh full web lint completed exit 0 with 0 errors, 0 new tenant-key/design-system findings, and custom rule tests green (repository-wide acknowledged warnings remain).
 

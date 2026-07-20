@@ -61,7 +61,7 @@ Fresh evidence (verify independently; backend tests by path only, never full PHP
 
 - Prior live Playwright smoke: 6/6 passed in 45.0s against the db-per-tenant stack; this repair commit strengthens the assertions, so rerun the smoke before approval.
 - Final `treasury:reconcile`: checked 7 repositories; froze 0; 0 portfolio drifts; 0 statement alerts; 0 errors.
-- Focused statement Vitest after the repair: 7 files / 29 tests passed. Web typecheck passed. Targeted ESLint: 0 errors. React Doctor changed-scope is 92/100 with one pre-existing `StatementUploadWizard` useReducer warning; no new critical finding was introduced by this repair.
+- Focused statement Vitest after the repair: 8 files / 32 tests passed, including page-level completion-control coverage. Web typecheck passed. Targeted ESLint: 0 errors. React Doctor changed-scope is 92/100 with one pre-existing `StatementUploadWizard` useReducer warning; no new critical finding was introduced by this repair.
 - Fresh combined cutover/matching/completion/checkpoint/tenant-isolation backend paths: 95 tests / 301 assertions. Focused frontend cutover paths: 86 tests passed.
 - Fresh full web lint completed with exit 0, 0 errors, 0 new tenant-key/design-system findings, and custom rule tests green (repository-wide acknowledged warnings remain).
 - Gate 0 follow-up: resolver RED was 2 failures; focused resolver became 5/5, all projection/routing regressions became 53/53 (206 assertions), and targeted PHPStan/Pint passed.
