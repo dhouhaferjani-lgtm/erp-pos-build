@@ -284,6 +284,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/bank-statement-lines/{statementLine}/allocations', [StatementLineController::class, 'allocate'])
         ->middleware('can:bank-statements.reconcile')
         ->name('bank-statement-lines.allocations.store');
+    Route::get('/bank-statement-lines/{statementLine}/suggestions', [StatementLineController::class, 'suggestions'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.suggestions.index');
     Route::delete('/bank-statement-lines/{statementLine}/allocations/{repositoryMovement?}', [StatementLineController::class, 'unallocate'])
         ->middleware('can:bank-statements.reconcile')
         ->name('bank-statement-lines.allocations.destroy');

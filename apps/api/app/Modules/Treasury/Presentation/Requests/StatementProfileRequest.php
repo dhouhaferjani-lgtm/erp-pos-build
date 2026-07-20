@@ -35,6 +35,7 @@ final class StatementProfileRequest extends FormRequest
             'decimal_format' => [$required, Rule::in(['comma', 'comma_decimal', 'dot', 'dot_decimal'])],
             'direction_convention' => [$required, Rule::in(['signed_amount', 'debit_credit_columns'])],
             'header_rows' => [$required, 'integer', 'min:0', 'max:100'],
+            'matching_window_days' => ['sometimes', 'integer', 'min:0', 'max:30'],
         ];
     }
 }

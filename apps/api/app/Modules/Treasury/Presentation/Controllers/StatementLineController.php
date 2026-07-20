@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Application\Services\StatementMatchingService;
+use App\Modules\Treasury\Application\Services\StatementSuggestionService;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\BankStatementLine;
 use App\Modules\Treasury\Domain\Enums\MatchActionType;
@@ -24,7 +25,20 @@ final class StatementLineController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly StatementMatchingService $matching,
+        private readonly StatementSuggestionService $suggestions,
     ) {}
+
+    public function suggestions(string $statementLine): JsonResponse
+    {
+        $line = $this->findLine($statementLine);
+
+        return response()->json([
+            'data' => array_map(
+                static fn ($suggestion): array => $suggestion->toArray(),
+                $this->suggestions->suggest($line->id),
+            ),
+        ]);
+    }
 
     public function allocate(AllocateStatementLineRequest $request, string $statementLine): JsonResponse
     {

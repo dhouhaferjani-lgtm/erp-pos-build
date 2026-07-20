@@ -21,6 +21,7 @@ This is the mandatory Gate 2 Fable interpretation of locked Rev 2. Do not restor
   4. `2026_07_19_110003_create_bank_statement_line_allocations.php`
   5. `2026_07_19_110004_create_bank_statement_match_executions.php`
   6. `2026_07_19_110005_make_statement_deduplication_void_aware.php`
+  7. `2026_07_19_110006_add_matching_window_to_statement_profiles.php`
 - [ ] Treat `110005` as mandatory even on developer/preview databases that already ran `110000`–`110004`; it converts the two unconditional Gate 1 indexes to void-aware partial indexes and adds `dedupe_active`.
 - [ ] Provision `storage/app/private/bank-statements` on node-stable shared storage. Upload preview and confirm are separate requests and may hit different replicas; ephemeral per-node storage causes valid confirms to fail.
 - [ ] Define and enable an abandoned-preview retention/cleanup process before enabling statement upload. It must delete only unreferenced staged files older than the approved retention window; a path referenced by any `bank_statements.source_file_path`, including a voided statement, is audit evidence and must be retained.
@@ -45,6 +46,7 @@ For every tenant database:
 
 - [ ] No Phase ⑤b migration is pending.
 - [ ] `bank_statement_lines.dedupe_active` is `NOT NULL DEFAULT true`.
+- [ ] `statement_import_profiles.matching_window_days` is `NOT NULL DEFAULT 5` with the `0..30` database bound.
 - [ ] `bank_statements_repository_file_unique` is partial on `status <> 'voided'`.
 - [ ] `bank_statement_lines_repository_fingerprint_unique` is partial on `dedupe_active`.
 - [ ] Admin has all four statement permissions; accountant has view/import/reconcile but not reopen; manager has none.

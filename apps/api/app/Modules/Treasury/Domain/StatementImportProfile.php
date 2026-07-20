@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $decimal_format
  * @property StatementDirectionConvention $direction_convention
  * @property int $header_rows
+ * @property int $matching_window_days
  */
 final class StatementImportProfile extends Model
 {
@@ -40,6 +41,7 @@ final class StatementImportProfile extends Model
         'column_map' => 'array',
         'direction_convention' => StatementDirectionConvention::class,
         'header_rows' => 'integer',
+        'matching_window_days' => 'integer',
     ];
 
     /** @return BelongsTo<Tenant, $this> */

@@ -131,6 +131,7 @@ final class StatementProfileController extends Controller
             'decimal_format' => $profile->decimal_format,
             'direction_convention' => $profile->direction_convention->value,
             'header_rows' => $profile->header_rows,
+            'matching_window_days' => $profile->matching_window_days,
         ];
     }
 }

@@ -151,6 +151,24 @@ final class StatementMatchingHttpTest extends TestCase
             ->assertJsonPath('error.code', 'BUSINESS_ERROR');
     }
 
+    public function test_suggestion_endpoint_returns_ranked_read_only_candidates(): void
+    {
+        $line = $this->line('25.000');
+        $movementId = $this->movement($this->company, $this->repository, '25.000');
+
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk()
+            ->assertJsonPath('data.0.tier', 2)
+            ->assertJsonPath('data.0.movement_ids.0', $movementId)
+            ->assertJsonPath('data.0.amount', '25.000');
+        $this->assertDatabaseCount('bank_statement_line_allocations', 0);
+
+        $this->actingAs($this->manager)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertForbidden();
+    }
+
     private function user(string $role): User
     {
         $user = User::factory()->create(['tenant_id' => $this->tenant->id]);

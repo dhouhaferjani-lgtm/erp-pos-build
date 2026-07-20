@@ -96,7 +96,6 @@ final readonly class StatementMatchingService
     {
         DB::transaction(function () use ($lineId, $userId): void {
             [$statement, $line] = $this->lockMutableAggregate($lineId, $userId);
-            $line->forceFill(['ignore_reason' => null, 'ignore_text' => null])->save();
             $this->recomputeStatus($statement, $line);
         });
     }

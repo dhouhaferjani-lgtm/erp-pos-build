@@ -129,7 +129,7 @@ Semantics (all under one transaction per call): statement not `Reconciled`/`Void
 ### Task 6: Suggestion engine tiers 1-3
 
 As Rev 1, plus: **partially-allocated movements with remaining capacity stay suggestible** (exclusion is `remaining == 0`, not `∃ allocation`); tier-2 uniqueness respects remaining capacity; tier-3 `OutboundClear` candidates include `Bounced` (→ represent).
-- [ ] Steps: failing per-tier tests incl. partial-capacity suggestibility → implement → commit.
+- [x] Steps: failing per-tier tests incl. partial-capacity suggestibility → implement → commit.
 
 ### Task 7: Create-from-line + `AcquirerFeeService` + card-batch tier 4 *(after ⑤a Task 9)*
 

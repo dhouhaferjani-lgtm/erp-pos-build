@@ -304,9 +304,16 @@ final class StatementImportFlowTest extends TestCase
         $created = $this->actingAs($this->accountant)->postJson('/api/v1/statement-import-profiles', [
             ...$this->profilePayload(),
             'name' => 'Second profile',
+            'matching_window_days' => 7,
         ]);
-        $created->assertCreated()->assertJsonPath('data.name', 'Second profile');
+        $created->assertCreated()
+            ->assertJsonPath('data.name', 'Second profile')
+            ->assertJsonPath('data.matching_window_days', 7);
         $id = (string) $created->json('data.id');
+
+        $this->actingAs($this->accountant)
+            ->patchJson("/api/v1/statement-import-profiles/{$id}", ['matching_window_days' => 31])
+            ->assertUnprocessable();
 
         $this->actingAs($this->accountant)->getJson('/api/v1/statement-import-profiles')
             ->assertOk()
