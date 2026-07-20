@@ -461,22 +461,42 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      * demo pass must never rewrite manually received lot stock. For selected
      * products the DEFAULT lot is replaced, at the warehouse only, by three
      * sellable lots whose quantities still reconcile exactly to StockLevel.
+     *
+     * Fixture identity is anchored to the product SKU (DEMO-FEFO-{SKU}-{A..C})
+     * — never to the selection position — and previously fixtured products
+     * seed first, so a reseed after real demo usage reuses the same lots
+     * instead of re-keying them onto different products. Any fixture lot whose
+     * product fell out of the selected set (stock consumed below the
+     * threshold, organic lot received, reservation held) is zeroed at the
+     * warehouse so it can never dangle on top of the DEFAULT lot the earlier
+     * reconcile pass refreshed to StockLevel.
      */
     protected function seedTunisiaMultiBatchFefoDemo(Company $company, Location $warehouse): void
     {
-        $batchTrackedProductIds = Product::query()
+        $previouslyFixturedProductIds = Batch::query()
+            ->where('company_id', $company->id)
+            ->where('batch_number', 'like', 'DEMO-FEFO-%')
+            ->pluck('product_id')
+            ->unique()
+            ->flip();
+
+        // Stable sort: previously fixtured products first (selection
+        // stickiness), SKU order within each group.
+        $candidateProducts = Product::query()
             ->where('company_id', $company->id)
             ->where('requires_batch_tracking', true)
             ->orderBy('sku')
             ->orderBy('id')
-            ->pluck('id');
+            ->get(['id', 'sku'])
+            ->sortBy(fn (Product $product): int => $previouslyFixturedProductIds->has($product->id) ? 0 : 1)
+            ->values();
 
-        /** @var Collection<int, StockLevel> $selectedStockLevels */
-        $selectedStockLevels = collect();
+        /** @var Collection<int, array{stockLevel: StockLevel, sku: string}> $selectedFixtures */
+        $selectedFixtures = collect();
 
-        foreach ($batchTrackedProductIds as $productId) {
+        foreach ($candidateProducts as $product) {
             $stockLevel = StockLevel::query()
-                ->where('product_id', $productId)
+                ->where('product_id', $product->id)
                 ->whereNull('variant_id')
                 ->where('location_id', $warehouse->id)
                 ->where('quantity', '>=', '9.0000')
@@ -487,7 +507,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             }
 
             $organicBatchIds = Batch::query()
-                ->where('product_id', $productId)
+                ->where('product_id', $product->id)
                 ->where('batch_number', '!=', BatchStockService::DEFAULT_BATCH_NUMBER)
                 ->where('batch_number', 'not like', 'DEMO-FEFO-%')
                 ->pluck('id');
@@ -502,21 +522,39 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 continue;
             }
 
-            $selectedStockLevels->push($stockLevel);
+            // A live reservation on ANY of the product's warehouse lots
+            // (DEFAULT or fixture) makes it unsafe to rewrite lot stock.
+            $hasReservedBatchStock = BatchStock::query()
+                ->where('location_id', $warehouse->id)
+                ->where('reserved_quantity', '>', 0)
+                ->whereIn('batch_id', Batch::query()
+                    ->where('product_id', $product->id)
+                    ->pluck('id'))
+                ->exists();
 
-            if ($selectedStockLevels->count() === 4) {
+            if ($hasReservedBatchStock) {
+                continue;
+            }
+
+            $selectedFixtures->push(['stockLevel' => $stockLevel, 'sku' => $product->sku]);
+
+            if ($selectedFixtures->count() === 4) {
                 break;
             }
         }
 
-        if ($selectedStockLevels->count() !== 4) {
+        if ($selectedFixtures->count() !== 4) {
             throw new \RuntimeException('Demo pharmacy requires four safe warehouse products for multi-batch FEFO fixtures.');
         }
 
         $asOfDate = now()->startOfDay();
 
-        DB::transaction(function () use ($company, $warehouse, $selectedStockLevels, $asOfDate): void {
-            foreach ($selectedStockLevels as $index => $stockLevel) {
+        DB::transaction(function () use ($company, $warehouse, $selectedFixtures, $asOfDate): void {
+            /** @var list<string> $fixtureBatchIds */
+            $fixtureBatchIds = [];
+
+            foreach ($selectedFixtures as $fixture) {
+                $stockLevel = $fixture['stockLevel'];
                 $remainingQuantity = bcsub((string) $stockLevel->quantity, '7.0000', 4);
                 $batchDefinitions = [
                     ['suffix' => 'A', 'days' => 90, 'quantity' => '3.0000'],
@@ -530,7 +568,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                             'company_id' => $company->id,
                             'product_id' => $stockLevel->product_id,
                             'variant_id' => null,
-                            'batch_number' => sprintf('DEMO-FEFO-%02d-%s', $index + 1, $definition['suffix']),
+                            'batch_number' => sprintf('DEMO-FEFO-%s-%s', $fixture['sku'], $definition['suffix']),
                         ],
                         [
                             'tenant_id' => $company->tenant_id,
@@ -553,6 +591,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                             'reserved_quantity' => '0.0000',
                         ],
                     );
+
+                    $fixtureBatchIds[] = $batch->id;
                 }
 
                 $defaultBatch = Batch::query()
@@ -567,6 +607,24 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     ->where('location_id', $warehouse->id)
                     ->update(['quantity' => '0.0000', 'reserved_quantity' => '0.0000']);
             }
+
+            // Stale fixture lots — products that fell out of the selected set,
+            // or lots under a retired numbering scheme — are zeroed at the
+            // warehouse only. The batch rows are kept (historical transfer
+            // allocations reference them) and lots holding a live reservation
+            // are left untouched: wiping a reservation is worse than a
+            // temporary aggregate overshoot that the next reseed self-heals.
+            $staleBatchIds = Batch::query()
+                ->where('company_id', $company->id)
+                ->where('batch_number', 'like', 'DEMO-FEFO-%')
+                ->whereNotIn('id', $fixtureBatchIds)
+                ->pluck('id');
+
+            BatchStock::query()
+                ->whereIn('batch_id', $staleBatchIds)
+                ->where('location_id', $warehouse->id)
+                ->where('reserved_quantity', '<=', 0)
+                ->update(['quantity' => '0.0000']);
         });
 
         $this->command->info('✓ Multi-batch FEFO demo fixtures reconciled (4 products × 3 warehouse lots)');
