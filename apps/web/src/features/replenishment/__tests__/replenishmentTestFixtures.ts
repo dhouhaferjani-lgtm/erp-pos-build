@@ -20,6 +20,7 @@ export function makeReplenishmentLine(overrides: Partial<ReplenishmentLine> = {}
     fulfillment_type: null,
     fulfillment_id: null,
     rejection_reason: null,
+    quantity_decimals: 4,
     ...overrides,
   }
 }

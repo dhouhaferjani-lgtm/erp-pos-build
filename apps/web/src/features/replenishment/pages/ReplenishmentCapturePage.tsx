@@ -70,6 +70,7 @@ export function ReplenishmentCapturePage() {
             <label htmlFor="replenishment-quantity" className={tokens.label.base}>
               {t('capture.quantity')}
             </label>
+            {/* pre-product standing field — intentionally scale-4; see spec 2026-07-20 §3.3 */}
             <QuantityInput
               id="replenishment-quantity"
               value={quantity}
