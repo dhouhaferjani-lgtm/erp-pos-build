@@ -493,7 +493,7 @@ final class StatementImportFlowTest extends TestCase
         $this->assertIsInt($lookupChunk);
         $this->assertIsInt($insertChunk);
         $this->assertLessThanOrEqual(999, $lookupChunk);
-        $this->assertLessThanOrEqual(32000, $insertChunk * 15);
+        $this->assertLessThanOrEqual(32000, $insertChunk * 16);
 
         $rows = [];
         for ($number = 1; $number <= 1201; $number++) {
@@ -521,6 +521,10 @@ final class StatementImportFlowTest extends TestCase
         $this->assertSame(1201, BankStatement::query()->findOrFail($statementId)->lines()->count());
         $this->assertGreaterThan(0, $lineInsertQueries);
         $this->assertLessThanOrEqual((int) ceil(1201 / $insertChunk), $lineInsertQueries);
+        $persistedFirstLine = BankStatement::query()->findOrFail($statementId)->lines()
+            ->where('fingerprint', $firstFingerprint)
+            ->firstOrFail();
+        $this->assertTrue(Str::isUuid($persistedFirstLine->id));
         $this->assertDatabaseHas('bank_statement_lines', [
             'bank_statement_id' => $statementId,
             'payment_repository_id' => $this->repository->id,
