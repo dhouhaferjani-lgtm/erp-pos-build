@@ -13,6 +13,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Contracts\StatementParserInterface;
 use App\Modules\Treasury\Application\DTOs\ParsedStatement;
 use App\Modules\Treasury\Application\Services\CsvStatementParser;
+use App\Modules\Treasury\Application\Services\StatementImportService;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\BankStatementLineAllocation;
@@ -25,6 +26,7 @@ use App\Modules\Treasury\Domain\Enums\StatementParserKey;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\StatementImportProfile;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
@@ -206,10 +208,32 @@ final class StatementImportFlowTest extends TestCase
         $voidableFile = $this->csv(['17/07/2026,25,TX-VOID,Voidable,,']);
         $upload = $this->upload($voidableFile);
         $statementId = (string) $this->confirm((string) $upload->json('data.preview_token'))->json('data.id');
+        $line = BankStatement::query()->findOrFail($statementId)->lines()->firstOrFail();
+        $line->update([
+            'match_status' => 'ignored',
+            'ignore_reason' => 'other',
+            'ignore_text' => 'Imported against the wrong statement period.',
+        ]);
+        BankStatement::query()->whereKey($statementId)->update(['status' => BankStatementStatus::Reconciling]);
         $this->actingAs($this->accountant)
             ->postJson("/api/v1/bank-statements/{$statementId}/void")
             ->assertOk()
-            ->assertJsonPath('data.status', 'voided');
+            ->assertJsonPath('data.status', 'voided')
+            ->assertJsonPath('data.lines_count', 1);
+        $this->assertDatabaseHas('bank_statement_lines', [
+            'id' => $line->id,
+            'label' => 'Voidable',
+            'match_status' => 'ignored',
+            'ignore_reason' => 'other',
+            'ignore_text' => 'Imported against the wrong statement period.',
+            'dedupe_active' => false,
+        ]);
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statements/{$statementId}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.lines')
+            ->assertJsonPath('data.lines.0.label', 'Voidable')
+            ->assertJsonPath('data.lines.0.match_status', 'ignored');
         $reimport = $this->upload($voidableFile);
         $reimport->assertOk();
         $this->confirm((string) $reimport->json('data.preview_token'))
@@ -459,6 +483,73 @@ final class StatementImportFlowTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('error.message', 'The parser profile changed after preview. Upload the file again.');
         $this->assertDatabaseCount('bank_statements', 0);
+    }
+
+    public function test_chunked_lookup_and_bulk_insert_preserve_all_rows_and_overlap_dedupe(): void
+    {
+        $reflection = new \ReflectionClass(StatementImportService::class);
+        $lookupChunk = $reflection->getConstant('FINGERPRINT_LOOKUP_CHUNK');
+        $insertChunk = $reflection->getConstant('LINE_INSERT_CHUNK');
+        $this->assertIsInt($lookupChunk);
+        $this->assertIsInt($insertChunk);
+        $this->assertLessThanOrEqual(999, $lookupChunk);
+        $this->assertLessThanOrEqual(32000, $insertChunk * 15);
+
+        $rows = [];
+        for ($number = 1; $number <= 1201; $number++) {
+            $rows[] = sprintf(
+                '17/07/2026,1,TX-CHUNK-%04d,Chunk %d,,',
+                $number,
+                $number,
+            );
+        }
+        $upload = $this->upload($this->csv($rows));
+        $upload->assertOk()->assertJsonPath('data.accepted_line_count', 1201);
+        $firstFingerprint = (string) $upload->json('data.preview_lines.0.fingerprint');
+        $firstLineNumber = (int) $upload->json('data.preview_lines.0.line_number');
+
+        $lineInsertQueries = 0;
+        DB::listen(function (QueryExecuted $query) use (&$lineInsertQueries): void {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'insert')
+                && str_contains(strtolower($query->sql), 'bank_statement_lines')) {
+                $lineInsertQueries++;
+            }
+        });
+        $confirmed = $this->confirm((string) $upload->json('data.preview_token'));
+        $confirmed->assertCreated()->assertJsonPath('meta.imported_line_count', 1201);
+        $statementId = (string) $confirmed->json('data.id');
+        $this->assertSame(1201, BankStatement::query()->findOrFail($statementId)->lines()->count());
+        $this->assertGreaterThan(0, $lineInsertQueries);
+        $this->assertLessThanOrEqual((int) ceil(1201 / $insertChunk), $lineInsertQueries);
+        $this->assertDatabaseHas('bank_statement_lines', [
+            'bank_statement_id' => $statementId,
+            'payment_repository_id' => $this->repository->id,
+            'line_number' => $firstLineNumber,
+            'value_date' => '2026-07-17',
+            'booking_date' => null,
+            'direction' => 'in',
+            'amount' => '1.000',
+            'reference' => null,
+            'bank_transaction_id' => 'TX-CHUNK-0001',
+            'label' => 'Chunk 1',
+            'counterparty_hint' => null,
+            'match_status' => 'unmatched',
+            'location_id' => $this->repository->location_id,
+            'fingerprint' => $firstFingerprint,
+            'dedupe_active' => true,
+        ]);
+
+        $overlap = $this->upload($this->csv([
+            ...$rows,
+            '18/07/2026,2,TX-CHUNK-NEW,New row,,',
+        ]));
+        $overlap->assertOk()
+            ->assertJsonPath('data.duplicate_fingerprint_count', 1201)
+            ->assertJsonPath('data.accepted_line_count', 1);
+        $this->confirm((string) $overlap->json('data.preview_token'))
+            ->assertCreated()
+            ->assertJsonPath('meta.imported_line_count', 1)
+            ->assertJsonPath('meta.skipped_duplicate_count', 1201);
     }
 
     /** @return TestResponse<Response> */

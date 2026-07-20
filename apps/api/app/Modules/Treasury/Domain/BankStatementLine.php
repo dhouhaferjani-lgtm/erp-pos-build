@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $ignore_text
  * @property string|null $location_id
  * @property string $fingerprint
+ * @property bool $dedupe_active
  */
 final class BankStatementLine extends Model
 {
@@ -50,6 +51,7 @@ final class BankStatementLine extends Model
         'amount' => 'decimal:3',
         'match_status' => StatementLineMatchStatus::class,
         'ignore_reason' => StatementLineIgnoreReason::class,
+        'dedupe_active' => 'boolean',
     ];
 
     /** @return BelongsTo<BankStatement, $this> */

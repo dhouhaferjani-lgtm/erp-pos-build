@@ -31,6 +31,10 @@ final readonly class StatementImportService
 
     private const TOKEN_LIFETIME_SECONDS = 14400;
 
+    private const FINGERPRINT_LOOKUP_CHUNK = 500;
+
+    private const LINE_INSERT_CHUNK = 500;
+
     public function __construct(
         private StatementParserRegistry $parsers,
         private CurrencyScaleResolverInterface $scaleResolver,
@@ -201,23 +205,29 @@ final readonly class StatementImportService
                 'imported_at' => now(),
             ]);
 
-            foreach ($accepted as $line) {
-                BankStatementLine::query()->create([
-                    'bank_statement_id' => $statement->id,
-                    'payment_repository_id' => $lockedRepository->id,
-                    'line_number' => $line->lineNumber,
-                    'value_date' => $line->valueDate,
-                    'booking_date' => $line->bookingDate,
-                    'direction' => $line->direction,
-                    'amount' => $line->amount,
-                    'reference' => $line->reference,
-                    'bank_transaction_id' => $line->bankTransactionId,
-                    'label' => $line->label,
-                    'counterparty_hint' => $line->counterpartyHint,
-                    'match_status' => StatementLineMatchStatus::Unmatched,
-                    'location_id' => $lockedRepository->location_id,
-                    'fingerprint' => $line->fingerprint,
-                ]);
+            $lineModel = new BankStatementLine;
+            foreach (array_chunk($accepted, self::LINE_INSERT_CHUNK) as $lineChunk) {
+                BankStatementLine::query()->insert(array_map(
+                    static fn (ParsedStatementLine $line): array => [
+                        'id' => $lineModel->newUniqueId(),
+                        'bank_statement_id' => $statement->id,
+                        'payment_repository_id' => $lockedRepository->id,
+                        'line_number' => $line->lineNumber,
+                        'value_date' => $line->valueDate,
+                        'booking_date' => $line->bookingDate,
+                        'direction' => $line->direction->value,
+                        'amount' => $line->amount,
+                        'reference' => $line->reference,
+                        'bank_transaction_id' => $line->bankTransactionId,
+                        'label' => $line->label,
+                        'counterparty_hint' => $line->counterpartyHint,
+                        'match_status' => StatementLineMatchStatus::Unmatched->value,
+                        'location_id' => $lockedRepository->location_id,
+                        'fingerprint' => $line->fingerprint,
+                        'dedupe_active' => true,
+                    ],
+                    $lineChunk,
+                ));
             }
 
             return [
@@ -248,11 +258,13 @@ final readonly class StatementImportService
                 throw new DomainException('A statement with allocations or executions cannot be voided.');
             }
 
-            $locked->lines()->delete();
+            $locked->lines()->update(['dedupe_active' => false]);
             $locked->status = BankStatementStatus::Voided;
             $locked->save();
 
-            return $locked->fresh() ?? $locked;
+            $fresh = $locked->fresh() ?? $locked;
+
+            return $fresh->loadCount('lines');
         });
     }
 
@@ -337,16 +349,22 @@ final readonly class StatementImportService
         bool $lock = false,
     ): array {
         $fingerprints = array_map(static fn (ParsedStatementLine $line): string => $line->fingerprint, $parsed->lines);
-        $query = BankStatementLine::query()
-            ->where('payment_repository_id', $repositoryId)
-            ->whereIn('fingerprint', $fingerprints);
-        if ($lock) {
-            $query->lockForUpdate();
+        $existing = [];
+        foreach (array_chunk($fingerprints, self::FINGERPRINT_LOOKUP_CHUNK) as $fingerprintChunk) {
+            $query = BankStatementLine::query()
+                ->where('payment_repository_id', $repositoryId)
+                ->where('dedupe_active', true)
+                ->whereIn('fingerprint', $fingerprintChunk);
+            if ($lock) {
+                $query->lockForUpdate();
+            }
+            foreach ($query->pluck('fingerprint') as $fingerprint) {
+                $existing[(string) $fingerprint] = true;
+            }
         }
-        $existing = $query->pluck('fingerprint')->flip();
         $accepted = array_values(array_filter(
             $parsed->lines,
-            static fn (ParsedStatementLine $line): bool => ! $existing->has($line->fingerprint),
+            static fn (ParsedStatementLine $line): bool => ! isset($existing[$line->fingerprint]),
         ));
 
         return [$accepted, count($parsed->lines) - count($accepted)];

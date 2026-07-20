@@ -21,6 +21,7 @@ use App\Modules\Treasury\Domain\Enums\StatementParserKey;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\StatementImportProfile;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,7 @@ final class BankStatementAggregateSchemaTest extends TestCase
         $this->assertSame(BankStatementStatus::Imported, $statement->status);
         $this->assertSame(MovementDirection::In, $line->direction);
         $this->assertSame(StatementLineMatchStatus::Unmatched, $line->match_status);
+        $this->assertTrue($line->dedupe_active);
         $this->assertSame($profile->id, $statement->parserProfile?->id);
         $this->assertSame($statement->id, $line->statement->id);
         $this->assertCount(1, $statement->lines);
@@ -179,6 +181,92 @@ final class BankStatementAggregateSchemaTest extends TestCase
             'id' => Str::uuid()->toString(),
             'line_number' => 2,
         ]);
+    }
+
+    public function test_voided_statement_and_line_identities_can_coexist_with_one_active_copy(): void
+    {
+        [$profile, $statement, $line] = $this->aggregate();
+        $statement->update(['status' => BankStatementStatus::Voided]);
+        $line->update(['dedupe_active' => false]);
+        $repository = PaymentRepository::query()->findOrFail($statement->payment_repository_id);
+
+        $active = $this->createStatement($profile, $repository, $statement->source_file_sha256);
+        $activeLine = BankStatementLine::query()->create([
+            ...$line->only([
+                'payment_repository_id',
+                'line_number',
+                'value_date',
+                'booking_date',
+                'direction',
+                'amount',
+                'reference',
+                'bank_transaction_id',
+                'label',
+                'counterparty_hint',
+                'match_status',
+                'location_id',
+                'fingerprint',
+            ]),
+            'bank_statement_id' => $active->id,
+            'dedupe_active' => true,
+        ]);
+
+        $this->assertNotSame($statement->id, $active->id);
+        $this->assertNotSame($line->id, $activeLine->id);
+        $this->assertDatabaseCount('bank_statement_lines', 2);
+    }
+
+    public function test_void_aware_indexes_have_partial_predicates_on_postgres(): void
+    {
+        $this->requirePostgres();
+
+        $definitions = DB::table('pg_indexes')
+            ->whereIn('indexname', [
+                'bank_statements_repository_file_unique',
+                'bank_statement_lines_repository_fingerprint_unique',
+            ])
+            ->pluck('indexdef', 'indexname');
+        $statementIndex = strtolower((string) $definitions->get('bank_statements_repository_file_unique'));
+        $lineIndex = strtolower((string) $definitions->get('bank_statement_lines_repository_fingerprint_unique'));
+
+        $this->assertStringContainsString('where', $statementIndex);
+        $this->assertStringContainsString('status', $statementIndex);
+        $this->assertStringContainsString('voided', $statementIndex);
+        $this->assertStringContainsString('where', $lineIndex);
+        $this->assertStringContainsString('dedupe_active', $lineIndex);
+    }
+
+    public function test_corrective_migration_upgrades_stale_indexes_idempotently_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, $voidedStatement, $voidedLine] = $this->aggregate();
+        $voidedStatement->update(['status' => BankStatementStatus::Voided]);
+        DB::statement('DROP INDEX bank_statements_repository_file_unique');
+        DB::statement('DROP INDEX bank_statement_lines_repository_fingerprint_unique');
+        Schema::table('bank_statement_lines', function (Blueprint $table): void {
+            $table->dropColumn('dedupe_active');
+        });
+        DB::statement('CREATE UNIQUE INDEX bank_statements_repository_file_unique ON bank_statements (payment_repository_id, source_file_sha256)');
+        DB::statement('CREATE UNIQUE INDEX bank_statement_lines_repository_fingerprint_unique ON bank_statement_lines (payment_repository_id, fingerprint)');
+
+        $migrationPath = database_path('migrations/tenant/2026_07_19_110005_make_statement_deduplication_void_aware.php');
+        $migration = require $migrationPath;
+        $migration->up();
+        $migration->up();
+
+        $this->assertTrue(Schema::hasColumn('bank_statement_lines', 'dedupe_active'));
+        $this->assertDatabaseHas('bank_statement_lines', [
+            'id' => $voidedLine->id,
+            'dedupe_active' => false,
+        ]);
+        $definitions = DB::table('pg_indexes')
+            ->whereIn('indexname', [
+                'bank_statements_repository_file_unique',
+                'bank_statement_lines_repository_fingerprint_unique',
+            ])
+            ->pluck('indexdef', 'indexname');
+        $this->assertStringContainsString('voided', strtolower((string) $definitions->get('bank_statements_repository_file_unique')));
+        $this->assertStringContainsString('dedupe_active', strtolower((string) $definitions->get('bank_statement_lines_repository_fingerprint_unique')));
     }
 
     public function test_composite_fk_rejects_a_line_with_a_different_repository_than_its_statement(): void
@@ -539,7 +627,7 @@ final class BankStatementAggregateSchemaTest extends TestCase
     {
         $this->assertSame(0, Artisan::call('migrate:rollback', [
             '--force' => true,
-            '--step' => 5,
+            '--step' => 6,
             '--path' => 'database/migrations/tenant',
         ]), Artisan::output());
 
