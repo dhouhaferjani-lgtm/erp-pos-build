@@ -287,6 +287,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:bank-statements.reopen')
         ->name('bank-statements.reopen');
 
+    Route::get('/bank-statement-targets/{targetType}/{targetId}/lines', [StatementLineController::class, 'targetProvenance'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statement-targets.lines.index');
+
     Route::post('/bank-statement-lines/{statementLine}/allocations', [StatementLineController::class, 'allocate'])
         ->middleware('can:bank-statements.reconcile')
         ->name('bank-statement-lines.allocations.store');

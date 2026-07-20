@@ -28,6 +28,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { useInstrumentEvents } from './hooks/useInstrumentEvents'
+import { StatementReconciliationChips } from './statements/StatementReconciliationChips'
 
 type InstrumentStatus =
   | 'received'
@@ -234,6 +235,7 @@ export function InstrumentDetailPage() {
           </>
         }
       />
+      <StatementReconciliationChips targetType="payment_instrument" targetId={instrument.id} />
 
       <section className={tokens.card.base}>
         <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('treasury:instruments.details')}</h2>

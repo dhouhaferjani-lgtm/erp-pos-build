@@ -19,6 +19,90 @@ export interface BankStatementSummary {
   lines_count: number
 }
 
+export type StatementLineStatus = 'unmatched' | 'partial' | 'matched' | 'ignored'
+export type StatementActionType = 'outbound_clear' | 'inbound_clear' | 'expense_settle' | 'acquirer_fee' | 'create_expense' | 'create_income'
+export type StatementIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other'
+
+export interface StatementLineAllocation {
+  repository_movement_id: string
+  matched_amount: string
+  match_type: 'manual' | 'suggestion_confirmed' | 'created_from_line'
+  movement_direction: 'in' | 'out'
+}
+
+export interface StatementExecution {
+  action_type: StatementActionType
+  target_type: string | null
+  target_id: string | null
+  produced_repository_movement_ids: string[]
+}
+
+export interface BankStatementLine {
+  id: string
+  line_number: number
+  value_date: string
+  booking_date: string | null
+  direction: 'in' | 'out'
+  amount: string
+  reference: string | null
+  label: string
+  match_status: StatementLineStatus
+  ignore_reason: StatementIgnoreReason | null
+  ignore_text: string | null
+  location_id: string | null
+  allocations: StatementLineAllocation[]
+  executions: StatementExecution[]
+}
+
+export interface BankStatementDetail extends BankStatementSummary {
+  lines: BankStatementLine[]
+}
+
+export interface StatementSuggestion {
+  tier: number
+  kind: string
+  movement_ids: string[]
+  action_type: StatementActionType | null
+  target_type: string | null
+  target_id: string | null
+  amount: string
+  reason: string
+  reference_matched: boolean
+  action_params: Record<string, unknown>
+}
+
+export interface RepositoryMovementCandidate {
+  id: string
+  direction: 'in' | 'out'
+  amount: string
+  allocated_amount: string
+  remaining_allocatable_amount: string
+  currency: string
+  balance_after: string
+  ordinal: number
+  source_type: string
+  source_id: string
+  journal_entry_id: string | null
+  reason_code: string | null
+  occurred_at: string
+}
+
+export interface StatementLineMutationResult {
+  id: string
+  match_status: StatementLineStatus
+  ignore_reason: StatementIgnoreReason | null
+  ignore_text: string | null
+  allocations: StatementLineAllocation[]
+  executions: StatementExecution[]
+}
+
+export interface StatementTargetProvenance {
+  bank_statement_id: string
+  bank_statement_line_id: string
+  action_type: StatementActionType
+  executed_at: string
+}
+
 export interface StatementListResponse {
   data: BankStatementSummary[]
   meta: { current_page: number; last_page: number; per_page: number; total: number }
@@ -131,4 +215,63 @@ export async function confirmBankStatement(input: StatementConfirmInput): Promis
     acknowledge_empty: input.acknowledgeEmpty,
   })
   return { statementId: response.data.data.id }
+}
+
+export async function getBankStatement(id: string): Promise<BankStatementDetail> {
+  const response = await api.get<{ data: BankStatementDetail }>(`/bank-statements/${id}`)
+  return response.data.data
+}
+
+export async function getStatementSuggestions(lineId: string): Promise<StatementSuggestion[]> {
+  const response = await api.get<{ data: StatementSuggestion[] }>(`/bank-statement-lines/${lineId}/suggestions`)
+  return response.data.data
+}
+
+export async function searchRepositoryMovements(repositoryId: string, search: string): Promise<RepositoryMovementCandidate[]> {
+  const response = await api.get<{ data: RepositoryMovementCandidate[] }>(`/payment-repositories/${repositoryId}/movements`, {
+    params: { search: search || undefined },
+  })
+  return response.data.data
+}
+
+export async function allocateStatementLine(lineId: string, allocations: { repository_movement_id: string; amount: string }[]): Promise<StatementLineMutationResult> {
+  const response = await api.post<{ data: StatementLineMutationResult }>(`/bank-statement-lines/${lineId}/allocations`, { allocations })
+  return response.data.data
+}
+
+export async function unallocateStatementLine(lineId: string, movementId: string): Promise<StatementLineMutationResult> {
+  const response = await api.delete<{ data: StatementLineMutationResult }>(`/bank-statement-lines/${lineId}/allocations/${movementId}`)
+  return response.data.data
+}
+
+export async function executeStatementAction(lineId: string, input: { action: StatementActionType; params: Record<string, unknown> }): Promise<StatementLineMutationResult> {
+  const response = await api.post<{ data: StatementLineMutationResult }>(`/bank-statement-lines/${lineId}/actions`, input)
+  return response.data.data
+}
+
+export async function ignoreStatementLine(lineId: string, input: { reason: StatementIgnoreReason; text: string }): Promise<StatementLineMutationResult> {
+  const response = await api.post<{ data: StatementLineMutationResult }>(`/bank-statement-lines/${lineId}/ignore`, input)
+  return response.data.data
+}
+
+export async function unignoreStatementLine(lineId: string): Promise<StatementLineMutationResult> {
+  const response = await api.delete<{ data: StatementLineMutationResult }>(`/bank-statement-lines/${lineId}/ignore`)
+  return response.data.data
+}
+
+export async function completeBankStatement(id: string, acknowledgeIgnoredTotal: boolean): Promise<BankStatementSummary> {
+  const response = await api.post<{ data: BankStatementSummary }>(`/bank-statements/${id}/complete`, {
+    acknowledge_ignored_total: acknowledgeIgnoredTotal,
+  })
+  return response.data.data
+}
+
+export async function reopenBankStatement(id: string): Promise<BankStatementSummary> {
+  const response = await api.post<{ data: BankStatementSummary }>(`/bank-statements/${id}/reopen`)
+  return response.data.data
+}
+
+export async function getStatementTargetProvenance(targetType: 'payment_instrument' | 'expense_document' | 'income_document', targetId: string): Promise<StatementTargetProvenance[]> {
+  const response = await api.get<{ data: StatementTargetProvenance[] }>(`/bank-statement-targets/${targetType}/${targetId}/lines`)
+  return response.data.data
 }

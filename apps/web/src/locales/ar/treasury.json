@@ -113,6 +113,16 @@
     "profile": {
       "name": "اسم ملف التعريف", "parser": "نوع الملف", "direction": "تنسيق المبلغ", "signed": "عمود مبلغ واحد بإشارة", "debitCredit": "عمودا مدين ودائن منفصلان", "decimal": "تنسيق الرقم", "dateFormat": "تنسيق التاريخ", "headerRows": "أسطر الرأس المتجاوزة", "save": "حفظ التعيين",
       "fields": { "value_date": "عمود تاريخ القيمة", "booking_date": "عمود تاريخ القيد", "amount": "عمود المبلغ", "debit": "عمود المدين", "credit": "عمود الدائن", "reference": "عمود المرجع", "bank_transaction_id": "معرف المعاملة البنكية", "label": "عمود البيان", "counterparty_hint": "عمود الطرف المقابل" }
+    },
+    "workspace": {
+      "title": "مطابقة الكشف البنكي", "progress": "الأسطر المحسومة", "remaining": "المبلغ المتبقي", "balanceDelta": "حركة رصيد الكشف", "search": "البحث في الأسطر", "filter": "حالة السطر", "allStatuses": "كل الحالات", "noReference": "لا يوجد مرجع بنكي", "noLines": "لا توجد أسطر مطابقة للمرشحات.", "lineAmount": "مبلغ السطر", "allocations": "التخصيصات", "unallocate": "إزالة", "provenance": "سجل التنفيذ", "openTarget": "فتح السجل المصدر", "movementsProduced": "حركة دفتر منتجة", "reconciledBy": "تمت المطابقة بسطر كشف", "reopen": "إعادة فتح الكشف", "cancel": "إلغاء",
+      "status": { "unmatched": "غير مطابق", "partial": "مطابق جزئيًا", "matched": "مطابق", "ignored": "متجاهل" },
+      "actions": { "outbound_clear": "تحصيل أداة صادرة", "inbound_clear": "تحصيل أداة واردة", "expense_settle": "تسوية مصروف", "acquirer_fee": "إنشاء دفعة البطاقات والعمولة", "create_expense": "إنشاء مصروف", "create_income": "إنشاء إيراد" },
+      "suggestions": { "title": "الاقتراحات المرتبة", "empty": "لا يوجد اقتراح تلقائي لهذا السطر.", "tier": "المستوى {{tier}}", "reference": "تطابق المرجع", "confirm": "تأكيد المطابقة" },
+      "manual": { "title": "مطابقة حركة يدويًا", "search": "البحث في حركات الدفتر", "searchPlaceholder": "معرف الحركة أو المصدر", "movement": "الحركة", "none": "لا توجد حركة مؤهلة", "original": "المبلغ الأصلي", "available": "المتاح للتخصيص", "amount": "مبلغ التخصيص الجزئي", "allocate": "تخصيص" },
+      "ignore": { "title": "تجاهل السطر", "reason": "السبب", "selectReason": "اختر سببًا", "explanation": "تفسير إلزامي", "submit": "تجاهل السطر", "unignore": "استعادة السطر", "reasons": { "duplicate": "مكرر", "informational": "معلوماتي", "bank_error": "خطأ بنكي", "out_of_scope": "خارج نطاق المطابقة", "other": "أخرى" } },
+      "create": { "expense": "إنشاء مصروف من السطر", "income": "إنشاء إيراد من السطر", "expenseTitle": "إنشاء مصروف وتسويته", "incomeTitle": "إنشاء إيراد وتسجيله", "vendor": "اسم المورد", "source": "مصدر الإيراد", "incomeAccount": "معرف حساب الإيراد", "notes": "ملاحظات", "submit": "إنشاء ومطابقة" },
+      "complete": { "action": "إكمال الكشف", "title": "إكمال المطابقة", "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.", "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.", "confirm": "إكمال الكشف" }
     }
   }
 }

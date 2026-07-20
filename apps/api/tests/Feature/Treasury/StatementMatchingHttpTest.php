@@ -171,6 +171,64 @@ final class StatementMatchingHttpTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_statement_detail_exposes_matching_and_execution_provenance(): void
+    {
+        $line = $this->line('25.000');
+        $movementId = $this->movement($this->company, $this->repository, '25.000');
+        $targetId = Str::uuid()->toString();
+
+        DB::table('bank_statement_line_allocations')->insert([
+            'id' => Str::uuid()->toString(),
+            'bank_statement_line_id' => $line->id,
+            'repository_movement_id' => $movementId,
+            'matched_amount' => '10.000',
+            'match_type' => 'manual',
+            'matched_by' => $this->accountant->id,
+            'matched_at' => now(),
+        ]);
+        DB::table('bank_statement_match_executions')->insert([
+            'id' => Str::uuid()->toString(),
+            'bank_statement_line_id' => $line->id,
+            'action_type' => 'outbound_clear',
+            'action_key' => "stmtline:{$line->id}:outbound_clear",
+            'semantic_digest' => hash('sha256', 'statement-detail-provenance'),
+            'target_type' => 'payment_instrument',
+            'target_id' => $targetId,
+            'produced_repository_movement_ids' => json_encode([$movementId], JSON_THROW_ON_ERROR),
+            'executed_by' => $this->accountant->id,
+            'executed_at' => now(),
+        ]);
+        $line->update([
+            'match_status' => StatementLineMatchStatus::Partial,
+            'ignore_reason' => null,
+            'ignore_text' => null,
+        ]);
+
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statements/{$line->bank_statement_id}")
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.ignore_reason', null)
+            ->assertJsonPath('data.lines.0.ignore_text', null)
+            ->assertJsonPath('data.lines.0.allocations.0.repository_movement_id', $movementId)
+            ->assertJsonPath('data.lines.0.allocations.0.matched_amount', '10.000')
+            ->assertJsonPath('data.lines.0.allocations.0.movement_direction', 'in')
+            ->assertJsonPath('data.lines.0.executions.0.action_type', 'outbound_clear')
+            ->assertJsonPath('data.lines.0.executions.0.target_type', 'payment_instrument')
+            ->assertJsonPath('data.lines.0.executions.0.target_id', $targetId)
+            ->assertJsonPath('data.lines.0.executions.0.produced_repository_movement_ids.0', $movementId);
+
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-targets/payment_instrument/{$targetId}/lines")
+            ->assertOk()
+            ->assertJsonPath('data.0.bank_statement_id', $line->bank_statement_id)
+            ->assertJsonPath('data.0.bank_statement_line_id', $line->id)
+            ->assertJsonPath('data.0.action_type', 'outbound_clear');
+
+        $this->actingAs($this->manager)
+            ->getJson("/api/v1/bank-statement-targets/payment_instrument/{$targetId}/lines")
+            ->assertForbidden();
+    }
+
     private function user(string $role): User
     {
         $user = User::factory()->create(['tenant_id' => $this->tenant->id]);

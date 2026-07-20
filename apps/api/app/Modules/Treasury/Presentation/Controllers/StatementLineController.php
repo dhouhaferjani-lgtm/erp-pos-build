@@ -9,6 +9,7 @@ use App\Modules\Treasury\Application\Services\StatementMatchingService;
 use App\Modules\Treasury\Application\Services\StatementSuggestionService;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\BankStatementLine;
+use App\Modules\Treasury\Domain\BankStatementMatchExecution;
 use App\Modules\Treasury\Domain\Enums\MatchActionType;
 use App\Modules\Treasury\Domain\Enums\StatementLineIgnoreReason;
 use App\Modules\Treasury\Presentation\Requests\AllocateStatementLineRequest;
@@ -38,6 +39,42 @@ final class StatementLineController extends Controller
                 $this->suggestions->suggest($line->id),
             ),
         ]);
+    }
+
+    public function targetProvenance(string $targetType, string $targetId): JsonResponse
+    {
+        if (! in_array($targetType, ['payment_instrument', 'expense_document', 'income_document'], true)
+            || ! Str::isUuid($targetId)) {
+            abort(404);
+        }
+        $company = $this->companyContext->requireCompany();
+        $executions = BankStatementMatchExecution::query()
+            ->where('target_type', $targetType)
+            ->where('target_id', $targetId)
+            ->whereIn('bank_statement_line_id', BankStatementLine::query()
+                ->select('id')
+                ->whereIn('bank_statement_id', BankStatement::query()
+                    ->select('id')
+                    ->where('tenant_id', $company->tenant_id)
+                    ->where('company_id', $company->id)))
+            ->with('line:id,bank_statement_id')
+            ->orderBy('executed_at')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json(['data' => $executions->map(static function (BankStatementMatchExecution $execution): array {
+            $line = $execution->line;
+            if (! $line instanceof BankStatementLine) {
+                throw new \LogicException('Statement execution provenance requires its statement line.');
+            }
+
+            return [
+                'bank_statement_id' => $line->bank_statement_id,
+                'bank_statement_line_id' => $execution->bank_statement_line_id,
+                'action_type' => $execution->action_type->value,
+                'executed_at' => $execution->executed_at->toIso8601String(),
+            ];
+        })->values()]);
     }
 
     public function allocate(AllocateStatementLineRequest $request, string $statementLine): JsonResponse
@@ -134,7 +171,7 @@ final class StatementLineController extends Controller
     /** @return array<string, mixed> */
     private function format(BankStatementLine $line): array
     {
-        $line = $line->fresh(['allocations', 'executions']) ?? $line;
+        $line = $line->fresh(['allocations.movement', 'executions']) ?? $line;
 
         return [
             'id' => $line->id,
@@ -145,11 +182,13 @@ final class StatementLineController extends Controller
                 'repository_movement_id' => $allocation->repository_movement_id,
                 'matched_amount' => $allocation->matched_amount,
                 'match_type' => $allocation->match_type->value,
+                'movement_direction' => $allocation->movement->direction->value,
             ])->values(),
             'executions' => $line->executions->map(static fn ($execution): array => [
                 'action_type' => $execution->action_type->value,
                 'target_type' => $execution->target_type,
                 'target_id' => $execution->target_id,
+                'produced_repository_movement_ids' => $execution->produced_repository_movement_ids,
             ])->values(),
         ];
     }

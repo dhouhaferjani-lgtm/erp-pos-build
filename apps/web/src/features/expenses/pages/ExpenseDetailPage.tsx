@@ -17,6 +17,7 @@ import { useExpense, useDeleteExpense, usePostExpense } from '../hooks/useExpens
 import { DocumentAttachments } from '../../documents/components/DocumentAttachments'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PayExpenseDialog } from '../components/PayExpenseDialog'
+import { StatementReconciliationChips } from '../../treasury/statements/StatementReconciliationChips'
 
 /**
  * Expense-status tone overrides for the shared StatusBadge. The built-in
@@ -173,6 +174,7 @@ export function ExpenseDetailPage() {
             {t('expenses:recurrences.generatedFromTemplate')}
           </StatusBadge>
         )}
+        <span className="ms-2"><StatementReconciliationChips targetType="expense_document" targetId={expense.id} /></span>
       </div>
 
       {/* Expense Details */}

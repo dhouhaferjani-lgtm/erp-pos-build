@@ -163,7 +163,7 @@ Alert-only §6.7 checks (tampered reconciled statement; stale unreconciled > 30d
 ## Wave 5 — UI + cutover + E2E
 
 ### Task 10: Statement list + upload wizard — as Rev 1 (tokens, FR+AR, `tenantScopedKey`, mapping-pattern copy). [x]
-### Task 11: Reconciliation workspace — as Rev 1 (suggestions, partial `MoneyInput` allocation, create-from-line, ignore/unignore, provenance display, completion CTA + acknowledgment, reopen behind permission, instrument/expense cross-link chips).
+### Task 11: Reconciliation workspace — as Rev 1 (suggestions, partial `MoneyInput` allocation, create-from-line, ignore/unignore, provenance display, completion CTA + acknowledgment, reopen behind permission, instrument/expense cross-link chips). [x]
 
 ### Task 12: Legacy cutover *(only after Tasks 10-11 ship)*
 

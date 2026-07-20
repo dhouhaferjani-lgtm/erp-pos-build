@@ -80,6 +80,14 @@ describe('route module guards', () => {
     expect(fragment).toContain('<StatementListPage />')
   })
 
+  it('guards the statement workspace with bank statement view permission', () => {
+    const idx = routesSource.indexOf('path="statements/:id"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 450)
+    expect(fragment).toContain('permission="bank-statements.view"')
+    expect(fragment).toContain('<ReconciliationWorkspacePage />')
+  })
+
   it('registers treasury overview under finance with reports.view permission', () => {
     const idx = routesSource.indexOf('path="overview"')
     expect(idx).toBeGreaterThanOrEqual(0)

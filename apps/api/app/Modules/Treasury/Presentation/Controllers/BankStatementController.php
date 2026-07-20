@@ -62,7 +62,7 @@ final class BankStatementController extends Controller
     public function show(string $bankStatement): JsonResponse
     {
         $statement = $this->findStatement($bankStatement);
-        $statement->load(['lines', 'parserProfile'])->loadCount('lines');
+        $statement->load(['lines.allocations.movement', 'lines.executions', 'parserProfile'])->loadCount('lines');
 
         return response()->json(['data' => $this->format($statement, true)]);
     }
@@ -206,7 +206,21 @@ final class BankStatementController extends Controller
                 'reference' => $line->reference,
                 'label' => $line->label,
                 'match_status' => $line->match_status->value,
+                'ignore_reason' => $line->ignore_reason?->value,
+                'ignore_text' => $line->ignore_text,
                 'location_id' => $line->location_id,
+                'allocations' => $line->allocations->map(static fn ($allocation): array => [
+                    'repository_movement_id' => $allocation->repository_movement_id,
+                    'matched_amount' => $allocation->matched_amount,
+                    'match_type' => $allocation->match_type->value,
+                    'movement_direction' => $allocation->movement->direction->value,
+                ])->values()->all(),
+                'executions' => $line->executions->map(static fn ($execution): array => [
+                    'action_type' => $execution->action_type->value,
+                    'target_type' => $execution->target_type,
+                    'target_id' => $execution->target_id,
+                    'produced_repository_movement_ids' => $execution->produced_repository_movement_ids,
+                ])->values()->all(),
             ])->values();
         }
 
