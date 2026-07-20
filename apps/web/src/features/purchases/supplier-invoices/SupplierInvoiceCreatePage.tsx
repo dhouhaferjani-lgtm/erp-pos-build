@@ -22,6 +22,7 @@ import { PartnerPicker, ProductPicker, type PartnerPickerValue, type ProductPick
 import { api, getErrorMessage } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { bcadd, bccomp, bcmul, bcsub, formatCurrency, formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { usePermissions } from '@/hooks/usePermissions'
 import { confirmDiscard, useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
@@ -54,6 +55,7 @@ interface InvoiceLineFormState {
   quantity: string
   unitPrice: string
   vatRate: string
+  quantity_decimals?: number
 }
 
 interface ManualInvoiceLineFormState {
@@ -273,6 +275,7 @@ export function SupplierInvoiceCreatePage() {
         quantity: edits.quantity ?? matchableQty,
         unitPrice: edits.unitPrice ?? unitPrice,
         vatRate: edits.vatRate ?? poLine?.tax_rate ?? '0.00',
+        ...(receiptLine.quantity_decimals !== undefined ? { quantity_decimals: receiptLine.quantity_decimals } : {}),
       })
     }
     return nextLines
@@ -535,7 +538,7 @@ export function SupplierInvoiceCreatePage() {
           data-testid={`manual-line-quantity-${String(index)}`}
           value={line.quantity}
           onChange={(quantity) => { updateManualLine(index, { quantity }) }}
-          decimalPlaces={4}
+          decimalPlaces={getQuantityDecimals(line.product)}
         />
       ),
     },
@@ -623,7 +626,7 @@ export function SupplierInvoiceCreatePage() {
           data-testid={`invoice-line-quantity-${String(index)}`}
           value={line.quantity}
           onChange={(quantity) => { updateLine(index, { quantity }) }}
-          decimalPlaces={4}
+          decimalPlaces={getQuantityDecimals(line)}
           max={line.matchableQty}
         />
       ),
