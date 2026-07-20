@@ -1,0 +1,448 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Treasury;
+
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\BankStatementMatchExecution;
+use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
+use App\Modules\Treasury\Domain\Enums\MatchActionType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Enums\StatementDirectionConvention;
+use App\Modules\Treasury\Domain\Enums\StatementParserKey;
+use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\StatementImportProfile;
+use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
+
+final class StatementImportFlowTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Tenant $tenant;
+
+    private Company $company;
+
+    private Location $location;
+
+    private User $admin;
+
+    private User $accountant;
+
+    private User $manager;
+
+    private PaymentRepository $repository;
+
+    private StatementImportProfile $profile;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('local');
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->tunisia()->create(['tenant_id' => $this->tenant->id]);
+        $this->location = Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->admin = $this->user('admin');
+        $this->accountant = $this->user('accountant');
+        $this->manager = $this->user('manager');
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+        $this->repository = PaymentRepository::factory()->for($this->company)->create([
+            'tenant_id' => $this->tenant->id,
+            'type' => RepositoryType::BankAccount,
+            'currency' => 'TND',
+            'location_id' => $this->location->id,
+        ]);
+        $this->profile = $this->profile($this->company, $this->repository);
+    }
+
+    public function test_upload_previews_without_persisting_and_confirm_stages_statement_lines_only(): void
+    {
+        $movementCount = DB::table('repository_movements')->count();
+        $journalCount = DB::table('journal_entries')->count();
+        $upload = $this->upload($this->csv([
+            '17/07/2026,250,TX-001,Customer transfer,1000,1250',
+            '18/07/2026,0,,Opening marker,1000,1250',
+            'not-a-date,20,TX-BAD,Broken row,,',
+        ]));
+
+        $upload->assertOk()
+            ->assertJsonPath('data.accepted_line_count', 1)
+            ->assertJsonPath('data.dropped_zero_amount_rows', 1)
+            ->assertJsonPath('data.duplicate_fingerprint_count', 0)
+            ->assertJsonPath('data.detected_opening', '1000.000')
+            ->assertJsonPath('data.detected_closing', '1250.000')
+            ->assertJsonCount(1, 'data.unparseable_rows')
+            ->assertJsonCount(1, 'data.preview_lines');
+        $this->assertDatabaseCount('bank_statements', 0);
+        $this->assertDatabaseCount('bank_statement_lines', 0);
+
+        $confirm = $this->confirm((string) $upload->json('data.preview_token'), [
+            'opening_balance' => '1000',
+            'closing_balance' => '1250.000',
+        ]);
+
+        $confirm->assertCreated()
+            ->assertJsonPath('data.status', 'imported')
+            ->assertJsonPath('data.currency', 'TND')
+            ->assertJsonPath('meta.imported_line_count', 1)
+            ->assertJsonPath('meta.skipped_duplicate_count', 0);
+        $statementId = (string) $confirm->json('data.id');
+        $this->assertDatabaseHas('bank_statement_lines', [
+            'bank_statement_id' => $statementId,
+            'location_id' => $this->location->id,
+            'amount' => '250.000',
+        ]);
+        $this->assertSame($movementCount, DB::table('repository_movements')->count());
+        $this->assertSame($journalCount, DB::table('journal_entries')->count());
+    }
+
+    public function test_duplicate_file_is_rejected_with_existing_statement_id(): void
+    {
+        $file = $this->csv(['17/07/2026,25,TX-DUP,Duplicate file,,']);
+        $first = $this->upload($file);
+        $statementId = (string) $this->confirm((string) $first->json('data.preview_token'))->json('data.id');
+
+        $this->upload($file)
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.existing_statement_id', $statementId);
+        $this->confirm((string) $first->json('data.preview_token'))
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.existing_statement_id', $statementId);
+    }
+
+    public function test_overlapping_import_skips_existing_fingerprints_in_preview_and_confirm(): void
+    {
+        $first = $this->upload($this->csv([
+            '17/07/2026,25,TX-OVERLAP,Same transfer,,',
+        ]));
+        $this->confirm((string) $first->json('data.preview_token'))->assertCreated();
+
+        $second = $this->upload($this->csv([
+            '17/07/2026,25,TX-OVERLAP,Same transfer,,',
+            '18/07/2026,30,TX-NEW,New transfer,,',
+        ]));
+        $second->assertOk()
+            ->assertJsonPath('data.duplicate_fingerprint_count', 1)
+            ->assertJsonPath('data.accepted_line_count', 1);
+
+        $confirmed = $this->confirm((string) $second->json('data.preview_token'));
+        $confirmed->assertCreated()
+            ->assertJsonPath('meta.imported_line_count', 1)
+            ->assertJsonPath('meta.skipped_duplicate_count', 1);
+        $this->assertDatabaseCount('bank_statement_lines', 2);
+    }
+
+    public function test_zero_accepted_lines_require_explicit_acknowledgment(): void
+    {
+        $first = $this->upload($this->csv(['17/07/2026,25,TX-ONLY,Same transfer,,']));
+        $this->confirm((string) $first->json('data.preview_token'))->assertCreated();
+        $overlap = $this->upload($this->csv([
+            '17/07/2026,25,TX-ONLY,Same transfer,,',
+            'not-a-date,9,TX-BAD,Broken,,',
+        ]));
+        $overlap->assertJsonPath('data.accepted_line_count', 0);
+
+        $this->confirm((string) $overlap->json('data.preview_token'))
+            ->assertUnprocessable();
+        $this->confirm((string) $overlap->json('data.preview_token'), ['acknowledge_empty' => true])
+            ->assertCreated()
+            ->assertJsonPath('meta.imported_line_count', 0);
+    }
+
+    public function test_continuity_mismatch_warns_but_does_not_block_confirm(): void
+    {
+        $this->statement([
+            'period_start' => '2026-06-01',
+            'period_end' => '2026-06-30',
+            'opening_balance' => '900.000',
+            'closing_balance' => '1000.000',
+            'status' => BankStatementStatus::Reconciled,
+        ]);
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-WARN,Transfer,,']));
+
+        $this->confirm((string) $upload->json('data.preview_token'), ['opening_balance' => '999'])
+            ->assertCreated()
+            ->assertJsonPath('meta.continuity_warning.expected_opening', '1000.000')
+            ->assertJsonPath('meta.continuity_warning.actual_opening', '999.000');
+    }
+
+    public function test_confirm_rejects_currency_mismatch(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-CUR,Currency mismatch,,']));
+
+        $this->confirm((string) $upload->json('data.preview_token'), ['currency' => 'EUR'])
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('bank_statements', 0);
+    }
+
+    public function test_void_requires_zero_allocations_and_executions(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-VOID,Voidable,,']));
+        $statementId = (string) $this->confirm((string) $upload->json('data.preview_token'))->json('data.id');
+        $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statements/{$statementId}/void")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'voided');
+
+        $blockedUpload = $this->upload($this->csv(['18/07/2026,30,TX-BLOCK,Blocked,,']));
+        $blockedId = (string) $this->confirm((string) $blockedUpload->json('data.preview_token'))->json('data.id');
+        $line = BankStatement::query()->findOrFail($blockedId)->lines()->firstOrFail();
+        BankStatementMatchExecution::query()->create([
+            'bank_statement_line_id' => $line->id,
+            'action_type' => MatchActionType::CreateExpense,
+            'action_key' => "stmtline:{$line->id}:create_expense",
+            'semantic_digest' => hash('sha256', 'void-block'),
+            'produced_repository_movement_ids' => [],
+            'executed_by' => $this->admin->id,
+            'executed_at' => now(),
+        ]);
+
+        $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statements/{$blockedId}/void")
+            ->assertUnprocessable();
+        $this->assertSame(BankStatementStatus::Imported, BankStatement::query()->findOrFail($blockedId)->status);
+    }
+
+    public function test_profile_crud_is_company_scoped_and_repository_bound(): void
+    {
+        $created = $this->actingAs($this->accountant)->postJson('/api/v1/statement-import-profiles', [
+            ...$this->profilePayload(),
+            'name' => 'Second profile',
+        ]);
+        $created->assertCreated()->assertJsonPath('data.name', 'Second profile');
+        $id = (string) $created->json('data.id');
+
+        $this->actingAs($this->accountant)->getJson('/api/v1/statement-import-profiles')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+        $this->actingAs($this->accountant)->patchJson("/api/v1/statement-import-profiles/{$id}", ['name' => 'Renamed'])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Renamed');
+        $this->actingAs($this->accountant)->deleteJson("/api/v1/statement-import-profiles/{$id}")
+            ->assertNoContent();
+
+        [$otherCompany, $otherRepository] = $this->otherCompanyRepository();
+        $otherProfile = $this->profile($otherCompany, $otherRepository);
+        $this->actingAs($this->accountant)->getJson("/api/v1/statement-import-profiles/{$otherProfile->id}")
+            ->assertNotFound();
+        $this->actingAs($this->accountant)->postJson('/api/v1/statement-import-profiles', [
+            ...$this->profilePayload(),
+            'payment_repository_id' => $otherRepository->id,
+        ])->assertUnprocessable();
+    }
+
+    public function test_cross_company_repository_or_profile_is_rejected_before_file_storage(): void
+    {
+        [$otherCompany, $otherRepository] = $this->otherCompanyRepository();
+        $otherProfile = $this->profile($otherCompany, $otherRepository);
+        $file = $this->statementFile($this->csv(['17/07/2026,25,TX-XCO,Cross company,,']));
+
+        $this->actingAs($this->accountant)->post('/api/v1/bank-statements/upload', [
+            'payment_repository_id' => $otherRepository->id,
+            'parser_profile_id' => $otherProfile->id,
+            'file' => $file,
+        ])->assertUnprocessable();
+        Storage::disk('local')->assertDirectoryEmpty('bank-statements');
+    }
+
+    public function test_permissions_grant_accountant_not_manager_and_reopen_is_admin_only(): void
+    {
+        $this->assertTrue($this->accountant->can('bank-statements.view'));
+        $this->assertTrue($this->accountant->can('bank-statements.import'));
+        $this->assertTrue($this->accountant->can('bank-statements.reconcile'));
+        $this->assertFalse($this->accountant->can('bank-statements.reopen'));
+        $this->assertTrue($this->admin->can('bank-statements.reopen'));
+
+        $this->actingAs($this->manager)->getJson('/api/v1/bank-statements')->assertForbidden();
+        $this->actingAs($this->manager)->post('/api/v1/bank-statements/upload', [
+            'payment_repository_id' => $this->repository->id,
+            'parser_profile_id' => $this->profile->id,
+            'file' => $this->statementFile($this->csv(['17/07/2026,25,TX-NO,Forbidden,,'])),
+        ])->assertForbidden();
+    }
+
+    public function test_statement_reads_hide_other_companies_and_reject_malformed_ids(): void
+    {
+        [$otherCompany, $otherRepository] = $this->otherCompanyRepository();
+        $otherProfile = $this->profile($otherCompany, $otherRepository);
+        $otherStatement = BankStatement::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'payment_repository_id' => $otherRepository->id,
+            'currency' => 'TND',
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'opening_balance' => '0.000',
+            'closing_balance' => '0.000',
+            'status' => BankStatementStatus::Imported,
+            'source_file_sha256' => hash('sha256', 'other-company-statement'),
+            'source_file_path' => 'bank-statements/other.csv',
+            'parser_profile_id' => $otherProfile->id,
+            'imported_by' => $this->admin->id,
+            'imported_at' => now(),
+        ]);
+
+        $this->actingAs($this->accountant)->getJson("/api/v1/bank-statements/{$otherStatement->id}")
+            ->assertNotFound();
+        $this->actingAs($this->accountant)->postJson("/api/v1/bank-statements/{$otherStatement->id}/void")
+            ->assertNotFound();
+        $this->actingAs($this->accountant)->getJson('/api/v1/bank-statements/not-a-uuid')
+            ->assertNotFound();
+    }
+
+    public function test_tampered_preview_token_is_rejected_without_persistence(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-TOKEN,Tamper,,']));
+
+        $this->confirm((string) $upload->json('data.preview_token').'tampered')
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('bank_statements', 0);
+    }
+
+    private function upload(string $contents): TestResponse
+    {
+        return $this->actingAs($this->accountant)->post('/api/v1/bank-statements/upload', [
+            'payment_repository_id' => $this->repository->id,
+            'parser_profile_id' => $this->profile->id,
+            'file' => $this->statementFile($contents),
+        ]);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function confirm(string $token, array $overrides = []): TestResponse
+    {
+        return $this->actingAs($this->accountant)->postJson('/api/v1/bank-statements', [
+            'preview_token' => $token,
+            'currency' => 'TND',
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'opening_balance' => '1000',
+            'closing_balance' => '1025',
+            ...$overrides,
+        ]);
+    }
+
+    /** @param list<string> $rows */
+    private function csv(array $rows): string
+    {
+        return "Date,Amount,Transaction ID,Label,Opening,Closing\n".implode("\n", $rows)."\n";
+    }
+
+    private function statementFile(string $contents): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent('statement-'.Str::random(8).'.csv', $contents);
+    }
+
+    private function user(string $role): User
+    {
+        $user = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        $user->assignRole($role);
+        UserCompanyMembership::query()->create([
+            'user_id' => $user->id,
+            'company_id' => $this->company->id,
+            'role' => $role,
+        ]);
+
+        return $user;
+    }
+
+    private function profile(Company $company, PaymentRepository $repository): StatementImportProfile
+    {
+        return StatementImportProfile::query()->create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'payment_repository_id' => $repository->id,
+            'name' => 'Bank CSV',
+            'is_active' => true,
+            'parser_key' => StatementParserKey::Csv,
+            'column_map' => $this->columnMap(),
+            'date_format' => 'd/m/Y',
+            'decimal_format' => 'dot',
+            'direction_convention' => StatementDirectionConvention::SignedAmount,
+            'header_rows' => 0,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function profilePayload(): array
+    {
+        return [
+            'payment_repository_id' => $this->repository->id,
+            'name' => 'Bank CSV',
+            'is_active' => true,
+            'parser_key' => 'csv',
+            'column_map' => $this->columnMap(),
+            'date_format' => 'd/m/Y',
+            'decimal_format' => 'dot',
+            'direction_convention' => 'signed_amount',
+            'header_rows' => 0,
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function columnMap(): array
+    {
+        return [
+            'value_date' => 'Date',
+            'amount' => 'Amount',
+            'bank_transaction_id' => 'Transaction ID',
+            'label' => 'Label',
+            'opening_balance' => 'Opening',
+            'closing_balance' => 'Closing',
+        ];
+    }
+
+    /** @return array{Company, PaymentRepository} */
+    private function otherCompanyRepository(): array
+    {
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $this->tenant->id]);
+        $repository = PaymentRepository::factory()->for($company)->create([
+            'tenant_id' => $this->tenant->id,
+            'type' => RepositoryType::BankAccount,
+            'currency' => 'TND',
+        ]);
+
+        return [$company, $repository];
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function statement(array $overrides = []): BankStatement
+    {
+        return BankStatement::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'opening_balance' => '1000.000',
+            'closing_balance' => '1025.000',
+            'status' => BankStatementStatus::Imported,
+            'source_file_sha256' => hash('sha256', Str::uuid()->toString()),
+            'source_file_path' => 'bank-statements/test.csv',
+            'parser_profile_id' => $this->profile->id,
+            'imported_by' => $this->admin->id,
+            'imported_at' => now(),
+            ...$overrides,
+        ]);
+    }
+}

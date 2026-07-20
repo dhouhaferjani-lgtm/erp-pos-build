@@ -92,7 +92,7 @@ routes: app/Modules/Treasury/Presentation/routes.php  (correct path — NOT app/
 ### Task 4: `StatementImportService` + endpoints + permissions
 
 As Rev 1, corrected: routes inside the existing `Presentation/routes.php` group; `{bankStatement}` binding; `ScopedExists::tenant` on `payment_repository_id`+`parser_profile_id`; permission grants per Global Constraints; statement `Imported → Reconciling` transition is triggered by the FIRST allocate/ignore/execute call (owned by Task 5's service, asserted here in the state enum); void conditions (zero allocations AND zero executions); sha256 duplicate → 422 with existing statement id; zero-accepted-lines confirm needs `acknowledge_empty`; continuity warning non-blocking; cross-company profile/repository ownership tests.
-- [ ] Steps: failing feature tests (each behavior + 403 deny-path via `manager` + cross-company 422s + fingerprint-skip on overlapping import) → implement → commit `feat(treasury): statement import flow + profiles`.
+- [x] Steps: failing feature tests (each behavior + 403 deny-path via `manager` + cross-company 422s + fingerprint-skip on overlapping import) → implement → commit `feat(treasury): statement import flow + profiles`.
 
 🚦 **GATE 2 — treasury-reviewer + tenancy-authz-reviewer (Opus).** Middleware inheritance, grants, scoping, staging purity (zero GL/movement writes in this wave).
 

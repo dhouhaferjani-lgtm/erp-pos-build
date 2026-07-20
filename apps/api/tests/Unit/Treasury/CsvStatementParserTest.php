@@ -168,6 +168,30 @@ final class CsvStatementParserTest extends TestCase
         $this->assertSame('1000.000', $result->detectedClosing);
     }
 
+    public function test_blank_amount_balance_row_is_dropped_after_balance_detection(): void
+    {
+        $path = $this->temporaryPath('csv');
+        file_put_contents($path, "Date,Amount,Label,Opening,Closing\n25/07/2026,,Opening balance,1000,1000\n");
+        $profile = $this->profile([
+            'decimal_format' => 'dot',
+            'column_map' => [
+                'value_date' => 'Date',
+                'amount' => 'Amount',
+                'label' => 'Label',
+                'opening_balance' => 'Opening',
+                'closing_balance' => 'Closing',
+            ],
+        ]);
+
+        $result = $this->app->make(CsvStatementParser::class)->parse($path, $profile);
+
+        $this->assertSame([], $result->lines);
+        $this->assertSame([], $result->unparseableRows);
+        $this->assertSame(1, $result->droppedZeroAmountRows);
+        $this->assertSame('1000.000', $result->detectedOpening);
+        $this->assertSame('1000.000', $result->detectedClosing);
+    }
+
     public function test_csv_detects_windows_1252_and_tab_delimiter(): void
     {
         $utf8 = "Date\tAmount\tReference\tLabel\n24/07/2026\t12,500\tENC-001\tFrais d'été\n";

@@ -6,6 +6,7 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankController;
 use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
+use App\Modules\Treasury\Presentation\Controllers\BankStatementController;
 use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
 use App\Modules\Treasury\Presentation\Controllers\InstrumentRemittanceController;
 use App\Modules\Treasury\Presentation\Controllers\MaturingInstrumentsController;
@@ -19,6 +20,7 @@ use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController
 use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryTransferController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
+use App\Modules\Treasury\Presentation\Controllers\StatementProfileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -260,6 +262,39 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/partners/{partner}/open-invoices', [SmartPaymentController::class, 'getOpenInvoices'])
         ->middleware('can:payments.view')
         ->name('partners.open-invoices');
+
+    // Treasury-native bank statement staging and reconciliation aggregate.
+    Route::get('/bank-statements', [BankStatementController::class, 'index'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statements.index');
+    Route::get('/bank-statements/{bankStatement}', [BankStatementController::class, 'show'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statements.show');
+    Route::post('/bank-statements/upload', [BankStatementController::class, 'upload'])
+        ->middleware('can:bank-statements.import')
+        ->name('bank-statements.upload');
+    Route::post('/bank-statements', [BankStatementController::class, 'store'])
+        ->middleware('can:bank-statements.import')
+        ->name('bank-statements.store');
+    Route::post('/bank-statements/{bankStatement}/void', [BankStatementController::class, 'void'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statements.void');
+
+    Route::get('/statement-import-profiles', [StatementProfileController::class, 'index'])
+        ->middleware('can:bank-statements.view')
+        ->name('statement-import-profiles.index');
+    Route::get('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'show'])
+        ->middleware('can:bank-statements.view')
+        ->name('statement-import-profiles.show');
+    Route::post('/statement-import-profiles', [StatementProfileController::class, 'store'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.store');
+    Route::patch('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'update'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.update');
+    Route::delete('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'destroy'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.destroy');
 
     // Bank Reconciliation
     Route::get('/bank-reconciliations', [BankReconciliationController::class, 'index'])

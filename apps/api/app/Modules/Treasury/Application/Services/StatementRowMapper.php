@@ -62,6 +62,31 @@ final class StatementRowMapper
                 $bookingDate = $bookingRaw === ''
                     ? null
                     : $this->parseDate($bookingRaw, $profile->date_format, 'booking');
+                $rowOpening = $this->optionalBalance(
+                    $row['values'],
+                    $indexes['openingBalance'],
+                    $profile->decimal_format,
+                    $scale,
+                );
+                $rowClosing = $this->optionalBalance(
+                    $row['values'],
+                    $indexes['closingBalance'],
+                    $profile->decimal_format,
+                    $scale,
+                );
+                if ($detectedOpening === null && $rowOpening !== null) {
+                    $detectedOpening = $rowOpening;
+                }
+                if ($rowClosing !== null) {
+                    $detectedClosing = $rowClosing;
+                }
+                if (($rowOpening !== null || $rowClosing !== null)
+                    && $this->transactionAmountColumnsAreBlank($row['values'], $indexes, $profile->direction_convention)) {
+                    $droppedZero++;
+
+                    continue;
+                }
+
                 [$direction, $amount] = $this->parseDirectionAndAmount(
                     $row['values'],
                     $indexes,
@@ -69,24 +94,6 @@ final class StatementRowMapper
                     $profile->decimal_format,
                     $scale,
                 );
-
-                if ($detectedOpening === null) {
-                    $detectedOpening = $this->optionalBalance(
-                        $row['values'],
-                        $indexes['openingBalance'],
-                        $profile->decimal_format,
-                        $scale,
-                    );
-                }
-                $rowClosing = $this->optionalBalance(
-                    $row['values'],
-                    $indexes['closingBalance'],
-                    $profile->decimal_format,
-                    $scale,
-                );
-                if ($rowClosing !== null) {
-                    $detectedClosing = $rowClosing;
-                }
 
                 if (bccomp($amount, '0', $scale) === 0) {
                     $droppedZero++;
@@ -246,6 +253,23 @@ final class StatementRowMapper
         return $hasDebit
             ? [MovementDirection::Out, $debit]
             : [MovementDirection::In, $credit];
+    }
+
+    /**
+     * @param  list<string>  $values
+     * @param  array{amount: int|null, debit: int|null, credit: int|null}  $indexes
+     */
+    private function transactionAmountColumnsAreBlank(
+        array $values,
+        array $indexes,
+        StatementDirectionConvention $convention,
+    ): bool {
+        if ($convention === StatementDirectionConvention::SignedAmount) {
+            return $this->value($values, $indexes['amount']) === '';
+        }
+
+        return $this->value($values, $indexes['debit']) === ''
+            && $this->value($values, $indexes['credit']) === '';
     }
 
     private function parseDate(string $raw, string $format, string $label): string
