@@ -925,7 +925,12 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             // even when a caller supplies an arbitrary UUID.
             $location = Location::query()
                 ->where('company_id', $purchaseOrder->company_id)
-                ->whereHas('company', static fn ($company): mixed => $company->where('tenant_id', $purchaseOrder->tenant_id))
+                ->whereExists(static function (\Illuminate\Database\Query\Builder $query) use ($purchaseOrder): void {
+                    $query->selectRaw('1')
+                        ->from('companies')
+                        ->whereColumn('companies.id', 'locations.company_id')
+                        ->where('companies.tenant_id', $purchaseOrder->tenant_id);
+                })
                 ->where('is_active', true)
                 ->find($destinationLocationId);
             if ($location === null) {
