@@ -63,3 +63,22 @@ Screenshot: [two-batch FEFO transfer allocation](screenshots/2026-07-19-wave-d/r
 - External review should focus on additive/idempotent selection, preservation of organic batch data, scale-4 reconciliation, and whether the screenshot proves the requested FEFO order.
 
 No merge, push, squash, or cleanup of the linked worktree has been performed.
+
+## Round 11 — adversarial review (2026-07-20)
+
+Reviewer: inventory-costing-reviewer (Opus). Initial verdict: **APPROVE-WITH-FIXES**.
+
+- **Important**: fixture batch numbers were positional (`DEMO-FEFO-%02d` = selection index) while selection was volatile (stock threshold + organic exclusion). Reseeding after real demo usage (the browser-proof transfer itself consumed 4.0000) re-keys lots onto different products, orphans the old lots, and — because `ensureDefaultBatch` tops the DEFAULT lot back up to full `StockLevel.quantity` — inflates aggregate warehouse batch stock past StockLevel, letting FEFO over-allocate.
+- Minors: DEFAULT-lot `reserved_quantity` force-zeroed without reconciling StockLevel reservations; idempotency test only pinned clean back-to-back reseed and post-reseed row counts; browser-proof product not pinned to the selection.
+
+Fix applied in `070d88328` (TDD: mutation-then-reseed test failed red against the original seeder — stale lot kept `2.0000`):
+
+- Batch numbers product-anchored: `DEMO-FEFO-{SKU}-{A..C}`.
+- Selection stickiness: previously fixtured products sort first (stable `sortBy`).
+- In-transaction stale-lot cleanup: `DEMO-FEFO-%` lots not in the written set are zeroed at the warehouse; batch rows kept (historical allocation FKs); lots with a live reservation left untouched (documented self-healing tradeoff).
+- Products with any reserved warehouse batch stock are ineligible.
+- Tests: post-reseed assertions recheck the full 3/4/remainder reconciliation + batch-id stability; new `test_reseed_after_demo_usage_reconciles_and_degrades_consumed_fixture` pins the failure mode and asserts every ever-fixtured product reconciles aggregate warehouse batch stock == StockLevel at scale 4.
+
+Evidence: seeder test file 3 passed / 1,984 assertions; `StockTransferShowBatchAllocationsTest` 2 passed / 12 assertions; Pint pass; PHPStan no errors.
+
+Reviewer re-verification of `070d88328`: **APPROVE** — "Clean to merge." Residual non-blocking notes: SQLite-vs-PG decimal comparison on the `>= 9.0000` filter (pre-existing), batch_number length safe for demo SKUs.
