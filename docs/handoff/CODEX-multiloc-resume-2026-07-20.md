@@ -4,6 +4,11 @@
 > on 2026-07-19 by a network outage + laptop restart. This supplements — does not replace —
 > the original dispatch brief `docs/handoff/CODEX-multi-location-2026-07-16.md`. All protocol
 > rules there (worktree, wave/gate structure, TDD, commit discipline, ledger updates) still apply.
+>
+> **⚠️ ROUND 2 UPDATE 2026-07-20 (post your fix commits `86ceadaeb..399cf4df6`): the controller
+> re-ran all three pending reviews. See the "ROUND 2 controller verdicts" section at the END of
+> this file — it SUPERSEDES the round-1 "Gate outcomes and required fixes" section for anything
+> already fixed. Only TWO items remain before Wave 3 Task 4.**
 
 ## Where you stopped (verified against the branch by the controller)
 
@@ -125,3 +130,59 @@ writing `[]` instead of NULL). Tag `multiloc-gate-1` at `4c29e831b` immediately 
 - All new endpoints: `['api','auth:sanctum',SetPermissionsTeam::class]` + location access via the
   §1 `ValidLocationAccess` rule (422), not imperative context checks.
 - i18n: every new key in en AND fr (ar where the namespace has it); tenant-scoped TanStack keys.
+
+---
+
+## ROUND 2 controller verdicts (2026-07-20, tip `399cf4df6`) — SUPERSEDES round-1 gate section
+
+The controller re-ran the three pending reviews after your fix commits. Full evidence:
+`.gates/gate-2-verdict-r2.md`, `.gates/gate-3a-verdict-r2.md`, `.gates/wave2-fe-conventions-verdict-r2.md`.
+The `claude -p` reviewer-command hang you recorded in `.gates/reverification-status.md` was the
+transient 2026-07-19 network outage — verified working again from this worktree.
+
+**Gate 3a (Wave 3 treasury Tasks 1–3): APPROVE.** Both round-1 IMPORTANTs verified fixed with
+green tests; tag `multiloc-gate-3a` created at `399cf4df6` by the controller. Two non-blocking
+minors to pick up opportunistically (do NOT let them block Wave 3 Task 4):
+- `TreasuryDepositBridge.php:145,167` — pass `$terminalLocationId ?? $repository->location_id`
+  to `handleMaturityLeg` so a no-terminal cheque deposit's instrument shares the payment's
+  custody-location fallback (today the instrument lands NULL while its payment is attributed).
+- Deposit attribution test covers CASH only — add a no-terminal cheque-deposit case when you touch
+  that test next.
+
+**Gate 2 (Wave 2 inventory): REJECT — fix FIRST, this is remaining blocker #1.**
+- [IMPORTANT] The pg-pinning mechanism from `86ceadaeb` is wrong and regresses the default runner:
+  `protected function beforeRefreshingDatabase(): void { config(['database.default' => 'pgsql']); }`
+  + `connectionsToTransact = ['pgsql']` in the five inventory Feature classes only flips
+  `database.default`; tenancy's `central_connection` stays sqlite (`config/tenancy.php:50`) and the
+  pgsql connection resolves `env('DB_DATABASE')/env('DB_USERNAME')` = `:memory:`/`root`
+  (`config/database.php:92-93`). Empirically: under the committed `phpunit.xml` these classes now
+  ERROR (`FATAL: role "root" does not exist`) — under `php artisan test`/`composer test`/preflight.
+  They pass only when the whole env is already pgsql (where the flip is a no-op).
+  **Required fix:** DELETE the `beforeRefreshingDatabase`/`connectionsToTransact` override from all
+  five classes (`StockRebalanceEndpointTest`, `StockMovementLocationFilterTest`,
+  `StockMatrixEndpointTest`, `StockThresholdTest`, `GoodsReceiptDestinationTest`) so they are green
+  again under the default runner, and instead gate them on PostgreSQL via the existing
+  `phpunit-pgsql.xml` (`DB_CONNECTION=pgsql force="true"`): add the five class names to the
+  `backend-test-pgsql` `--filter` allowlist in `.github/workflows/ci.yml:553`, and make sure that
+  lane triggers on PR→dev (today `ci.yml:185,291` skip it). While you are in that filter, ALSO add
+  `PaymentRepositoryLocationTest` and `PosBridgeLocationAttributionTest` — Gate 3a's approval
+  leans on CI-PG as the merge gate for those too.
+  Verify locally with: `./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Inventory/... ` (all
+  five) AND `./vendor/bin/phpunit -c phpunit.xml` on the same paths (green on sqlite again).
+- Everything else from round 1 is FIXED and verified (GoodsReceiptDestinationTest A-then-B is real
+  and correct; severity sort, threshold race, tenant-scope guards all confirmed).
+
+**Wave 2 FE conventions: REJECT — remaining blocker #2 (one-line fix).**
+- [MAJOR] `src/features/inventory/components/ThresholdEditCell.tsx:22-23` aria-labels use
+  `t('stockByLocation.minQuantity')`/`t('stockByLocation.maxQuantity')` which resolve in **ar only**;
+  en/fr `inventory.json` have these keys under the sibling `stock` block, not `stockByLocation`.
+  EN/FR assistive tech gets the literal key strings. Fix: point the aria-labels at the existing
+  `stock.minQuantity`/`stock.maxQuantity` (present in all three locales) — or add the
+  `stockByLocation.*` pair to en+fr.
+- Everything else from round 1 is FIXED and verified (lint/typecheck/audits green, baseline change
+  is honest removals-only, RebalancingView shows names, `common:` keys resolve).
+
+**Resume order:** fix blocker #1 (pg gating) + blocker #2 (i18n one-liner) → commit → write
+`.gates/gate-2-request-r3.md` + `.gates/wave2-fe-request-r3.md` and STOP for the controller to
+re-run those two reviews (they should be fast — scope is just the two fixes) → on APPROVE the
+controller tags `multiloc-gate-2` → proceed to Wave 3 Task 4 onward per the plan section above.
