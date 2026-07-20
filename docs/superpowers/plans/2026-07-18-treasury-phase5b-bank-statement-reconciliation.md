@@ -170,7 +170,7 @@ Alert-only §6.7 checks (tampered reconciled statement; stale unreconciled > 30d
 **Files:**
 - Modify: `Presentation/routes.php:249-279` (remove mutation routes; keep index/show read-only only if still consumed), delete `apps/web/src/features/treasury/api/reconciliation.ts`, `apps/web/src/features/treasury/BankReconciliationPage.tsx` + its tests + `types/treasury.ts` entries + FR/AR/EN i18n keys; **repoint `apps/web/src/features/finance/pages/FinanceHubPage.tsx:75`** (`/treasury/reconciliation` card) to the new workspace route; prune `tenantScope.test.tsx` references.
 - Test: backend route-removal tests (mutation routes + `summary` → 404); **Vitest asserting the FinanceHub card resolves to the live workspace route**.
-- [ ] Steps: failing → cutover → commit `feat(treasury): legacy bank-reconciliation cutover → statement workspace`.
+- [x] Steps: failing → cutover → commit `feat(treasury): legacy bank-reconciliation cutover → statement workspace`.
 
 ### Task 13: Playwright E2E + ⑤b exit
 

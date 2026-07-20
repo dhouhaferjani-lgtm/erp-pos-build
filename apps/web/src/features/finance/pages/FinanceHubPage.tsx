@@ -72,7 +72,7 @@ const sections: HubSection[] = [
         titleKey: 'hub.cards.bankReconciliation.title',
         descriptionKey: 'hub.cards.bankReconciliation.description',
         icon: ArrowLeftRight,
-        href: '/treasury/reconciliation',
+        href: '/treasury/statements',
         permissionModule: 'treasury',
       },
       {

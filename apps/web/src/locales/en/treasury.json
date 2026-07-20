@@ -698,13 +698,6 @@
     "loading": "Loading cash position…",
     "unavailable": "Cash position is unavailable."
   },
-  "reconciliation": {
-    "openingBalance": "Opening Balance",
-    "startModal": {
-      "openingBalanceHelp": "Defaults to {{amount}} if left blank.",
-      "liveDifference": "Current difference"
-    }
-  },
   "statements": {
     "title": "Bank statements",
     "subtitle": "Import statements and reconcile each bank movement against the treasury ledger.",

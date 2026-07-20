@@ -698,13 +698,6 @@
     "loading": "Chargement de la position de trésorerie…",
     "unavailable": "La position de trésorerie est indisponible."
   },
-  "reconciliation": {
-    "openingBalance": "Solde d'ouverture",
-    "startModal": {
-      "openingBalanceHelp": "Par défaut {{amount}} si le champ reste vide.",
-      "liveDifference": "Différence actuelle"
-    }
-  },
   "statements": {
     "title": "Relevés bancaires",
     "subtitle": "Importez les relevés et rapprochez chaque mouvement avec le grand livre de trésorerie.",

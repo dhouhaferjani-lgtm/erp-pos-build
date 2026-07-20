@@ -78,7 +78,6 @@ const RemittanceDetailPage = lazy(() => import('../features/treasury/RemittanceD
 const RepositoryListPage = lazy(() => import('../features/treasury/RepositoryListPage').then((m) => ({ default: m.RepositoryListPage })))
 const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryDetailPage').then((m) => ({ default: m.RepositoryDetailPage })))
 const PaymentMethodsPage = lazy(() => import('../features/treasury/PaymentMethodsPage').then((m) => ({ default: m.PaymentMethodsPage })))
-const BankReconciliationPage = lazy(() => import('../features/treasury/BankReconciliationPage').then((m) => ({ default: m.BankReconciliationPage })))
 const StatementListPage = lazy(() => import('../features/treasury/statements/StatementListPage').then((m) => ({ default: m.StatementListPage })))
 const ReconciliationWorkspacePage = lazy(() => import('../features/treasury/statements/ReconciliationWorkspacePage').then((m) => ({ default: m.ReconciliationWorkspacePage })))
 
@@ -1841,17 +1840,6 @@ export function AppRoutes() {
               <RequirePermission permission="bank-statements.view">
                 <SuspenseWrapper>
                   <ReconciliationWorkspacePage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-
-          <Route
-            path="reconciliation"
-            element={
-              <RequirePermission permission="repositories.view">
-                <SuspenseWrapper>
-                  <BankReconciliationPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -66,13 +66,6 @@
     "loading": "جارٍ تحميل وضع السيولة…",
     "unavailable": "وضع السيولة غير متاح."
   },
-  "reconciliation": {
-    "openingBalance": "الرصيد الافتتاحي",
-    "startModal": {
-      "openingBalanceHelp": "يُستخدم {{amount}} افتراضيًا إذا تُرك الحقل فارغًا.",
-      "liveDifference": "الفرق الحالي"
-    }
-  },
   "repositories": {
     "transfer": {
       "action": "تحويل النقد",
