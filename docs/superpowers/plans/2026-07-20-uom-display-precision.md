@@ -100,7 +100,7 @@ final class QuantityScaleFormatForUnitTest extends TestCase
 
 **Files:**
 - Modify: `apps/api/app/Modules/Inventory/Application/Services/ReplenishmentSuggestionService.php`
-- Test: extend `apps/api/tests/Unit/Inventory/ReplenishmentSuggestionServiceTest.php` (or its actual existing test path — locate with `grep -rl ReplenishmentSuggestionService apps/api/tests`)
+- Test: **create from scratch** `apps/api/tests/Feature/Inventory/ReplenishmentSuggestionServiceTest.php` — NO existing test covers this service (verified). Feature-style: `RefreshDatabase` + real tenant-scoped Unit/Product/StockLevel creation; mirror the tenant-DB seeding style of `tests/Feature/Seeders/DemoPharmacyProductUnitsTest.php`.
 
 **Interfaces — Produces:** `suggestionsForLocation()` return values become unit-formatted strings (`'7'` for pieces, `'1.000'` for kg). Consumers (Task 3) rely on this.
 
@@ -117,12 +117,12 @@ final class QuantityScaleFormatForUnitTest extends TestCase
         // $product = Product::create([... 'unit_id' => $unit->id ...]);
         // StockLevel::create(['product_id' => $product->id, 'location_id' => $loc->id,
         //   'quantity' => '5.0000', 'reserved' => '0', 'max_quantity' => '12.0000', ...]);
-        $result = $this->service->suggestionsForLocation($tenantId, $companyId, $loc->id, [[$product->id, '']]);
+        $result = $this->service->suggestionsForLocation($tenantId, $companyId, $loc->id, [['product_id' => $product->id, 'variant_id' => null]]);
         self::assertSame('7', $result[$product->id.'|']);
     }
 ```
 
-(Mirror the existing test file's seeding helpers and grain-key helper exactly — read them before writing; the grain key format must match `ReplenishmentSuggestionService::grainKey`.)
+(Items are ASSOCIATIVE: the service reads `$item['product_id']` / `$item['variant_id']` — positional tuples throw. Result keys use `grainKey()` = `productId.'|'.(variantId ?? '')` — verified.)
 
 - [ ] **Step 2:** run by path → FAIL (`'7.0000'` returned).
 - [ ] **Step 3: implement** — inside the service, after the existing computation loop, add ONE batched lookup and a formatting pass. Use the query builder (NOT a cross-module model import):
@@ -131,7 +131,7 @@ final class QuantityScaleFormatForUnitTest extends TestCase
 use Illuminate\Support\Facades\DB;
 
 // after computing $suggestions keyed by grainKey(productId, variantId):
-$productIds = array_unique(array_map(static fn (array $g): string => $g[0], $grains));
+$productIds = array_unique(array_column($items, 'product_id'));
 $unitMeta = DB::table('products')
     ->leftJoin('units', 'units.id', '=', 'products.unit_id')
     ->whereIn('products.id', $productIds)
@@ -149,7 +149,7 @@ foreach ($suggestions as $key => $value) {
 }
 ```
 
-Keep `FLOOR_QUANTITY = '1.0000'` and all internal scale-4 math unchanged — formatting happens once at the end (round-once-at-boundary rule). NOTE: if the service's grain-key separator differs from `'|'`, use its actual constant/helper — read `grainKey()` first.
+Keep `FLOOR_QUANTITY = '1.0000'` and all internal scale-4 math unchanged — formatting happens once at the end (round-once-at-boundary rule). The service iterates `$items` (assoc arrays) — there is NO `$grains` variable; grain-key separator `'|'` verified against `grainKey()`.
 
 - [ ] **Step 4:** run tests by path → PASS. Add a query-count assertion (unit lookup must be exactly 1 query regardless of grain count):
 
@@ -165,8 +165,21 @@ Keep `FLOOR_QUANTITY = '1.0000'` and all internal scale-4 math unchanged — for
 ### Task 3: `quantity_decimals` on the replenishment feed + pinned-test updates
 
 **Files:**
+- Modify: `apps/api/app/Modules/Replenishment/Domain/ReplenishmentRequest.php` — **the model has NO `product()` relation today (verified); Task 3 cannot work without adding it:**
+
+```php
+use App\Modules\Product\Domain\Product;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+public function product(): BelongsTo
+{
+    return $this->belongsTo(Product::class, 'product_id');
+}
+```
+
+(`Product::unitOfMeasure()` already exists at Product.php:332-335; both feed builders `select('replenishment_requests.*')` so the FK is present for eager loading.)
 - Modify: `apps/api/app/Modules/Replenishment/Presentation/Resources/ReplenishmentRequestResource.php`
-- Modify: `apps/api/app/Modules/Replenishment/Application/Services/ReplenishmentQueryService.php` (eager-load) and `apps/api/app/Modules/POS/Presentation/Controllers/PosReplenishmentController.php` + the web `ReplenishmentRequestController` index (locate: `grep -rn "ReplenishmentRequestResource" apps/api/app` — ensure EVERY collection site eager-loads `product.unitOfMeasure`)
+- Modify the TWO builders (NOT the controllers): `ReplenishmentRequestController::namedQuery()` (:165 — covers index-open :81, index-paginated :91, store :139, cancel :161) and `ReplenishmentQueryService::responseQuery()` (:98-110 — covers POS index + store). Add `->with(['product.unitOfMeasure'])` to each. `PosReplenishmentController` itself needs NO change.
 - Test: `apps/api/tests/Feature/POS/PosReplenishmentControllerTest.php`, `apps/api/tests/Feature/Replenishment/ReplenishmentActionsTest.php`
 
 **Interfaces — Produces:** every feed row gains `"quantity_decimals": <int>` (0–4, default 4); `suggested_qty` arrives unit-formatted. `requested_qty` unchanged.
@@ -213,11 +226,13 @@ Add `->with(['product.unitOfMeasure'])` (or extend the existing eager-load array
   - Round-trip: `upsertProducts([{...product, quantity_decimals: 0}])` then read → `rowToProduct(row).quantity_decimals === 0`; also a product with the field ABSENT (older server) round-trips as `null`. This test catches any param misalignment across the 19-param batch (assert EVERY field of the round-tripped product, not just the new one).
 
 ```ts
-// migration block to implement against:
+// migration block to implement against (Migration interface REQUIRES sql: string;
+// isDuplicateColumnError is a top-level export at migrations.ts:8 — in scope):
 {
   version: 62,
   name: 'add_quantity_decimals_to_products',
-  run: async (db) => {
+  sql: '',
+  async run(db) {
     try {
       await db.execute('ALTER TABLE products ADD COLUMN quantity_decimals INTEGER');
     } catch (error) {
@@ -228,7 +243,7 @@ Add `->with(['product.unitOfMeasure'])` (or extend the existing eager-load array
 ```
 
 - [ ] **Step 2:** `cd apps/pos && pnpm vitest run src/lib/db/__tests__/migrations.v62.test.ts` → FAIL.
-- [ ] **Step 3: implement.** Type: `quantity_decimals?: number | null;` on `POSProduct` and `ProductRow`. Repository — ALL FOUR in lockstep: `PARAMS_PER_ROW = 19`; add `quantity_decimals` to the column list, `?` to the per-row value template, `product.quantity_decimals ?? null` to the params pusher, and `quantity_decimals = excluded.quantity_decimals` to the `ON CONFLICT ... DO UPDATE SET` block. `rowToProduct`: `quantity_decimals: row.quantity_decimals ?? null`.
+- [ ] **Step 3: implement.** Type: `quantity_decimals?: number | null;` on `POSProduct` and `ProductRow`. Repository — ALL FOUR in lockstep: `PARAMS_PER_ROW = 19`; add `quantity_decimals` to the column list, `?` to the per-row value template, `product.quantity_decimals ?? null` to the params pusher, and `quantity_decimals = excluded.quantity_decimals` to the `ON CONFLICT ... DO UPDATE SET` block. **ORDERING CONSTRAINT: append the new param AFTER `parapharmacy_metadata` (new index 18)** so existing positional asserts stay valid; new `?` placeholder goes BEFORE the two `datetime('now')` literals; column list order `...parapharmacy_metadata, quantity_decimals, updated_at, synced_at`. Update the PARAMS_PER_ROW enumeration comment (:131-137). **Update `__tests__/productRepository.test.ts:153`** `toBe(18)` → `toBe(19)` (positional asserts at :154-156/:179-180 survive only with the append-last ordering). `rowToProduct`: `quantity_decimals: row.quantity_decimals ?? null`.
 - [ ] **Step 4:** vitest by path → PASS. `pnpm typecheck` clean.
 - [ ] **Step 5:** commit `"feat(pos): sqlite v62 quantity_decimals + product sync mapping"`.
 
@@ -238,7 +253,7 @@ Add `->with(['product.unitOfMeasure'])` (or extend the existing eager-load array
 - Create: `apps/pos/src/lib/quantity.ts`, `apps/pos/src/components/atoms/QuantityInput.tsx`
 - Test: `apps/pos/src/lib/__tests__/quantity.test.ts`, `apps/pos/src/components/atoms/__tests__/QuantityInput.test.tsx`
 
-**Interfaces — Produces:** `formatQuantity(value: string, decimalPlaces: number | null | undefined): string` (pad/truncate via existing `bcadd`; precondition: value already server-rounded); `<QuantityInput value onChange decimalPlaces id? invalid? ariaLabel?>` emitting raw strings.
+**Interfaces — Produces:** `formatQuantity(value: string, decimalPlaces: number | null | undefined): string` (pad/round via existing `bcadd` — Big.js toFixed rounds half-up; precondition: value already server-rounded); `<QuantityInput value onChange decimalPlaces id? invalid? ariaLabel?>` emitting raw strings.
 
 - [ ] **Step 1: failing tests** — `formatQuantity('1.0000', 0) === '1'`; `('1.0000', 3) === '1.000'`; `('7', 0) === '7'`; `('2.5', null) === '2.5000'`; atom: `decimalPlaces=0` → `pattern="^\d+$"`, `inputMode="numeric"`, `step="1"`; `decimalPlaces=3` → `pattern` allows `1.250`, `step="0.001"`; onChange passes raw string.
 - [ ] **Step 2:** vitest by path → FAIL.
@@ -253,7 +268,7 @@ export function clampQuantityDecimals(decimalPlaces: number | null | undefined):
   return Math.min(Math.max(decimalPlaces, 0), 4);
 }
 
-/** Pad/truncate a server-rounded quantity string to the unit precision. */
+/** Pad/round a server-rounded quantity string to the unit precision. */
 export function formatQuantity(value: string, decimalPlaces: number | null | undefined): string {
   return bcadd(value, '0', clampQuantityDecimals(decimalPlaces));
 }
@@ -287,13 +302,13 @@ export function QuantityInput({ value, onChange, decimalPlaces, id, invalid, ari
       aria-invalid={invalid || undefined}
       aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.value)}
-      className="mt-1 w-full rounded-ctl border border-border-subtle bg-surface-raised px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-action"
+      className={INPUT_CLASSES}
     />
   );
 }
 ```
 
-(Match the exact className set currently on RequestRefillSheet's input :164 — copy it verbatim from the file, the block above is the reviewed baseline.)
+(`INPUT_CLASSES`: copy the className VERBATIM from `RequestRefillSheet.tsx:165` — it includes `outline-none focus:border-action focus:ring-2 focus:ring-action`; do not improvise the class list.)
 - [ ] **Step 4:** vitest by path → PASS; typecheck clean. → **Step 5:** commit `"feat(pos): QuantityInput atom + formatQuantity helper"`.
 
 ### Task 7: RequestRefillSheet precision-aware
@@ -315,13 +330,22 @@ export function QuantityInput({ value, onChange, decimalPlaces, id, invalid, ari
 
 ## WAVE 3 — Web (Tasks 8–10) → Gate 3 (frontend-conventions reviewer)
 
-### Task 8: canonicalize `formatQuantity`
+### Task 8: canonicalize `formatQuantity` (deprecation-only — NO rename)
 
 **Files:**
-- Modify: `apps/web/src/lib/format.ts:133` (rename `formatQuantity` → `formatQuantityTrimmed`, add `@deprecated for product quantities — use lib/decimal formatQuantity` JSDoc) + mechanically update its importers (`grep -rn "formatQuantity" apps/web/src --include="*.ts*" | grep "from.*lib/format"`).
-- Test: existing tests of both helpers keep passing (run the two lib test files by path).
+- Modify: `apps/web/src/lib/format.ts:133` ONLY — add a JSDoc block above its `formatQuantity`:
 
-- [ ] Steps: grep importers → rename symbol + all import sites (pure mechanical, no behavior change) → run `pnpm vitest run src/lib` + `pnpm typecheck` → commit `"refactor(web): disambiguate formatQuantity (pad=canonical decimal.ts, trim=formatQuantityTrimmed)"`.
+```ts
+/**
+ * @deprecated For product quantities use `formatQuantity` from `@/lib/decimal`
+ * (pads to unit precision). This variant TRIMS trailing zeros and locale-groups —
+ * wrong for unit-precision display. Guarded by tools/audit-quantity-display.mjs,
+ * which anchors on the lib/decimal import.
+ */
+```
+
+Rationale (plan review): 13 files / ~47 call sites import this symbol — a rename buys zero behavior change; the Task 13 scanner anchors on the canonical `lib/decimal` import path regardless, so the trim variant can never satisfy the guard.
+- [ ] Steps: add JSDoc → `pnpm typecheck` + `pnpm vitest run src/lib` (no behavior change) → commit `"docs(web): deprecate lib/format formatQuantity for product quantities"`.
 
 ### Task 9: replenishment surfaces unit-aware
 
@@ -339,17 +363,22 @@ const dp = getQuantityDecimals(line);            // reads line.quantity_decimals
 const minForDp = dp === 0 ? '1' : `0.${'0'.repeat(dp - 1)}1`;
 <QuantityInput decimalPlaces={dp} min={minForDp} ... />
 
-// queue page :145 and matrix cell :192:
+// queue page list row :145 (variable is `line`):
 import { formatQuantity } from '@/lib/decimal';
 {line.requested_qty !== null ? formatQuantity(line.requested_qty, getQuantityDecimals(line)) : t('matrix.requested_no_qty')}
+
+// matrix cell :192 — the in-scope variable is `cell` (a ReplenishmentLine; `const cell = row.cells[locationId]` at :181), NOT `line`:
+{cell.requested_qty !== null ? formatQuantity(cell.requested_qty, getQuantityDecimals(cell)) : t('matrix.requested_no_qty')}
 ```
+
+NOTE: in both dialogs the `selected.map((line) => ...)` bodies are implicit-return arrows (AddToPoDialog.tsx:131, CreateTransferDialog.tsx:132) — convert to block bodies with explicit `return` to host `const dp = ...`.
 
 - [ ] **Step 4:** vitest by path, typecheck, `pnpm lint` → PASS/clean → **Step 5:** commit `"feat(web): replenishment surfaces render at unit precision"`.
 
 ### Task 10: SupplierInvoiceCreatePage both quantity sites
 
 **Files:**
-- Modify: `apps/web/src/features/purchases/supplier-invoices/types.ts:213-234` (+`quantity_decimals?: number` on receipt+invoice line types and `InvoiceLineFormState`), `SupplierInvoiceCreatePage.tsx:538,626` + `prefilledLines` plumbing (:240-283)
+- Modify: `apps/web/src/features/purchases/supplier-invoices/types.ts` — add `quantity_decimals?: number` to `PurchaseOrderReceiptLine` (:213-227) and `PurchaseOrderInvoiceLine` (:229-236). `InvoiceLineFormState` is NOT in types.ts — it lives at `SupplierInvoiceCreatePage.tsx:44` (+`ManualInvoiceLineFormState` :59); add the field there and plumb through `prefilledLines` (:241-283). SOURCE OF PRECISION for the :626 site = the RECEIPT-line payload Task 4 extends (not the poLine) — if Task 4 targeted a different resource, stop and report. The :538 manual path needs no plumbing (`line.product` is a `ProductPickerValue`, already carries `quantity_decimals?` — ProductPicker.tsx:27).
 - Test: the page's existing vitest file (extend with a 0-dp line asserting `decimalPlaces 0`)
 
 - [ ] Steps: failing test → implement (`:538` → `getQuantityDecimals(line.product)`; `:626` → `getQuantityDecimals(line)` with the field plumbed from Task 4's payload through `prefilledLines`) → vitest by path + typecheck + lint → commit `"feat(web): supplier invoice quantity inputs at unit precision"`.
@@ -363,8 +392,8 @@ import { formatQuantity } from '@/lib/decimal';
 ### Task 11: PHPStan `ForbidFixedScaleQuantityEmission`
 
 **Files:**
-- Create: `apps/api/phpstan-rules/ForbidFixedScaleQuantityLiteralRule.php` + `ForbidQuantityScaleConstantInPresentationRule.php` (mirror the existing rule dir/namespace of `ForbidHardcodedBcmathScale` — locate it first, copy its registration style in `phpstan.neon`/`phpstan.neon.dist`)
-- Test: fixture-based rule tests exactly as the existing precision rules are tested (locate their tests and mirror)
+- Create: `apps/api/app/PHPStan/Rules/ForbidFixedScaleQuantityLiteralRule.php` + `ForbidQuantityScaleConstantInPresentationRule.php` (namespace `App\PHPStan\Rules` — where `ForbidHardcodedBcmathScale.php` lives). Register both in `apps/api/phpstan.neon` under the parameterless `rules:` list (:34-35 style). There is NO `phpstan.neon.dist`.
+- Test: **no existing PHPStan rule test to mirror (verified — none in repo)**. Build a `PHPStan\Testing\RuleTestCase` subclass per rule from scratch (`getRule()`, fixture PHP files under `tests/PHPStan/Fixtures/`, `analyse()` with expected error lines); `phpstan/phpstan` ships RuleTestCase — confirm it's in require-dev before writing (it is: phpstan runs in preflight).
 
 Rule A (literals): node `PhpParser\Node\Scalar\String_`; report when `preg_match('/^\d+\.0{4}$/', $node->value)` AND the file's namespace matches `/App\\Modules\\.+\\Presentation\\/`. Message: `Fixed scale-4 quantity literal in Presentation layer — use QuantityScale::formatForUnit() or move to Application.` Rule B: node `Expr\StaticCall`; report `QuantityScale::round(...)` whose 2nd arg is `ClassConstFetch` of `QuantityScale::SCALE`, same namespace filter, same message.
 
@@ -373,16 +402,17 @@ Rule A (literals): node `PhpParser\Node\Scalar\String_`; report when `preg_match
 ### Task 12: ESLint guards (web scope + POS copies)
 
 **Files:**
-- Create: `apps/web/eslint-rules/no-literal-decimal-places.js` (+ register `'precision/no-literal-decimal-places': 'warn'` in `apps/web/eslint.config.js` next to no-hardcoded-step at :87)
-- Create: `apps/pos/eslint-rules/no-hardcoded-step.js` (copy from `apps/web/eslint-rules/no-hardcoded-step.js` verbatim) and `apps/pos/eslint-rules/no-raw-quantity-input.js`; register both in `apps/pos/eslint.config.js` (existing `precisionPlugin` pattern)
-- Test: `apps/web/eslint-rules/__tests__/no-literal-decimal-places.test.mjs`, `apps/pos/eslint-rules/__tests__/no-raw-quantity-input.test.mjs` (RuleTester, mirror existing rule tests)
+- Create: `apps/web/eslint-rules/no-literal-decimal-places.js`. Registration = THREE edits (missing any one crashes `eslint .` with rule-not-found): (1) import the module near `apps/web/eslint.config.js:6`; (2) add to `precisionPlugin.rules` map at :21; (3) `'precision/no-literal-decimal-places': 'warn'` in the rules block at :87.
+- Create: `apps/pos/eslint-rules/no-hardcoded-step.js` (copy verbatim from `apps/web/eslint-rules/no-hardcoded-step.js`) and `apps/pos/eslint-rules/no-raw-quantity-input.js`. Registration in `apps/pos/eslint.config.js`: imports + `precisionPlugin.rules` map (:24) + entries in BOTH rules blocks (:182 main AND :347 strict override).
+- Test: place `.test.mjs` files ADJACENT to each rule (repo convention — not `__tests__/`), self-executing node scripts like `no-dead-tailwind-token-interpolation.test.mjs`. WIRE THEM OR THEY NEVER RUN: extend `apps/web/package.json:12` `test:eslint-rules` with `&& node eslint-rules/no-literal-decimal-places.test.mjs`; ADD a `test:eslint-rules` script to `apps/pos/package.json` (`node eslint-rules/no-raw-quantity-input.test.mjs`) and chain it into the POS `lint` script + preflight.
 
 ```js
 // no-literal-decimal-places.js — core create():
 const INCLUDED_DIRS = [
   'features/replenishment', 'features/purchases', 'features/documents',
   'features/inventory', 'features/stock-transfers', 'features/batches',
-  'features/products/sections/ProductInventorySection',
+  // ProductInventorySection deliberately EXCLUDED: its :64 opening_qty literal
+  // needs unit-selection-aware plumbing — 🎫 ticketed follow-up, not this feature.
 ];
 create(context) {
   const filename = context.getFilename().replaceAll('\\', '/');
@@ -434,6 +464,8 @@ create(context) {
 - Modify: `apps/web/package.json` (add `audit:quantity` to `lint` chain like `audit:keys` at :10,:13), `scripts/preflight.sh` (mirror :178), `.github/workflows/ci.yml` (mirror the audit:keys step)
 - Test: `apps/web/tools/__tests__/audit-quantity-display.test.mjs` (fixture files: violation caught; canonical-import wrap passes; excluded identifier ignored; baseline entry tolerated; NEW violation fails)
 
+NOTE: `audit-tanstack-keys.mjs` provides the TS-compiler-API parse scaffolding ONLY — it does no import resolution. The callee→import-declaration→module-specifier resolution below is NET-NEW logic you write in this task.
+
 Detection contract (from spec §3.4.4): flag a JSX expression rendering an identifier/member whose terminal name is in INCLUDE = `['requested_qty','suggested_qty','received_qty','quantity']` (`quantity` only when the object chain is a line/item variable, i.e. member expression — bare `quantity` state vars are excluded), EXCLUDE terminal names matching `/^(total_|available_|reserved_|stock_|min_|max_|component_|required_).*|.*_count$/`, UNLESS the expression is (a) an argument of a call whose callee resolves to an import of `formatQuantity` from `lib/decimal` (web) / `lib/quantity` (pos), or (b) inside a `<QuantityInput>` value attribute. Emit `file:line identifier`; compare against baseline (sorted JSON array of `"file:identifier"` — line-number-free so edits don't churn it); exit 1 on new entries; exit 1 with "stale baseline" if a baseline entry no longer matches (shrink-only ratchet).
 
 - [ ] Steps: write failing fixture tests → implement scanner → run full scan; triage findings: mechanical ones fixed inline (formatQuantity wrap), non-mechanical → baseline + list them in the Gate-4 report for ticketing → wire into lint/preflight/CI → commit `"guard(scanner): audit-quantity-display with ratchet baseline (first run = app-wide audit)"`.
@@ -457,11 +489,15 @@ private function demoMinMaxFor(string $sku, string $locationCode): array
 //   'min_quantity' => $min, 'max_quantity' => $max,
 // ParapharmacySeeder::seedStockLevels — add the same two keys to the create() payload (fresh tenant per run; no backfill semantics).
 
-// PINNED GRAIN (fixed literals, after the loop in seedTunisiaStock):
-// PB-BAB-0060 @ STORE-SOU: quantity '5.0000', min '6.0000', max '12.0000'  → suggestion '7'
+// PINNED GRAIN (fixed literals): PB-BAB-0060 @ STORE-SOU: quantity '5.0000',
+// min '6.0000', max '12.0000' → suggestion '7'.
+// PLACEMENT: inside seedTunisiaStock AFTER the shop loop (updateOrCreate overwrites the
+// random loop row on the unique key) and BEFORE the shop default-lot backing (:428) so
+// lot reconciliation sees the final quantity. Wave-D FEFO fixtures are warehouse-only —
+// no collision (verified).
 ```
 
-- [ ] **Step 1: failing test** — seed (RefreshDatabase + the seeder pathway used by existing seeder tests), resolve `STORE-SOU` location id and PB-BAB-0060 product id, call `ReplenishmentSuggestionService::suggestionsForLocation($tenant, $company, $sousseLocationId, [[$productId, '']])`, assert `'7'` exactly (piece-formatted, non-floor).
+- [ ] **Step 1: failing test** — seed (RefreshDatabase + the seeder pathway used by existing seeder tests), resolve `STORE-SOU` location id and PB-BAB-0060 product id, call `ReplenishmentSuggestionService::suggestionsForLocation($tenant, $company, $sousseLocationId, [['product_id' => $productId, 'variant_id' => null]])`, assert `'7'` exactly (piece-formatted, non-floor).
 - [ ] **Step 2:** FAIL → **Step 3:** implement seeder changes → **Step 4:** PASS by path; also re-run Task 2's tests by path (guard against interference) → **Step 5:** commit `"feat(seeders): shop min/max + pinned deterministic suggestion grain"`.
 
 ### Task 15: docs + reviewer checklists

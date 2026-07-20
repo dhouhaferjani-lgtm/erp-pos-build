@@ -33,3 +33,13 @@ Three Opus lanes, all **APPROVE-WITH-FIXES** → reconciled into Spec Rev 2. Con
 - POS-lane #1 vs inventory F6: grepped all POS client code — zero calls to `pos/sync/pull`; `pullProductsCore` hits `/products`. POS lane correct; F6 recorded as superseded; SyncController retirement = separate ticket.
 
 All findings folded into Spec Rev 2 §§1, 3.1-3.6, 5, 6.
+
+---
+
+# Plan Rev 1 Adversarial Review (2026-07-20, same day) — 3 Opus lanes, all APPROVE-WITH-FIXES → Plan Rev 2
+
+**Backend lane:** C1 CRITICAL — ReplenishmentRequest has NO product() relation (resource rows are join-hydrated); Task 3's eager-load would throw / nullsafe would silently emit 4 → belongsTo added as explicit sub-step; eager-loads relocated to namedQuery() (4 sites) + responseQuery(), controllers untouched. I1/I2 items are ASSOCIATIVE (`$item['product_id']`), no `$grains` var. I3 no existing service test — create Feature-style from scratch. I4 rules live in app/PHPStan/Rules (App\PHPStan\Rules), phpstan.neon `rules:` list; no .dist. I5 no RuleTestCase precedent in repo. M2 Task 14 pinned-grain placement pinned (after shop loop, before default-lot backing :428; FEFO warehouse-only = no collision). Verified: Task 1 hand-traced clean; primitives signature REQUIRED by module boundaries; PB-BAB-0060 deterministic; STORE-SOU = Sousse—Médina.
+
+**POS lane:** 1 Migration interface REQUIRES `sql: ''` (plan block would fail TS2741). 2 productRepository.test.ts:153 pins param count 18 + positional asserts → append-after-parapharmacy_metadata constraint + toBe(19). 3 atom className copied verbatim from RequestRefillSheet:165. 4 bcadd rounds (Big.js toFixed), not truncates. 5 PARAMS_PER_ROW comment update. Verified: wire compat (server '7' passes pull validator + push regex), Wave-2 test independence from Wave 1, rule-20 clean, fresh-install ≡ upgrade.
+
+**FE lane:** B1 matrix cell var is `cell` not `line` (:181/:192). M1 rule tests must be WIRED (web test:eslint-rules chain; POS has none — add script) else dead-green. M2 flat-config registration = 3 edits per rule (import + plugin map + rules entry; POS both :182/:347 blocks). M3 rename touches 13 files/47 sites → switched to @deprecated-only (scanner anchors canonical import anyway). m1 InvoiceLineFormState at SupplierInvoiceCreatePage.tsx:44 not types.ts. m2 :626 precision source = receipt-line payload (Task 4). m3 ProductInventorySection dropped from INCLUDED_DIRS (🎫 ticket). m4 scanner import-resolution is net-new logic. m5 dialog arrows → block bodies. Verified: web QuantityInput accepts min; ReplenishmentLine single type serves all 3 surfaces; ALLOWLIST paths real; CI anchors accurate (ci.yml:800).
