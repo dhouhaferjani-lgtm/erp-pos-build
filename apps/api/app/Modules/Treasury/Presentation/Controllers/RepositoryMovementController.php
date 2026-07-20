@@ -9,6 +9,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ final class RepositoryMovementController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function index(Request $request, string $id): JsonResponse
@@ -101,14 +103,15 @@ final class RepositoryMovementController extends Controller
             if (! is_string($rawAllocatedAmount) || ! is_numeric($rawAllocatedAmount)) {
                 throw new \LogicException('Repository movement allocation aggregate must be a decimal string.');
             }
-            $allocatedAmount = bcadd($rawAllocatedAmount, '0', 3);
+            $scale = $this->scaleResolver->getScale($movement->currency);
+            $allocatedAmount = bcadd($rawAllocatedAmount, '0', $scale);
 
             return [
                 'id' => $movement->id,
                 'direction' => $movement->direction->value,
                 'amount' => $movement->amount,
                 'allocated_amount' => $allocatedAmount,
-                'remaining_allocatable_amount' => bcsub($movement->amount, $allocatedAmount, 3),
+                'remaining_allocatable_amount' => bcsub($movement->amount, $allocatedAmount, $scale),
                 'currency' => $movement->currency,
                 'balance_after' => $movement->balance_after,
                 'ordinal' => $movement->ordinal,

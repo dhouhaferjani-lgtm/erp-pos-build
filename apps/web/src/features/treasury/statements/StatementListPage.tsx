@@ -20,6 +20,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { usePaymentRepositories } from '../hooks/usePaymentRepositories'
 import { listBankStatements, listStatementProfiles, type BankStatementSummary, type StatementStatus } from './api'
 import { StatementUploadWizard } from './StatementUploadWizard'
+import { formatAtCurrencyScale } from './status'
 
 const statusTones: Record<StatementStatus, StatusTone> = {
   imported: 'pending',
@@ -77,7 +78,7 @@ export function StatementListPage() {
       key: 'delta',
       header: t('treasury:statements.columns.delta'),
       numeric: true,
-      render: (statement) => <span className="tabular-nums">{formatCurrency(new Big(statement.closing_balance).minus(statement.opening_balance).toFixed(3), { currency: statement.currency })}</span>,
+      render: (statement) => <span className="tabular-nums">{formatCurrency(formatAtCurrencyScale(new Big(statement.closing_balance).minus(statement.opening_balance).toString(), statement.currency), { currency: statement.currency })}</span>,
     },
     {
       key: 'status',

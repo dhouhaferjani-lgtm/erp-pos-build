@@ -22,6 +22,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 const DISPLAY_DATE = TODAY.split('-').reverse().join('/')
 const CARD_GROSS = '100.000'
 const CARD_NET = '98.500'
+const CARD_FEE = '1.500'
 const CHEQUE_AMOUNT = '37.125'
 const ADJUSTMENT_AMOUNT = '15.000'
 const AGIO_AMOUNT = '2.500'
@@ -78,6 +79,10 @@ interface StatementLine {
   id: string
   label: string
   match_status: string
+  executions?: Array<{
+    action_type: string
+    produced_repository_movement_ids: string[]
+  }>
 }
 
 let token = ''
@@ -699,12 +704,36 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     await chooseLine(page, adjustmentLabel)
     await confirmTier(page, 1)
 
-    await chooseLine(page, chequeLabel)
-    await confirmTier(page, 3, 'Pending instrument')
+  await chooseLine(page, chequeLabel)
+  await confirmTier(page, 3, 'Pending instrument')
+  const clearedInstrument = await request.get(
+    `${API_BASE}/payment-instruments/${outboundInstrumentId}`,
+    { headers: authHeaders() },
+  )
+  await expectStatus(clearedInstrument, 200, 'tier 3 outbound instrument state')
+  expect(((await json(clearedInstrument)).data as { status: string }).status).toBe('cleared')
 
     await chooseLine(page, cardLabel)
-    await confirmTier(page, 4)
-    await expect(page.locator('aside').getByText('Card batch and fee created')).toBeVisible()
+  await confirmTier(page, 4)
+  await expect(page.locator('aside').getByText('Card batch and fee created')).toBeVisible()
+  const matchedStatement = await request.get(`${API_BASE}/bank-statements/${mainStatementId}`, {
+    headers: authHeaders(),
+  })
+  await expectStatus(matchedStatement, 200, 'tier 4 execution provenance')
+  const matchedLines = ((await json(matchedStatement)).data as { lines: StatementLine[] }).lines
+  const cardLine = matchedLines.find((line) => line.label === cardLabel)
+  expect(cardLine?.executions?.filter((execution) => execution.action_type === 'acquirer_fee')).toHaveLength(1)
+  const feeExecution = cardLine!.executions!.find((execution) => execution.action_type === 'acquirer_fee')!
+  expect(feeExecution.produced_repository_movement_ids).toHaveLength(1)
+  const feeMovements = await request.get(
+    `${API_BASE}/payment-repositories/${repository!.id}/movements?search=${cardLine!.id}&per_page=100`,
+    { headers: authHeaders() },
+  )
+  await expectStatus(feeMovements, 200, 'tier 4 fee movement')
+  const feeRows = ((await json(feeMovements)).data ?? []) as Array<{ source_id: string; amount: string; direction: string }>
+  expect(feeRows.filter((row) => row.source_id === cardLine!.id && row.direction === 'out')).toEqual([
+    expect.objectContaining({ amount: CARD_FEE }),
+  ])
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '02-tier-matches-confirmed.png'), fullPage: true })
   })
 
@@ -768,9 +797,11 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     )
     await expectStatus(balanceResponse, 200, 'stamped repository checkpoint')
     const balance = (await json(balanceResponse)).data as {
+      balance: string
       last_reconciled_at: string | null
       last_reconciled_balance: string | null
     }
+    expect(balance.balance).toBe(closingBalance)
     expect(balance.last_reconciled_at?.slice(0, 10)).toBe(TODAY)
     expect(balance.last_reconciled_balance).toBe(closingBalance)
 
@@ -794,6 +825,14 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       { headers: authHeaders(), data: { occurred_at: TODAY } },
     )
     await expectStatus(clearResponse, 422, 'reconciled-date outbound clear rejection')
+    const checkpointEvents = await request.get(
+      `${API_BASE}/payment-instruments/${checkpointInstrumentId}/events`,
+      { headers: authHeaders() },
+    )
+    await expectStatus(checkpointEvents, 200, 'checkpoint instrument events')
+    const events = ((await json(checkpointEvents)).data ?? []) as Array<{ event_type: string; journal_entry_id: string | null }>
+    expect(events.some((event) => event.event_type === 'cleared')).toBe(false)
+    expect(events.filter((event) => event.journal_entry_id !== null)).toHaveLength(1)
     const instrumentResponse = await request.get(
       `${API_BASE}/payment-instruments/${checkpointInstrumentId}`,
       { headers: authHeaders() },

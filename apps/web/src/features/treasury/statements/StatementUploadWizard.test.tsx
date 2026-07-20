@@ -120,4 +120,62 @@ describe('StatementUploadWizard', () => {
       acknowledgeEmpty: true,
     })))
   })
+
+  it('clears repository-dependent state when the repository changes', () => {
+    const repoTwoProfile = { ...profile, id: 'profile-2', payment_repository_id: 'repo-2', name: 'Amen CSV' }
+    render(
+      <StatementUploadWizard
+        repositories={[
+          { id: 'repo-1', name: 'BIAT TND', currency: 'TND' },
+          { id: 'repo-2', name: 'Amen EUR', currency: 'EUR' },
+        ]}
+        profiles={[profile, repoTwoProfile]}
+        onPreview={onPreview}
+        onConfirm={onConfirm}
+        onImported={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('statements.upload.repository'), { target: { value: 'repo-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.next' }))
+    fireEvent.change(screen.getByLabelText('statements.upload.file'), {
+      target: { files: [new File(['x'], 'biat.csv', { type: 'text/csv' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.next' }))
+    fireEvent.change(screen.getByLabelText('statements.upload.profile'), { target: { value: 'profile-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.back' }))
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.back' }))
+
+    fireEvent.change(screen.getByLabelText('statements.upload.repository'), { target: { value: 'repo-2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.next' }))
+
+    expect(screen.getByRole('button', { name: 'statements.upload.next' })).toBeDisabled()
+  })
+
+  it('uses the repository currency scale for statement balances and exposes the active step', async () => {
+    render(
+      <StatementUploadWizard
+        repositories={[{ id: 'repo-1', name: 'BIAT EUR', currency: 'EUR' }]}
+        profiles={[profile]}
+        onPreview={onPreview}
+        onConfirm={onConfirm}
+        onImported={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('statements.upload.steps.repository')).toHaveAttribute('aria-current', 'step')
+    fireEvent.change(screen.getByLabelText('statements.upload.repository'), { target: { value: 'repo-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.next' }))
+    fireEvent.change(screen.getByLabelText('statements.upload.file'), {
+      target: { files: [new File(['x'], 'biat.csv', { type: 'text/csv' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.next' }))
+    fireEvent.change(screen.getByLabelText('statements.upload.profile'), { target: { value: 'profile-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'statements.upload.preview' }))
+
+    const opening = await screen.findByLabelText('statements.upload.openingBalance')
+    expect(opening).toHaveAttribute('type', 'number')
+    expect(opening).toHaveAttribute('step', '0.01')
+    expect(screen.getByText('statements.upload.steps.preview')).toHaveAttribute('aria-current', 'step')
+  })
 })

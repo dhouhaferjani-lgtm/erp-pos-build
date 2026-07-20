@@ -84,6 +84,7 @@ final readonly class StatementSuggestionService
                 targetId: $movement->source_id,
                 amount: $candidate['remaining'],
                 reason: 'Reference and remaining amount match.',
+                reasonCode: 'reference_amount_match',
                 referenceMatched: true,
             );
         }
@@ -108,6 +109,8 @@ final readonly class StatementSuggestionService
                     targetId: $movement->source_id,
                     amount: $candidate['remaining'],
                     reason: "Unique remaining amount inside ±{$windowDays} days.",
+                    reasonCode: 'unique_amount_window',
+                    reasonParams: ['days' => $windowDays],
                 );
             }
         }
@@ -331,6 +334,9 @@ final readonly class StatementSuggestionService
                 reason: $instrument->status === InstrumentStatus::Bounced
                     ? 'Bounced outbound instrument is ready for re-presentation.'
                     : 'Pending instrument amount and maturity date match.',
+                reasonCode: $instrument->status === InstrumentStatus::Bounced
+                    ? 'bounced_instrument'
+                    : 'pending_instrument',
                 referenceMatched: $this->referenceMatches($this->normalize($line->label), [$instrument->reference]),
                 actionParams: ['instrument_id' => $instrument->id],
             );
@@ -371,6 +377,8 @@ final readonly class StatementSuggestionService
             targetId: $candidate['expense_id'],
             amount: $candidate['amount'],
             reason: "Unsettled expense {$candidate['label']} dated {$candidate['date']} matches.",
+            reasonCode: 'unsettled_expense',
+            reasonParams: ['label' => $candidate['label'], 'date' => substr((string) $candidate['date'], 0, 10)],
             referenceMatched: $candidate['reference_matched'],
             actionParams: ['expense_id' => $candidate['expense_id']],
         ), $event->candidates());
@@ -414,6 +422,8 @@ final readonly class StatementSuggestionService
                 targetId: $group['paymentMethod']->id,
                 amount: $remainingLine,
                 reason: "Card batch for {$group['paymentMethod']->name} on {$group['businessDate']} nets after configured fee.",
+                reasonCode: 'card_batch_fee',
+                reasonParams: ['method' => $group['paymentMethod']->code, 'date' => $group['businessDate']],
                 actionParams: [
                     'payment_method_id' => $group['paymentMethod']->id,
                     'business_date' => $group['businessDate'],

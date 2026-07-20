@@ -46,8 +46,6 @@ use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Application\Services\BankReconciliationService;
-use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -441,7 +439,6 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
 
             $this->seedTunisiaExpenses($this->company);
 
-            $this->seedTunisiaBankReconciliation($this->company);
         });
     }
 
@@ -1220,106 +1217,6 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         }
 
         $this->command->info("✓ Expenses seeded: {$createdCount} paid posted expenses.");
-    }
-
-    /**
-     * Seed one completed and one draft bank reconciliation for BANK-01.
-     */
-    protected function seedTunisiaBankReconciliation(Company $company): void
-    {
-        if (BankReconciliation::query()
-            ->where('company_id', $company->id)
-            ->where('notes', 'like', 'DEMO-BANK-REC-%')
-            ->exists()) {
-            $this->command->info('Bank reconciliations already seeded — skipping seedTunisiaBankReconciliation().');
-
-            return;
-        }
-
-        /** @var CompanyContext $companyCtx */
-        $companyCtx = $this->container->make(CompanyContext::class);
-        $companyCtx->setCompanyId($company->id);
-
-        $domain = $this->localeUserEmailDomain();
-        $owner = User::query()->where('email', "owner@{$domain}")->first();
-        if ($owner === null) {
-            $this->command->warn('Owner user missing — skipping seedTunisiaBankReconciliation().');
-
-            return;
-        }
-
-        $repository = PaymentRepository::query()
-            ->where('company_id', $company->id)
-            ->where('code', 'BANK-01')
-            ->where('is_active', true)
-            ->first();
-
-        if ($repository === null) {
-            $this->command->warn('BANK-01 repository missing — skipping seedTunisiaBankReconciliation().');
-
-            return;
-        }
-
-        $payments = Payment::query()
-            ->where('company_id', $company->id)
-            ->where('repository_id', $repository->id)
-            ->where('is_reconciled', false)
-            ->orderBy('payment_date')
-            ->orderBy('reference')
-            ->get();
-
-        if ($payments->count() < 3) {
-            $this->command->warn('Fewer than 3 unreconciled BANK-01 payments — skipping seedTunisiaBankReconciliation().');
-
-            return;
-        }
-
-        /** @var BankReconciliationService $service */
-        $service = $this->container->make(BankReconciliationService::class);
-
-        $scale = CurrencyScale::for((string) $company->currency);
-        $matchedTotal = '0.000';
-        $completedPayments = $payments->take(2);
-        foreach ($completedPayments as $payment) {
-            $matchedTotal = bcadd($matchedTotal, $payment->amount, $scale);
-        }
-
-        $completed = $service->startReconciliation(
-            companyId: $company->id,
-            tenantId: $company->tenant_id,
-            userId: $owner->id,
-            data: [
-                'repository_id' => $repository->id,
-                'statement_date' => now()->subDays(1)->toDateString(),
-                'statement_balance' => $matchedTotal,
-                'notes' => 'DEMO-BANK-REC-COMPLETED',
-            ],
-        );
-
-        foreach ($completedPayments as $payment) {
-            $service->matchItem(
-                reconciliationId: $completed->id,
-                paymentId: $payment->id,
-                userId: $owner->id,
-                bankReference: 'DEMO-MATCH-'.$payment->reference,
-                notes: 'Matched by demo seed',
-            );
-        }
-        $service->completeReconciliation($completed->id, $owner->id);
-
-        $service->startReconciliation(
-            companyId: $company->id,
-            tenantId: $company->tenant_id,
-            userId: $owner->id,
-            data: [
-                'repository_id' => $repository->id,
-                'statement_date' => now()->toDateString(),
-                'statement_balance' => (string) $repository->balance,
-                'notes' => 'DEMO-BANK-REC-DRAFT',
-            ],
-        );
-
-        $this->command->info('✓ Bank reconciliations seeded: 1 completed + 1 draft.');
     }
 
     /**

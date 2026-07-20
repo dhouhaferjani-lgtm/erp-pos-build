@@ -114,6 +114,8 @@ final class StatementSuggestionServiceTest extends TestCase
         );
         self::assertNotNull($reference);
         self::assertSame('60.000', $reference->amount);
+        self::assertSame('reference_amount_match', $reference->reasonCode);
+        self::assertSame([], $reference->reasonParams);
         self::assertSame($allocationCount, BankStatementLineAllocation::query()->count());
         self::assertDatabaseCount('bank_statement_match_executions', 0);
     }
@@ -137,6 +139,8 @@ final class StatementSuggestionServiceTest extends TestCase
         self::assertNotNull($amountDate);
         self::assertSame([$partial], $amountDate->movementIds);
         self::assertSame('50.000', $amountDate->amount);
+        self::assertSame('unique_amount_window', $amountDate->reasonCode);
+        self::assertSame(['days' => 5], $amountDate->reasonParams);
     }
 
     public function test_pending_instrument_tier_includes_received_bounced_and_deposited_states(): void
@@ -199,6 +203,8 @@ final class StatementSuggestionServiceTest extends TestCase
         self::assertNotNull($suggestion);
         self::assertSame($expense->id, $suggestion->targetId);
         self::assertTrue($suggestion->referenceMatched);
+        self::assertSame('unsettled_expense', $suggestion->reasonCode);
+        self::assertSame(['label' => 'Tunisie Telecom', 'date' => '2026-07-19'], $suggestion->reasonParams);
     }
 
     private function line(string $amount, MovementDirection $direction, string $label): BankStatementLine

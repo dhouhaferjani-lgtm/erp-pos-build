@@ -22,14 +22,14 @@ Run from `apps/api` on the released revision:
 ```bash
 php artisan tenants:migrate --force
 php artisan tenants:run treasury:backfill-payable-instrument-accounts --option='dry-run=1' 2>&1 | tee treasury-backfill-dry-run.log
-! grep -Eqi 'missing supplier parent account|has wrong type|is inactive|[1-9][0-9]* invalid account\(s\)' treasury-backfill-dry-run.log
+if grep -Eqi 'Tenant treasury tables are unavailable|missing supplier parent account|has wrong type|is inactive|[1-9][0-9]* invalid account\(s\)' treasury-backfill-dry-run.log; then exit 1; fi
 php artisan tenants:run treasury:backfill-payable-instrument-accounts 2>&1 | tee treasury-backfill.log
-! grep -Eqi 'missing supplier parent account|has wrong type|is inactive|[1-9][0-9]* invalid account\(s\)' treasury-backfill.log
+if grep -Eqi 'Tenant treasury tables are unavailable|missing supplier parent account|has wrong type|is inactive|[1-9][0-9]* invalid account\(s\)' treasury-backfill.log; then exit 1; fi
 php artisan tenants:run db:seed --option='class=Database\Seeders\RolesAndPermissionsSeeder' --option='force=1'
 php artisan tenants:run permission:cache-reset
 ```
 
-`tenants:run` continues across tenants and does not propagate a child command's non-zero exit code. The two mandatory `grep` gates above convert any fail-loud child result into a shell failure; preserve both logs with the deployment evidence and stop if either `grep` finds a match.
+`tenants:run` continues across tenants and does not propagate a child command's non-zero exit code. The two mandatory log gates above explicitly exit on any fail-loud child result, including unavailable tenant treasury tables; preserve both logs with the deployment evidence and stop if either gate finds a match.
 
 The sequence is load-bearing:
 

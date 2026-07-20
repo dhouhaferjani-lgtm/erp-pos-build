@@ -237,6 +237,25 @@ final class RepositoryMovementsEndpointTest extends TestCase
         $this->assertArrayHasKey('occurred_at', $firstMovementRecordedRow);
     }
 
+    public function test_formats_allocation_amounts_at_the_movement_currency_scale(): void
+    {
+        $this->companyA->update(['currency' => 'EUR']);
+        PaymentRepository::query()->whereKey($this->repository->id)->update(['currency' => 'EUR']);
+        $this->repository->refresh();
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '10.00',
+            MovementSourceType::Payment,
+        );
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/payment-repositories/{$this->repository->id}/movements")
+            ->assertOk()
+            ->assertJsonPath('data.0.allocated_amount', '0.00')
+            ->assertJsonPath('data.0.remaining_allocatable_amount', '10.00');
+    }
+
     public function test_filters_by_source_type(): void
     {
         $this->recordMovement($this->repository, MovementDirection::In, '10.000', MovementSourceType::Payment);

@@ -105,6 +105,8 @@ final class CardBatchSuggestionTest extends TestCase
         self::assertSame('2026-07-18', $suggestion->actionParams['business_date']);
         self::assertSame('100.000', $suggestion->actionParams['gross_amount']);
         self::assertSame('2.000', $suggestion->actionParams['fee_amount']);
+        self::assertSame('card_batch_fee', $suggestion->reasonCode);
+        self::assertSame(['method' => 'CARD-A', 'date' => '2026-07-18'], $suggestion->reasonParams);
     }
 
     public function test_refund_is_a_negative_member_of_its_original_sale_business_day(): void

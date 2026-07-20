@@ -9,6 +9,18 @@ use Tests\TestCase;
 
 class BankReconciliationCutoverTest extends TestCase
 {
+    public function test_legacy_checkpoint_writer_and_demo_seed_entry_point_are_removed(): void
+    {
+        $this->assertFileDoesNotExist(app_path('Modules/Treasury/Application/Services/BankReconciliationService.php'));
+        $this->assertFileDoesNotExist(app_path('Modules/Treasury/Presentation/Controllers/BankReconciliationController.php'));
+        $this->assertFileDoesNotExist(app_path('Modules/Treasury/Presentation/Requests/StartBankReconciliationRequest.php'));
+
+        $demoSeeder = file_get_contents(database_path('seeders/DemoPharmacySeeder.php'));
+        $this->assertIsString($demoSeeder);
+        $this->assertStringNotContainsString('BankReconciliationService', $demoSeeder);
+        $this->assertStringNotContainsString('seedTunisiaBankReconciliation', $demoSeeder);
+    }
+
     /**
      * @return array<string, array{string, string}>
      */

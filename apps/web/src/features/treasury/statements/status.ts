@@ -1,5 +1,7 @@
 import Big from 'big.js'
 
+import { getDecimals } from '@/hooks/useCurrency'
+
 import type { BankStatementLine } from './api'
 import type { StatementLineStatus } from './api'
 
@@ -14,8 +16,11 @@ export function remainingForLine(line: RemainingLine): Big {
       ? matched.plus(allocation.matched_amount)
       : matched.minus(allocation.matched_amount)
   }
-  const remaining = new Big(line.amount).minus(matched)
-  return remaining.lt(0) ? new Big(0) : remaining
+  return new Big(line.amount).minus(matched)
+}
+
+export function formatAtCurrencyScale(value: string, currency: string): string {
+  return new Big(value).toFixed(getDecimals(currency))
 }
 
 export function isResolvedLineStatus(status: StatementLineStatus): boolean {

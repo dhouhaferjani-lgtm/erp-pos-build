@@ -67,6 +67,8 @@ export interface StatementSuggestion {
   target_id: string | null
   amount: string
   reason: string
+  reason_code: string | null
+  reason_params: Record<string, string | number>
   reference_matched: boolean
   action_params: Record<string, unknown>
 }

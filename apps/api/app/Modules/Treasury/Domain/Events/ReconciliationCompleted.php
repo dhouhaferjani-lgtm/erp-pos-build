@@ -7,9 +7,8 @@ namespace App\Modules\Treasury\Domain\Events;
 use App\Shared\Domain\Events\DomainEvent;
 
 /**
- * Event raised when a bank reconciliation is completed.
- *
- * Dispatched from BankReconciliationService::completeReconciliation().
+ * Legacy event retained for consumers of the retired reconciliation aggregate.
+ * New statement completion emits BankStatementReconciled instead.
  * Immutable — never modify once deployed.
  */
 final class ReconciliationCompleted extends DomainEvent

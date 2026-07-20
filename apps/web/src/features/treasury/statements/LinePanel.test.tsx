@@ -10,6 +10,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
+vi.mock('@/features/finance/hooks/useAccounts', () => ({
+  useAccounts: () => ({ data: [], isLoading: false }),
+}))
+
 const line: BankStatementLine = {
   id: 'line-1',
   line_number: 1,
@@ -36,6 +40,8 @@ const actionSuggestion: StatementSuggestion = {
   target_id: 'instrument-1',
   amount: '75.000',
   reason: 'Cheque amount and date match.',
+  reason_code: 'pending_instrument',
+  reason_params: {},
   reference_matched: true,
   action_params: { instrument_id: 'instrument-1' },
 }
@@ -80,6 +86,15 @@ describe('LinePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'statements.workspace.manual.allocate' }))
 
     expect(onAllocate).toHaveBeenCalledWith([{ repository_movement_id: 'movement-1', amount: '50.000' }])
+    expect(screen.getByText(/statements\.workspace\.matchType\.manual/)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /statements\.workspace\.sourceType\.payment/ })).not.toHaveTextContent('payment-1')
+  })
+
+  it('uses the selected currency scale for remaining capacity and allocations', () => {
+    render(<LinePanel line={{ ...line, amount: '100.00', allocations: [] }} currency="EUR" suggestions={[]} movements={[{ ...movement, currency: 'EUR', amount: '80.00', allocated_amount: '20.00', remaining_allocatable_amount: '60.00' }]} onExecute={vi.fn()} onAllocate={vi.fn()} onIgnore={vi.fn()} onUnignore={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getByLabelText('statements.workspace.manual.amount')).toHaveAttribute('step', '0.01')
+    expect(screen.getByLabelText('statements.workspace.manual.amount')).toHaveAttribute('max', '60.00')
   })
 
   it('requires an ignore reason and explanation before submitting', () => {

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import Big from 'big.js'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Checkbox } from '@/components/atoms'
@@ -10,6 +9,7 @@ import { cn } from '@/lib/utils'
 
 interface StatementCompletionDialogProps {
   isOpen: boolean
+  hasIgnoredLines: boolean
   ignoredTotal: string
   currency: string
   pending?: boolean
@@ -17,10 +17,10 @@ interface StatementCompletionDialogProps {
   onConfirm: (acknowledgeIgnoredTotal: boolean) => void
 }
 
-export function StatementCompletionDialog({ isOpen, ignoredTotal, currency, pending = false, onClose, onConfirm }: StatementCompletionDialogProps) {
+export function StatementCompletionDialog({ isOpen, hasIgnoredLines, ignoredTotal, currency, pending = false, onClose, onConfirm }: StatementCompletionDialogProps) {
   const { t } = useTranslation('treasury')
   const [acknowledged, setAcknowledged] = useState(false)
-  const requiresAcknowledgment = !new Big(ignoredTotal).eq(0)
+  const requiresAcknowledgment = hasIgnoredLines
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('statements.workspace.complete.title')}>

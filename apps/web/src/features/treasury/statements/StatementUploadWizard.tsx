@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileSpreadsheet, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Checkbox, Input, Select } from '@/components/atoms'
+import { Button, Checkbox, Input, MoneyInput, Select } from '@/components/atoms'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { getErrorMessage } from '@/lib/api'
 import { semanticColorTokens, tokens, textColors } from '@/lib/designTokens'
@@ -76,6 +76,22 @@ export function StatementUploadWizard({
     [createdProfiles, profiles, repositoryId],
   )
 
+  function changeRepository(nextRepositoryId: string) {
+    if (nextRepositoryId === repositoryId) return
+    setRepositoryId(nextRepositoryId)
+    setFile(null)
+    setProfileId('')
+    setPreview(null)
+    setPeriodStart('')
+    setPeriodEnd('')
+    setOpeningBalance('0.000')
+    setClosingBalance('0.000')
+    setAcknowledgeEmpty(false)
+    setMapping({ value_date: '', amount: '', label: '' })
+    setShowProfileForm(false)
+    setError(null)
+  }
+
   async function createProfile() {
     setPending(true)
     setError(null)
@@ -89,7 +105,7 @@ export function StatementUploadWizard({
         date_format: dateFormat,
         decimal_format: decimalFormat,
         direction_convention: directionConvention,
-        header_rows: Number(headerRows),
+        header_rows: Math.min(100, Math.max(0, Number.parseInt(headerRows, 10) || 0)),
         matching_window_days: 5,
       })
       setCreatedProfiles((current) => [...current, created])
@@ -149,7 +165,7 @@ export function StatementUploadWizard({
     <div className="space-y-5">
       <ol className="grid grid-cols-4 gap-2" aria-label={t('statements.upload.progress')}>
         {wizardSteps.map((item, index) => (
-          <li key={item} className={cn('border-t-2 pt-2 text-xs font-medium', index <= currentStep ? semanticColorTokens.intent.primary.border : semanticColorTokens.border.subtle, index <= currentStep ? textColors.brand : textColors.tertiary)}>
+          <li key={item} aria-current={item === step ? 'step' : undefined} className={cn('border-t-2 pt-2 text-xs font-medium', index <= currentStep ? semanticColorTokens.intent.primary.border : semanticColorTokens.border.subtle, index <= currentStep ? textColors.brand : textColors.tertiary)}>
             {t(`statements.upload.steps.${item}`)}
           </li>
         ))}
@@ -160,7 +176,7 @@ export function StatementUploadWizard({
       {step === 'repository' ? (
         <section className="space-y-4">
           <label className={tokens.label.base} htmlFor="statement-repository">{t('statements.upload.repository')}</label>
-          <Select id="statement-repository" value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)}>
+          <Select id="statement-repository" value={repositoryId} onChange={(event) => changeRepository(event.target.value)}>
             <option value="">{t('statements.upload.selectRepository')}</option>
             {repositories.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}
           </Select>
@@ -225,15 +241,15 @@ export function StatementUploadWizard({
             <ReportCard label={t('statements.upload.report.droppedZero')} value={preview.dropped_zero_amount_rows} tone="neutral" />
             <ReportCard label={t('statements.upload.report.unparseable')} value={preview.unparseable_rows.length} tone={preview.unparseable_rows.length ? 'danger' : 'success'} />
           </div>
-          {preview.unparseable_rows.length ? <div className={cn(tokens.alert.base, tokens.alert.warning)}><AlertTriangle className="h-4 w-4" /><ul>{preview.unparseable_rows.map((row) => <li key={`${row.row}-${row.reason}`}>{t('statements.upload.row')} {row.row}: {row.reason}</li>)}</ul></div> : null}
+          {preview.unparseable_rows.length ? <div className={cn(tokens.alert.base, tokens.alert.warning)}><AlertTriangle className="h-4 w-4" /><ul>{preview.unparseable_rows.map((row) => <li key={`${String(row.row)}-${row.reason}`}>{t('statements.upload.row')} {row.row}: {row.reason}</li>)}</ul></div> : null}
           <div className="overflow-x-auto rounded-lg border">
             <DataTable className="min-w-full text-sm"><thead><tr className={semanticColorTokens.surface.pageAlpha}><th className="px-3 py-2 text-start">{t('statements.upload.date')}</th><th className="px-3 py-2 text-start">{t('statements.upload.label')}</th><th className="px-3 py-2 text-end">{t('statements.upload.amount')}</th></tr></thead><tbody>{preview.preview_lines.map((line) => <tr key={line.line_number} className="border-t"><td className="px-3 py-2">{line.value_date}</td><td className="px-3 py-2">{line.label}</td><td className="px-3 py-2 text-end tabular-nums">{line.direction === 'out' ? '−' : '+'}{formatCurrency(line.amount, { currency: repository?.currency ?? 'TND' })}</td></tr>)}</tbody></DataTable>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className={tokens.label.base}>{t('statements.upload.periodStart')}<Input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
             <label className={tokens.label.base}>{t('statements.upload.periodEnd')}<Input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
-            <label className={tokens.label.base}>{t('statements.upload.openingBalance')}<Input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} /></label>
-            <label className={tokens.label.base}>{t('statements.upload.closingBalance')}<Input inputMode="decimal" value={closingBalance} onChange={(event) => setClosingBalance(event.target.value)} /></label>
+            <label className={tokens.label.base}>{t('statements.upload.openingBalance')}<MoneyInput currency={repository?.currency ?? 'TND'} min="-999999999999999999" value={openingBalance} onChange={setOpeningBalance} /></label>
+            <label className={tokens.label.base}>{t('statements.upload.closingBalance')}<MoneyInput currency={repository?.currency ?? 'TND'} min="-999999999999999999" value={closingBalance} onChange={setClosingBalance} /></label>
           </div>
           {preview.accepted_line_count === 0 ? <fieldset aria-label={t('statements.upload.emptyGate')} className={cn('rounded-lg border p-4', semanticColorTokens.intent.caution.border, semanticColorTokens.intent.caution.bgSubtle)}><label className="flex items-start gap-3 text-sm"><Checkbox checked={acknowledgeEmpty} onChange={(event) => setAcknowledgeEmpty(event.target.checked)} /><span>{t('statements.upload.acknowledgeEmpty')}</span></label></fieldset> : null}
           <div className="flex items-center justify-between"><Button variant="secondary" onClick={() => setStep('profile')}><ArrowLeft className="me-2 h-4 w-4" />{t('statements.upload.back')}</Button><Button disabled={confirmBlocked || pending} onClick={() => void confirm()}><CheckCircle2 className="me-2 h-4 w-4" />{pending ? t('statements.upload.importing') : t('statements.upload.confirm')}</Button></div>

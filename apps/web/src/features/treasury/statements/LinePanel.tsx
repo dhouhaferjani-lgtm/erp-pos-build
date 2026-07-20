@@ -13,7 +13,7 @@ import type { BankStatementLine, RepositoryMovementCandidate, StatementActionTyp
 import { CreateFromLineDialog } from './CreateFromLineDialog'
 import { ManualMatchSearch } from './ManualMatchSearch'
 import { SuggestionList } from './SuggestionList'
-import { isSuccessfulLineStatus, remainingForLine } from './status'
+import { formatAtCurrencyScale, isSuccessfulLineStatus, remainingForLine } from './status'
 
 interface LinePanelProps {
   line: BankStatementLine
@@ -51,7 +51,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
   const [ignoreReason, setIgnoreReason] = useState<StatementIgnoreReason | ''>('')
   const [ignoreText, setIgnoreText] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const remaining = remainingForLine(line).toFixed(3)
+  const remaining = formatAtCurrencyScale(remainingForLine(line).toString(), currency)
   const canIgnore = line.allocations.length === 0 && line.executions.length === 0
 
   function confirmSuggestion(suggestion: StatementSuggestion) {
@@ -74,7 +74,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
         <SuggestionList suggestions={suggestions} currency={currency} disabled={pending} onConfirm={confirmSuggestion} />
         <ManualMatchSearch movements={movements.filter((movement) => movement.direction === line.direction && new Big(movement.remaining_allocatable_amount).gt(0))} currency={currency} lineRemaining={remaining} search={manualSearch} amount={manualAmount} disabled={pending || new Big(remaining).eq(0)} onSearch={(value) => { setManualSearch(value); onSearch?.(value) }} onAmountChange={setManualAmount} onAllocate={(movementId, amount) => { onAllocate([{ repository_movement_id: movementId, amount }]); setManualAmount('') }} />
 
-        {line.allocations.length ? <section className="space-y-2"><h3 className={cn('text-sm font-semibold', textColors.primary)}>{t('statements.workspace.allocations')}</h3>{line.allocations.map((allocation) => <div key={allocation.repository_movement_id} className={cn('flex items-center justify-between rounded-lg border p-3 text-sm', semanticColorTokens.border.subtle)}><span>{allocation.match_type} · {formatCurrency(allocation.matched_amount, { currency })}</span>{onUnallocate ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => { onUnallocate(allocation.repository_movement_id) }}><Unlink className="me-2 h-4 w-4" />{t('statements.workspace.unallocate')}</Button> : null}</div>)}</section> : null}
+        {line.allocations.length ? <section className="space-y-2"><h3 className={cn('text-sm font-semibold', textColors.primary)}>{t('statements.workspace.allocations')}</h3>{line.allocations.map((allocation) => <div key={allocation.repository_movement_id} className={cn('flex items-center justify-between rounded-lg border p-3 text-sm', semanticColorTokens.border.subtle)}><span>{t(`statements.workspace.matchType.${allocation.match_type}`)} · {formatCurrency(allocation.matched_amount, { currency })}</span>{onUnallocate ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => { onUnallocate(allocation.repository_movement_id) }}><Unlink className="me-2 h-4 w-4" />{t('statements.workspace.unallocate')}</Button> : null}</div>)}</section> : null}
 
         {canIgnore ? <fieldset aria-label={t('statements.workspace.ignore.title')} className={cn('space-y-3 rounded-lg border p-4', semanticColorTokens.border.subtle)}><legend className={cn('px-1 text-sm font-semibold', textColors.primary)}>{t('statements.workspace.ignore.title')}</legend><label className={tokens.label.base}>{t('statements.workspace.ignore.reason')}<Select aria-label={t('statements.workspace.ignore.reason')} value={ignoreReason} onChange={(event) => { const value = event.target.value; setIgnoreReason(isIgnoreReason(value) ? value : '') }}><option value="">{t('statements.workspace.ignore.selectReason')}</option>{ignoreReasons.map((reason) => <option key={reason} value={reason}>{t(`statements.workspace.ignore.reasons.${reason}`)}</option>)}</Select></label><label className={tokens.label.base}>{t('statements.workspace.ignore.explanation')}<Textarea aria-label={t('statements.workspace.ignore.explanation')} value={ignoreText} onChange={(event) => { setIgnoreText(event.target.value) }} /></label><Button variant="secondary" disabled={pending || !ignoreReason || !ignoreText.trim()} onClick={() => { if (ignoreReason) onIgnore({ reason: ignoreReason, text: ignoreText }) }}>{t('statements.workspace.ignore.submit')}</Button></fieldset> : null}
 
