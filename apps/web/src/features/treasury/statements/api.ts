@@ -19,7 +19,7 @@ export interface BankStatementSummary {
   lines_count: number
 }
 
-export type StatementLineStatus = 'unmatched' | 'partial' | 'matched' | 'ignored'
+export type StatementLineStatus = 'unmatched' | 'partial' | 'matched' | 'resolved_by_creation' | 'ignored'
 export type StatementActionType = 'outbound_clear' | 'inbound_clear' | 'expense_settle' | 'acquirer_fee' | 'create_expense' | 'create_income'
 export type StatementIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other'
 

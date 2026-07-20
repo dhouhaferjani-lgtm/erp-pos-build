@@ -109,7 +109,7 @@
     },
     "workspace": {
       "title": "مطابقة الكشف البنكي", "progress": "الأسطر المحسومة", "remaining": "المبلغ المتبقي", "balanceDelta": "حركة رصيد الكشف", "search": "البحث في الأسطر", "filter": "حالة السطر", "allStatuses": "كل الحالات", "noReference": "لا يوجد مرجع بنكي", "noLines": "لا توجد أسطر مطابقة للمرشحات.", "lineAmount": "مبلغ السطر", "allocations": "التخصيصات", "unallocate": "إزالة", "provenance": "سجل التنفيذ", "openTarget": "فتح السجل المصدر", "movementsProduced": "حركة دفتر منتجة", "reconciledBy": "تمت المطابقة بسطر كشف", "reopen": "إعادة فتح الكشف", "cancel": "إلغاء",
-      "status": { "unmatched": "غير مطابق", "partial": "مطابق جزئيًا", "matched": "مطابق", "ignored": "متجاهل" },
+      "status": { "unmatched": "غير مطابق", "partial": "مطابق جزئيًا", "matched": "مطابق", "resolved_by_creation": "تم الإنشاء والمطابقة", "ignored": "متجاهل" },
       "actions": { "outbound_clear": "تحصيل أداة صادرة", "inbound_clear": "تحصيل أداة واردة", "expense_settle": "تسوية مصروف", "acquirer_fee": "إنشاء دفعة البطاقات والعمولة", "create_expense": "إنشاء مصروف", "create_income": "إنشاء إيراد" },
       "suggestions": { "title": "الاقتراحات المرتبة", "empty": "لا يوجد اقتراح تلقائي لهذا السطر.", "tier": "المستوى {{tier}}", "reference": "تطابق المرجع", "confirm": "تأكيد المطابقة" },
       "manual": { "title": "مطابقة حركة يدويًا", "search": "البحث في حركات الدفتر", "searchPlaceholder": "معرف الحركة أو المصدر", "movement": "الحركة", "none": "لا توجد حركة مؤهلة", "original": "المبلغ الأصلي", "available": "المتاح للتخصيص", "amount": "مبلغ التخصيص الجزئي", "allocate": "تخصيص" },

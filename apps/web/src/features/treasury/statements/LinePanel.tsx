@@ -13,6 +13,7 @@ import type { BankStatementLine, RepositoryMovementCandidate, StatementActionTyp
 import { CreateFromLineDialog } from './CreateFromLineDialog'
 import { ManualMatchSearch } from './ManualMatchSearch'
 import { SuggestionList } from './SuggestionList'
+import { isSuccessfulLineStatus } from './status'
 
 interface LinePanelProps {
   line: BankStatementLine
@@ -76,7 +77,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
   return (
     <aside className="space-y-6">
       <header className={cn('rounded-lg border p-4', semanticColorTokens.border.subtle, semanticColorTokens.surface.pageAlpha)}>
-        <div className="flex items-start justify-between gap-3"><div><p className={cn('text-xs', textColors.tertiary)}>{line.value_date} · #{line.line_number}</p><h2 className={cn('mt-1 font-semibold', textColors.primary)}>{line.label}</h2><p className={cn('mt-1 text-sm', textColors.secondary)}>{line.reference ?? t('statements.workspace.noReference')}</p></div><StatusBadge tone={line.match_status === 'matched' ? 'success' : line.match_status === 'ignored' ? 'neutral' : line.match_status === 'partial' ? 'info' : 'pending'}>{t(`statements.workspace.status.${line.match_status}`)}</StatusBadge></div>
+        <div className="flex items-start justify-between gap-3"><div><p className={cn('text-xs', textColors.tertiary)}>{line.value_date} · #{line.line_number}</p><h2 className={cn('mt-1 font-semibold', textColors.primary)}>{line.label}</h2><p className={cn('mt-1 text-sm', textColors.secondary)}>{line.reference ?? t('statements.workspace.noReference')}</p></div><StatusBadge tone={isSuccessfulLineStatus(line.match_status) ? 'success' : line.match_status === 'ignored' ? 'neutral' : line.match_status === 'partial' ? 'info' : 'pending'}>{t(`statements.workspace.status.${line.match_status}`)}</StatusBadge></div>
         <div className="mt-4 grid grid-cols-2 gap-3"><div><p className={cn('text-xs', textColors.tertiary)}>{t('statements.workspace.lineAmount')}</p><p className="font-semibold tabular-nums">{formatCurrency(line.amount, { currency })}</p></div><div><p className={cn('text-xs', textColors.tertiary)}>{t('statements.workspace.remaining')}</p><p className="font-semibold tabular-nums">{formatCurrency(remaining, { currency })}</p></div></div>
       </header>
 

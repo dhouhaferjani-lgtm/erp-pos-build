@@ -720,7 +720,7 @@
     },
     "workspace": {
       "title": "Statement reconciliation", "progress": "Resolved lines", "remaining": "Amount remaining", "balanceDelta": "Statement balance movement", "search": "Search lines", "filter": "Line status", "allStatuses": "All statuses", "noReference": "No bank reference", "noLines": "No lines match these filters.", "lineAmount": "Line amount", "allocations": "Allocations", "unallocate": "Remove", "provenance": "Execution provenance", "openTarget": "Open source record", "movementsProduced": "ledger movement(s) produced", "reconciledBy": "Reconciled by statement line", "reopen": "Reopen statement", "cancel": "Cancel",
-      "status": { "unmatched": "Unmatched", "partial": "Partially matched", "matched": "Matched", "ignored": "Ignored" },
+      "status": { "unmatched": "Unmatched", "partial": "Partially matched", "matched": "Matched", "resolved_by_creation": "Created and matched", "ignored": "Ignored" },
       "actions": { "outbound_clear": "Outbound instrument cleared", "inbound_clear": "Inbound instrument cleared", "expense_settle": "Expense settled", "acquirer_fee": "Card batch and fee created", "create_expense": "Expense created", "create_income": "Income created" },
       "suggestions": { "title": "Ranked suggestions", "empty": "No automatic suggestion for this line.", "tier": "Tier {{tier}}", "reference": "Reference match", "confirm": "Confirm match" },
       "manual": { "title": "Manual movement match", "search": "Search ledger movements", "searchPlaceholder": "Movement or source ID", "movement": "Movement", "none": "No eligible movement", "original": "Original amount", "available": "Available to allocate", "amount": "Partial allocation amount", "allocate": "Allocate" },
