@@ -83,7 +83,7 @@ export function LinePanel({ line, currency, suggestions, movements, pending = fa
 
       {line.executions.length ? <section className="space-y-2"><h3 className={cn('text-sm font-semibold', textColors.primary)}>{t('statements.workspace.provenance')}</h3>{line.executions.map((execution) => { const link = provenanceLink(execution.target_type, execution.target_id); return <div key={`${execution.action_type}-${execution.target_id ?? ''}`} className={cn('rounded-lg border p-3 text-sm', semanticColorTokens.border.subtle)}><StatusBadge tone="success">{t(`statements.workspace.actions.${execution.action_type}`)}</StatusBadge>{link ? <Link className={cn('ms-2 font-medium hover:underline', textColors.brand)} to={link}>{t('statements.workspace.openTarget')}</Link> : null}<p className={cn('mt-1 text-xs', textColors.tertiary)}>{execution.produced_repository_movement_ids.length} {t('statements.workspace.movementsProduced')}</p></div> })}</section> : null}
 
-      <CreateFromLineDialog isOpen={showCreate} direction={line.direction} pending={pending} onClose={() => { setShowCreate(false) }} onSubmit={(input) => { onCreate(input); setShowCreate(false) }} />
+      {showCreate ? <CreateFromLineDialog isOpen direction={line.direction} pending={pending} onClose={() => { setShowCreate(false) }} onSubmit={(input) => { onCreate(input); setShowCreate(false) }} /> : null}
     </aside>
   )
 }

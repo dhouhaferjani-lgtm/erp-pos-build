@@ -26,13 +26,13 @@ interface ManualMatchSearchProps {
 
 export function ManualMatchSearch({ movements, currency, lineRemaining, search, amount, disabled = false, onSearch, onAmountChange, onAllocate }: ManualMatchSearchProps) {
   const { t } = useTranslation('treasury')
-  const [selectedId, setSelectedId] = useState('')
-  const effectiveSelectedId = movements.some((movement) => movement.id === selectedId) ? selectedId : movements[0]?.id ?? ''
+  const [selectedId, setSelectedId] = useState(() => movements[0]?.id ?? '')
+  const effectiveSelectedId = movements.some((movement) => movement.id === selectedId) ? selectedId : ''
   const selected = movements.find((movement) => movement.id === effectiveSelectedId)
   const lineCapacity = new Big(lineRemaining)
   const movementCapacity = new Big(selected?.remaining_allocatable_amount ?? '0')
   const maxAmount = formatAtCurrencyScale((lineCapacity.lte(movementCapacity) ? lineCapacity : movementCapacity).toString(), currency)
-  const minimumAmount = String(1 / 10 ** getDecimals(currency))
+  const minimumAmount = formatAtCurrencyScale(new Big(1).div(new Big(10).pow(getDecimals(currency))).toString(), currency)
   const validAmount = amount !== '' && new Big(amount || '0').gt(0) && new Big(amount || '0').lte(maxAmount)
 
   return (

@@ -26,6 +26,7 @@ import {
   ignoreStatementLine,
   reopenBankStatement,
   searchRepositoryMovements,
+  type BankStatementDetail,
   type StatementLineStatus,
   unallocateStatementLine,
   unignoreStatementLine,
@@ -34,6 +35,15 @@ import { LinePanel } from './LinePanel'
 import { shouldRefreshWorkspaceQuery } from './queryScope'
 import { StatementCompletionDialog } from './StatementCompletionDialog'
 import { formatAtCurrencyScale, isResolvedLineStatus, isSuccessfulLineStatus, remainingForLine } from './status'
+
+export function getWorkspaceCompletionState(statement: BankStatementDetail, mutable: boolean) {
+  const resolved = statement.lines.filter((line) => isResolvedLineStatus(line.match_status)).length
+  const remainingTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => total.plus(remainingForLine(line)), new Big(0)).toString(), statement.currency)
+  const ignoredTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => line.match_status !== 'ignored' ? total : line.direction === 'in' ? total.plus(line.amount) : total.minus(line.amount), new Big(0)).toString(), statement.currency)
+  const canComplete = resolved === statement.lines.length && statement.status !== 'reconciled' && statement.status !== 'voided' && mutable
+
+  return { resolved, remainingTotal, ignoredTotal, canComplete }
+}
 
 export function ReconciliationWorkspacePage() {
   const { t } = useTranslation(['treasury', 'common'])
@@ -68,12 +78,12 @@ export function ReconciliationWorkspacePage() {
   const suggestionsQuery = useQuery({
     queryKey: tenantScopedKey(['bank-statement-line-suggestions', selectedLine?.id ?? 'none']),
     queryFn: () => getStatementSuggestions(selectedLine?.id ?? ''),
-    enabled: Boolean(selectedLine) && Boolean(mutable) && selectedLine?.match_status !== 'ignored',
+    enabled: tenantId !== null && companyId !== null && Boolean(selectedLine) && Boolean(mutable) && selectedLine?.match_status !== 'ignored',
   })
   const movementsQuery = useQuery({
     queryKey: tenantScopedKey(['repository-movements', statement?.payment_repository_id ?? 'none', { search: debouncedMovementSearch }]),
     queryFn: () => searchRepositoryMovements(statement?.payment_repository_id ?? '', debouncedMovementSearch),
-    enabled: Boolean(selectedLine) && Boolean(statement) && Boolean(mutable),
+    enabled: tenantId !== null && companyId !== null && Boolean(selectedLine) && Boolean(statement) && Boolean(mutable),
   })
 
   async function refreshWorkspace() {
@@ -95,10 +105,7 @@ export function ReconciliationWorkspacePage() {
   if (statementQuery.isLoading) return <div className={cn('py-12 text-center', textColors.tertiary)}>{t('common:status.loading')}</div>
   if (!statement) return <div className={cn(tokens.alert.base, tokens.alert.error)}>{t('common:errors.loadingFailed')}</div>
 
-  const resolved = statement.lines.filter((line) => isResolvedLineStatus(line.match_status)).length
-  const remainingTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => total.plus(remainingForLine(line)), new Big(0)).toString(), statement.currency)
-  const ignoredTotal = formatAtCurrencyScale(statement.lines.reduce((total, line) => line.match_status !== 'ignored' ? total : line.direction === 'in' ? total.plus(line.amount) : total.minus(line.amount), new Big(0)).toString(), statement.currency)
-  const canComplete = resolved === statement.lines.length && statement.status !== 'reconciled' && statement.status !== 'voided' && mutable
+  const { resolved, remainingTotal, ignoredTotal, canComplete } = getWorkspaceCompletionState(statement, mutable)
 
   return (
     <div className="space-y-6">

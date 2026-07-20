@@ -27,7 +27,7 @@ export function SuggestionList({ suggestions, currency, disabled = false, onConf
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2"><StatusBadge tone={suggestion.tier === 1 ? 'success' : suggestion.tier === 2 ? 'info' : 'pending'}>{t('statements.workspace.suggestions.tier', { tier: String(suggestion.tier) })}</StatusBadge>{suggestion.reference_matched ? <StatusBadge tone="success">{t('statements.workspace.suggestions.reference')}</StatusBadge> : null}</div>
-              <p className={cn('text-sm', textColors.secondary)}>{suggestion.reason_code ? t(`statements.workspace.suggestions.reasons.${suggestion.reason_code}`, suggestion.reason_params) : suggestion.reason}</p>
+              <p className={cn('text-sm', textColors.secondary)}>{suggestion.reason_code ? t(`statements.workspace.suggestions.reasons.${suggestion.reason_code}`, suggestion.reason_params) : t('statements.workspace.suggestions.reasons.generic')}</p>
               <p className={cn('font-medium tabular-nums', textColors.primary)}>{formatCurrency(suggestion.amount, { currency })}</p>
             </div>
             <Button size="sm" disabled={disabled} onClick={() => { onConfirm(suggestion) }}><Check className="me-2 h-4 w-4" />{t('statements.workspace.suggestions.confirm')}</Button>
