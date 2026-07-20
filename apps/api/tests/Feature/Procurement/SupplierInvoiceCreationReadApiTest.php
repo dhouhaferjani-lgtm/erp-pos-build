@@ -164,6 +164,27 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         $response->assertJsonPath('data.0.quantity_decimals', 0);
     }
 
+    public function test_purchase_order_receipt_lines_default_quantity_decimals_when_product_soft_deleted(): void
+    {
+        [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-QDEC-DEL-001', '10.0000', '5.100');
+        $receipt = $this->createReceipt($po, 'GRN-QDEC-DEL-001');
+        $line = $this->createReceiptLine($receipt, $poLine, [
+            'received_qty' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+        ]);
+
+        $product = Product::findOrFail($poLine->product_id);
+        $product->delete();
+        $this->assertSoftDeleted($product);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders/{$po->id}/receipt-lines?uninvoiced=1");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $line->id);
+        $response->assertJsonPath('data.0.quantity_decimals', 4);
+    }
+
     public function test_purchase_order_receipt_lines_uninvoiced_filter_ignores_free_only_open_window(): void
     {
         [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-FREE-ONLY-001', '10.0000', '5.100');
