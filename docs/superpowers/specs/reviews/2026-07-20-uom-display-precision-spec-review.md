@@ -58,3 +58,11 @@ Commits 7d616844a (T5), 572970c38 (T6), a6fa6b8a3 (T7). Fiscal-pos reviewer (Opu
 
 # GATE 3 (Wave 3 web) — CLOSED 2026-07-20
 Commits 04ebdaa8e (T8), 2b3208b38 (T9), 182eb53c6 (T10). Frontend-conventions reviewer (Opus): **APPROVE** — re-ran typecheck/lint/34 tests independently; 0 errors, baselines 0-new/0-stale, no mechanism evasion. quantity_decimals REQUIRED on ReplenishmentLine ratified (resource always emits, default 4); exactOptionalPropertyTypes conditional-spread ratified; snake_case wire verified end-to-end. MINOR-1 (merge stacked JSDoc blocks in format.ts) applied by controller in this commit.
+
+---
+
+# GATE 4 (Wave 4 guards/seeders/docs) — CLOSED 2026-07-20 → FEATURE COMPLETE
+Commits 94f4f7fa5 (T11), 8262141e8 (T12), bc9547140 (T13), 7ba7bc0c4 (T14), d2b5fb06e+2ba80fc71 (T15), be4d9a434 (pint F1).
+- **Backend lane (inventory-costing, Opus): A-W-F** — sole finding pint phpdoc_align (fixed be4d9a434, one-space diff verified). Verified: rules + 6/6 fixture tests + layer exemption fixture-proven; 9 baselined violations all pre-existing (files untouched by branch); seeder determinism + pinned-grain placement before default-lot backing; DemoPharmacyBatchSeedingTest green (FEFO unaffected); full phpstan (2552 files) No errors; ZERO migrations on branch; SyncController untouched; deploy = rides owed DemoPharmacySeeder rerun.
+- **FE/guards lane (frontend-conventions, Opus): APPROVE** — tamper-proved RuleTester genuineness (neutered case → non-zero exit); exactly 3 sanctioned suppressions repo-wide (CapturePage + 2 RFQ pages, all rationale'd); scanner 48→42 baseline honest (0 new/0 stale; DocumentLines deprecated-import catch confirmed IN baseline); wiring package.json/preflight/ci verified; docs accurate to built reality. MINOR (🎫): no-hardcoded-step rule has no RuleTester test in either app (pre-existing gap inherited by the copy).
+- **AUDIT RESULT (the scanner's first run):** 42 unique raw-quantity render sites baselined app-wide (documents detail pages, POS cart/sale/customer-display, inventory/stock views, workshop bundles, owner-dashboard widgets) + 9 PHPStan Presentation scale-4 literals — all pre-existing, all ratcheted (shrink-only), ticketed for burn-down.
