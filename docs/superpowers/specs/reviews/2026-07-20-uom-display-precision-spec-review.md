@@ -53,3 +53,8 @@ Commits 2c4b338a0 (T1), 52ecbf423 (T2), a8e49251c (T3), 39f10c930 (T4). Inventor
 
 # GATE 2 (Wave 2 POS client) — CLOSED 2026-07-20
 Commits 7d616844a (T5), 572970c38 (T6), a6fa6b8a3 (T7). Fiscal-pos reviewer (Opus): **APPROVE, zero findings.** Verified: v62 shape ≡ v61 + real idempotence tests; 4-edit param alignment lockstep (append-last honored, :153→19, 50×19=950<999); absent→null→clamp→4 coherent; no parseFloat anywhere; null-path byte-identical (fixtures diff = additions only); rule-20 sweep clean; old-device compat via optional field end-to-end. Informational notes: round-trip test is mock-positional (matches file style); bcadd display rounding on server-advisory data only.
+
+---
+
+# GATE 3 (Wave 3 web) — CLOSED 2026-07-20
+Commits 04ebdaa8e (T8), 2b3208b38 (T9), 182eb53c6 (T10). Frontend-conventions reviewer (Opus): **APPROVE** — re-ran typecheck/lint/34 tests independently; 0 errors, baselines 0-new/0-stale, no mechanism evasion. quantity_decimals REQUIRED on ReplenishmentLine ratified (resource always emits, default 4); exactOptionalPropertyTypes conditional-spread ratified; snake_case wire verified end-to-end. MINOR-1 (merge stacked JSDoc blocks in format.ts) applied by controller in this commit.
