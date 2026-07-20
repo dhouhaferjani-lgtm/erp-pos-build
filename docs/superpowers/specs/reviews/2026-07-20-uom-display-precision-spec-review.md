@@ -48,3 +48,8 @@ All findings folded into Spec Rev 2 §§1, 3.1-3.6, 5, 6.
 
 # GATE 1 (Wave 1 backend) — CLOSED 2026-07-20
 Commits 2c4b338a0 (T1), 52ecbf423 (T2), a8e49251c (T3), 39f10c930 (T4). Inventory-costing reviewer (Opus): APPROVE-WITH-FIXES — F1 Important: T4 receipt-lines guard null-deref on soft-deleted product (relationLoaded true + null relation → 500; Product SoftDeletes + no FK on goods_receipt_lines.product_id). Fixed @ 8e6fb1a43 via TDD (red reproduced the exact fatal; hoisted-nullable-local formulation for PHPStan alwaysTrue) → reviewer re-verified: semantically equivalent, GATE CLOSED. Deviations ratified: T3 relationLoaded formulation (superior — makes missing-eager-load test meaningful); T3 ReplenishmentActionsTest skip (input/storage pins, not display); T2 rounding_method raw-DB-string cast. Verified: single batched unit query genuinely pinned; requested_qty wire byte-identical; belongsTo cross-module = established repo pattern (DocumentLine/Batch/WorkOrderLine precedents).
+
+---
+
+# GATE 2 (Wave 2 POS client) — CLOSED 2026-07-20
+Commits 7d616844a (T5), 572970c38 (T6), a6fa6b8a3 (T7). Fiscal-pos reviewer (Opus): **APPROVE, zero findings.** Verified: v62 shape ≡ v61 + real idempotence tests; 4-edit param alignment lockstep (append-last honored, :153→19, 50×19=950<999); absent→null→clamp→4 coherent; no parseFloat anywhere; null-path byte-identical (fixtures diff = additions only); rule-20 sweep clean; old-device compat via optional field end-to-end. Informational notes: round-trip test is mock-positional (matches file style); bcadd display rounding on server-advisory data only.
