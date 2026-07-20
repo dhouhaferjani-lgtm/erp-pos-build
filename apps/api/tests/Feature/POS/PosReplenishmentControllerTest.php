@@ -19,6 +19,8 @@ use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -42,6 +44,8 @@ final class PosReplenishmentControllerTest extends TestCase
 
     private Product $product;
 
+    private Unit $pieceUnit;
+
     private User $cashier;
 
     protected function setUp(): void
@@ -57,9 +61,14 @@ final class PosReplenishmentControllerTest extends TestCase
             'company_id' => $this->company->id,
             'location_id' => $this->shop->id,
         ]);
+        $this->pieceUnit = Unit::factory()->create([
+            'decimal_places' => 0,
+            'rounding_method' => RoundingMethod::HalfUp,
+        ]);
         $this->product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
+            'unit_id' => $this->pieceUnit->id,
         ]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
         UserCompanyMembership::create([
@@ -151,12 +160,13 @@ final class PosReplenishmentControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('truncated', false)
             ->assertJsonStructure(['data' => [[
-                'id', 'product_id', 'variant_id', 'requested_qty', 'suggested_qty', 'request_count', 'last_requested_at',
+                'id', 'product_id', 'variant_id', 'requested_qty', 'suggested_qty', 'quantity_decimals', 'request_count', 'last_requested_at',
             ]], 'as_of', 'truncated']);
 
-        $ids = array_column($response->json('data'), 'id');
-        $this->assertContains($visible->id, $ids);
-        $this->assertNotContains($hidden->id, $ids);
+        $rows = collect($response->json('data'))->keyBy('id');
+        $this->assertContains($visible->id, $rows->keys()->all());
+        $this->assertNotContains($hidden->id, $rows->keys()->all());
+        $this->assertSame(0, $rows[$visible->id]['quantity_decimals']);
     }
 
     public function test_pull_feed_calculates_order_up_to_max_with_min_and_one_fallbacks(): void
@@ -178,10 +188,11 @@ final class PosReplenishmentControllerTest extends TestCase
 
         $rows = $this->pullRowsById();
 
-        $this->assertSame('7.0000', $rows[$requests[0]->id]['suggested_qty']);
-        $this->assertSame('2.0000', $rows[$requests[1]->id]['suggested_qty']);
-        $this->assertSame('1.0000', $rows[$requests[2]->id]['suggested_qty']);
-        $this->assertSame('1.0000', $rows[$requests[3]->id]['suggested_qty']);
+        $this->assertSame('7', $rows[$requests[0]->id]['suggested_qty']);
+        $this->assertSame('2', $rows[$requests[1]->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$requests[2]->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$requests[3]->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$requests[0]->id]['quantity_decimals']);
     }
 
     public function test_pull_feed_floors_to_one_for_null_thresholds_and_orders_full_max_at_zero_available(): void
@@ -198,8 +209,9 @@ final class PosReplenishmentControllerTest extends TestCase
 
         $rows = $this->pullRowsById();
 
-        $this->assertSame('1.0000', $rows[$requests[0]->id]['suggested_qty']);
-        $this->assertSame('12.0000', $rows[$requests[1]->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$requests[0]->id]['suggested_qty']);
+        $this->assertSame('12', $rows[$requests[1]->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$requests[0]->id]['quantity_decimals']);
     }
 
     public function test_pull_feed_suggestions_are_variant_exact_and_open_only(): void
@@ -222,8 +234,31 @@ final class PosReplenishmentControllerTest extends TestCase
 
         $rows = $this->pullRowsById();
 
-        $this->assertSame('1.0000', $rows[$variantRequest->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$variantRequest->id]['suggested_qty']);
         $this->assertNull($rows[$closedRequest->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$closedRequest->id]['quantity_decimals']);
+    }
+
+    public function test_pull_feed_emits_unit_decimals_and_formats_suggested_qty_for_fractional_units(): void
+    {
+        $kgUnit = Unit::factory()->create([
+            'decimal_places' => 3,
+            'rounding_method' => RoundingMethod::HalfUp,
+        ]);
+        $kgProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $kgUnit->id,
+        ]);
+        $request = $this->captureProduct($kgProduct);
+        $this->stock($kgProduct, quantity: '0.5000', reserved: '0.0000', max: '2.0000');
+
+        $rows = $this->pullRowsById();
+
+        // quantity_decimals must come from the eager-loaded product.unitOfMeasure;
+        // a missing eager-load silently degrades to the scale-4 default (4).
+        $this->assertSame(3, $rows[$request->id]['quantity_decimals']);
+        $this->assertSame('1.500', $rows[$request->id]['suggested_qty']);
     }
 
     public function test_cross_company_uuid_replay_returns_409_permanent_conflict(): void
@@ -362,6 +397,7 @@ final class PosReplenishmentControllerTest extends TestCase
         return Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
+            'unit_id' => $this->pieceUnit->id,
         ]);
     }
 

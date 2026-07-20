@@ -98,6 +98,7 @@ final class ReplenishmentQueryService
     private function responseQuery(): Builder
     {
         return ReplenishmentRequest::query()
+            ->with(['product.unitOfMeasure'])
             ->leftJoin('locations', 'locations.id', '=', 'replenishment_requests.location_id')
             ->leftJoin('products', 'products.id', '=', 'replenishment_requests.product_id')
             ->leftJoin('product_variants', 'product_variants.id', '=', 'replenishment_requests.variant_id')
