@@ -28,6 +28,9 @@ enum StatementLineMatchStatus: string
         }
 
         $comparison = bccomp($allocationTotal, $lineAmount, $scale);
+        if ($comparison > 0 || bccomp($allocationTotal, '0', $scale) < 0) {
+            throw new \InvalidArgumentException('Statement line allocation total cannot exceed the line amount or be negative.');
+        }
         if ($comparison === 0) {
             return $resolvedByCreation ? self::ResolvedByCreation : self::Matched;
         }

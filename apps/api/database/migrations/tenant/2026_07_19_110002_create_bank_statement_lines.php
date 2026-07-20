@@ -64,6 +64,7 @@ return new class extends Migration
             DB::statement('ALTER TABLE bank_statement_lines ADD CONSTRAINT bank_statement_lines_number_positive CHECK (line_number > 0)');
             DB::statement("ALTER TABLE bank_statement_lines ADD CONSTRAINT bank_statement_lines_direction_check CHECK (direction IN ('in','out'))");
             DB::statement("ALTER TABLE bank_statement_lines ADD CONSTRAINT bank_statement_lines_status_check CHECK (match_status IN ('unmatched','partial','matched','resolved_by_creation','ignored'))");
+            DB::statement("ALTER TABLE bank_statement_lines ADD CONSTRAINT bank_statement_lines_ignore_reason_check CHECK (ignore_reason IS NULL OR ignore_reason IN ('duplicate','informational','bank_error','out_of_scope','other'))");
             DB::statement(<<<'SQL'
                 ALTER TABLE bank_statement_lines
                 ADD CONSTRAINT bank_statement_lines_ignore_shape_check CHECK (

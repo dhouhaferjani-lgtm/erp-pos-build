@@ -95,6 +95,50 @@ final class BankStatementAggregateSchemaTest extends TestCase
         $this->createStatement($profile, $statement->repository, $statement->source_file_sha256);
     }
 
+    public function test_derived_line_status_rejects_overallocation(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot exceed');
+
+        StatementLineMatchStatus::derive(false, false, '100.001', '100.000', 3);
+    }
+
+    public function test_profile_parser_key_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [$profile] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('statement_import_profiles')->where('id', $profile->id)->update(['parser_key' => 'xml']);
+    }
+
+    public function test_profile_direction_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [$profile] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('statement_import_profiles')->where('id', $profile->id)->update(['direction_convention' => 'guess']);
+    }
+
+    public function test_statement_status_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, $statement] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statements')->where('id', $statement->id)->update(['status' => 'closed']);
+    }
+
+    public function test_statement_period_check_rejects_an_inverted_period_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, $statement] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statements')->where('id', $statement->id)->update(['period_end' => '2026-06-30']);
+    }
+
     public function test_line_number_is_unique_per_statement(): void
     {
         [, $statement, $line] = $this->aggregate();
@@ -177,6 +221,59 @@ final class BankStatementAggregateSchemaTest extends TestCase
         ]);
     }
 
+    public function test_line_number_check_rejects_zero_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_lines')->where('id', $line->id)->update(['line_number' => 0]);
+    }
+
+    public function test_line_direction_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_lines')->where('id', $line->id)->update(['direction' => 'sideways']);
+    }
+
+    public function test_line_status_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_lines')->where('id', $line->id)->update(['match_status' => 'pending']);
+    }
+
+    public function test_line_ignore_shape_requires_reason_and_text_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_lines')->where('id', $line->id)->update([
+            'match_status' => 'ignored',
+            'ignore_reason' => null,
+            'ignore_text' => null,
+        ]);
+    }
+
+    public function test_line_ignore_reason_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_lines')->where('id', $line->id)->update([
+            'match_status' => 'ignored',
+            'ignore_reason' => 'hand_waved',
+            'ignore_text' => 'Operator supplied a reason.',
+        ]);
+    }
+
     public function test_allocation_unique_pair_and_enum_relations_round_trip(): void
     {
         [, , $line, , $user] = $this->aggregate();
@@ -224,6 +321,24 @@ final class BankStatementAggregateSchemaTest extends TestCase
             'matched_by' => $user->id,
             'matched_at' => now(),
         ]);
+    }
+
+    public function test_allocation_type_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+        $movementId = $this->insertMovement($line->repository, $user);
+        $allocation = BankStatementLineAllocation::query()->create([
+            'bank_statement_line_id' => $line->id,
+            'repository_movement_id' => $movementId,
+            'matched_amount' => '1.000',
+            'match_type' => StatementMatchType::Manual,
+            'matched_by' => $user->id,
+            'matched_at' => now(),
+        ]);
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_line_allocations')->where('id', $allocation->id)->update(['match_type' => 'automatic']);
     }
 
     public function test_execution_requires_digest_has_unique_action_key_and_is_immutable(): void
@@ -283,6 +398,55 @@ final class BankStatementAggregateSchemaTest extends TestCase
         ]);
     }
 
+    public function test_execution_action_check_rejects_unknown_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_match_executions')->insert([
+            ...$this->rawExecutionAttributes($line, $user),
+            'action_type' => 'write_money_directly',
+        ]);
+    }
+
+    public function test_execution_digest_check_rejects_non_hex_values_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_match_executions')->insert([
+            ...$this->rawExecutionAttributes($line, $user),
+            'semantic_digest' => str_repeat('z', 64),
+        ]);
+    }
+
+    public function test_execution_target_pair_check_rejects_half_a_target_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_match_executions')->insert([
+            ...$this->rawExecutionAttributes($line, $user),
+            'target_type' => 'payment_instrument',
+            'target_id' => null,
+        ]);
+    }
+
+    public function test_execution_movements_check_rejects_a_json_object_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_match_executions')->insert([
+            ...$this->rawExecutionAttributes($line, $user),
+            'produced_repository_movement_ids' => json_encode(['movement' => Str::uuid()->toString()], JSON_THROW_ON_ERROR),
+        ]);
+    }
+
     public function test_execution_rows_reject_direct_database_updates_on_postgres(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
@@ -304,6 +468,25 @@ final class BankStatementAggregateSchemaTest extends TestCase
         DB::table('bank_statement_match_executions')
             ->where('id', $execution->id)
             ->update(['semantic_digest' => hash('sha256', 'tampered')]);
+    }
+
+    public function test_execution_rows_reject_direct_database_deletes_on_postgres(): void
+    {
+        $this->requirePostgres();
+        [, , $line, , $user] = $this->aggregate();
+        $execution = BankStatementMatchExecution::query()->create($this->executionAttributes($line, $user));
+
+        $this->expectException(QueryException::class);
+        DB::table('bank_statement_match_executions')->where('id', $execution->id)->delete();
+    }
+
+    public function test_execution_model_rejects_deletes(): void
+    {
+        [, , $line, , $user] = $this->aggregate();
+        $execution = BankStatementMatchExecution::query()->create($this->executionAttributes($line, $user));
+
+        $this->expectException(\LogicException::class);
+        $execution->delete();
     }
 
     public function test_statement_delete_cascades_lines_and_allocations_without_an_execution(): void
@@ -490,5 +673,38 @@ final class BankStatementAggregateSchemaTest extends TestCase
         ]);
 
         return $id;
+    }
+
+    /** @return array<string, mixed> */
+    private function executionAttributes(BankStatementLine $line, User $user): array
+    {
+        return [
+            'id' => Str::uuid()->toString(),
+            'bank_statement_line_id' => $line->id,
+            'action_type' => MatchActionType::CreateExpense->value,
+            'action_key' => "stmtline:{$line->id}:".Str::uuid()->toString(),
+            'semantic_digest' => hash('sha256', 'execution-'.Str::uuid()->toString()),
+            'target_type' => null,
+            'target_id' => null,
+            'produced_repository_movement_ids' => [],
+            'executed_by' => $user->id,
+            'executed_at' => now(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function rawExecutionAttributes(BankStatementLine $line, User $user): array
+    {
+        return [
+            ...$this->executionAttributes($line, $user),
+            'produced_repository_movement_ids' => json_encode([], JSON_THROW_ON_ERROR),
+        ];
+    }
+
+    private function requirePostgres(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('CHECK constraints are exercised on PostgreSQL.');
+        }
     }
 }

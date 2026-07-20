@@ -12,6 +12,7 @@ use App\Modules\Treasury\Domain\Enums\StatementDirectionConvention;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\StatementImportProfile;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use DateTimeImmutable;
 use InvalidArgumentException;
 
@@ -69,17 +70,6 @@ final class StatementRowMapper
                     $scale,
                 );
 
-                if (bccomp($amount, '0', $scale) === 0) {
-                    $droppedZero++;
-
-                    continue;
-                }
-
-                $reference = $this->nullableValue($row['values'], $indexes['reference']);
-                $bankTransactionId = $this->nullableValue($row['values'], $indexes['bankTransactionId']);
-                $label = $this->value($row['values'], $indexes['label']);
-                $counterpartyHint = $this->nullableValue($row['values'], $indexes['counterpartyHint']);
-
                 if ($detectedOpening === null) {
                     $detectedOpening = $this->optionalBalance(
                         $row['values'],
@@ -97,6 +87,17 @@ final class StatementRowMapper
                 if ($rowClosing !== null) {
                     $detectedClosing = $rowClosing;
                 }
+
+                if (bccomp($amount, '0', $scale) === 0) {
+                    $droppedZero++;
+
+                    continue;
+                }
+
+                $reference = $this->nullableValue($row['values'], $indexes['reference']);
+                $bankTransactionId = $this->nullableValue($row['values'], $indexes['bankTransactionId']);
+                $label = $this->value($row['values'], $indexes['label']);
+                $counterpartyHint = $this->nullableValue($row['values'], $indexes['counterpartyHint']);
 
                 $identity = $bankTransactionId !== null
                     ? 'bank-transaction|'.$this->normalizeText($bankTransactionId)
@@ -272,7 +273,7 @@ final class StatementRowMapper
     ): string {
         $value = trim(str_replace(["\u{00A0}", "\u{202F}", ' '], '', $raw));
         if ($value === '' && $emptyIsZero) {
-            return '0';
+            return CurrencyScale::bcformatStrict('0', $scale);
         }
         if ($value === '') {
             throw new InvalidArgumentException('Amount is required.');
@@ -291,7 +292,7 @@ final class StatementRowMapper
             throw new InvalidArgumentException("Invalid amount: {$raw}");
         }
 
-        return $value;
+        return CurrencyScale::bcformatStrict($value, $scale);
     }
 
     /**
