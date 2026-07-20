@@ -27,6 +27,14 @@ final class StockRebalanceEndpointTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** These aggregate queries are contractually verified on PostgreSQL. */
+    protected array $connectionsToTransact = ['pgsql'];
+
+    protected function beforeRefreshingDatabase(): void
+    {
+        config(['database.default' => 'pgsql']);
+    }
+
     private Tenant $tenant;
 
     private Company $company;
