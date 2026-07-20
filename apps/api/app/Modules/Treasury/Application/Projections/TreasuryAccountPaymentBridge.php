@@ -248,6 +248,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                 createdBy: $actorUserId,
                 notes: null,
                 allowWhileFrozen: ! $event->event_type->isServerOnly(),
+                allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
             ));
         });
     }

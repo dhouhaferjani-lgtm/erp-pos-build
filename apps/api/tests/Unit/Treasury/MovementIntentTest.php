@@ -58,5 +58,6 @@ final class MovementIntentTest extends TestCase
         );
 
         $this->assertFalse($intent->allowWhileFrozen);
+        $this->assertFalse($intent->allowBehindCheckpoint);
     }
 }

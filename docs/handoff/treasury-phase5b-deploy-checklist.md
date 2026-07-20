@@ -22,6 +22,7 @@ This is the mandatory Gate 2 Fable interpretation of locked Rev 2. Do not restor
   5. `2026_07_19_110004_create_bank_statement_match_executions.php`
   6. `2026_07_19_110005_make_statement_deduplication_void_aware.php`
   7. `2026_07_19_110006_add_matching_window_to_statement_profiles.php`
+  8. `2026_07_19_110007_add_checkpoint_flag_to_repository_movements.php`
 - [ ] Treat `110005` as mandatory even on developer/preview databases that already ran `110000`–`110004`; it converts the two unconditional Gate 1 indexes to void-aware partial indexes and adds `dedupe_active`.
 - [ ] Provision `storage/app/private/bank-statements` on node-stable shared storage. Upload preview and confirm are separate requests and may hit different replicas; ephemeral per-node storage causes valid confirms to fail.
 - [ ] Define and enable an abandoned-preview retention/cleanup process before enabling statement upload. It must delete only unreferenced staged files older than the approved retention window; a path referenced by any `bank_statements.source_file_path`, including a voided statement, is audit evidence and must be retained.
@@ -49,6 +50,7 @@ For every tenant database:
 - [ ] No Phase ⑤b migration is pending.
 - [ ] `bank_statement_lines.dedupe_active` is `NOT NULL DEFAULT true`.
 - [ ] `statement_import_profiles.matching_window_days` is `NOT NULL DEFAULT 5` with the `0..30` database bound.
+- [ ] `repository_movements.recorded_behind_checkpoint` is `NOT NULL DEFAULT false`; do not rename or reuse `recorded_while_frozen`.
 - [ ] `bank_statements_repository_file_unique` is partial on `status <> 'voided'`.
 - [ ] `bank_statement_lines_repository_fingerprint_unique` is partial on `dedupe_active`.
 - [ ] Admin has all four statement permissions; accountant has view/import/reconcile but not reopen; manager has none.
@@ -62,6 +64,10 @@ For every tenant database:
 - [ ] Confirm a tier-4 card batch containing a refund: verify grouping stays within one payment method and fiscal business date, the dedicated entry is Dr method fee account / Cr exact repository GL account in journal `BQ`, and the signed allocations close `gross - refunds - fee = statement net`.
 - [ ] Unmatch and reconfirm that batch; verify the immutable execution, fee movement, and fee journal are reused rather than duplicated.
 - [ ] Create an expense and an income from controlled statement lines; verify document, journal, and repository movement dates equal the statement value date, location comes from the line, and income credits the explicitly selected active revenue account.
+- [ ] Complete statements in period order and verify `last_reconciled_at` represents end-of-day `period_end` in the company timezone and `last_reconciled_balance` equals the statement closing balance.
+- [ ] Verify a new interactive `record()` and `transfer()` on the reconciled-through business date are rejected before any movement write; verify an exact replay of a pre-existing keyed movement still returns the original row.
+- [ ] Drive one controlled offline-device projection behind the checkpoint; verify the movement is preserved with `recorded_behind_checkpoint = true`, `recorded_while_frozen` remains independent, and the warning/audit payload is emitted.
+- [ ] Reopen only the latest reconciled statement as an admin; verify accountant receives 403, the statement returns to `Reconciling`, and the repository checkpoint recomputes to the latest remaining reconciled statement without a gap.
 - [ ] Complete the Wave 3–5 matching, checkpoint, UI, and legacy-cutover checks added before final handback.
 
 ## Rollback and retention notes

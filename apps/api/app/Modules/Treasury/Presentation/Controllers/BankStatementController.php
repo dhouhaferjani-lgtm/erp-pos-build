@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Application\Exceptions\DuplicateStatementFileException;
+use App\Modules\Treasury\Application\Services\StatementCompletionService;
 use App\Modules\Treasury\Application\Services\StatementImportService;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -23,6 +24,7 @@ final class BankStatementController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly StatementImportService $imports,
+        private readonly StatementCompletionService $completion,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -123,6 +125,37 @@ final class BankStatementController extends Controller
         $statement = $this->imports->void($this->findStatement($bankStatement));
 
         return response()->json(['data' => $this->format($statement)]);
+    }
+
+    public function complete(Request $request, string $bankStatement): JsonResponse
+    {
+        $validated = $request->validate([
+            'acknowledge_ignored_total' => ['sometimes', 'boolean'],
+        ]);
+        $statement = $this->findStatement($bankStatement);
+        $userId = $request->user()?->id;
+        if (! is_string($userId)) {
+            abort(401);
+        }
+        $completed = $this->completion->complete(
+            $statement->id,
+            $userId,
+            (bool) ($validated['acknowledge_ignored_total'] ?? false),
+        );
+
+        return response()->json(['data' => $this->format($completed)]);
+    }
+
+    public function reopen(Request $request, string $bankStatement): JsonResponse
+    {
+        $statement = $this->findStatement($bankStatement);
+        $userId = $request->user()?->id;
+        if (! is_string($userId)) {
+            abort(401);
+        }
+        $reopened = $this->completion->reopen($statement->id, $userId);
+
+        return response()->json(['data' => $this->format($reopened)]);
     }
 
     private function findStatement(string $id): BankStatement

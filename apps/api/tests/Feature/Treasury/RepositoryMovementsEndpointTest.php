@@ -229,6 +229,7 @@ final class RepositoryMovementsEndpointTest extends TestCase
         $this->assertArrayHasKey('currency', $firstMovementRecordedRow);
         $this->assertArrayHasKey('reason_code', $firstMovementRecordedRow);
         $this->assertArrayHasKey('recorded_while_frozen', $firstMovementRecordedRow);
+        $this->assertArrayHasKey('recorded_behind_checkpoint', $firstMovementRecordedRow);
         $this->assertArrayHasKey('occurred_at', $firstMovementRecordedRow);
     }
 

@@ -10,6 +10,7 @@ use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Application\DTOs\TransferResult;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 
 /**
@@ -48,6 +49,10 @@ interface TreasuryMovementServiceInterface
      * intent never produces a second, unlinked GL entry in the first place.
      *
      * @throws \LogicException When called outside a DB transaction (MED-9).
+     * @throws RepositoryCheckpointException When a new interactive movement occurs on or before the
+     *                                       repository's reconciled-through business date. Exact replays
+     *                                       are returned before this mutable policy is evaluated; explicit
+     *                                       offline projections are recorded and alerted instead.
      */
     public function record(MovementIntent $intent): MovementResult;
 
@@ -85,6 +90,8 @@ interface TreasuryMovementServiceInterface
      *                                   When the intent currency does not match both repositories.
      * @throws IdempotencyConflictException
      *                                      When the transferGroupId was reused for a materially different transfer.
+     * @throws RepositoryCheckpointException When a new transfer occurs on or before either repository's
+     *                                       reconciled-through business date. Transfers never bypass checkpoints.
      */
     public function transfer(TransferIntent $intent): TransferResult;
 

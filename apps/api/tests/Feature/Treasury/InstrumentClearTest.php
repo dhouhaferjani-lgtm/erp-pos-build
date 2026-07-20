@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceType;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -91,6 +92,24 @@ final class InstrumentClearTest extends TestCase
         $this->assertNotNull(InstrumentEvent::query()->where('instrument_id', $instrument->id)->where('event_type', 'cleared')->first());
         $this->assertSame(0, Artisan::call('treasury:reconcile', ['--tenant' => $context['tenant']->id]));
         $this->assertNull($context['bank']->fresh()?->frozen_at);
+    }
+
+    public function test_inbound_clear_value_date_rejects_a_reconciled_period(): void
+    {
+        $context = $this->context();
+        $instrument = $this->remittedInstrument($context, InstrumentKind::Cheque, '100.000');
+        $context['bank']->forceFill([
+            'last_reconciled_at' => '2026-07-31 23:59:59',
+            'last_reconciled_balance' => '0.000',
+        ])->save();
+
+        $this->expectException(RepositoryCheckpointException::class);
+        $this->lifecycle()->clear(new ClearInstrumentData(
+            instrumentId: $instrument->id,
+            currency: 'TND',
+            valueDate: '2026-07-12',
+            userId: $context['user']->id,
+        ));
     }
 
     public function test_double_clear_writes_one_movement_and_second_call_is_rejected(): void

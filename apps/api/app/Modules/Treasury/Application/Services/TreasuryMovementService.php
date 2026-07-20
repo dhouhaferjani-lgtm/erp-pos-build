@@ -17,6 +17,7 @@ use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
@@ -26,6 +27,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -65,6 +67,15 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             ->lockForUpdate()
             ->firstOrFail();
 
+        $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
+
+        // Replay precedes mutable transition policy. A retry of a movement that
+        // predates a subsequently established checkpoint returns the existing
+        // row; it is not a new backdated write.
+        if (RepositoryMovement::query()->where('idempotency_key', $intent->idempotencyKey())->exists()) {
+            return $this->handleIdempotentHit($intent);
+        }
+
         // 2. Currency guard (review F12): intent must match repository (and thus
         // company) currency.
         if ($repo->currency !== $intent->currency) {
@@ -84,6 +95,12 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             }
         }
 
+        $recordedBehindCheckpoint = $this->checkpointDisposition(
+            $repo,
+            $occurredAt,
+            $intent->allowBehindCheckpoint,
+        );
+
         // MED-10: set the port GUC in the OUTER transaction, BEFORE the
         // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
         // and trip the Task-22 trigger. GUCs are a Postgres concept — SET LOCAL
@@ -91,8 +108,6 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
         }
-
-        $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
 
         // Fix 2 (cutover-hardening): reset the GUC on EVERY exit path of the port's
         // body via `finally` — success, idempotent hit, OR any exception (e.g. a
@@ -119,6 +134,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                     reversesMovementId: $intent->reversesMovementId,
                     reasonCode: $intent->reasonCode,
                     recordedWhileFrozen: $recordedWhileFrozen,
+                    recordedBehindCheckpoint: $recordedBehindCheckpoint,
                     occurredAt: $occurredAt,
                     createdBy: $intent->createdBy,
                     notes: $intent->notes,
@@ -141,7 +157,17 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 $nextOrdinal,
                 $occurredAt,
                 $recordedWhileFrozen,
+                $recordedBehindCheckpoint,
             )));
+
+            if ($recordedBehindCheckpoint) {
+                DB::afterCommit(fn () => Log::warning('Treasury movement recorded behind reconciliation checkpoint', [
+                    'movement_id' => $movementId,
+                    'repository_id' => $repo->id,
+                    'occurred_at' => $occurredAt->toIso8601String(),
+                    'checkpoint' => $repo->last_reconciled_at?->toIso8601String(),
+                ]));
+            }
 
             return new MovementResult($movementId, $balanceAfter, $nextOrdinal, false);
         } finally {
@@ -216,14 +242,25 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 throw new \DomainException('transfer() across different GL accounts requires a journalEntryId (a pre-posted balanced JE); refusing to write null-JE cross-account legs.');
             }
 
+            $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
+            $outKey = "transfer:{$intent->transferGroupId}:out";
+            $inKey = "transfer:{$intent->transferGroupId}:in";
+
+            // As in record(), an existing pair is replayed before today's
+            // checkpoint policy is applied to new writes.
+            if (RepositoryMovement::query()->whereIn('idempotency_key', [$outKey, $inKey])->exists()) {
+                return $this->handleTransferIdempotentHit($intent);
+            }
+
+            $this->checkpointDisposition($fromRepo, $occurredAt, false);
+            $this->checkpointDisposition($toRepo, $occurredAt, false);
+
             // 5. MED-10: open the port GUC in the OUTER transaction, BEFORE the
             // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
             // and trip the Task-22 trigger. pgsql-only DDL (invalid on sqlite).
             if ($isPgsql) {
                 DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
             }
-
-            $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
 
             // Fix 2 (cutover-hardening): reset the GUC on EVERY exit path of the
             // port's body via `finally` — success, idempotent hit, OR any exception
@@ -270,6 +307,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                         reversesMovementId: null,
                         reasonCode: null,
                         recordedWhileFrozen: false,
+                        recordedBehindCheckpoint: false,
                         occurredAt: $occurredAt,
                         createdBy: $intent->createdBy,
                         notes: $intent->notes,
@@ -289,6 +327,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                         reversesMovementId: null,
                         reasonCode: null,
                         recordedWhileFrozen: false,
+                        recordedBehindCheckpoint: false,
                         occurredAt: $occurredAt,
                         createdBy: $intent->createdBy,
                         notes: $intent->notes,
@@ -404,6 +443,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         ?string $reversesMovementId,
         ?MovementReasonCode $reasonCode,
         bool $recordedWhileFrozen,
+        bool $recordedBehindCheckpoint,
         CarbonInterface $occurredAt,
         ?string $createdBy,
         ?string $notes,
@@ -437,6 +477,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             'occurred_at' => $occurredAt,
             'created_by' => $createdBy,
             'recorded_while_frozen' => $recordedWhileFrozen,
+            'recorded_behind_checkpoint' => $recordedBehindCheckpoint,
             'notes' => $notes,
         ]);
 
@@ -474,6 +515,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             journalEntryId: $journalEntryId,
             ordinal: $ordinal,
             recordedWhileFrozen: false,
+            recordedBehindCheckpoint: false,
             occurredAt: $occurredAt->toIso8601String(),
             createdBy: $intent->createdBy,
             reasonCode: null,
@@ -633,6 +675,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         int $ordinal,
         CarbonInterface $occurredAt,
         bool $recordedWhileFrozen,
+        bool $recordedBehindCheckpoint,
     ): RepositoryMovementRecorded {
         return new RepositoryMovementRecorded(
             movementId: $movementId,
@@ -648,6 +691,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             journalEntryId: $intent->journalEntryId,
             ordinal: $ordinal,
             recordedWhileFrozen: $recordedWhileFrozen,
+            recordedBehindCheckpoint: $recordedBehindCheckpoint,
             occurredAt: $occurredAt->toIso8601String(),
             createdBy: $intent->createdBy,
             reasonCode: $intent->reasonCode,
@@ -686,5 +730,29 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         }
 
         return false;
+    }
+
+    private function checkpointDisposition(
+        PaymentRepository $repository,
+        CarbonInterface $occurredAt,
+        bool $allowBehindCheckpoint,
+    ): bool {
+        $checkpoint = $repository->last_reconciled_at;
+        if ($checkpoint === null) {
+            return false;
+        }
+
+        $timezone = (string) $repository->company()->value('timezone');
+        $occurrenceDate = $occurredAt->toImmutable()->setTimezone($timezone)->toDateString();
+        $checkpointDate = $checkpoint->toImmutable()->setTimezone($timezone)->toDateString();
+        if ($occurrenceDate > $checkpointDate) {
+            return false;
+        }
+
+        if ($allowBehindCheckpoint) {
+            return true;
+        }
+
+        throw new RepositoryCheckpointException($repository->id, $occurredAt, $checkpoint);
     }
 }

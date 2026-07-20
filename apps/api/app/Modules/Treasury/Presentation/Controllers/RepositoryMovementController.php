@@ -97,6 +97,7 @@ final class RepositoryMovementController extends Controller
             'reason_code' => $movement->reason_code?->value,
             'occurred_at' => $movement->occurred_at->toIso8601String(),
             'recorded_while_frozen' => $movement->recorded_while_frozen,
+            'recorded_behind_checkpoint' => $movement->recorded_behind_checkpoint,
         ])->values();
 
         return response()->json([

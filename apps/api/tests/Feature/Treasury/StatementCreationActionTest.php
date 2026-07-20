@@ -23,6 +23,7 @@ use App\Modules\Treasury\Domain\Enums\MatchActionType;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -131,6 +132,9 @@ final class StatementCreationActionTest extends TestCase
     public function test_create_income_rejects_missing_account_before_any_financial_write(): void
     {
         $line = $this->line(MovementDirection::In, '1.000', 'Interest without account');
+        $movementCount = RepositoryMovement::query()
+            ->where('payment_repository_id', $this->repository->id)
+            ->count();
 
         try {
             app(StatementMatchingService::class)->executeAndAllocate(
@@ -143,8 +147,41 @@ final class StatementCreationActionTest extends TestCase
         } catch (\DomainException $exception) {
             self::assertStringContainsString('income_account_id', $exception->getMessage());
         }
-        self::assertDatabaseCount('bank_statement_match_executions', 0);
-        self::assertDatabaseCount('repository_movements', 0);
+        self::assertSame(0, $line->executions()->count());
+        self::assertSame($movementCount, RepositoryMovement::query()
+            ->where('payment_repository_id', $this->repository->id)
+            ->count());
+    }
+
+    public function test_value_dated_create_from_line_rejects_a_reconciled_period_atomically(): void
+    {
+        $this->repository->forceFill([
+            'last_reconciled_at' => '2026-07-31 23:59:59',
+            'last_reconciled_balance' => '0.000',
+        ])->save();
+        $line = $this->line(MovementDirection::Out, '12.500', 'Backdated bank agio');
+        $movementCount = RepositoryMovement::query()
+            ->where('payment_repository_id', $this->repository->id)
+            ->count();
+
+        try {
+            app(StatementMatchingService::class)->executeAndAllocate(
+                $line->id,
+                MatchActionType::CreateExpense,
+                ['vendor_name' => 'Banque de Tunisie'],
+                $this->user->id,
+            );
+            $this->fail('A value-dated expense cannot write behind the repository checkpoint.');
+        } catch (RepositoryCheckpointException) {
+            $this->addToAssertionCount(1);
+        }
+
+        self::assertSame(0, $line->executions()->count());
+        self::assertSame(0, $line->allocations()->count());
+        self::assertSame($movementCount, RepositoryMovement::query()
+            ->where('payment_repository_id', $this->repository->id)
+            ->count());
+        self::assertDatabaseMissing('journal_entries', ['source_type' => 'expense']);
     }
 
     private function line(MovementDirection $direction, string $amount, string $label): BankStatementLine

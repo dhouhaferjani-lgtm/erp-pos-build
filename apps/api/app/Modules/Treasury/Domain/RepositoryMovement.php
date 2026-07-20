@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable $occurred_at
  * @property ?string $created_by
  * @property bool $recorded_while_frozen
+ * @property bool $recorded_behind_checkpoint
  * @property ?string $notes
  * @property CarbonImmutable $created_at
  */
@@ -52,6 +53,7 @@ final class RepositoryMovement extends Model
         'balance_after' => 'decimal:3',
         'ordinal' => 'integer',
         'recorded_while_frozen' => 'boolean',
+        'recorded_behind_checkpoint' => 'boolean',
         'occurred_at' => 'immutable_datetime',
         'created_at' => 'immutable_datetime',
     ];

@@ -280,6 +280,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/bank-statements/{bankStatement}/void', [BankStatementController::class, 'void'])
         ->middleware('can:bank-statements.reconcile')
         ->name('bank-statements.void');
+    Route::post('/bank-statements/{bankStatement}/complete', [BankStatementController::class, 'complete'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statements.complete');
+    Route::post('/bank-statements/{bankStatement}/reopen', [BankStatementController::class, 'reopen'])
+        ->middleware('can:bank-statements.reopen')
+        ->name('bank-statements.reopen');
 
     Route::post('/bank-statement-lines/{statementLine}/allocations', [StatementLineController::class, 'allocate'])
         ->middleware('can:bank-statements.reconcile')

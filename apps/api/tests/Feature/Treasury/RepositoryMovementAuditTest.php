@@ -111,6 +111,7 @@ class RepositoryMovementAuditTest extends TestCase
         $this->assertSame($journalEntryId, $auditEvent->payload['journal_entry_id']);
         $this->assertSame(1, $auditEvent->payload['ordinal']);
         $this->assertSame(false, $auditEvent->payload['recorded_while_frozen']);
+        $this->assertSame(false, $auditEvent->payload['recorded_behind_checkpoint']);
         $this->assertSame($user->id, $auditEvent->payload['created_by']);
         $this->assertSame('correction', $auditEvent->payload['reason_code']);
         $this->assertSame($reversesMovementId, $auditEvent->payload['reverses_movement_id']);

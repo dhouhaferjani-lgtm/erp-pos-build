@@ -37,6 +37,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceType;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
 use App\Modules\Treasury\Domain\Payment;
@@ -145,6 +146,32 @@ final class InstrumentBounceTest extends TestCase
         $this->assertSame(0, Artisan::call('treasury:reconcile', ['--tenant' => $context['tenant']->id]));
         $context['bank']->refresh();
         $this->assertNull($context['bank']->frozen_at);
+    }
+
+    public function test_inbound_bounce_rejects_a_movement_inside_a_reconciled_period(): void
+    {
+        $context = $this->context();
+        [$instrument] = $this->paidRemittedInstrument($context, InstrumentKind::Cheque, '100.000');
+        $this->lifecycle()->clear(new ClearInstrumentData($instrument->id, 'TND', userId: $context['user']->id));
+        $context['bank']->forceFill([
+            'last_reconciled_at' => now()->endOfDay(),
+            'last_reconciled_balance' => $context['bank']->fresh()?->balance,
+        ])->save();
+
+        try {
+            $this->lifecycle()->bounce(new BounceInstrumentData(
+                instrumentId: $instrument->id,
+                routing: DishonorRouting::Doubtful,
+                currency: 'TND',
+                userId: $context['user']->id,
+            ));
+            $this->fail('An inbound dishonor cannot write inside a reconciled period.');
+        } catch (RepositoryCheckpointException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertSame(InstrumentStatus::Cleared, $instrument->fresh()?->status);
+        $this->assertSame(1, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
     }
 
     public function test_represent_routing_keeps_allocations_and_paid_document_untouched(): void

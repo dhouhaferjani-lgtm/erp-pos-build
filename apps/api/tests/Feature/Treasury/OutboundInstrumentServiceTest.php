@@ -30,6 +30,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Exceptions\InstrumentActionConflictException;
 use App\Modules\Treasury\Domain\Exceptions\InvalidInstrumentTransitionException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -141,6 +142,61 @@ final class OutboundInstrumentServiceTest extends TestCase
         self::assertSame(1, InstrumentEvent::query()->where('action_key', "instrument:{$instrument->id}:clear:1")->count());
         self::assertSame(1, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
         self::assertSame(1, JournalEntry::query()->where('source_type', 'instrument')->where('source_id', $instrument->id)->count());
+    }
+
+    public function test_value_dated_clear_and_bounce_reject_writes_inside_a_reconciled_period(): void
+    {
+        $instrument = $this->instrument();
+        $this->context['bank']->forceFill([
+            'last_reconciled_at' => '2026-07-31 23:59:59',
+            'last_reconciled_balance' => '0.000',
+        ])->save();
+
+        try {
+            $this->service()->clear(
+                $instrument->id,
+                $this->context['tenant']->id,
+                $this->context['company']->id,
+                $this->context['user']->id,
+                '2026-07-18',
+            );
+            $this->fail('An outbound clear cannot be backdated into a reconciled period.');
+        } catch (RepositoryCheckpointException) {
+            $this->addToAssertionCount(1);
+        }
+        self::assertSame(InstrumentStatus::Received, $instrument->fresh()?->status);
+        self::assertSame(0, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
+
+        $this->context['bank']->forceFill([
+            'last_reconciled_at' => null,
+            'last_reconciled_balance' => null,
+        ])->save();
+        $this->service()->clear(
+            $instrument->id,
+            $this->context['tenant']->id,
+            $this->context['company']->id,
+            $this->context['user']->id,
+            '2026-07-18',
+        );
+        $this->context['bank']->forceFill([
+            'last_reconciled_at' => now()->endOfDay(),
+            'last_reconciled_balance' => $this->context['bank']->fresh()?->balance,
+        ])->save();
+
+        try {
+            $this->service()->bounce(
+                $instrument->id,
+                $this->context['tenant']->id,
+                $this->context['company']->id,
+                $this->context['user']->id,
+                'Dishonored after checkpoint',
+            );
+            $this->fail('An outbound bounce cannot write inside a reconciled period.');
+        } catch (RepositoryCheckpointException) {
+            $this->addToAssertionCount(1);
+        }
+        self::assertSame(InstrumentStatus::Cleared, $instrument->fresh()->status);
+        self::assertSame(1, RepositoryMovement::query()->where('source_id', $instrument->id)->count());
     }
 
     public function test_issue_dishonor_and_cancellation_builders_keep_partner_tags_only_on_401(): void

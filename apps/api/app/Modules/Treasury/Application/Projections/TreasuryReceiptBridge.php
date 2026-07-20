@@ -713,6 +713,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             createdBy: $payment->created_by ?? $receipt->cashier_id,
             notes: null,
             allowWhileFrozen: ! $event->event_type->isServerOnly(),
+            allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
         ));
     }
 
