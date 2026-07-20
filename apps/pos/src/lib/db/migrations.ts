@@ -1909,4 +1909,16 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 62,
+    name: 'add_quantity_decimals_to_products',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE products ADD COLUMN quantity_decimals INTEGER');
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    },
+  },
 ];

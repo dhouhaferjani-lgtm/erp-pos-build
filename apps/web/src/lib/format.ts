@@ -129,6 +129,11 @@ export function formatNumber(
  * quantities for display. This shows up to `scale` decimal places and trims
  * insignificant trailing zeros (e.g. "10.0000" → "10", "7.1200" → "7.12",
  * "7.1234" → "7.1234").
+ *
+ * @deprecated For product quantities use `formatQuantity` from `@/lib/decimal`
+ * (pads to unit precision). This variant TRIMS trailing zeros and locale-groups —
+ * wrong for unit-precision display. Guarded by tools/audit-quantity-display.mjs,
+ * which anchors on the lib/decimal import.
  */
 export function formatQuantity(
   value: string | number,

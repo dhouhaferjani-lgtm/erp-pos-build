@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . && pnpm test:eslint-rules",
+    "test:eslint-rules": "node eslint-rules/no-raw-quantity-input.test.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -9,6 +9,7 @@ import { Modal } from '@/components/organisms/Modal/Modal'
 import { useLocations } from '@/features/locations/hooks/useLocations'
 import { getProductStock } from '@/features/products/api/productStock'
 import { bccomp, bcsub } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { getErrorMessage } from '@/lib/api'
 import { textColors, tokens } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
@@ -129,19 +130,23 @@ export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransf
           </div>
 
           <ul className="space-y-3">
-            {selected.map((line) => (
-              <li key={line.id}>
-                <label htmlFor={`transfer-qty-${line.id}`} className={tokens.label.base}>{line.product_name}</label>
-                <QuantityInput
-                  id={`transfer-qty-${line.id}`}
-                  aria-label={`${t('dialog.quantity')} ${line.product_name}`}
-                  value={quantityFor(line)}
-                  onChange={(value) => { setQuantities((current) => ({ ...current, [line.id]: value })) }}
-                  decimalPlaces={4}
-                  min="0.0001"
-                />
-              </li>
-            ))}
+            {selected.map((line) => {
+              const dp = getQuantityDecimals(line)
+              const minForDp = dp === 0 ? '1' : `0.${'0'.repeat(dp - 1)}1`
+              return (
+                <li key={line.id}>
+                  <label htmlFor={`transfer-qty-${line.id}`} className={tokens.label.base}>{line.product_name}</label>
+                  <QuantityInput
+                    id={`transfer-qty-${line.id}`}
+                    aria-label={`${t('dialog.quantity')} ${line.product_name}`}
+                    value={quantityFor(line)}
+                    onChange={(value) => { setQuantities((current) => ({ ...current, [line.id]: value })) }}
+                    decimalPlaces={dp}
+                    min={minForDp}
+                  />
+                </li>
+              )
+            })}
           </ul>
 
           <div className="flex justify-end gap-2">

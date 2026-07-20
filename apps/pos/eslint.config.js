@@ -5,6 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js';
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js';
+import noHardcodedStep from './eslint-rules/no-hardcoded-step.js';
+import noRawQuantityInput from './eslint-rules/no-raw-quantity-input.js';
 
 // Local i18n guard plugin — flags user-facing string literals that bypass
 // react-i18next `t()`. WARN on the legacy surface (ratcheted by
@@ -23,6 +25,11 @@ const localPlugin = {
 const precisionPlugin = {
   rules: {
     'no-parsefloat-on-money': noParseFloatOnMoney,
+    // UoM display-precision guards (2026-07-20): hardcoded fractional step
+    // literals on number inputs and raw <input inputMode="decimal"> quantity
+    // inputs that bypass the <QuantityInput> atom.
+    'no-hardcoded-step': noHardcodedStep,
+    'no-raw-quantity-input': noRawQuantityInput,
   },
 };
 
@@ -186,6 +193,12 @@ export default tseslint.config(
       // Precision guard (desktop precision sweep) — WARN, ratcheted. Keeps
       // money/qty as decimal strings; blocks new parseFloat()/Number() drift.
       'precision/no-parsefloat-on-money': 'warn',
+      // UoM display-precision guards (2026-07-20) — WARN, ratcheted. Hardcoded
+      // fractional step literals + raw <input inputMode="decimal"> quantity
+      // inputs that bypass the <QuantityInput> atom. Promoted to ERROR for the
+      // precision-cleaned files in the strict override block below.
+      'precision/no-hardcoded-step': 'warn',
+      'precision/no-raw-quantity-input': 'warn',
       // React Hooks — recommended preset, demoted to warn for the
       // legacy surface (apps/pos has accumulated violations across
       // many files predating this config). New code lands clean
@@ -346,6 +359,11 @@ export default tseslint.config(
     plugins: { precision: precisionPlugin },
     rules: {
       'precision/no-parsefloat-on-money': 'error',
+      // UoM display-precision guards — hard ERROR on the precision-cleaned files
+      // so a re-introduced hardcoded step / raw decimal quantity input can never
+      // regress here.
+      'precision/no-hardcoded-step': 'error',
+      'precision/no-raw-quantity-input': 'error',
     },
   },
 );

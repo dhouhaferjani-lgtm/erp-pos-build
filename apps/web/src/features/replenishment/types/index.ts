@@ -5,6 +5,7 @@ export interface ReplenishmentLine {
   request_count: number; status: ReplenishmentStatus; source_channel: 'pos' | 'web'
   first_requested_at: string; last_requested_at: string; sourcing_document_id: string | null
   fulfillment_type: 'transfer' | 'purchase_order' | null; fulfillment_id: string | null; rejection_reason: string | null
+  quantity_decimals: number
 }
 /** @deprecated Use OffsetPaginationMeta. */
 export type ReplenishmentPaginationMeta = OffsetPaginationMeta

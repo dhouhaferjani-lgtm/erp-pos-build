@@ -54,10 +54,33 @@ JSONB columns bypass Eloquent casts, so producers must pre-canonicalize numeric 
 - API payloads send money/quantity as **strings**.
 - `apps/pos` & `apps/web` money arithmetic uses Big.js helpers in `lib/decimal.ts` (`bcadd/bcmul/bcdiv/bcsub/bcformat`). **Device-authority fiscal note:** the POS device computes fiscal hashes; its canonicalization must match the server byte-for-byte. `Big.RM` is currently half-up while the server truncates — a latent edge-case divergence flagged for a future coordinated server+device rounding alignment.
 
+## Emission & display
+
+Quantity has TWO scales: the canonical **storage** scale (`decimal(N,4)`, unit-agnostic) and the **display** scale, which is per-unit — `units.decimal_places` (pieces → `0`, so a whole number; weight → `3`; etc.), rounded with `units.rounding_method`. A quantity surfaced to a human (a rendered cell, an input's prefill/step) must render at the product unit's precision, NOT at raw scale 4 (`'7.0000'` for 7 pieces is wrong). Storage, wire, and internal arithmetic stay scale-4; formatting to the unit happens once, at the emission boundary.
+
+**Backend — `QuantityScale::formatForUnit(string $value, ?int $decimalPlaces, ?string $roundingMethod = null): string`** (`app/Shared/Domain/QuantityScale.php`). Primitives only — Shared must not depend on a module's Uom entity, so callers pass `$unit?->decimal_places` and `$unit?->rounding_method?->value` (the enum's backing string, not the enum). Null args fall back to canonical scale-4 half-up (unchanged legacy behavior). Format in the **Application** layer and pass the string through; never bake a scale-4 literal into a Presentation Resource.
+
+**Canonical display/input helpers:**
+
+| App | Display (pad to unit precision) | Input | Deprecated / do-not-use for quantities |
+|---|---|---|---|
+| `apps/web` | `formatQuantity` from `lib/decimal.ts` (pads) + `getQuantityDecimals(product)` from `lib/quantityScale.ts` (clamps `units.decimal_places` to `[0,4]`) | `<QuantityInput>` atom (`components/atoms/`) | `formatQuantity` in `lib/format.ts` — **@deprecated for product quantities**: it TRIMS trailing zeros and locale-groups, wrong for unit-precision display |
+| `apps/pos` | `formatQuantity` from `lib/quantity.ts` (pads via Big.js; `clampQuantityDecimals` for the clamp) | `<QuantityInput>` atom (`components/atoms/`) | — |
+
+**POS data contract.** The server `/products` payload emits `quantity_decimals` (int, per product, from `units.decimal_places`). The POS maps it into SQLite via migration **v62** (`products.quantity_decimals INTEGER`, nullable — an older server that omits the field round-trips as `null`, and the atom/formatter falls back to scale 4). The replenishment feed rows also carry `quantity_decimals` plus a unit-formatted `suggested_qty`; the wire `requested_qty` stays canonical scale-4 (unchanged).
+
+**Exemptions (intentional scale-4, not violations).** Pre-product standing fields — where no product/unit is yet chosen — stay scale-4: e.g. `ReplenishmentCapturePage` free-quantity capture and quote-request / RFQ lines (product not yet resolved). These carry an inline code comment pointing at the spec. `ProductInventorySection`'s `opening_qty` literal is a ticketed follow-up (needs unit-selection-aware plumbing), excluded from the ESLint scope. Guard baselines below are **shrink-only** — an exempted site may sit in a baseline, but the ratchet never lets the count grow.
+
+**Guards (all four ratchet against new drift):**
+- **PHPStan** (`app/PHPStan/Rules/`, registered in `phpstan.neon`): `ForbidFixedScaleQuantityLiteralRule` (no `'…0000'` scale-4 string literal in a module's `…\Presentation\…` namespace) + `ForbidQuantityScaleConstantInPresentationRule` (no `QuantityScale::round($v, QuantityScale::SCALE, …)` in Presentation). Fix = `formatForUnit()` in the Application layer.
+- **ESLint** — web (`apps/web/eslint-rules/no-literal-decimal-places.js`, WARN): no hardcoded numeric `decimalPlaces={4}` literal on `<QuantityInput>` in the product-quantity feature dirs — derive via `getQuantityDecimals(...)`. POS (`apps/pos/eslint-rules/no-raw-quantity-input.js`, WARN→ERROR in the strict override): no raw `<input inputMode="decimal">` — route through `<QuantityInput>` (allowlist for money / non-quantity decimals). POS also copies `no-hardcoded-step`.
+- **Scanner** — `apps/web/tools/audit-quantity-display.mjs` (`pnpm audit:quantity`, wired into lint/preflight/CI) scans BOTH `apps/web/src` and `apps/pos/src`: flags any JSX rendering a raw quantity identifier (`requested_qty`/`suggested_qty`/`received_qty`, member `quantity`) unless wrapped in the canonical `formatQuantity` or inside a `<QuantityInput value>`. Baseline `quantity-display-baseline.json` (line-number-free `"file:identifier"` entries) is **shrink-only**: a NEW entry fails CI, and a STALE entry (baselined site now fixed/removed) also fails — forcing baseline removal.
+
 ## Regression guards (CI)
 
 - **PHPStan** (`app/PHPStan/Rules/`): `ForbidFloatCastOnDecimalProperty` (no `(float)` on a `decimal:N` prop), `ForbidHardcodedBcmathScale` (no literal scale arg in service-layer bcmath; use `$this->scale()`/`+N` or a `// precision-ok` exemption). Legacy hits are in `phpstan-baseline.neon`; NEW violations fail CI.
 - **ESLint** (`apps/web/eslint-rules/`): `no-hardcoded-step` (no `step="0.0…"` literal — use the input atoms), `no-parsefloat-on-money` (no `parseFloat`/`Number` on money/quantity-named values). WARN-level; tracked by the lint-warning ratchet — new drift raises the count and fails CI.
+- **Quantity display precision** (`## Emission & display` above): two PHPStan rules + two ESLint rules + `audit-quantity-display.mjs`, all shrink-only ratchets.
 
 ## Deliberate fiscal-fixture change
 

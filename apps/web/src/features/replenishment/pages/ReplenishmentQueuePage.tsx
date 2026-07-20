@@ -13,6 +13,8 @@ import { QueryError } from '@/components/QueryError'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { DateRangeFilter } from '@/components/ui/filters/DateRangeFilter'
 import { LocationSelectorMulti } from '@/features/locations/components/LocationSelectorMulti'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { useOpenReplenishment, useReplenishmentHistory } from '../api/queries'
 import { ReplenishmentStatusBadge } from '../components/ReplenishmentStatusBadge'
@@ -142,7 +144,7 @@ function OpenQueue({ filters }: { filters: QueueFilters }) {
                         <span className={`block font-medium ${textColors.primary}`}>{line.product_name}</span>
                         {line.variant_name ? <span className={`text-sm ${textColors.tertiary}`}>{line.variant_name}</span> : null}
                       </button>
-                      <span className={textColors.secondary}>{line.requested_qty ?? t('matrix.requested_no_qty')}</span>
+                      <span className={textColors.secondary}>{line.requested_qty !== null ? formatQuantity(line.requested_qty, getQuantityDecimals(line)) : t('matrix.requested_no_qty')}</span>
                       <span className={`text-sm ${textColors.tertiary}`}>×{line.request_count}</span>
                       <time className={`text-xs ${textColors.tertiary}`} dateTime={line.last_requested_at}>
                         {new Date(line.last_requested_at).toLocaleDateString()}
@@ -189,7 +191,7 @@ function OpenQueue({ filters }: { filters: QueueFilters }) {
                           className={`w-full rounded-md p-2 text-start ${selectedIds.has(cell.id) ? tokens.alert.info : colors.neutral[50]}`}
                           onClick={() => { setSelectedIds((current) => toggleId(current, cell.id)) }}
                         >
-                          {cell.requested_qty ?? t('matrix.requested_no_qty')}
+                          {cell.requested_qty !== null ? formatQuantity(cell.requested_qty, getQuantityDecimals(cell)) : t('matrix.requested_no_qty')}
                           {cell.request_count > 1 ? <sup className="ms-1">{cell.request_count}</sup> : null}
                         </button>
                       ) : null}

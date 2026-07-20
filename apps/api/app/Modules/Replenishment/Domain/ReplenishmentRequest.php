@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Replenishment\Domain;
 
+use App\Modules\Product\Domain\Product;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentFulfillmentType;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
@@ -40,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property string $location_name
  * @property string $product_name
  * @property string|null $variant_name
+ * @property-read Product|null $product
  */
 final class ReplenishmentRequest extends Model
 {
@@ -82,6 +85,17 @@ final class ReplenishmentRequest extends Model
             'last_requested_at' => 'immutable_datetime',
             'processed_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * The product this request is for — feed-only, eager-loaded to surface the
+     * product's unit precision (product.unitOfMeasure.decimal_places) on the wire.
+     *
+     * @return BelongsTo<Product, $this>
+     */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
     }
 
     /** @param Builder<ReplenishmentRequest> $query */

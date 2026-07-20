@@ -182,6 +182,14 @@ echo -e "\n${YELLOW}Running design-system audit...${NC}"
 pnpm audit:design-system
 echo -e "${GREEN}✓ Design-system audit passed${NC}"
 
+echo -e "\n${YELLOW}Running quantity-display audit...${NC}"
+pnpm audit:quantity
+echo -e "${GREEN}✓ Quantity-display audit passed${NC}"
+
+echo -e "\n${YELLOW}Running POS ESLint rule tests...${NC}"
+( cd "$ROOT_DIR/apps/pos" && pnpm test:eslint-rules )
+echo -e "${GREEN}✓ POS ESLint rule tests passed${NC}"
+
 echo -e "\n${YELLOW}Running route manifest drift check...${NC}"
 bash "$ROOT_DIR/scripts/factory/check-manifest-drift.sh"
 echo -e "${GREEN}✓ Route manifests in sync${NC}"

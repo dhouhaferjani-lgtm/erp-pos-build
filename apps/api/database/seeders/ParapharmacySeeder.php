@@ -1254,6 +1254,24 @@ class ParapharmacySeeder extends Seeder
     }
 
     /**
+     * Deterministic per-(sku, location) reorder band so the demo carries real
+     * min/max targets that drive replenishment suggestions. Derived from a
+     * stable hash of the identity — NOT the randomized on-hand quantity — so a
+     * re-run backfills identical values and suggestions never churn.
+     *
+     * @return array{0: numeric-string, 1: numeric-string} [min, max], min 2..5
+     *                                                     whole units, max = min*3 (6..15)
+     */
+    protected function demoMinMaxFor(string $sku, string $locationCode): array
+    {
+        $h = crc32($sku.'|'.$locationCode);
+        $min = (string) (2 + ($h % 4));   // 2..5, always >= 1 whole unit
+        $max = (string) ((int) $min * 3); // 6..15
+
+        return [$min, $max];
+    }
+
+    /**
      * Seed stock levels for 90% of products.
      */
     protected function seedStockLevels(
@@ -1280,6 +1298,8 @@ class ParapharmacySeeder extends Seeder
                 default => rand(10, 100),
             };
 
+            [$min, $max] = $this->demoMinMaxFor($product->sku, $location->code ?? $location->id);
+
             StockLevel::create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
@@ -1287,6 +1307,8 @@ class ParapharmacySeeder extends Seeder
                 'location_id' => $location->id,
                 'quantity' => $quantity,
                 'reserved' => 0,
+                'min_quantity' => $min,
+                'max_quantity' => $max,
             ]);
 
             $stockCount++;

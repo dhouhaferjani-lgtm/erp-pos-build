@@ -221,6 +221,71 @@ describe('RequestRefillSheet', () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
+  it('prefills the suggested quantity at whole-unit precision (quantity_decimals 0)', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
+    });
+    const pieceProduct = makeProduct({
+      id: 'product-1',
+      name: 'Piece Product',
+      stock_quantity: 0,
+      quantity_decimals: 0,
+    });
+    render(<RequestRefillSheet isOpen product={pieceProduct} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    await waitFor(() => expect(quantity).toHaveValue('6'));
+  });
+
+  it('rejects fractional input then submits a whole quantity (quantity_decimals 0)', async () => {
+    const pieceProduct = makeProduct({
+      id: 'product-1',
+      name: 'Piece Product',
+      stock_quantity: 0,
+      quantity_decimals: 0,
+    });
+    render(<RequestRefillSheet isOpen product={pieceProduct} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    fireEvent.change(quantity, { target: { value: '2.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => expect(quantity).toHaveAttribute('aria-invalid', 'true'));
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+
+    fireEvent.change(quantity, { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => {
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        mocks.db,
+        expect.objectContaining({ requested_qty: '3' }),
+      );
+    });
+  });
+
+  it('prefills raw scale-4 when quantity_decimals is null (byte-identical to legacy)', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+      suggested_qty: '6.0000',
+    });
+    const nullProduct = makeProduct({
+      id: 'product-1',
+      name: 'Null Product',
+      stock_quantity: 0,
+      quantity_decimals: null,
+    });
+    render(<RequestRefillSheet isOpen product={nullProduct} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+
+    await waitFor(() => expect(quantity).toHaveValue('6.0000'));
+  });
+
   it('surfaces feedback when terminal scope is unavailable', async () => {
     mocks.auth.companyId = '';
     render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);

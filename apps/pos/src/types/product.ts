@@ -107,6 +107,16 @@ export interface POSProduct {
    * via migration v51. Sourced from `ProductData.is_physical` on the server.
    */
   is_physical?: boolean;
+  /**
+   * UoM display precision — number of decimal places the product's unit of
+   * measure renders/increments at (0 for pieces, 3 for kg, etc.). Sourced from
+   * the server `/products` `quantity_decimals` field and persisted in the local
+   * SQLite `products` table as a nullable INTEGER via migration v62.
+   *
+   * `null` / absent means the server did not project it (older backend); callers
+   * fall back to canonical scale-4 display. See `lib/quantity.ts`.
+   */
+  quantity_decimals?: number | null;
 }
 
 export interface GetPOSProductsParams {
