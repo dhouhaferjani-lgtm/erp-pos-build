@@ -668,10 +668,13 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 }
 
                 $qty = $this->shopQuantityFor($category);
+                [$min, $max] = $this->demoMinMaxFor($product->sku, $shop->code ?? $shop->id);
 
                 // Additive: update if already seeded (re-run safety), create otherwise.
                 // The non-variant unique key is (tenant_id, product_id, location_id)
                 // WHERE variant_id IS NULL — reflected here by omitting variant_id.
+                // min/max are in the VALUES array so a re-run backfills the
+                // reorder band onto rows seeded before this feature.
                 StockLevel::updateOrCreate(
                     [
                         'tenant_id' => $company->tenant_id,
@@ -683,11 +686,42 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                         'company_id' => $company->id,
                         'quantity' => $qty,
                         'reserved' => '0',
+                        'min_quantity' => $min,
+                        'max_quantity' => $max,
                     ],
                 );
 
                 $shopRowCounts[$shop->code]++;
             }
+        }
+
+        // Pinned deterministic grain so the replenishment-suggestion demo (and
+        // its regression test) has one stable, non-floor expectation:
+        // PB-BAB-0060 @ STORE-SOU with fixed on-hand 5 / min 6 / max 12 yields
+        // suggested_qty '7' (max 12 − available 5), whole-number-formatted
+        // because BabyCare is a pieces unit. updateOrCreate overwrites the
+        // random shop-loop row on the unique key; it runs AFTER the loop and
+        // (being inside seedTunisiaStock) BEFORE the shop default-lot backing
+        // so lot reconciliation sees the final quantity.
+        $pinnedProduct = $products->firstWhere('sku', 'PB-BAB-0060');
+        $pinnedShop = collect($this->shops)->firstWhere('code', 'STORE-SOU');
+
+        if ($pinnedProduct !== null && $pinnedShop !== null) {
+            StockLevel::updateOrCreate(
+                [
+                    'tenant_id' => $company->tenant_id,
+                    'product_id' => $pinnedProduct->id,
+                    'location_id' => $pinnedShop->id,
+                    'variant_id' => null,
+                ],
+                [
+                    'company_id' => $company->id,
+                    'quantity' => '5.0000',
+                    'reserved' => '0',
+                    'min_quantity' => '6.0000',
+                    'max_quantity' => '12.0000',
+                ],
+            );
         }
 
         foreach ($shopRowCounts as $code => $count) {
