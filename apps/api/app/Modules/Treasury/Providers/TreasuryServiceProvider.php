@@ -9,6 +9,9 @@ use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Application\Services\Actions\AcquirerFeeHandler;
+use App\Modules\Treasury\Application\Services\Actions\CreateExpenseHandler;
+use App\Modules\Treasury\Application\Services\Actions\CreateIncomeHandler;
 use App\Modules\Treasury\Application\Services\Actions\ExpenseSettleHandler;
 use App\Modules\Treasury\Application\Services\Actions\InboundClearHandler;
 use App\Modules\Treasury\Application\Services\Actions\OutboundClearHandler;
@@ -79,9 +82,12 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->singleton(
             StatementActionRegistry::class,
             static fn (Application $app): StatementActionRegistry => new StatementActionRegistry([
+                $app->make(AcquirerFeeHandler::class),
                 $app->make(OutboundClearHandler::class),
                 $app->make(InboundClearHandler::class),
                 $app->make(ExpenseSettleHandler::class),
+                $app->make(CreateExpenseHandler::class),
+                $app->make(CreateIncomeHandler::class),
             ]),
         );
 

@@ -134,7 +134,7 @@ As Rev 1, plus: **partially-allocated movements with remaining capacity stay sug
 ### Task 7: Create-from-line + `AcquirerFeeService` + card-batch tier 4 *(after ⑤a Task 9)*
 
 As Rev 1, corrected: **`IncomeService::create()` takes an array, not a DTO** (`IncomeService.php:43`) — extend the array contract (explicit account id, occurred date, location) rather than inventing DTOs; expense creation extended for explicit `location_id`/value-date; `AcquirerFeeHandler` + `CreateExpenseHandler`/`CreateIncomeHandler` registered; **card grouping is per payment method per sale business day** (company timezone) — two card methods on one repository/day are NEVER netted together; refunds/chargebacks negative members; multi-day/partial → manual; fee plausibility from that method's fee config; fee movement joins the allocation group with the **signed convention closing `gross − fee == net`** (the T5-deferred test lands here).
-- [ ] Steps: failing tests (fee JE/movement shape; value-date propagation + checkpoint rejection; income account override array; midnight-boundary + two-methods-same-day grouping; fee bounds; unmatch/rematch single fee via digest reuse) → implement → commit.
+- [x] Steps: failing tests (fee JE/movement shape; value-date propagation + checkpoint rejection; income account override array; midnight-boundary + two-methods-same-day grouping; fee bounds; unmatch/rematch single fee via digest reuse) → implement → commit. *(Value-date propagation landed here; the binding H7 correction keeps checkpoint rejection with Task 8's both-port guard.)*
 
 🚦 **GATE 3 — treasury-reviewer (Opus), high effort.** The financial heart: metadata/money separation, signed math, digest replay, locking under concurrency.
 

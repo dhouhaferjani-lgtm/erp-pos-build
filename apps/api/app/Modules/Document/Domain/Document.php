@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $tenant_id
  * @property string $company_id
+ * @property string|null $location_id
  * @property string $partner_id
  * @property string|null $work_order_id
  * @property string|null $vehicle_id

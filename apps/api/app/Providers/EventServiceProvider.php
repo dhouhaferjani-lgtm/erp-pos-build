@@ -13,9 +13,11 @@ use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Expense\Application\Listeners\CollectStatementExpenseSuggestions;
+use App\Modules\Expense\Application\Listeners\CreateExpenseFromStatement;
 use App\Modules\Expense\Application\Listeners\SettleExpenseFromStatement;
 use App\Modules\Expense\Application\Listeners\SyncExpenseOnInstrumentLifecycle;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
+use App\Modules\Income\Application\Listeners\CreateIncomeFromStatement;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
 use App\Modules\Loyalty\Application\Listeners\SeedDefaultEarningRuleOnProgramActivated;
@@ -30,8 +32,10 @@ use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrder
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderClosed;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderCompleted;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderStarted;
+use App\Modules\Treasury\Domain\Events\ExpenseCreationRequestedFromStatement;
 use App\Modules\Treasury\Domain\Events\ExpenseSettlementRequestedFromStatement;
 use App\Modules\Treasury\Domain\Events\ExpenseStatementSuggestionsRequested;
+use App\Modules\Treasury\Domain\Events\IncomeCreationRequestedFromStatement;
 use App\Modules\Treasury\Domain\Events\InstrumentCancelled;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Vehicle\Domain\Events\VehicleOwnerChanged;
@@ -81,6 +85,12 @@ class EventServiceProvider extends ServiceProvider
         ],
         ExpenseStatementSuggestionsRequested::class => [
             CollectStatementExpenseSuggestions::class,
+        ],
+        ExpenseCreationRequestedFromStatement::class => [
+            CreateExpenseFromStatement::class,
+        ],
+        IncomeCreationRequestedFromStatement::class => [
+            CreateIncomeFromStatement::class,
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,

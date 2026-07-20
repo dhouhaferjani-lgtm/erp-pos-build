@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Document\Domain\Enums\AdditionalCostType;
@@ -38,6 +39,7 @@ use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\ExpenseVatSplit;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -75,7 +77,17 @@ final class ExpenseService
             }
         }
 
-        $company = Company::query()->whereKey($data['company_id'])->firstOrFail();
+        $company = Company::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->whereKey($data['company_id'])
+            ->firstOrFail();
+        $locationId = $data['location_id'] ?? null;
+        if ($locationId !== null && (! is_string($locationId) || ! Location::query()
+            ->where('company_id', $company->id)
+            ->whereKey($locationId)
+            ->exists())) {
+            throw new \DomainException('The expense location does not belong to the active company.');
+        }
         $companyCurrency = (string) $company->currency;
         $scale = $this->scaleResolver->getScale($companyCurrency);
         $total = (string) ($data['total'] ?? '0.00');
@@ -112,6 +124,7 @@ final class ExpenseService
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
+                'location_id' => $data['location_id'] ?? null,
                 'partner_id' => $data['partner_id'] ?? null,
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Draft,
@@ -347,7 +360,7 @@ final class ExpenseService
                         sourceId: $expense->id,
                         idempotencyLeg: 'linked_cost',
                         journalEntryId: $entry->id,
-                        occurredAt: null,
+                        occurredAt: CarbonImmutable::parse($metadata->payment_date ?? $expense->document_date),
                         reasonCode: null,
                         reversesMovementId: null,
                         createdBy: $user->id,
@@ -408,7 +421,7 @@ final class ExpenseService
                         sourceId: $expense->id,
                         idempotencyLeg: 'main',
                         journalEntryId: $entry->id,
-                        occurredAt: null,
+                        occurredAt: CarbonImmutable::parse($metadata->payment_date ?? $expense->document_date),
                         reasonCode: null,
                         reversesMovementId: null,
                         createdBy: $user->id,
@@ -572,7 +585,7 @@ final class ExpenseService
                 sourceId: $expense->id,
                 idempotencyLeg: 'settlement',
                 journalEntryId: $entry->id,
-                occurredAt: null,
+                occurredAt: CarbonImmutable::parse($data->paymentDate),
                 reasonCode: null,
                 reversesMovementId: null,
                 createdBy: $user->id,

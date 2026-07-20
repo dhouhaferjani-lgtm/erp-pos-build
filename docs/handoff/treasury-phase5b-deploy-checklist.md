@@ -25,6 +25,8 @@ This is the mandatory Gate 2 Fable interpretation of locked Rev 2. Do not restor
 - [ ] Treat `110005` as mandatory even on developer/preview databases that already ran `110000`–`110004`; it converts the two unconditional Gate 1 indexes to void-aware partial indexes and adds `dedupe_active`.
 - [ ] Provision `storage/app/private/bank-statements` on node-stable shared storage. Upload preview and confirm are separate requests and may hit different replicas; ephemeral per-node storage causes valid confirms to fail.
 - [ ] Define and enable an abandoned-preview retention/cleanup process before enabling statement upload. It must delete only unreferenced staged files older than the approved retention window; a path referenced by any `bank_statements.source_file_path`, including a voided statement, is audit evidence and must be retained.
+- [ ] Leave `TREASURY_ACQUIRER_FEE_VAT_RATE` unset or set it to the launch value `0.000`. Any non-zero value intentionally fails closed until the Phase ④ VAT-split posting is explicitly wired; do not bypass that guard.
+- [ ] For every card method eligible for net-settlement suggestions, confirm it is active, has `has_deducted_fees=true`, has an active expense `fee_account_id`, and maps through `default_repository_id` to the exact active GL-linked bank repository receiving the statement.
 
 ## Deploy order
 
@@ -57,6 +59,9 @@ For every tenant database:
 - [ ] Confirm it and verify statement plus lines are atomic and status `Imported`.
 - [ ] Void a zero-allocation/zero-execution statement; verify its lines and source file remain visible with `dedupe_active = false`.
 - [ ] Re-import the same file; verify one new active statement contains the full line set and no duplicate live file exists.
+- [ ] Confirm a tier-4 card batch containing a refund: verify grouping stays within one payment method and fiscal business date, the dedicated entry is Dr method fee account / Cr exact repository GL account in journal `BQ`, and the signed allocations close `gross - refunds - fee = statement net`.
+- [ ] Unmatch and reconfirm that batch; verify the immutable execution, fee movement, and fee journal are reused rather than duplicated.
+- [ ] Create an expense and an income from controlled statement lines; verify document, journal, and repository movement dates equal the statement value date, location comes from the line, and income credits the explicitly selected active revenue account.
 - [ ] Complete the Wave 3–5 matching, checkpoint, UI, and legacy-cutover checks added before final handback.
 
 ## Rollback and retention notes

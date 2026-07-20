@@ -26,7 +26,10 @@ use DomainException;
 
 final readonly class StatementSuggestionService
 {
-    public function __construct(private CurrencyScaleResolverInterface $scaleResolver) {}
+    public function __construct(
+        private CurrencyScaleResolverInterface $scaleResolver,
+        private CardBatchResolver $cardBatches,
+    ) {}
 
     /** @return list<StatementSuggestion> */
     public function suggest(string $lineId): array
@@ -113,10 +116,20 @@ final readonly class StatementSuggestionService
             ...$suggestions,
             ...$this->instrumentSuggestions($statement, $line, $remainingLine, $windowStart, $windowEnd),
             ...$this->expenseSuggestions($statement, $remainingLine, $windowStart, $windowEnd, $lineText),
+            ...$this->cardBatchSuggestions($statement, $line, $remainingLine, $scale),
         ];
         usort($suggestions, static function (StatementSuggestion $left, StatementSuggestion $right): int {
-            return [$left->tier, $left->referenceMatched ? 0 : 1, $left->targetId ?? ($left->movementIds[0] ?? '')]
-                <=> [$right->tier, $right->referenceMatched ? 0 : 1, $right->targetId ?? ($right->movementIds[0] ?? '')];
+            return [
+                $left->tier,
+                $left->referenceMatched ? 0 : 1,
+                $left->targetId ?? ($left->movementIds[0] ?? ''),
+                json_encode($left->actionParams, JSON_THROW_ON_ERROR),
+            ] <=> [
+                $right->tier,
+                $right->referenceMatched ? 0 : 1,
+                $right->targetId ?? ($right->movementIds[0] ?? ''),
+                json_encode($right->actionParams, JSON_THROW_ON_ERROR),
+            ];
         });
 
         return $suggestions;
@@ -361,6 +374,57 @@ final readonly class StatementSuggestionService
             referenceMatched: $candidate['reference_matched'],
             actionParams: ['expense_id' => $candidate['expense_id']],
         ), $event->candidates());
+    }
+
+    /**
+     * @param  numeric-string  $remainingLine
+     * @return list<StatementSuggestion>
+     */
+    private function cardBatchSuggestions(
+        BankStatement $statement,
+        BankStatementLine $line,
+        string $remainingLine,
+        int $scale,
+    ): array {
+        if ($line->direction !== MovementDirection::In) {
+            return [];
+        }
+
+        $suggestions = [];
+        foreach ($this->cardBatches->groups($statement) as $group) {
+            $gross = $group['grossAmount'];
+            $fee = bcsub($gross, $remainingLine, $scale);
+            if (bccomp($fee, '0', $scale) <= 0 || bccomp($fee, $gross, $scale) >= 0) {
+                continue;
+            }
+            $configuredFee = CurrencyScale::bcformatStrict(
+                $group['paymentMethod']->calculateFee($gross, $scale),
+                $scale,
+            );
+            if (bccomp($configuredFee, $fee, $scale) !== 0) {
+                continue;
+            }
+
+            $suggestions[] = new StatementSuggestion(
+                tier: 4,
+                kind: 'action',
+                movementIds: $group['movementIds'],
+                actionType: MatchActionType::AcquirerFee,
+                targetType: 'payment_method',
+                targetId: $group['paymentMethod']->id,
+                amount: $remainingLine,
+                reason: "Card batch for {$group['paymentMethod']->name} on {$group['businessDate']} nets after configured fee.",
+                actionParams: [
+                    'payment_method_id' => $group['paymentMethod']->id,
+                    'business_date' => $group['businessDate'],
+                    'gross_movement_ids' => $group['movementIds'],
+                    'gross_amount' => $gross,
+                    'fee_amount' => $fee,
+                ],
+            );
+        }
+
+        return $suggestions;
     }
 
     /** @param list<string> $references */

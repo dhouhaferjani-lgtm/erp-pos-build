@@ -1131,6 +1131,75 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create and synchronously post the fee retained by a card acquirer.
+     *
+     * Dr the payment method's configured fee expense account and Cr the exact
+     * GL account backing the statement repository. The statement line id is
+     * the immutable source identity used by the matching execution ledger.
+     */
+    public function createAcquirerFeeJournalEntry(
+        string $companyId,
+        string $tenantId,
+        string $statementLineId,
+        string $feeAccountId,
+        string $repositoryGlAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+        User $user,
+        string $currencyCode,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('createAcquirerFeeJournalEntry: requires an enclosing database transaction.');
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $statementLineId,
+            $feeAccountId,
+            $repositoryGlAccountId,
+            $amount,
+            $date,
+        ): JournalEntry {
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => 'Card acquirer fee retained from statement settlement',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'acquirer_fee',
+                'journal_code' => JournalCode::fromSourceType('acquirer_fee')->value,
+                'source_id' => $statementLineId,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $feeAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Card acquirer fee',
+                'line_order' => 0,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $repositoryGlAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Acquirer fee deducted from bank settlement',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryNow($entry, $user, $currencyCode);
+
+        return $entry;
+    }
+
+    /**
      * Create the Draft GL entry for an inter-repository cash transfer.
      *
      * Dr destination repository account / Cr source repository account. This

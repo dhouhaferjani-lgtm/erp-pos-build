@@ -138,7 +138,7 @@ final class StatementMatchingHttpTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_action_endpoint_rejects_unregistered_action_cleanly(): void
+    public function test_action_endpoint_rejects_missing_acquirer_parameters_without_financial_writes(): void
     {
         $line = $this->line('1.000');
 
@@ -149,6 +149,8 @@ final class StatementMatchingHttpTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertDatabaseCount('bank_statement_match_executions', 0);
+        $this->assertDatabaseMissing('journal_entries', ['source_type' => 'acquirer_fee']);
     }
 
     public function test_suggestion_endpoint_returns_ranked_read_only_candidates(): void

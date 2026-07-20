@@ -6,7 +6,8 @@ namespace App\Modules\Income\Application\Services;
 
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -16,6 +17,7 @@ use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -31,7 +33,6 @@ final class IncomeService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
-        private readonly CompanyContext $companyContext,
         private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
@@ -53,18 +54,34 @@ final class IncomeService
             }
         }
 
-        $companyCurrency = $this->companyContext->requireCompany()->currency;
+        $company = Company::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->whereKey($data['company_id'])
+            ->firstOrFail();
+        $locationId = $data['location_id'] ?? null;
+        if ($locationId !== null && (! is_string($locationId) || ! Location::query()
+            ->where('company_id', $company->id)
+            ->whereKey($locationId)
+            ->exists())) {
+            throw new \DomainException('The income location does not belong to the active company.');
+        }
+        $total = $data['total'] ?? '0.00';
+        if (! is_string($total) || ! is_numeric($total)) {
+            throw new \InvalidArgumentException('Income amount must be a numeric string.');
+        }
+        $companyCurrency = $company->currency;
 
-        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency): Document {
+        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency, $total): Document {
             $income = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
+                'location_id' => $data['location_id'] ?? null,
                 'type' => DocumentType::Income,
                 'status' => DocumentStatus::Draft,
                 'currency' => $companyCurrency,
                 'document_date' => $data['payment_date'] ?? $data['document_date'] ?? now()->toDateString(),
-                'total' => $data['total'] ?? '0.00',
-                'subtotal' => $data['total'] ?? '0.00',
+                'total' => $total,
+                'subtotal' => $total,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -162,7 +179,7 @@ final class IncomeService
                     sourceId: $income->id,
                     idempotencyLeg: 'main',
                     journalEntryId: $entry->id,
-                    occurredAt: null,
+                    occurredAt: CarbonImmutable::parse($metadata->payment_date ?? $income->document_date),
                     reasonCode: null,
                     reversesMovementId: null,
                     createdBy: $user->id,

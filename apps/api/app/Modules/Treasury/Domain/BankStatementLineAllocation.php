@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property StatementMatchType $match_type
  * @property string $matched_by
  * @property CarbonImmutable $matched_at
+ * @property-read BankStatementLine $line
+ * @property-read RepositoryMovement $movement
+ * @property-read User $matcher
  */
 final class BankStatementLineAllocation extends Model
 {
