@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileSpreadsheet, Pl
 import { useTranslation } from 'react-i18next'
 
 import { Button, Checkbox, Input, MoneyInput, Select } from '@/components/atoms'
-import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { getErrorMessage } from '@/lib/api'
 import { semanticColorTokens, tokens, textColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/format'
@@ -160,6 +160,16 @@ export function StatementUploadWizard({
 
   const currentStep = wizardSteps.indexOf(step)
   const confirmBlocked = !preview || !periodStart || !periodEnd || (preview.accepted_line_count === 0 && !acknowledgeEmpty)
+  const previewColumns: DataTableColumn<StatementPreview['preview_lines'][number]>[] = [
+    { key: 'date', header: t('statements.upload.date'), render: (line) => line.value_date },
+    { key: 'label', header: t('statements.upload.label'), render: (line) => line.label },
+    {
+      key: 'amount',
+      header: t('statements.upload.amount'),
+      numeric: true,
+      render: (line) => <span>{line.direction === 'out' ? '−' : '+'}{formatCurrency(line.amount, { currency: repository?.currency ?? 'TND' })}</span>,
+    },
+  ]
 
   return (
     <div className="space-y-5">
@@ -243,7 +253,7 @@ export function StatementUploadWizard({
           </div>
           {preview.unparseable_rows.length ? <div className={cn(tokens.alert.base, tokens.alert.warning)}><AlertTriangle className="h-4 w-4" /><ul>{preview.unparseable_rows.map((row) => <li key={`${String(row.row)}-${row.reason}`}>{t('statements.upload.row')} {row.row}: {row.reason}</li>)}</ul></div> : null}
           <div className="overflow-x-auto rounded-lg border">
-            <DataTable className="min-w-full text-sm"><thead><tr className={semanticColorTokens.surface.pageAlpha}><th className="px-3 py-2 text-start">{t('statements.upload.date')}</th><th className="px-3 py-2 text-start">{t('statements.upload.label')}</th><th className="px-3 py-2 text-end">{t('statements.upload.amount')}</th></tr></thead><tbody>{preview.preview_lines.map((line) => <tr key={line.line_number} className="border-t"><td className="px-3 py-2">{line.value_date}</td><td className="px-3 py-2">{line.label}</td><td className="px-3 py-2 text-end tabular-nums">{line.direction === 'out' ? '−' : '+'}{formatCurrency(line.amount, { currency: repository?.currency ?? 'TND' })}</td></tr>)}</tbody></DataTable>
+            <DataTable columns={previewColumns} data={preview.preview_lines} keyExtractor={(line) => line.line_number} ariaLabel={t('statements.upload.preview')} className="min-w-full text-sm" />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className={tokens.label.base}>{t('statements.upload.periodStart')}<Input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
