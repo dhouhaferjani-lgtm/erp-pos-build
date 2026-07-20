@@ -20,6 +20,20 @@ final class StockThresholdService
         ?string $minQuantity,
         ?string $maxQuantity,
     ): array {
+        // Keep this service safe when invoked outside the HTTP FormRequest
+        // (workers and console callers do not receive its ScopedExists rules).
+        $productInCompany = DB::table('products')
+            ->where('id', $productId)->where('tenant_id', $tenantId)->where('company_id', $companyId)
+            ->whereNull('deleted_at')->exists();
+        if (! $productInCompany) {
+            throw new \DomainException('The product is not available for this company.');
+        }
+        if ($variantId !== null && ! DB::table('product_variants')
+            ->where('id', $variantId)->where('tenant_id', $tenantId)->where('company_id', $companyId)
+            ->where('product_id', $productId)->whereNull('deleted_at')->exists()) {
+            throw new \DomainException('The variant is not available for this product.');
+        }
+
         $min = $minQuantity === null ? null : QuantityScale::round($minQuantity, QuantityScale::SCALE, QuantityScale::FLOOR);
         $max = $maxQuantity === null ? null : QuantityScale::round($maxQuantity, QuantityScale::SCALE, QuantityScale::FLOOR);
 
