@@ -920,6 +920,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
     private function resolveDestinationLocation(Document $purchaseOrder, ?string $destinationLocationId): Location
     {
         if ($destinationLocationId !== null) {
+            // Locations are company-scoped entities; checking the purchase
+            // order's company is the tenant/company defense-in-depth boundary
+            // even when a caller supplies an arbitrary UUID.
             $location = Location::query()
                 ->where('company_id', $purchaseOrder->company_id)
                 ->where('is_active', true)

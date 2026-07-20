@@ -181,6 +181,9 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     'payment_method_id' => $paymentMethod->id,
                     'instrument_id' => $instrument?->id,
                     'repository_id' => $repository->id,
+                    // Deposits are server-authored: when no terminal is present,
+                    // retain the repository's custody location. Device-authored
+                    // receipt/account bridges intentionally do not use this fallback.
                     'location_id' => $terminalLocationId ?? $repository->location_id,
                     'amount' => $this->paymentAmount($event, $view),
                     'currency' => $view->payload->currencyCode,

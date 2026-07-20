@@ -262,8 +262,11 @@ final class StockMatrixQueryService
             if ($variantId !== null) {
                 $incoming = $incomingByKey[$productId.'|'.$variantId.'|'.$locationId] ?? '0.0000';
             } else {
-                // Rollups include every incoming grain, including variants
-                // that do not yet have an on-hand row on this page.
+                // Parent rows are advisory rollups: include every incoming
+                // grain, including variants that do not yet have an on-hand
+                // row on this page. A child row remains the authoritative
+                // movement/receipt grain, so the parent must not be treated as
+                // an additional quantity to write back.
                 foreach ($incomingByKey as $key => $value) {
                     if (str_starts_with($key, $productId.'|') && str_ends_with($key, '|'.$locationId)) {
                         $incoming = bcadd($incoming, $value, self::SCALE);
@@ -420,6 +423,9 @@ final class StockMatrixQueryService
             ->groupBy('document_lines.product_id', 'document_lines.location_id')
             ->get();
         foreach ($poRows as $row) {
+            // Purchase-order incoming has no variant grain in document_lines;
+            // it intentionally rolls into the non-variant parent key. This is
+            // display-only until receiving creates the destination movement.
             $key = (string) $row->product_id.'||'.(string) $row->location_id;
             $byKey[$key] = bcadd($byKey[$key] ?? '0.0000', $this->quantity((string) $row->incoming), self::SCALE);
         }

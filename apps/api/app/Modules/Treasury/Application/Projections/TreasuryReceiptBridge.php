@@ -618,6 +618,9 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'payment_method_id' => $paymentMethod->id,
                 'instrument_id' => $instrument?->id,
                 'repository_id' => $repository->id,
+                // Device-authored receipt attribution is terminal-origin only;
+                // unlike the server-authored deposit bridge, do not fall back to
+                // repository custody when the terminal lookup is unavailable.
                 'location_id' => $terminalLocationId,
                 'amount' => $amount,
                 'currency' => $receipt->currency,

@@ -166,6 +166,9 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                     'payment_method_id' => $paymentMethod->id,
                     'instrument_id' => $instrument?->id,
                     'repository_id' => $repository->id,
+                    // Device-authored account payments are attributed only to
+                    // their terminal; the repository fallback is reserved for
+                    // server-authored deposits.
                     'location_id' => $terminalLocationId,
                     'amount' => $this->paymentAmount($event, $view),
                     'currency' => $view->payload->currencyCode,

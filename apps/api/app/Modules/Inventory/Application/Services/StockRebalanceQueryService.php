@@ -86,7 +86,17 @@ final class StockRebalanceQueryService
                 continue;
             }
             usort($deficits, fn (array $a, array $b): int => $this->compare($a['available'], $b['available']));
-            $severity = $this->subtract('0', $deficits[0]['available']);
+            // Rank by deficit depth (threshold minus available), not merely by
+            // the lowest available balance. A location at 1/10 is more urgent
+            // than one at 0/1, even though the latter has the lower balance.
+            $severity = '0.0000';
+            foreach ($deficits as $deficit) {
+                $threshold = $deficit['min_quantity'] ?? '0.0000';
+                $depth = $this->subtract($threshold, $deficit['available']);
+                if ($this->compare($depth, $severity) > 0) {
+                    $severity = $depth;
+                }
+            }
             $productId = $group['product_id'];
             $result[] = ['product_id' => $productId, 'variant_id' => $group['variant_id'], 'name' => $names[$productId]['name'], 'sku' => $names[$productId]['sku'], 'deficits' => $deficits, 'surpluses' => $surpluses, '_severity' => $severity];
         }

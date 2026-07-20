@@ -1,13 +1,22 @@
-# Task 8 report — origin-anchored recurrence cursor math
+# Task 8 report — `locationScopedKey` helper + audit approval
 
-Status: **DONE — focused and Expense regressions green**
+Status: **DONE**
+
+## Base/head
+
+- Base: `613808cf075ce0db28e62c8ea3f9fc59382f4346`
+- Head: `a0ef2191d` (`feat(multiloc): locationScopedKey helper + audit approval (§1 FE)`)
 
 ## Outcome
 
-- Added the pure static `RecurrenceCursor` domain service with the binding `next`, `firstOnOrAfter`, and `periodKey` APIs.
-- Every candidate occurrence is derived from `startDate` with `addMonthsNoOverflow`; no occurrence advances from a previously clamped date.
-- The service reads no clock, framework date facade, mutable date state, database state, tenant/company context, or other global dependency.
-- Kept recurrence CRUD, generation, notifications, forecast projection, and frontend work out of Task 8.
+- Added `apps/web/src/lib/locationScopedKey.ts` with the pinned non-leading
+  `{ locScope }` segment and deterministic sorting for selected locations.
+- Added focused helper tests for resource-prefix preservation, scope sorting,
+  and the `'all'` literal.
+- Approved `locationScopedKey` in the TanStack key audit factory set.
+- Added audit coverage for useQuery approval and cache-filter rejection. Cache
+  filters remain rejected because tenant/company suffixes cannot match a bare
+  React Query prefix.
 
 ## TDD evidence
 
@@ -16,40 +25,39 @@ Status: **DONE — focused and Expense regressions green**
 Command:
 
 ```text
-cd apps/api
-./vendor/bin/phpunit tests/Unit/Expense/RecurrenceCursorTest.php
+cd apps/web && pnpm vitest run src/lib/locationScopedKey.test.ts tools/__tests__/audit-tanstack-keys.test.mjs
 ```
 
-Before the production service existed, the command exited 2 with all 7 tests reaching the expected missing `RecurrenceCursor` API error. The test file already pinned:
-
-- monthly `2026-01-31` → `2026-02-28` → `2026-03-31`, proving no clamp drift;
-- quarterly `2026-02-15` → `2026-05-15`;
-- yearly leap-day `2024-02-29` → `2025-02-28`;
-- monthly `firstOnOrAfter(2026-01-05, 2026-04-20)` → `2026-05-05`;
-- before-origin, on-origin, and exact-later-occurrence inclusive boundaries;
-- monthly, quarterly, and yearly period-key formats.
+Failed as expected: the helper import was missing and the new audit approval
+case reported one unapproved `locationScopedKey` query key.
 
 ### GREEN
 
-The same focused command after the minimal implementation exited 0:
+The same command after implementation passed:
 
 ```text
-OK (7 tests, 11 assertions)
+Test Files  2 passed (2)
+Tests  51 passed (51)
 ```
 
-The `next` implementation derives an initial cadence index from the start/current year-month distance, then resolves the first candidate strictly after `current`. `firstOnOrAfter` uses the same origin-indexed calculation with an inclusive comparison. Both regenerate candidates from the original start date, so a February clamp cannot become the next month's anchor.
+## Verification
 
-## Regression and quality evidence
+- `cd apps/web && pnpm audit:keys`: passed; 0 new and 0 stale violations.
+- `cd apps/web && pnpm typecheck`: passed.
+- Scoped ESLint over all four touched files: passed with 0 errors and 3
+  expected unsafe-cast warnings from the pinned helper/test assertions.
+- Full `pnpm lint:eslint` was attempted, but duplicate long-running ESLint
+  processes produced no result after roughly two minutes; only those own
+  processes were terminated. No formatter is installed in `apps/web`.
+- `git diff --check`: passed.
+- `npx react-doctor@latest --scope changed --verbose`: score 49/100 with 257
+  diagnostics across pre-existing files; no finding pointed to the Task 8
+  helper or audit files. The scan's `--diff` alias is deprecated.
 
-- `./vendor/bin/phpunit tests/Unit/Expense`: exit 0, `7 tests`, `11 assertions`.
-- `./vendor/bin/phpunit tests/Feature/Expense`: exit 0, `73 tests`, `328 assertions`.
-- Scoped PHPStan level 8 over the service and test: exit 0, `[OK] No errors`.
-- Scoped Pint `--test` over the service and test: exit 0, `{"result":"pass"}`.
-- Final syntax, diff, and scope checks are recorded in the controller handoff and commit evidence.
+## Deviations/concerns
 
-## Scope and deviations
-
-- Production scope is exactly `RecurrenceCursor.php`; test scope is exactly `RecurrenceCursorTest.php`.
-- The existing Task 7 `RecurrenceFrequency` enum is consumed unchanged.
-- `.superpowers/sdd/progress.md` remained the controller-owned unstaged ledger and was not staged.
-- No implementation deviation from the binding Task 8 plan or design §6.1 was required.
+- The requested report path is normally ignored, but an older tracked report
+  already existed at this path in the branch; this report update is therefore
+  intentionally left outside the Task 8 commit.
+- React Doctor's broad changed-file scan reports pre-existing repository
+  diagnostics and does not indicate a Task 8 regression.
