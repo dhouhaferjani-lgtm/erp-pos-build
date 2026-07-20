@@ -900,7 +900,7 @@ class PurchaseOrderController extends Controller
             ->where('purchase_order_id', $purchaseOrder);
 
         $query = GoodsReceiptLine::query()
-            ->with('goodsReceipt')
+            ->with(['goodsReceipt', 'product.unitOfMeasure'])
             ->postedReceipts()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
@@ -922,6 +922,11 @@ class PurchaseOrderController extends Controller
                 'external_date' => $line->goodsReceipt->external_date?->toDateString(),
                 'product_id' => $line->product_id,
                 'variant_id' => $line->variant_id,
+                'quantity_decimals' => ($line->relationLoaded('product')
+                    && $line->product->relationLoaded('unitOfMeasure')
+                    && $line->product->unitOfMeasure !== null)
+                    ? $line->product->unitOfMeasure->decimal_places
+                    : 4,
                 'received_qty' => $line->received_qty,
                 'free_qty' => $line->free_qty,
                 'quantity_invoiced' => $line->quantity_invoiced,
