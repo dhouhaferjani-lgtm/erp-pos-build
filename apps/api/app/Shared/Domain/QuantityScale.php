@@ -62,6 +62,19 @@ final class QuantityScale
     }
 
     /**
+     * Format a canonical scale-4 quantity for human display at a unit's precision.
+     * Primitives only (Shared must not depend on module entities): callers pass
+     * $unit?->decimal_places and $unit?->rounding_method?->value.
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string exactly $decimalPlaces digits (0 => integer string)
+     */
+    public static function formatForUnit(string $value, ?int $decimalPlaces, ?string $roundingMethod = null): string
+    {
+        return self::round($value, $decimalPlaces ?? self::SCALE, $roundingMethod ?? self::HALF_UP);
+    }
+
+    /**
      * HalfUp: if the fractional part of $scaledValue is >= 0.5, round away from zero.
      *
      * @param  numeric-string  $scaledValue  Already-scaled numeric string (may have decimals)
