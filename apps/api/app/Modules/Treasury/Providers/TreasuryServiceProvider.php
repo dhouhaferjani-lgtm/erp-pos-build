@@ -9,11 +9,15 @@ use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Application\Services\Actions\ExpenseSettleHandler;
+use App\Modules\Treasury\Application\Services\Actions\InboundClearHandler;
+use App\Modules\Treasury\Application\Services\Actions\OutboundClearHandler;
 use App\Modules\Treasury\Application\Services\CsvStatementParser;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Application\Services\StatementActionRegistry;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Application\Services\XlsxStatementParser;
@@ -70,6 +74,14 @@ class TreasuryServiceProvider extends ServiceProvider
             static fn (Application $app): StatementParserRegistry => new StatementParserRegistry([
                 StatementParserKey::Csv->value => $app->make(CsvStatementParser::class),
                 StatementParserKey::Xlsx->value => $app->make(XlsxStatementParser::class),
+            ]),
+        );
+        $this->app->singleton(
+            StatementActionRegistry::class,
+            static fn (Application $app): StatementActionRegistry => new StatementActionRegistry([
+                $app->make(OutboundClearHandler::class),
+                $app->make(InboundClearHandler::class),
+                $app->make(ExpenseSettleHandler::class),
             ]),
         );
 

@@ -12,6 +12,7 @@ use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Expense\Application\Listeners\SettleExpenseFromStatement;
 use App\Modules\Expense\Application\Listeners\SyncExpenseOnInstrumentLifecycle;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
@@ -28,6 +29,7 @@ use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrder
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderClosed;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderCompleted;
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderStarted;
+use App\Modules\Treasury\Domain\Events\ExpenseSettlementRequestedFromStatement;
 use App\Modules\Treasury\Domain\Events\InstrumentCancelled;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Vehicle\Domain\Events\VehicleOwnerChanged;
@@ -71,6 +73,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         InstrumentCancelled::class => [
             SyncExpenseOnInstrumentLifecycle::class,
+        ],
+        ExpenseSettlementRequestedFromStatement::class => [
+            SettleExpenseFromStatement::class,
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,

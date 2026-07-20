@@ -20,6 +20,7 @@ use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController
 use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryTransferController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
+use App\Modules\Treasury\Presentation\Controllers\StatementLineController;
 use App\Modules\Treasury\Presentation\Controllers\StatementProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -279,6 +280,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/bank-statements/{bankStatement}/void', [BankStatementController::class, 'void'])
         ->middleware('can:bank-statements.reconcile')
         ->name('bank-statements.void');
+
+    Route::post('/bank-statement-lines/{statementLine}/allocations', [StatementLineController::class, 'allocate'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.allocations.store');
+    Route::delete('/bank-statement-lines/{statementLine}/allocations/{repositoryMovement?}', [StatementLineController::class, 'unallocate'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.allocations.destroy');
+    Route::post('/bank-statement-lines/{statementLine}/ignore', [StatementLineController::class, 'ignore'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.ignore');
+    Route::delete('/bank-statement-lines/{statementLine}/ignore', [StatementLineController::class, 'unignore'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.unignore');
+    Route::post('/bank-statement-lines/{statementLine}/actions', [StatementLineController::class, 'execute'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.actions.store');
 
     Route::get('/statement-import-profiles', [StatementProfileController::class, 'index'])
         ->middleware('can:bank-statements.view')
