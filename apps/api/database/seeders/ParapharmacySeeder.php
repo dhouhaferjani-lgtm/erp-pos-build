@@ -1260,7 +1260,7 @@ class ParapharmacySeeder extends Seeder
      * re-run backfills identical values and suggestions never churn.
      *
      * @return array{0: numeric-string, 1: numeric-string} [min, max], min 2..5
-     *                                                      whole units, max = min*3 (6..15)
+     *                                                     whole units, max = min*3 (6..15)
      */
     protected function demoMinMaxFor(string $sku, string $locationCode): array
     {
