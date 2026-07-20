@@ -69,7 +69,11 @@ final class StatementProfileController extends Controller
 
     public function destroy(string $statementProfile): JsonResponse
     {
-        $this->findProfile($statementProfile)->delete();
+        $profile = $this->findProfile($statementProfile);
+        if ($profile->statements()->exists()) {
+            throw new DomainException('A profile used by an imported statement cannot be deleted; deactivate it instead.');
+        }
+        $profile->delete();
 
         return response()->json(null, 204);
     }

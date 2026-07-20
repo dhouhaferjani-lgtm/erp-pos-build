@@ -10,7 +10,12 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Contracts\StatementParserInterface;
+use App\Modules\Treasury\Application\DTOs\ParsedStatement;
+use App\Modules\Treasury\Application\Services\CsvStatementParser;
+use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\BankStatementLineAllocation;
 use App\Modules\Treasury\Domain\BankStatementMatchExecution;
 use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MatchActionType;
@@ -22,11 +27,13 @@ use App\Modules\Treasury\Domain\StatementImportProfile;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 final class StatementImportFlowTest extends TestCase
@@ -196,12 +203,18 @@ final class StatementImportFlowTest extends TestCase
 
     public function test_void_requires_zero_allocations_and_executions(): void
     {
-        $upload = $this->upload($this->csv(['17/07/2026,25,TX-VOID,Voidable,,']));
+        $voidableFile = $this->csv(['17/07/2026,25,TX-VOID,Voidable,,']);
+        $upload = $this->upload($voidableFile);
         $statementId = (string) $this->confirm((string) $upload->json('data.preview_token'))->json('data.id');
         $this->actingAs($this->accountant)
             ->postJson("/api/v1/bank-statements/{$statementId}/void")
             ->assertOk()
             ->assertJsonPath('data.status', 'voided');
+        $reimport = $this->upload($voidableFile);
+        $reimport->assertOk();
+        $this->confirm((string) $reimport->json('data.preview_token'))
+            ->assertCreated()
+            ->assertJsonPath('meta.imported_line_count', 1);
 
         $blockedUpload = $this->upload($this->csv(['18/07/2026,30,TX-BLOCK,Blocked,,']));
         $blockedId = (string) $this->confirm((string) $blockedUpload->json('data.preview_token'))->json('data.id');
@@ -220,6 +233,46 @@ final class StatementImportFlowTest extends TestCase
             ->postJson("/api/v1/bank-statements/{$blockedId}/void")
             ->assertUnprocessable();
         $this->assertSame(BankStatementStatus::Imported, BankStatement::query()->findOrFail($blockedId)->status);
+    }
+
+    public function test_void_rejects_allocated_or_reconciled_statements(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-ALLOC,Allocated,,']));
+        $statementId = (string) $this->confirm((string) $upload->json('data.preview_token'))->json('data.id');
+        $line = BankStatement::query()->findOrFail($statementId)->lines()->firstOrFail();
+        $movementId = Str::uuid()->toString();
+        DB::table('repository_movements')->insert([
+            'id' => $movementId,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_repository_id' => $this->repository->id,
+            'direction' => 'in',
+            'amount' => '25.000',
+            'currency' => 'TND',
+            'balance_after' => '25.000',
+            'ordinal' => 1,
+            'source_type' => 'adjustment',
+            'source_id' => Str::uuid()->toString(),
+            'idempotency_key' => 'statement-import-test:'.Str::uuid()->toString(),
+            'occurred_at' => now(),
+            'created_by' => $this->admin->id,
+        ]);
+        BankStatementLineAllocation::query()->create([
+            'bank_statement_line_id' => $line->id,
+            'repository_movement_id' => $movementId,
+            'matched_amount' => '25.000',
+            'match_type' => 'manual',
+            'matched_by' => $this->admin->id,
+            'matched_at' => now(),
+        ]);
+        $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statements/{$statementId}/void")
+            ->assertUnprocessable();
+
+        $reconciled = $this->statement(['status' => BankStatementStatus::Reconciled]);
+        $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statements/{$reconciled->id}/void")
+            ->assertUnprocessable();
     }
 
     public function test_profile_crud_is_company_scoped_and_repository_bound(): void
@@ -318,16 +371,119 @@ final class StatementImportFlowTest extends TestCase
         $this->assertDatabaseCount('bank_statements', 0);
     }
 
+    public function test_confirm_reparses_before_opening_the_repository_transaction(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,25,TX-LOCK,No long lock,,']));
+        $delegate = $this->app->make(CsvStatementParser::class);
+        $baselineTransactionLevel = DB::transactionLevel();
+        $guardedParser = new class($delegate, $baselineTransactionLevel) implements StatementParserInterface
+        {
+            public function __construct(
+                private readonly CsvStatementParser $delegate,
+                private readonly int $baselineTransactionLevel,
+            ) {}
+
+            public function parse(string $storedFilePath, StatementImportProfile $profile): ParsedStatement
+            {
+                if (DB::transactionLevel() !== $this->baselineTransactionLevel) {
+                    throw new \DomainException('Statement parsing must occur before the repository transaction opens.');
+                }
+
+                return $this->delegate->parse($storedFilePath, $profile);
+            }
+        };
+        $this->app->instance(StatementParserRegistry::class, new StatementParserRegistry([
+            StatementParserKey::Csv->value => $guardedParser,
+        ]));
+
+        $this->confirm((string) $upload->json('data.preview_token'))->assertCreated();
+    }
+
+    public function test_repository_profile_expiry_and_integrity_guards_fail_loud(): void
+    {
+        $cash = PaymentRepository::factory()->for($this->company)->create([
+            'tenant_id' => $this->tenant->id,
+            'type' => RepositoryType::CashRegister,
+            'currency' => 'TND',
+        ]);
+        $cashProfile = $this->profile($this->company, $cash);
+        $this->uploadFor($cash, $cashProfile, $this->csv(['17/07/2026,1,TX-CASH,Cash,,']))
+            ->assertUnprocessable();
+
+        $this->repository->update(['is_active' => false]);
+        $this->upload($this->csv(['17/07/2026,1,TX-INACTIVE-REPO,Inactive,,']))
+            ->assertUnprocessable();
+        $this->repository->update(['is_active' => true]);
+
+        $this->profile->update(['is_active' => false]);
+        $this->upload($this->csv(['17/07/2026,1,TX-INACTIVE-PROFILE,Inactive,,']))
+            ->assertUnprocessable();
+        $this->profile->update(['is_active' => true]);
+
+        $expired = $this->upload($this->csv(['17/07/2026,1,TX-EXPIRED,Expired,,']));
+        $expiredPayload = json_decode(Crypt::decryptString((string) $expired->json('data.preview_token')), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($expiredPayload);
+        $expiredPayload['issued_at'] = now()->subHours(5)->getTimestamp();
+        $expiredToken = Crypt::encryptString(json_encode($expiredPayload, JSON_THROW_ON_ERROR));
+        $this->confirm($expiredToken)->assertUnprocessable();
+
+        $integrity = $this->upload($this->csv(['17/07/2026,1,TX-HASH,Integrity,,']));
+        $integrityPayload = json_decode(Crypt::decryptString((string) $integrity->json('data.preview_token')), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($integrityPayload);
+        Storage::disk('local')->put((string) $integrityPayload['source_file_path'], 'tampered bytes');
+        $this->confirm((string) $integrity->json('data.preview_token'))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.message', 'The staged statement file failed its integrity check.');
+    }
+
+    public function test_referenced_profile_cannot_be_deleted_but_can_be_deactivated(): void
+    {
+        $this->statement(['parser_profile_id' => $this->profile->id]);
+
+        $this->actingAs($this->accountant)
+            ->deleteJson("/api/v1/statement-import-profiles/{$this->profile->id}")
+            ->assertUnprocessable();
+        $this->actingAs($this->accountant)
+            ->patchJson("/api/v1/statement-import-profiles/{$this->profile->id}", ['is_active' => false])
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+        $this->assertDatabaseHas('bank_statements', ['parser_profile_id' => $this->profile->id]);
+    }
+
+    public function test_confirm_rejects_parser_profile_changes_after_preview(): void
+    {
+        $upload = $this->upload($this->csv(['17/07/2026,1,TX-PROFILE,Profile changed,,']));
+        $this->profile->update(['date_format' => 'Y-m-d']);
+
+        $this->confirm((string) $upload->json('data.preview_token'))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.message', 'The parser profile changed after preview. Upload the file again.');
+        $this->assertDatabaseCount('bank_statements', 0);
+    }
+
+    /** @return TestResponse<Response> */
     private function upload(string $contents): TestResponse
     {
+        return $this->uploadFor($this->repository, $this->profile, $contents);
+    }
+
+    /** @return TestResponse<Response> */
+    private function uploadFor(
+        PaymentRepository $repository,
+        StatementImportProfile $profile,
+        string $contents,
+    ): TestResponse {
         return $this->actingAs($this->accountant)->post('/api/v1/bank-statements/upload', [
-            'payment_repository_id' => $this->repository->id,
-            'parser_profile_id' => $this->profile->id,
+            'payment_repository_id' => $repository->id,
+            'parser_profile_id' => $profile->id,
             'file' => $this->statementFile($contents),
         ]);
     }
 
-    /** @param array<string, mixed> $overrides */
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return TestResponse<Response>
+     */
     private function confirm(string $token, array $overrides = []): TestResponse
     {
         return $this->actingAs($this->accountant)->postJson('/api/v1/bank-statements', [

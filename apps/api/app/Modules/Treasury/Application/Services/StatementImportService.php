@@ -73,6 +73,7 @@ final readonly class StatementImportService
                 'parser_profile_id' => $profile->id,
                 'source_file_path' => $storedPath,
                 'source_file_sha256' => $sha256,
+                'profile_digest' => $this->profileDigest($profile),
                 'issued_at' => now()->timestamp,
             ], JSON_THROW_ON_ERROR));
         } catch (Throwable $exception) {
@@ -117,6 +118,9 @@ final readonly class StatementImportService
             throw new DomainException('The statement repository or parser profile no longer exists.');
         }
         $this->guardOwnership($repository, $profile, $tenantId, $companyId);
+        if (! hash_equals($payload['profile_digest'], $this->profileDigest($profile))) {
+            throw new DomainException('The parser profile changed after preview. Upload the file again.');
+        }
         if (strtoupper($input['currency']) !== strtoupper($repository->currency)) {
             throw new DomainException('Statement currency must match the repository currency.');
         }
@@ -124,13 +128,24 @@ final readonly class StatementImportService
             throw new DomainException('The staged statement file no longer exists.');
         }
         $absolutePath = Storage::disk('local')->path($payload['source_file_path']);
-        if (! hash_equals($payload['source_file_sha256'], hash_file('sha256', $absolutePath) ?: '')) {
-            throw new DomainException('The staged statement file failed its integrity check.');
-        }
+        $this->assertFileIntegrity(
+            $absolutePath,
+            $payload['source_file_sha256'],
+            'The staged statement file failed its integrity check.',
+        );
+
+        $parsed = $this->parseStored($payload['source_file_path'], $repository, $profile);
+        $this->assertFileIntegrity(
+            $absolutePath,
+            $payload['source_file_sha256'],
+            'The staged statement file changed while it was being parsed.',
+        );
 
         $scale = $this->scaleResolver->getScale($repository->currency);
         $opening = $this->canonicalMoney($input['opening_balance'], $scale);
         $closing = $this->canonicalMoney($input['closing_balance'], $scale);
+        $profileDigest = $payload['profile_digest'];
+        $repositoryCurrency = strtoupper($repository->currency);
 
         return DB::transaction(function () use (
             $payload,
@@ -142,6 +157,9 @@ final readonly class StatementImportService
             $userId,
             $opening,
             $closing,
+            $parsed,
+            $profileDigest,
+            $repositoryCurrency,
         ): array {
             $lockedRepository = PaymentRepository::query()->lockForUpdate()->find($repository->id);
             $lockedProfile = StatementImportProfile::query()->lockForUpdate()->find($profile->id);
@@ -149,8 +167,13 @@ final readonly class StatementImportService
                 throw new DomainException('The statement repository or parser profile no longer exists.');
             }
             $this->guardOwnership($lockedRepository, $lockedProfile, $tenantId, $companyId);
+            if (strtoupper($lockedRepository->currency) !== $repositoryCurrency) {
+                throw new DomainException('The repository currency changed after preview. Upload the file again.');
+            }
+            if (! hash_equals($profileDigest, $this->profileDigest($lockedProfile))) {
+                throw new DomainException('The parser profile changed after preview. Upload the file again.');
+            }
             $this->rejectDuplicateFile($lockedRepository->id, $payload['source_file_sha256']);
-            $parsed = $this->parseStored($payload['source_file_path'], $lockedRepository, $lockedProfile);
             [$accepted, $duplicateCount] = $this->withoutExistingFingerprints($lockedRepository->id, $parsed, true);
             if ($accepted === [] && ! ($input['acknowledge_empty'] ?? false)) {
                 throw new DomainException('No statement lines can be accepted; acknowledge the empty import to continue.');
@@ -225,6 +248,7 @@ final readonly class StatementImportService
                 throw new DomainException('A statement with allocations or executions cannot be voided.');
             }
 
+            $locked->lines()->delete();
             $locked->status = BankStatementStatus::Voided;
             $locked->save();
 
@@ -262,6 +286,7 @@ final readonly class StatementImportService
         $existing = BankStatement::query()
             ->where('payment_repository_id', $repositoryId)
             ->where('source_file_sha256', $sha256)
+            ->where('status', '!=', BankStatementStatus::Voided)
             ->first();
         if ($existing instanceof BankStatement) {
             throw new DuplicateStatementFileException($existing->id);
@@ -279,6 +304,28 @@ final readonly class StatementImportService
             Storage::disk('local')->path($storedPath),
             $profile,
         );
+    }
+
+    private function profileDigest(StatementImportProfile $profile): string
+    {
+        return hash('sha256', json_encode([
+            'payment_repository_id' => $profile->payment_repository_id,
+            'parser_key' => $profile->parser_key->value,
+            'column_map' => $profile->column_map,
+            'date_format' => $profile->date_format,
+            'decimal_format' => $profile->decimal_format,
+            'direction_convention' => $profile->direction_convention->value,
+            'header_rows' => $profile->header_rows,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function assertFileIntegrity(string $absolutePath, string $expectedSha256, string $message): void
+    {
+        clearstatcache(true, $absolutePath);
+        $actualSha256 = hash_file('sha256', $absolutePath);
+        if (! is_string($actualSha256) || ! hash_equals($expectedSha256, $actualSha256)) {
+            throw new DomainException($message);
+        }
     }
 
     /**
@@ -336,7 +383,7 @@ final readonly class StatementImportService
     /**
      * @return array{
      *   tenant_id: string, company_id: string, payment_repository_id: string,
-     *   parser_profile_id: string, source_file_path: string, source_file_sha256: string,
+     *   parser_profile_id: string, source_file_path: string, source_file_sha256: string, profile_digest: string,
      *   issued_at: int
      * }
      */
@@ -350,7 +397,7 @@ final readonly class StatementImportService
         if (! is_array($decoded)) {
             throw new DomainException('The statement preview token is invalid.');
         }
-        foreach (['tenant_id', 'company_id', 'payment_repository_id', 'parser_profile_id', 'source_file_path', 'source_file_sha256'] as $key) {
+        foreach (['tenant_id', 'company_id', 'payment_repository_id', 'parser_profile_id', 'source_file_path', 'source_file_sha256', 'profile_digest'] as $key) {
             if (! isset($decoded[$key]) || ! is_string($decoded[$key])) {
                 throw new DomainException('The statement preview token is invalid.');
             }
@@ -359,7 +406,7 @@ final readonly class StatementImportService
             throw new DomainException('The statement preview token is invalid.');
         }
 
-        /** @var array{tenant_id: string, company_id: string, payment_repository_id: string, parser_profile_id: string, source_file_path: string, source_file_sha256: string, issued_at: int} $decoded */
+        /** @var array{tenant_id: string, company_id: string, payment_repository_id: string, parser_profile_id: string, source_file_path: string, source_file_sha256: string, profile_digest: string, issued_at: int} $decoded */
         return $decoded;
     }
 
