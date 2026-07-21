@@ -66,7 +66,7 @@ At handback preparation time:
 
 - Gate 5 treasury Opus: prior r2 **REJECT** findings were corrected; r3/r4/r5 reruns interrupted after approximately 9:58/11:01/13:04 with no output. Exact records: `.gates/gate-t5b-gate-5-verdict-treasury-r3-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-treasury-r4-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-treasury-r5-interrupted.md`.
 - Gate 5 frontend-conventions: prior Opus rejects identified mutation-control and smoke-config defects; those are corrected in `2959571fd` with page-render coverage. The committed-HEAD Opus r7 and Fable r2 escalation both reached the reviewer runtime wall after approximately 10 minutes with empty output; exact records: `.gates/gate-t5b-gate-5-verdict-frontend-conventions-r7-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-frontend-conventions-fable-r2-interrupted.md`.
-- Whole-branch Fable exit: launched with the escalation context, then interrupted after 9:56 with no verdict; exact record: `.gates/gate-t5b-exit-verdict-fable-interrupted.md`.
+- Whole-branch Fable exit: the final pushed-HEAD attempt (r2) was interrupted after approximately 10 minutes with no verdict; exact records: `.gates/gate-t5b-exit-verdict-fable-interrupted.md`, `.gates/gate-t5b-exit-verdict-fable-r2-interrupted.md`.
 - `t5b-gate-5`: **not tagged and not approved**. Do not merge or promote until the controller reruns the missing reviewers after quota recovery and records explicit approvals.
 
 The committed `.gates/` directory is the audit trail for every reject, escalation, correction, and approval; rejected rounds are intentionally retained.
