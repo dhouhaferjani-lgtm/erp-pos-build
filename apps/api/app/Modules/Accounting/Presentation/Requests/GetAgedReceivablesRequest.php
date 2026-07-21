@@ -37,7 +37,16 @@ class GetAgedReceivablesRequest extends FormRequest
                 'date',
                 'before_or_equal:today',
             ],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
+            'group_by' => ['nullable', 'in:location'],
         ];
+    }
+
+    /** @return list<string> */
+    public function locationIds(): array
+    {
+        return array_values(array_filter((array) ($this->validated('location_ids') ?? []), 'is_string'));
     }
 
     /**

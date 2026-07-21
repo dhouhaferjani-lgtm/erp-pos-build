@@ -222,6 +222,10 @@ final class ExpenseAnalyticsService
                     'expense_metadata.expense_category_id',
                     $filters->category_id,
                 ),
+            )
+            ->when(
+                $filters->location_ids !== [],
+                static fn (Builder $query): Builder => $query->whereIn('documents.location_id', $filters->location_ids),
             );
     }
 
@@ -246,6 +250,7 @@ final class ExpenseAnalyticsService
             date_to: $priorTo->toDateString(),
             category_id: $filters->category_id,
             status: $filters->status,
+            location_ids: $filters->location_ids,
         );
     }
 }

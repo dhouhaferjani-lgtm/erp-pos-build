@@ -141,7 +141,6 @@ export async function getTrialBalance(
   if (filters?.as_of_date) {
     params.append('as_of_date', filters.as_of_date)
   }
-
   const queryString = params.toString()
   const url = queryString ? `/reports/trial-balance?${queryString}` : '/reports/trial-balance'
 
@@ -175,7 +174,6 @@ export async function getBalanceSheet(
   if (filters?.as_of_date) {
     params.append('as_of_date', filters.as_of_date)
   }
-
   const queryString = params.toString()
   const url = queryString ? `/reports/balance-sheet?${queryString}` : '/reports/balance-sheet'
 
@@ -190,6 +188,8 @@ export async function getAgedReceivables(
   if (filters?.as_of_date) {
     params.append('as_of_date', filters.as_of_date)
   }
+  params.append('group_by', 'location')
+  filters?.location_ids?.forEach((id) => params.append('location_ids[]', id))
 
   const queryString = params.toString()
   const url = queryString ? `/reports/aged-receivables?${queryString}` : '/reports/aged-receivables'
@@ -205,6 +205,8 @@ export async function getAgedPayables(
   if (filters?.as_of_date) {
     params.append('as_of_date', filters.as_of_date)
   }
+  params.append('group_by', 'location')
+  filters?.location_ids?.forEach((id) => params.append('location_ids[]', id))
 
   const queryString = params.toString()
   const url = queryString ? `/reports/aged-payables?${queryString}` : '/reports/aged-payables'
@@ -219,9 +221,10 @@ export async function getFinanceSummary(): Promise<App.Modules.Accounting.Applic
 }
 
 export async function getUpcomingPayments(
-  days: number
+  days: number,
+  locationIds: string[] = [],
 ): Promise<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData> {
   return apiGet<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData>(
-    `/reports/upcoming-payments?days=${String(days)}`
+    `/reports/upcoming-payments?days=${String(days)}&group_by=location${locationIds.map((id) => `&location_ids[]=${encodeURIComponent(id)}`).join('')}`
   )
 }

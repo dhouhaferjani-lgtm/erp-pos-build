@@ -18,6 +18,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\PaymentInstrument;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
@@ -34,17 +35,18 @@ final readonly class UpcomingPaymentsService
         private CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
-    public function generate(string $companyId, int $days): UpcomingPaymentsData
+    /** @param list<string> $locationIds */
+    public function generate(string $companyId, int $days, array $locationIds = []): UpcomingPaymentsData
     {
         $company = Company::query()->findOrFail($companyId);
         $scale = $this->scaleResolver->getScale((string) $company->currency);
         $today = CarbonImmutable::today();
         $windowEnd = $today->addDays($days);
 
-        $incoming = $this->openDocuments($companyId, [DocumentType::Invoice], $windowEnd);
-        $outgoing = $this->openDocuments($companyId, [DocumentType::SupplierInvoice], $windowEnd)
-            ->concat($this->openUnpaidExpenses($companyId, $windowEnd))
-            ->concat($this->materializedRecurringDrafts($companyId, $windowEnd))
+        $incoming = $this->openDocuments($companyId, [DocumentType::Invoice], $windowEnd, $locationIds);
+        $outgoing = $this->openDocuments($companyId, [DocumentType::SupplierInvoice], $windowEnd, $locationIds)
+            ->concat($this->openUnpaidExpenses($companyId, $windowEnd, $locationIds))
+            ->concat($this->materializedRecurringDrafts($companyId, $windowEnd, $locationIds))
             ->sortBy(fn (Document $document): string => sprintf(
                 '%s|%s',
                 CarbonImmutable::parse($document->due_date ?? $document->document_date)->toDateString(),
@@ -57,9 +59,10 @@ final readonly class UpcomingPaymentsService
             $today,
             $windowEnd,
             $scale,
+            $locationIds,
         );
-        $incomingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Inbound, $windowEnd);
-        $outgoingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Outbound, $windowEnd);
+        $incomingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Inbound, $windowEnd, $locationIds);
+        $outgoingInstruments = $this->pendingInstruments($companyId, InstrumentDirection::Outbound, $windowEnd, $locationIds);
 
         $incomingLines = $this->sortLines([
             ...$this->toLines($incoming, $today),
@@ -89,13 +92,17 @@ final readonly class UpcomingPaymentsService
         );
     }
 
-    /** @return Collection<int, PaymentInstrument> */
+    /**
+     * @param list<string> $locationIds
+     * @return Collection<int, PaymentInstrument>
+     */
     private function pendingInstruments(
         string $companyId,
         InstrumentDirection $direction,
         CarbonImmutable $windowEnd,
+        array $locationIds = [],
     ): Collection {
-        return PaymentInstrument::query()
+        $query = PaymentInstrument::query()
             ->where('company_id', $companyId)
             ->where('direction', $direction)
             ->whereIn('status', [InstrumentStatus::Received, InstrumentStatus::Deposited])
@@ -106,17 +113,26 @@ final readonly class UpcomingPaymentsService
             })
             ->with(['partner:id,name'])
             ->orderByRaw('maturity_date IS NOT NULL, maturity_date ASC')
-            ->orderBy('reference')
-            ->get();
+            ->orderBy('reference');
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->get();
     }
 
     /**
      * @param  list<DocumentType>  $types
      * @return Collection<int, Document>
      */
-    private function openDocuments(string $companyId, array $types, CarbonImmutable $windowEnd): Collection
+    /**
+     * @param list<DocumentType> $types
+     * @param list<string> $locationIds
+     * @return Collection<int, Document>
+     */
+    private function openDocuments(string $companyId, array $types, CarbonImmutable $windowEnd, array $locationIds = []): Collection
     {
-        return Document::query()
+        $query = Document::query()
             ->where('company_id', $companyId)
             ->whereIn('type', $types)
             ->where('status', DocumentStatus::Posted)
@@ -124,8 +140,12 @@ final readonly class UpcomingPaymentsService
             ->whereRaw('COALESCE(due_date, document_date) <= ?', [$windowEnd->toDateString()])
             ->with(['partner:id,name'])
             ->orderByRaw('COALESCE(due_date, document_date) ASC')
-            ->orderBy('document_number')
-            ->get();
+            ->orderBy('document_number');
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->get();
     }
 
     /**
@@ -134,9 +154,13 @@ final readonly class UpcomingPaymentsService
      *
      * @return Collection<int, Document>
      */
-    private function openUnpaidExpenses(string $companyId, CarbonImmutable $windowEnd): Collection
+    /**
+     * @param list<string> $locationIds
+     * @return Collection<int, Document>
+     */
+    private function openUnpaidExpenses(string $companyId, CarbonImmutable $windowEnd, array $locationIds = []): Collection
     {
-        return Document::query()
+        $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Expense)
             ->where('status', DocumentStatus::Posted)
@@ -148,8 +172,12 @@ final readonly class UpcomingPaymentsService
             ->whereRaw('COALESCE(due_date, document_date) <= ?', [$windowEnd->toDateString()])
             ->with(['partner:id,name', 'expenseMetadata:id,document_id,vendor_name,is_paid'])
             ->orderByRaw('COALESCE(due_date, document_date) ASC')
-            ->orderBy('document_number')
-            ->get();
+            ->orderBy('document_number');
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->get();
     }
 
     /**
@@ -159,9 +187,13 @@ final readonly class UpcomingPaymentsService
      *
      * @return Collection<int, Document>
      */
-    private function materializedRecurringDrafts(string $companyId, CarbonImmutable $windowEnd): Collection
+    /**
+     * @param list<string> $locationIds
+     * @return Collection<int, Document>
+     */
+    private function materializedRecurringDrafts(string $companyId, CarbonImmutable $windowEnd, array $locationIds = []): Collection
     {
-        return Document::query()
+        $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Expense)
             ->where('status', DocumentStatus::Draft)
@@ -173,8 +205,12 @@ final readonly class UpcomingPaymentsService
             ->whereDate('document_date', '<=', $windowEnd->toDateString())
             ->with(['partner:id,name', 'expenseMetadata:id,document_id,vendor_name,is_paid,recurrence_template_id'])
             ->orderBy('document_date')
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->get();
     }
 
     /**
@@ -183,12 +219,17 @@ final readonly class UpcomingPaymentsService
      *
      * @return array{lines: array<int, UpcomingPaymentLineData>, total: numeric-string}
      */
+    /**
+     * @param list<string> $locationIds
+     * @return array{lines: array<int, UpcomingPaymentLineData>, total: numeric-string}
+     */
     private function projectedRecurringOccurrences(
         string $tenantId,
         string $companyId,
         CarbonImmutable $today,
         CarbonImmutable $windowEnd,
         int $scale,
+        array $locationIds = [],
     ): array {
         $lines = [];
         $total = CurrencyScale::bcformat('0', $scale);
@@ -197,6 +238,11 @@ final readonly class UpcomingPaymentsService
             ->where('company_id', $companyId)
             ->where('status', RecurrenceStatus::Active)
             ->whereDate('next_due_date', '<=', $windowEnd->toDateString())
+            ->when($locationIds !== [], fn ($query) => $query->whereIn(
+                'payment_repository_id',
+                PaymentRepository::query()->whereIn('location_id', $locationIds)->select('id'),
+            ))
+            ->with('paymentRepository:id,location_id')
             ->orderBy('next_due_date')
             ->orderBy('id')
             ->get();
@@ -224,6 +270,7 @@ final readonly class UpcomingPaymentsService
                     overdue: $daysUntilDue < 0,
                     source: 'recurrence_projection',
                     certainty: 'projected',
+                    location_id: $template->paymentRepository?->location_id,
                 );
                 $total = bcadd($total, $amount, $scale);
                 $dueDate = RecurrenceCursor::next($origin, $template->frequency, $dueDate);
@@ -279,6 +326,7 @@ final readonly class UpcomingPaymentsService
                     overdue: $daysUntilDue < 0,
                     source: 'document',
                     certainty: null,
+                    location_id: $document->location_id,
                 );
             })
             ->values()
@@ -309,6 +357,7 @@ final readonly class UpcomingPaymentsService
                     overdue: $daysUntilDue < 0,
                     source: 'instrument',
                     certainty: $instrument->status === InstrumentStatus::Deposited ? 'remitted' : 'portfolio',
+                    location_id: $instrument->location_id,
                 );
             })
             ->values()

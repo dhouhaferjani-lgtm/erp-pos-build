@@ -7,6 +7,7 @@ namespace Tests\Feature\Treasury;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -209,6 +210,64 @@ class CashPositionEndpointTest extends TestCase
                 $this->assertIsString($repository['balance']);
             }
         }
+    }
+
+    public function test_group_by_location_reconciles_and_exposes_unattributed_bucket(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->companyA->id, 'name' => 'Store A']);
+        $storeB = Location::factory()->create(['company_id' => $this->companyA->id, 'name' => 'Store B']);
+        PaymentRepository::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->companyA->id, 'type' => 'cash_register', 'location_id' => $storeA->id, 'balance' => '100.000', 'is_active' => true]);
+        PaymentRepository::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->companyA->id, 'type' => 'safe', 'location_id' => $storeB->id, 'balance' => '250.000', 'is_active' => true]);
+        PaymentRepository::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->companyA->id, 'type' => 'bank_account', 'location_id' => null, 'balance' => '500.000', 'is_active' => true]);
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/treasury/cash-position?group_by=location');
+
+        $response->assertOk()->assertJsonPath('data.groups_by_location.0.location_name', 'Store A');
+        $this->assertSame('850.000', $response->json('data.grand_total'));
+        $this->assertNotNull(collect($response->json('data.groups_by_location'))->firstWhere('location_id', null));
+    }
+
+    public function test_restricted_membership_hides_other_locations_and_unattributed_without_a_filter(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->companyA->id, 'name' => 'Store A']);
+        $storeB = Location::factory()->create(['company_id' => $this->companyA->id, 'name' => 'Store B']);
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'type' => 'cash_register',
+            'location_id' => $storeA->id,
+            'balance' => '10.000',
+            'is_active' => true,
+        ]);
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'type' => 'cash_register',
+            'location_id' => $storeB->id,
+            'balance' => '20.000',
+            'is_active' => true,
+        ]);
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'type' => 'bank_account',
+            'location_id' => null,
+            'balance' => '30.000',
+            'is_active' => true,
+        ]);
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->companyA->id)
+            ->update(['allowed_location_ids' => [$storeA->id]]);
+
+        $data = $this->actingAs($this->user)
+            ->getJson('/api/v1/treasury/cash-position?group_by=location')
+            ->assertOk()
+            ->json('data');
+
+        self::assertSame('10.000', $data['grand_total']);
+        self::assertCount(1, $data['groups_by_location']);
+        self::assertSame($storeA->id, $data['groups_by_location'][0]['location_id']);
     }
 
     public function test_flows_are_absent_without_param(): void

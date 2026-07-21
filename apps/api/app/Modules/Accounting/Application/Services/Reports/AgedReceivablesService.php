@@ -36,14 +36,18 @@ final readonly class AgedReceivablesService
      * @param  Carbon|null  $asOfDate  The snapshot date (defaults to today)
      * @return AgedReceivablesData The aged receivables report
      */
+    /**
+     * @param list<string> $locationIds
+     */
     public function generate(
         string $companyId,
-        ?Carbon $asOfDate = null
+        ?Carbon $asOfDate = null,
+        array $locationIds = [],
     ): AgedReceivablesData {
         $asOfDate = $asOfDate ?? Carbon::today();
 
         // Get outstanding customer invoices
-        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate);
+        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate, $locationIds);
 
         // Group by customer and calculate aging buckets
         $customerBalances = $this->calculateCustomerAging($invoices, $asOfDate);
@@ -88,16 +92,23 @@ final readonly class AgedReceivablesService
      *
      * @return Collection<int, Document>
      */
-    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate): Collection
+    /**
+     * @param list<string> $locationIds
+     * @return Collection<int, Document>
+     */
+    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate, array $locationIds = []): Collection
     {
-        return Document::query()
+        $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<=', $asOfDate)
-            ->where('balance_due', '>', 0)
-            ->with(['partner:id,name,type'])
-            ->get();
+            ->where('balance_due', '>', 0);
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->with(['partner:id,name,type'])->get();
     }
 
     /**

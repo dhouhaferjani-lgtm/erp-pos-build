@@ -148,7 +148,8 @@
     "type": "Type",
     "partner": "Partner",
     "maturity": "Maturity",
-    "location": "Current Location",
+    "location": "Origin Location",
+    "unattributed": "Unattributed",
     "status": "Status",
     "amount": "Amount",
     "details": "Instrument Details",
@@ -693,7 +694,8 @@
     "viewOverview": "View overview",
     "viewMovements": "View movements",
     "loading": "Loading cash position…",
-    "unavailable": "Cash position is unavailable."
+    "unavailable": "Cash position is unavailable.",
+    "unattributed": "Unattributed"
   },
   "reconciliation": {
     "openingBalance": "Opening Balance",

@@ -265,6 +265,7 @@ days_until_due: number;
 overdue: boolean;
 source: string;
 certainty: string | null;
+location_id: string | null;
 };
 export type UpcomingPaymentsData = {
 in: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
@@ -876,6 +877,7 @@ id: string;
 tenant_id: string;
 company_id: string;
 purchase_order_id: string;
+location_id: string | null;
 purchase_order_number: string | null;
 supplier_id: string | null;
 supplier_name: string | null;

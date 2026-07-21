@@ -34,7 +34,8 @@
     "viewOverview": "عرض النظرة العامة",
     "viewMovements": "عرض الحركات",
     "loading": "جارٍ تحميل وضع السيولة…",
-    "unavailable": "وضع السيولة غير متاح."
+    "unavailable": "وضع السيولة غير متاح.",
+    "unattributed": "غير منسوب"
   },
   "reconciliation": {
     "openingBalance": "الرصيد الافتتاحي",

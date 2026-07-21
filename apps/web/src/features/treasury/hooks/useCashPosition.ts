@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -30,6 +31,11 @@ export interface CashPosition {
   currency: string
   groups: CashPositionGroup[]
   grand_total: string
+  groups_by_location?: {
+    location_id: string | null
+    location_name: string
+    total: string
+  }[]
   flows?: {
     window_days: number
     in: string
@@ -52,15 +58,18 @@ interface CashPositionOptions {
 export function useCashPosition(options?: CashPositionOptions) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { scope, effectiveLocationIds } = useViewScope()
   const queryKey = options?.flowsWindow === undefined
     ? ['treasury-cash-position']
     : ['treasury-cash-position', options.flowsWindow]
 
   return useQuery({
-    queryKey: tenantScopedKey(queryKey),
-    queryFn: () => options?.flowsWindow === undefined
-      ? apiGet<CashPosition>('/treasury/cash-position')
-      : apiGet<CashPosition>('/treasury/cash-position', { flows_window: options.flowsWindow }),
+    queryKey: locationScopedKey(queryKey, scope),
+    queryFn: () => apiGet<CashPosition>('/treasury/cash-position', {
+      ...(options?.flowsWindow === undefined ? {} : { flows_window: options.flowsWindow }),
+      location_ids: effectiveLocationIds,
+      group_by: 'location',
+    }),
     enabled: tenantId !== null && companyId !== null,
   })
 }

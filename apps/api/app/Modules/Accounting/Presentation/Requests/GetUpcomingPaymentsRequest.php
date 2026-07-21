@@ -20,11 +20,20 @@ final class GetUpcomingPaymentsRequest extends FormRequest
     {
         return [
             'days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
+            'group_by' => ['nullable', 'in:location'],
         ];
     }
 
     public function days(): int
     {
         return (int) ($this->validated('days') ?? 30);
+    }
+
+    /** @return list<string> */
+    public function locationIds(): array
+    {
+        return array_values(array_filter((array) ($this->validated('location_ids') ?? []), 'is_string'));
     }
 }

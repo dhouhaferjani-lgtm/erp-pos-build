@@ -148,7 +148,8 @@
     "type": "Type",
     "partner": "Partenaire",
     "maturity": "Échéance",
-    "location": "Emplacement actuel",
+    "location": "Emplacement d'origine",
+    "unattributed": "Non attribué",
     "status": "Statut",
     "amount": "Montant",
     "details": "Détails de l'effet",
@@ -693,7 +694,8 @@
     "viewOverview": "Voir l’aperçu",
     "viewMovements": "Voir les mouvements",
     "loading": "Chargement de la position de trésorerie…",
-    "unavailable": "La position de trésorerie est indisponible."
+    "unavailable": "La position de trésorerie est indisponible.",
+    "unattributed": "Non attribué"
   },
   "reconciliation": {
     "openingBalance": "Solde d'ouverture",

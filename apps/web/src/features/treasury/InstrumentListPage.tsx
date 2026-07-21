@@ -16,7 +16,8 @@ import { api } from '@/lib/api'
 import { tokens, textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { formatCurrency } from '@/lib/format'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -57,6 +58,8 @@ interface Instrument {
   needs_details: boolean
   repository_id: string | null
   repository: InstrumentRelation | null
+  location_id: string | null
+  location_name?: string | null
 }
 
 interface PaginationMeta {
@@ -114,13 +117,14 @@ export function InstrumentListPage() {
   const [maturityTo, setMaturityTo] = useState(() => searchParams.get('maturity_to') ?? '')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  const { scope, effectiveLocationIds } = useViewScope()
 
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const filterKey = { direction, kind, maturityFrom, maturityTo, needsDetails, page, perPage }
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['instruments', filterKey]),
+    queryKey: locationScopedKey(['instruments', filterKey], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (kind) params.set('kind', kind)
@@ -128,6 +132,7 @@ export function InstrumentListPage() {
       if (needsDetails) params.set('needs_details', needsDetails)
       if (maturityFrom) params.set('maturity_from', maturityFrom)
       if (maturityTo) params.set('maturity_to', maturityTo)
+      effectiveLocationIds.forEach((locationId) => params.append('location_ids[]', locationId))
       params.set('page', String(page))
       params.set('per_page', String(perPage))
       const response = await api.get<InstrumentsResponse>(`/payment-instruments?${params.toString()}`)
@@ -138,7 +143,7 @@ export function InstrumentListPage() {
 
   const maturityFilterKey = { direction, kind, maturityFrom, maturityTo, needsDetails }
   const { data: maturityData } = useQuery({
-    queryKey: tenantScopedKey(['maturing-instruments', maturityFilterKey]),
+    queryKey: locationScopedKey(['maturing-instruments', maturityFilterKey], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (kind) params.set('kind', kind)
@@ -146,6 +151,7 @@ export function InstrumentListPage() {
       if (needsDetails) params.set('needs_details', needsDetails)
       if (maturityFrom) params.set('from', maturityFrom)
       if (maturityTo) params.set('to', maturityTo)
+      effectiveLocationIds.forEach((locationId) => params.append('location_ids[]', locationId))
       const suffix = params.toString()
       const response = await api.get<MaturityResponse>(
         `/treasury/maturing-instruments${suffix ? `?${suffix}` : ''}`,
@@ -214,6 +220,11 @@ export function InstrumentListPage() {
           {instrument.repository.name}
         </Link>
       ) : <span className={textColors.tertiary}>—</span>,
+    },
+    {
+      key: 'location',
+      header: t('treasury:instruments.location'),
+      render: (instrument) => instrument.location_name ?? t('treasury:instruments.unattributed'),
     },
     {
       key: 'received',

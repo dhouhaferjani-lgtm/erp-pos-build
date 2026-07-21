@@ -20,5 +20,6 @@ final class UpcomingPaymentLineData extends Data
         public readonly bool $overdue,
         public readonly string $source = 'document',
         public readonly ?string $certainty = null,
+        public readonly ?string $location_id = null,
     ) {}
 }

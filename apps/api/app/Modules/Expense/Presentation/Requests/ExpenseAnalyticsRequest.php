@@ -65,6 +65,8 @@ final class ExpenseAnalyticsRequest extends FormRequest
                     AnalyticsFilters::ALL_STATUSES,
                 ]),
             ],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
         ];
     }
 }
