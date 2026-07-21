@@ -139,6 +139,7 @@ final class LocationReconciliationTest extends TestCase
         PaymentAllocation::query()->create(['payment_id' => $payment->id, 'document_id' => $invoiceA->id, 'amount' => '60.000']);
         PaymentAllocation::query()->create(['payment_id' => $payment->id, 'document_id' => $invoiceB->id, 'amount' => '40.000']);
         $invoiceA->update(['balance_due' => '80.000']);
+        $invoiceB->update(['balance_due' => '120.000']);
 
         $byLocation = $this->getJson('/api/v1/reports/aged-receivables?group_by=location')->assertOk()->json('data');
         $companyWide = $this->getJson('/api/v1/reports/aged-receivables')->assertOk()->json('data');
