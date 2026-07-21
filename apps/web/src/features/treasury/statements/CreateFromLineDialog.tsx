@@ -18,7 +18,7 @@ interface CreateFromLineDialogProps {
 }
 
 export function CreateFromLineDialog({ isOpen, direction, pending = false, onClose, onSubmit }: CreateFromLineDialogProps) {
-  const { t } = useTranslation('treasury')
+  const { t } = useTranslation(['treasury', 'common'])
   const isExpense = direction === 'out'
   const { data: incomeAccounts = [], isLoading: accountsLoading } = useAccounts({ type: 'revenue', active: true })
   const schema = z.object({

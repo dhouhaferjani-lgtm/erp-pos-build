@@ -110,4 +110,20 @@ describe('LinePanel', () => {
 
     expect(onIgnore).toHaveBeenCalledWith({ reason: 'informational', text: 'Bank advice only' })
   })
+
+  it('does not render mutation controls for a reconciled or view-only statement', () => {
+    render(<LinePanel mutable={false} line={line} currency="TND" suggestions={[]} movements={[movement]} onExecute={vi.fn()} onAllocate={vi.fn()} onIgnore={vi.fn()} onUnignore={vi.fn()} onCreate={vi.fn()} onUnallocate={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'statements.workspace.unallocate' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'statements.workspace.suggestions.title' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'statements.workspace.manual.title' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'statements.workspace.ignore.title' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /statements\.workspace\.create\./ })).not.toBeInTheDocument()
+  })
+
+  it('does not render the unignore action for an ignored read-only line', () => {
+    render(<LinePanel mutable={false} line={{ ...line, match_status: 'ignored', allocations: [], ignore_reason: 'informational', ignore_text: 'Reviewed' }} currency="TND" suggestions={[]} movements={[]} onExecute={vi.fn()} onAllocate={vi.fn()} onIgnore={vi.fn()} onUnignore={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'statements.workspace.ignore.unignore' })).not.toBeInTheDocument()
+  })
 })

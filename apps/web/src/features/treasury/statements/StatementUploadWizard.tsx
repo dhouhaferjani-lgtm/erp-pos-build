@@ -31,6 +31,7 @@ interface StatementUploadWizardProps {
   onPreview?: (input: StatementPreviewInput) => Promise<StatementPreview>
   onConfirm?: (input: StatementConfirmInput) => Promise<{ statementId: string }>
   onCreateProfile?: (input: StatementProfileInput) => Promise<StatementProfile>
+  onProfileCreated?: (profile: StatementProfile) => Promise<void> | void
   onImported: (statementId: string) => void
 }
 
@@ -45,6 +46,7 @@ export function StatementUploadWizard({
   onPreview = uploadStatementPreview,
   onConfirm = confirmBankStatement,
   onCreateProfile = createStatementProfile,
+  onProfileCreated,
   onImported,
 }: StatementUploadWizardProps) {
   const { t } = useTranslation('treasury')
@@ -109,6 +111,7 @@ export function StatementUploadWizard({
         matching_window_days: 5,
       })
       setCreatedProfiles((current) => [...current, created])
+      await onProfileCreated?.(created)
       setProfileId(created.id)
       setShowProfileForm(false)
     } catch (caught) {

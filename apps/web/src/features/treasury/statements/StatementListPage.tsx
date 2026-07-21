@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Big from 'big.js'
 import { FileSpreadsheet, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +32,7 @@ const statusTones: Record<StatementStatus, StatusTone> = {
 export function StatementListPage() {
   const { t } = useTranslation(['treasury', 'common'])
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const { hasPermission } = usePermissions()
@@ -112,6 +113,7 @@ export function StatementListPage() {
             <StatementUploadWizard
               repositories={bankRepositories.map(({ id, name, currency }) => ({ id, name, currency }))}
               profiles={profilesQuery.data ?? []}
+              onProfileCreated={() => queryClient.invalidateQueries({ queryKey: tenantScopedKey(['statement-import-profiles']) })}
               onImported={(statementId) => { setShowUpload(false); navigate(`/treasury/statements/${statementId}`) }}
             />
         </ModalContent>
