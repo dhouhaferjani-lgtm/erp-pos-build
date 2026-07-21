@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
 
 import { LinePanel } from './LinePanel'
 import type { BankStatementLine, RepositoryMovementCandidate, StatementSuggestion } from './api'
@@ -109,6 +109,14 @@ describe('LinePanel', () => {
     fireEvent.click(submit)
 
     expect(onIgnore).toHaveBeenCalledWith({ reason: 'informational', text: 'Bank advice only' })
+  })
+
+  it('renders localized dates instead of raw ISO strings', () => {
+    render(<LinePanel line={line} currency="TND" suggestions={[]} movements={[movement]} onExecute={vi.fn()} onAllocate={vi.fn()} onIgnore={vi.fn()} onUnignore={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getAllByText(new RegExp(formatDate('2026-07-18'))).length).toBeGreaterThan(0)
+    expect(screen.getByRole('option', { name: /statements\.workspace\.sourceType\.payment/ })).toHaveTextContent(formatDate('2026-07-18T10:00:00Z'))
+    expect(screen.queryByText(/2026-07-18/)).not.toBeInTheDocument()
   })
 
   it('does not render mutation controls for a reconciled or view-only statement', () => {

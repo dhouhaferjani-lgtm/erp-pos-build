@@ -11,7 +11,7 @@ import { Modal, ModalContent } from '@/components/organisms/Modal/Modal'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { usePermissions } from '@/hooks/usePermissions'
 import { textColors, tokens } from '@/lib/designTokens'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
@@ -62,7 +62,7 @@ export function StatementListPage() {
     {
       key: 'period',
       header: t('treasury:statements.columns.period'),
-      render: (statement) => <Link className={cn('font-medium hover:underline', textColors.brand)} to={`/treasury/statements/${statement.id}`}>{statement.period_start} → {statement.period_end}</Link>,
+      render: (statement) => <Link className={cn('font-medium hover:underline', textColors.brand)} to={`/treasury/statements/${statement.id}`}>{formatDate(statement.period_start)} → {formatDate(statement.period_end)}</Link>,
     },
     {
       key: 'repository',
@@ -113,7 +113,7 @@ export function StatementListPage() {
             <StatementUploadWizard
               repositories={bankRepositories.map(({ id, name, currency }) => ({ id, name, currency }))}
               profiles={profilesQuery.data ?? []}
-              onProfileCreated={() => queryClient.invalidateQueries({ queryKey: tenantScopedKey(['statement-import-profiles']) })}
+              onProfileCreated={() => queryClient.invalidateQueries({ queryKey: ['statement-import-profiles'] })}
               onImported={(statementId) => { setShowUpload(false); navigate(`/treasury/statements/${statementId}`) }}
             />
         </ModalContent>

@@ -6,7 +6,7 @@ import { Button, Checkbox, Input, MoneyInput, Select } from '@/components/atoms'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { getErrorMessage } from '@/lib/api'
 import { semanticColorTokens, tokens, textColors } from '@/lib/designTokens'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -164,7 +164,7 @@ export function StatementUploadWizard({
   const currentStep = wizardSteps.indexOf(step)
   const confirmBlocked = !preview || !periodStart || !periodEnd || (preview.accepted_line_count === 0 && !acknowledgeEmpty)
   const previewColumns: DataTableColumn<StatementPreview['preview_lines'][number]>[] = [
-    { key: 'date', header: t('statements.upload.date'), render: (line) => line.value_date },
+    { key: 'date', header: t('statements.upload.date'), render: (line) => formatDate(line.value_date) },
     { key: 'label', header: t('statements.upload.label'), render: (line) => line.label },
     {
       key: 'amount',

@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { formatDate } from '@/lib/format'
+
 import { ReconciliationWorkspacePage } from './ReconciliationWorkspacePage'
 
 const statement = {
@@ -67,5 +69,13 @@ describe('ReconciliationWorkspacePage rendering', () => {
 
     expect(screen.getByTestId('line-panel')).toHaveAttribute('data-mutable', 'false')
     expect(screen.queryByRole('button', { name: 'treasury:statements.workspace.complete.action' })).not.toBeInTheDocument()
+  })
+
+  it('renders localized statement and line dates instead of raw ISO strings', () => {
+    render(<ReconciliationWorkspacePage />)
+
+    expect(screen.getByText(`${formatDate('2026-07-01')} → ${formatDate('2026-07-31')}`)).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`${formatDate('2026-07-31')} · #1`))).toBeInTheDocument()
+    expect(screen.queryByText(/2026-07-01|2026-07-31/)).not.toBeInTheDocument()
   })
 })

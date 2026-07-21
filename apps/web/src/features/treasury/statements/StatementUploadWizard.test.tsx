@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { formatDate } from '@/lib/format'
+
 import { StatementUploadWizard } from './StatementUploadWizard'
 import type { StatementPreview, StatementProfile } from './api'
 
@@ -80,6 +82,8 @@ describe('StatementUploadWizard', () => {
     expect(screen.getByText('statements.upload.report.droppedZero')).toBeInTheDocument()
     expect(screen.getByText('statements.upload.report.unparseable')).toBeInTheDocument()
     expect(screen.getByText(/Invalid date/)).toBeInTheDocument()
+    expect(screen.getByText(formatDate('2026-07-02'))).toBeInTheDocument()
+    expect(screen.queryByText('2026-07-02')).not.toBeInTheDocument()
     expect(onPreview).toHaveBeenCalledWith({ repositoryId: 'repo-1', profileId: 'profile-1', file })
   })
 

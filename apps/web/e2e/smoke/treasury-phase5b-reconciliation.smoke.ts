@@ -848,4 +848,26 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     )
     await expectStatus(voidPrimerResponse, 200, 'duplicate primer cleanup')
   })
+
+  test('7. teardown: reopen the statement so the repository fixture stays re-runnable', async ({ request }) => {
+    // The completion in step 6 stamps last_reconciled_at on the shared bank
+    // repository; without this reopen, every future run of any suite that
+    // needs an unreconciled GL-linked bank repository would exhaust the
+    // tenant's fixtures. Reopen recomputes the checkpoint from the remaining
+    // reconciled statements (none), releasing the repository. All statement,
+    // line, allocation, and execution evidence is preserved.
+    const reopenResponse = await request.post(
+      `${API_BASE}/bank-statements/${mainStatementId}/reopen`,
+      { headers: authHeaders() },
+    )
+    await expectStatus(reopenResponse, 200, 'teardown statement reopen')
+
+    const balanceResponse = await request.get(
+      `${API_BASE}/payment-repositories/${repository!.id}/balance`,
+      { headers: authHeaders() },
+    )
+    await expectStatus(balanceResponse, 200, 'released repository checkpoint')
+    const balance = (await json(balanceResponse)).data as { last_reconciled_at: string | null }
+    expect(balance.last_reconciled_at, 'repository checkpoint released for future runs').toBeNull()
+  })
 })
