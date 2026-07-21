@@ -140,7 +140,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     if ($debitAccountId === $repository->gl_account_id) {
                         $isMaturityLeg = false;
                     } elseif ($debitAccountId === $this->maturityLegHandler->portfolioAccountId($paymentMethod, $event->company_id)) {
-                        $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId);
+                        $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId ?? $repository->location_id);
                         if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
                             throw $this->invariant($event, 'maturity_payment_instrument_conflict');
                         }
@@ -167,7 +167,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 }
             } else {
                 if ($isMaturityLeg) {
-                    $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId);
+                    $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId, $terminalLocationId ?? $repository->location_id);
                     $instrument = $result->instrument;
                     $cashAccountOverrideId = $result->portfolioAccountId;
                     $shouldRecordMovement = false;

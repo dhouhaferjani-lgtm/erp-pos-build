@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -38,9 +39,11 @@ final class InstrumentLifecycleReceiveTest extends TestCase
     {
         $context = $this->context();
 
-        $instrument = $this->service()->receive($this->receiveData($context));
+        $location = Location::factory()->create(['company_id' => $context['company']->id]);
+        $instrument = $this->service()->receive($this->receiveData($context, locationId: $location->id));
 
         $this->assertSame(InstrumentStatus::Received, $instrument->status);
+        $this->assertSame($location->id, $instrument->location_id);
         $this->assertSame('125.000', $instrument->amount);
         $event = InstrumentEvent::query()->where('instrument_id', $instrument->id)->firstOrFail();
         $this->assertSame(InstrumentEventType::Created, $event->event_type);
@@ -183,7 +186,7 @@ final class InstrumentLifecycleReceiveTest extends TestCase
     /**
      * @param  array{tenant: Tenant, company: Company, user: User, partner: Partner, method: PaymentMethod, repository: PaymentRepository, otherRepository: PaymentRepository}  $context
      */
-    private function receiveData(array $context, bool $needsDetails = false, string $currency = 'TND'): ReceiveInstrumentData
+    private function receiveData(array $context, bool $needsDetails = false, string $currency = 'TND', ?string $locationId = null): ReceiveInstrumentData
     {
         return new ReceiveInstrumentData(
             tenantId: $context['tenant']->id,
@@ -200,6 +203,7 @@ final class InstrumentLifecycleReceiveTest extends TestCase
             receivedDate: '2026-07-11',
             needsDetails: $needsDetails,
             createdBy: $context['user']->id,
+            locationId: $locationId,
         );
     }
 

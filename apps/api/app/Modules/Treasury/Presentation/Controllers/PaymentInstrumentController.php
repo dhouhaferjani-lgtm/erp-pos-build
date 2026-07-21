@@ -19,6 +19,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Presentation\Validation\ScopedExists;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -148,6 +149,10 @@ final class PaymentInstrumentController extends Controller
                 'required', 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
+            'location_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('locations', $company->tenant_id, $company->id),
+            ],
             'bank_id' => [
                 'nullable', 'uuid',
                 ScopedExists::tenant('banks', $company->tenant_id),
@@ -173,6 +178,11 @@ final class PaymentInstrumentController extends Controller
 
         $direction = InstrumentDirection::from($validated['direction'] ?? InstrumentDirection::Inbound->value);
         try {
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $company->tenant_id)
+                ->where('company_id', $company->id)
+                ->findOrFail($validated['repository_id']);
+            $locationId = $validated['location_id'] ?? $repository->location_id;
             if ($direction === InstrumentDirection::Inbound) {
                 $this->accountResolver->resolveOrFail(
                     $kind === InstrumentKind::Cheque
@@ -202,6 +212,7 @@ final class PaymentInstrumentController extends Controller
                 bankAccount: $validated['bank_account'] ?? null,
                 needsDetails: (bool) ($validated['needs_details'] ?? false),
                 createdBy: $user->id,
+                locationId: is_string($locationId) ? $locationId : null,
             ));
         } catch (DomainException $exception) {
             return $this->domainError($exception);

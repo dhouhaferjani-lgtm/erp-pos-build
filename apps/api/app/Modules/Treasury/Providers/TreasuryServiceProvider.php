@@ -15,6 +15,7 @@ use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
+use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand;
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -86,6 +87,7 @@ class TreasuryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 AuditDiscountsCommand::class,
+                BackfillLocationAttributionCommand::class,
                 InstrumentMaturityAlertsCommand::class,
                 ReconcileTreasuryCommand::class,
             ]);

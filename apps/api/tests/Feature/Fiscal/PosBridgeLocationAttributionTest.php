@@ -133,6 +133,19 @@ final class PosBridgeLocationAttributionTest extends TestCase
         self::assertSame(PaymentRepository::query()->findOrFail($this->repositoryId)->location_id, $payment->location_id);
     }
 
+    public function test_cheque_deposit_without_terminal_shares_repository_fallback_with_instrument(): void
+    {
+        $event = $this->depositEvent('CHECK');
+        $this->app->make(TreasuryDepositBridge::class)->apply($event);
+
+        $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
+        $instrument = PaymentInstrument::query()->findOrFail($payment->instrument_id);
+        $repositoryLocation = PaymentRepository::query()->findOrFail($this->repositoryId)->location_id;
+
+        self::assertSame($repositoryLocation, $payment->location_id);
+        self::assertSame($repositoryLocation, $instrument->location_id);
+    }
+
     public function test_account_payment_maturity_apply_propagates_terminal_location_to_instrument(): void
     {
         $event = $this->accountPaymentEvent();
@@ -212,7 +225,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
         return $this->persistEvent(FiscalEventType::SALE_RECEIPT, $payload, $this->terminalId);
     }
 
-    private function depositEvent(): FiscalEvent
+    private function depositEvent(string $methodCode = 'CASH'): FiscalEvent
     {
         $foreignTenant = Tenant::factory()->create();
         $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
@@ -241,7 +254,13 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'event_time_device' => now()->format('Y-m-d\\TH:i:s.v\\Z'),
             'notes' => null,
             'partner_id' => $this->partnerId,
-            'payment' => ['amount' => '6.000', 'method_code' => 'CASH', 'repository_id' => $this->repositoryId],
+            'payment' => [
+                'amount' => '6.000',
+                'method_code' => $methodCode,
+                'repository_id' => $this->repositoryId,
+                'instrument_serial' => $methodCode === 'CHECK' ? 'CHK-DEPOSIT-FALLBACK' : null,
+                'instrument_type' => $methodCode === 'CHECK' ? 'cheque' : null,
+            ],
             'tenant_id' => $this->tenantId,
             'terminal_id' => $foreignTerminal->id,
             'training_flag' => false,

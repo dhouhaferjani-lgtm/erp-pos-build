@@ -268,8 +268,6 @@
     "search": "البحث عن المنتجات",
     "empty": "لا يوجد مخزون",
     "product": "المنتج",
-    "minQuantity": "الحد الأدنى للكمية",
-    "maxQuantity": "الحد الأقصى للكمية",
     "thresholdsNotApplicable": "الحدود حسب المتغير",
     "metric": { "label": "مؤشر المخزون", "available": "المتاح", "onHand": "الموجود", "thresholds": "الحد الأدنى / الأقصى" },
     "baseGrainSuffix": " (أساسي)",
