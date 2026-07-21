@@ -36,6 +36,9 @@ vi.mock('../../stores/companyStore', () => {
   useCompanyStore.getState = () => companyState
   return { useCompanyStore }
 })
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({ scope: 'all', effectiveLocationIds: [], isAll: true, setScope: vi.fn() }),
+}))
 
 /**
  * Mirrors `PaymentInstrumentController::formatInstrument` exactly (verified
@@ -144,7 +147,25 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQuery: ({ queryKey }: { queryKey: unknown[] }) => JSON.stringify(queryKey).includes('maturing-instruments')
-      ? { data: undefined, isLoading: false, error: null }
+      ? {
+        data: {
+          data: [],
+          meta: {
+            buckets: {
+              overdue: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d0_7: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d8_30: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d31_60: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d61_90: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d90_plus: { count: 0, total_in: '0.000', total_out: '0.000' },
+            },
+            grand_total: { count: 0, total_in: '0.000', total_out: '0.000' },
+            buckets_by_location: [{ location_id: 'loc-a', location_name: 'Store A', count: 1, total_in: '10.000', total_out: '0.000' }],
+          },
+        },
+        isLoading: false,
+        error: null,
+      }
       : mockUseQueryReturn,
   }
 })
@@ -159,6 +180,13 @@ describe('InstrumentListPage (canonical list)', () => {
     render(<InstrumentListPage />)
     expect(screen.getByText('CHK-1001')).toBeInTheDocument()
     expect(screen.getByText('CHK-1002')).toBeInTheDocument()
+  })
+
+  it('renders the frozen origin caveat and location maturity bucket', () => {
+    render(<InstrumentListPage />)
+
+    expect(screen.getByText('treasury:instruments.originGrainCaveat')).toBeInTheDocument()
+    expect(screen.getByText('Store A')).toBeInTheDocument()
   })
 
   it('renders status as a StatusBadge pill (rounded-full)', () => {

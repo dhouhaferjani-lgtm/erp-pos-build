@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -52,6 +53,7 @@ class CashPositionController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -75,12 +77,7 @@ class CashPositionController extends Controller
             $this->requestedLocationIds($validated['location_ids'] ?? []),
             null,
         );
-        $allActiveLocationIds = Location::query()
-            ->where('company_id', $companyId)
-            ->where('is_active', true)
-            ->pluck('id')
-            ->all();
-        $unrestricted = count(array_diff($allActiveLocationIds, $effectiveLocationIds)) === 0;
+        $unrestricted = $this->locationScopeBoundary->isUnrestricted($companyId, $effectiveLocationIds);
 
         $cashTypeValues = array_map(static fn (RepositoryType $type): string => $type->value, self::CASH_TYPES);
 

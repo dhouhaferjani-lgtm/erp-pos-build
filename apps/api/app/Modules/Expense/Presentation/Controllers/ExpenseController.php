@@ -6,8 +6,8 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -42,6 +42,7 @@ class ExpenseController extends Controller
         private readonly OperationResolverInterface $operationResolver,
         private readonly ExpenseIndexQuery $expenseIndexQuery,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     /**
@@ -75,9 +76,7 @@ class ExpenseController extends Controller
             abort(401);
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
-        $all = Location::query()->where('company_id', $companyId)->pluck('id')->map(static fn ($id): string => (string) $id)->all();
-
-        return count(array_diff($all, $effective)) === 0 ? [] : $effective;
+        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
     }
 
     /** @return list<string> */

@@ -6,8 +6,8 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Application\Queries\ExpenseIndexQuery;
@@ -37,6 +37,7 @@ final class ExpenseExportController extends Controller
         private readonly ExpenseIndexQuery $expenseIndexQuery,
         private readonly CompanyContext $companyContext,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function __invoke(Request $request): StreamedResponse
@@ -48,8 +49,7 @@ final class ExpenseExportController extends Controller
             abort(401);
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
-        $all = Location::query()->where('company_id', $companyId)->pluck('id')->map(static fn ($id): string => (string) $id)->all();
-        $locationIds = count(array_diff($all, $effective)) === 0 ? [] : $effective;
+        $locationIds = $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
 
         $expenses = $this->expenseIndexQuery->build($request, $companyId, $locationIds)
             ->leftJoin('expense_metadata as export_metadata', 'export_metadata.document_id', '=', 'documents.id')

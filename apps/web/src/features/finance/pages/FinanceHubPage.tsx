@@ -21,6 +21,7 @@ import { cn } from '../../../lib/utils'
 import { tokens } from '../../../lib/designTokens'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { HubCard, HubGrid } from '../../../components/molecules/HubCard'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 
 interface HubCardDef {
   titleKey: string
@@ -163,6 +164,14 @@ export function FinanceHubPage() {
   const { t } = useTranslation(['finance'])
   usePageTitle('hub.title', 'finance')
   const { canAccessModule, hasPermission } = usePermissions()
+  const { scope } = useViewScope()
+
+  const scopedHref = (href: string): string => {
+    if (scope === 'all' || scope.length === 0) return href
+    const params = new URLSearchParams()
+    scope.forEach((locationId) => params.append('location_ids[]', locationId))
+    return `${href}${href.includes('?') ? '&' : '?'}${params.toString()}`
+  }
 
   const filteredSections = sections
     .map((section) => ({
@@ -190,7 +199,7 @@ export function FinanceHubPage() {
             {section.cards.map((card) => (
               <HubCard
                 key={card.href}
-                to={card.href}
+                to={scopedHref(card.href)}
                 icon={card.icon}
                 title={t(card.titleKey)}
                 description={t(card.descriptionKey)}

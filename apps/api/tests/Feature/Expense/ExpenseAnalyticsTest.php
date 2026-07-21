@@ -368,6 +368,7 @@ final class ExpenseAnalyticsTest extends TestCase
         ?Partner $partner = null,
         ?string $vendorName = null,
     ): Document {
+        $documentNumber = 'EXP-'.str_replace('-', '', $date).'-'.Document::query()->count();
         $document = Document::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
@@ -376,13 +377,15 @@ final class ExpenseAnalyticsTest extends TestCase
             'fiscal_category' => FiscalCategory::TaxInvoice,
             'fiscal_status' => $status === DocumentStatus::Posted ? FiscalStatus::Sealed : FiscalStatus::Draft,
             'status' => $status,
-            'document_number' => 'EXP-'.str_replace('-', '', $date).'-'.Document::query()->count(),
+            'document_number' => $documentNumber,
             'document_date' => $date,
             'currency' => $company->currency,
             'subtotal' => $subtotal === '0.00' ? $total : $subtotal,
             'tax_amount' => $taxAmount,
             'total' => $total,
             'balance_due' => $isPaid ? '0.00' : $total,
+            'fiscal_hash' => hash('sha256', $documentNumber),
+            'chain_sequence' => Document::query()->count() + 1,
         ]);
 
         ExpenseMetadata::create([

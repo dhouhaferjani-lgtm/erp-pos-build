@@ -87,6 +87,13 @@ interface MaturityResponse {
   meta: {
     buckets: Record<BucketKey, BucketTotal>
     grand_total: BucketTotal
+    buckets_by_location?: Array<{
+      location_id: string | null
+      location_name: string
+      count: number
+      total_in: string
+      total_out: string
+    }>
   }
 }
 
@@ -327,6 +334,17 @@ export function InstrumentListPage() {
             <StatusBadge key={bucket} tone={bucket === 'overdue' ? 'danger' : 'neutral'}>
               {maturityData.meta.buckets[bucket].count} {t(`treasury:instruments.buckets.${bucket}`)}
             </StatusBadge>
+          ))}
+        </div>
+      ) : null}
+      <p className={cn('text-sm', textColors.tertiary)}>{t('treasury:instruments.originGrainCaveat')}</p>
+      {maturityData?.meta.buckets_by_location ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('treasury:instruments.location')}>
+          {maturityData.meta.buckets_by_location.map((bucket) => (
+            <div key={bucket.location_id ?? 'unattributed'} className="flex items-center justify-between gap-3 text-sm">
+              <span className={textColors.secondary}>{bucket.location_name}</span>
+              <span className={textColors.primary}>{formatAmount(bucket.total_in)}</span>
+            </div>
           ))}
         </div>
       ) : null}

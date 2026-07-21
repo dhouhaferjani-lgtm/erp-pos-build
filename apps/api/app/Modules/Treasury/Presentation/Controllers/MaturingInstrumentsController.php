@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
@@ -24,6 +25,7 @@ final class MaturingInstrumentsController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -51,8 +53,7 @@ final class MaturingInstrumentsController extends Controller
             $this->requestedLocationIds($validated['location_ids'] ?? []),
             null,
         );
-        $allLocationIds = Location::query()->where('company_id', $company->id)->pluck('id')->all();
-        $unrestricted = count(array_diff($allLocationIds, $effectiveLocationIds)) === 0;
+        $unrestricted = $this->locationScopeBoundary->isUnrestricted($company->id, $effectiveLocationIds);
 
         $query = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)

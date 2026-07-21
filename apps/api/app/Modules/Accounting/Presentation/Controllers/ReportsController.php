@@ -36,8 +36,7 @@ use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
-use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Modules\Identity\Domain\User;
@@ -46,7 +45,6 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * ReportsController
@@ -102,6 +100,7 @@ class ReportsController extends Controller
         private readonly LiveSalesReportService $liveSalesReportService,
         private readonly FinanceSummaryService $financeSummaryService,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
@@ -747,12 +746,14 @@ class ReportsController extends Controller
                 ? Carbon::parse($request->input('as_of_date'))
                 : Carbon::today();
 
-            $reportData = $this->agedReceivablesService->generate($companyId, $asOfDate, $this->reportLocationScope($request, $companyId));
+            $reportData = $this->agedReceivablesService->generate(
+                $companyId,
+                $asOfDate,
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
             $payload = $reportData->toArray();
-            if ($request->input('group_by') === 'location') {
-                $payload['buckets_by_location'] = $this->documentLocationBuckets($companyId, DocumentType::Invoice, $this->reportLocationScope($request, $companyId));
-            }
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
@@ -797,12 +798,14 @@ class ReportsController extends Controller
                 ? Carbon::parse($request->input('as_of_date'))
                 : Carbon::today();
 
-            $reportData = $this->agedPayablesService->generate($companyId, $asOfDate, $this->reportLocationScope($request, $companyId));
+            $reportData = $this->agedPayablesService->generate(
+                $companyId,
+                $asOfDate,
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
             $payload = $reportData->toArray();
-            if ($request->input('group_by') === 'location') {
-                $payload['buckets_by_location'] = $this->documentLocationBuckets($companyId, DocumentType::PurchaseOrder, $this->reportLocationScope($request, $companyId));
-            }
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
@@ -860,51 +863,7 @@ class ReportsController extends Controller
             abort(401);
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
-        $all = Location::query()
-            ->where('company_id', $companyId)
-            ->where('is_active', true)
-            ->pluck('id')
-            ->map(static fn ($id): string => (string) $id)
-            ->all();
-
-        return count(array_diff($all, $effective)) === 0 ? [] : $effective;
-    }
-
-    /**
-     * @param list<string> $locationIds
-     * @return list<array{location_id: string|null, location_name: string, total: numeric-string}>
-     */
-    private function documentLocationBuckets(string $companyId, ?DocumentType $type, array $locationIds): array
-    {
-        $company = $this->companyContext->requireCompany();
-        $scale = $this->scaleResolver->getScale($company->currency);
-        $query = DB::table('documents')
-            ->where('company_id', $companyId)
-            ->whereNull('deleted_at')
-            ->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Received->value]);
-        if ($type === null) {
-            $query->whereIn('type', [DocumentType::Invoice->value, DocumentType::SupplierInvoice->value, DocumentType::Expense->value]);
-        } else {
-            $query->where('type', $type->value);
-        }
-        if ($locationIds !== []) {
-            $query->whereIn('location_id', $locationIds);
-        }
-        $rows = $query->get(['location_id', 'balance_due', 'total']);
-        $names = Location::query()->whereIn('id', $locationIds)->pluck('name', 'id');
-        $buckets = [];
-        foreach ($rows as $row) {
-            $key = $row->location_id ?? 'unattributed';
-            $buckets[$key] ??= [
-                'location_id' => $row->location_id,
-                'location_name' => $row->location_id === null ? 'Unattributed' : (string) ($names->get($row->location_id) ?? $row->location_id),
-                'total' => CurrencyScale::bcformatStrict('0', $scale),
-            ];
-            $amount = $type === null && $row->balance_due === null ? $row->total : ($row->balance_due ?? $row->total);
-            $buckets[$key]['total'] = bcadd($buckets[$key]['total'], CurrencyScale::bcformatStrict((string) $amount, $scale), $scale);
-        }
-
-        return array_values($buckets);
+        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
     }
 
     /**

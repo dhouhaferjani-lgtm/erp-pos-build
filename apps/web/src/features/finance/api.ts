@@ -17,6 +17,7 @@ import type {
   AgedReceivablesFilters,
   AgedPayablesData,
   AgedPayablesFilters,
+  UpcomingPaymentsData,
 } from './types'
 
 export async function getAccounts(filters?: AccountFilters): Promise<Account[]> {
@@ -223,8 +224,8 @@ export async function getFinanceSummary(): Promise<App.Modules.Accounting.Applic
 export async function getUpcomingPayments(
   days: number,
   locationIds: string[] = [],
-): Promise<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData> {
-  return apiGet<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData>(
+): Promise<UpcomingPaymentsData> {
+  return apiGet<UpcomingPaymentsData>(
     `/reports/upcoming-payments?days=${String(days)}&group_by=location${locationIds.map((id) => `&location_ids[]=${encodeURIComponent(id)}`).join('')}`
   )
 }

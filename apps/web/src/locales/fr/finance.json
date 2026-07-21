@@ -155,6 +155,8 @@
     }
   },
   "reports": {
+    "locationBreakdown": "Par emplacement",
+    "defaultAttributedCaveat": "Les lignes historiques sans emplacement restent dans le groupe Non attribué.",
     "trialBalance": "Balance generale",
     "profitLoss": "Compte de resultat",
     "balanceSheet": "Bilan",

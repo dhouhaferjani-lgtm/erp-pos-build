@@ -45,6 +45,7 @@ const fixture: AgedPayablesData = {
   total_over_90: '50.00',
   grand_total: '1850.00',
   as_of_date: '2026-06-14',
+  buckets_by_location: [{ location_id: 'loc-a', location_name: 'Store A', total: '1200.00' }],
 }
 
 function normalizeSpaces(value: string): string {
@@ -84,6 +85,15 @@ describe('AgedPayablesPage', () => {
     renderPage()
 
     expect(screen.getByRole('button')).toBeInTheDocument()
+  })
+
+  it('renders the location breakdown and attribution caveat', () => {
+    mockUseAgedPayables.mockReturnValue({ data: fixture, isLoading: false })
+
+    renderPage()
+
+    expect(screen.getByText('finance:reports.defaultAttributedCaveat')).toBeInTheDocument()
+    expect(screen.getByText('Store A')).toBeInTheDocument()
   })
 
   it('right-aligns numeric money cells with tabular figures', () => {

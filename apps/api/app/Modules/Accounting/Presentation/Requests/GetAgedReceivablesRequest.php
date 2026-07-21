@@ -43,12 +43,6 @@ class GetAgedReceivablesRequest extends FormRequest
         ];
     }
 
-    /** @return list<string> */
-    public function locationIds(): array
-    {
-        return array_values(array_filter((array) ($this->validated('location_ids') ?? []), 'is_string'));
-    }
-
     /**
      * Get custom messages for validator errors.
      *

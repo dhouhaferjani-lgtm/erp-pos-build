@@ -45,6 +45,8 @@
     }
   },
   "reports": {
+    "locationBreakdown": "حسب الموقع",
+    "defaultAttributedCaveat": "تبقى السجلات التاريخية التي لا تحتوي على موقع ضمن مجموعة غير منسوب.",
     "profitLossReport": {
       "revenueVsExpenses": "الإيرادات مقابل المصروفات"
     }

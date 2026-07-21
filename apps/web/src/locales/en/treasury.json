@@ -150,6 +150,8 @@
     "maturity": "Maturity",
     "location": "Origin Location",
     "unattributed": "Unattributed",
+    "byLocation": "By location",
+    "originGrainCaveat": "Instrument location is the frozen origin store, not the current custody repository.",
     "status": "Status",
     "amount": "Amount",
     "details": "Instrument Details",

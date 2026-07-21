@@ -277,6 +277,22 @@ export function TreasuryOverviewPage() {
         </div>
       )}
 
+      {upcomingPayments?.buckets_by_location ? (
+        <section className={cn('rounded-lg border p-4', borderColors.light)} aria-label={t('finance:reports.locationBreakdown')}>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('finance:reports.defaultAttributedCaveat')}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {upcomingPayments.buckets_by_location.map((bucket) => (
+              <div key={bucket.location_id ?? 'unattributed'} className="flex items-center justify-between gap-3 text-sm">
+                <span className={textColors.secondary}>{bucket.location_name}</span>
+                <span className={cn('font-medium tabular-nums', textColors.primary)}>
+                  {formatMoney(bucket.net)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <OwnerChart
         title={t('finance:overview.trend.revenueVsExpenses')}
         option={revenueVsExpensesOption}

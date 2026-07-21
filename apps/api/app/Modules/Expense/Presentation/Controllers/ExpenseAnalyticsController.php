@@ -6,8 +6,8 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Expense\Application\DTOs\AnalyticsFilters;
 use App\Modules\Expense\Application\Services\ExpenseAnalyticsService;
 use App\Modules\Expense\Presentation\Requests\ExpenseAnalyticsRequest;
@@ -20,6 +20,7 @@ final class ExpenseAnalyticsController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly ExpenseAnalyticsService $analyticsService,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function __invoke(ExpenseAnalyticsRequest $request): JsonResponse
@@ -29,8 +30,7 @@ final class ExpenseAnalyticsController extends Controller
         $validated = $request->validated();
         $companyId = $this->companyContext->requireCompanyId();
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($validated['location_ids'] ?? null), null);
-        $all = Location::query()->where('company_id', $companyId)->pluck('id')->map(static fn ($id): string => (string) $id)->all();
-        $locationIds = count(array_diff($all, $effective)) === 0 ? [] : $effective;
+        $locationIds = $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
 
         $filters = new AnalyticsFilters(
             date_from: (string) $validated['date_from'],

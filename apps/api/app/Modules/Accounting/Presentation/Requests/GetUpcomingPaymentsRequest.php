@@ -31,9 +31,4 @@ final class GetUpcomingPaymentsRequest extends FormRequest
         return (int) ($this->validated('days') ?? 30);
     }
 
-    /** @return list<string> */
-    public function locationIds(): array
-    {
-        return array_values(array_filter((array) ($this->validated('location_ids') ?? []), 'is_string'));
-    }
 }

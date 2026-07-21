@@ -76,6 +76,20 @@ export function AgedPayablesPage() {
         </FormField>
       </div>
 
+      {payablesData?.buckets_by_location ? (
+        <section className="mb-6 rounded-lg border p-4" aria-label={t('finance:reports.locationBreakdown')}>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('finance:reports.defaultAttributedCaveat')}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {payablesData.buckets_by_location.map((bucket) => (
+              <div key={bucket.location_id ?? 'unattributed'} className="flex items-center justify-between gap-3 text-sm">
+                <span className={textColors.secondary}>{bucket.location_name}</span>
+                <span className={cn('font-medium tabular-nums', textColors.primary)}>{formatMoney(bucket.total)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {/* Report */}
       {isLoading ? (
         <div className={textColors.tertiary}>{t('finance:reports.common.loading')}</div>

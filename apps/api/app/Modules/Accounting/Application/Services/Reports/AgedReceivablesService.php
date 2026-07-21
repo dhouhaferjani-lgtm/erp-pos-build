@@ -9,6 +9,8 @@ use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
+use App\Modules\Company\Domain\Location;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -43,6 +45,7 @@ final readonly class AgedReceivablesService
         string $companyId,
         ?Carbon $asOfDate = null,
         array $locationIds = [],
+        bool $groupByLocation = false,
     ): AgedReceivablesData {
         $asOfDate = $asOfDate ?? Carbon::today();
 
@@ -78,7 +81,49 @@ final readonly class AgedReceivablesService
             'total_days_90' => $totals['days_90'],
             'total_over_90' => $totals['over_90'],
             'grand_total' => $totals['total'],
+            'buckets_by_location' => $groupByLocation ? $this->locationBuckets($invoices, $companyId) : [],
         ]);
+    }
+
+    /**
+     * @param Collection<int, Document> $invoices
+     * @return list<LocationReportBucketData>
+     */
+    private function locationBuckets(Collection $invoices, string $companyId): array
+    {
+        $buckets = [];
+        foreach ($invoices as $invoice) {
+            $key = $invoice->location_id ?? 'unattributed';
+            $buckets[$key] ??= [
+                'location_id' => $invoice->location_id,
+                'total' => '0.0000',
+            ];
+            $buckets[$key]['total'] = bcadd(
+                $buckets[$key]['total'],
+                (string) ($invoice->balance_due ?? '0.0000'),
+                self::DECIMAL_SCALE,
+            );
+        }
+
+        $locationIds = array_values(array_filter(
+            array_keys($buckets),
+            static fn (string|int $id): bool => $id !== 'unattributed',
+        ));
+        $names = Location::query()
+            ->where('company_id', $companyId)
+            ->whereIn('id', $locationIds)
+            ->pluck('name', 'id');
+
+        return array_values(array_map(
+            static fn (array $bucket): LocationReportBucketData => LocationReportBucketData::from([
+                'location_id' => $bucket['location_id'],
+                'location_name' => $bucket['location_id'] === null
+                    ? 'Unattributed'
+                    : (string) ($names->get($bucket['location_id']) ?? $bucket['location_id']),
+                'total' => $bucket['total'],
+            ]),
+            $buckets,
+        ));
     }
 
     /**

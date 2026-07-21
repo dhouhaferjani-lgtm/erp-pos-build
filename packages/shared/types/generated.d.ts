@@ -54,6 +54,7 @@ total_days_60: string;
 total_days_90: string;
 total_over_90: string;
 grand_total: string;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 export type AgedPayablesLineData = {
 vendor_id: string;
@@ -74,6 +75,7 @@ total_days_60: string;
 total_days_90: string;
 total_over_90: string;
 grand_total: string;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 export type AgedReceivablesLineData = {
 customer_id: string;
@@ -171,6 +173,11 @@ export type LiveSalesData = {
 recent_receipts: Array<App.Modules.Accounting.Application.DTOs.Reports.LiveSaleReceiptData>;
 open_shifts_by_location: Record<string, number>;
 generated_at: string;
+};
+export type LocationReportBucketData = {
+location_id: string | null;
+location_name: string;
+total: string;
 };
 export type PaymentMethodBreakdownData = {
 payment_type: string;
