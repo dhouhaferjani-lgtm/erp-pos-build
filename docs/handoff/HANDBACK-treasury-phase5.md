@@ -1,12 +1,12 @@
 # Treasury Phase ⑤ — controller handback
 
-Date: 2026-07-20
+Date: 2026-07-21
 
 Branch: `feat/treasury-phase5`
 
 Design base: `fd10632fb` (`feat/treasury-phase5-design`)
 
-Implementation head at handback preparation: `3ba1139a7`
+Implementation head at handback preparation: `2959571fd`
 
 Status: **PARKED / EXIT REVIEW BLOCKED; merge must remain PARKED because the final treasury Opus and whole-branch Fable reviewers hit the autonomous reviewer-quota wall, and the multi-location §3 prerequisite is absent from `origin/dev`.**
 
@@ -64,8 +64,8 @@ Passed and tagged: `t5a-gate-1`, `t5a-gate-2`, `t5a-gate-3`, `t5a-gate-4`, `t5b-
 
 At handback preparation time:
 
-- Gate 5 treasury Opus: prior r2 **REJECT** findings were corrected; fresh r3 and r4 reruns both interrupted after 9:58/11:01 with no output. Exact records: `.gates/gate-t5b-gate-5-verdict-treasury-r3-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-treasury-r4-interrupted.md`.
-- Gate 5 frontend-conventions: Opus r3/r4 remained rejected for review-environment evidence/raw-table issues; the required Fable escalation independently **APPROVED** the corrected frontend at `.gates/gate-t5b-gate-5-verdict-frontend-conventions-fable-escalation.md`.
+- Gate 5 treasury Opus: prior r2 **REJECT** findings were corrected; r3/r4/r5 reruns interrupted after approximately 9:58/11:01/13:04 with no output. Exact records: `.gates/gate-t5b-gate-5-verdict-treasury-r3-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-treasury-r4-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-treasury-r5-interrupted.md`.
+- Gate 5 frontend-conventions: prior Opus rejects identified mutation-control and smoke-config defects; those are corrected in `2959571fd` with page-render coverage. The committed-HEAD Opus r7 and Fable r2 escalation both reached the reviewer runtime wall after approximately 10 minutes with empty output; exact records: `.gates/gate-t5b-gate-5-verdict-frontend-conventions-r7-interrupted.md`, `.gates/gate-t5b-gate-5-verdict-frontend-conventions-fable-r2-interrupted.md`.
 - Whole-branch Fable exit: launched with the escalation context, then interrupted after 9:56 with no verdict; exact record: `.gates/gate-t5b-exit-verdict-fable-interrupted.md`.
 - `t5b-gate-5`: **not tagged and not approved**. Do not merge or promote until the controller reruns the missing reviewers after quota recovery and records explicit approvals.
 
@@ -75,7 +75,7 @@ The committed `.gates/` directory is the audit trail for every reject, escalatio
 
 Latest Wave 5 evidence before the final review:
 
-- Statement-focused Vitest: 9/9 passed.
+- Statement-focused Vitest: 9/9 passed (including the read-only/reconciled LinePanel and page-render coverage).
 - Frontend cutover paths: 86 tests passed.
 - Web typecheck passed.
 - Full web lint passed with 0 errors, 0 new tenant-key/design-system findings, and custom rule tests green; repository-wide acknowledged warnings remain.
@@ -96,7 +96,7 @@ Backend tests were always run by explicit path; the full PHPUnit suite was never
 - Backend completion/matching/acquirer paths: 12 tests / 87 assertions; targeted PHPStan and Pint passed.
 - Fresh committed-config Playwright smoke: 6/6 passed in 28.8s, including Tier 3/4 server assertions, ignored-line balance semantics, checkpoint, and rejected same-date writes.
 - `treasury:reconcile --tenant=019f2313-4ff7-73aa-99fd-fc6fbbedcce4`: 9 repositories checked; 0 freezes, 0 portfolio drifts, 0 statement alerts, 0 errors.
-- The only blockers to final exit are missing authoritative reviewer verdicts, not a known local test failure.
+- The only blockers to final exit are missing authoritative reviewer verdicts, not a known local test failure. The latest reviewer attempts were empty after the documented runtime wall; no approval or `t5b-gate-5` tag was fabricated.
 
 ## Deployment
 
