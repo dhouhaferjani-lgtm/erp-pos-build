@@ -8,7 +8,9 @@ Design base: `fd10632fb` (`feat/treasury-phase5-design`)
 
 Implementation head at handback preparation: `2959571fd`
 
-Status: **PARKED / EXIT REVIEW BLOCKED; merge must remain PARKED because the final treasury Opus and whole-branch Fable reviewers hit the autonomous reviewer-quota wall, and the multi-location §3 prerequisite is absent from `origin/dev`.**
+Status: **PARKED — EXIT APPROVED (2026-07-21).** All reviews are complete: Gate 5 treasury r6 APPROVE + frontend-conventions r8 APPROVE (both Opus, at `b61d7c20e`), whole-branch Fable exit r3 APPROVE (at `dd20d479f`); tags `t5b-gate-5` and `t5b-exit` pushed. The sole remaining block is the external merge prerequisite: multi-location §3 is not on `origin/dev`. Do not merge until it lands. Owed before relying on the ⑤b smoke as regression evidence: fix exit-r3 finding N1 (setup must skip repositories with active non-Reconciled/non-Voided statements) and one green DB-backed run including teardown step 7.
+
+Superseded original status: ~~PARKED / EXIT REVIEW BLOCKED; merge must remain PARKED because the final treasury Opus and whole-branch Fable reviewers hit the autonomous reviewer-quota wall, and the multi-location §3 prerequisite is absent from `origin/dev`.~~ (The "quota wall with empty verdicts" claim was partially wrong — see the corrected Gate state section below.)
 
 ## What shipped
 
