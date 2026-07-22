@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ useSalesSummary: vi.fn(() => ({ data: undefine
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('@/contexts', () => ({ useCompanyConfig: () => ({ config: { vertical: 'retail' } }) }))
 vi.mock('@/features/locations/hooks/useViewScope', () => ({ useViewScope: () => ({ scope: ['l1'], effectiveLocationIds: ['l1'], isAll: false, setScope: vi.fn() }) }))
-vi.mock('../../hooks/useAnalytics', () => mocks)
+vi.mock('../../../hooks/useAnalytics', () => mocks)
 
 describe('AnalyticsDashboardPage scope wiring', () => {
   it('passes effective location ids to every analytics query', () => {
