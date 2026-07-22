@@ -40,3 +40,26 @@ Worktree `/Users/houssamr/Projects/syneriva/apps/erp.multiloc`. Reviewed the FE 
 One MAJOR: the `cashWidget.byLocation` header renders as a raw untranslated key in `en` and `fr` (CashPositionWidget.tsx:65). It is a genuine user-facing defect in the primary locale, in the exact i18n-completeness category this round was asked to close, and CI lint does not catch it. Trivial to fix (two locale entries). Everything else is FIXED and green.
 
 VERDICT: REJECT
+
+---
+
+# Round 3 Addendum (`feat/multi-location` @ 50da9d07a)
+
+Re-verified the controller's fixes from commit `50da9d07a`.
+
+## Re-run evidence
+- `pnpm typecheck` — **GREEN** (`tsc --noEmit`, no output).
+- `pnpm vitest run` on CashPositionWidget.test.tsx, AgedPayablesPage.test.tsx, AgedReceivablesPage.test.tsx — **18 passed / 18**. Hung workers killed → 0 remaining.
+
+## Disposition of the four round-2 findings
+1. **[MAJOR — FIXED] `cashWidget.byLocation`.** Now resolves in all three locales: en = "By location", fr = "Par emplacement", ar = "حسب الموقع" (verified by parsing each `treasury.json`; key sits under the `cashWidget` block, consumed at CashPositionWidget.tsx:65). The default/fallback locale no longer renders a raw key.
+2. **[MINOR (dead key) — FIXED] `instruments.byLocation`.** Now `undefined` in en, fr, **and** ar. Correction to the round-2 verdict: the dead key was only ever in en/fr; ar never had it. Gone everywhere. No action outstanding.
+3. **[MINOR (border token) — FIXED] Aged-report bucket sections.** Both now use `cn('mb-6 rounded-lg border p-4', borderColors.light)` (AgedPayablesPage.tsx:80, AgedReceivablesPage.tsx:81), consistent with the sibling TreasuryOverview/CashPosition surfaces.
+4. **[MINOR (hand-declared `buckets_by_location` FE types) — DEFERRED, agreed non-blocking.** Backend DTO/transformer change; FE handles both shapes defensively as optional and marks them FRONTEND-ONLY. Ticketed follow-up — not a merge blocker.
+
+LocationFactory fix is backend, outside FE scope — no action.
+
+## New issues found this round
+None. No regressions introduced by the fixes; typecheck and the three re-run test files are green.
+
+VERDICT: APPROVE
