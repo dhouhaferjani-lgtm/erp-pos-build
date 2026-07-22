@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:0f2ce427d0b2c5d14722bf58d32fd48bb9915ad4735e26516de330e344ed19e8
+// Source hash: sha256:aef7efcad22c718f408a26351c9ff711da9d2689682e27660b78d147b35541bd
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -249,6 +249,7 @@ export const PERMISSIONS = {
   'users.assign-roles': ['admin'],
   'users.create': ['admin'],
   'users.delete': ['admin'],
+  'users.manage_location_access': ['admin'],
   'users.update': ['admin'],
   'users.view': ['admin', 'manager'],
   'vehicles.create': ['admin', 'manager', 'operator'],

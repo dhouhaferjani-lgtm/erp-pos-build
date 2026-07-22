@@ -5,6 +5,9 @@
     "loading": "جار تحميل التقرير…",
     "error": "التقرير غير متاح.",
     "noData": "لا توجد بيانات لهذه الفترة.",
+    "cashAcrossStores": { "title": "النقدية حسب المواقع", "total": "إجمالي النقدية", "view": "عرض ملخص النقدية", "empty": "لا توجد بيانات نقدية" },
+    "dueThisWeek": { "title": "المستحق هذا الأسبوع", "summary": "{{count}} أدوات", "inbound": "واردة", "outbound": "صادرة", "view": "عرض الأدوات", "empty": "لا توجد استحقاقات هذا الأسبوع" },
+    "rebalanceAlerts": { "title": "تنبيهات إعادة التوازن", "view": "عرض المخزون حسب الموقع", "empty": "لا توجد تنبيهات" },
     "filters": {
       "from": "من",
       "to": "إلى",
@@ -22,7 +25,12 @@
     "salesTrend": {
       "title": "المبيعات عبر الزمن",
       "today": "اليوم",
-      "sameWeekdayLastWeek": "نفس اليوم من الأسبوع الماضي"
+      "sameWeekdayLastWeek": "نفس اليوم من الأسبوع الماضي",
+      "seriesMode": {
+        "label": "سلاسل المبيعات",
+        "rollup": "جميع المواقع",
+        "per-location": "حسب الموقع"
+      }
     },
     "kpi": {
       "totalSales": "إجمالي المبيعات",

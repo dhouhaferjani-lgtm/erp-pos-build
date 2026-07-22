@@ -16,7 +16,8 @@ import { api } from '@/lib/api'
 import { tokens, textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { formatCurrency } from '@/lib/format'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -58,6 +59,8 @@ interface Instrument {
   needs_details: boolean
   repository_id: string | null
   repository: InstrumentRelation | null
+  location_id: string | null
+  location_name?: string | null
 }
 
 interface InstrumentsResponse {
@@ -67,19 +70,7 @@ interface InstrumentsResponse {
 
 type BucketKey = 'overdue' | 'd0_7' | 'd8_30' | 'd31_60' | 'd61_90' | 'd90_plus'
 
-interface BucketTotal {
-  count: number
-  total_in: string
-  total_out: string
-}
-
-interface MaturityResponse {
-  data: unknown[]
-  meta: {
-    buckets: Record<BucketKey, BucketTotal>
-    grand_total: BucketTotal
-  }
-}
+type MaturityResponse = App.Modules.Treasury.Application.DTOs.MaturingInstrumentsData
 
 const instrumentStatusTones: Record<string, StatusTone> = {
   received: 'pending',
@@ -108,13 +99,14 @@ export function InstrumentListPage() {
   const [maturityTo, setMaturityTo] = useState(() => searchParams.get('maturity_to') ?? '')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  const { scope, effectiveLocationIds } = useViewScope()
 
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const filterKey = { direction, kind, maturityFrom, maturityTo, needsDetails, page, perPage }
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['instruments', filterKey]),
+    queryKey: locationScopedKey(['instruments', filterKey], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (kind) params.set('kind', kind)
@@ -122,6 +114,7 @@ export function InstrumentListPage() {
       if (needsDetails) params.set('needs_details', needsDetails)
       if (maturityFrom) params.set('maturity_from', maturityFrom)
       if (maturityTo) params.set('maturity_to', maturityTo)
+      effectiveLocationIds.forEach((locationId) => params.append('location_ids[]', locationId))
       params.set('page', String(page))
       params.set('per_page', String(perPage))
       const response = await api.get<InstrumentsResponse>(`/payment-instruments?${params.toString()}`)
@@ -132,7 +125,7 @@ export function InstrumentListPage() {
 
   const maturityFilterKey = { direction, kind, maturityFrom, maturityTo, needsDetails }
   const { data: maturityData } = useQuery({
-    queryKey: tenantScopedKey(['maturing-instruments', maturityFilterKey]),
+    queryKey: locationScopedKey(['maturing-instruments', maturityFilterKey], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (kind) params.set('kind', kind)
@@ -140,6 +133,7 @@ export function InstrumentListPage() {
       if (needsDetails) params.set('needs_details', needsDetails)
       if (maturityFrom) params.set('from', maturityFrom)
       if (maturityTo) params.set('to', maturityTo)
+      effectiveLocationIds.forEach((locationId) => params.append('location_ids[]', locationId))
       const suffix = params.toString()
       const response = await api.get<MaturityResponse>(
         `/treasury/maturing-instruments${suffix ? `?${suffix}` : ''}`,
@@ -208,6 +202,11 @@ export function InstrumentListPage() {
           {instrument.repository.name}
         </Link>
       ) : <span className={textColors.tertiary}>—</span>,
+    },
+    {
+      key: 'location',
+      header: t('treasury:instruments.location'),
+      render: (instrument) => instrument.location_name ?? t('treasury:instruments.unattributed'),
     },
     {
       key: 'received',
@@ -310,6 +309,17 @@ export function InstrumentListPage() {
             <StatusBadge key={bucket} tone={bucket === 'overdue' ? 'danger' : 'neutral'}>
               {maturityData.meta.buckets[bucket].count} {t(`treasury:instruments.buckets.${bucket}`)}
             </StatusBadge>
+          ))}
+        </div>
+      ) : null}
+      <p className={cn('text-sm', textColors.tertiary)}>{t('treasury:instruments.originGrainCaveat')}</p>
+      {maturityData?.meta.buckets_by_location ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('treasury:instruments.location')}>
+          {maturityData.meta.buckets_by_location.map((bucket) => (
+            <div key={bucket.location_id ?? 'unattributed'} className="flex items-center justify-between gap-3 text-sm">
+              <span className={textColors.secondary}>{bucket.location_name}</span>
+              <span className={textColors.primary}>{formatAmount(bucket.total_in)}</span>
+            </div>
           ))}
         </div>
       ) : null}

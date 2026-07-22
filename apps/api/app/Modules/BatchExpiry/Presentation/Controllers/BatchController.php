@@ -19,6 +19,8 @@ use App\Modules\BatchExpiry\Presentation\Requests\UpdateBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\WriteOffBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +37,7 @@ class BatchController extends Controller
         private readonly BatchStockService $batchStockService,
         private readonly BatchWriteOffService $batchWriteOffService,
         private readonly ReverseWriteOffService $reverseWriteOffService,
+        private readonly LocationScopeResolver $locationScopeResolver,
     ) {}
 
     /**
@@ -234,9 +237,21 @@ class BatchController extends Controller
     public function expired(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $locationId = $request->input('location_id') !== null ? (string) $request->input('location_id') : null;
 
-        $batches = $this->fefoService->getExpiredBatchesWithStock($companyId, $locationId);
+        $validated = $request->validate([
+            'location_id' => ['sometimes', 'nullable', 'string', 'uuid'],
+            'location_ids' => ['sometimes', 'array', 'list'],
+            'location_ids.*' => ['string', 'uuid'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $requestedLocationIds = array_key_exists('location_ids', $validated)
+            ? array_values($validated['location_ids'])
+            : (($validated['location_id'] ?? null) !== null ? [(string) $validated['location_id']] : []);
+        $locationIds = $this->locationScopeResolver->resolve($user, $requestedLocationIds);
+
+        $batches = $this->fefoService->getExpiredBatchesWithStock($companyId, $locationIds);
 
         return response()->json([
             'data' => BatchResource::collection($batches),

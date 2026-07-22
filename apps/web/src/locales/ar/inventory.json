@@ -239,5 +239,38 @@
     "minimumMarginShort": "الأدنى",
     "suggestedPriceButton": "السعر المقترح (الهامش المستهدف)",
     "cannotSellAtPrice": "ليست لديك صلاحية البيع بهذا السعر. تواصل مع المدير للموافقة."
+  },
+  "stock": {
+    "title": "مستويات المخزون",
+    "location": "الموقع",
+    "viewByLocation": "حسب الموقع ({{count}})",
+    "locationOnHand": "الموجود",
+    "locationReserved": "محجوز",
+    "locationAvailable": "المتاح",
+    "locationIncoming": "الوارد",
+    "thresholds": "الحد الأدنى / الأقصى",
+    "actions": "الإجراءات",
+    "transferFromHere": "تحويل من هنا",
+    "noLocations": "لم يتم إعداد مواقع",
+    "onHand": "الموجود",
+    "available": "المتاح",
+    "reserved": "محجوز",
+    "incoming": "الوارد",
+    "projectedAvailable": "المتاح المتوقع",
+    "stockValue": "قيمة المخزون",
+    "noStock": "لا تتوفر معلومات عن المخزون",
+    "minQuantity": "الحد الأدنى للكمية",
+    "maxQuantity": "الحد الأقصى للكمية"
+  },
+  "stockByLocation": {
+    "title": "المخزون حسب الموقع",
+    "subtitle": "راجع التوفر والحدود الدنيا والعليا لكل موقع.",
+    "search": "البحث عن المنتجات",
+    "empty": "لا يوجد مخزون",
+    "product": "المنتج",
+    "thresholdsNotApplicable": "الحدود حسب المتغير",
+    "metric": { "label": "مؤشر المخزون", "available": "المتاح", "onHand": "الموجود", "thresholds": "الحد الأدنى / الأقصى" },
+    "baseGrainSuffix": " (أساسي)",
+    "rebalance": { "title": "اقتراحات إعادة التوازن", "empty": "لا توجد اقتراحات لإعادة التوازن" }
   }
 }

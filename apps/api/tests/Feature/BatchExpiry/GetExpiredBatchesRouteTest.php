@@ -248,6 +248,48 @@ class GetExpiredBatchesRouteTest extends TestCase
         $this->assertSame($batchAtMain->uuid, $response->json('data.0.uuid'));
     }
 
+    public function test_location_ids_filter_scopes_results_to_multiple_locations(): void
+    {
+        $otherLocation = Location::factory()->create(['company_id' => $this->company->id]);
+
+        $batchAtMain = $this->createExpiredBatch(
+            batchNumber: 'EXP-ROUTE-LOC-LIST-MAIN',
+            quantity: '4.0000',
+            reservedQuantity: '0.0000',
+            locationId: $this->location->id,
+        );
+        $batchAtOther = $this->createExpiredBatch(
+            batchNumber: 'EXP-ROUTE-LOC-LIST-OTHER',
+            quantity: '4.0000',
+            reservedQuantity: '0.0000',
+            locationId: $otherLocation->id,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')->getJson(
+            '/api/v1/batches/expired?location_ids[]='.$this->location->id.'&location_ids[]='.$otherLocation->id,
+        );
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(
+            [$batchAtMain->uuid, $batchAtOther->uuid],
+            array_column($response->json('data') ?? [], 'uuid'),
+        );
+    }
+
+    public function test_location_ids_outside_membership_scope_are_forbidden(): void
+    {
+        $otherLocation = Location::factory()->create(['company_id' => $this->company->id]);
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => [$this->location->id]]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/batches/expired?location_ids[]='.$otherLocation->id)
+            ->assertForbidden();
+    }
+
     public function test_returns_empty_when_no_expired_lots_with_available_stock(): void
     {
         // No batches at all → empty data array

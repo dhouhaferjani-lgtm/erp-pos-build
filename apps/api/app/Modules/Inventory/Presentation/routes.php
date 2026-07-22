@@ -12,6 +12,7 @@ use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\LocationNodeController;
 use App\Modules\Inventory\Presentation\Controllers\ProductPlacementController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
+use App\Modules\Inventory\Presentation\Controllers\StockMatrixController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
 use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
 use App\Modules\Inventory\Presentation\Controllers\StockTransferController;
@@ -60,6 +61,17 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/stock-levels/{product}/{location}', [StockLevelController::class, 'show'])
         ->middleware('can:inventory.view')
         ->name('stock-levels.show');
+
+    Route::put('/inventory/stock-levels/thresholds', [StockLevelController::class, 'updateThresholds'])
+        ->middleware('can:inventory.adjust')
+        ->name('stock-levels.thresholds.update');
+
+    Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('inventory.stock-matrix');
+    Route::get('/inventory/stock-matrix/rebalance', [StockMatrixController::class, 'rebalance'])
+        ->middleware('can:inventory.view')
+        ->name('inventory.stock-matrix.rebalance');
 
     // Stock Movements
     Route::get('/stock-movements', [StockMovementController::class, 'index'])

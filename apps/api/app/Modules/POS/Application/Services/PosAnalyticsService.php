@@ -4,24 +4,34 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\POS\Application\DTOs\CustomerAnalyticsData;
 use App\Modules\POS\Application\DTOs\DiscountAnalysisData;
 use App\Modules\POS\Application\DTOs\FnbMetricsData;
 use App\Modules\POS\Application\DTOs\SalesSummaryData;
 use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 final class PosAnalyticsService
 {
+    public function __construct(
+        private readonly LocationScopeBoundary $locationScopeBoundary,
+    ) {}
+
     /**
      * Sales summary: counts, totals, averages, payment breakdown.
+     *
+     * @param  list<string>  $locationIds
      */
-    public function getSalesSummary(string $companyId, CarbonImmutable $from, CarbonImmutable $to): SalesSummaryData
+    public function getSalesSummary(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): SalesSummaryData
     {
         $receipts = DB::table('pos_receipts')
             ->where('company_id', $companyId)
             ->where('is_voided', false)
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->selectRaw('COUNT(*) as receipt_count')
             ->selectRaw('COALESCE(SUM(subtotal), 0) as gross_sales')
             ->selectRaw('COALESCE(SUM(total), 0) as net_sales')
@@ -38,6 +48,7 @@ final class PosAnalyticsService
             ->where('company_id', $companyId)
             ->where('is_voided', true)
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->count();
 
         $payments = DB::table('pos_receipt_payments')
@@ -45,6 +56,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_payments.payment_type')
             ->selectRaw('pos_receipt_payments.payment_type')
             ->selectRaw('COALESCE(SUM(pos_receipt_payments.amount), 0) as total')
@@ -73,9 +85,10 @@ final class PosAnalyticsService
     /**
      * Sales grouped by product category.
      *
+     * @param  list<string>  $locationIds
      * @return array<int, array{category_name: string, total: string, count: int}>
      */
-    public function getSalesByCategory(string $companyId, CarbonImmutable $from, CarbonImmutable $to): array
+    public function getSalesByCategory(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): array
     {
         $rows = DB::table('pos_receipt_lines')
             ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
@@ -84,6 +97,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('categories.name')
             ->selectRaw("COALESCE(categories.name, 'Uncategorized') as category_name")
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
@@ -101,15 +115,17 @@ final class PosAnalyticsService
     /**
      * Top products by sales volume.
      *
+     * @param  list<string>  $locationIds
      * @return array<int, array{product_name: string, total: string, quantity: string}>
      */
-    public function getSalesByProduct(string $companyId, CarbonImmutable $from, CarbonImmutable $to, int $limit = 20): array
+    public function getSalesByProduct(string $companyId, CarbonImmutable $from, CarbonImmutable $to, int $limit = 20, array $locationIds = []): array
     {
         $rows = DB::table('pos_receipt_lines')
             ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_lines.product_name')
             ->selectRaw('pos_receipt_lines.product_name')
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
@@ -128,9 +144,10 @@ final class PosAnalyticsService
     /**
      * Sales grouped by time period (hour, day, week, month).
      *
+     * @param  list<string>  $locationIds
      * @return array<int, array{period: string, total: string, count: int}>
      */
-    public function getSalesByTimePeriod(string $companyId, CarbonImmutable $from, CarbonImmutable $to, string $granularity = 'day'): array
+    public function getSalesByTimePeriod(string $companyId, CarbonImmutable $from, CarbonImmutable $to, string $granularity = 'day', array $locationIds = []): array
     {
         $isSqlite = DB::connection()->getDriverName() === 'sqlite';
 
@@ -142,6 +159,7 @@ final class PosAnalyticsService
             ->where('company_id', $companyId)
             ->where('is_voided', false)
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->groupByRaw($truncExpr)
             ->selectRaw("{$truncExpr} as period")
             ->selectRaw('COALESCE(SUM(total), 0) as total')
@@ -159,14 +177,16 @@ final class PosAnalyticsService
     /**
      * Cashier performance metrics.
      *
+     * @param  list<string>  $locationIds
      * @return array<int, array{cashier_id: string, cashier_name: string, receipt_count: int, total_sales: string, average_ticket: string}>
      */
-    public function getCashierPerformance(string $companyId, CarbonImmutable $from, CarbonImmutable $to): array
+    public function getCashierPerformance(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): array
     {
         $rows = DB::table('pos_receipts')
             ->where('company_id', $companyId)
             ->where('is_voided', false)
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->groupBy('cashier_id', 'cashier_name')
             ->selectRaw('cashier_id')
             ->selectRaw('cashier_name')
@@ -188,13 +208,15 @@ final class PosAnalyticsService
     /**
      * Discount analysis: totals, by reason, top discounted products.
      */
-    public function getDiscountAnalysis(string $companyId, CarbonImmutable $from, CarbonImmutable $to): DiscountAnalysisData
+    /** @param list<string> $locationIds */
+    public function getDiscountAnalysis(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): DiscountAnalysisData
     {
         $totals = DB::table('pos_receipt_lines')
             ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.discount_amount), 0) as total_discount_amount')
             ->selectRaw('COUNT(*) as discount_count')
@@ -208,6 +230,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.discount_reason')
             ->selectRaw("COALESCE(pos_receipt_lines.discount_reason, 'No reason') as reason")
@@ -221,6 +244,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.product_name')
             ->selectRaw('pos_receipt_lines.product_name')
@@ -249,12 +273,14 @@ final class PosAnalyticsService
     /**
      * Customer analytics: unique, returning, top customers.
      */
-    public function getCustomerAnalytics(string $companyId, CarbonImmutable $from, CarbonImmutable $to): CustomerAnalyticsData
+    /** @param list<string> $locationIds */
+    public function getCustomerAnalytics(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): CustomerAnalyticsData
     {
         $base = DB::table('pos_receipts')
             ->where('company_id', $companyId)
             ->where('is_voided', false)
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->whereNotNull('partner_id');
 
         $uniqueCustomers = (clone $base)->distinct('partner_id')->count('partner_id');
@@ -299,7 +325,8 @@ final class PosAnalyticsService
     /**
      * F&B-specific metrics: table time, items per order, peak hours.
      */
-    public function getFnbMetrics(string $companyId, CarbonImmutable $from, CarbonImmutable $to): FnbMetricsData
+    /** @param list<string> $locationIds */
+    public function getFnbMetrics(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = [], bool $includeUnattributed = false): FnbMetricsData
     {
         $isSqlite = DB::connection()->getDriverName() === 'sqlite';
 
@@ -307,6 +334,7 @@ final class PosAnalyticsService
             ->where('company_id', $companyId)
             ->where('status', 'closed')
             ->whereBetween('opened_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id', true, $includeUnattributed))
             ->whereNotNull('closed_at');
 
         $avgTimeExpr = $isSqlite
@@ -322,6 +350,7 @@ final class PosAnalyticsService
             ->where('pos_orders.company_id', $companyId)
             ->where('pos_orders.status', 'closed')
             ->whereBetween('pos_orders.opened_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'pos_orders.location_id', true, $includeUnattributed))
             ->groupBy('pos_order_lines.order_id')
             ->selectRaw('COUNT(*) as line_count');
 
@@ -338,6 +367,7 @@ final class PosAnalyticsService
             ->where('company_id', $companyId)
             ->where('status', 'closed')
             ->whereBetween('opened_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id', true, $includeUnattributed))
             ->groupByRaw($hourExpr)
             ->selectRaw("{$hourExpr} as hour")
             ->selectRaw('COUNT(*) as order_count')
@@ -348,6 +378,7 @@ final class PosAnalyticsService
             ->where('company_id', $companyId)
             ->where('status', 'closed')
             ->whereBetween('opened_at', [$from->startOfDay(), $to->endOfDay()])
+            ->where($this->locationScope($companyId, $locationIds, 'location_id', true, $includeUnattributed))
             ->whereNotNull('consumption_mode')
             ->groupBy('consumption_mode')
             ->selectRaw('consumption_mode as mode')
@@ -386,6 +417,24 @@ final class PosAnalyticsService
             'week' => "date(posted_at, 'weekday 0', '-6 days')",
             'month' => "strftime('%Y-%m-01', posted_at)",
             default => 'date(posted_at)',
+        };
+    }
+
+    /**
+     * Build a fail-closed location predicate. NULL is visible only to an
+     * unrestricted caller and only for nullable location columns.
+     *
+     * @param  list<string>  $locationIds
+     */
+    private function locationScope(string $companyId, array $locationIds, string $column, bool $includeNull = false, ?bool $unrestrictedOverride = null): Closure
+    {
+        $unrestricted = $unrestrictedOverride ?? $this->locationScopeBoundary->isUnrestricted($companyId, $locationIds);
+
+        return static function (Builder $query) use ($locationIds, $column, $includeNull, $unrestricted): void {
+            $query->whereIn($column, $locationIds);
+            if ($includeNull && $unrestricted) {
+                $query->orWhereNull($column);
+            }
         };
     }
 }

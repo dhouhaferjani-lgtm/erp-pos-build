@@ -13,6 +13,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -225,6 +226,9 @@ class PaymentTest extends TestCase
 
     public function test_can_create_payment_with_allocation(): void
     {
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->invoice->update(['location_id' => $location->id]);
+
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $this->customer->id,
             'payment_method_id' => $this->cashMethod->id,
@@ -241,6 +245,10 @@ class PaymentTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.amount', '1190.000');
         $response->assertJsonCount(1, 'data.allocations');
+        $this->assertDatabaseHas('payments', [
+            'id' => $response->json('data.id'),
+            'location_id' => $location->id,
+        ]);
     }
 
     public function test_payment_updates_invoice_balance(): void

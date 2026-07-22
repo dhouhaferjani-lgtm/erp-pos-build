@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
@@ -43,9 +44,10 @@ function useOwnerReportsEnabled(): boolean {
 
 export function useSalesByLocation(params: SalesByLocationParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.salesByLocation(params)),
+    queryKey: locationScopedKey(ownerReportKeys.salesByLocation(params), scope),
     queryFn: () => fetchSalesByLocation(params),
     enabled,
     ...buildOwnerReportRefreshOptions(params),
@@ -54,9 +56,10 @@ export function useSalesByLocation(params: SalesByLocationParams, canFetch = tru
 
 export function useTopSkus(params: TopSkusParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.topSkus(params)),
+    queryKey: locationScopedKey(ownerReportKeys.topSkus(params), scope),
     queryFn: () => fetchTopSkus(params),
     enabled,
     ...buildOwnerReportRefreshOptions(params),
@@ -65,9 +68,10 @@ export function useTopSkus(params: TopSkusParams, canFetch = true) {
 
 export function useRevenueByCategory(params: OwnerDateRangeParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.revenueByCategory(params)),
+    queryKey: locationScopedKey(ownerReportKeys.revenueByCategory(params), scope),
     queryFn: () => fetchRevenueByCategory(params),
     enabled,
     ...buildOwnerReportRefreshOptions(params),
@@ -76,9 +80,10 @@ export function useRevenueByCategory(params: OwnerDateRangeParams, canFetch = tr
 
 export function usePaymentMethodBreakdown(params: OwnerDateRangeParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.paymentMethods(params)),
+    queryKey: locationScopedKey(ownerReportKeys.paymentMethods(params), scope),
     queryFn: () => fetchPaymentMethodBreakdown(params),
     enabled,
   })
@@ -86,9 +91,10 @@ export function usePaymentMethodBreakdown(params: OwnerDateRangeParams, canFetch
 
 export function useLowStockAlerts(params: StockAlertsParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.stockAlerts(params)),
+    queryKey: locationScopedKey(ownerReportKeys.stockAlerts(params), scope),
     queryFn: () => fetchLowStockAlerts(params),
     enabled,
   })
@@ -96,9 +102,10 @@ export function useLowStockAlerts(params: StockAlertsParams, canFetch = true) {
 
 export function useCashRegisterReconciliation(params: CashReconciliationParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.cashReconciliation(params)),
+    queryKey: locationScopedKey(ownerReportKeys.cashReconciliation(params), scope),
     queryFn: () => fetchCashRegisterReconciliation(params),
     enabled,
   })
@@ -106,9 +113,10 @@ export function useCashRegisterReconciliation(params: CashReconciliationParams, 
 
 export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.salesSummary(params)),
+    queryKey: locationScopedKey(ownerReportKeys.salesSummary(params), scope),
     queryFn: () => fetchSalesSummary(params),
     enabled,
     ...buildOwnerReportRefreshOptions(params),
@@ -117,9 +125,10 @@ export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
 
 export function useLiveSales(canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
+  const { scope } = useViewScope()
 
   return useQuery({
-    queryKey: tenantScopedKey(ownerReportKeys.liveSales()),
+    queryKey: locationScopedKey(ownerReportKeys.liveSales(), scope),
     queryFn: () => fetchLiveSales(),
     enabled,
     refetchInterval: 15000,

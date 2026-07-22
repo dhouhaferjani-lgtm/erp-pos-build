@@ -6,7 +6,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useLogout } from '../../../features/auth/useLogout'
 import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
-import { LocationSwitcher } from '../LocationSwitcher'
+import { ViewScopePicker } from '../ViewScopePicker'
 import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndicator'
 import { QuickCreateButton } from './QuickCreateButton'
 import { useScopeChangeNotice } from '../../../hooks/useScopeChangeNotice'
@@ -17,10 +17,9 @@ import { NotificationBell } from '../../../features/notifications/components/Not
 interface TopBarProps {
   onMenuClick?: () => void
   onSearchClick?: () => void
-  showLocationSwitcher?: boolean
 }
 
-export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true }: TopBarProps) {
+export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
@@ -111,7 +110,7 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
           <CompanySelector />
 
           {/* Location selector for multi-location companies */}
-          {showLocationSwitcher && <LocationSwitcher />}
+          <ViewScopePicker />
         </div>
 
         {/* Language selector */}

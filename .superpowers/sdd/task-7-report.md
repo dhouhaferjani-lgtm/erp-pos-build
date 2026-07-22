@@ -1,70 +1,36 @@
-# Task 7 report — recurring expense template schema
+# Wave 1 Task 7 report — `viewScopeStore`
 
-Status: **DONE — focused and Expense regressions green**
+- Base: `ac053aa2f116e600860af18f1a88adb29d9652b6`
+- Head: `18c10d23c` (`feat(multiloc): viewScopeStore — per-company persisted view scope (§1 FE)`)
 
-## Outcome
+## Files
 
-- Added the `expense_recurrence_templates` tenant table with the complete spec §6.1 field set.
-- Added nullable `expense_metadata.recurrence_template_id` linkage with `SET NULL` deletion behavior.
-- Added string-backed `RecurrenceFrequency` and `RecurrenceStatus` enums.
-- Added the `ExpenseRecurrenceTemplate` UUID model with complete fillable fields, enum/date/decimal/integer casts, default active status, default three-day lead, and scoped entity relations.
-- Kept recurrence cursor math, CRUD, permissions, generation, and scheduling out of Task 7.
+- `apps/web/src/stores/viewScopeStore.ts`
+- `apps/web/src/stores/viewScopeStore.test.ts`
 
 ## TDD evidence
 
-### RED
+- RED: `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts` — failed during collection because `./viewScopeStore` did not exist (expected missing-feature failure).
+- GREEN: same command — `4 tests passed`.
 
-Command:
+## Verification
 
-```text
-cd apps/api
-./vendor/bin/phpunit tests/Feature/Expense/ExpenseRecurrenceTemplateModelTest.php
-```
+- `cd apps/web && pnpm typecheck` — pass.
+- `cd apps/web && pnpm lint` — pass (0 errors; existing repository warnings remain; TanStack key and design-system gates pass).
+- `cd apps/web && pnpm exec eslint src/stores/viewScopeStore.ts src/stores/viewScopeStore.test.ts` — pass, 0 warnings.
+- `cd apps/web && npx react-doctor@latest --verbose --diff` — exit 1, score 49/100; 149 findings are pre-existing/unrelated to the two Task 7 files (no findings on `viewScopeStore.ts` or its test). The command reported the deprecated `--diff` flag.
+- `cd apps/web && npx react-doctor@latest --verbose --scope changed` — exit 1, score 49/100; the same 149 pre-existing findings, with no diagnostics on the Task 7 files.
+- `git diff --check` — pass.
 
-Result before production files: exit 2, `5 tests`, `1 failure`, `4 errors`. The schema assertion failed because `expense_recurrence_templates` did not exist, and the four behavior tests errored because `ExpenseRecurrenceTemplate` did not exist. This was the expected missing-feature failure.
+## Behavior delivered
 
-### GREEN
+- Scope state is `'all' | string[]` and persists under `autoerp-view-scope:<companyId>`.
+- Initial company load hydrates that company’s valid persisted scope.
+- A real company change resets in-memory scope to `'all'` without touching either company’s key.
+- Cross-tab valid payloads are adopted; malformed, invalid, absent, and removal payloads are ignored so the current selection is preserved.
+- Storage read/write failures are safely ignored while in-memory state remains usable.
 
-The same focused command after implementation exited 0:
+## Deviations and concerns
 
-```text
-OK (5 tests, 55 assertions)
-```
-
-The feature test proves:
-
-- the complete template column contract plus the metadata linkage column;
-- fillable preservation for every template input field;
-- `decimal:3` amount/VAT amount and `decimal:2` VAT percent casts;
-- string-backed frequency/status enum casts;
-- start/end/next-due date casts and integer lead-day cast;
-- database defaults of `lead_days = 3` and `status = active`;
-- all four nullable default FKs become null after their target row is deleted;
-- metadata linkage is nullable and becomes null after its template is deleted.
-
-## Regression and quality evidence
-
-- `./vendor/bin/phpunit tests/Feature/Expense`: exit 0, `73 tests`, `327 assertions`.
-- Scoped PHPStan level 8 over the two enums, model, and feature test: exit 0, `[OK] No errors`.
-- Scoped Pint `--test` over all six Task 7 PHP files: exit 0, `{"result":"pass"}`.
-- `php -l` over all six Task 7 PHP files: every file reported no syntax errors.
-- `git diff --check`: exit 0.
-- Migration/schema sanity is exercised by the focused `RefreshDatabase` test: both migrations apply under the PHPUnit SQLite environment, the schema is queryable, and the five real persistence/FK tests pass.
-
-## Scope and deviations
-
-- The initial production commit contains the two tenant migrations, two string-backed enums, and recurrence-template model required by Task 7; the independent-review fix below adds only the metadata model write contract needed to consume the new linkage.
-- The only additional file is the required focused feature test; this report and the shared handoff progress log record evidence.
-- No Task 8+ cursor, CRUD, permissions, command, notification, frontend, or scheduler behavior was implemented.
-- No Treasury, fiscal, posting, settlement, generated-type, or permission-map file changed.
-- No implementation deviation from the binding Task 7 plan/spec was required.
-- `.superpowers/sdd/progress.md` remained the sole unstaged controller ledger and was not staged.
-
-## Independent-review HIGH fix — metadata mass-assignment contract
-
-- Finding: the initial metadata-link test wrote through `DB::table`, masking that `ExpenseMetadata::$fillable` did not allow `recurrence_template_id`. Task 10's binding consumer path, `$expense->expenseMetadata?->update(['recurrence_template_id' => $template->id])`, would therefore silently discard the linkage.
-- RED: the test now uses the real `ExpenseMetadata::update()` path and refreshes the model. Focused PHPUnit exited 1 with 1 failure / 5 tests: the refreshed attribute was null instead of the template UUID.
-- Fix: added the `recurrence_template_id` PHPDoc property and fillable entry to `ExpenseMetadata`. No unused relationship was introduced.
-- GREEN: focused PHPUnit exited 0 with 5 tests / 56 assertions, including persistence through model mass assignment followed by `SET NULL` after template deletion.
-- Fresh regression: the full Expense feature path exited 0 with 73 tests / 328 assertions.
-- Fresh quality gates: scoped PHPStan level 8 reported no errors; scoped Pint passed; `git diff --check` passed.
+- No implementation deviation from the pinned Task 7 contract.
+- The pre-existing tracked `.superpowers/sdd/task-7-report.md` (an unrelated expense-schema report) was replaced with this Wave 1 report as requested by the task; no plan checkboxes were modified.

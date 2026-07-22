@@ -45,7 +45,7 @@ Idempotent, self-guarding, non-reversible.
 
 **Steps**
 
-- [ ] Write the failing test. `apps/api/tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`:
+- [x] Write the failing test. `apps/api/tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`:
 ```php
 <?php
 
@@ -178,8 +178,8 @@ final class BackfillUserCompanyMembershipsTest extends TestCase
     }
 }
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
-- [ ] Implement the migration. `apps/api/database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php`:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
+- [x] Implement the migration. `apps/api/database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php`:
 ```php
 <?php
 
@@ -280,13 +280,13 @@ return new class extends Migration
     }
 };
 ```
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
-- [ ] Write the companion command's failing test. `apps/api/tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`: in a MULTI-company tenant, a memberless active user is skipped by the migration; running `$this->artisan('users:backfill-memberships', ['--company' => $companyA->id, '--user' => [$user->id]])` (with the tenant DB active) then creates exactly one NULL-membership row for THAT user in `$companyA`, exit 0, and does NOT touch a second memberless user not named in `--user`; asserts a second run is a no-op (still one row); asserts `--company=<unknown-uuid>` exits non-zero and writes no rows; asserts bare `--company` without `--user`/`--all-memberless` exits non-zero in a multi-company tenant (no implicit bulk grant); asserts `--all-memberless` WITHOUT `--force-multi` exits non-zero in a multi-company tenant and writes no rows; asserts `--all-memberless --force-multi` in a multi-company tenant backfills all memberless users into the named company (and is idempotent on re-run).
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
-- [ ] Implement the command. `apps/api/app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php` — signature `users:backfill-memberships {--company= : Company UUID to map memberless active users into} {--user=* : User UUID(s) to map (auditable per-user path)} {--all-memberless : Bulk-map every memberless active user} {--force-multi : Required with --all-memberless in a multi-company tenant}`. In `handle()`: require `--company`; verify it is a `companies.id` row in the current tenant connection (else `error()` + `return self::FAILURE`). If `--user` given: for each id verify the user exists, is active, and is memberless for that company, then insert one NULL-membership row (VIEWER, is_primary false, active) — this is the auditable per-user path. If `--all-memberless` given instead: require single-company tenant OR `--force-multi`, then apply the same insert to every memberless active user (same `whereNotExists` predicate as the migration). Bare `--company` with neither flag: `error()` + FAILURE. `info()` per-user results; `return self::SUCCESS`. Constructor injection only; no `app()`.
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php app/Modules/Company/Domain`
-- [ ] Commit: `feat(multiloc): guarded backfill (single-company) + users:backfill-memberships mapping command (§1 step 1)`
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/BackfillUserCompanyMembershipsTest.php`
+- [x] Write the companion command's failing test. `apps/api/tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`: in a MULTI-company tenant, a memberless active user is skipped by the migration; running `$this->artisan('users:backfill-memberships', ['--company' => $companyA->id, '--user' => [$user->id]])` (with the tenant DB active) then creates exactly one NULL-membership row for THAT user in `$companyA`, exit 0, and does NOT touch a second memberless user not named in `--user`; asserts a second run is a no-op (still one row); asserts `--company=<unknown-uuid>` exits non-zero and writes no rows; asserts bare `--company` without `--user`/`--all-memberless` exits non-zero in a multi-company tenant (no implicit bulk grant); asserts `--all-memberless` WITHOUT `--force-multi` exits non-zero in a multi-company tenant and writes no rows; asserts `--all-memberless --force-multi` in a multi-company tenant backfills all memberless users into the named company (and is idempotent on re-run).
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
+- [x] Implement the command. `apps/api/app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php` — signature `users:backfill-memberships {--company= : Company UUID to map memberless active users into} {--user=* : User UUID(s) to map (auditable per-user path)} {--all-memberless : Bulk-map every memberless active user} {--force-multi : Required with --all-memberless in a multi-company tenant}`. In `handle()`: require `--company`; verify it is a `companies.id` row in the current tenant connection (else `error()` + `return self::FAILURE`). If `--user` given: for each id verify the user exists, is active, and is memberless for that company, then insert one NULL-membership row (VIEWER, is_primary false, active) — this is the auditable per-user path. If `--all-memberless` given instead: require single-company tenant OR `--force-multi`, then apply the same insert to every memberless active user (same `whereNotExists` predicate as the migration). Bare `--company` with neither flag: `error()` + FAILURE. `info()` per-user results; `return self::SUCCESS`. Constructor injection only; no `app()`.
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Console/BackfillMembershipsCommandTest.php`
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse database/migrations/tenant/2026_07_16_100000_backfill_user_company_memberships.php app/Modules/Company/Presentation/Console/BackfillMembershipsCommand.php app/Modules/Company/Domain`
+- [x] Commit: `feat(multiloc): guarded backfill (single-company) + users:backfill-memberships mapping command (§1 step 1)`
 
 ---
 
@@ -304,7 +304,7 @@ Closes the source of memberless staff (review A2) so the Task 1 backfill isn't r
 
 **Steps**
 
-- [ ] Write the failing test. Add to `CreateUserTest.php`:
+- [x] Write the failing test. Add to `CreateUserTest.php`:
 ```php
 public function test_store_creates_null_membership_for_new_staff(): void
 {
@@ -328,8 +328,8 @@ public function test_store_creates_null_membership_for_new_staff(): void
 }
 ```
 (Use the file's existing auth helper — mirror the header/`Sanctum::actingAs` + `X-Company-Id` pattern already used by other tests in this class for `withAuth`.)
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/CreateUserTest.php`
-- [ ] Implement. In `UserController::store`, inside the `DB::transaction` closure, after `$user->assignRole(...)` and the null-email activation, add (import `UserCompanyMembership`, `MembershipRole`, `MembershipStatus`):
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/CreateUserTest.php`
+- [x] Implement. In `UserController::store`, inside the `DB::transaction` closure, after `$user->assignRole(...)` and the null-email activation, add (import `UserCompanyMembership`, `MembershipRole`, `MembershipStatus`):
 ```php
 UserCompanyMembership::create([
     'user_id' => $user->id,
@@ -340,9 +340,9 @@ UserCompanyMembership::create([
     'status' => MembershipStatus::Active,
 ]);
 ```
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php`
-- [ ] Commit: `feat(multiloc): create NULL membership for staff on UserController::store (§1 step 2)`
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php`
+- [x] Commit: `feat(multiloc): create NULL membership for staff on UserController::store (§1 step 2)`
 
 ---
 
@@ -381,7 +381,7 @@ final class LocationScopeResolver
 
 **Steps**
 
-- [ ] Write the failing test. `apps/api/tests/Feature/Company/LocationScopeResolverTest.php`. Build a tenant/company + two locations (A, B) + a bound `CompanyContext` (`app(CompanyContext::class)->setCompany($company)` in setUp is fine for an HTTP-context test), then:
+- [x] Write the failing test. `apps/api/tests/Feature/Company/LocationScopeResolverTest.php`. Build a tenant/company + two locations (A, B) + a bound `CompanyContext` (`app(CompanyContext::class)->setCompany($company)` in setUp is fine for an HTTP-context test), then:
 ```php
 public function test_fail_closed_when_requesting_out_of_scope_location(): void
 {
@@ -418,8 +418,8 @@ public function test_bypass_permission_grants_full_company_set_despite_restricti
     $this->assertSame([$this->locationB->id], $this->resolver()->resolve($user, [$this->locationB->id], 'replenishment.process'));
 }
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationScopeResolverTest.php`
-- [ ] Implement. `apps/api/app/Modules/Company/Services/LocationScopeResolver.php`:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationScopeResolverTest.php`
+- [x] Implement. `apps/api/app/Modules/Company/Services/LocationScopeResolver.php`:
 ```php
 <?php
 
@@ -503,9 +503,9 @@ final class LocationScopeResolver
     }
 }
 ```
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Services/LocationScopeResolver.php`
-- [ ] Commit: `feat(multiloc): LocationScopeResolver shared read-scope contract (§1 step 4a)`
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Services/LocationScopeResolver.php`
+- [x] Commit: `feat(multiloc): LocationScopeResolver shared read-scope contract (§1 step 4a)`
 
 ---
 
@@ -528,7 +528,7 @@ Adds the location-assignment write path with fail-closed self-escalation defense
 
 **Steps**
 
-- [ ] Write the failing test. `UserLocationAccessTest.php` — cases:
+- [x] Write the failing test. `UserLocationAccessTest.php` — cases:
 ```php
 public function test_forbidden_without_manage_location_access_permission(): void; // manager granter → 403
 public function test_cannot_edit_own_allowed_location_ids(): void;                 // admin edits self → 403 SELF_LOCATION_ESCALATION
@@ -550,18 +550,18 @@ public function test_update_denied_grant_leaves_profile_role_and_membership_unch
 //   and membership.allowed_location_ids are byte-identical to their pre-request values
 //   (the whole update rolled back — no name/role leak).
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
-- [ ] Write the failing permission-migration test (Finding 4). `apps/api/tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`: on a tenant whose permission table lacks `users.manage_location_access`, invoke the migration's `up()`; assert (a) a `permissions` row `users.manage_location_access` now exists, (b) the `admin` role has it, (c) a re-run is a no-op (still one permission row, still granted). Set the permission team id before asserting (mirror `StockTransferLocationScopeTest::setUp`).
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`
-- [ ] Implement — permission-registration migration (Finding 4). `apps/api/database/migrations/tenant/2026_07_16_100100_register_manage_location_access_permission.php`: idempotently `Permission::findOrCreate('users.manage_location_access', 'sanctum')` (or a `WHERE NOT EXISTS` insert), grant it to the `admin` Spatie role (`Role::findByName('admin', 'sanctum')->givePermissionTo(...)` guarded so re-runs no-op) — guard is **`sanctum`**, matching `RolesAndPermissionsSeeder.php:438,450`; the `api` guard would silently create a duplicate permission the routes never check, then `app(PermissionRegistrar::class)->forgetCachedPermissions()` so the tenant-blind cache is flushed in the same push. This migration is the MECHANISM by which the permission ships; the seeder edit below is belt-and-suspenders for fresh installs.
-- [ ] Implement — seeder (belt-and-suspenders, not the deploy mechanism). Add `'users.manage_location_access'` to the `$permissions` array in `RolesAndPermissionsSeeder::createPermissions()` (near the `users.*` block ~line 286) so fresh tenants seed it directly. `admin` gets it automatically via `Permission::all()`; do NOT add it to `manager`/`cashier` (owner+admin only per spec).
-- [ ] Implement — FormRequests. In both `CreateUserRequest` and `UpdateUserRequest` `rules()`, add:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
+- [x] Write the failing permission-migration test (Finding 4). `apps/api/tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`: on a tenant whose permission table lacks `users.manage_location_access`, invoke the migration's `up()`; assert (a) a `permissions` row `users.manage_location_access` now exists, (b) the `admin` role has it, (c) a re-run is a no-op (still one permission row, still granted). Set the permission team id before asserting (mirror `StockTransferLocationScopeTest::setUp`).
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/Migrations/RegisterManageLocationAccessPermissionTest.php`
+- [x] Implement — permission-registration migration (Finding 4). `apps/api/database/migrations/tenant/2026_07_16_100100_register_manage_location_access_permission.php`: idempotently `Permission::findOrCreate('users.manage_location_access', 'sanctum')` (or a `WHERE NOT EXISTS` insert), grant it to the `admin` Spatie role (`Role::findByName('admin', 'sanctum')->givePermissionTo(...)` guarded so re-runs no-op) — guard is **`sanctum`**, matching `RolesAndPermissionsSeeder.php:438,450`; the `api` guard would silently create a duplicate permission the routes never check. Spatie's model/role mutation hooks flush the permission cache in the same push (verified against a warmed cache), without adding a production service-locator call. This migration is the MECHANISM by which the permission ships; the seeder edit below is belt-and-suspenders for fresh installs.
+- [x] Implement — seeder (belt-and-suspenders, not the deploy mechanism). Add `'users.manage_location_access'` to the `$permissions` array in `RolesAndPermissionsSeeder::createPermissions()` (near the `users.*` block ~line 286) so fresh tenants seed it directly. `admin` gets it automatically via `Permission::all()`; do NOT add it to `manager`/`cashier` (owner+admin only per spec).
+- [x] Implement — FormRequests. In both `CreateUserRequest` and `UpdateUserRequest` `rules()`, add:
 ```php
-'allowed_location_ids' => ['sometimes', 'nullable', 'array'],
+'allowed_location_ids' => ['sometimes', 'nullable', 'array', 'list'],
 'allowed_location_ids.*' => ['uuid'],
 ```
 (Company-membership + subset checks are enforced in the controller where `CompanyContext` and the caller's membership are in scope.)
-- [ ] Implement — controller. Inject `LocationContext $locationContext` into `UserController`. Split the grant into a **read-only authorization** method (runs BEFORE any create/mutation — Findings 3 & 7) and a **write** method (runs INSIDE the transaction):
+- [x] Implement — controller. Inject `LocationContext $locationContext` into `UserController`. Split the grant into a **read-only authorization** method (runs BEFORE any create/mutation — Findings 3 & 7) and a **write** method (runs INSIDE the transaction):
 ```php
 /**
  * Read-only, self-escalation-safe authorization for an allowed_location_ids grant.
@@ -644,10 +644,10 @@ return DB::transaction(function () use (...) {
 });
 ```
 (`forbidden()` = small helper mirroring the existing `response()->json([...], 403)` shape with `getMeta`.)
-- [ ] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php app/Modules/Identity/Presentation/Requests`
-- [ ] **Deploy note (belt-and-suspenders — the migration is the mechanism):** the `2026_07_16_100100_register_manage_location_access_permission` migration auto-registers the permission + flushes the cache under push=deploy. As a redundant safety net the deploy checklist ALSO re-runs `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`; the route is safe even if that manual step is skipped.
-- [ ] Commit: `feat(multiloc): users.manage_location_access (self-guarding migration) + authorize-before-write location grant (§1 step 3)`
+- [x] Run it (green): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Identity/UserManagement/UserLocationAccessTest.php`
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Identity/Presentation/Controllers/UserController.php app/Modules/Identity/Presentation/Requests`
+- [x] **Deploy note (belt-and-suspenders — the migration is the mechanism):** the `2026_07_16_100100_register_manage_location_access_permission` migration auto-registers the permission + flushes the cache under push=deploy. As a redundant safety net the deploy checklist ALSO re-runs `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`; the route is safe even if that manual step is skipped.
+- [x] Commit: `feat(multiloc): users.manage_location_access (self-guarding migration) + authorize-before-write location grant (§1 step 3)`
 
 ---
 
@@ -673,17 +673,17 @@ public function __construct(
 
 **Steps**
 
-- [ ] Write the failing test. Assert: a user restricted to location B is rejected (422) when creating a transfer with `source_location_id = A`; a NULL-membership (post-backfill) user is accepted; and grep-guard that `ValidLocationAccess.php` contains no `app(` token. Semantics reminder: stock transfer requires access to SOURCE only (destination may be anywhere) — apply the rule to `source_location_id`, not `destination_location_id`.
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php`
-- [ ] Implement — rule. Replace the two `app(...)` calls with the injected `$this->locationContext` / `$this->companyContext`; keep `Auth::user()` (facade, allowed). Resolve company id via `$this->companyId ?? ($this->companyContext->hasCompany() ? $this->companyContext->requireCompanyId() : null)`; fail on null.
-- [ ] Implement — request. In `StoreStockTransferRequest`, inject `LocationContext $locationContext` alongside the existing `CompanyContext`, and add to the `source_location_id` rule array (after `ScopedExists::company(...)`):
+- [x] Write the failing test. Assert: a user restricted to location B is rejected (422) when creating a transfer with `source_location_id = A`; a NULL-membership (post-backfill) user is accepted; and grep-guard that `ValidLocationAccess.php` contains no `app(` token. Semantics reminder: stock transfer requires access to SOURCE only (destination may be anywhere) — apply the rule to `source_location_id`, not `destination_location_id`.
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php`
+- [x] Implement — rule. Replace the two `app(...)` calls with the injected `$this->locationContext` / `$this->companyContext`; keep `Auth::user()` (facade, allowed). Resolve company id via `$this->companyId ?? ($this->companyContext->hasCompany() ? $this->companyContext->requireCompanyId() : null)`; fail on null.
+- [x] Implement — request. In `StoreStockTransferRequest`, inject `LocationContext $locationContext` alongside the existing `CompanyContext`, and add to the `source_location_id` rule array (after `ScopedExists::company(...)`):
 ```php
 new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext, $company->id),
 ```
 (Keep the controller's existing `canAccessLocation` check as defense-in-depth.)
-- [ ] Run it (green): same command. Also re-run the existing per-user scope suite by exact path to confirm no regression: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationScopeTest.php`. This file already pins the enforcement contract activated here — the load-bearing regression cases are `test_unrestricted_user_can_initiate_from_anywhere` (NULL-membership admin still creates from any source — must stay green post-backfill), `test_restricted_user_cannot_initiate_from_location_they_lack` (restricted user blocked from a source outside their set → 403 `LOCATION_ACCESS_DENIED`), and `test_restricted_user_can_initiate_from_their_location_to_any_destination` (source access is what's checked, destination may be anywhere).
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Rules/ValidLocationAccess.php app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php`
-- [ ] Commit: `refactor(multiloc): ValidLocationAccess off app(), activate on stock-transfer source (§1 step 4b)`
+- [x] Run it (green): same command. Also re-run the existing per-user scope suite by exact path to confirm no regression: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/StockTransferLocationScopeTest.php`. This file already pins the enforcement contract activated here — the load-bearing regression cases are `test_unrestricted_user_can_initiate_from_anywhere` (NULL-membership admin still creates from any source — must stay green post-backfill), `test_restricted_user_cannot_initiate_from_location_they_lack` (restricted user blocked from a source outside their set → 403 `LOCATION_ACCESS_DENIED`), and `test_restricted_user_can_initiate_from_their_location_to_any_destination` (source access is what's checked, destination may be anywhere).
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Rules/ValidLocationAccess.php app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php`
+- [x] Commit: `refactor(multiloc): ValidLocationAccess off app(), activate on stock-transfer source (§1 step 4b)`
 
 ---
 
@@ -692,7 +692,7 @@ new \App\Rules\ValidLocationAccess($this->locationContext, $this->companyContext
 Review A4/A5/A6: a module-agnostic scoped picker endpoint, a management-gated unfiltered endpoint, one invariant that every list honors the allowed set.
 
 **Files**
-- Modify: `apps/api/app/Modules/Company/routes.php` (add two routes to the existing group)
+- Modify: `apps/api/app/Modules/Company/routes.php` (add scoped, management, and transaction-destination routes to the existing group)
 - Modify: `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php` (inject `LocationScopeResolver`; add `scopedIndex`, `managementIndex`; scope the wired `index`)
 - Delete: `apps/api/app/Modules/Inventory/Presentation/Controllers/LocationController.php` (dead duplicate — verified no route references it; `/locations` routes use the Company controller)
 - Test: `apps/api/tests/Feature/Company/LocationListEndpointsTest.php`
@@ -702,11 +702,12 @@ Review A4/A5/A6: a module-agnostic scoped picker endpoint, a management-gated un
 - Produces:
   - `GET /api/v1/company/locations` (auth-only, company context required) → `{ data: list<{id,name,code,type,is_default}> }` limited to the caller's allowed set.
   - `GET /api/v1/company/locations/all` (middleware `can:users.manage_location_access`) → same shape, unfiltered company set.
+  - `GET /api/v1/company/locations/transaction-destinations` (middleware `require.any.permission:*`) → reduced active-location picker shape for permitted cross-location destinations; it does not widen source/read scope.
   - Existing `GET /api/v1/locations` (Inventory-gated) `index` now returns only the resolver's effective set.
 
 **Steps**
 
-- [ ] Write the failing test. `LocationListEndpointsTest.php`:
+- [x] Write the failing test. `LocationListEndpointsTest.php`:
 ```php
 public function test_scoped_company_locations_excludes_unassigned_for_restricted_user(): void; // restricted=[A] → /company/locations returns only A
 public function test_scoped_company_locations_returns_all_for_null_membership(): void;         // NULL → both A and B
@@ -714,8 +715,8 @@ public function test_management_all_returns_full_set_with_permission(): void;   
 public function test_management_all_forbidden_without_permission(): void;                       // 403
 public function test_wired_inventory_locations_index_honors_allowed_set(): void;               // GET /locations restricted=[A] → only A
 ```
-- [ ] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php`
-- [ ] Implement — controller. Inject `LocationScopeResolver $scopeResolver`. Add:
+- [x] Run it (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php`
+- [x] Implement — controller. Inject `LocationScopeResolver $scopeResolver`. Add:
 ```php
 public function scopedIndex(Request $request): JsonResponse
 {
@@ -733,17 +734,17 @@ public function managementIndex(Request $request): JsonResponse
 }
 ```
 where `pickerPayload(array $ids, Request $request)` loads `Location::whereIn('id', $ids)->where('company_id', $companyId)->orderByDesc('is_default')->orderBy('name')->get()` and maps to `['id','name','code' => $l->code, 'type' => $l->type->value, 'is_default' => $l->is_default]`. Also scope the existing `index()`: replace its `Location::where('company_id',...)` fetch with `whereIn('id', $this->scopeResolver->resolve($request->user()))` (NULL-membership users are unaffected — resolver returns the full set).
-- [ ] Implement — routes. In `apps/api/app/Modules/Company/routes.php`, inside the existing `Route::prefix('api/v1')->middleware([...])->group(...)`:
+- [x] Implement — routes. In `apps/api/app/Modules/Company/routes.php`, inside the existing `Route::prefix('api/v1')->middleware([...])->group(...)`:
 ```php
 Route::get('company/locations', [LocationController::class, 'scopedIndex'])->name('company.locations.scoped');
 Route::get('company/locations/all', [LocationController::class, 'managementIndex'])
     ->middleware('can:users.manage_location_access')->name('company.locations.all');
 ```
 (Import `App\Modules\Company\Presentation\Controllers\LocationController`.)
-- [ ] Implement — delete the dead duplicate `app/Modules/Inventory/Presentation/Controllers/LocationController.php`. Re-verify no references: `cd apps/api && grep -rn "Inventory\\\\Presentation\\\\Controllers\\\\LocationController" app routes` returns nothing.
-- [ ] Run it (green): same command.
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Presentation/Controllers/LocationController.php app/Modules/Company/routes.php`
-- [ ] Commit: `feat(multiloc): scoped + management locations endpoints, drop duplicate controller (§1 step 4c)`
+- [x] Implement — delete the dead duplicate `app/Modules/Inventory/Presentation/Controllers/LocationController.php`. Re-verify no references: `cd apps/api && grep -rn "Inventory\\\\Presentation\\\\Controllers\\\\LocationController" app routes` returns nothing.
+- [x] Run it (green): same command.
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Company/Presentation/Controllers/LocationController.php app/Modules/Company/routes.php`
+- [x] Commit: `feat(multiloc): scoped + management locations endpoints, drop duplicate controller (§1 step 4c)`
 
 ---
 
@@ -755,11 +756,11 @@ Route::get('company/locations/all', [LocationController::class, 'managementIndex
 
 **Interfaces**
 - Consumes: `useCompanyStore` snapshot (`currentCompanyId`), `localStorage`.
-- Produces (PINNED): state `{ scope: 'all' | string[] }` persisted per company to `autoerp-view-scope:<companyId>`; reset to `'all'` ONLY on a real company change (mirror `LocationProvider.previousCompanyIdRef`); cross-tab storage listener with a **malformed-payload guard that PRESERVES the previous scope** (Finding 6 — mirror `locationStore.ts:180-187`: a present-but-malformed `newValue` is IGNORED, it must NOT reset to `'all'`). Only a payload that validates (the literal `'all'` or an array of uuid strings) is applied. Hook `useViewScope()` is added in Task 9's slice but its shape is pinned here: `{ scope: 'all'|string[]; effectiveLocationIds: string[]; isAll: boolean; setScope(s: 'all'|string[]): void }`.
+- Produces (PINNED): state `{ scope: 'all' | string[] }` persisted per company and authenticated user to `autoerp-view-scope:<companyId>:<userId>`; reset to `'all'` ONLY on a real company change (auth hydration loads the user's persisted subset); cross-tab storage listener with a **malformed-payload guard that PRESERVES the previous scope** (Finding 6 — mirror `locationStore.ts:180-187`: a present-but-malformed `newValue` is IGNORED, it must NOT reset to `'all'`). Only a payload that validates (the literal `'all'` or an array of uuid strings) is applied. Hook `useViewScope()` is added in Task 9's slice but its shape is pinned here: `{ scope: 'all'|string[]; effectiveLocationIds: string[]; isAll: boolean; setScope(s: 'all'|string[]): void }`.
 
 **Steps**
 
-- [ ] Write the failing test. `viewScopeStore.test.ts` (Vitest, jsdom):
+- [x] Write the failing test. `viewScopeStore.test.ts` (Vitest, jsdom):
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
@@ -776,11 +777,11 @@ describe('viewScopeStore', () => {
     // set currentCompanyId = 'c1' via companyStore before import, then:
     const { useViewScopeStore } = await freshStore()
     useViewScopeStore.getState().setScope(['loc-a'])
-    expect(JSON.parse(localStorage.getItem('autoerp-view-scope:c1')!)).toEqual(['loc-a'])
+    expect(JSON.parse(localStorage.getItem('autoerp-view-scope:c1:u1')!)).toEqual(['loc-a'])
   })
 
   it('resets to all on a real company change and never rehydrates A under B', async () => {
-    localStorage.setItem('autoerp-view-scope:c1', JSON.stringify(['loc-a']))
+    localStorage.setItem('autoerp-view-scope:c1:u1', JSON.stringify(['loc-a']))
     // start on c1 → hydrates ['loc-a']; switch companyStore to c2 → scope becomes 'all'
     // assert getState().scope === 'all' and c1's key is untouched
   })
@@ -797,15 +798,15 @@ describe('viewScopeStore', () => {
     const { useViewScopeStore } = await freshStore()
     useViewScopeStore.getState().setScope(['loc-b'])
     window.dispatchEvent(new StorageEvent('storage', {
-      key: 'autoerp-view-scope:c1',
+      key: 'autoerp-view-scope:c1:u1',
       newValue: '{not json',
     }))
     expect(useViewScopeStore.getState().scope).toEqual(['loc-b'])
   })
 })
 ```
-- [ ] Run it (red): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
-- [ ] Implement. `apps/web/src/stores/viewScopeStore.ts`:
+- [x] Run it (red): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
+- [x] Implement. `apps/web/src/stores/viewScopeStore.ts`:
 ```ts
 import { create } from 'zustand'
 import { useCompanyStore } from './companyStore'
@@ -819,7 +820,7 @@ interface ViewScopeState {
   _hydrate: (scope: ViewScope) => void
 }
 
-const keyFor = (companyId: string): string => `autoerp-view-scope:${companyId}`
+const keyFor = (companyId: string, userId: string): string => `autoerp-view-scope:${companyId}:${userId}`
 
 /**
  * Parse a payload into a ViewScope, or return null when it is absent/malformed/invalid.
@@ -898,9 +899,9 @@ if (typeof window !== 'undefined') {
   })
 }
 ```
-- [ ] Run it (green): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): viewScopeStore — per-company persisted view scope (§1 FE)`
+- [x] Run it (green): `cd apps/web && pnpm vitest run src/stores/viewScopeStore.test.ts`
+- [x] `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): viewScopeStore — per-company persisted view scope (§1 FE)`
 
 ---
 
@@ -925,7 +926,7 @@ Resource literal stays `segments[0]`; scope object precedes the tenant/company s
 
 **Steps**
 
-- [ ] Write the failing test. `locationScopedKey.test.ts`:
+- [x] Write the failing test. `locationScopedKey.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest'
 import { locationScopedKey } from './locationScopedKey'
@@ -950,8 +951,8 @@ describe('locationScopedKey', () => {
 })
 ```
 Add to `audit-tanstack-keys.test.mjs` a case asserting `scanCode("useQuery({ queryKey: locationScopedKey(['stock-levels'], scope), queryFn })")` yields zero violations.
-- [ ] Run them (red): `cd apps/web && pnpm vitest run src/lib/locationScopedKey.test.ts tools/__tests__/audit-tanstack-keys.test.mjs`
-- [ ] Implement helper. `apps/web/src/lib/locationScopedKey.ts`:
+- [x] Run them (red): `cd apps/web && pnpm vitest run src/lib/locationScopedKey.test.ts tools/__tests__/audit-tanstack-keys.test.mjs`
+- [x] Implement helper. `apps/web/src/lib/locationScopedKey.ts`:
 ```ts
 import type { QueryKey } from '@tanstack/react-query'
 import { tenantScopedKey } from './tenantScopedKey'
@@ -970,10 +971,10 @@ export function locationScopedKey(
   return tenantScopedKey([...segments, { locScope }]) as unknown as QueryKey
 }
 ```
-- [ ] Implement audit approval. In `audit-tanstack-keys.mjs`: `const APPROVED_FACTORY_CALLS = new Set(['tenantScopedKey', 'locationScopedKey']);`
-- [ ] Run them (green): same command. Then `cd apps/web && pnpm audit:keys` (must exit 0).
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): locationScopedKey helper + audit approval (§1 FE)`
+- [x] Implement audit approval. In `audit-tanstack-keys.mjs`: `const APPROVED_FACTORY_CALLS = new Set(['tenantScopedKey', 'locationScopedKey']);`
+- [x] Run them (green): same command. Then `cd apps/web && pnpm audit:keys` (must exit 0).
+- [x] `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): locationScopedKey helper + audit approval (§1 FE)`
 
 ---
 
@@ -997,9 +998,9 @@ The canonical view-scope control (spec §1, review F2/F3/F5). Replaces `Location
 
 **Steps**
 
-- [ ] Write the failing tests. `useViewScope.test.ts`: with `scope='all'`, `effectiveLocationIds` equals the scoped-locations ids (mock `useScopedLocations`); with `scope=['a']`, equals `['a']`; `isAll` reflects scope. `ViewScopePicker.test.tsx`: renders "All locations" + one option per allowed location (mock `useScopedLocations`); selecting narrows the scope (spy `setScope`); toggling to All calls `setScope('all')`; uses `t()` keys (assert rendered text, not classes); RTL-safe (uses `start/end` utilities).
-- [ ] Run them (red): `cd apps/web && pnpm vitest run src/features/locations/hooks/useViewScope.test.ts src/components/organisms/ViewScopePicker/ViewScopePicker.test.tsx`
-- [ ] Implement `api/scopedLocations.ts` (`apiGet<Raw[]>('/company/locations')` → `ScopedLocation[]`), `hooks/useScopedLocations.ts` (`useQuery` + `tenantScopedKey`, `enabled: !!tenantId && !!companyId`), `hooks/useViewScope.ts`:
+- [x] Write the failing tests. `useViewScope.test.ts`: with `scope='all'`, `effectiveLocationIds` equals the scoped-locations ids (mock `useScopedLocations`); with `scope=['a']`, equals `['a']`; `isAll` reflects scope. `ViewScopePicker.test.tsx`: renders "All locations" + one option per allowed location (mock `useScopedLocations`); selecting narrows the scope (spy `setScope`); toggling to All calls `setScope('all')`; uses `t()` keys (assert rendered text, not classes); RTL-safe (uses `start/end` utilities).
+- [x] Run them (red): `cd apps/web && pnpm vitest run src/features/locations/hooks/useViewScope.test.ts src/components/organisms/ViewScopePicker/ViewScopePicker.test.tsx`
+- [x] Implement `api/scopedLocations.ts` (`apiGet<Raw[]>('/company/locations')` → `ScopedLocation[]`), `hooks/useScopedLocations.ts` (`useQuery` + `tenantScopedKey`, `enabled: !!tenantId && !!companyId`), `hooks/useViewScope.ts`:
 ```ts
 import { useViewScopeStore } from '@/stores/viewScopeStore'
 import { useScopedLocations } from './useScopedLocations'
@@ -1013,15 +1014,15 @@ export function useViewScope() {
   return { scope, effectiveLocationIds, isAll, setScope }
 }
 ```
-- [ ] Implement `ViewScopePicker.tsx` — a token-styled dropdown (reuse the `LocationSwitcher` visual shell but multi-select): "All locations" row (checked when `isAll`) + one checkbox row per allowed location; `t('locations:viewScope.*')` labels; design tokens only; `start-*/end-*` positioning. On change → `setScope('all')` or the toggled subset. No cross-scope broad `invalidateQueries` (the `locationScopedKey` mechanism handles refetch).
-- [ ] Wire TopBar/DashboardLayout: render `<ViewScopePicker />` where `<LocationSwitcher />` was; remove the `showLocationSwitcher` const (line 24) and the `showLocationSwitcher={...}` prop (line 47) — the picker shows on all routes.
-- [ ] Delete `LocationSwitcher.tsx` (and its `activeScopePredicate`). Update the barrel/exports; fix any remaining imports (`grep -rn "LocationSwitcher" src`).
-- [ ] Edit `OwnerDashboardFilters.tsx`: remove the `locationIds` field from `OwnerDashboardFiltersValue`, the `handleLocationToggle`/`handleAllLocations` handlers, the `useLocationStore` import, and the location checkbox UI. Update the owner-dashboard page to source `location_ids[]` from `useViewScope().effectiveLocationIds` instead.
-- [ ] Migrate the four pages: replace `const { currentLocationId } = useLocation()` VIEW usage with `const { effectiveLocationIds } = useViewScope()`; send `location_ids[]` (append each id) instead of a single `location_id`; switch the query key to `locationScopedKey([...], scope)`. Keep working-location reads (form prefills; `POSShiftsDashboard`'s get-or-create-web-terminal, which is single-location transact) on `locationStore`. For `ExpiryWriteOffPage`/`POSShiftsDashboard`, preserve their existing "no location selected" empty states in terms of `effectiveLocationIds.length === 0`.
-- [ ] Run them (green) by exact file path (no directory-wide invocations): `cd apps/web && pnpm vitest run src/features/locations/hooks/useViewScope.test.ts src/components/organisms/ViewScopePicker/ViewScopePicker.test.tsx src/features/inventory/StockLevelsPage.test.tsx src/features/inventory/StockMovementsPage.test.tsx src/features/batches/pages/ExpiryWriteOffPage.test.tsx` (fix the migrated pages' existing tests to the new scope hook; `POSShiftsDashboard` has no test file — if the migration changes its behavior, add `src/pages/POS/POSShiftsDashboard.test.tsx` and run it by that exact path).
-- [ ] Add `locations` namespace `viewScope.*` keys to the i18n resource files (all locales present in `apps/web/src/i18n`); run `cd apps/web && pnpm audit:keys` (must pass — migrated queries use `locationScopedKey`).
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): ViewScopePicker replaces LocationSwitcher; migrate view pages to global scope (§1 FE)`
+- [x] Implement `ViewScopePicker.tsx` — a token-styled dropdown (reuse the `LocationSwitcher` visual shell but multi-select): "All locations" row (checked when `isAll`) + one checkbox row per allowed location; `t('locations:viewScope.*')` labels; design tokens only; `start-*/end-*` positioning. On change → `setScope('all')` or the toggled subset. No cross-scope broad `invalidateQueries` (the `locationScopedKey` mechanism handles refetch).
+- [x] Wire TopBar/DashboardLayout: render `<ViewScopePicker />` where `<LocationSwitcher />` was; remove the `showLocationSwitcher` const (line 24) and the `showLocationSwitcher={...}` prop (line 47) — the picker shows on all routes.
+- [x] Delete `LocationSwitcher.tsx` (and its `activeScopePredicate`). Update the barrel/exports; fix any remaining imports (`grep -rn "LocationSwitcher" src`).
+- [x] Edit `OwnerDashboardFilters.tsx`: remove the `locationIds` field from `OwnerDashboardFiltersValue`, the `handleLocationToggle`/`handleAllLocations` handlers, the `useLocationStore` import, and the location checkbox UI. Update the owner-dashboard page to source `location_ids[]` from `useViewScope().effectiveLocationIds` instead.
+- [x] Migrate the four pages: replace `const { currentLocationId } = useLocation()` VIEW usage with `const { effectiveLocationIds } = useViewScope()`; send `location_ids[]` (append each id) instead of a single `location_id`; switch the query key to `locationScopedKey([...], scope)`. Keep working-location reads (form prefills; `POSShiftsDashboard`'s get-or-create-web-terminal, which is single-location transact) on `locationStore`. For `ExpiryWriteOffPage`/`POSShiftsDashboard`, preserve their existing "no location selected" empty states in terms of `effectiveLocationIds.length === 0`.
+- [x] Run them (green) by exact file path (no directory-wide invocations): `cd apps/web && pnpm vitest run src/features/locations/hooks/useViewScope.test.ts src/components/organisms/ViewScopePicker/ViewScopePicker.test.tsx src/features/inventory/StockLevelsPage.test.tsx src/features/inventory/StockMovementsPage.test.tsx src/features/batches/pages/ExpiryWriteOffPage.test.tsx` (fix the migrated pages' existing tests to the new scope hook; `POSShiftsDashboard` has no test file — if the migration changes its behavior, add `src/pages/POS/POSShiftsDashboard.test.tsx` and run it by that exact path).
+- [x] Add `locations` namespace `viewScope.*` keys to the i18n resource files (all locales present in `apps/web/src/i18n`); run `cd apps/web && pnpm audit:keys` (must pass — migrated queries use `locationScopedKey`).
+- [x] `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): ViewScopePicker replaces LocationSwitcher; migrate view pages to global scope (§1 FE)`
 
 ---
 
@@ -1043,15 +1044,15 @@ The spec-required create/edit assignment surface for `allowed_location_ids`, wit
 
 **Steps**
 
-- [ ] Write the failing tests (render + payload; assert rendered text via `t()` keys, not classes):
+- [x] Write the failing tests (render + payload; assert rendered text via `t()` keys, not classes):
   - `LocationAccessField.test.tsx`: renders an "All locations" option + one row per management location (mock `useManagementLocations`); choosing "All" yields value `null`; selecting a subset yields the sorted id array; `disabled`/`readOnly` blocks changes.
   - `UsersPage.locationAccess.test.tsx`: with the permission, `AddUserModal` renders the field and the create mutation body includes `allowed_location_ids`; WITHOUT the permission the field is absent and no `allowed_location_ids` key is sent.
   - `UserEditModal.locationAccess.test.tsx`: editing another user sends `allowed_location_ids`; editing OWN row (`user.id === currentUserId`) renders the field disabled and omits `allowed_location_ids` from the payload.
-- [ ] Run them (red) by exact path: `cd apps/web && pnpm vitest run src/features/settings/components/LocationAccessField.test.tsx src/features/settings/UsersPage.locationAccess.test.tsx src/features/settings/components/UserEditModal.locationAccess.test.tsx`
-- [ ] Implement `usePermissions.ts` map entry, `useManagementLocations.ts`, `LocationAccessField.tsx`, then wire it into `AddUserModal` (UsersPage) and `UserEditModal` per the Files notes. Add the `locations` namespace keys used by the field (e.g. `locations:staffAccess.allLocations`, `locations:staffAccess.subset`, `locations:staffAccess.selfDisabledHint`) to every locale in `apps/web/src/i18n`.
-- [ ] Run them (green): same command. Then `cd apps/web && pnpm vitest run src/features/settings/UsersPage.test.tsx` if that file exists, to confirm no regression to the existing create flow.
-- [ ] `cd apps/web && pnpm audit:keys` (must pass) then `cd apps/web && pnpm typecheck && pnpm lint`
-- [ ] Commit: `feat(multiloc): staff location-assignment UI (create + edit, self-edit disabled) (§1 FE, finding 2)`
+- [x] Run them (red) by exact path: `cd apps/web && pnpm vitest run src/features/settings/components/LocationAccessField.test.tsx src/features/settings/UsersPage.locationAccess.test.tsx src/features/settings/components/UserEditModal.locationAccess.test.tsx`
+- [x] Implement `usePermissions.ts` map entry, `useManagementLocations.ts`, `LocationAccessField.tsx`, then wire it into `AddUserModal` (UsersPage) and `UserEditModal` per the Files notes. Add the `locations` namespace keys used by the field (e.g. `locations:staffAccess.allLocations`, `locations:staffAccess.subset`, `locations:staffAccess.selfDisabledHint`) to every locale in `apps/web/src/i18n`.
+- [x] Run them (green): same command. Then `cd apps/web && pnpm vitest run src/features/settings/UsersPage.test.tsx` if that file exists, to confirm no regression to the existing create flow.
+- [x] `cd apps/web && pnpm audit:keys` (must pass) then `cd apps/web && pnpm typecheck && pnpm lint`
+- [x] Commit: `feat(multiloc): staff location-assignment UI (create + edit, self-edit disabled) (§1 FE, finding 2)`
 
 ---
 
@@ -1069,17 +1070,17 @@ Spec §1 "behavioral-change surface must be listed": the endpoints that already 
 
 **Steps**
 
-- [ ] Write the failing tests. `ReplenishmentLocationScopeTest.php`: (a) restricted requester (allowed=[A]) index returns only A rows; (b) processor sees A and B; (c) restricted requester passing `location_ids[]=[B]` gets 403 (resolver fail-closed). `StockTransferRestrictedMembershipTest.php`: restricted user (allowed=[A]) sees only transfers touching A (list), can create a transfer from A, and is denied creating from B (Task 5 rule) — documents the pre-existing enforcement still holds post-backfill.
-- [ ] Run them (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php`
-- [ ] Implement. In `ReplenishmentRequestController::index`, inject `LocationScopeResolver` and replace the `if (! $user->can('replenishment.process')) { $allowed = ...; whereIn(...); }` block plus the separate `location_ids` filter with a single resolver call:
+- [x] Write the failing tests. `ReplenishmentLocationScopeTest.php`: (a) restricted requester (allowed=[A]) index returns only A rows; (b) processor sees A and B; (c) restricted requester passing `location_ids[]=[B]` gets 403 (resolver fail-closed). `StockTransferRestrictedMembershipTest.php`: restricted user (allowed=[A]) sees only transfers touching A (list), can create a transfer from A, and is denied creating from B (Task 5 rule) — documents the pre-existing enforcement still holds post-backfill.
+- [x] Run them (red): `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php`
+- [x] Implement. In `ReplenishmentRequestController::index`, inject `LocationScopeResolver` and replace the `if (! $user->can('replenishment.process')) { $allowed = ...; whereIn(...); }` block plus the separate `location_ids` filter with a single resolver call:
 ```php
 $scoped = $this->scopeResolver->resolve($user, $validated['location_ids'] ?? [], 'replenishment.process');
 $query->whereIn('replenishment_requests.location_id', $scoped);
 ```
 (Keep `LocationContext` for the `validateLocationAccess` used on create at `:120`, or migrate that to the resolver too if trivial — but do NOT expand scope beyond index here.)
-- [ ] Run them (green): same command. Re-run the existing endpoint suite by exact path to confirm the processor path is unchanged: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentRequestEndpointsTest.php` (its `test_list_open_returns_pending_and_in_progress_and_scopes_non_processors` covers the processor-vs-non-processor split the resolver now drives).
-- [ ] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Replenishment/Presentation/Controllers/ReplenishmentRequestController.php`
-- [ ] Commit: `refactor(multiloc): replenishment index via LocationScopeResolver; regression-cover restricted memberships (§1 step 4d)`
+- [x] Run them (green): same command. Re-run the existing endpoint suite by exact path to confirm the processor path is unchanged: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Replenishment/ReplenishmentRequestEndpointsTest.php` (its `test_list_open_returns_pending_and_in_progress_and_scopes_non_processors` covers the processor-vs-non-processor split the resolver now drives).
+- [x] PHPStan: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Replenishment/Presentation/Controllers/ReplenishmentRequestController.php`
+- [x] Commit: `refactor(multiloc): replenishment index via LocationScopeResolver; regression-cover restricted memberships (§1 step 4d)`
 
 ---
 
@@ -1098,6 +1099,6 @@ $query->whereIn('replenishment_requests.location_id', $scoped);
 
 **Deploy checklist owed (record in the branch deploy note; stacks on prior treasury/location owes):**
 1. `php artisan tenants:migrate` (runs `2026_07_16_100000_backfill_user_company_memberships` — single-company backfill / multi-company skip+log — AND `2026_07_16_100100_register_manage_location_access_permission`, which registers `users.manage_location_access` + grants `admin` + flushes cache. Both idempotent/self-guarding — the permission is live from this push alone).
-2. **Multi-company tenants only:** grep the deploy logs for `multiloc.backfill.skipped_ambiguous_users`; for each such tenant, decide the correct company PER USER (from the skip log's user list) and run `php artisan tenants:run --tenants=<uuid> "users:backfill-memberships --company=<companyId> --user=<userId> [--user=<userId2> ...]"` — per-user mapping, never a bulk grant into one company. Until run, those users stay deny-all (no regression). Single-company tenants need nothing here.
+2. **Multi-company tenants only:** grep the deploy logs for `multiloc.backfill.skipped_ambiguous_users`; for each such tenant, decide the correct company PER USER (from the skip log's user list) and run `php artisan tenants:run users:backfill-memberships --tenants=<uuid> --option=company=<companyId> --option=user=<userId>[,<userId2>...]` — Stancl collapses duplicate forwarded option keys, so multiple explicitly selected users are comma-separated in one `user` option. This is still per-user mapping, never a bulk grant into one company. Until run, those users stay deny-all (no regression). Single-company tenants need nothing here.
 3. Belt-and-suspenders (NOT the mechanism): optionally re-run `RolesAndPermissionsSeeder` per tenant THEN `php artisan permission:cache-reset`. The route is already safe via step 1's migration.
 4. Verify the four migrated pages, the two new locations endpoints, and the staff location-assignment UI (create + edit) on staging with a deliberately restricted membership before considering the deploy done.

@@ -12,7 +12,11 @@ const mockApiGet = vi.fn()
 
 vi.mock('@/features/locations/api', async () => {
   const actual = await vi.importActual<typeof import('@/features/locations/api')>('@/features/locations/api')
-  return { ...actual, fetchLocations: () => mockFetchLocations() }
+  return {
+    ...actual,
+    fetchLocations: () => mockFetchLocations(),
+    fetchTransactionLocations: () => mockFetchLocations(),
+  }
 })
 
 vi.mock('@/lib/api', async () => {

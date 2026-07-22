@@ -26,5 +26,8 @@ final class UpcomingPaymentsData extends Data
         public readonly string $net,
         public readonly int $days,
         public readonly string $as_of_date,
+        /** @var DataCollection<int, LocationReportBucketData>|array<int, LocationReportBucketData> */
+        #[DataCollectionOf(LocationReportBucketData::class)]
+        public readonly DataCollection|array $buckets_by_location = [],
     ) {}
 }

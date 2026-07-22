@@ -102,6 +102,7 @@ const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetail
 const PlacementPage = lazy(() => import('../features/placement/PlacementPage').then((m) => ({ default: m.PlacementPage })))
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
+const StockByLocationPage = lazy(() => import('../features/inventory/pages/StockByLocationPage').then((m) => ({ default: m.StockByLocationPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
 const EntryExitNotesPage = lazy(() => import('../features/inventory/EntryExitNotesPage').then((m) => ({ default: m.EntryExitNotesPage })))
 const CategoriesPage = lazy(() => import('../features/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })))
@@ -1024,6 +1025,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <StockLevelsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="stock-by-location"
+            element={
+              <RequirePermission permission="inventory.view">
+                <SuspenseWrapper>
+                  <StockByLocationPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -24,6 +24,9 @@ vi.mock('@/components/organisms/Modal', () => ({
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: mockHasPermission }),
 }))
+vi.mock('@/features/locations/hooks/useLocations', () => ({
+  useLocations: () => ({ data: [{ id: 'location-a', name: 'Main store', isActive: true, isDefault: true }] }),
+}))
 
 describe('ReceiveGoodsDialog', () => {
   beforeEach(() => {
@@ -110,6 +113,7 @@ describe('ReceiveGoodsDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     expect(onConfirm).toHaveBeenCalledWith({
+      location_id: 'location-a',
       quantities: {
         'line-1': '5.0000',
         'line-2': '2.0000',

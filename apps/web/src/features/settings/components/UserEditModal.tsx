@@ -13,6 +13,9 @@ import { FormField } from '../../../components/atoms/FormField'
 import { Input } from '../../../components/atoms/Input'
 import { Select } from '../../../components/atoms/Select'
 import type { User } from '../../users/types'
+import { usePermissions } from '../../../hooks/usePermissions'
+import { useAuthStore } from '../../../stores/authStore'
+import { LocationAccessField } from './LocationAccessField'
 
 interface Role {
   name: string
@@ -29,6 +32,10 @@ interface UserEditModalProps {
 
 export function UserEditModal({ user, roles, onClose, onSuccess, onError }: UserEditModalProps) {
   const { t } = useTranslation(['settings', 'common'])
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null)
+  const { hasPermission } = usePermissions()
+  const canManageLocationAccess = hasPermission('users.manage_location_access')
+  const isSelf = user.id === currentUserId
   const queryClient = useQueryClient()
   const { handleSubmit: handleFormSubmit } = useForm()
 
@@ -40,6 +47,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
   const [maxDiscountPercent, setMaxDiscountPercent] = useState<string>(
     user.maxDiscountPercent ?? ''
   )
+  const [allowedLocationIds, setAllowedLocationIds] = useState<string[] | null>(user.allowed_location_ids ?? null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -49,6 +57,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     setRole(user.roles[0] ?? 'operator')
     setCanDiscount(user.canDiscount ?? false)
     setMaxDiscountPercent(user.maxDiscountPercent ?? '')
+    setAllowedLocationIds(user.allowed_location_ids ?? null)
   }, [user])
 
   const mutation = useMutation({
@@ -62,6 +71,9 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
         max_discount_percent: canDiscount && maxDiscountPercent !== ''
           ? Number(maxDiscountPercent)
           : null,
+      }
+      if (canManageLocationAccess && !isSelf) {
+        data['allowed_location_ids'] = allowedLocationIds
       }
       return updateUser(user.id, data)
     },
@@ -240,6 +252,22 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
               </FormField>
             )}
           </div>
+
+          {canManageLocationAccess && (
+            <>
+              <LocationAccessField
+                value={allowedLocationIds}
+                onChange={setAllowedLocationIds}
+                readOnly={isSelf}
+                disabled={isSelf}
+              />
+              {isSelf && (
+                <p className={cn('mt-2 text-sm', textColors.tertiary)}>
+                  {t('locations:staffAccess.selfDisabledHint')}
+                </p>
+              )}
+            </>
+          )}
         </ModalContent>
 
         <ModalFooter>

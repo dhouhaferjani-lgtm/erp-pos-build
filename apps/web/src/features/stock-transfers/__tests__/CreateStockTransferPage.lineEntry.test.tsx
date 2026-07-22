@@ -26,6 +26,7 @@ const VARIANT_ID = '44444444-4444-4444-8444-444444444444'
 
 vi.mock('@/features/locations/api', () => ({
   fetchLocations: mockFetchLocations,
+  fetchTransactionLocations: mockFetchLocations,
 }))
 
 vi.mock('@/lib/api', async () => {

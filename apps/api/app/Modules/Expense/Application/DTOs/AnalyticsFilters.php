@@ -15,5 +15,7 @@ final class AnalyticsFilters extends Data
         public string $date_to,
         public ?string $category_id,
         public string $status,
+        /** @var list<string> */
+        public array $location_ids = [],
     ) {}
 }

@@ -11,6 +11,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -179,6 +180,9 @@ class MultiPaymentTest extends TestCase
 
     public function test_payment_split_across_cash_and_check(): void
     {
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->invoice->update(['location_id' => $location->id]);
+
         $paymentSplits = [
             [
                 'payment_method_id' => $this->cashMethod->id,
@@ -208,11 +212,13 @@ class MultiPaymentTest extends TestCase
         $this->assertEquals($this->cashMethod->id, $payments[0]->payment_method_id);
         $this->assertEquals($this->cashRegister->id, $payments[0]->repository_id);
         $this->assertEquals(PaymentStatus::Completed, $payments[0]->status);
+        $this->assertSame($location->id, $payments[0]->location_id);
 
         // Verify second payment (check)
         $this->assertEquals('690.000', $payments[1]->amount);
         $this->assertEquals($this->checkMethod->id, $payments[1]->payment_method_id);
         $this->assertEquals($this->bankAccount->id, $payments[1]->repository_id);
+        $this->assertSame($location->id, $payments[1]->location_id);
 
         // Invoice should be fully paid
         $this->invoice->refresh();

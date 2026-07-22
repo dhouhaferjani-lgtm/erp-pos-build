@@ -1,0 +1,40 @@
+# Gate 3-partial — Wave 3 Treasury Tasks 1–3 — Reviewer Verdict
+
+Reviewer: treasury-reviewer (adversarial, code-grounded). Scope: Tasks 1–3 of
+`docs/superpowers/plans/2026-07-16-multiloc-3-financial-location-dimension.md`.
+Diff scope: `git diff origin/dev...HEAD -- apps/api/app/Modules/Treasury apps/api/app/Modules/Fiscal apps/api/app/Modules/POS apps/api/database/migrations/tenant apps/web/src/components/organisms/AddRepositoryModal apps/web/src/features/treasury`.
+Branch tip 4c29e831b.
+
+## What was verified good (evidence)
+
+- **No money/float exposure.** The entire diff adds a `location_id` UUID dimension only — no bcmath, no scale-resolver call, no float cast, no `SUM()`-into-float. Money-precision contract (rule 19) is untouched and clean. Confirmed across all changed writers.
+- **Schema migration is correct and self-guarding.** `apps/api/database/migrations/tenant/2026_07_16_110000_add_location_id_to_payments_and_instruments.php:13-49` — nullable indexed FK on both tables, `nullOnDelete()`, `Schema::hasColumn` guards on up/down (re-run safe under push=auto-deploy). `documents`/`expense_metadata` correctly untouched (spec §3 / review T1/T7/T8). Fillable added on `Payment.php:84` and `PaymentInstrument.php:93`.
+- **`ScopedExists` deviation from the plan is a correct fix, not a defect.** The plan specified `ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)`, but `locations` has **no `tenant_id` column** (`2025_11_30_105000_create_locations_table.php:23-65` — only `company_id`). `tenantAndCompany` adds `->where('tenant_id', …)` (`ScopedExists.php:34-36`) which would raise an undefined-column SQL error. The implementer used `ScopedExists::company('locations', $companyId)` (`PaymentRepositoryController.php:403,421`), which scopes on `company_id` only and correctly rejects sibling-company locations. Verified by the passing `test_store_rejects_sibling_company_location`.
+- **Module boundary respected.** `ResolvesTerminalLocation` (Treasury) reads `pos_terminals` via `DB::table('pos_terminals')` (`ResolvesTerminalLocation.php:56-60`) rather than importing the POS `Terminal` Eloquent model — boundary-clean (rule 6). Table/columns exist and match (`2026_01_08_190429_create_pos_terminals_table.php:25-29` → tenant_id/company_id/location_id/id); scoping mirrors the canonical `PosCoreReceiptProjection::resolveTerminal` (`PosCoreReceiptProjection.php:377-394`).
+- **Idempotency/freeze reasoning holds.** `resolveTerminalLocationId` is deterministic and called once per `apply()` outside the txn; existing `$existing` idempotency guards prevent re-stamping on retry. `InstrumentLifecycleService::receive` writes `location_id` once (`InstrumentLifecycleService.php:94`); custodyTransfer/deposit/clear touch only `repository_id`/`status` (freeze-by-omission). Deposit-bridge fallback `$terminalLocationId ?? $repository->location_id` (`TreasuryDepositBridge.php:184`) vs bare `$terminalLocationId` in receipt/account bridges is the plan's intended grain split (device-authored vs server-authored) — intentional, verified.
+- `PaymentRepositoryLocationTest` is a real, high-quality test: `RolesAndPermissionsSeeder`, real models, index-exposure + store/update round-trip + sibling-company 422. Passes (12 assertions across the treasury suite).
+
+## Findings
+
+### [IMPORTANT] apps/web/src/components/organisms/AddRepositoryModal/AddRepositoryModal.test.tsx:26-28,125-133 — the committed FE test is RED and the location-assignment feature has zero real coverage
+The test mocks `@/features/locations/hooks/useLocations` (line 26), but the component consumes a **different** hook — `useTransactionLocations` from `@/features/locations/hooks/useTransactionLocations` (`AddRepositoryModal.tsx:548,564`). The mock therefore never applies; the real `useTransactionLocations` runs unmocked, its `apiGet('/company/locations/transaction-destinations')` is not stubbed (only `apiPost` is), so `locations` resolves to `[]` and the `<Select>` renders only the placeholder option. `user.selectOptions(getByLabelText(/Location/), 'loc-a')` then throws.
+Verified by running it: `AddRepositoryModal.test.tsx > assigns a cash register to a selected location` → **FAIL** `TestingLibraryElementError: Value "loc-a" not found in options` (1 failed | 3 passed). This directly contradicts plan Task 1 Step 8 ("Existing AddRepositoryModal suite passes (4 tests)"). A red committed test fails preflight/CI, and the new FE payload path (`location_id` in the POST body) is effectively untested.
+Fix: mock `@/features/locations/hooks/useTransactionLocations` (returning `{ data: [{ id: 'loc-a', name: 'Store A', isActive: true }] }`) instead of `useLocations`, then re-run to green.
+
+### [IMPORTANT] apps/api/tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php:50-69 — the required POS-bridge attribution test does not test the attribution contract
+The gate and plan (Task 3 Step 1) require projecting a SALE_RECEIPT and asserting the persisted `payments.location_id` equals the terminal location and **overrides the repository's deliberately-different location**, with `CompanyContext` cleared (worker reality, rule 20). The delivered test does none of this: it uses `ReflectionMethod` to invoke the **private** `resolveTerminalLocationId` getter directly (lines 55-57,66-68) and asserts only its return value. It never calls any bridge `apply()`, never writes/reads a `Payment` or `PaymentInstrument` row, never sets a repository location different from the terminal (so the terminal-overrides-repository invariant is unproven), never covers the deposit `?? $repository->location_id` fallback branch, never covers maturity-leg → `payment_instruments.location_id` propagation, and never clears `CompanyContext`. The single most money-adjacent behavior in this gate (queued POS bridge attribution correctness) is unverified end-to-end.
+Fix: add a real projection test per the plan — clear `CompanyContext`, author+verify a SALE_RECEIPT, run `PosCoreReceiptProjection` then `TreasuryReceiptBridge::apply`, assert `Payment::where('fiscal_event_id',…)->location_id === $storeTerminal->id` and `!== $storeRepo->id`; add deposit-bridge fallback and maturity-leg-instrument coverage.
+
+### [MINOR] apps/api/app/Modules/Treasury/Application/Projections/Concerns/ResolvesTerminalLocation.php:61-63 — QueryException silently swallowed, no log
+The cloned canonical resolver `PosCoreReceiptProjection::resolveTerminal` logs a warning on `QueryException` (`PosCoreReceiptProjection.php:385-390`); this trait returns `null` with no log. On a transient lookup failure attribution silently degrades to Unattributed with no trace. Add a `Log::warning` with `fiscal_event_id`/`terminal_id` to match the established pattern.
+
+### [MINOR] apps/api/app/Modules/Treasury/Application/Projections/TreasuryDepositBridge.php:184 vs TreasuryReceiptBridge.php:621 / TreasuryAccountPaymentBridge.php:169 — intentional fallback asymmetry is undocumented in-code
+Only the deposit bridge falls back to `$repository->location_id`; receipt/account bridges do not. This is correct per the plan (server-authored vs device-authored grain), but nothing in the code says so, inviting a future "consistency fix" that wrongly unifies them. Add a one-line comment at each site.
+
+## Assessment
+
+Money precision, schema, migration self-guarding, tenant/company scoping, module boundary, and the freeze/idempotency reasoning are all sound. However the partial Wave 3 contract is NOT genuinely complete: one committed FE test is red (feature untested, CI-breaking) and the mandated POS-bridge attribution test does not exercise the attribution it is supposed to lock. Both are gating per the request brief ("APPROVE only if no Critical/Important findings and the partial Wave 3 contract is genuinely complete").
+
+What to fix before merge: repoint the AddRepositoryModal test mock to `useTransactionLocations` (make it green), and rewrite `PosBridgeLocationAttributionTest` to project a receipt through `apply()` and assert the persisted terminal-over-repository `location_id` with `CompanyContext` cleared.
+
+VERDICT: REJECT

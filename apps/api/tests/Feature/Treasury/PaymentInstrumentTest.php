@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
@@ -179,6 +180,27 @@ class PaymentInstrumentTest extends TestCase
         $response->assertJsonPath('data.reference', 'CHK-123456');
         $response->assertJsonPath('data.status', 'received');
         $response->assertJsonPath('data.amount', '2500.000');
+    }
+
+    public function test_store_defaults_instrument_location_to_repository_location(): void
+    {
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->checkSafe->update(['location_id' => $location->id]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-instruments', [
+            'payment_method_id' => $this->checkMethod->id,
+            'reference' => 'CHK-LOCATION-FALLBACK',
+            'partner_id' => $this->partner->id,
+            'amount' => '2500.00',
+            'received_date' => now()->toDateString(),
+            'repository_id' => $this->checkSafe->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('payment_instruments', [
+            'id' => $response->json('data.id'),
+            'location_id' => $location->id,
+        ]);
     }
 
     public function test_store_rejects_a_nonexistent_bank_id(): void

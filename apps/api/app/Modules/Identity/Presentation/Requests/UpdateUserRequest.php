@@ -7,7 +7,9 @@ namespace App\Modules\Identity\Presentation\Requests;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Rules\AssignableRole;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -16,7 +18,14 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('users.update') ?? false;
+        $currentUser = $this->user();
+
+        if (! $currentUser?->can('users.update')) {
+            return false;
+        }
+
+        return ! $this->has('allowed_location_ids')
+            || $currentUser->can('users.manage_location_access');
     }
 
     /**
@@ -49,7 +58,37 @@ class UpdateUserRequest extends FormRequest
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'can_discount' => ['sometimes', 'boolean'],
             'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'allowed_location_ids' => ['sometimes', 'nullable', 'array', 'list'],
+            'allowed_location_ids.*' => ['uuid'],
         ];
+    }
+
+    /**
+     * Preserve the location-grant API error contract before validation runs.
+     */
+    protected function failedAuthorization(): void
+    {
+        $currentUser = $this->user();
+
+        if (
+            $this->has('allowed_location_ids')
+            && $currentUser instanceof User
+            && $currentUser->can('users.update')
+            && ! $currentUser->can('users.manage_location_access')
+        ) {
+            throw new HttpResponseException(response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => 'You do not have permission to manage location access.',
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $this->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], Response::HTTP_FORBIDDEN));
+        }
+
+        parent::failedAuthorization();
     }
 
     /**

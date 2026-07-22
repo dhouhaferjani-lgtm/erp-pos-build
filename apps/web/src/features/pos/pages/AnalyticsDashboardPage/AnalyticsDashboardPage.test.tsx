@@ -12,6 +12,10 @@ vi.mock('@/contexts', () => ({
   useCompanyConfig: () => ({ config: { vertical: 'retail' } }),
 }))
 
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({ scope: 'all', effectiveLocationIds: ['location-1'], isAll: true, setScope: vi.fn() }),
+}))
+
 vi.mock('echarts-for-react', () => ({
   __esModule: true,
   default: () => <div data-testid="echarts-mock" />,

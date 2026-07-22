@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { Sidebar } from '../../organisms/Sidebar'
 import { TopBar } from '../../organisms/TopBar'
 import { Breadcrumb } from '../../molecules/Breadcrumb'
@@ -20,8 +20,6 @@ export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const { product } = useProductConfig()
-  const location = useLocation()
-  const showLocationSwitcher = !location.pathname.startsWith('/reports')
 
   const openCommandPalette = useCallback(() => {
     setCommandPaletteOpen(true)
@@ -44,7 +42,7 @@ export function DashboardLayout() {
       <Sidebar isOpen={sidebarOpen} onClose={() => { setSidebarOpen(false) }} />
       <div className="flex flex-1 flex-col overflow-hidden lg:ps-0">
         <EmailVerificationBanner />
-        <TopBar onMenuClick={() => { setSidebarOpen(true) }} onSearchClick={openCommandPalette} showLocationSwitcher={showLocationSwitcher} />
+        <TopBar onMenuClick={() => { setSidebarOpen(true) }} onSearchClick={openCommandPalette} />
         <CommandPalette isOpen={commandPaletteOpen} onClose={() => { setCommandPaletteOpen(false) }} />
         <WebSocketReconnectProvider>
           <ImportProgressSubscriber />

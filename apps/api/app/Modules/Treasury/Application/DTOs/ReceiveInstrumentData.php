@@ -33,5 +33,6 @@ final readonly class ReceiveInstrumentData
         public ?string $idempotencyKey = null,
         public bool $needsDetails = false,
         public ?string $createdBy = null,
+        public ?string $locationId = null,
     ) {}
 }

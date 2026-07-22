@@ -385,6 +385,8 @@
       "priceOverrideReason": "Price override reason",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
+      "destination": "Receiving destination",
+      "selectDestination": "Select destination…",
       "submit": "Receive",
       "saveDraft": "Save draft",
       "saveAndPost": "Save and post"

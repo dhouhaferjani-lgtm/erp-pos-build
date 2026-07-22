@@ -6,6 +6,7 @@ namespace Tests\Feature\Accounting\Reports;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -164,6 +165,20 @@ final class UpcomingPaymentsTest extends TestCase
         $response->assertJsonMissing(['document_number' => 'INV-PAID']);
         $response->assertJsonMissing(['document_number' => 'INV-BEYOND']);
         $response->assertJsonMissing(['document_number' => 'OTHER-INV']);
+    }
+
+    public function test_upcoming_payments_location_filter_uses_document_location(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->company->id]);
+        $storeB = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->createDocument('INV-A', DocumentType::Invoice, $this->customer, '100.000', '2026-07-05')->update(['location_id' => $storeA->id]);
+        $this->createDocument('INV-B', DocumentType::Invoice, $this->customer, '40.000', '2026-07-05')->update(['location_id' => $storeB->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/reports/upcoming-payments?location_ids[]='.$storeA->id);
+
+        $response->assertOk()->assertJsonPath('data.total_in', '100.000');
     }
 
     public function test_upcoming_payments_report_requires_reports_view_permission(): void

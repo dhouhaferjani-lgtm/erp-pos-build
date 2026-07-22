@@ -131,7 +131,7 @@ final readonly class StandaloneReceiptService
                 );
 
                 $receipt = $input->postImmediately
-                    ? $this->goodsReceiptService->post($draft, $input->actorId, true)
+                    ? $this->goodsReceiptService->post($draft, $input->actorId, null, true)
                     : $draft;
 
                 DB::table('procurement_idempotency_keys')

@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
+use App\Modules\Inventory\Application\Services\StockThresholdService;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Presentation\Requests\UpdateStockThresholdsRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -15,11 +19,26 @@ class StockLevelController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly StockThresholdService $stockThresholdService,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+
+        $validated = $request->validate([
+            'location_id' => ['sometimes', 'nullable', 'string', 'uuid'],
+            'location_ids' => ['sometimes', 'array', 'list'],
+            'location_ids.*' => ['string', 'uuid'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $requestedLocationIds = array_key_exists('location_ids', $validated)
+            ? array_values($validated['location_ids'])
+            : (($validated['location_id'] ?? null) !== null ? [(string) $validated['location_id']] : []);
+        $locationIds = $this->locationScopeResolver->resolve($user, $requestedLocationIds);
 
         // Both predicates required: tenant_id alone leaks same-tenant
         // cross-company stock data when a user with multi-company
@@ -35,9 +54,7 @@ class StockLevelController extends Controller
             $query->where('product_id', $request->input('product_id'));
         }
 
-        if ($request->has('location_id')) {
-            $query->where('location_id', $request->input('location_id'));
-        }
+        $query->whereIn('location_id', $locationIds);
 
         $stockLevels = $query->orderBy('created_at', 'desc')->paginate(20);
 
@@ -53,6 +70,25 @@ class StockLevelController extends Controller
                 'total' => $stockLevels->total(),
             ],
         ]);
+    }
+
+    public function updateThresholds(UpdateStockThresholdsRequest $request): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $data = $request->validated();
+        $variantValue = $data['variant_id'] ?? null;
+        $minValue = $data['min_quantity'] ?? null;
+        $maxValue = $data['max_quantity'] ?? null;
+
+        return response()->json(['data' => $this->stockThresholdService->update(
+            $company->tenant_id,
+            $company->id,
+            (string) $data['product_id'],
+            is_string($variantValue) ? $variantValue : null,
+            (string) $data['location_id'],
+            is_string($minValue) ? $minValue : null,
+            is_string($maxValue) ? $maxValue : null,
+        )]);
     }
 
     public function show(Request $request, string $productId, string $locationId): JsonResponse

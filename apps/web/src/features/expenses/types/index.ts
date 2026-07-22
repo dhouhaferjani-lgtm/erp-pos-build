@@ -287,6 +287,7 @@ export interface ExpenseFilters {
   date_to?: string
   search?: string
   per_page?: number
+  location_ids?: string[]
 }
 
 export type ExpenseAnalyticsStatus = DocumentStatus | 'all'
@@ -296,6 +297,7 @@ export interface ExpenseAnalyticsFilters extends Pick<
   'category_id' | 'date_from' | 'date_to'
 > {
   status?: ExpenseAnalyticsStatus
+  location_ids?: string[]
 }
 
 export interface ExpenseAnalyticsTiles {

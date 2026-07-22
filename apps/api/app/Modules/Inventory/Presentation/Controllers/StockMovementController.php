@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -23,11 +24,25 @@ class StockMovementController extends Controller
         private readonly StockAdjustmentService $stockService,
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
+        private readonly LocationScopeResolver $locationScopeResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+
+        $validated = $request->validate([
+            'location_id' => ['sometimes', 'nullable', 'string', 'uuid'],
+            'location_ids' => ['sometimes', 'array', 'list'],
+            'location_ids.*' => ['string', 'uuid'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $requestedLocationIds = array_key_exists('location_ids', $validated)
+            ? array_values($validated['location_ids'])
+            : (($validated['location_id'] ?? null) !== null ? [(string) $validated['location_id']] : []);
+        $locationIds = $this->locationScopeResolver->resolve($user, $requestedLocationIds);
 
         // Both predicates required: tenant_id alone leaks same-tenant
         // cross-company movement history when a user with multi-company
@@ -42,9 +57,7 @@ class StockMovementController extends Controller
             $query->where('product_id', $request->input('product_id'));
         }
 
-        if ($request->has('location_id')) {
-            $query->where('location_id', $request->input('location_id'));
-        }
+        $query->whereIn('location_id', $locationIds);
 
         if ($request->has('movement_type')) {
             $query->where('movement_type', $request->input('movement_type'));

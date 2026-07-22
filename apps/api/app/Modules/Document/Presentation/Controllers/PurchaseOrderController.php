@@ -780,6 +780,15 @@ class PurchaseOrderController extends Controller
             /** @var string|null $priceOverrideReason */
             $priceOverrideReason = $validated['price_override_reason'] ?? null;
             $saveAsDraft = (bool) ($validated['save_as_draft'] ?? false);
+            $destinationLocationId = isset($validated['location_id']) ? (string) $validated['location_id'] : null;
+
+            if ($destinationLocationId !== null) {
+                try {
+                    $this->locationContext->validateLocationAccess($destinationLocationId, $this->companyContext->requireCompanyId(), $user);
+                } catch (\RuntimeException $e) {
+                    return response()->json(['error' => ['code' => 'LOCATION_FORBIDDEN', 'message' => $e->getMessage()]], Response::HTTP_FORBIDDEN);
+                }
+            }
 
             if (is_array($freeQuantities) && count($freeQuantities) > 0 && ! $this->purchaseBonusGate->enabledFor($this->companyContext->requireCompany())) {
                 return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', 'free_quantities is not enabled for this company.');
@@ -794,6 +803,9 @@ class PurchaseOrderController extends Controller
                     is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
                     $priceOverrideReason,
                     $user->id,
+                    null,
+                    null,
+                    $destinationLocationId,
                 );
                 $updatedDocument = new GoodsReceiptResult(
                     $documentModel->fresh(['lines']) ?? $documentModel,
@@ -809,10 +821,11 @@ class PurchaseOrderController extends Controller
                     is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
                     $priceOverrideReason,
                     $user->id,
+                    $destinationLocationId,
                 );
             } else {
                 // Receive all remaining quantities
-                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id);
+                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id, $destinationLocationId);
             }
 
             // Get receipt status for response

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Company;
 
 use App\Modules\Company\Infrastructure\Services\CompanyVerticalQueryService;
+use App\Modules\Company\Presentation\Console\BackfillMembershipsCommand;
 use App\Modules\Company\Presentation\Console\BackfillPosStockPolicyCommand;
 use App\Shared\Contracts\Company\CompanyVerticalQueryContract;
 use Illuminate\Support\ServiceProvider;
@@ -25,6 +26,7 @@ class CompanyServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                BackfillMembershipsCommand::class,
                 BackfillPosStockPolicyCommand::class,
             ]);
         }

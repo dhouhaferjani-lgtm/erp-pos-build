@@ -148,7 +148,9 @@
     "type": "Type",
     "partner": "Partner",
     "maturity": "Maturity",
-    "location": "Current Location",
+    "location": "Origin Location",
+    "unattributed": "Unattributed",
+    "originGrainCaveat": "Instrument location is the frozen origin store, not the current custody repository.",
     "status": "Status",
     "amount": "Amount",
     "details": "Instrument Details",
@@ -310,6 +312,8 @@
     "singular": "repository",
     "plural": "repositories",
     "add": "Add Repository",
+    "location": "Location",
+    "selectLocation": "Select location",
     "transfer": {
       "action": "Transfer cash",
       "title": "Transfer cash",
@@ -364,6 +368,7 @@
       "repository": "Repository",
       "type": "Type",
       "bankInfo": "Bank Info",
+      "location": "Location",
       "status": "Status",
       "balance": "Balance"
     },
@@ -690,7 +695,9 @@
     "viewOverview": "View overview",
     "viewMovements": "View movements",
     "loading": "Loading cash position…",
-    "unavailable": "Cash position is unavailable."
+    "unavailable": "Cash position is unavailable.",
+    "unattributed": "Unattributed",
+    "byLocation": "By location"
   },
   "reconciliation": {
     "openingBalance": "Opening Balance",

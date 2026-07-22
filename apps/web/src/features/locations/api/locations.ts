@@ -26,6 +26,24 @@ interface RawLocation {
   updated_at: string
 }
 
+export interface TransactionLocation {
+  id: string
+  name: string
+  code: string
+  type: LocationType
+  isDefault: boolean
+  isActive: boolean
+}
+
+interface RawTransactionLocation {
+  id: string
+  name: string
+  code: string
+  type: LocationType
+  is_default: boolean
+  is_active: boolean
+}
+
 function mapLocation(raw: RawLocation): Location {
   return {
     id: raw.id,
@@ -53,9 +71,25 @@ function mapLocation(raw: RawLocation): Location {
 /**
  * Get all locations for the current company
  */
-export async function getLocations(): Promise<Location[]> {
-  const raw = await apiGet<RawLocation[]>('/locations')
+async function getLocationList(path: string): Promise<Location[]> {
+  const raw = await apiGet<RawLocation[]>(path)
   return raw.map(mapLocation)
+}
+
+export async function getLocations(): Promise<Location[]> {
+  return getLocationList('/locations')
+}
+
+export async function getTransactionLocations(): Promise<TransactionLocation[]> {
+  const rows = await apiGet<RawTransactionLocation[]>('/company/locations/transaction-destinations')
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    type: row.type,
+    isDefault: row.is_default,
+    isActive: row.is_active,
+  }))
 }
 
 /**

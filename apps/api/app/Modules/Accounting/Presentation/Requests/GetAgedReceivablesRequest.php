@@ -37,6 +37,9 @@ class GetAgedReceivablesRequest extends FormRequest
                 'date',
                 'before_or_equal:today',
             ],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
+            'group_by' => ['nullable', 'in:location'],
         ];
     }
 

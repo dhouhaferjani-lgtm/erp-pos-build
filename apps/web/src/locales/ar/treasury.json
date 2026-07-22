@@ -5,6 +5,11 @@
       "paymentForSupplierInvoice": "دفعة لفاتورة المورد {{invoiceNumber}}"
     }
   },
+  "instruments": {
+    "location": "موقع الأصل",
+    "unattributed": "غير منسوب",
+    "originGrainCaveat": "موقع الأداة هو متجر الأصل الثابت، وليس مستودع الحيازة الحالي."
+  },
   "cashWidget": {
     "title": "وضع السيولة النقدية",
     "subtitle": "النقد المتاح في جميع المستودعات",
@@ -34,7 +39,9 @@
     "viewOverview": "عرض النظرة العامة",
     "viewMovements": "عرض الحركات",
     "loading": "جارٍ تحميل وضع السيولة…",
-    "unavailable": "وضع السيولة غير متاح."
+    "unavailable": "وضع السيولة غير متاح.",
+    "unattributed": "غير منسوب",
+    "byLocation": "حسب الموقع"
   },
   "reconciliation": {
     "openingBalance": "الرصيد الافتتاحي",
@@ -63,5 +70,10 @@
       "toRequired": "اختر المستودع الوجهة",
       "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
     }
+  },
+  "repositories": {
+    "location": "الموقع",
+    "selectLocation": "اختر الموقع",
+    "table": { "location": "الموقع" }
   }
 }

@@ -9,7 +9,6 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { AddVehicleModal } from '../organisms/AddVehicleModal/AddVehicleModal'
-import { LocationSwitcher } from '../organisms/LocationSwitcher/LocationSwitcher'
 import { LocationField } from '../ui/LocationField'
 import { PartnerPicker } from '../molecules/pickers/PartnerPicker'
 import { ProductLineSelect } from '../molecules/line-items'
@@ -17,7 +16,6 @@ import { ProductLineSelect } from '../molecules/line-items'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockGetLocations = vi.hoisted(() => vi.fn())
-const mockSwitchLocation = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -32,18 +30,6 @@ vi.mock('@/features/locations/api/locations', () => ({
   getLocations: mockGetLocations,
 }))
 
-vi.mock('@/hooks/useLocation', () => ({
-  useLocation: () => ({
-    currentLocation: { id: 'loc-1', name: 'Shop', type: 'shop', isDefault: true },
-    hasMultipleLocations: true,
-    isLoading: false,
-    locations: [
-      { id: 'loc-1', name: 'Shop', type: 'shop', code: 'S1', isDefault: true },
-      { id: 'loc-2', name: 'Warehouse', type: 'warehouse', code: 'W1', isDefault: false },
-    ],
-    switchLocation: mockSwitchLocation,
-  }),
-}))
 
 vi.mock('../organisms/AddLocationModal', () => ({
   AddLocationModal: ({ isOpen }: { isOpen: boolean }) => isOpen ? <div>add-location-modal</div> : null,
@@ -175,24 +161,6 @@ describe('shared selector tenant scope', () => {
       expect(queryClient.getQueryState(['partner', 'partner-1', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
     })
     expect(queryClient.getQueryState(['vehicles', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
-  })
-
-  it('scopes header location switch invalidations (.006-.007)', async () => {
-    const user = userEvent.setup()
-    const queryClient = createClient()
-    queryClient.setQueryData(['stock-levels', 'tenant-A', 'company-1'], ['tenant-A-stock'])
-    queryClient.setQueryData(['stock-movements', 'tenant-A', 'company-1'], ['tenant-A-movements'])
-    queryClient.setQueryData(['stock-levels', 'tenant-B', 'company-2'], ['tenant-B-stock'])
-
-    render(<LocationSwitcher />, { wrapper: wrapper(queryClient) })
-
-    await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
-    await user.click(screen.getByRole('button', { name: /Warehouse/ }))
-
-    expect(mockSwitchLocation).toHaveBeenCalledWith('loc-2')
-    expect(queryClient.getQueryState(['stock-levels', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
-    expect(queryClient.getQueryState(['stock-movements', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
-    expect(queryClient.getQueryState(['stock-levels', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })
 
   it('scopes location, partner, and product selector reads (.020-.025)', async () => {

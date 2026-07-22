@@ -54,6 +54,7 @@ total_days_60: string;
 total_days_90: string;
 total_over_90: string;
 grand_total: string;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 export type AgedPayablesLineData = {
 vendor_id: string;
@@ -74,6 +75,7 @@ total_days_60: string;
 total_days_90: string;
 total_over_90: string;
 grand_total: string;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 export type AgedReceivablesLineData = {
 customer_id: string;
@@ -172,6 +174,15 @@ recent_receipts: Array<App.Modules.Accounting.Application.DTOs.Reports.LiveSaleR
 open_shifts_by_location: Record<string, number>;
 generated_at: string;
 };
+export type LocationReportBucketData = {
+location_id: string | null;
+location_name: string;
+total: string;
+count: number;
+total_in: string;
+total_out: string;
+net: string;
+};
 export type PaymentMethodBreakdownData = {
 payment_type: string;
 payment_method_name: string;
@@ -265,6 +276,7 @@ days_until_due: number;
 overdue: boolean;
 source: string;
 certainty: string | null;
+location_id: string | null;
 };
 export type UpcomingPaymentsData = {
 in: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
@@ -274,6 +286,7 @@ total_out: string;
 net: string;
 days: number;
 as_of_date: string;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 }
 declare namespace App.Modules.Accounting.Application.Enums {
@@ -876,6 +889,7 @@ id: string;
 tenant_id: string;
 company_id: string;
 purchase_order_id: string;
+location_id: string | null;
 purchase_order_number: string | null;
 supplier_id: string | null;
 supplier_name: string | null;
@@ -2027,6 +2041,46 @@ bic: string | null;
 rib_bank_code: string | null;
 city: string | null;
 is_custom: boolean;
+};
+export type MaturingInstrumentBucketData = {
+count: number;
+total_in: string;
+total_out: string;
+};
+export type MaturingInstrumentBucketsData = {
+overdue: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+d0_7: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+d8_30: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+d31_60: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+d61_90: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+d90_plus: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+};
+export type MaturingInstrumentRowData = {
+id: string;
+reference: string;
+amount: string;
+currency: string;
+maturity_date: string | null;
+received_date: string;
+status: string;
+direction: string;
+kind: string | null;
+repository_id: string | null;
+location_id: string | null;
+location_name: string | null;
+partner_id: string | null;
+needs_details: boolean;
+certainty: string;
+bucket: string;
+};
+export type MaturingInstrumentsData = {
+data: Array<App.Modules.Treasury.Application.DTOs.MaturingInstrumentRowData>;
+meta: App.Modules.Treasury.Application.DTOs.MaturingInstrumentsMetaData;
+};
+export type MaturingInstrumentsMetaData = {
+buckets: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketsData;
+grand_total: App.Modules.Treasury.Application.DTOs.MaturingInstrumentBucketData;
+buckets_by_location: Array<App.Modules.Accounting.Application.DTOs.Reports.LocationReportBucketData>;
 };
 export type TolerancePaymentBreakdownDTO = {
 userId: string;
