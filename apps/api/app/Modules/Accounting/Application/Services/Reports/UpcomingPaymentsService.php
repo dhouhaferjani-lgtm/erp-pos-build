@@ -418,14 +418,13 @@ final readonly class UpcomingPaymentsService
 
     /**
      * @param  array<int, UpcomingPaymentLineData>  $lines
-     * @return array<int, UpcomingPaymentLineData>
+     * @return list<UpcomingPaymentLineData>
      */
     private function sortLines(array $lines): array
     {
-        return collect($lines)
+        return array_values(collect($lines)
             ->sortBy(fn (UpcomingPaymentLineData $line): string => $line->due_date.'|'.$line->document_number)
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**

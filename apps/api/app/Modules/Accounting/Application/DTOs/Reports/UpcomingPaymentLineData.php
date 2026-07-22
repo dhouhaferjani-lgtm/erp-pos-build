@@ -10,6 +10,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 #[TypeScript]
 final class UpcomingPaymentLineData extends Data
 {
+    /**
+     * @param  numeric-string  $balance_due
+     */
     public function __construct(
         public readonly string $partner_name,
         public readonly string $document_number,

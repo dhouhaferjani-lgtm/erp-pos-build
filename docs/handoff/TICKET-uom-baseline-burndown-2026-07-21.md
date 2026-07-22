@@ -44,3 +44,6 @@ Gate 4 MINOR: `apps/pos/eslint-rules/no-hardcoded-step.js` (and the web original
 - `quantity-display-baseline.json` = `[]` and phpstan ratchet comment block gone; all guards still registered and green.
 - `pnpm lint` (web+pos), preflight, CI green; PHPUnit by path for touched backend files.
 - Dead route(s) removed with proof-of-zero-callers noted in the PR/commit message.
+
+## Addendum 2026-07-22 (multi-location merge)
+- `apps/web/src/features/inventory/components/RebalancingView.tsx:21` — `move.quantity` via legacy `@/lib/format` `formatQuantity` (fixed scale). Added to baseline at the feat/multi-location merge because the stock-matrix `RebalanceRow` API does not emit unit `decimal_places`; burning it down requires the backend endpoint to include unit metadata, then switch to `getQuantityDecimals` + canonical `lib/decimal` `formatQuantity`. (Sibling debt: ProductStockLevels.tsx same pattern; its stale `loc.quantity` baseline entry was removed in the same merge.)

@@ -54,12 +54,11 @@ final class UpdateStockThresholdsRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $min = $this->input('min_quantity');
             $max = $this->input('max_quantity');
+            // Inputs are regex-capped at 4 decimals, so comparing at the storage
+            // scale directly is exact — no pre-rounding (which the precision
+            // guard forbids in Presentation) is needed.
             if (is_string($min) && is_string($max) && is_numeric($min) && is_numeric($max)
-                && bccomp(
-                    QuantityScale::round($min, QuantityScale::SCALE, QuantityScale::FLOOR),
-                    QuantityScale::round($max, QuantityScale::SCALE, QuantityScale::FLOOR),
-                    QuantityScale::SCALE,
-                ) > 0) {
+                && bccomp($min, $max, QuantityScale::SCALE) > 0) {
                 $validator->errors()->add('max_quantity', 'max_quantity must be ≥ min_quantity.');
             }
         });
