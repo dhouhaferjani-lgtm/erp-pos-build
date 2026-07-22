@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 import type {
   Account,
   CreateAccountData,
@@ -57,12 +58,7 @@ export async function updateAccount(
 
 export async function getJournalEntries(page = 1): Promise<{
   data: JournalEntry[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }> {
   return apiGet(`/journal-entries?page=${String(page)}`)
 }

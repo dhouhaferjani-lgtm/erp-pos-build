@@ -21,17 +21,11 @@ import { DataTable, type DataTableColumn } from '../../components/molecules/Data
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPageLayout'
 import type { Document } from '../../types/document'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface DocumentsResponse {
   data: Document[]
-  meta?: {
-    total?: number
-    current_page?: number
-    last_page?: number
-    per_page?: number
-    from?: number | null
-    to?: number | null
-  }
+  meta?: Partial<OffsetPaginationMeta>
 }
 
 export type DocumentType = 'quote' | 'sales_order' | 'invoice' | 'purchase_order' | 'delivery_note' | 'credit_note' | 'return_note'

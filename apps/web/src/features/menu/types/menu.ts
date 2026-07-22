@@ -1,3 +1,5 @@
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export interface MenuData {
   id: string
   name: string
@@ -46,12 +48,7 @@ export interface MenuItemData {
 
 export interface PaginatedResponse<T> {
   data: T[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 // Request types

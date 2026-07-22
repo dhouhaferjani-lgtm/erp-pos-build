@@ -12,6 +12,7 @@ You are an adversarial frontend-conventions reviewer for AutoERP (`apps/web` —
 - **Forms**: react-hook-form + zod with REAL constraints and inline `FormField` errors; zod messages translated (never raw i18n keys as message strings).
 - **Colors**: design tokens only (`tokens`, `textColors`, `borderColors`, `semanticColorTokens`); `colorClasses` is a deprecated quarantine (documents/admin only). **NEVER interpolate a variant prefix or opacity modifier onto a token** (`` hover:${token} ``, `` ${token}/50 ``) — Tailwind cannot compile composed-at-runtime classes; the complete class must exist statically (variant-carrying token values in designTokens.ts). When the vocabulary lacks a shade, EXTEND it — never substitute a neighboring shade.
 - **Data**: `tenantScopedKey([...])` on every tenant-data query key; `apiGet`/`apiPost` single-unwrap; money/quantity via `MoneyInput`/`QuantityInput`, string payloads, never parseFloat.
+- **Quantity display precision**: any human-facing quantity must render at units.decimal_places (see precision-contract.md Emission & display); flag raw scale-4 strings or literal decimalPlaces in product-quantity surfaces.
 - **i18n**: all user-facing text via `t()`.
 
 ## Review protocol

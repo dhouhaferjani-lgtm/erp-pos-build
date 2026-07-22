@@ -71,6 +71,32 @@ describe('AddToPoDialog', () => {
     })
   })
 
+  it('derives QuantityInput precision and min from quantity_decimals (piece → 0)', () => {
+    const pieceSelected = [makeReplenishmentLine({ id: 'request-a', location_id: 'shop-a', location_name: 'Shop A', requested_qty: '3.0000', quantity_decimals: 0 })]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <AddToPoDialog selected={pieceSelected} isOpen onClose={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('spinbutton')
+    expect(input).toHaveAttribute('min', '1')
+    expect(input).toHaveAttribute('step', '1')
+  })
+
+  it('derives QuantityInput precision and min from quantity_decimals (3 decimals)', () => {
+    const kgSelected = [makeReplenishmentLine({ id: 'request-a', location_id: 'shop-a', location_name: 'Shop A', requested_qty: '3.0000', quantity_decimals: 3 })]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <AddToPoDialog selected={kgSelected} isOpen onClose={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('spinbutton')
+    expect(input).toHaveAttribute('min', '0.001')
+    expect(input).toHaveAttribute('step', '0.001')
+  })
+
   it('does not render without replenishment.process permission', () => {
     permissionAllowed = false
     renderDialog()

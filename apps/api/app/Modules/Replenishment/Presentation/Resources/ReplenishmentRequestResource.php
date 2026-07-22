@@ -23,6 +23,12 @@ final class ReplenishmentRequestResource extends JsonResource
             'variant_id' => $this->variant_id,
             'variant_name' => $this->variant_name,
             'requested_qty' => $this->requested_qty,
+            'suggested_qty' => $this->suggested_qty,
+            'quantity_decimals' => ($this->product !== null
+                && $this->product->relationLoaded('unitOfMeasure')
+                && $this->product->unitOfMeasure !== null)
+                ? $this->product->unitOfMeasure->decimal_places
+                : 4,
             'note' => $this->note,
             'request_count' => $this->request_count,
             'status' => $this->status->value,

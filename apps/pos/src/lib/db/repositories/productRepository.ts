@@ -25,6 +25,11 @@ interface ProductRow {
   brand_name: string | null;
   /** Raw JSON string — parsed by rowToProduct into ParapharmacyMeta | null. */
   parapharmacy_metadata: string | null;
+  /**
+   * UoM display precision (nullable INTEGER, added by migration v62). Absent on
+   * pre-v62 devices — `rowToProduct` coerces missing/null to `null`.
+   */
+  quantity_decimals: number | null;
 }
 
 /**
@@ -80,6 +85,8 @@ function rowToProduct(row: ProductRow): POSProduct {
       try { return JSON.parse(row.parapharmacy_metadata) as ParapharmacyMeta; }
       catch { console.warn(`[productRepository] corrupt parapharmacy_metadata for product ${row.id}`); return null; }
     })(),
+    // UoM display precision (migration v62). Absent on pre-v62 devices → null.
+    quantity_decimals: row.quantity_decimals ?? null,
   };
 }
 
@@ -131,11 +138,14 @@ const BATCH_SIZE = 50;
 /** Number of $-placeholder parameters per product row (excludes datetime('now') literals).
  * Columns: id, name, sku, barcode, sale_price, stock_quantity, category, image_url,
  *          tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id,
- *          is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata
- *          → 18 data params + 2 datetime('now') literals.
- *          Batch math: 50 × 18 = 900 < SQLite 999-param limit ✓
+ *          is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata,
+ *          quantity_decimals
+ *          → 19 data params + 2 datetime('now') literals.
+ *          quantity_decimals (v62) is appended LAST so existing positional param
+ *          asserts (brand_id=15, brand_name=16, parapharmacy_metadata=17) stay valid.
+ *          Batch math: 50 × 19 = 950 < SQLite 999-param limit ✓
  */
-const PARAMS_PER_ROW = 18;
+const PARAMS_PER_ROW = 19;
 
 export async function upsertProducts(db: Database, products: ProductPayload[]): Promise<void> {
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
@@ -147,7 +157,7 @@ export async function upsertProducts(db: Database, products: ProductPayload[]): 
       const p = batch[j]!;
       const offset = j * PARAMS_PER_ROW;
       valueClauses.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, datetime('now'), datetime('now'))`
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19}, datetime('now'), datetime('now'))`
       );
 
       // Task 20 — C-1: flatten nested brand object from the server API shape
@@ -187,12 +197,14 @@ export async function upsertProducts(db: Database, products: ProductPayload[]): 
         brand_name,
         // Task 20 — parapharmacy metadata: object → JSON string → TEXT, or null.
         p.parapharmacy_metadata != null ? JSON.stringify(p.parapharmacy_metadata) : null,
+        // UoM display precision (v62). Appended LAST; absent payloads → null.
+        p.quantity_decimals ?? null,
       );
     }
 
     await execute(
       db,
-      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata, updated_at, synced_at)
+      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata, quantity_decimals, updated_at, synced_at)
        VALUES ${valueClauses.join(', ')}
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
@@ -212,6 +224,7 @@ export async function upsertProducts(db: Database, products: ProductPayload[]): 
          brand_id = excluded.brand_id,
          brand_name = excluded.brand_name,
          parapharmacy_metadata = excluded.parapharmacy_metadata,
+         quantity_decimals = excluded.quantity_decimals,
          updated_at = datetime('now'),
          synced_at = datetime('now')`,
       params

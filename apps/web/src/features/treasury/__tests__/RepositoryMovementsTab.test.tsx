@@ -96,7 +96,7 @@ const expenseMovement: RepositoryMovement = {
 function baseResponse(overrides?: Partial<RepositoryMovementsResponse>): RepositoryMovementsResponse {
   return {
     data: [paymentMovement, adjustmentMovement, expenseMovement],
-    meta: { current_page: 1, last_page: 1, per_page: 20, total: 3 },
+    meta: { current_page: 1, last_page: 1, per_page: 20, total: 3, from: 1, to: 3 },
     ...overrides,
   }
 }
@@ -145,7 +145,7 @@ describe('RepositoryMovementsTab', () => {
 
   it('renders an empty state when there are no movements', () => {
     mockUseRepositoryMovements.mockReturnValue({
-      data: baseResponse({ data: [], meta: { current_page: 1, last_page: 1, per_page: 20, total: 0 } }),
+      data: baseResponse({ data: [], meta: { current_page: 1, last_page: 1, per_page: 20, total: 0, from: null, to: null } }),
       isLoading: false,
       error: null,
     })
@@ -275,7 +275,7 @@ describe('RepositoryMovementsTab', () => {
 
   it('paginates via the shared OffsetPagination, requesting the next server page', async () => {
     mockUseRepositoryMovements.mockReturnValue({
-      data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60 } }),
+      data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60, from: 1, to: 20 } }),
       isLoading: false,
       error: null,
     })
@@ -295,7 +295,7 @@ describe('RepositoryMovementsTab', () => {
 
   it('renders the shared OffsetPagination with the per-page selector hidden (server hardcodes per_page)', () => {
     mockUseRepositoryMovements.mockReturnValue({
-      data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60 } }),
+      data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60, from: 1, to: 20 } }),
       isLoading: false,
       error: null,
     })
@@ -311,7 +311,7 @@ describe('RepositoryMovementsTab', () => {
 
   it('disables previous on the first page and next on the last page', () => {
     mockUseRepositoryMovements.mockReturnValue({
-      data: baseResponse({ meta: { current_page: 1, last_page: 1, per_page: 20, total: 3 } }),
+      data: baseResponse({ meta: { current_page: 1, last_page: 1, per_page: 20, total: 3, from: 1, to: 3 } }),
       isLoading: false,
       error: null,
     })

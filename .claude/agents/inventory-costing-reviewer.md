@@ -49,6 +49,7 @@ You are the **inventory-costing-reviewer** — an adversarial, code-grounded rev
 - **FormRequests:** quantity columns keep `numeric` AND add a regex ceiling `/^-?\d+(\.\d{1,4})?$/`; money `…{1,3}`; percent `…{1,2}` (percent is NOT currency-scaled).
 - **Frontend:** no `parseFloat`/`Number(...)` on money/qty; use `<QuantityInput>` (`apps/web/src/components/atoms/QuantityInput/QuantityInput.tsx`) / `<MoneyInput>` (`apps/web/src/components/atoms/MoneyInput/MoneyInput.tsx`) which emit strings; payloads carry strings; render via `formatQuantity`/`formatCurrency`.
 - Guards to keep green: PHPStan `ForbidFloatCastOnDecimalProperty` / `ForbidHardcodedBcmathScale`, ESLint `no-parsefloat-on-money` / `no-hardcoded-step`.
+- Quantity display precision: any human-facing quantity must render at units.decimal_places (see precision-contract.md Emission & display); flag raw scale-4 strings or literal decimalPlaces in product-quantity surfaces.
 
 ## Test-quality checks
 - Tests assert real behavior (not `assertTrue(true)`), use `RefreshDatabase` + real models + `RolesAndPermissionsSeeder`, never fake API payloads. Costing tests must assert the running average across a purchase→sale→purchase sequence, not a single write. Beware: the suite runs on SQLite, which can MASK PostgreSQL aggregate/`SUM` bugs — flag stock-aggregate logic only exercised under SQLite. Flag tests that assert nothing or mock the thing under test.

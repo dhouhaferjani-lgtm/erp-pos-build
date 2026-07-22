@@ -2,6 +2,8 @@
  * Price List types for the pricing module
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export interface PriceList {
   id: string
   code: string
@@ -67,12 +69,8 @@ export interface AssignPartnerFormData {
 
 export interface PriceListsResponse {
   data: PriceList[]
-  meta: {
-    total: number
-    current_page?: number
-    last_page?: number
-    per_page?: number
-  }
+  meta: Pick<OffsetPaginationMeta, 'total'> &
+    Partial<Omit<OffsetPaginationMeta, 'total'>>
 }
 
 export interface PriceListResponse {

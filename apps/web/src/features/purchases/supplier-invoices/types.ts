@@ -222,6 +222,7 @@ export interface PurchaseOrderReceiptLine {
   accrual_unit_cost: string
   received_unit_price: string | null
   po_line_id: string
+  quantity_decimals?: number
 }
 
 export interface PurchaseOrderInvoiceLine {
@@ -231,6 +232,7 @@ export interface PurchaseOrderInvoiceLine {
   product_name: string | null
   unit_price: string
   tax_rate: string | null
+  quantity_decimals?: number
 }
 
 export interface PurchaseOrderForSupplierInvoice {

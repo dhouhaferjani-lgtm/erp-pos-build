@@ -50,7 +50,7 @@ describe('expenses permission keys', () => {
   })
 
   it('expenses.pay matches the backend-authorized financial roles', () => {
-    expect(PERMISSIONS['expenses.pay']).toEqual(['admin', 'manager', 'accountant'])
+    expect(PERMISSIONS['expenses.pay']).toEqual(['accountant', 'admin', 'manager'])
   })
 })
 

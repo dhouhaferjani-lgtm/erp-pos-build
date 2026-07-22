@@ -240,12 +240,7 @@ export interface MemberListParams {
 
 export interface MemberListResponse {
   data: LoyaltyMember[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 // Enrollment
@@ -288,15 +283,11 @@ export interface LoyaltyTransaction {
 
 export interface TransactionListResponse {
   data: LoyaltyTransaction[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface AdjustPointsData {
   points: string
   reason: string
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

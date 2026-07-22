@@ -10,6 +10,7 @@ import { PartnerPicker } from '@/components/molecules/pickers'
 import { useLocations } from '@/features/locations/hooks/useLocations'
 import { api, getErrorMessage } from '@/lib/api'
 import { bccomp } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { tokens } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useCreatePoAction } from '../api/queries'
@@ -128,19 +129,23 @@ export function AddToPoDialog({ selected, isOpen, onClose }: AddToPoDialogProps)
             </select>
           </div>
           <ul className="space-y-3">
-            {selected.map((line) => (
-              <li key={line.id}>
-                <label htmlFor={`po-qty-${line.id}`} className={tokens.label.base}>{line.product_name}</label>
-                <QuantityInput
-                  id={`po-qty-${line.id}`}
-                  aria-label={`${t('dialog.quantity')} ${line.product_name}`}
-                  value={quantities[line.id] ?? ''}
-                  onChange={(value) => { setQuantities((current) => ({ ...current, [line.id]: value })) }}
-                  decimalPlaces={4}
-                  min="0.0001"
-                />
-              </li>
-            ))}
+            {selected.map((line) => {
+              const dp = getQuantityDecimals(line)
+              const minForDp = dp === 0 ? '1' : `0.${'0'.repeat(dp - 1)}1`
+              return (
+                <li key={line.id}>
+                  <label htmlFor={`po-qty-${line.id}`} className={tokens.label.base}>{line.product_name}</label>
+                  <QuantityInput
+                    id={`po-qty-${line.id}`}
+                    aria-label={`${t('dialog.quantity')} ${line.product_name}`}
+                    value={quantities[line.id] ?? ''}
+                    onChange={(value) => { setQuantities((current) => ({ ...current, [line.id]: value })) }}
+                    decimalPlaces={dp}
+                    min={minForDp}
+                  />
+                </li>
+              )
+            })}
           </ul>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>{t('dialog.cancel')}</Button>

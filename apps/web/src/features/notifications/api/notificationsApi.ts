@@ -1,4 +1,5 @@
 import { api, apiGet, apiPost } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface AppNotification {
   id: string
@@ -8,16 +9,9 @@ export interface AppNotification {
   created_at: string
 }
 
-export interface NotificationsMeta {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-}
-
 export interface NotificationsResponse {
   data: AppNotification[]
-  meta: NotificationsMeta
+  meta: OffsetPaginationMeta
 }
 
 export interface UnreadNotificationCount {

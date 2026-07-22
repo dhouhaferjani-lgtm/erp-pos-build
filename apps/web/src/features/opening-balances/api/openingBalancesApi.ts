@@ -1,4 +1,5 @@
 import { api, apiGet, apiPost, apiDelete } from '../../../lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 import type {
   OpeningBalanceBatch,
   OpeningBalanceImportRow,
@@ -68,7 +69,7 @@ export const openingBalancesApi = {
     params?: { page?: number; per_page?: number; status?: string }
   ): Promise<{
     data: OpeningBalanceImportRow[]
-    meta: { current_page: number; last_page: number; per_page: number; total: number }
+    meta: OffsetPaginationMeta
   }> {
     const response = await api.get(`${BASE_URL}/${companyId}/opening-batches/${batchId}/rows`, {
       params,

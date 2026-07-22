@@ -47,7 +47,7 @@ const defaultResponse: AggregateChannelOrdersResponse = {
       channel: { id: '5d9e4f4b-6e6a-4dbf-af3d-444444444444', name: 'Marketplace' },
     }),
   ],
-  meta: { current_page: 1, last_page: 3, per_page: 25, total: 60 },
+  meta: { current_page: 1, last_page: 3, per_page: 25, total: 60, from: 1, to: 2 },
 }
 
 describe('EcommerceOrdersPage', () => {
@@ -82,7 +82,7 @@ describe('EcommerceOrdersPage', () => {
             payload: { customer: { name: 'Youssef Trabelsi' }, grand_total: '89.999' },
           }),
         ],
-        meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 },
+        meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: 1, to: 1 },
       }),
     )
 
@@ -124,7 +124,7 @@ describe('EcommerceOrdersPage', () => {
     mockUseAggregateChannelOrders.mockReturnValue(
       queryResult({
         data: [makeRow()],
-        meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 },
+        meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: 1, to: 1 },
       }),
     )
 
@@ -137,7 +137,7 @@ describe('EcommerceOrdersPage', () => {
     mockUseAggregateChannelOrders.mockReturnValue(
       queryResult({
         data: [],
-        meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 },
+        meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null },
       }),
     )
 

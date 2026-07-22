@@ -68,6 +68,7 @@ function makeLine(
     fulfillment_type: null,
     fulfillment_id: null,
     rejection_reason: null,
+    quantity_decimals: 4,
   }
 }
 
@@ -108,6 +109,28 @@ describe('ReplenishmentQueuePage', () => {
     expect(screen.getByRole('button', { name: 'actions.create_transfer' })).toBeInTheDocument()
     await user.click(screen.getByText('Serum'))
     expect(screen.getByTestId('request-context')).toHaveTextContent('Serum')
+  })
+
+  it('renders the requested quantity at the product unit precision', () => {
+    openQuery.mockReturnValue({
+      data: {
+        data: [
+          {
+            ...makeLine('req-piece', 'shop-a', 'Shop A', 'product-piece', 'Widget'),
+            requested_qty: '2.0000',
+            quantity_decimals: 0,
+          },
+        ],
+        meta: { truncated: false },
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    render(<ReplenishmentQueuePage />)
+
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.queryByText('2.0000')).not.toBeInTheDocument()
   })
 
   it('renders the mandated empty and query-error states', () => {

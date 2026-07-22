@@ -70,10 +70,12 @@ export function ReplenishmentCapturePage() {
             <label htmlFor="replenishment-quantity" className={tokens.label.base}>
               {t('capture.quantity')}
             </label>
+            {/* pre-product standing field — intentionally scale-4; see spec 2026-07-20 §3.3 */}
             <QuantityInput
               id="replenishment-quantity"
               value={quantity}
               onChange={setQuantity}
+              // eslint-disable-next-line precision/no-literal-decimal-places -- pre-product standing field, intentionally scale-4 (spec 2026-07-20 §3.3): no product bound yet to derive precision from
               decimalPlaces={4}
             />
           </div>

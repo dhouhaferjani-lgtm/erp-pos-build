@@ -37,15 +37,11 @@ import { UserEditModal } from './components/UserEditModal'
 import { LocationAccessField } from './components/LocationAccessField'
 import { usePermissions } from '../../hooks/usePermissions'
 import type { User } from '../users/types'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface UsersResponse {
   data: User[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 interface Role {

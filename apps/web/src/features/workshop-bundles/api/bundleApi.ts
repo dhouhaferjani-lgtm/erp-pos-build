@@ -4,17 +4,13 @@ import type {
   BundleExpansionLineData,
   ServiceBundleData,
 } from '../types'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 const BASE = '/workshop/bundles'
 
 interface ListBundlesResponse {
   data: ServiceBundleData[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface ListBundlesParams {

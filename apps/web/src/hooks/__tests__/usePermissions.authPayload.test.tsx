@@ -41,16 +41,16 @@ describe('usePermissions auth payload', () => {
     const { result } = renderHook(() => usePermissions())
 
     expect(result.current.hasPermission('inventory.view')).toBe(true)
-    expect(result.current.hasPermission('inventory.edit')).toBe(true)
+    expect(result.current.hasPermission('inventory.adjust')).toBe(true)
     expect(result.current.hasPermission('pricing.view_cost_prices')).toBe(false)
   })
 
-  it('fails cost visibility closed while keeping legacy route-map access for older sessions', () => {
+  it('fails cost visibility closed while keeping generated fallback access for older sessions', () => {
     useAuthStore.getState().setUser(baseUser)
 
     const { result } = renderHook(() => usePermissions())
 
-    expect(result.current.hasPermission('inventory.edit')).toBe(true)
+    expect(result.current.hasPermission('inventory.adjust')).toBe(true)
     expect(result.current.hasPermission('pricing.view_cost_prices')).toBe(false)
   })
 })

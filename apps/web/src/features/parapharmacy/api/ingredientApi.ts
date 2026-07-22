@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { IngredientData } from '../types';
+import type { OffsetPaginationMeta } from '@/types/pagination';
 
 export interface IngredientTranslation {
   id?: string;
@@ -30,14 +31,7 @@ export interface UpdateIngredientInput {
 
 export interface IngredientsListResponse {
   data: IngredientData[];
-  meta: {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-    from: number | null;
-    to: number | null;
-  };
+  meta: OffsetPaginationMeta;
 }
 
 export async function fetchIngredients(params?: {

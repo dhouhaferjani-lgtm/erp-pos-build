@@ -24,6 +24,7 @@ import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { useViewScope } from '../../locations/hooks/useViewScope'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 interface StockMovement {
   id: string
@@ -46,14 +47,7 @@ interface StockMovement {
 
 interface StockMovementsResponse {
   data: StockMovement[]
-  meta?: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-    from?: number | null
-    to?: number | null
-  }
+  meta?: OffsetPaginationMeta
 }
 
 interface ProductMovementsTabProps {

@@ -98,6 +98,8 @@ class StockLevel extends Model
 
     /**
      * Get available quantity (total - reserved).
+     *
+     * @return numeric-string
      */
     public function getAvailableQuantity(): string
     {

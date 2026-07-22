@@ -154,6 +154,9 @@ function assertServerRow(row: ServerReplenishmentRow): void {
   if (row.requested_qty !== null && typeof row.requested_qty !== 'string') {
     throw new ReplenishmentSyncResponseError('Server response has an invalid requested_qty.');
   }
+  if (row.suggested_qty !== null && typeof row.suggested_qty !== 'string') {
+    throw new ReplenishmentSyncResponseError('Server response has an invalid suggested_qty.');
+  }
   if (!Number.isInteger(row.request_count) || row.request_count < 1) {
     throw new ReplenishmentSyncResponseError('Server response has an invalid request_count.');
   }

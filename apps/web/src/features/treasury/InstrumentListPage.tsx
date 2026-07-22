@@ -21,6 +21,7 @@ import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 type InstrumentStatus =
   | 'received'
@@ -62,16 +63,9 @@ interface Instrument {
   location_name?: string | null
 }
 
-interface PaginationMeta {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-}
-
 interface InstrumentsResponse {
   data: Instrument[]
-  meta: PaginationMeta
+  meta: OffsetPaginationMeta
 }
 
 type BucketKey = 'overdue' | 'd0_7' | 'd8_30' | 'd31_60' | 'd61_90' | 'd90_plus'

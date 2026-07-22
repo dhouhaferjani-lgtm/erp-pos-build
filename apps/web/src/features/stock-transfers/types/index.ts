@@ -103,10 +103,6 @@ export interface StockTransferListFilters {
 
 export interface StockTransferListResponse {
   data: StockTransfer[]
-  meta: {
-    current_page: number
-    per_page: number
-    total: number
-    last_page: number
-  }
+  meta: OffsetPaginationMeta
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

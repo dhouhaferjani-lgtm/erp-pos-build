@@ -219,12 +219,7 @@ export interface AppointmentListFilters {
 
 export interface PaginatedAppointments {
   data: Appointment[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface AvailabilityWindowDTO {
@@ -300,3 +295,4 @@ export interface CapacitySlice {
   available_minutes: number
   utilization_percent: number
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

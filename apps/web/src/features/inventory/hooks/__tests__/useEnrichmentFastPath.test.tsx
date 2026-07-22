@@ -180,6 +180,8 @@ function makePage(data: EnrichmentResult[]) {
       last_page: 1,
       per_page: 25,
       total: data.length,
+      from: data.length > 0 ? 1 : null,
+      to: data.length > 0 ? data.length : null,
       timestamp: '2026-07-03T00:00:00Z',
       request_id: 'req-1',
     },

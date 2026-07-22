@@ -74,12 +74,7 @@ export interface IncomeResponse {
 
 export interface IncomeListResponse {
   data: Income[]
-  meta?: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta?: OffsetPaginationMeta
 }
 
 export interface IncomeFilters {
@@ -89,3 +84,4 @@ export interface IncomeFilters {
   search?: string
   per_page?: number
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

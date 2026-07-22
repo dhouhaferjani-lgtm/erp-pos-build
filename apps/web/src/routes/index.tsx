@@ -544,7 +544,7 @@ export function AppRoutes() {
           <Route
             path="customers/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CustomerForm partnerType="customer" />
                 </SuspenseWrapper>
@@ -586,7 +586,7 @@ export function AppRoutes() {
           <Route
             path="quotes/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="quotes.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="quote" />
                 </SuspenseWrapper>
@@ -628,7 +628,7 @@ export function AppRoutes() {
           <Route
             path="orders/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="orders.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="sales_order" />
                 </SuspenseWrapper>
@@ -670,7 +670,7 @@ export function AppRoutes() {
           <Route
             path="invoices/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="invoices.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="invoice" />
                 </SuspenseWrapper>
@@ -791,7 +791,7 @@ export function AppRoutes() {
           <Route
             path="suppliers/:id/edit"
             element={
-              <RequirePermission permission="purchases.edit">
+              <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CustomerForm partnerType="supplier" />
                 </SuspenseWrapper>
@@ -875,7 +875,7 @@ export function AppRoutes() {
           <Route
             path="orders/:id/edit"
             element={
-              <RequirePermission permission="purchases.edit">
+              <RequirePermission permission="purchase-orders.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="purchase_order" />
                 </SuspenseWrapper>
@@ -1011,7 +1011,7 @@ export function AppRoutes() {
           <Route
             path="products/:id/edit"
             element={
-              <RequirePermission permission="inventory.edit">
+              <RequirePermission permission="products.update">
                 <SuspenseWrapper>
                   <ProductForm />
                 </SuspenseWrapper>
@@ -1416,7 +1416,7 @@ export function AppRoutes() {
           path="vehicles/:id/edit"
           element={
             <ModuleGuard module="Vehicle">
-              <RequirePermission permission="vehicles.edit">
+              <RequirePermission permission="vehicles.update">
                 <SuspenseWrapper>
                   <VehicleForm />
                 </SuspenseWrapper>

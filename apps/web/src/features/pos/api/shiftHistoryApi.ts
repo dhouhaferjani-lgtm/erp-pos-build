@@ -1,4 +1,5 @@
 import { apiGet } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface ShiftHistoryItem {
   id: string
@@ -29,12 +30,7 @@ export interface ShiftHistoryFilters {
 
 export interface PaginatedShifts {
   data: ShiftHistoryItem[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 /**
