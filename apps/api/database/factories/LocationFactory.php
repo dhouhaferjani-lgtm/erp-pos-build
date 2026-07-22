@@ -20,7 +20,7 @@ class LocationFactory extends Factory
         return [
             'company_id' => Company::factory(),
             'name' => $this->faker->company().' - '.$this->faker->city(),
-            'code' => strtoupper($this->faker->lexify('LOC-???')),
+            'code' => 'LOC-'.$this->faker->unique()->numerify('#####'),
             'type' => 'shop',
             'address_street' => $this->faker->streetAddress(),
             'address_city' => $this->faker->city(),

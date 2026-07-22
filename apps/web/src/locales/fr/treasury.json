@@ -150,7 +150,6 @@
     "maturity": "Échéance",
     "location": "Emplacement d'origine",
     "unattributed": "Non attribué",
-    "byLocation": "Par emplacement",
     "originGrainCaveat": "L'emplacement de l'effet est le magasin d'origine figé, et non le dépôt de garde actuel.",
     "status": "Statut",
     "amount": "Montant",
@@ -697,7 +696,8 @@
     "viewMovements": "Voir les mouvements",
     "loading": "Chargement de la position de trésorerie…",
     "unavailable": "La position de trésorerie est indisponible.",
-    "unattributed": "Non attribué"
+    "unattributed": "Non attribué",
+    "byLocation": "Par emplacement"
   },
   "reconciliation": {
     "openingBalance": "Solde d'ouverture",

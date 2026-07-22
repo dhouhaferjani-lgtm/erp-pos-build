@@ -77,7 +77,7 @@ export function AgedPayablesPage() {
       </div>
 
       {payablesData?.buckets_by_location ? (
-        <section className="mb-6 rounded-lg border p-4" aria-label={t('finance:reports.locationBreakdown')}>
+        <section className={cn('mb-6 rounded-lg border p-4', borderColors.light)} aria-label={t('finance:reports.locationBreakdown')}>
           <p className={cn('text-sm', textColors.tertiary)}>{t('finance:reports.defaultAttributedCaveat')}</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {payablesData.buckets_by_location.map((bucket) => (

@@ -150,7 +150,6 @@
     "maturity": "Maturity",
     "location": "Origin Location",
     "unattributed": "Unattributed",
-    "byLocation": "By location",
     "originGrainCaveat": "Instrument location is the frozen origin store, not the current custody repository.",
     "status": "Status",
     "amount": "Amount",
@@ -697,7 +696,8 @@
     "viewMovements": "View movements",
     "loading": "Loading cash position…",
     "unavailable": "Cash position is unavailable.",
-    "unattributed": "Unattributed"
+    "unattributed": "Unattributed",
+    "byLocation": "By location"
   },
   "reconciliation": {
     "openingBalance": "Opening Balance",
