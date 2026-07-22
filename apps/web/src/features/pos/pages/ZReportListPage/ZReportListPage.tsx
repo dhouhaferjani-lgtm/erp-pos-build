@@ -3,15 +3,17 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/lib/api'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
 import { fetchZReports, verifyZReportChain, type ZReportListFilters } from '../../api/reportApi'
 import { FileCheck, Loader2, ShieldCheck, ShieldAlert, ChevronRight, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Select } from '@/components/atoms'
 
 interface Terminal {
   id: string
@@ -24,17 +26,19 @@ export function ZReportListPage() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState<ZReportListFilters>({ page: 1, per_page: 20 })
   const { hasTenantScope } = usePosTenantScope()
+  const { scope, effectiveLocationIds } = useViewScope()
+  const scopedFilters: ZReportListFilters = { ...filters, location_ids: effectiveLocationIds }
 
   const { data: terminals = [] } = useQuery({
-    queryKey: tenantScopedKey(['pos', 'terminals']),
+    queryKey: locationScopedKey(['pos', 'terminals'], scope),
     queryFn: () => apiGet<Terminal[]>('/pos/terminals'),
     enabled: hasTenantScope,
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: tenantScopedKey(['pos', 'z-reports', filters]),
-    queryFn: () => fetchZReports(filters),
-    enabled: !!filters.terminal_id && hasTenantScope,
+    queryKey: locationScopedKey(['pos', 'z-reports', scopedFilters], scope),
+    queryFn: () => fetchZReports(scopedFilters),
+    enabled: hasTenantScope,
   })
 
   const verifyChainMutation = useMutation({
@@ -59,8 +63,8 @@ export function ZReportListPage() {
   const meta = data?.meta
 
   const handleRowClick = (report: (typeof reports)[0]) => {
-    if (filters.terminal_id) {
-      navigate(`/pos/z-reports/${String(report.z_number)}?terminal_id=${filters.terminal_id}`)
+    if (report.terminal_id) {
+      navigate(`/pos/z-reports/${String(report.z_number)}?terminal_id=${report.terminal_id}`)
     }
   }
 
@@ -68,6 +72,7 @@ export function ZReportListPage() {
     setFilters((prev) => {
       const next: ZReportListFilters = { page: 1, per_page: prev.per_page ?? 20 }
       if (prev.terminal_id) next.terminal_id = prev.terminal_id
+      next.location_ids = effectiveLocationIds
       if (key === 'from_date') {
         if (value) next.from_date = value
         if (prev.to_date) next.to_date = prev.to_date
@@ -144,14 +149,15 @@ export function ZReportListPage() {
             <label className={`block text-sm font-medium ${textColors.secondary} mb-1`}>
               {t('pos:zReports.terminal')}
             </label>
-            <select
-              className={`rounded-md ${borderColors.default} text-sm w-full`}
+            <Select
+              className="w-full"
               value={filters.terminal_id ?? ''}
               onChange={(e) => {
                 const value = e.target.value
                 setFilters((prev) => {
                   const next: ZReportListFilters = { page: 1, per_page: 20 }
                   if (value) next.terminal_id = value
+                  next.location_ids = effectiveLocationIds
                   if (prev.from_date) next.from_date = prev.from_date
                   if (prev.to_date) next.to_date = prev.to_date
                   return next
@@ -165,7 +171,7 @@ export function ZReportListPage() {
                   {term.name} ({term.code})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Date range */}
@@ -201,13 +207,7 @@ export function ZReportListPage() {
       </div>
 
       {/* Table */}
-      {!filters.terminal_id ? (
-        <div className={`rounded-lg border ${borderColors.light} bg-white text-center py-12`}>
-          <FileCheck className={`h-12 w-12 ${textColors.disabled} mx-auto mb-3`} />
-          <p className={textColors.tertiary}>{t('pos:zReports.selectTerminal')}</p>
-        </div>
-      ) : (
-        <div className={`rounded-lg border ${borderColors.light} bg-white overflow-hidden`}>
+      <div className={`rounded-lg border ${borderColors.light} bg-white overflow-hidden`}>
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className={`h-8 w-8 animate-spin ${textColors.brand}`} />
@@ -224,6 +224,8 @@ export function ZReportListPage() {
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.zNumber')}</th>
+                    {!filters.terminal_id && <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.location')}</th>}
+                    {!filters.terminal_id && <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.terminalColumn')}</th>}
                     <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.date')}</th>
                     <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.generatedBy')}</th>
                     <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.grossSales')}</th>
@@ -244,6 +246,8 @@ export function ZReportListPage() {
                       <td className={`px-4 py-3 text-sm font-mono font-medium ${textColors.primary}`}>
                         {report.formatted_z_number}
                       </td>
+                      {!filters.terminal_id && <td className={`px-4 py-3 text-sm ${textColors.tertiary}`}>{report.location_name ?? '—'}</td>}
+                      {!filters.terminal_id && <td className={`px-4 py-3 text-sm ${textColors.tertiary}`}>{report.terminal_name ?? report.terminal?.name ?? '—'}</td>}
                       <td className={`px-4 py-3 text-sm ${textColors.tertiary}`}>
                         {new Date(report.generated_at).toLocaleString()}
                       </td>
@@ -316,7 +320,6 @@ export function ZReportListPage() {
             </div>
           )}
         </div>
-      )}
     </div>
   )
 }

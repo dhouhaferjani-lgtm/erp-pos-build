@@ -48,6 +48,9 @@
     "loading": "Loading report…",
     "error": "Report unavailable.",
     "noData": "No data for this period.",
+    "cashAcrossStores": { "title": "Cash across stores", "total": "Total cash", "view": "View cash overview", "empty": "No cash data" },
+    "dueThisWeek": { "title": "Due this week", "summary": "{{count}} instruments · {{amount}}", "view": "View instruments", "empty": "Nothing due this week" },
+    "rebalanceAlerts": { "title": "Rebalance alerts", "view": "View stock by location", "empty": "No rebalance alerts" },
     "filters": {
       "from": "From",
       "to": "To",
@@ -65,7 +68,12 @@
     "salesTrend": {
       "title": "Sales over time",
       "today": "Today",
-      "sameWeekdayLastWeek": "Same day last week"
+      "sameWeekdayLastWeek": "Same day last week",
+      "seriesMode": {
+        "label": "Sales series",
+        "rollup": "All locations",
+        "per-location": "By location"
+      }
     },
     "salesByLocation": {
       "title": "Sales by Location",

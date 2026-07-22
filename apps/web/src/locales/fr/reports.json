@@ -48,6 +48,9 @@
     "loading": "Chargement du rapport…",
     "error": "Rapport indisponible.",
     "noData": "Aucune donnée pour cette période.",
+    "cashAcrossStores": { "title": "Trésorerie par site", "total": "Trésorerie totale", "view": "Voir la trésorerie", "empty": "Aucune donnée de trésorerie" },
+    "dueThisWeek": { "title": "Échéances cette semaine", "summary": "{{count}} instruments · {{amount}}", "view": "Voir les instruments", "empty": "Aucune échéance cette semaine" },
+    "rebalanceAlerts": { "title": "Alertes de rééquilibrage", "view": "Voir le stock par site", "empty": "Aucune alerte de rééquilibrage" },
     "filters": {
       "from": "Du",
       "to": "Au",
@@ -65,7 +68,12 @@
     "salesTrend": {
       "title": "Évolution des ventes",
       "today": "Aujourd'hui",
-      "sameWeekdayLastWeek": "Même jour sem. dernière"
+      "sameWeekdayLastWeek": "Même jour sem. dernière",
+      "seriesMode": {
+        "label": "Séries de ventes",
+        "rollup": "Tous les sites",
+        "per-location": "Par site"
+      }
     },
     "salesByLocation": {
       "title": "Ventes par Site",

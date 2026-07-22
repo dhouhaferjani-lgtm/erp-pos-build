@@ -9,6 +9,7 @@ import type { SalesByLocationReport } from '../api/ownerReportsApi'
 interface BranchLeaderboardProps {
   canFetch?: boolean
   currency?: string
+  locationIds?: string[]
 }
 
 interface BranchLeaderboardEntry {
@@ -24,12 +25,12 @@ interface BranchDelta {
   label: string
 }
 
-export function BranchLeaderboard({ canFetch = true, currency = 'TND' }: BranchLeaderboardProps) {
+export function BranchLeaderboard({ canFetch = true, currency = 'TND', locationIds = [] }: BranchLeaderboardProps) {
   const { t } = useTranslation(['reports'])
   const today = formatDateInput(new Date())
   const comparisonDay = shiftDateInput(today, -7)
-  const todaySales = useSalesByLocation({ from: today, to: today, granularity: 'day' }, canFetch)
-  const comparisonSales = useSalesByLocation({ from: comparisonDay, to: comparisonDay, granularity: 'day' }, canFetch)
+  const todaySales = useSalesByLocation({ from: today, to: today, granularity: 'day', location_ids: locationIds }, canFetch)
+  const comparisonSales = useSalesByLocation({ from: comparisonDay, to: comparisonDay, granularity: 'day', location_ids: locationIds }, canFetch)
   const liveSales = useLiveSales(canFetch)
 
   const entries = useMemo(

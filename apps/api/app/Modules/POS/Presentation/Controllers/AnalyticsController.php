@@ -6,6 +6,8 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\PosAnalyticsService;
 use App\Modules\POS\Presentation\Requests\AnalyticsRequest;
 use Carbon\CarbonImmutable;
@@ -17,6 +19,7 @@ final class AnalyticsController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly PosAnalyticsService $analyticsService,
+        private readonly LocationScopeResolver $locationScope,
     ) {}
 
     public function summary(AnalyticsRequest $request): JsonResponse
@@ -30,6 +33,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -45,6 +49,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -62,6 +67,7 @@ final class AnalyticsController extends Controller
                 $from,
                 $to,
                 $limit,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -79,6 +85,7 @@ final class AnalyticsController extends Controller
                 $from,
                 $to,
                 $granularity,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -94,6 +101,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -109,6 +117,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -124,6 +133,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -139,6 +149,7 @@ final class AnalyticsController extends Controller
                 $this->getCompanyId(),
                 $from,
                 $to,
+                $this->scopedLocationIds($request),
             ),
         ]);
     }
@@ -149,6 +160,23 @@ final class AnalyticsController extends Controller
         assert($companyId !== null, 'Company context must be set');
 
         return $companyId;
+    }
+
+    /** @return list<string> */
+    private function scopedLocationIds(AnalyticsRequest $request): array
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+
+        $requested = $request->validated('location_ids', []);
+        /** @var list<string> $requestedIds */
+        $requestedIds = is_array($requested)
+            ? array_values(array_filter($requested, static fn (mixed $id): bool => is_string($id)))
+            : [];
+
+        return $this->locationScope->resolve($user, $requestedIds, null);
     }
 
     /**

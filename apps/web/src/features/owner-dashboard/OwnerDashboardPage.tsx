@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
-import { CashPositionWidget } from '@/features/treasury/components/CashPositionWidget'
 import { BranchLeaderboard } from './components/BranchLeaderboard'
 import { CashRegisterReconciliationTable } from './components/CashRegisterReconciliationTable'
 import { LiveSalesFeed } from './components/LiveSalesFeed'
@@ -11,8 +10,12 @@ import { OwnerDashboardFilters, type OwnerDashboardFiltersValue } from './compon
 import { PaymentMethodBreakdownPie } from './components/PaymentMethodBreakdownPie'
 import { RevenueByCategoryDonut } from './components/RevenueByCategoryDonut'
 import { SalesSummaryCards } from './components/SalesSummaryCards'
+import { SalesByLocationChart } from './components/SalesByLocationChart'
 import { SalesTrendChart } from './components/SalesTrendChart'
 import { TopSkusWidget } from './components/TopSkusWidget'
+import { CashAcrossStoresWidget } from './components/CashAcrossStoresWidget'
+import { DueThisWeekWidget } from './components/DueThisWeekWidget'
+import { RebalanceAlertsWidget } from './components/RebalanceAlertsWidget'
 import {
   useCashRegisterReconciliation,
   useLowStockAlerts,
@@ -73,7 +76,7 @@ export function OwnerDashboardPage() {
     () => ({
       from: filters.from,
       to: filters.to,
-      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
+      location_ids: effectiveLocationIds,
     }),
     [filters.from, filters.to, effectiveLocationIds],
   )
@@ -81,7 +84,7 @@ export function OwnerDashboardPage() {
   const stockParams = useMemo(
     () => ({
       threshold_pct: 100,
-      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
+      location_ids: effectiveLocationIds,
     }),
     [effectiveLocationIds],
   )
@@ -95,7 +98,7 @@ export function OwnerDashboardPage() {
     () => ({
       from: shiftDateInput(filters.from, -7),
       to: shiftDateInput(filters.to, -7),
-      ...(effectiveLocationIds.length > 0 ? { location_ids: effectiveLocationIds } : {}),
+      location_ids: effectiveLocationIds,
     }),
     [filters.from, filters.to, effectiveLocationIds],
   )
@@ -124,6 +127,7 @@ export function OwnerDashboardPage() {
       </div>
       <OwnerDashboardFilters value={filters} onChange={setFilters} />
       <SalesSummaryCards data={summary.data} isLoading={summary.isLoading} isError={summary.isError} isLive={isLiveRange} />
+      <SalesByLocationChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <SalesTrendChart
@@ -134,7 +138,7 @@ export function OwnerDashboardPage() {
             isError={sales.isError}
           />
         </div>
-        <BranchLeaderboard canFetch={canViewOwnerDashboard} />
+        <BranchLeaderboard canFetch={canViewOwnerDashboard} locationIds={effectiveLocationIds} />
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <LiveSalesFeed canFetch={canViewOwnerDashboard} />
@@ -151,7 +155,11 @@ export function OwnerDashboardPage() {
         />
         <LowStockAlertsList data={stockAlerts.data ?? []} />
         <CashRegisterReconciliationTable data={cash.data ?? []} />
-        <CashPositionWidget />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <CashAcrossStoresWidget />
+        <DueThisWeekWidget />
+        <RebalanceAlertsWidget />
       </div>
     </section>
   )

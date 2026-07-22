@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
@@ -43,6 +44,7 @@ final class ReportController extends Controller
         private readonly ReportGenerationService $reportGenerationService,
         private readonly ZReportHashService $zReportHashService,
         private readonly ReceiptHashService $receiptHashService,
+        private readonly LocationScopeResolver $locationScope,
     ) {}
 
     /**
@@ -246,17 +248,32 @@ final class ReportController extends Controller
         Gate::authorize('pos.view_reports');
 
         $request->validate([
-            'terminal_id' => ['required', 'string', 'uuid'],
+            'terminal_id' => ['nullable', 'string', 'uuid'],
+            'location_ids' => ['sometimes', 'array'],
+            'location_ids.*' => ['uuid'],
             'from_date' => ['nullable', 'date'],
             'to_date' => ['nullable', 'date'],
         ]);
 
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $requestedLocationIds = array_values(array_filter(
+            (array) $request->input('location_ids', []),
+            static fn (mixed $id): bool => is_string($id),
+        ));
+        $locationIds = $this->locationScope->resolve($user, $requestedLocationIds, null);
+
         $query = ZReport::query()
-            ->where('terminal_id', $request->input('terminal_id'))
-            ->whereHas('terminal', function (Builder $q): void {
-                $q->whereRaw('company_id = ?', [$this->companyContext->getCompanyId()]);
+            ->whereHas('terminal', function (Builder $q) use ($locationIds): void {
+                $q->where('pos_terminals.company_id', $this->companyContext->getCompanyId());
+                if ($locationIds !== []) {
+                    $q->whereIn('pos_terminals.location_id', $locationIds);
+                }
             })
-            ->with(['terminal', 'shift', 'generatedBy']);
+            ->when($request->filled('terminal_id'), fn ($q) => $q->where('terminal_id', $request->input('terminal_id')))
+            ->with(['terminal.location', 'shift', 'generatedBy']);
 
         // Filter by date range
         if ($request->filled('from_date')) {
@@ -266,7 +283,7 @@ final class ReportController extends Controller
             $query->where('generated_at', '<=', $request->input('to_date'));
         }
 
-        $zReports = $query->orderByDesc('z_number')
+        $zReports = $query->orderByDesc('generated_at')->orderByDesc('z_number')
             ->paginate($request->input('per_page', 15));
 
         return response()->json([

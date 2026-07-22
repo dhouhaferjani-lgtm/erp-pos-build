@@ -272,6 +272,8 @@
     "date": "Date",
     "shift": "Poste",
     "terminal": "Terminal",
+    "location": "Site",
+    "terminalColumn": "Terminal",
     "generatedBy": "Généré par",
     "totalSales": "Ventes totales",
     "grossSales": "Ventes brutes",

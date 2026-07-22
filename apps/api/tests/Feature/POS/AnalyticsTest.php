@@ -166,6 +166,43 @@ final class AnalyticsTest extends TestCase
         $this->assertEquals(1, $data['voided_count']);
     }
 
+    public function test_summary_location_filter_narrows_receipts(): void
+    {
+        Sanctum::actingAs($this->user);
+        $this->seedReceipts();
+        $secondLocation = Location::factory()->create(['company_id' => $this->company->id]);
+        $secondTerminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $secondLocation->id,
+        ]);
+        Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $secondLocation->id,
+            'terminal_id' => $secondTerminal->id,
+            'cashier_id' => $this->user->id,
+            'receipt_type' => ReceiptType::Sale,
+            'posted_at' => '2026-03-17 10:00:00',
+            'subtotal' => '25.000',
+            'tax_amount' => '4.750',
+            'total' => '29.750',
+        ]);
+
+        $response = $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31&location_ids[]='.$secondLocation->id);
+
+        $response->assertOk()->assertJsonPath('data.receipt_count', 1);
+    }
+
+    public function test_summary_rejects_location_outside_company_scope(): void
+    {
+        Sanctum::actingAs($this->user);
+        $otherLocation = Location::factory()->create(['company_id' => $this->otherCompany->id]);
+
+        $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31&location_ids[]='.$otherLocation->id)
+            ->assertForbidden();
+    }
+
     public function test_company_scoping_isolation(): void
     {
         Sanctum::actingAs($this->user);
