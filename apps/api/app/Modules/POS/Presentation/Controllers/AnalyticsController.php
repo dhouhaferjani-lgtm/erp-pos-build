@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\PosAnalyticsService;
@@ -20,6 +21,7 @@ final class AnalyticsController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly PosAnalyticsService $analyticsService,
         private readonly LocationScopeResolver $locationScope,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function summary(AnalyticsRequest $request): JsonResponse
@@ -143,13 +145,15 @@ final class AnalyticsController extends Controller
         Gate::authorize('pos.view_reports');
 
         [$from, $to] = $this->parseDates($request);
+        $locationIds = $this->scopedLocationIds($request);
 
         return response()->json([
             'data' => $this->analyticsService->getFnbMetrics(
                 $this->getCompanyId(),
                 $from,
                 $to,
-                $this->scopedLocationIds($request),
+                $locationIds,
+                $this->locationScopeBoundary->isUnrestricted($this->getCompanyId(), $locationIds),
             ),
         ]);
     }

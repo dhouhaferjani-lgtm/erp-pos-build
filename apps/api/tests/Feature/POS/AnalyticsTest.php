@@ -36,6 +36,8 @@ final class AnalyticsTest extends TestCase
 
     private User $userWithoutPermission;
 
+    private UserCompanyMembership $membership;
+
     private Location $location;
 
     private Terminal $terminal;
@@ -201,6 +203,40 @@ final class AnalyticsTest extends TestCase
 
         $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31&location_ids[]='.$otherLocation->id)
             ->assertForbidden();
+    }
+
+    public function test_restricted_membership_without_location_param_sees_only_allowed_location(): void
+    {
+        Sanctum::actingAs($this->user);
+        $this->seedReceipts();
+        $secondLocation = $this->createLocationWithTerminal();
+        $this->createReceiptAtLocation($secondLocation['location'], $secondLocation['terminal']);
+        $this->membership->update(['allowed_location_ids' => [$this->location->id]]);
+
+        $response = $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31');
+
+        $response->assertOk()->assertJsonPath('data.receipt_count', 2);
+    }
+
+    public function test_restricted_membership_rejects_out_of_scope_in_company_location(): void
+    {
+        Sanctum::actingAs($this->user);
+        $secondLocation = $this->createLocationWithTerminal();
+        $this->membership->update(['allowed_location_ids' => [$this->location->id]]);
+
+        $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31&location_ids[]='.$secondLocation['location']->id)
+            ->assertForbidden();
+    }
+
+    public function test_zero_allowed_locations_returns_empty_analytics_result(): void
+    {
+        Sanctum::actingAs($this->user);
+        $this->seedReceipts();
+        $this->membership->update(['allowed_location_ids' => []]);
+
+        $response = $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31');
+
+        $response->assertOk()->assertJsonPath('data.receipt_count', 0);
     }
 
     public function test_company_scoping_isolation(): void
@@ -444,7 +480,7 @@ final class AnalyticsTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        UserCompanyMembership::create([
+        $this->membership = UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',
@@ -482,6 +518,35 @@ final class AnalyticsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Card',
             'code' => 'CARD',
+        ]);
+    }
+
+    /** @return array{location: Location, terminal: Terminal} */
+    private function createLocationWithTerminal(): array
+    {
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+        ]);
+
+        return ['location' => $location, 'terminal' => $terminal];
+    }
+
+    private function createReceiptAtLocation(Location $location, Terminal $terminal): Receipt
+    {
+        return Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->user->id,
+            'receipt_type' => ReceiptType::Sale,
+            'posted_at' => '2026-03-17 10:00:00',
+            'subtotal' => '25.000',
+            'tax_amount' => '4.750',
+            'total' => '29.750',
         ]);
     }
 }

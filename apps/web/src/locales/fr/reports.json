@@ -49,7 +49,7 @@
     "error": "Rapport indisponible.",
     "noData": "Aucune donnée pour cette période.",
     "cashAcrossStores": { "title": "Trésorerie par site", "total": "Trésorerie totale", "view": "Voir la trésorerie", "empty": "Aucune donnée de trésorerie" },
-    "dueThisWeek": { "title": "Échéances cette semaine", "summary": "{{count}} instruments · {{amount}}", "view": "Voir les instruments", "empty": "Aucune échéance cette semaine" },
+    "dueThisWeek": { "title": "Échéances cette semaine", "summary": "{{count}} instruments", "inbound": "Entrants", "outbound": "Sortants", "view": "Voir les instruments", "empty": "Aucune échéance cette semaine" },
     "rebalanceAlerts": { "title": "Alertes de rééquilibrage", "view": "Voir le stock par site", "empty": "Aucune alerte de rééquilibrage" },
     "filters": {
       "from": "Du",

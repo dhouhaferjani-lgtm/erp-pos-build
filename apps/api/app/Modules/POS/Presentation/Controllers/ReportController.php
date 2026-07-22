@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Exceptions\CashCountValidationException;
@@ -45,6 +46,7 @@ final class ReportController extends Controller
         private readonly ZReportHashService $zReportHashService,
         private readonly ReceiptHashService $receiptHashService,
         private readonly LocationScopeResolver $locationScope,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     /**
@@ -264,13 +266,20 @@ final class ReportController extends Controller
             static fn (mixed $id): bool => is_string($id),
         ));
         $locationIds = $this->locationScope->resolve($user, $requestedLocationIds, null);
+        $unrestricted = $this->locationScopeBoundary->isUnrestricted(
+            $this->companyContext->requireCompanyId(),
+            $locationIds,
+        );
 
         $query = ZReport::query()
-            ->whereHas('terminal', function (Builder $q) use ($locationIds): void {
+            ->whereHas('terminal', function (Builder $q) use ($locationIds, $unrestricted): void {
                 $q->where('pos_terminals.company_id', $this->companyContext->getCompanyId());
-                if ($locationIds !== []) {
-                    $q->whereIn('pos_terminals.location_id', $locationIds);
-                }
+                $q->where(function (Builder $locationQuery) use ($locationIds, $unrestricted): void {
+                    $locationQuery->whereIn('pos_terminals.location_id', $locationIds);
+                    if ($unrestricted) {
+                        $locationQuery->orWhereNull('pos_terminals.location_id');
+                    }
+                });
             })
             ->when($request->filled('terminal_id'), fn ($q) => $q->where('terminal_id', $request->input('terminal_id')))
             ->with(['terminal.location', 'shift', 'generatedBy']);
