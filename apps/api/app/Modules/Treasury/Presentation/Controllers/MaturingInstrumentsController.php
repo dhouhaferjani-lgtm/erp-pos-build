@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\MaturingInstrumentsData;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -150,17 +151,23 @@ final class MaturingInstrumentsController extends Controller
                 $directionKey = $instrument->direction === InstrumentDirection::Inbound ? 'total_in' : 'total_out';
                 $locationTotals[$key][$directionKey] = bcadd($locationTotals[$key][$directionKey], $instrument->amount, $scale);
             }
-            $bucketsByLocation = array_values($locationTotals);
+            $bucketsByLocation = array_values(array_map(
+                static fn (array $bucket): array => [
+                    ...$bucket,
+                    'total' => bcadd($bucket['total_in'], $bucket['total_out'], $scale),
+                ],
+                $locationTotals,
+            ));
         }
 
-        return response()->json([
+        return response()->json(MaturingInstrumentsData::from([
             'data' => $rows,
             'meta' => [
                 'buckets' => $buckets,
                 'grand_total' => $grandTotal,
-                ...($bucketsByLocation !== null ? ['buckets_by_location' => $bucketsByLocation] : []),
+                'buckets_by_location' => $bucketsByLocation ?? [],
             ],
-        ]);
+        ])->toArray());
     }
 
     /** @return array{count: int, total_in: numeric-string, total_out: numeric-string} */

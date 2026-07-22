@@ -330,19 +330,6 @@ export interface LocationReportBucket {
   total: string
 }
 
-export interface UpcomingLocationBucket {
-  location_id: string | null
-  location_name: string
-  total_in: string
-  total_out: string
-  net: string
-}
-
-export type UpcomingPaymentsData =
-  App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData & {
-    buckets_by_location?: UpcomingLocationBucket[]
-  }
-
 // FRONTEND-ONLY: query-string filter shape.
 export interface AgedPayablesFilters {
   as_of_date?: string | undefined

@@ -76,26 +76,7 @@ interface InstrumentsResponse {
 
 type BucketKey = 'overdue' | 'd0_7' | 'd8_30' | 'd31_60' | 'd61_90' | 'd90_plus'
 
-interface BucketTotal {
-  count: number
-  total_in: string
-  total_out: string
-}
-
-interface MaturityResponse {
-  data: unknown[]
-  meta: {
-    buckets: Record<BucketKey, BucketTotal>
-    grand_total: BucketTotal
-    buckets_by_location?: Array<{
-      location_id: string | null
-      location_name: string
-      count: number
-      total_in: string
-      total_out: string
-    }>
-  }
-}
+type MaturityResponse = App.Modules.Treasury.Application.DTOs.MaturingInstrumentsData
 
 const instrumentStatusTones: Record<string, StatusTone> = {
   received: 'pending',

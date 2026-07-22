@@ -9,23 +9,30 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Modules\Treasury\Domain\Payment;
-use App\Modules\Treasury\Domain\PaymentAllocation;
-use App\Modules\Treasury\Domain\PaymentInstrument;
-use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentInstrument;
+use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -37,12 +44,19 @@ final class LocationReconciliationTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Partner $customer;
+
     private Partner $supplier;
+
     private Location $locationA;
+
     private Location $locationB;
+
     private ExpenseCategory $expenseCategory;
 
     protected function setUp(): void
@@ -272,6 +286,27 @@ final class LocationReconciliationTest extends TestCase
         self::assertSame(0, bccomp(bcadd($located, '12.00', 2), $all, 2));
     }
 
+    public function test_auto_generated_received_purchase_order_grir_accrual_reconciles_by_location(): void
+    {
+        $this->receivedPurchaseOrderAt($this->locationA, '100.000', '2.0000', '12.500000');
+        $this->receivedPurchaseOrderAt(null, '90.000', '1.0000', '30.000000');
+
+        $byLocation = $this->getJson('/api/v1/reports/aged-payables?group_by=location')
+            ->assertOk()
+            ->json('data');
+        $companyWide = $this->getJson('/api/v1/reports/aged-payables')
+            ->assertOk()
+            ->json('data');
+
+        self::assertSame('25.0000', $this->bucketTotal($byLocation, $this->locationA->id));
+        self::assertSame('30.0000', $this->bucketTotal($byLocation, null));
+        self::assertSame(
+            0,
+            bccomp($this->sumLocationBuckets($byLocation['buckets_by_location']), (string) $companyWide['grand_total'], 3),
+        );
+        self::assertSame('55.0000', (string) $companyWide['grand_total']);
+    }
+
     private function invoiceAt(?Location $location, string $amount): Document
     {
         return Document::query()->create([
@@ -308,6 +343,68 @@ final class LocationReconciliationTest extends TestCase
             'balance_due' => $amount,
             'location_id' => $location?->id,
         ]);
+    }
+
+    private function receivedPurchaseOrderAt(?Location $location, string $rawTotal, string $receivedQty, string $accrualUnitCost): Document
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $purchaseOrder = Document::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::PurchaseOrder,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'PO-GRIR-'.uniqid(),
+            'document_date' => now()->toDateString(),
+            'status' => DocumentStatus::Received,
+            'currency' => 'TND',
+            'subtotal' => $rawTotal,
+            'tax_amount' => '0.000',
+            'total' => $rawTotal,
+            'balance_due' => $rawTotal,
+            'location_id' => $location?->id,
+            'payload' => ['auto_generated' => true],
+        ]);
+        $line = DocumentLine::query()->create([
+            'document_id' => $purchaseOrder->id,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => $receivedQty,
+            'quantity_received' => $receivedQty,
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => $rawTotal,
+            'line_total' => $rawTotal,
+            'allocated_costs' => '0.000000',
+        ]);
+        $receipt = GoodsReceipt::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $purchaseOrder->id,
+            'location_id' => $location?->id,
+            'receipt_number' => 'GRN-GRIR-'.uniqid(),
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+            'payload' => ['source' => 'reconciliation-test'],
+        ]);
+        GoodsReceiptLine::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'goods_receipt_id' => $receipt->id,
+            'po_line_id' => $line->id,
+            'product_id' => $product->id,
+            'received_qty' => $receivedQty,
+            'free_qty' => '0.0000',
+            'accrual_unit_cost' => $accrualUnitCost,
+            'quantity_invoiced' => '0.0000',
+        ]);
+
+        return $purchaseOrder;
     }
 
     private function supplierInvoiceAt(?Location $location, string $amount): Document
@@ -415,7 +512,7 @@ final class LocationReconciliationTest extends TestCase
     }
 
     /** @param array<string, mixed> $data */
-    private function bucketTotal(array $data, string $locationId): string
+    private function bucketTotal(array $data, ?string $locationId): string
     {
         foreach ($data['buckets_by_location'] as $bucket) {
             if ($bucket['location_id'] === $locationId) {

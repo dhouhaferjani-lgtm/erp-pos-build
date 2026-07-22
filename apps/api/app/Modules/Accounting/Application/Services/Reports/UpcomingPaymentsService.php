@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Application\Services\Reports;
 
+use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
 use App\Modules\Accounting\Application\DTOs\Reports\UpcomingPaymentLineData;
 use App\Modules\Accounting\Application\DTOs\Reports\UpcomingPaymentsData;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -36,7 +38,7 @@ final readonly class UpcomingPaymentsService
     ) {}
 
     /** @param list<string> $locationIds */
-    public function generate(string $companyId, int $days, array $locationIds = []): UpcomingPaymentsData
+    public function generate(string $companyId, int $days, array $locationIds = [], bool $groupByLocation = false): UpcomingPaymentsData
     {
         $company = Company::query()->findOrFail($companyId);
         $scale = $this->scaleResolver->getScale((string) $company->currency);
@@ -89,11 +91,61 @@ final readonly class UpcomingPaymentsService
             net: bcsub($totalIn, $totalOut, $scale),
             days: $days,
             as_of_date: $today->toDateString(),
+            buckets_by_location: $groupByLocation
+                ? $this->locationBuckets($incomingLines, $outgoingLines, $companyId, $scale)
+                : [],
         );
     }
 
     /**
-     * @param list<string> $locationIds
+     * @param  list<UpcomingPaymentLineData>  $incoming
+     * @param  list<UpcomingPaymentLineData>  $outgoing
+     * @return list<LocationReportBucketData>
+     */
+    private function locationBuckets(array $incoming, array $outgoing, string $companyId, int $scale): array
+    {
+        $zero = CurrencyScale::bcformatStrict('0', $scale);
+        /** @var array<string, array{location_id: string|null, total_in: numeric-string, total_out: numeric-string}> $totals */
+        $totals = [];
+
+        foreach ([[$incoming, 'total_in'], [$outgoing, 'total_out']] as [$lines, $direction]) {
+            foreach ($lines as $line) {
+                $locationId = $line->location_id;
+                $key = $locationId ?? 'unattributed';
+                $totals[$key] ??= [
+                    'location_id' => $locationId,
+                    'total_in' => $zero,
+                    'total_out' => $zero,
+                ];
+                $totals[$key][$direction] = bcadd($totals[$key][$direction], $line->balance_due, $scale);
+            }
+        }
+
+        $ids = array_values(array_filter(array_keys($totals), static fn (string $id): bool => $id !== 'unattributed'));
+        $names = Location::query()->where('company_id', $companyId)->whereIn('id', $ids)->pluck('name', 'id');
+
+        return array_values(array_map(
+            static function (array $total) use ($names, $scale): LocationReportBucketData {
+                $locationId = $total['location_id'];
+                $totalIn = $total['total_in'];
+                $totalOut = $total['total_out'];
+                $net = bcsub($totalIn, $totalOut, $scale);
+
+                return new LocationReportBucketData(
+                    location_id: $locationId,
+                    location_name: $locationId === null ? 'Unattributed' : (string) ($names->get($locationId) ?? $locationId),
+                    total: $net,
+                    total_in: $totalIn,
+                    total_out: $totalOut,
+                    net: $net,
+                );
+            },
+            $totals,
+        ));
+    }
+
+    /**
+     * @param  list<string>  $locationIds
      * @return Collection<int, PaymentInstrument>
      */
     private function pendingInstruments(
@@ -126,8 +178,8 @@ final readonly class UpcomingPaymentsService
      * @return Collection<int, Document>
      */
     /**
-     * @param list<DocumentType> $types
-     * @param list<string> $locationIds
+     * @param  list<DocumentType>  $types
+     * @param  list<string>  $locationIds
      * @return Collection<int, Document>
      */
     private function openDocuments(string $companyId, array $types, CarbonImmutable $windowEnd, array $locationIds = []): Collection
@@ -155,7 +207,7 @@ final readonly class UpcomingPaymentsService
      * @return Collection<int, Document>
      */
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return Collection<int, Document>
      */
     private function openUnpaidExpenses(string $companyId, CarbonImmutable $windowEnd, array $locationIds = []): Collection
@@ -188,7 +240,7 @@ final readonly class UpcomingPaymentsService
      * @return Collection<int, Document>
      */
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return Collection<int, Document>
      */
     private function materializedRecurringDrafts(string $companyId, CarbonImmutable $windowEnd, array $locationIds = []): Collection
@@ -220,7 +272,7 @@ final readonly class UpcomingPaymentsService
      * @return array{lines: array<int, UpcomingPaymentLineData>, total: numeric-string}
      */
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return array{lines: array<int, UpcomingPaymentLineData>, total: numeric-string}
      */
     private function projectedRecurringOccurrences(

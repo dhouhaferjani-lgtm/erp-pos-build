@@ -34,11 +34,8 @@ use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
 use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Company\Services\LocationScopeBoundary;
-use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use App\Shared\Domain\CurrencyScale;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -101,7 +98,6 @@ class ReportsController extends Controller
         private readonly FinanceSummaryService $financeSummaryService,
         private readonly LocationScopeResolver $locationScopeResolver,
         private readonly LocationScopeBoundary $locationScopeBoundary,
-        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -754,6 +750,7 @@ class ReportsController extends Controller
             );
 
             $payload = $reportData->toArray();
+
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
@@ -806,6 +803,7 @@ class ReportsController extends Controller
             );
 
             $payload = $reportData->toArray();
+
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
@@ -831,13 +829,14 @@ class ReportsController extends Controller
         }
 
         try {
-            $reportData = $this->upcomingPaymentsService->generate($companyId, $request->days(), $this->reportLocationScope($request, $companyId));
+            $reportData = $this->upcomingPaymentsService->generate(
+                $companyId,
+                $request->days(),
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
-            $payload = $reportData->toArray();
-            if ($request->input('group_by') === 'location') {
-                $payload['buckets_by_location'] = $this->upcomingLocationBuckets($payload, $companyId);
-            }
-            return response()->json(['data' => $payload]);
+            return response()->json(['data' => $reportData->toArray()]);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => [
@@ -863,63 +862,8 @@ class ReportsController extends Controller
             abort(401);
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
+
         return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     * @return list<array{location_id: string|null, location_name: string, total_in: numeric-string, total_out: numeric-string, net: numeric-string}>
-     */
-    private function upcomingLocationBuckets(array $payload, string $companyId): array
-    {
-        $company = $this->companyContext->requireCompany();
-        $scale = $this->scaleResolver->getScale($company->currency);
-        $zero = CurrencyScale::bcformatStrict('0', $scale);
-        /** @var array<string, array{location_id: string|null, location_name: string, total_in: numeric-string, total_out: numeric-string}> $buckets */
-        $buckets = [];
-
-        foreach (['in' => 'total_in', 'out' => 'total_out'] as $direction => $totalKey) {
-            $lines = $payload[$direction] ?? [];
-            if (! is_array($lines)) {
-                continue;
-            }
-            foreach ($lines as $line) {
-                if (! is_array($line)) {
-                    continue;
-                }
-                $locationId = isset($line['location_id']) && is_string($line['location_id'])
-                    ? $line['location_id']
-                    : null;
-                $key = $locationId ?? 'unattributed';
-                $buckets[$key] ??= [
-                    'location_id' => $locationId,
-                    'location_name' => $locationId === null ? 'Unattributed' : $locationId,
-                    'total_in' => $zero,
-                    'total_out' => $zero,
-                ];
-                $amount = isset($line['balance_due']) && is_string($line['balance_due'])
-                    ? CurrencyScale::bcformatStrict($line['balance_due'], $scale)
-                    : $zero;
-                $buckets[$key][$totalKey] = bcadd($buckets[$key][$totalKey], $amount, $scale);
-            }
-        }
-
-        $locationIds = array_values(array_filter(array_keys($buckets), static fn (string $id): bool => $id !== 'unattributed'));
-        $names = Location::query()->where('company_id', $companyId)->whereIn('id', $locationIds)->pluck('name', 'id');
-        foreach ($buckets as $key => &$bucket) {
-            if ($bucket['location_id'] !== null) {
-                $bucket['location_name'] = (string) ($names->get($bucket['location_id']) ?? $bucket['location_id']);
-            }
-        }
-        unset($bucket);
-
-        return array_values(array_map(
-            static fn (array $bucket): array => [
-                ...$bucket,
-                'net' => bcsub($bucket['total_in'], $bucket['total_out'], $scale),
-            ],
-            $buckets,
-        ));
     }
 
     /** @return list<string> */
