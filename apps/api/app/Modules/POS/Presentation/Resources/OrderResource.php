@@ -23,6 +23,10 @@ final class OrderResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if ($this->relationLoaded('lines')) {
+            $this->lines->loadMissing('product.unitOfMeasure');
+        }
+
         return [
             'id' => $this->id,
             'terminal_id' => $this->terminal_id,

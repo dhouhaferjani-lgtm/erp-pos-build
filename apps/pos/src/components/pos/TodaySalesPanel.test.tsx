@@ -77,8 +77,8 @@ const sampleReceipts = [
     posted_at: '2026-03-12T10:30:00Z',
     payments: [{ id: 'p-1', payment_type: 'CASH', amount: '50.00' }],
     lines: [
-      { id: 'l-1', product_name: 'Widget A', quantity: 2, unit_price: '15.00', line_total: '30.00' },
-      { id: 'l-2', product_name: 'Widget B', quantity: 1, unit_price: '20.00', line_total: '20.00' },
+      { id: 'l-1', product_name: 'Widget A', quantity: 2, quantity_decimals: 0, unit_price: '15.00', line_total: '30.00' },
+      { id: 'l-2', product_name: 'Widget B', quantity: 1, quantity_decimals: 0, unit_price: '20.00', line_total: '20.00' },
     ],
   },
   {
@@ -92,7 +92,7 @@ const sampleReceipts = [
     posted_at: '2026-03-12T11:00:00Z',
     payments: [{ id: 'p-2', payment_type: 'CARD', amount: '75.00' }],
     lines: [
-      { id: 'l-3', product_name: 'Gadget C', quantity: 3, unit_price: '25.00', line_total: '75.00' },
+      { id: 'l-3', product_name: 'Gadget C', quantity: 3, quantity_decimals: 0, unit_price: '25.00', line_total: '75.00' },
     ],
   },
   {
@@ -106,7 +106,7 @@ const sampleReceipts = [
     posted_at: '2026-03-12T11:30:00Z',
     payments: [{ id: 'p-3', payment_type: 'CASH', amount: '20.00' }],
     lines: [
-      { id: 'l-4', product_name: 'Widget A', quantity: 1, unit_price: '20.00', line_total: '20.00' },
+      { id: 'l-4', product_name: 'Widget A', quantity: 1, quantity_decimals: 0, unit_price: '20.00', line_total: '20.00' },
     ],
   },
 ];
@@ -189,6 +189,33 @@ describe('TodaySalesPage', () => {
 
     expect(await findByText('2× Widget A, 1× Widget B')).toBeInTheDocument();
     expect(await findByText('3× Gadget C')).toBeInTheDocument();
+  });
+
+  it('formats current and missing-product receipt lines with their accepted precision', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([{
+      ...sampleReceipts[0],
+      lines: [
+        {
+          id: 'current-product-line',
+          product_name: 'Measured Item',
+          quantity: 1.2,
+          quantity_decimals: 2,
+          unit_price: '15.00',
+          line_total: '18.00',
+        },
+        {
+          id: 'missing-product-line',
+          product_name: 'Archived Item',
+          quantity: 1.2,
+          unit_price: '10.00',
+          line_total: '12.00',
+        },
+      ],
+    }]);
+
+    renderPage();
+
+    expect(await screen.findByText('1.20× Measured Item, 1.2000× Archived Item')).toBeInTheDocument();
   });
 
   it('shows reprint button for each receipt', async () => {

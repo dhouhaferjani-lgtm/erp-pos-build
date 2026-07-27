@@ -144,7 +144,7 @@ class DocumentAdditionalCostController extends Controller
                 'product_name' => $product !== null ? $product->name : ($line->description ?? 'Unknown Product'),
                 'description' => $line->description ?? '',
                 'quantity' => $quantity,
-                'quantity_decimals' => $product?->unitOfMeasure?->decimal_places ?? 4,
+                'quantity_decimals' => $product?->unitOfMeasure->decimal_places ?? 4,
                 'unit_price' => $unitPrice,
                 'line_total' => $lineTotal,
                 'allocated_costs' => $allocatedCosts,

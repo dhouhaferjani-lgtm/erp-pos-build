@@ -53,6 +53,7 @@ final class EloquentProductResolver implements ProductResolverInterface
                 : null,
             unit: (string) $unit,
             quantity_decimals: $quantityDecimals,
+            quantity_rounding_method: $product->unitOfMeasure?->rounding_method->value,
         );
     }
 }

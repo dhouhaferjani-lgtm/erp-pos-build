@@ -442,13 +442,15 @@ final class AnalyticsTest extends TestCase
         $this->assertSame($wholeProduct->id, $rows[0]['product_id']);
         $this->assertSame('Shared display name', $rows[0]['product_name']);
         $this->assertSame(0, bccomp((string) $rows[0]['discount_amount'], '5.500', 3));
-        $this->assertSame(0, bccomp((string) $rows[0]['quantity'], '2.0000', 4));
+        $this->assertIsString($rows[0]['quantity']);
+        $this->assertSame(0, bccomp($rows[0]['quantity'], '2.0000', 4));
         $this->assertSame(0, $rows[0]['quantity_decimals']);
 
         $this->assertSame($fractionalProduct->id, $rows[1]['product_id']);
         $this->assertSame('Shared display name', $rows[1]['product_name']);
         $this->assertSame(0, bccomp((string) $rows[1]['discount_amount'], '3.250', 3));
-        $this->assertSame(0, bccomp((string) $rows[1]['quantity'], '3.3750', 4));
+        $this->assertIsString($rows[1]['quantity']);
+        $this->assertSame(0, bccomp($rows[1]['quantity'], '3.3750', 4));
         $this->assertSame(3, $rows[1]['quantity_decimals']);
     }
 
@@ -472,7 +474,8 @@ final class AnalyticsTest extends TestCase
         $this->assertArrayHasKey('product_id', $row);
         $this->assertNull($row['product_id']);
         $this->assertSame('Shared display name', $row['product_name']);
-        $this->assertSame(0, bccomp((string) $row['quantity'], '1.1250', 4));
+        $this->assertIsString($row['quantity']);
+        $this->assertSame(0, bccomp($row['quantity'], '1.1250', 4));
         $this->assertSame(4, $row['quantity_decimals']);
     }
 

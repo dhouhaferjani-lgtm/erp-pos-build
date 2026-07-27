@@ -84,7 +84,7 @@ export function SaleDetailModal({ receipt, isOpen, onClose, onReprint, reprintin
               <tr key={line.id} className="border-b border-border-subtle/60">
                 <td className="py-2 text-ink">{lineName(line)}</td>
                 <td className="py-2 text-center font-mono tabular-nums text-ink">
-                  {formatQuantity(String(line.quantity), undefined)}
+                  {formatQuantity(String(line.quantity), line.quantity_decimals)}
                 </td>
                 <td className="py-2 text-right font-mono tabular-nums text-ink-muted">
                   {format(line.unit_price)}

@@ -109,6 +109,42 @@ final class ExpansionFixedBundleModeTest extends TestCase
 
         $this->assertSame('100.000', $header->unit_price);
         $this->assertSame('200.000', $header->line_total);
-        $this->assertSame('2.000', $header->quantity);
+        $this->assertSame('2.0000', $header->quantity);
+    }
+
+    public function test_fixed_bundle_informational_quantity_uses_product_unit_precision_not_currency_precision(): void
+    {
+        $quantityUnit = Unit::factory()->create([
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+        ]);
+        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create([
+            'pricing_mode' => BundlePricingMode::FixedBundle,
+            'base_price' => '100.000',
+            'currency' => 'USD',
+            'tax_rate' => '19.000',
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $quantityUnit->id,
+            'sale_price' => '10.000',
+            'tax_rate' => '19.000',
+        ]);
+        ServiceBundleComponent::factory()->forBundle($bundle)->part($product, '1.234')->create([
+            'unit_id' => $quantityUnit->id,
+        ]);
+
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
+        $header = $lines->get(0);
+        $component = $lines->get(1);
+        $this->assertNotNull($header);
+        $this->assertNotNull($component);
+        $this->assertSame('1.0000', $header->quantity);
+        $this->assertSame('100.00', $header->unit_price);
+        $this->assertSame('1.234', $component->quantity);
+        $this->assertSame(3, $component->quantity_decimals);
+        $this->assertSame('0.00', $component->unit_price);
+        $this->assertSame('0.00', $component->line_total);
     }
 }

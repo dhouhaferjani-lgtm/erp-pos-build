@@ -77,50 +77,70 @@ final readonly class BundleExpansionService
             throw BundleExpansionException::bundleNotFound($bundleId);
         }
 
-        $scale = CurrencyScale::for($bundle->currency);
-        $normalizedQty = CurrencyScale::bcformat($quantity, $scale);
+        $moneyScale = CurrencyScale::for($bundle->currency);
+        $normalizedQty = QuantityScale::round($quantity, QuantityScale::SCALE, QuantityScale::HALF_UP);
 
         /** @var list<BundleExpansionLine> $lines */
-        $lines = $this->expandBundle($tenantId, $companyId, $bundle, $normalizedQty, $scale, depth: 0);
+        $lines = $this->expandBundle($tenantId, $companyId, $bundle, $normalizedQty, $moneyScale, depth: 0);
 
         return new Collection($lines);
     }
 
     /**
-     * Multiply two scaled decimal strings and truncate to `$scale` decimals.
-     * Both operands are already numeric-strings from CurrencyScale.
+     * Multiply a money amount by a quantity and truncate to currency precision.
      */
-    private function multiplyScaled(string $a, string $b, int $scale): string
+    private function multiplyMoney(string $money, string $quantity, int $moneyScale): string
     {
-        /** @var numeric-string $a */
-        /** @var numeric-string $b */
-        return CurrencyScale::bcformat(bcmul($a, $b, $scale + 3), $scale);
+        /** @var numeric-string $money */
+        /** @var numeric-string $quantity */
+        return CurrencyScale::bcformat(
+            bcmul($money, $quantity, $moneyScale + QuantityScale::SCALE + 2),
+            $moneyScale,
+        );
+    }
+
+    /**
+     * Multiply quantities with full canonical headroom, then round once at the
+     * destination unit boundary.
+     */
+    private function multiplyQuantity(
+        string $componentQuantity,
+        string $bundleQuantity,
+        int $decimalPlaces,
+        ?string $roundingMethod = null,
+    ): string {
+        /** @var numeric-string $componentQuantity */
+        /** @var numeric-string $bundleQuantity */
+        /** @var numeric-string $product */
+        $product = bcmul($componentQuantity, $bundleQuantity, QuantityScale::SCALE * 2);
+
+        return QuantityScale::formatForUnit($product, $decimalPlaces, $roundingMethod);
     }
 
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $moneyScale, int $depth): array
     {
         if ($depth >= self::MAX_NESTING_DEPTH) {
             throw BundleExpansionException::maxDepthExceeded(self::MAX_NESTING_DEPTH);
         }
 
         if ($bundle->pricing_mode === BundlePricingMode::FixedBundle) {
-            return $this->expandFixedBundle($tenantId, $companyId, $bundle, $quantity, $scale, $depth);
+            return $this->expandFixedBundle($tenantId, $companyId, $bundle, $quantity, $moneyScale, $depth);
         }
 
-        return $this->expandStandard($tenantId, $companyId, $bundle, $quantity, $scale, $depth);
+        return $this->expandStandard($tenantId, $companyId, $bundle, $quantity, $moneyScale, $depth);
     }
 
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandStandard(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandStandard(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $moneyScale, int $depth): array
     {
         $lines = [];
         foreach ($bundle->components as $component) {
-            foreach ($this->expandComponent($tenantId, $companyId, $component, $quantity, $scale, $depth) as $line) {
+            foreach ($this->expandComponent($tenantId, $companyId, $component, $quantity, $moneyScale, $depth) as $line) {
                 $lines[] = $line;
             }
         }
@@ -131,7 +151,7 @@ final readonly class BundleExpansionService
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandFixedBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandFixedBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $moneyScale, int $depth): array
     {
         $this->assertSingleVatRate($bundle);
 
@@ -139,8 +159,8 @@ final readonly class BundleExpansionService
             throw BundleExpansionException::missingComponent($bundle->id);
         }
 
-        $basePrice = CurrencyScale::bcformat($bundle->base_price, $scale);
-        $headerLineTotal = $this->multiplyScaled($basePrice, $quantity, $scale);
+        $basePrice = CurrencyScale::bcformat($bundle->base_price, $moneyScale);
+        $headerLineTotal = $this->multiplyMoney($basePrice, $quantity, $moneyScale);
 
         $lines = [];
         $lines[] = new BundleExpansionLine(
@@ -157,7 +177,7 @@ final readonly class BundleExpansionService
         );
 
         foreach ($bundle->components as $component) {
-            foreach ($this->expandComponentInformational($tenantId, $companyId, $component, $quantity, $scale, $depth) as $line) {
+            foreach ($this->expandComponentInformational($tenantId, $companyId, $component, $quantity, $moneyScale, $depth) as $line) {
                 $lines[] = $line;
             }
         }
@@ -171,17 +191,21 @@ final readonly class BundleExpansionService
      *
      * @return list<BundleExpansionLine>
      */
-    private function expandComponent(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
+    private function expandComponent(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $moneyScale, int $depth): array
     {
-        $lineQty = $this->multiplyScaled(CurrencyScale::bcformat($component->quantity, $scale), $quantity, $scale);
-
         if ($component->component_type === BundleComponentType::NestedBundle && $component->nested_bundle_id !== null) {
             $nested = $this->bundles->findWithComponentsAndApplicabilitiesForScope($tenantId, $companyId, $component->nested_bundle_id);
             if ($nested === null) {
                 throw BundleExpansionException::missingComponent($component->nested_bundle_id);
             }
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $this->componentQuantityDecimals($component),
+                $this->componentQuantityRoundingMethod($component),
+            );
 
-            return $this->expandBundle($tenantId, $companyId, $nested, $lineQty, $scale, $depth + 1);
+            return $this->expandBundle($tenantId, $companyId, $nested, $lineQty, $moneyScale, $depth + 1);
         }
 
         if ($component->component_type === BundleComponentType::Part && $component->product_id !== null) {
@@ -189,10 +213,16 @@ final readonly class BundleExpansionService
             if ($productRef === null) {
                 throw BundleExpansionException::missingComponent($component->product_id);
             }
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $productRef->quantity_decimals,
+                $productRef->quantity_rounding_method,
+            );
             $unitPrice = $component->override_unit_price
                 ?? ($productRef->sale_price ?? '0');
-            $unitPrice = CurrencyScale::bcformat($unitPrice, $scale);
-            $lineTotal = $this->multiplyScaled($unitPrice, $lineQty, $scale);
+            $unitPrice = CurrencyScale::bcformat($unitPrice, $moneyScale);
+            $lineTotal = $this->multiplyMoney($unitPrice, $lineQty, $moneyScale);
 
             return [new BundleExpansionLine(
                 component_type: BundleComponentType::Part,
@@ -213,17 +243,24 @@ final readonly class BundleExpansionService
             if ($serviceRef === null) {
                 throw BundleExpansionException::missingComponent($component->service_id);
             }
+            $quantityDecimals = $this->componentQuantityDecimals($component);
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $quantityDecimals,
+                $this->componentQuantityRoundingMethod($component),
+            );
             $unitPrice = $component->override_unit_price
                 ?? $this->laborPrice($serviceRef);
-            $unitPrice = CurrencyScale::bcformat($unitPrice, $scale);
-            $lineTotal = $this->multiplyScaled($unitPrice, $lineQty, $scale);
+            $unitPrice = CurrencyScale::bcformat($unitPrice, $moneyScale);
+            $lineTotal = $this->multiplyMoney($unitPrice, $lineQty, $moneyScale);
 
             return [new BundleExpansionLine(
                 component_type: BundleComponentType::Labor,
                 component_id: $component->service_id,
                 display_name: $serviceRef->display_name,
                 quantity: $lineQty,
-                quantity_decimals: $this->componentQuantityDecimals($component),
+                quantity_decimals: $quantityDecimals,
                 unit: 'hour',
                 unit_price: $unitPrice,
                 line_total: $lineTotal,
@@ -241,21 +278,26 @@ final readonly class BundleExpansionService
      *
      * @return list<BundleExpansionLine>
      */
-    private function expandComponentInformational(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
+    private function expandComponentInformational(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $moneyScale, int $depth): array
     {
-        $lineQty = $this->multiplyScaled(CurrencyScale::bcformat($component->quantity, $scale), $quantity, $scale);
-        $zero = CurrencyScale::bcformat('0', $scale);
+        $zero = CurrencyScale::bcformat('0', $moneyScale);
 
         if ($component->component_type === BundleComponentType::NestedBundle && $component->nested_bundle_id !== null) {
             $nested = $this->bundles->findWithComponentsAndApplicabilitiesForScope($tenantId, $companyId, $component->nested_bundle_id);
             if ($nested === null) {
                 throw BundleExpansionException::missingComponent($component->nested_bundle_id);
             }
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $this->componentQuantityDecimals($component),
+                $this->componentQuantityRoundingMethod($component),
+            );
             // Recursively collect informational lines from the nested
             // bundle's components at the next depth.
             $lines = [];
             foreach ($nested->components as $inner) {
-                foreach ($this->expandComponentInformational($tenantId, $companyId, $inner, $lineQty, $scale, $depth + 1) as $l) {
+                foreach ($this->expandComponentInformational($tenantId, $companyId, $inner, $lineQty, $moneyScale, $depth + 1) as $l) {
                     $lines[] = $l;
                 }
             }
@@ -268,6 +310,12 @@ final readonly class BundleExpansionService
             if ($productRef === null) {
                 throw BundleExpansionException::missingComponent($component->product_id);
             }
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $productRef->quantity_decimals,
+                $productRef->quantity_rounding_method,
+            );
 
             return [new BundleExpansionLine(
                 component_type: BundleComponentType::Part,
@@ -288,13 +336,20 @@ final readonly class BundleExpansionService
             if ($serviceRef === null) {
                 throw BundleExpansionException::missingComponent($component->service_id);
             }
+            $quantityDecimals = $this->componentQuantityDecimals($component);
+            $lineQty = $this->multiplyQuantity(
+                $component->quantity,
+                $quantity,
+                $quantityDecimals,
+                $this->componentQuantityRoundingMethod($component),
+            );
 
             return [new BundleExpansionLine(
                 component_type: BundleComponentType::Labor,
                 component_id: $component->service_id,
                 display_name: $serviceRef->display_name,
                 quantity: $lineQty,
-                quantity_decimals: $this->componentQuantityDecimals($component),
+                quantity_decimals: $quantityDecimals,
                 unit: 'hour',
                 unit_price: $zero,
                 line_total: $zero,
@@ -320,6 +375,15 @@ final readonly class BundleExpansionService
         }
 
         return $component->unit->decimal_places;
+    }
+
+    private function componentQuantityRoundingMethod(ServiceBundleComponent $component): ?string
+    {
+        if (! $component->relationLoaded('unit')) {
+            return null;
+        }
+
+        return $component->unit->rounding_method->value;
     }
 
     private function assertSingleVatRate(ServiceBundle $bundle): void

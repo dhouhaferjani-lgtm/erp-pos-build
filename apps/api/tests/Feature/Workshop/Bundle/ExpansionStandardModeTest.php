@@ -137,7 +137,7 @@ final class ExpansionStandardModeTest extends TestCase
         $this->assertCount(1, $lines);
         $line = $lines->first();
         $this->assertNotNull($line);
-        $this->assertSame('6.000', $line->quantity);     // 2 * 3
+        $this->assertSame('6.0000', $line->quantity);    // 2 * 3, fallback unit scale 4
         $this->assertSame('60.000', $line->line_total);  // 6 * 10
     }
 

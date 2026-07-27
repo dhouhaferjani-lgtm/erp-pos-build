@@ -8,14 +8,19 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\OrderLineStatus;
 use App\Modules\POS\Domain\Enums\OrderStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Order;
+use App\Modules\POS\Domain\OrderLine;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Infrastructure\Broadcasting\OrderSentToKitchenBroadcast;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -217,6 +222,75 @@ final class OrderManagementTest extends TestCase
         $this->assertEquals(['sent'], $lineStatuses);
     }
 
+    public function test_send_to_kitchen_batches_product_unit_queries_for_multiple_serialized_lines(): void
+    {
+        $order = $this->createTestOrder();
+        $this->addPrecisionLines($order);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/send-to-kitchen");
+
+        $queries = array_values(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response->assertOk();
+        $this->assertSame([0, 2, 3], collect($response->json('data.lines'))->pluck('quantity_decimals')->all());
+
+        $productQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains(strtolower($query['query']), 'from "products"'),
+        ));
+        $unitQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains(strtolower($query['query']), 'from "units"'),
+        ));
+
+        $queryDump = json_encode($queries, JSON_THROW_ON_ERROR);
+        // One batch for the response and, when after-commit broadcasting runs
+        // synchronously in this environment, one batch for the broadcast.
+        $this->assertLessThanOrEqual(2, count($productQueries), $queryDump);
+        $this->assertLessThanOrEqual(2, count($unitQueries), $queryDump);
+    }
+
+    public function test_sent_to_kitchen_broadcast_batches_product_unit_queries_for_multiple_lines(): void
+    {
+        $order = $this->createTestOrder();
+        $this->addPrecisionLines($order);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $payload = (new OrderSentToKitchenBroadcast(
+            orderId: $order->id,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+        ))->broadcastWith();
+        /** @var array{order: array{lines: array<int, array{quantity_decimals: int}>}} $serializedPayload */
+        $serializedPayload = json_decode(json_encode($payload, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+
+        $queries = array_values(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        /** @var array<int, array{quantity_decimals: int}> $lines */
+        $lines = $serializedPayload['order']['lines'];
+        $this->assertSame([0, 2, 3], collect($lines)->pluck('quantity_decimals')->all());
+
+        $productQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains(strtolower($query['query']), 'from "products"'),
+        ));
+        $unitQueries = array_values(array_filter(
+            $queries,
+            static fn (array $query): bool => str_contains(strtolower($query['query']), 'from "units"'),
+        ));
+
+        $queryDump = json_encode($queries, JSON_THROW_ON_ERROR);
+        $this->assertCount(1, $productQueries, $queryDump);
+        $this->assertCount(1, $unitQueries, $queryDump);
+    }
+
     public function test_send_to_kitchen_fails_without_lines(): void
     {
         $order = $this->createTestOrder();
@@ -346,6 +420,32 @@ final class OrderManagementTest extends TestCase
             'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ])->assertStatus(201);
+    }
+
+    private function addPrecisionLines(Order $order): void
+    {
+        foreach ([0, 2, 3] as $index => $decimalPlaces) {
+            $unit = Unit::factory()->create(['decimal_places' => $decimalPlaces]);
+            $product = Product::factory()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'unit_id' => $unit->id,
+            ]);
+
+            OrderLine::create([
+                'order_id' => $order->id,
+                'line_number' => $index + 1,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'quantity' => '1.0000',
+                'unit_price' => '10.000',
+                'discount_amount' => '0.000',
+                'tax_rate' => '0.00',
+                'tax_amount' => '0.000',
+                'line_total' => '10.000',
+                'status' => OrderLineStatus::Pending,
+            ]);
+        }
     }
 
     private function setupTestData(): void

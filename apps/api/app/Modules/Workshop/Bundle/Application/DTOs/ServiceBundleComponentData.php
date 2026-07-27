@@ -29,7 +29,7 @@ final class ServiceBundleComponentData extends Data
         public ?string $notes,
     ) {}
 
-    public static function fromModel(ServiceBundleComponent $component, int $scale = 4): self
+    public static function fromModel(ServiceBundleComponent $component, int $moneyScale): self
     {
         $componentId = match ($component->component_type) {
             BundleComponentType::Part => $component->product_id,
@@ -46,6 +46,12 @@ final class ServiceBundleComponentData extends Data
         $unit = $component->relationLoaded('unit')
             ? $component->unit->symbol
             : '';
+        $quantityDecimals = $component->relationLoaded('unit')
+            ? $component->unit->decimal_places
+            : QuantityScale::SCALE;
+        $roundingMethod = $component->relationLoaded('unit')
+            ? $component->unit->rounding_method->value
+            : null;
 
         return new self(
             id: $component->id,
@@ -53,13 +59,11 @@ final class ServiceBundleComponentData extends Data
             component_type: $component->component_type,
             component_id: (string) ($componentId ?? ''),
             component_display_name: $displayName,
-            quantity: CurrencyScale::bcformat($component->quantity, $scale),
-            quantity_decimals: $component->relationLoaded('unit')
-                ? $component->unit->decimal_places
-                : QuantityScale::SCALE,
+            quantity: QuantityScale::formatForUnit($component->quantity, $quantityDecimals, $roundingMethod),
+            quantity_decimals: $quantityDecimals,
             unit: $unit,
             override_unit_price: $component->override_unit_price !== null
-                ? CurrencyScale::bcformat($component->override_unit_price, $scale)
+                ? CurrencyScale::bcformat($component->override_unit_price, $moneyScale)
                 : null,
             is_optional: $component->is_optional,
             display_order: $component->display_order,

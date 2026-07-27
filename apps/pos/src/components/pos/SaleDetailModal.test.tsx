@@ -65,6 +65,29 @@ describe('SaleDetailModal', () => {
     expect(getByText('-1.2000')).toBeTruthy();
   });
 
+  it("formats an existing product's historical line at its current non-default unit precision", () => {
+    const { getByText } = render(
+      <SaleDetailModal
+        receipt={{
+          ...receipt,
+          lines: [{
+            id: 'current-product-line',
+            quantity: 1.2,
+            quantity_decimals: 2,
+            unit_price: '45.000',
+            line_total: '54.000',
+            product: { id: 'p1', name: 'Avène' },
+          }],
+        }}
+        isOpen
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(getByText('Avène')).toBeTruthy();
+    expect(getByText('1.20')).toBeTruthy();
+  });
+
   it('fires onReprint when the reprint action is used', () => {
     const onReprint = vi.fn();
     const { getByText } = render(

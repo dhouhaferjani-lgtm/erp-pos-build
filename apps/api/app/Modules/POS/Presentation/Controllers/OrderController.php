@@ -174,6 +174,7 @@ final class OrderController extends Controller
                 modifiers: $validated['modifiers'] ?? null,
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
+            $line->loadMissing('product.unitOfMeasure');
 
             // Reload the order to return updated totals.
             // Round-5 — anchor on BOTH tenant_id and company_id so the
@@ -235,6 +236,7 @@ final class OrderController extends Controller
                 modifiers: $validated['modifiers'] ?? null,
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
+            $line->loadMissing('product.unitOfMeasure');
 
             // Round-5 — anchor on BOTH tenant_id and company_id.
             $tenantId = $this->companyContext->requireTenantId();
