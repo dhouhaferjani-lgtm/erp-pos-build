@@ -149,6 +149,7 @@ export interface LandedCostLineAllocation {
   product_name: string
   description: string
   quantity: number
+  quantity_decimals: number
   unit_price: number
   line_total: number
   allocated_costs: number

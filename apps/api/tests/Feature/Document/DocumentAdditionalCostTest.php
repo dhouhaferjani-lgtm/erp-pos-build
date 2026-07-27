@@ -10,15 +10,18 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -198,6 +201,37 @@ class DocumentAdditionalCostTest extends TestCase
         $this->assertDatabaseMissing('document_additional_costs', [
             'id' => $cost->id,
         ]);
+    }
+
+    public function test_landed_cost_breakdown_exposes_product_unit_quantity_precision(): void
+    {
+        $unit = Unit::factory()->create(['decimal_places' => 3]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+        ]);
+        DocumentLine::create([
+            'document_id' => $this->purchaseOrder->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => '1.2500',
+            'unit_price' => '10.000',
+            'line_total' => '12.500',
+            'allocated_costs' => '0.000000',
+        ]);
+        DocumentAdditionalCost::create([
+            'document_id' => $this->purchaseOrder->id,
+            'cost_type' => 'shipping',
+            'amount' => '1.000',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/v1/documents/{$this->purchaseOrder->id}/landed-cost-breakdown");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.allocations.0.quantity_decimals', 3);
     }
 
     public function test_cannot_update_cost_from_different_document(): void

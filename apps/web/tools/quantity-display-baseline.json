@@ -1,5 +1,4 @@
 [
-  "apps/web/src/components/organisms/LandedCostBreakdown/LandedCostBreakdown.tsx:line.quantity",
   "apps/web/src/features/admin/pages/InvoicesPage.tsx:item.quantity",
   "apps/web/src/features/catalog/components/RecipeLineEditor.tsx:line.quantity",
   "apps/web/src/features/opening-balances/components/BatchPreview.tsx:line.quantity",

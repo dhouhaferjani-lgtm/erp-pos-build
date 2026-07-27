@@ -117,7 +117,7 @@ class DocumentAdditionalCostController extends Controller
     {
         $documentModel = $this->resolveDocument($document);
 
-        $lines = $documentModel->lines()->with('product')->get();
+        $lines = $documentModel->lines()->with('product.unitOfMeasure')->get();
         $additionalCostsTotal = (float) $documentModel->additionalCosts()->sum('amount');
         $subtotal = (float) $lines->sum('line_total');
 
@@ -144,6 +144,7 @@ class DocumentAdditionalCostController extends Controller
                 'product_name' => $product !== null ? $product->name : ($line->description ?? 'Unknown Product'),
                 'description' => $line->description ?? '',
                 'quantity' => $quantity,
+                'quantity_decimals' => $product?->unitOfMeasure?->decimal_places ?? 4,
                 'unit_price' => $unitPrice,
                 'line_total' => $lineTotal,
                 'allocated_costs' => $allocatedCosts,
