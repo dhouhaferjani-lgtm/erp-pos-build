@@ -5,7 +5,6 @@
   "apps/web/src/features/opening-balances/components/BatchPreview.tsx:line.quantity",
   "apps/web/src/features/owner-dashboard/components/LowStockAlertsList.tsx:row.quantity",
   "apps/web/src/features/owner-dashboard/components/TopSkusWidget.tsx:row.quantity",
-  "apps/web/src/features/pos/components/KitchenOrderCard.tsx:line.quantity",
   "apps/web/src/features/pos/molecules/CartLineItem/CartLineItem.tsx:item.quantity",
   "apps/web/src/features/pos/molecules/OrderLineItem/OrderLineItem.tsx:line.quantity",
   "apps/web/src/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx:item.quantity",

@@ -38,7 +38,7 @@ final class KitchenDisplayController
                 OrderStatus::SentToKitchen,
                 OrderStatus::Ready,
             ])
-            ->with(['lines', 'table.floor'])
+            ->with(['lines.product.unitOfMeasure', 'table.floor'])
             ->orderBy('sent_at', 'asc')
             ->get();
 
@@ -65,7 +65,7 @@ final class KitchenDisplayController
             /** @var Order $order */
             $order = Order::where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
-                ->with(['lines', 'table.floor'])
+                ->with(['lines.product.unitOfMeasure', 'table.floor'])
                 ->findOrFail($orderId);
 
             return response()->json([
@@ -102,7 +102,7 @@ final class KitchenDisplayController
             /** @var Order $freshOrder */
             $freshOrder = Order::where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
-                ->with(['lines', 'table.floor'])
+                ->with(['lines.product.unitOfMeasure', 'table.floor'])
                 ->findOrFail($order->id);
 
             return response()->json([

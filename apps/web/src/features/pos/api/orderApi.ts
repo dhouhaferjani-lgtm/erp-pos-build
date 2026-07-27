@@ -11,6 +11,7 @@ export interface OrderLineData {
   product_name: string
   variant_name: string | null
   barcode: string | null
+  quantity_decimals: number
   quantity: string
   unit_price: string
   discount_amount: string
