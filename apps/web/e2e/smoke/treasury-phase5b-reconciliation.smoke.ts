@@ -355,10 +355,65 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
         balance: string
         last_reconciled_at: string | null
       }
-      if (candidateBalance.last_reconciled_at === null) {
-        repository = candidate
-        balance = candidateBalance
-        break
+      if (candidateBalance.last_reconciled_at !== null) {
+        continue
+      }
+      // Exit-r3 N1: a prior run's reopened statement parks the repository in
+      // Reconciling forever (cannot void with allocations), and
+      // assertNoEarlierOpenStatement 422s completion for every later period.
+      // Skip repositories that still carry an active non-terminal statement.
+      const statementsResponse = await request.get(
+        `${API_BASE}/bank-statements?payment_repository_id=${candidate.id}&per_page=100`,
+        { headers: authHeaders() },
+      )
+      await expectStatus(statementsResponse, 200, `statement leftover discovery (${candidate.code})`)
+      const priorStatements = ((await json(statementsResponse)).data ?? []) as Array<{ status: string }>
+      const hasOpenStatement = priorStatements.some(
+        (statement) => statement.status !== 'reconciled' && statement.status !== 'voided',
+      )
+      if (hasOpenStatement) {
+        continue
+      }
+      repository = candidate
+      balance = candidateBalance
+      break
+    }
+    if (repository === null) {
+      // Every fixture repository is retired (reconciled, or parked with a
+      // leftover open statement by a prior run's reopen teardown). Provision a
+      // fresh smoke repository, matching the SMOKE-<ts> fixtures earlier
+      // sessions created by hand, so the smoke stays re-runnable forever.
+      const glAccountsResponse = await request.get(`${API_BASE}/accounts?per_page=1000`, {
+        headers: authHeaders(),
+      })
+      await expectStatus(glAccountsResponse, 200, 'accounts for smoke repository provisioning')
+      const glAccounts = ((await json(glAccountsResponse)).data ?? []) as Array<{
+        id: string
+        code: string
+        is_active?: boolean
+      }>
+      const bankGlAccount = glAccounts.find((account) => account.code === '512')
+        ?? glAccounts.find((account) => account.code.startsWith('512') && account.is_active !== false)
+      expect(bankGlAccount, 'a bank GL account (512*) exists for provisioning').toBeTruthy()
+      const provisionResponse = await request.post(`${API_BASE}/payment-repositories`, {
+        headers: authHeaders(),
+        data: {
+          code: `SMOKE-${Date.now().toString().slice(-10)}`,
+          name: `Phase 5b Smoke Bank ${RUN_ID}`,
+          type: 'bank_account',
+          gl_account_id: bankGlAccount!.id,
+        },
+      })
+      await expectStatus(provisionResponse, 201, 'smoke repository provisioning')
+      repository = (await json(provisionResponse)).data as BankRepository
+      const provisionedBalanceResponse = await request.get(
+        `${API_BASE}/payment-repositories/${repository.id}/balance`,
+        { headers: authHeaders() },
+      )
+      await expectStatus(provisionedBalanceResponse, 200, 'provisioned repository balance baseline')
+      balance = (await json(provisionedBalanceResponse)).data as {
+        balance: string
+        last_reconciled_at: string | null
       }
     }
     expect(repository, 'an active, GL-linked, unreconciled bank repository exists').toBeTruthy()
