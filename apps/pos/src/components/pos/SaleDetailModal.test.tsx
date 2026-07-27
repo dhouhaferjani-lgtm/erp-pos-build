@@ -42,6 +42,29 @@ describe('SaleDetailModal', () => {
     expect(getByText('CASH')).toBeTruthy();
   });
 
+  it('formats a historical line without a product at the scale-four fallback', () => {
+    const { getByText } = render(
+      <SaleDetailModal
+        receipt={{
+          ...receipt,
+          lines: [{
+            id: 'historical-line',
+            quantity: -1.2,
+            unit_price: '45.000',
+            line_total: '-54.000',
+            product: null,
+            product_name: 'Archived Avène',
+          }],
+        }}
+        isOpen
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(getByText('Archived Avène')).toBeTruthy();
+    expect(getByText('-1.2000')).toBeTruthy();
+  });
+
   it('fires onReprint when the reprint action is used', () => {
     const onReprint = vi.fn();
     const { getByText } = render(

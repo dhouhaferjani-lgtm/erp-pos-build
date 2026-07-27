@@ -1,5 +1,4 @@
 [
-  "apps/pos/src/components/pos/SaleDetailModal.tsx:line.quantity",
   "apps/pos/src/pages/CustomerDisplayPage.tsx:item.quantity",
   "apps/web/src/components/organisms/LandedCostBreakdown/LandedCostBreakdown.tsx:line.quantity",
   "apps/web/src/features/admin/pages/InvoicesPage.tsx:item.quantity",
