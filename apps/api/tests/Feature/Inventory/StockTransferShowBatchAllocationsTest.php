@@ -17,12 +17,13 @@ use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
-use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -202,7 +203,55 @@ final class StockTransferShowBatchAllocationsTest extends TestCase
             ->assertJsonPath('data.lines.0.batch_allocations', []);
     }
 
-    private function createProduct(string $sku, bool $requiresBatch): Product
+    public function test_show_returns_line_quantity_decimals_from_the_product_unit(): void
+    {
+        $category = UnitCategory::factory()->create([
+            'tenant_id' => null,
+            'code' => 'transfer-weight',
+            'name' => 'Transfer Weight',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'transfer-kg',
+            'name' => 'Transfer Kilogram',
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $product = $this->createProduct('PROD-WEIGHT', requiresBatch: false, unit: $unit);
+
+        $this->stockService->receive(
+            productId: $product->id,
+            locationId: $this->warehouse->id,
+            quantity: '5.0000',
+            reference: 'SEED-WEIGHT',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+        );
+
+        $transfer = $this->service->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData(productId: $product->id, quantity: '2.5000'),
+            ],
+        ));
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/stock-transfers/{$transfer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.quantity', '2.5000')
+            ->assertJsonPath('data.lines.0.quantity_decimals', 3);
+    }
+
+    private function createProduct(string $sku, bool $requiresBatch, ?Unit $unit = null): Product
     {
         return Product::create([
             'tenant_id' => $this->tenant->id,
@@ -212,6 +261,7 @@ final class StockTransferShowBatchAllocationsTest extends TestCase
             'type' => ProductType::Part,
             'is_active' => true,
             'requires_batch_tracking' => $requiresBatch,
+            'unit_id' => $unit?->id,
             'cost_price' => '5.0000',
             'sale_price' => '10.0000',
         ]);
