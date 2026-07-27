@@ -242,7 +242,7 @@ class SalesOrderDocumentTest extends TestCase
             ->assertJsonPath('data.lines.0.quantity_delivered', '2.5000');
     }
 
-    public function test_eur_get_patch_round_trip_preserves_scale_four_quantity(): void
+    public function test_eur_get_patch_line_replacement_round_trip_preserves_scale_four_quantity(): void
     {
         $order = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -265,9 +265,26 @@ class SalesOrderDocumentTest extends TestCase
 
         $showResponse = $this->actingAs($this->user)
             ->getJson("/api/v1/orders/{$order->id}");
+
+        /** @var array<string, mixed> $shownLine */
+        $shownLine = $showResponse->json('data.lines.0');
         $updateResponse = $this->actingAs($this->user)
             ->patchJson("/api/v1/orders/{$order->id}", [
                 'notes' => 'Unrelated edit',
+                'lines' => [
+                    [
+                        'product_id' => $shownLine['product_id'],
+                        'description' => $shownLine['description'],
+                        'quantity' => $shownLine['quantity'],
+                        'unit_price' => $shownLine['unit_price'],
+                        'discount_percent' => $shownLine['discount_percent'],
+                        'discount_amount' => $shownLine['discount_amount'],
+                        'tax_rate' => $shownLine['tax_rate'],
+                        'line_total' => $shownLine['line_total'],
+                        'price_entry_mode' => $shownLine['price_entry_mode'],
+                        'notes' => $shownLine['notes'],
+                    ],
+                ],
             ]);
 
         $showResponse->assertOk()
@@ -275,6 +292,9 @@ class SalesOrderDocumentTest extends TestCase
         $updateResponse->assertOk()
             ->assertJsonPath('data.notes', 'Unrelated edit')
             ->assertJsonPath('data.lines.0.quantity', '0.1250');
-        self::assertSame('0.1250', $line->fresh()?->quantity);
+
+        $replacementLine = $order->lines()->sole();
+        self::assertNotSame($line->id, $replacementLine->id);
+        self::assertSame('0.1250', $replacementLine->quantity);
     }
 }
