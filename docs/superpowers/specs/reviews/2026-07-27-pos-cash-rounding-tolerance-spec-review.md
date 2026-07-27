@@ -44,6 +44,28 @@
 - **C13 (Medium):** consumer-semantics matrix added (drawer/Z/NF525 = rounded; revenue/loyalty = exact; VAT untouched; analytics rounded-in-v1 documented). Verified NOT total-dependent: voucher redemption, gift cards, QR token, FEC exporter.
 - **C17 (Medium):** `docs/factory/WORKFLOW.md:217-220` contradicts the owner-confirmed push-to-dev auto-migrate contract → design made safe in both orders; doc reconciliation ticketed.
 
+---
+
+# Round 2 (vs Rev 2, commit 4f44d63d0)
+
+**Lanes:** fiscal-pos (Opus) — REJECT-narrow ("Rev 2.1 spec patch, not a redesign"); treasury (Opus) — REJECT changes-requested. Both lanes verified ALL r1 blockers genuinely closed (T1/T2/T5/T7/T8/T10, B1/B2/B3, M6-M14, C1/C7) and the v3-gate architecture correct end-to-end.
+
+## r2 criticals (all folded into Rev 2.1)
+
+- **T-F1 (CRITICAL):** live pgsql `pos_receipts_totals CHECK (total = subtotal + tax_amount − discount_amount)` (2026_03_09_200000:41-42) — every rounded sale dead-letters; invisible on SQLite. → CHECK swapped to `+ COALESCE(cash_rounding_adjustment,0)` in migration B, PG-run test.
+- **F1 (CRITICAL):** signing `cash_rounding_summary` into the Z payload needs Z_REPORT v2 (fixed 32-key `ZReportPayload::PAYLOAD_KEYS`); as written 100% Z quarantine. → tolerance_summary real values only (key already signed); rounding summary in `report_data` ONLY (unsigned, additive, NO schema_version bump — bump would break `refunds_amount` hash parity, T-F6); Z_REPORT v2 ticketed.
+- **F2 (CRITICAL):** denomination `"0.0500"` (decimal 15,4) vs `moneyRegex(3)` ⇒ 100% TND quarantine. → normalization contract: resolver emits at company currency scale; round-trip validity else disabled.
+- **F3 (CRITICAL):** V3-delegates-to-V2 cannot yield rounded total (V1 aggregate assert throws first). → normative build order: V2 with exactTotal → replace `total` → add fields → assertV3.
+- **T-F3:** `is_cash_tender` never reaches the device (`formatMethod` hardcoded allowlist) — silent feature no-op. → wire-through + store/update + TS type explicit.
+- **T-F4 + F11:** original `country_payment_settings` seed insert latently broken (no `id`, countries seeded post-migration) ⇒ essentially NO tenant has rows; UPDATE-only backfill no-ops; launch tenant would get everything disabled. → uuid-id upsert + `CountryPaymentSettingsSeeder` in provisioning + upserting `--verify` ops command.
+- **T-F2/F8:** projection writes not v3-gated while GL was ⇒ read-model/ledger divergence + non-inert Phase 1. → one v3 gate, both layers.
+
+## r2 importants (folded)
+
+F4 unify `computeExactCartTotal` (EUR tie-flip); F5 bind order (bcmod-by-zero = uncaught `Error`); F6 half-bound at s+1 + scale-0 cap 10; F7 GrandtotalService real rationale (retired-path unreachability) + 2 pin tests; F9 device const-swap not version-threading + `payloadKeysFor` takes no chain context; F10 quick-cash method SELECTION predicate; T-F5 cash predicate unification via `is_cash_tender ⇒ code='CASH'` invariant; T-F7 disjointness = source_type literal (journal_entries has NO fiscal_event_id) + `source_id = receipt->id` + procurement-exemplar unscoped index; T-F8 refund remedy not implementable as one line (server-computed totals, CHECK, no-arg getScale, unbounded partial drift) → §8.2 honest options; T-F9 alert = audit_events precedent (TreasuryReceiptBridge:829-869) with named event types; T-F10 purpose backfill promote-existing + parent hard-fail; T-F12 commands tenant-DB-scoped via tenants:run; T-F13 company `payment_tolerance_enabled === false` force-disable honored; T-F14 per-shift auto-accept escalation guard; minors (F12-F14, T-F11/15/16/17/18) all folded incl. `ReceiptVoidService` no-GL pre-existing note and v3 key sortedness assertion.
+
+**Rev 2.1 outcome:** all r2 criticals/importants addressed in the same spec file. r3 = targeted verification of the critical fixes.
+
 ## Full lane verdicts
 
 The complete lane reviews (all findings, code evidence, and fix prescriptions) are preserved in the session transcript of 2026-07-27 and materially reproduced above; Rev 2 (same spec file, header updated) addresses every BLOCKER and MAJOR. Re-review of Rev 2 by both lanes is required before the owner gate.
