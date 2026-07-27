@@ -6,12 +6,12 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Company\Services\LocationScopeBoundary;
-use App\Modules\Identity\Domain\User;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Application\Queries\ExpenseIndexQuery;
 use App\Modules\Expense\Domain\ExpenseMetadata;
+use App\Modules\Identity\Domain\User;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
