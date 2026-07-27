@@ -187,7 +187,7 @@ function renderWithClient(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
-const mockCartItems: CartItem[] = [
+const mockCartItems: [CartItem] = [
   {
     id: '1',
     product: { id: 'p1', name: 'Product 1', sku: 'SKU1', price: '50.000' },
@@ -197,6 +197,25 @@ const mockCartItems: CartItem[] = [
     tax_amount: '19.000',
   },
 ]
+
+it('uses product quantity_decimals instead of the scale-four fallback in the payment cart summary', async () => {
+  renderWithClient(
+    <AdvancedPaymentsModal
+      isOpen
+      onClose={vi.fn()}
+      cartItems={[{
+        ...mockCartItems[0],
+        quantity: 1.5,
+        product: { ...mockCartItems[0].product, quantity_decimals: 2 },
+      }]}
+      onComplete={vi.fn()}
+    />
+  )
+
+  await waitFor(() => {
+    expect(screen.getByText('×1.50')).toBeInTheDocument()
+  })
+})
 
 /** Helper: tap a payment method button by name, fill the config panel, and click "Add Payment" */
 async function addPaymentViaButton(

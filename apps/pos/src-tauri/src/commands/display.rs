@@ -35,7 +35,8 @@ pub enum CustomerDisplayPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CartDisplayItem {
     pub name: String,
-    pub quantity: u32,
+    pub quantity: f64,
+    pub quantity_decimals: Option<u8>,
     pub line_total: String,
 }
 
@@ -174,4 +175,33 @@ pub async fn send_to_customer_display(
 
     log::debug!("Sent payload to customer display: {:?}", payload);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CustomerDisplayPayload;
+
+    #[test]
+    fn cart_payload_round_trips_fractional_quantity_and_unit_precision() {
+        let payload: CustomerDisplayPayload = serde_json::from_str(
+            r#"{
+                "type":"cart",
+                "items":[{
+                    "name":"Olive oil",
+                    "quantity":1.5,
+                    "quantity_decimals":2,
+                    "line_total":"12.00"
+                }],
+                "total":"12.00",
+                "currency":"EUR"
+            }"#,
+        )
+        .expect("the customer-display command accepts fractional quantities");
+
+        let emitted = serde_json::to_value(payload)
+            .expect("the customer-display command emits its accepted payload");
+
+        assert_eq!(emitted["items"][0]["quantity"], 1.5);
+        assert_eq!(emitted["items"][0]["quantity_decimals"], 2);
+    }
 }

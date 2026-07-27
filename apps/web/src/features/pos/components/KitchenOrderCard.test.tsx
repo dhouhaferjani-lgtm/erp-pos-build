@@ -27,6 +27,7 @@ function makeLine(overrides: Partial<OrderLineData> = {}): OrderLineData {
     product_name: 'Espresso',
     variant_name: null,
     barcode: null,
+    quantity_decimals: 4,
     quantity: '2',
     unit_price: '3.500',
     discount_amount: '0.000',
@@ -92,7 +93,7 @@ describe('KitchenOrderCard', () => {
 
   it('formats a kitchen line quantity at its product unit precision', () => {
     const order = makeOrder({
-      lines: [makeLine({ quantity: '1.5', quantity_decimals: 2 } as OrderLineData)],
+      lines: [makeLine({ quantity: '1.5', quantity_decimals: 2 })],
     })
 
     const { getByText } = render(

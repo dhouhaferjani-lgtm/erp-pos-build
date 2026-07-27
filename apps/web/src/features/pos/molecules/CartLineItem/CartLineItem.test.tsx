@@ -50,6 +50,23 @@ describe('CartLineItem', () => {
     expect(getByText('2.0000')).toBeInTheDocument()
   })
 
+  it('uses product quantity_decimals instead of the scale-four fallback for cart quantities', () => {
+    const { getByText } = render(
+      <CartLineItem
+        item={{
+          ...mockItem,
+          quantity: 1.5,
+          product: { ...mockItem.product, quantity_decimals: 2 },
+        }}
+        onUpdateQuantity={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    )
+
+    expect(getByText('15.500 EUR × 1.50')).toBeInTheDocument()
+    expect(getByText('1.50')).toBeInTheDocument()
+  })
+
   it('displays unit price', () => {
     const { getByText } = render(
       <CartLineItem
