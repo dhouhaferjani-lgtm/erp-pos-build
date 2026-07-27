@@ -55,7 +55,7 @@ use Tests\Traits\AssertsApiValidation;
  *
  *  - FormRequest rule path (RefundPrepaymentRequest)
  *  - Controller `$request->validate(...)` inline path (PaymentMethodController,
- *    BankReconciliationController, PaymentController, PaymentInstrumentController,
+ *    PaymentController, PaymentInstrumentController,
  *    SmartPaymentController, MultiPaymentController)
  *  - Service-layer `Model::find()` / `Model::findOrFail()` path
  *    (PaymentAllocationService, PaymentRefundService, VendorRefundService,
@@ -221,41 +221,6 @@ final class TreasuryTenantIsolationTest extends TestCase
     // =========================================================================
     // Surface 2 — Controller `$request->validate(...)` inline rule path
     // =========================================================================
-
-    /**
-     * Inventory: api.treasury.003 (payment_repositories).
-     * Endpoint: POST /api/v1/bank-reconciliations  → BankReconciliationController::store
-     */
-    public function test_bank_reconciliation_store_refuses_cross_tenant_repository_id(): void
-    {
-        $crossResponse = $this->actingAsForTenant($this->userA, $this->companyA)
-            ->postJson('/api/v1/bank-reconciliations', [
-                'repository_id' => $this->repositoryB->id,
-                'statement_date' => now()->toDateString(),
-                'statement_balance' => '0.00',
-            ]);
-        // After the fix, the bare exists-validator on repository_id will reject
-        // the cross-tenant id at the validation layer with 422 + a structured
-        // error. Today (RED), the bare exists accepts the cross-tenant id and
-        // the controller proceeds into the service, which 404s via a separately
-        // scoped findOrFail in BankReconciliationService — meaning the bare
-        // exists is currently masked end-to-end but still a defense-in-depth
-        // gap (other controllers use the same pattern without a service guard).
-        // We assert 422 here so the test goes RED → GREEN as the fix lands.
-        $this->assertApiValidationErrors($crossResponse, ['repository_id']);
-
-        $sameResponse = $this->actingAsForTenant($this->userA, $this->companyA)
-            ->postJson('/api/v1/bank-reconciliations', [
-                'repository_id' => $this->repositoryA->id,
-                'statement_date' => now()->toDateString(),
-                'statement_balance' => '0.00',
-            ]);
-        $this->assertNotSame(
-            422,
-            $sameResponse->status(),
-            'Same-tenant repository_id must pass validation. Got: '.$sameResponse->getContent(),
-        );
-    }
 
     /**
      * Inventory: api.treasury.004 / 005 (default_account_id, fee_account_id on accounts).

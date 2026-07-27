@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
 final class ExpenseIndexQuery
 {
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return Builder<Document>
      */
     public function build(Request $request, string $companyId, array $locationIds = []): Builder

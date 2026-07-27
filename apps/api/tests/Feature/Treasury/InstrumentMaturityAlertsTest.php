@@ -138,6 +138,64 @@ final class InstrumentMaturityAlertsTest extends TestCase
         $this->assertSame('/treasury/instruments?maturing=1', $data['deep_link']);
     }
 
+    public function test_outbound_due_alert_uses_separate_funding_copy_for_received_and_bounced_instruments(): void
+    {
+        Carbon::setTestNow('2026-07-11 05:00:00');
+
+        $tenant = Tenant::factory()->create();
+        Country::query()->firstOrCreate(
+            ['code' => 'TN'],
+            ['name' => 'Tunisia', 'currency_code' => 'TND', 'currency_symbol' => 'DT'],
+        );
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $manager = $this->createTreasuryManager($tenant, $company);
+        $method = $this->method($tenant, $company);
+        CountryPaymentSettings::query()->updateOrCreate(['country_code' => 'TN'], [
+            'instrument_alert_days' => 10,
+        ]);
+
+        $received = $this->instrument($tenant, $company, $method, [
+            'reference' => 'OUTBOUND-RECEIVED-DUE',
+            'direction' => 'outbound',
+            'status' => 'received',
+            'maturity_date' => '2026-07-21',
+        ]);
+        $bounced = $this->instrument($tenant, $company, $method, [
+            'reference' => 'OUTBOUND-BOUNCED-DUE',
+            'direction' => 'outbound',
+            'status' => 'bounced',
+            'maturity_date' => '2026-07-10',
+        ]);
+        $this->instrument($tenant, $company, $method, [
+            'reference' => 'OUTBOUND-OUTSIDE',
+            'direction' => 'outbound',
+            'status' => 'received',
+            'maturity_date' => '2026-07-22',
+        ]);
+        $this->instrument($tenant, $company, $method, [
+            'reference' => 'OUTBOUND-CLEARED',
+            'direction' => 'outbound',
+            'status' => 'cleared',
+            'maturity_date' => '2026-07-11',
+        ]);
+
+        $this->assertSame(0, Artisan::call('treasury:instrument-maturity-alerts'));
+
+        $event = AuditEvent::query()
+            ->where('company_id', $company->id)
+            ->where('event_type', 'treasury.maturity.outbound_due')
+            ->sole();
+        $this->assertSame(2, $event->payload['outbound_due_count']);
+        $this->assertEqualsCanonicalizing([$received->id, $bounced->id], $event->payload['outbound_due_ids']);
+        $notification = DB::table('notifications')
+            ->where('notifiable_id', $manager->id)
+            ->where('type', 'treasury.maturity.outbound_due')
+            ->sole();
+        $data = json_decode((string) $notification->data, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $data['outbound_due_count']);
+        $this->assertSame('/treasury/instruments?maturing=1&direction=outbound', $data['deep_link']);
+    }
+
     public function test_maturity_alert_sends_no_notification_when_counts_are_zero(): void
     {
         Carbon::setTestNow('2026-07-11 05:00:00');

@@ -39,6 +39,8 @@ use App\Modules\POS\Domain\Events\TerminalDeactivated;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
+use App\Modules\Treasury\Domain\Events\BankStatementReconciled;
+use App\Modules\Treasury\Domain\Events\BankStatementReopened;
 use App\Modules\Treasury\Domain\Events\InstrumentBounced;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
@@ -996,6 +998,18 @@ final class DomainEventSubscriber
         );
     }
 
+    public function handleBankStatementEvent(BankStatementReconciled|BankStatementReopened $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'BankStatement',
+            aggregateId: $event->statementId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
     /**
      * Persist an event to the audit log.
      *
@@ -1083,6 +1097,8 @@ final class DomainEventSubscriber
 
             // Treasury spine (audit trail for money movements)
             RepositoryMovementRecorded::class => 'handleRepositoryMovementRecorded',
+            BankStatementReconciled::class => 'handleBankStatementEvent',
+            BankStatementReopened::class => 'handleBankStatementEvent',
 
             // Instrument portfolio lifecycle (custody + accounting transitions)
             InstrumentReceived::class => 'handleInstrumentEvent',

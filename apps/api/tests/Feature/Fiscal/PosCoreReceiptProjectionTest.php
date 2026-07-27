@@ -289,7 +289,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
     {
         // Pass 2A.PHP.2 — the 28-key canonical payload no longer carries
         // `payment_method_id`; the projector resolves the FK via
-        // `PaymentMethodResolver::resolveByCode($tenantId, $methodCode)`.
+        // `PaymentMethodResolver::resolveByCode($tenantId, $companyId, $methodCode)`.
         // An unknown method_code returns null → fail-closed RuntimeException
         // → the wrapping projection transaction rolls back atomically.
         // This replaces the pre-2A.PHP.2 "missing payment_method_id" guard

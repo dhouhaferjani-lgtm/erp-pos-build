@@ -67,6 +67,8 @@ describe('usePayExpense', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['expenses', 'detail', 'expense-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['payment-repository', 'repo-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['treasury-cash-position'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['instruments'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['maturing-instruments'] })
     expect(mocks.toastSuccess).toHaveBeenCalledWith('expenses:pay.success')
   })
 

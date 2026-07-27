@@ -15,12 +15,18 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Notifications\TreasuryAlertNotification;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\TreasuryAlertRecipients;
+use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\BankStatementLine;
+use App\Modules\Treasury\Domain\BankStatementLineAllocation;
+use App\Modules\Treasury\Domain\BankStatementMatchExecution;
+use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
 use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -46,14 +52,18 @@ use Throwable;
  *      (a Posted `journal_entries` row) with a matching amount. Exemptions:
  *      `opening_balance` legs and same-GL-account transfer legs.
  *   3. Every `transfer_group_id` nets to zero across its legs.
- *   4. Linked, post-cutover inbound portfolio nominal value matches the full
- *      balance of each reserved portfolio account. Manual no-receipt paper and
- *      pre-watermark rows/JEs are excluded.
+ *   4. Linked, post-cutover instrument portfolio nominal value matches the
+ *      normal balance of each reserved receivable/payable portfolio account.
+ *      Manual no-receipt paper and pre-watermark rows/JEs are excluded.
+ *   5. Reconciled statement line/allocation signed sums still validate.
+ *   6. Imported/reconciling statements are not older than the configured
+ *      operational threshold (30 days by default).
  *
  * Checks 1–3 freeze the affected cash repository and raise
  * `treasury.reconcile.drift`. Check 4 has no repository target: it raises
- * `treasury.reconcile.portfolio_drift` and returns FAILURE but NEVER freezes.
- * The command never repairs either class of drift.
+ * `treasury.reconcile.portfolio_drift`; checks 5–6 raise statement-specific
+ * audit alerts. Checks 4–6 return FAILURE but NEVER freeze. The command never
+ * repairs any class of drift.
  *
  * **Freeze outcome survives alerting failure** (2026-07-09 audit-fix-1 Rev-2,
  * Critical): the freeze write always happens BEFORE the alert is raised. If
@@ -74,7 +84,7 @@ use Throwable;
  * the run continues to the next repository — it never aborts reconciliation
  * for the rest of the tenant or for later tenants. `forEachTenant()` applies
  * the same isolation one level up, per-tenant. The exit code is FAILURE if
- * ANY repository froze, portfolio check drifted, or check errored this run.
+ * ANY repository froze, portfolio/statement alert fired, or check errored.
  *
  * Scheduled DAILY in routes/console.php.
  */
@@ -83,6 +93,10 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     private const DRIFT_EVENT_TYPE = 'treasury.reconcile.drift';
 
     private const PORTFOLIO_DRIFT_EVENT_TYPE = 'treasury.reconcile.portfolio_drift';
+
+    private const STATEMENT_TAMPER_EVENT_TYPE = 'treasury.reconcile.statement_tamper';
+
+    private const STATEMENT_STALE_EVENT_TYPE = 'treasury.reconcile.statement_stale';
 
     /**
      * Per-repository check FAILURE (as opposed to a genuine drift FINDING).
@@ -115,7 +129,7 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         {--tenant= : restrict reconciliation to one tenant id}';
 
     /** @var string */
-    protected $description = 'Reconcile every payment repository against its append-only movement ledger; freeze + alert on drift, never repair.';
+    protected $description = 'Reconcile payment repositories and bank-statement metadata; freeze cash drift, alert-only on portfolio/statement drift, never repair.';
 
     public function __construct(
         CompanyContext $companyContext,
@@ -136,8 +150,9 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         $frozen = 0;
         $errored = 0;
         $portfolioDrifts = 0;
+        $statementAlerts = 0;
 
-        $tenantExit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen, &$errored, &$portfolioDrifts): int {
+        $tenantExit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen, &$errored, &$portfolioDrifts, &$statementAlerts): int {
             if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
                 return self::SUCCESS;
             }
@@ -218,31 +233,265 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                         $e->getMessage(),
                     ));
                 }
+
+                try {
+                    $statementAlerts += $this->checkStatements($company);
+                } catch (Throwable $e) {
+                    $errored++;
+                    Log::error(self::ERROR_EVENT_TYPE, [
+                        'tenant_id' => $tenant->id,
+                        'company_id' => $company->id,
+                        'check' => 'bank_statement_integrity',
+                        'exception_class' => $e::class,
+                        'exception_message' => $e->getMessage(),
+                    ]);
+                    $this->error(sprintf(
+                        'ERROR checking bank statements for company %s (tenant %s): %s',
+                        $company->id,
+                        $tenant->id,
+                        $e->getMessage(),
+                    ));
+                }
             }
 
             return self::SUCCESS;
         });
 
         $this->info(sprintf(
-            'treasury:reconcile — checked %d repository(ies); froze %d on cash drift; found %d portfolio drift(s); %d error(s).',
+            'treasury:reconcile — checked %d repository(ies); froze %d on cash drift; found %d portfolio drift(s); found %d statement alert(s); %d error(s).',
             $checked,
             $frozen,
             $portfolioDrifts,
+            $statementAlerts,
             $errored,
         ));
 
         // Any fresh cash freeze, current portfolio mismatch, or check error
         // surfaces a non-zero exit. Frozen repositories are skipped on later
         // runs; portfolio drift continues alerting until the equality is restored.
-        return ($frozen > 0 || $portfolioDrifts > 0 || $errored > 0 || $tenantExit !== self::SUCCESS)
+        return ($frozen > 0 || $portfolioDrifts > 0 || $statementAlerts > 0 || $errored > 0 || $tenantExit !== self::SUCCESS)
             ? self::FAILURE
             : self::SUCCESS;
     }
 
     /**
+     * Spec §6.7 alert-only checks. These are deliberately company-scoped,
+     * read-only observations: metadata tamper and operational staleness must
+     * surface a failing command and durable audit row but never freeze cash.
+     */
+    private function checkStatements(Company $company): int
+    {
+        $alerts = 0;
+
+        /** @var Collection<int, BankStatement> $reconciled */
+        $reconciled = BankStatement::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('status', BankStatementStatus::Reconciled)
+            ->orderBy('id')
+            ->get();
+        foreach ($reconciled as $statement) {
+            $reason = $this->reconciledStatementTamperReason($statement);
+            if ($reason === null) {
+                continue;
+            }
+
+            $this->alertStatement($company, $statement, self::STATEMENT_TAMPER_EVENT_TYPE, [
+                'reason' => $reason,
+                'repository_id' => $statement->payment_repository_id,
+                'currency' => $statement->currency,
+                'period_start' => $statement->period_start->toDateString(),
+                'period_end' => $statement->period_end->toDateString(),
+                'opening_balance' => $statement->opening_balance,
+                'closing_balance' => $statement->closing_balance,
+            ]);
+            $alerts++;
+        }
+
+        $staleDays = max(1, (int) config('treasury.statement_stale_days', 30));
+        $cutoff = now()->subDays($staleDays);
+        /** @var Collection<int, BankStatement> $stale */
+        $stale = BankStatement::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('status', [BankStatementStatus::Imported, BankStatementStatus::Reconciling])
+            ->where('imported_at', '<', $cutoff)
+            ->orderBy('id')
+            ->get();
+        foreach ($stale as $statement) {
+            $this->alertStatement($company, $statement, self::STATEMENT_STALE_EVENT_TYPE, [
+                'repository_id' => $statement->payment_repository_id,
+                'status' => $statement->status->value,
+                'imported_at' => $statement->imported_at->toIso8601String(),
+                'stale_after_days' => $staleDays,
+                'age_days' => $statement->imported_at->diffInDays(now()),
+                'period_start' => $statement->period_start->toDateString(),
+                'period_end' => $statement->period_end->toDateString(),
+            ]);
+            $alerts++;
+        }
+
+        return $alerts;
+    }
+
+    private function reconciledStatementTamperReason(BankStatement $statement): ?string
+    {
+        $repositoryExists = PaymentRepository::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where('currency', $statement->currency)
+            ->whereKey($statement->payment_repository_id)
+            ->exists();
+        if (! $repositoryExists) {
+            return 'Statement repository ownership or currency no longer validates.';
+        }
+
+        $scale = $this->scaleResolver->getScaleSafe($statement->currency, 3);
+        /** @var Collection<int, BankStatementLine> $lines */
+        $lines = BankStatementLine::query()
+            ->where('bank_statement_id', $statement->id)
+            ->orderBy('id')
+            ->get();
+        /** @var list<string> $lineIds */
+        $lineIds = $lines->pluck('id')->all();
+        /** @var Collection<int, BankStatementLineAllocation> $allocations */
+        $allocations = BankStatementLineAllocation::query()
+            ->whereIn('bank_statement_line_id', $lineIds)
+            ->orderBy('id')
+            ->get();
+        /** @var Collection<int, BankStatementMatchExecution> $executions */
+        $executions = BankStatementMatchExecution::query()
+            ->whereIn('bank_statement_line_id', $lineIds)
+            ->orderBy('id')
+            ->get();
+
+        $movementIds = $allocations->pluck('repository_movement_id')->all();
+        foreach ($executions as $execution) {
+            array_push($movementIds, ...$execution->produced_repository_movement_ids);
+        }
+        $movementIds = array_values(array_unique($movementIds));
+        sort($movementIds, SORT_STRING);
+        /** @var Collection<string, RepositoryMovement> $movements */
+        $movements = RepositoryMovement::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where('payment_repository_id', $statement->payment_repository_id)
+            ->where('currency', $statement->currency)
+            ->whereIn('id', $movementIds)
+            ->orderBy('id')
+            ->get()
+            ->keyBy('id');
+        if ($movements->count() !== count($movementIds)) {
+            return 'A statement allocation or execution references a movement outside its repository.';
+        }
+
+        $signedStatementTotal = '0';
+        $signedIgnoredTotal = '0';
+        foreach ($lines as $line) {
+            if ($line->payment_repository_id !== $statement->payment_repository_id) {
+                return sprintf('Statement line %s no longer belongs to the statement repository.', $line->id);
+            }
+
+            $lineAllocations = $allocations->where('bank_statement_line_id', $line->id);
+            $lineExecutions = $executions->where('bank_statement_line_id', $line->id);
+            if ($line->match_status === StatementLineMatchStatus::Ignored) {
+                if ($lineAllocations->isNotEmpty() || $lineExecutions->isNotEmpty()) {
+                    return sprintf('Ignored statement line %s retains allocations or executions.', $line->id);
+                }
+                $signedIgnoredTotal = $line->direction === MovementDirection::In
+                    ? bcadd($signedIgnoredTotal, $line->amount, $scale)
+                    : bcsub($signedIgnoredTotal, $line->amount, $scale);
+
+                continue;
+            }
+            if (! in_array($line->match_status, [
+                StatementLineMatchStatus::Matched,
+                StatementLineMatchStatus::ResolvedByCreation,
+            ], true)) {
+                return sprintf('Statement line %s is no longer terminal.', $line->id);
+            }
+
+            $signedLineTotal = '0';
+            foreach ($lineAllocations as $allocation) {
+                $movement = $movements->get($allocation->repository_movement_id);
+                if (! $movement instanceof RepositoryMovement) {
+                    return sprintf('Statement line %s references a missing movement.', $line->id);
+                }
+                $signedLineTotal = $movement->direction === $line->direction
+                    ? bcadd($signedLineTotal, $allocation->matched_amount, $scale)
+                    : bcsub($signedLineTotal, $allocation->matched_amount, $scale);
+            }
+            if (bccomp($signedLineTotal, $line->amount, $scale) !== 0) {
+                return sprintf('Statement line %s signed allocation total no longer equals its amount.', $line->id);
+            }
+            $signedStatementTotal = $line->direction === MovementDirection::In
+                ? bcadd($signedStatementTotal, $line->amount, $scale)
+                : bcsub($signedStatementTotal, $line->amount, $scale);
+        }
+
+        foreach ($movements as $movement) {
+            $globalAllocated = (string) BankStatementLineAllocation::query()
+                ->where('repository_movement_id', $movement->id)
+                ->sum('matched_amount');
+            if (bccomp($globalAllocated, $movement->amount, $scale) > 0) {
+                return sprintf('Repository movement %s is overallocated.', $movement->id);
+            }
+        }
+
+        $expectedDelta = bcsub($statement->closing_balance, $statement->opening_balance, $scale);
+        $expectedNonIgnoredDelta = bcsub($expectedDelta, $signedIgnoredTotal, $scale);
+        if (bccomp($signedStatementTotal, $expectedNonIgnoredDelta, $scale) !== 0) {
+            return 'Signed non-ignored statement line total no longer equals closing balance minus opening balance, less ignored lines.';
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function alertStatement(Company $company, BankStatement $statement, string $eventType, array $payload): void
+    {
+        Log::error($eventType, [
+            'tenant_id' => $statement->tenant_id,
+            'company_id' => $statement->company_id,
+            'statement_id' => $statement->id,
+            ...$payload,
+        ]);
+        $this->auditService->record(
+            companyId: $statement->company_id,
+            userId: null,
+            eventType: $eventType,
+            aggregateType: 'BankStatement',
+            aggregateId: $statement->id,
+            payload: $payload,
+            metadata: ['source' => 'treasury:reconcile'],
+        );
+
+        try {
+            $recipients = $this->alertRecipients->forCompany($statement->tenant_id, $statement->company_id);
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, new TreasuryAlertNotification(
+                    alertType: $eventType,
+                    data: [
+                        'company_id' => $company->id,
+                        'company_name' => $company->name,
+                        'severity' => 'warning',
+                        'statement_id' => $statement->id,
+                        'deep_link' => "/treasury/bank-statements/{$statement->id}",
+                        ...$payload,
+                    ],
+                ));
+            }
+        } catch (Throwable $e) {
+            $this->logStatementAlertFailure($statement, 'notification', $e);
+        }
+
+        $this->error(sprintf('STATEMENT ALERT %s — %s; cash repository was not frozen.', $statement->id, $eventType));
+    }
+
+    /**
      * Check #4 is company-level and alert-only: it never freezes a repository.
-     * Manual inbound instruments remain intentionally unlinked until supplied to
-     * a payment, so only `payment_id`-linked paper participates in the equality.
+     * Manual instruments remain intentionally unlinked until supplied to a
+     * payment or expense, so only financially linked paper participates.
      *
      * @return list<array{purpose: string, account_id: string, instrument_total: numeric-string, gl_balance: numeric-string}>
      */
@@ -250,13 +499,15 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     {
         $scale = $this->scaleResolver->getScaleSafe($company->currency, 3);
         $comparisons = [
-            [InstrumentAccountPurpose::ChecksToCollect, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Deposited]],
-            [InstrumentAccountPurpose::EffectsReceivable, InstrumentKind::Effet, [InstrumentStatus::Received]],
-            [InstrumentAccountPurpose::EffectsInCollection, InstrumentKind::Effet, [InstrumentStatus::Deposited]],
+            [InstrumentAccountPurpose::ChecksToCollect, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Deposited], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::EffectsReceivable, InstrumentKind::Effet, [InstrumentStatus::Received], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::EffectsInCollection, InstrumentKind::Effet, [InstrumentStatus::Deposited], InstrumentDirection::Inbound, false],
+            [InstrumentAccountPurpose::ChecksToPay, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Bounced], InstrumentDirection::Outbound, true],
+            [InstrumentAccountPurpose::EffetsPayable, InstrumentKind::Effet, [InstrumentStatus::Received, InstrumentStatus::Bounced], InstrumentDirection::Outbound, true],
         ];
         $mismatches = [];
 
-        foreach ($comparisons as [$purpose, $kind, $statuses]) {
+        foreach ($comparisons as [$purpose, $kind, $statuses, $direction, $creditNormal]) {
             $accountId = $this->instrumentAccountResolver->resolve($purpose, $company->id);
             if ($accountId === null) {
                 Log::info('treasury.reconcile.portfolio_account_missing', [
@@ -268,8 +519,8 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 continue;
             }
 
-            $instrumentTotal = $this->pendingInstrumentTotal($company, $kind, $statuses, $scale);
-            $glBalance = $this->portfolioAccountBalance($company, $accountId, $scale);
+            $instrumentTotal = $this->pendingInstrumentTotal($company, $kind, $statuses, $direction, $scale);
+            $glBalance = $this->portfolioAccountBalance($company, $accountId, $direction, $creditNormal, $scale);
             if (bccomp($instrumentTotal, $glBalance, $scale) !== 0) {
                 $mismatches[] = [
                     'purpose' => $purpose->value,
@@ -287,15 +538,27 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
      * @param  list<InstrumentStatus>  $statuses
      * @return numeric-string
      */
-    private function pendingInstrumentTotal(Company $company, InstrumentKind $kind, array $statuses, int $scale): string
-    {
+    private function pendingInstrumentTotal(
+        Company $company,
+        InstrumentKind $kind,
+        array $statuses,
+        InstrumentDirection $direction,
+        int $scale,
+    ): string {
         $query = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->where('direction', InstrumentDirection::Inbound)
+            ->where('direction', $direction)
             ->where('kind', $kind)
             ->whereIn('status', $statuses)
-            ->whereNotNull('payment_id');
+            ->where(function ($linked): void {
+                $linked->whereNotNull('payment_id')
+                    ->orWhereExists(function ($expenseMetadata): void {
+                        $expenseMetadata->selectRaw('1')
+                            ->from('expense_metadata')
+                            ->whereColumn('expense_metadata.payment_instrument_id', 'payment_instruments.id');
+                    });
+            });
 
         if ($company->phase2_cutover_at !== null) {
             $query->where('created_at', '>=', $company->phase2_cutover_at);
@@ -311,8 +574,13 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     }
 
     /** @return numeric-string */
-    private function portfolioAccountBalance(Company $company, string $accountId, int $scale): string
-    {
+    private function portfolioAccountBalance(
+        Company $company,
+        string $accountId,
+        InstrumentDirection $direction,
+        bool $creditNormal,
+        int $scale,
+    ): string {
         $query = JournalLine::query()
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.tenant_id', $company->tenant_id)
@@ -340,18 +608,35 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         // and pre-cutover rows) have no included receipt-side GL. Their later,
         // post-cutover lifecycle entries must be removed as the same excluded
         // circuit or they create permanent false drift.
-        return bcsub($fullBalance, $this->excludedInstrumentGlNet($company, $accountId, $scale), $scale);
+        $comparableBalance = bcsub(
+            $fullBalance,
+            $this->excludedInstrumentGlNet($company, $accountId, $direction, $scale),
+            $scale,
+        );
+
+        return $creditNormal ? bcsub('0', $comparableBalance, $scale) : $comparableBalance;
     }
 
     /** @return numeric-string */
-    private function excludedInstrumentGlNet(Company $company, string $accountId, int $scale): string
-    {
+    private function excludedInstrumentGlNet(
+        Company $company,
+        string $accountId,
+        InstrumentDirection $direction,
+        int $scale,
+    ): string {
         $excludedQuery = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->where('direction', InstrumentDirection::Inbound)
+            ->where('direction', $direction)
             ->where(function ($query) use ($company): void {
-                $query->whereNull('payment_id');
+                $query->where(function ($unlinked): void {
+                    $unlinked->whereNull('payment_id')
+                        ->whereNotExists(function ($expenseMetadata): void {
+                            $expenseMetadata->selectRaw('1')
+                                ->from('expense_metadata')
+                                ->whereColumn('expense_metadata.payment_instrument_id', 'payment_instruments.id');
+                        });
+                });
                 if ($company->phase2_cutover_at !== null) {
                     $query->orWhere('created_at', '<', $company->phase2_cutover_at);
                 }
@@ -385,6 +670,10 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             ),
             '0',
         );
+
+        if ($direction === InstrumentDirection::Outbound) {
+            return $net;
+        }
 
         /** @var Collection<int, InstrumentRemittanceLine> $excludedRemittanceLines */
         $excludedRemittanceLines = InstrumentRemittanceLine::query()
@@ -904,6 +1193,25 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             'Alert delivery FAILED (%s) for company portfolio %s: %s',
             $channel,
             $company->id,
+            $e->getMessage(),
+        ));
+    }
+
+    private function logStatementAlertFailure(BankStatement $statement, string $channel, Throwable $e): void
+    {
+        Log::error(self::ALERT_FAILURE_EVENT_TYPE, [
+            'tenant_id' => $statement->tenant_id,
+            'company_id' => $statement->company_id,
+            'statement_id' => $statement->id,
+            'check' => 'bank_statement_integrity',
+            'channel' => $channel,
+            'exception_class' => $e::class,
+            'exception_message' => $e->getMessage(),
+        ]);
+        $this->error(sprintf(
+            'Alert delivery FAILED (%s) for bank statement %s: %s',
+            $channel,
+            $statement->id,
             $e->getMessage(),
         ));
     }

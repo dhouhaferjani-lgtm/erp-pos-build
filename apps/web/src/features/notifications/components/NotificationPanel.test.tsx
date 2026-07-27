@@ -146,4 +146,20 @@ describe('NotificationPanel', () => {
     await user.click(screen.getByRole('button', { name: /Tunis office rent/i }))
     expect(mockNavigate).toHaveBeenCalledWith('/expenses/expense-1/view')
   })
+
+  it('renders outbound maturity alerts with must-fund wording', () => {
+    setList([{
+      id: 'outbound-due-1',
+      type: 'treasury.maturity.outbound_due',
+      data: { outbound_due_count: 2 },
+      read_at: null,
+      created_at: '2026-07-12T13:00:00Z',
+    }])
+
+    render(<NotificationPanel />)
+
+    expect(screen.getByText('Outbound instruments due')).toBeInTheDocument()
+    expect(screen.getByText('2 outbound instruments must be funded by their maturity date.')).toBeInTheDocument()
+    expect(screen.queryByText('treasury.maturity.outbound_due')).not.toBeInTheDocument()
+  })
 })

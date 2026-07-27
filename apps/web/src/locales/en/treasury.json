@@ -155,6 +155,7 @@
     "amount": "Amount",
     "details": "Instrument Details",
     "receivedDate": "Received Date",
+    "issuedDate": "Issued Date",
     "maturityDate": "Maturity Date",
     "repository": "Repository",
     "depositedTo": "Deposited To",
@@ -205,6 +206,10 @@
       "d61_90": "Due in 61–90 days",
       "d90_plus": "Due after 90 days"
     },
+    "schedule": {
+      "receivables": "Receivables schedule",
+      "payables": "Payables schedule"
+    },
     "kinds": {
       "cheque": "Cheque",
       "effet": "Bill of exchange",
@@ -225,6 +230,7 @@
     },
     "events": {
       "created": "Instrument received",
+      "issued": "Instrument issued",
       "details_updated": "Details updated",
       "custody_transferred": "Custody transferred",
       "remitted": "Added to remittance",
@@ -699,11 +705,38 @@
     "unattributed": "Unattributed",
     "byLocation": "By location"
   },
-  "reconciliation": {
-    "openingBalance": "Opening Balance",
-    "startModal": {
-      "openingBalanceHelp": "Defaults to {{amount}} if left blank.",
-      "liveDifference": "Current difference"
+  "statements": {
+    "title": "Bank statements",
+    "subtitle": "Import statements and reconcile each bank movement against the treasury ledger.",
+    "columns": { "period": "Statement period", "repository": "Bank account", "lines": "Lines", "delta": "Statement movement", "status": "Status" },
+    "status": { "imported": "Imported", "reconciling": "Reconciling", "reconciled": "Reconciled", "voided": "Voided" },
+    "filters": { "status": "Status", "repository": "Bank account", "allStatuses": "All statuses", "allRepositories": "All bank accounts" },
+    "empty": { "title": "No bank statements", "description": "Import a CSV or Excel statement to begin reconciliation." },
+    "upload": {
+      "action": "Import statement", "title": "Import a bank statement", "subtitle": "Choose the bank account, parse the file with a saved profile, then review every exception before import.",
+      "progress": "Import progress", "steps": { "repository": "1 · Bank account", "file": "2 · File", "profile": "3 · Mapping", "preview": "4 · Review" },
+      "repository": "Bank account", "selectRepository": "Choose a bank account", "file": "Statement file", "fileHelp": "CSV or XLSX, up to 20 MB.",
+      "profile": "Parsing profile", "selectProfile": "Choose a saved profile", "newProfile": "New mapping", "next": "Continue", "back": "Back", "preview": "Preview statement", "previewing": "Reading file…",
+      "report": { "accepted": "Accepted lines", "duplicates": "Already imported", "droppedZero": "Zero rows dropped", "unparseable": "Rows needing attention" },
+      "row": "Row", "date": "Value date", "label": "Bank label", "amount": "Amount", "periodStart": "Period start", "periodEnd": "Period end", "openingBalance": "Opening balance", "closingBalance": "Closing balance",
+      "emptyGate": "Empty import acknowledgment", "acknowledgeEmpty": "I reviewed the report and want to retain this zero-line statement as audit evidence.", "confirm": "Import statement", "importing": "Importing…"
+    },
+    "profile": {
+      "name": "Profile name", "parser": "File type", "direction": "Amount layout", "signed": "One signed amount column", "debitCredit": "Separate debit and credit columns", "decimal": "Number format", "dateFormat": "Date format", "headerRows": "Header rows to skip", "save": "Save mapping",
+      "fields": { "value_date": "Value-date column", "booking_date": "Booking-date column", "amount": "Amount column", "debit": "Debit column", "credit": "Credit column", "reference": "Reference column", "bank_transaction_id": "Bank transaction ID", "label": "Label column", "counterparty_hint": "Counterparty column" }
+    },
+    "workspace": {
+      "title": "Statement reconciliation", "progress": "Resolved lines", "remaining": "Amount remaining", "balanceDelta": "Statement balance movement", "search": "Search lines", "filter": "Line status", "allStatuses": "All statuses", "noReference": "No bank reference", "noLines": "No lines match these filters.", "lineAmount": "Line amount", "allocations": "Allocations", "unallocate": "Remove", "provenance": "Execution provenance", "openTarget": "Open source record", "movementsProduced": "ledger movement(s) produced", "reconciledBy": "Reconciled by statement line", "reopen": "Reopen statement", "cancel": "Cancel",
+      "status": { "unmatched": "Unmatched", "partial": "Partially matched", "matched": "Matched", "resolved_by_creation": "Created and matched", "ignored": "Ignored" },
+      "actions": { "outbound_clear": "Outbound instrument cleared", "inbound_clear": "Inbound instrument cleared", "expense_settle": "Expense settled", "acquirer_fee": "Card batch and fee created", "create_expense": "Expense created", "create_income": "Income created" },
+      "suggestions": { "title": "Ranked suggestions", "empty": "No automatic suggestion for this line.", "tier": "Tier {{tier}}", "reference": "Reference match", "confirm": "Confirm match", "reasons": { "reference_amount_match": "The reference and remaining amount match.", "unique_amount_window": "This is the only remaining amount within {{days}} days.", "bounced_instrument": "The bounced outbound instrument is ready for re-presentation.", "pending_instrument": "The pending instrument amount and maturity date match.", "unsettled_expense": "Unsettled expense {{label}} dated {{date}} matches.", "card_batch_fee": "The {{method}} card batch on {{date}} nets after its configured fee.", "generic": "This line has a suggested reconciliation action." } },
+      "manual": { "title": "Manual movement match", "search": "Search ledger movements", "searchPlaceholder": "Movement or source ID", "movement": "Movement", "none": "No eligible movement", "original": "Original amount", "available": "Available to allocate", "amount": "Partial allocation amount", "allocate": "Allocate" },
+      "matchType": { "manual": "Manual match", "suggestion_confirmed": "Confirmed suggestion", "created_from_line": "Created from statement line" },
+      "sourceType": { "payment": "Payment", "expense": "Expense", "income": "Income", "refund": "Refund", "fiscal_event": "Fiscal receipt", "transfer": "Transfer", "adjustment": "Adjustment", "opening_balance": "Opening balance", "instrument": "Payment instrument" },
+      "ignore": { "title": "Ignore line", "reason": "Reason", "selectReason": "Choose a reason", "explanation": "Required explanation", "submit": "Ignore line", "unignore": "Restore line", "reasons": { "duplicate": "Duplicate", "informational": "Informational", "bank_error": "Bank error", "out_of_scope": "Outside reconciliation scope", "other": "Other" } },
+      "create": { "expense": "Create expense from line", "income": "Create income from line", "expenseTitle": "Create and settle an expense", "incomeTitle": "Create and record income", "vendor": "Vendor name", "source": "Income source", "incomeAccount": "Income account", "selectIncomeAccount": "Choose an income account", "notes": "Notes", "submit": "Create and match", "required": "This field is required." },
+      "complete": { "action": "Complete statement", "title": "Complete reconciliation", "message": "Completion locks the statement and stamps the repository checkpoint.", "acknowledge": "I reviewed the signed ignored total of {{amount}} and accept it as a documented exception.", "confirm": "Complete statement" },
+      "ignoredRequiresAdmin": "Ignored lines require an administrator to acknowledge them before completion."
     }
   }
 }

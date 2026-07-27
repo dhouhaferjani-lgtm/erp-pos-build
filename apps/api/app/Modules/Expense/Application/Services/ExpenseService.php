@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Document\Domain\Enums\AdditionalCostType;
@@ -24,6 +25,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -32,9 +34,12 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
+use App\Shared\Contracts\Treasury\DTOs\OutboundInstrumentIssueData;
+use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\ExpenseVatSplit;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +56,7 @@ final class ExpenseService
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly OutboundInstrumentIssuerInterface $outboundInstrumentIssuer,
     ) {}
 
     /**
@@ -71,7 +77,17 @@ final class ExpenseService
             }
         }
 
-        $company = Company::query()->whereKey($data['company_id'])->firstOrFail();
+        $company = Company::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->whereKey($data['company_id'])
+            ->firstOrFail();
+        $locationId = $data['location_id'] ?? null;
+        if ($locationId !== null && (! is_string($locationId) || ! Location::query()
+            ->where('company_id', $company->id)
+            ->whereKey($locationId)
+            ->exists())) {
+            throw new \DomainException('The expense location does not belong to the active company.');
+        }
         $companyCurrency = (string) $company->currency;
         $scale = $this->scaleResolver->getScale($companyCurrency);
         $total = (string) ($data['total'] ?? '0.00');
@@ -108,6 +124,7 @@ final class ExpenseService
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
+                'location_id' => $data['location_id'] ?? null,
                 'partner_id' => $data['partner_id'] ?? null,
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Draft,
@@ -343,7 +360,7 @@ final class ExpenseService
                         sourceId: $expense->id,
                         idempotencyLeg: 'linked_cost',
                         journalEntryId: $entry->id,
-                        occurredAt: null,
+                        occurredAt: CarbonImmutable::parse($metadata->payment_date ?? $expense->document_date),
                         reasonCode: null,
                         reversesMovementId: null,
                         createdBy: $user->id,
@@ -404,7 +421,7 @@ final class ExpenseService
                         sourceId: $expense->id,
                         idempotencyLeg: 'main',
                         journalEntryId: $entry->id,
-                        occurredAt: null,
+                        occurredAt: CarbonImmutable::parse($metadata->payment_date ?? $expense->document_date),
                         reasonCode: null,
                         reversesMovementId: null,
                         createdBy: $user->id,
@@ -477,6 +494,14 @@ final class ExpenseService
                 throw new \DomainException('Only standard expenses booking an accounts-payable liability can be settled via /pay; linked-cost expenses are settled at capitalization.');
             }
 
+            if ($metadata->payment_instrument_id !== null) {
+                $this->outboundInstrumentIssuer->assertReplaceable(
+                    instrumentId: $metadata->payment_instrument_id,
+                    tenantId: $expense->tenant_id,
+                    companyId: $expense->company_id,
+                );
+            }
+
             $settlementKey = MovementSourceType::Expense->value.':'.$expense->id.':settlement';
             $alreadySettled = RepositoryMovement::query()
                 ->where('tenant_id', $expense->tenant_id)
@@ -498,6 +523,10 @@ final class ExpenseService
 
             if ($metadata->is_paid === true) {
                 throw new \DomainException('This expense has already been paid.');
+            }
+
+            if ($data->isInstrument()) {
+                return $this->settleByInstrument($expense, $metadata, $data, $user, $settlementKey);
             }
 
             // Business-rule failure (unknown/foreign repository) → 422, matching
@@ -556,7 +585,7 @@ final class ExpenseService
                 sourceId: $expense->id,
                 idempotencyLeg: 'settlement',
                 journalEntryId: $entry->id,
-                occurredAt: null,
+                occurredAt: CarbonImmutable::parse($data->paymentDate),
                 reasonCode: null,
                 reversesMovementId: null,
                 createdBy: $user->id,
@@ -579,6 +608,61 @@ final class ExpenseService
 
             return $fresh;
         });
+    }
+
+    private function settleByInstrument(
+        Document $expense,
+        ExpenseMetadata $metadata,
+        PayExpenseRequestData $data,
+        User $user,
+        string $settlementKey,
+    ): Document {
+        if ($data->paymentMethodId === null
+            || $data->instrumentKind === null
+            || $data->instrumentReference === null) {
+            throw new \DomainException('Instrument settlement details are incomplete.');
+        }
+        if (! in_array($data->instrumentKind, [InstrumentKind::Cheque, InstrumentKind::Effet], true)) {
+            throw new \DomainException('Expense settlement supports cheque or effet instruments only.');
+        }
+        if ($data->instrumentKind === InstrumentKind::Effet && $data->instrumentMaturityDate === null) {
+            throw new \DomainException('An effet settlement requires a maturity date.');
+        }
+
+        $amount = CurrencyScale::bcformatStrict(
+            (string) ($expense->total ?? '0'),
+            $this->scaleResolver->getScale((string) $expense->currency),
+        );
+        $issued = $this->outboundInstrumentIssuer->issue(new OutboundInstrumentIssueData(
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+            paymentMethodId: $data->paymentMethodId,
+            kind: $data->instrumentKind->value,
+            reference: $data->instrumentReference,
+            amount: $amount,
+            currency: (string) $expense->currency,
+            repositoryId: $data->paymentRepositoryId,
+            issueDate: $data->paymentDate,
+            createdBy: $user->id,
+            partnerId: $expense->partner_id,
+            drawerName: $data->instrumentDrawerName,
+            maturityDate: $data->instrumentMaturityDate,
+            bankId: $data->instrumentBankId,
+            idempotencyPrefix: $settlementKey.':instrument',
+        ));
+
+        $metadata->update([
+            'payment_instrument_id' => $issued->instrumentId,
+            'is_paid' => false,
+            'paid_at' => null,
+        ]);
+
+        $fresh = $expense->fresh(['expenseMetadata']);
+        if ($fresh === null) {
+            throw new \RuntimeException('Failed to refresh expense after instrument settlement.');
+        }
+
+        return $fresh;
     }
 
     /**

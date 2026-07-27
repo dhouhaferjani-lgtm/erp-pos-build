@@ -602,6 +602,9 @@ final readonly class InstrumentLifecycleService
     ): void {
         DB::transaction(function () use ($instrumentId, $userId, $reason, $shape): void {
             $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId);
+            if ($instrument->direction === InstrumentDirection::Outbound) {
+                throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
+            }
             if ($instrument->status !== InstrumentStatus::Received) {
                 throw new DomainException('Only a received instrument can be cancelled.');
             }

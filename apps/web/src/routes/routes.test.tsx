@@ -64,12 +64,25 @@ describe('route module guards', () => {
     expect(fragment).toContain('<ModuleGuard module="Menu">')
   })
 
-  it('guards bank reconciliation with repository view permission', () => {
-    const idx = routesSource.indexOf('path="reconciliation"')
+  it('does not register the legacy bank reconciliation route', () => {
+    expect(routesSource).not.toContain('path="reconciliation"')
+    expect(routesSource).not.toContain('BankReconciliationPage')
+  })
+
+  it('guards treasury-native statement list with bank statement view permission', () => {
+    const idx = routesSource.indexOf('path="statements"')
     expect(idx).toBeGreaterThanOrEqual(0)
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
-    expect(fragment).toContain('permission="repositories.view"')
-    expect(fragment).not.toContain('permission="repositories.manage"')
+    expect(fragment).toContain('permission="bank-statements.view"')
+    expect(fragment).toContain('<StatementListPage />')
+  })
+
+  it('guards the statement workspace with bank statement view permission', () => {
+    const idx = routesSource.indexOf('path="statements/:id"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 450)
+    expect(fragment).toContain('permission="bank-statements.view"')
+    expect(fragment).toContain('<ReconciliationWorkspacePage />')
   })
 
   it('registers treasury overview under finance with reports.view permission', () => {

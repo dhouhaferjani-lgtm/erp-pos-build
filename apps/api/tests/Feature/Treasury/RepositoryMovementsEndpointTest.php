@@ -14,8 +14,12 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\BankStatement;
+use App\Modules\Treasury\Domain\BankStatementLine;
+use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Carbon\CarbonImmutable;
@@ -229,7 +233,27 @@ final class RepositoryMovementsEndpointTest extends TestCase
         $this->assertArrayHasKey('currency', $firstMovementRecordedRow);
         $this->assertArrayHasKey('reason_code', $firstMovementRecordedRow);
         $this->assertArrayHasKey('recorded_while_frozen', $firstMovementRecordedRow);
+        $this->assertArrayHasKey('recorded_behind_checkpoint', $firstMovementRecordedRow);
         $this->assertArrayHasKey('occurred_at', $firstMovementRecordedRow);
+    }
+
+    public function test_formats_allocation_amounts_at_the_movement_currency_scale(): void
+    {
+        $this->companyA->update(['currency' => 'EUR']);
+        PaymentRepository::query()->whereKey($this->repository->id)->update(['currency' => 'EUR']);
+        $this->repository->refresh();
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '10.00',
+            MovementSourceType::Payment,
+        );
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/payment-repositories/{$this->repository->id}/movements")
+            ->assertOk()
+            ->assertJsonPath('data.0.allocated_amount', '0.00')
+            ->assertJsonPath('data.0.remaining_allocatable_amount', '10.00');
     }
 
     public function test_filters_by_source_type(): void
@@ -263,6 +287,73 @@ final class RepositoryMovementsEndpointTest extends TestCase
         $this->assertCount(1, $data);
         $this->assertSame('out', $data[0]['direction']);
         $this->assertSame('refund', $data[0]['source_type']);
+    }
+
+    public function test_search_returns_allocation_capacity_for_manual_matching(): void
+    {
+        $wantedSourceId = Str::uuid()->toString();
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '10.000',
+            MovementSourceType::Payment,
+            sourceId: $wantedSourceId,
+        );
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '20.000',
+            MovementSourceType::Payment,
+        );
+        $movementId = (string) DB::table('repository_movements')
+            ->where('source_id', $wantedSourceId)
+            ->value('id');
+        $statement = BankStatement::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'payment_repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'opening_balance' => '0.000',
+            'closing_balance' => '0.000',
+            'status' => BankStatementStatus::Reconciling,
+            'source_file_sha256' => hash('sha256', Str::uuid()->toString()),
+            'source_file_path' => 'bank-statements/manual-search.csv',
+            'parser_profile_id' => null,
+            'imported_by' => $this->user->id,
+            'imported_at' => now(),
+        ]);
+        $line = BankStatementLine::query()->create([
+            'bank_statement_id' => $statement->id,
+            'payment_repository_id' => $this->repository->id,
+            'line_number' => 1,
+            'value_date' => '2026-07-18',
+            'direction' => MovementDirection::In,
+            'amount' => '4.000',
+            'label' => 'Existing partial match',
+            'match_status' => StatementLineMatchStatus::Matched,
+            'fingerprint' => hash('sha256', Str::uuid()->toString()),
+            'dedupe_active' => true,
+        ]);
+        DB::table('bank_statement_line_allocations')->insert([
+            'id' => Str::uuid()->toString(),
+            'bank_statement_line_id' => $line->id,
+            'repository_movement_id' => $movementId,
+            'matched_amount' => '4.000',
+            'match_type' => 'manual',
+            'matched_by' => $this->user->id,
+            'matched_at' => now(),
+        ]);
+
+        $search = substr($wantedSourceId, 0, 12);
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/payment-repositories/{$this->repository->id}/movements?search={$search}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $movementId)
+            ->assertJsonPath('data.0.allocated_amount', '4.000')
+            ->assertJsonPath('data.0.remaining_allocatable_amount', '6.000');
     }
 
     public function test_filters_by_date_range(): void

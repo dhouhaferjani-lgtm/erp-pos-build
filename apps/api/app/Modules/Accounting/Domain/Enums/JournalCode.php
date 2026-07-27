@@ -34,7 +34,7 @@ enum JournalCode: string
         return match ($sourceType) {
             'invoice', 'credit_note' => self::Sales,
             'supplier_invoice' => self::Purchase,
-            'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund' => self::Bank,
+            'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund', 'acquirer_fee' => self::Bank,
             'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
             'instrument', 'instrument_remittance' => self::Effets,
             default => self::Misc,

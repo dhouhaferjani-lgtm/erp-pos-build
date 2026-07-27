@@ -6,9 +6,36 @@
     }
   },
   "instruments": {
+    "receivedDate": "تاريخ الاستلام",
+    "issuedDate": "تاريخ الإصدار",
+    "repository": "المستودع",
     "location": "موقع الأصل",
     "unattributed": "غير منسوب",
-    "originGrainCaveat": "موقع الأداة هو متجر الأصل الثابت، وليس مستودع الحيازة الحالي."
+    "originGrainCaveat": "موقع الأداة هو متجر الأصل الثابت، وليس مستودع الحيازة الحالي.",
+    "buckets": {
+      "label": "فترات الاستحقاق",
+      "overdue": "متأخر",
+      "d0_7": "مستحق خلال 0–7 أيام",
+      "d8_30": "مستحق خلال 8–30 يومًا",
+      "d31_60": "مستحق خلال 31–60 يومًا",
+      "d61_90": "مستحق خلال 61–90 يومًا",
+      "d90_plus": "مستحق بعد 90 يومًا"
+    },
+    "schedule": {
+      "receivables": "جدول المقبوضات",
+      "payables": "جدول المدفوعات"
+    },
+    "events": {
+      "created": "تم استلام الأداة",
+      "issued": "تم إصدار الأداة",
+      "details_updated": "تم تحديث التفاصيل",
+      "custody_transferred": "تم نقل الحيازة",
+      "remitted": "تمت الإضافة إلى حافظة الإيداع",
+      "cleared": "تم تحصيلها من البنك",
+      "bounced": "مرفوضة",
+      "re_presented": "تمت إعادة التقديم",
+      "cancelled": "ملغاة"
+    }
   },
   "cashWidget": {
     "title": "وضع السيولة النقدية",
@@ -43,14 +70,10 @@
     "unattributed": "غير منسوب",
     "byLocation": "حسب الموقع"
   },
-  "reconciliation": {
-    "openingBalance": "الرصيد الافتتاحي",
-    "startModal": {
-      "openingBalanceHelp": "يُستخدم {{amount}} افتراضيًا إذا تُرك الحقل فارغًا.",
-      "liveDifference": "الفرق الحالي"
-    }
-  },
   "repositories": {
+    "location": "الموقع",
+    "selectLocation": "اختر الموقع",
+    "table": { "location": "الموقع" },
     "transfer": {
       "action": "تحويل النقد",
       "title": "تحويل النقد",
@@ -71,9 +94,38 @@
       "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
     }
   },
-  "repositories": {
-    "location": "الموقع",
-    "selectLocation": "اختر الموقع",
-    "table": { "location": "الموقع" }
+  "statements": {
+    "title": "الكشوف البنكية",
+    "subtitle": "استورد الكشوف وطابق كل حركة بنكية مع دفتر الخزينة.",
+    "columns": { "period": "فترة الكشف", "repository": "الحساب البنكي", "lines": "الأسطر", "delta": "حركة الكشف", "status": "الحالة" },
+    "status": { "imported": "مستورد", "reconciling": "قيد المطابقة", "reconciled": "تمت المطابقة", "voided": "ملغى" },
+    "filters": { "status": "الحالة", "repository": "الحساب البنكي", "allStatuses": "كل الحالات", "allRepositories": "كل الحسابات البنكية" },
+    "empty": { "title": "لا توجد كشوف بنكية", "description": "استورد كشف CSV أو Excel لبدء المطابقة." },
+    "upload": {
+      "action": "استيراد كشف", "title": "استيراد كشف بنكي", "subtitle": "اختر الحساب وحلّل الملف بملف تعريف محفوظ، ثم راجع كل الاستثناءات قبل الاستيراد.",
+      "progress": "تقدم الاستيراد", "steps": { "repository": "1 · الحساب", "file": "2 · الملف", "profile": "3 · التعيين", "preview": "4 · المراجعة" },
+      "repository": "الحساب البنكي", "selectRepository": "اختر حسابًا بنكيًا", "file": "ملف الكشف", "fileHelp": "CSV أو XLSX، حتى 20 ميغابايت.",
+      "profile": "ملف التحليل", "selectProfile": "اختر ملفًا محفوظًا", "newProfile": "تعيين جديد", "next": "متابعة", "back": "رجوع", "preview": "معاينة الكشف", "previewing": "جارٍ قراءة الملف…",
+      "report": { "accepted": "الأسطر المقبولة", "duplicates": "مستوردة سابقًا", "droppedZero": "أسطر صفرية مستبعدة", "unparseable": "أسطر تحتاج مراجعة" },
+      "row": "السطر", "date": "تاريخ القيمة", "label": "بيان البنك", "amount": "المبلغ", "periodStart": "بداية الفترة", "periodEnd": "نهاية الفترة", "openingBalance": "الرصيد الافتتاحي", "closingBalance": "الرصيد الختامي",
+      "emptyGate": "تأكيد الاستيراد الفارغ", "acknowledgeEmpty": "راجعت التقرير وأريد الاحتفاظ بهذا الكشف الخالي من الأسطر كدليل تدقيق.", "confirm": "استيراد الكشف", "importing": "جارٍ الاستيراد…"
+    },
+    "profile": {
+      "name": "اسم ملف التعريف", "parser": "نوع الملف", "direction": "تنسيق المبلغ", "signed": "عمود مبلغ واحد بإشارة", "debitCredit": "عمودا مدين ودائن منفصلان", "decimal": "تنسيق الرقم", "dateFormat": "تنسيق التاريخ", "headerRows": "أسطر الرأس المتجاوزة", "save": "حفظ التعيين",
+      "fields": { "value_date": "عمود تاريخ القيمة", "booking_date": "عمود تاريخ القيد", "amount": "عمود المبلغ", "debit": "عمود المدين", "credit": "عمود الدائن", "reference": "عمود المرجع", "bank_transaction_id": "معرف المعاملة البنكية", "label": "عمود البيان", "counterparty_hint": "عمود الطرف المقابل" }
+    },
+    "workspace": {
+      "title": "مطابقة الكشف البنكي", "progress": "الأسطر المحسومة", "remaining": "المبلغ المتبقي", "balanceDelta": "حركة رصيد الكشف", "search": "البحث في الأسطر", "filter": "حالة السطر", "allStatuses": "كل الحالات", "noReference": "لا يوجد مرجع بنكي", "noLines": "لا توجد أسطر مطابقة للمرشحات.", "lineAmount": "مبلغ السطر", "allocations": "التخصيصات", "unallocate": "إزالة", "provenance": "سجل التنفيذ", "openTarget": "فتح السجل المصدر", "movementsProduced": "حركة دفتر منتجة", "reconciledBy": "تمت المطابقة بسطر كشف", "reopen": "إعادة فتح الكشف", "cancel": "إلغاء",
+      "status": { "unmatched": "غير مطابق", "partial": "مطابق جزئيًا", "matched": "مطابق", "resolved_by_creation": "تم الإنشاء والمطابقة", "ignored": "متجاهل" },
+      "actions": { "outbound_clear": "تحصيل أداة صادرة", "inbound_clear": "تحصيل أداة واردة", "expense_settle": "تسوية مصروف", "acquirer_fee": "إنشاء دفعة البطاقات والعمولة", "create_expense": "إنشاء مصروف", "create_income": "إنشاء إيراد" },
+      "suggestions": { "title": "الاقتراحات المرتبة", "empty": "لا يوجد اقتراح تلقائي لهذا السطر.", "tier": "المستوى {{tier}}", "reference": "تطابق المرجع", "confirm": "تأكيد المطابقة", "reasons": { "reference_amount_match": "يتطابق المرجع والمبلغ المتبقي.", "unique_amount_window": "هذا هو المبلغ المتبقي الوحيد خلال {{days}} أيام.", "bounced_instrument": "الأداة الصادرة المرتجعة جاهزة لإعادة التقديم.", "pending_instrument": "يتطابق مبلغ الأداة وتاريخ استحقاقها.", "unsettled_expense": "يتطابق المصروف غير المسدد {{label}} بتاريخ {{date}}.", "card_batch_fee": "تتطابق دفعة بطاقة {{method}} بتاريخ {{date}} بعد العمولة المضبوطة.", "generic": "يحتوي هذا السطر على إجراء مطابقة مقترح." } },
+      "manual": { "title": "مطابقة حركة يدويًا", "search": "البحث في حركات الدفتر", "searchPlaceholder": "معرف الحركة أو المصدر", "movement": "الحركة", "none": "لا توجد حركة مؤهلة", "original": "المبلغ الأصلي", "available": "المتاح للتخصيص", "amount": "مبلغ التخصيص الجزئي", "allocate": "تخصيص" },
+      "matchType": { "manual": "مطابقة يدوية", "suggestion_confirmed": "اقتراح مؤكد", "created_from_line": "أُنشئ من سطر الكشف" },
+      "sourceType": { "payment": "دفعة", "expense": "مصروف", "income": "إيراد", "refund": "استرداد", "fiscal_event": "إيصال جبائي", "transfer": "تحويل", "adjustment": "تسوية", "opening_balance": "رصيد افتتاحي", "instrument": "أداة دفع" },
+      "ignore": { "title": "تجاهل السطر", "reason": "السبب", "selectReason": "اختر سببًا", "explanation": "تفسير إلزامي", "submit": "تجاهل السطر", "unignore": "استعادة السطر", "reasons": { "duplicate": "مكرر", "informational": "معلوماتي", "bank_error": "خطأ بنكي", "out_of_scope": "خارج نطاق المطابقة", "other": "أخرى" } },
+      "create": { "expense": "إنشاء مصروف من السطر", "income": "إنشاء إيراد من السطر", "expenseTitle": "إنشاء مصروف وتسويته", "incomeTitle": "إنشاء إيراد وتسجيله", "vendor": "اسم المورد", "source": "مصدر الإيراد", "incomeAccount": "حساب الإيراد", "selectIncomeAccount": "اختر حساب إيراد", "notes": "ملاحظات", "submit": "إنشاء ومطابقة", "required": "هذا الحقل مطلوب." },
+      "complete": { "action": "إكمال الكشف", "title": "إكمال المطابقة", "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.", "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.", "confirm": "إكمال الكشف" },
+      "ignoredRequiresAdmin": "يجب على مسؤول إقرار الأسطر المتجاهلة قبل إتمام الكشف."
+    }
   }
 }

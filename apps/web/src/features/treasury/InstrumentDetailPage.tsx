@@ -28,6 +28,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { useInstrumentEvents } from './hooks/useInstrumentEvents'
+import { StatementReconciliationChips } from './statements/StatementReconciliationChips'
 
 type InstrumentStatus =
   | 'received'
@@ -92,7 +93,7 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleDateString() : '—'
 }
 
-function formatBankDetails(...values: Array<string | null>) {
+function formatBankDetails(...values: (string | null)[]) {
   let details = ''
   for (const value of values) {
     if (!value) continue
@@ -181,11 +182,12 @@ export function InstrumentDetailPage() {
     return <div className={cn(tokens.alert.base, tokens.alert.error)}>{t('common:errors.loadingFailed')}</div>
   }
 
-  const canRemit = instrument.status === 'received' && hasPermission('instruments.remit')
-  const canTransfer = instrument.status === 'received' && hasPermission('instruments.transfer')
-  const canCancel = instrument.status === 'received' && hasPermission('instruments.cancel')
-  const canClear = ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
-  const canBounce = ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
+  const isOutbound = instrument.direction === 'outbound'
+  const canRemit = !isOutbound && instrument.status === 'received' && hasPermission('instruments.remit')
+  const canTransfer = !isOutbound && instrument.status === 'received' && hasPermission('instruments.transfer')
+  const canCancel = !isOutbound && instrument.status === 'received' && hasPermission('instruments.cancel')
+  const canClear = !isOutbound && ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
+  const canBounce = !isOutbound && ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
 
   return (
     <div className="space-y-6">
@@ -233,6 +235,7 @@ export function InstrumentDetailPage() {
           </>
         }
       />
+      <StatementReconciliationChips targetType="payment_instrument" targetId={instrument.id} />
 
       <section className={tokens.card.base}>
         <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('treasury:instruments.details')}</h2>
@@ -246,7 +249,7 @@ export function InstrumentDetailPage() {
             <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>{instrument.partner?.name ?? instrument.drawer_name ?? '—'}</dd>
           </div>
           <div>
-            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}><Calendar className="h-4 w-4" />{t('treasury:instruments.receivedDate')}</dt>
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}><Calendar className="h-4 w-4" />{t(isOutbound ? 'treasury:instruments.issuedDate' : 'treasury:instruments.receivedDate')}</dt>
             <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>{formatDate(instrument.received_date)}</dd>
           </div>
           <div>
@@ -257,7 +260,7 @@ export function InstrumentDetailPage() {
       </section>
 
       <section className={tokens.card.base}>
-        <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}><MapPin className={cn('h-5 w-5', textColors.disabled)} />{t('treasury:instruments.location')}</h2>
+        <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}><MapPin className={cn('h-5 w-5', textColors.disabled)} />{t(isOutbound ? 'treasury:instruments.repository' : 'treasury:instruments.location')}</h2>
         <p className={textColors.primary}>{instrument.repository?.name ?? '—'}</p>
       </section>
 

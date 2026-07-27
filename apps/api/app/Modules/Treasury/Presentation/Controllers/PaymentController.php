@@ -22,6 +22,8 @@ use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
+use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
@@ -63,6 +65,8 @@ class PaymentController extends Controller
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly InstrumentLifecycleService $instrumentLifecycle,
         private readonly InstrumentAccountResolver $instrumentAccountResolver,
+        private readonly OutboundRepositoryValidator $outboundRepositoryValidator,
+        private readonly OutboundInstrumentIssuer $outboundInstrumentIssuer,
     ) {}
 
     private function scale(): int
@@ -629,6 +633,28 @@ class PaymentController extends Controller
                     'error' => ['code' => 'MATURITY_REQUIRED', 'message' => 'Effet instruments require a maturity date.'],
                 ], 422);
             }
+            try {
+                $repositoryId = $validated['repository_id'] ?? null;
+                if (! is_string($repositoryId)) {
+                    throw new \DomainException('Outbound instrument settlement repository is required.');
+                }
+                $this->outboundRepositoryValidator->validate(
+                    repositoryId: $repositoryId,
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    currency: $paymentCurrency,
+                    instrumentBankId: isset($instrumentData['bank_id'])
+                        ? (string) $instrumentData['bank_id']
+                        : null,
+                );
+            } catch (\DomainException $exception) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'INVALID_OUTBOUND_REPOSITORY',
+                        'message' => $exception->getMessage(),
+                    ],
+                ], 422);
+            }
         }
 
         // Supplier payments require a ledgered repository (a gl_account_id to post
@@ -993,7 +1019,19 @@ class PaymentController extends Controller
                         ? $portfolioDebitAccountId
                         : $repository->gl_account_id;
 
-                    if ($postingDebitAccountId !== null && $isSupplierPayment) {
+                    if ($postingDebitAccountId !== null && $isDeferredSupplier) {
+                        if (! $instrument instanceof PaymentInstrument) {
+                            throw new \LogicException('Deferred supplier payment is missing its outbound instrument.');
+                        }
+                        $issued = $this->outboundInstrumentIssuer->issueExisting(
+                            instrument: $instrument,
+                            partnerId: (string) $validated['partner_id'],
+                            user: $user,
+                            issueDate: (string) $validated['payment_date'],
+                            expectedAmount: $totalAllocatedForGL,
+                        );
+                        $journalEntry = JournalEntry::query()->findOrFail($issued->journalEntryId);
+                    } elseif ($postingDebitAccountId !== null && $isSupplierPayment) {
                         // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
                         // Posted synchronously in-transaction so it returns the POSTED entry;
                         // its JournalEntryPosted event fires afterCommit and the
@@ -1110,7 +1148,7 @@ class PaymentController extends Controller
                 // posted (a misconfigured null-gl_account_id repository), fail loud with a
                 // 422 rather than record a null-JE cash movement that would freeze the repo
                 // at reconcile.
-                if ($repository instanceof PaymentRepository && ! $isDeferredCustomer) {
+                if ($repository instanceof PaymentRepository && ! $isDeferredCustomer && ! $isDeferredSupplier) {
                     /** @var string|null $movementJournalEntryId */
                     $movementJournalEntryId = $primaryJournalEntryId ?? $advanceJournalEntryId;
 

@@ -24,6 +24,8 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
 {
     private const EVENT_TYPE = 'treasury.instrument.maturity_alert';
 
+    private const OUTBOUND_DUE_EVENT_TYPE = 'treasury.maturity.outbound_due';
+
     /** @var string */
     protected $signature = 'treasury:instrument-maturity-alerts';
 
@@ -130,6 +132,18 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
             'deposited_overdue_ids' => $depositedOverdueIds,
         ];
 
+        /** @var list<string> $outboundDueIds */
+        $outboundDueIds = PaymentInstrument::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('direction', InstrumentDirection::Outbound)
+            ->whereIn('status', [InstrumentStatus::Received, InstrumentStatus::Bounced])
+            ->whereNotNull('maturity_date')
+            ->whereDate('maturity_date', '<=', $today->copy()->addDays($windowDays))
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
         $this->auditService->record(
             companyId: $company->id,
             userId: null,
@@ -166,6 +180,55 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
                     'exception_message' => $e->getMessage(),
                 ]);
             }
+        }
+
+        if ($outboundDueIds !== []) {
+            $outboundPayload = [
+                'as_of_date' => $today->toDateString(),
+                'window_days' => $windowDays,
+                'outbound_due_count' => count($outboundDueIds),
+                'outbound_due_ids' => $outboundDueIds,
+            ];
+            $this->auditService->record(
+                companyId: $company->id,
+                userId: null,
+                eventType: self::OUTBOUND_DUE_EVENT_TYPE,
+                aggregateType: 'Company',
+                aggregateId: $company->id,
+                payload: $outboundPayload,
+                metadata: ['source' => 'treasury:instrument-maturity-alerts'],
+            );
+
+            try {
+                $recipients = $this->alertRecipients->forCompany($company->tenant_id, $company->id);
+                if ($recipients->isNotEmpty()) {
+                    Notification::send($recipients, new TreasuryAlertNotification(
+                        alertType: self::OUTBOUND_DUE_EVENT_TYPE,
+                        data: [
+                            'company_id' => $company->id,
+                            'company_name' => $company->name,
+                            'severity' => 'warning',
+                            'window_days' => $outboundPayload['window_days'],
+                            'outbound_due_count' => $outboundPayload['outbound_due_count'],
+                            'deep_link' => '/treasury/instruments?maturing=1&direction=outbound',
+                        ],
+                    ));
+                }
+            } catch (Throwable $e) {
+                Log::error('treasury.instrument.maturity_alert_failed', [
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'channel' => 'outbound_notification',
+                    'exception_class' => $e::class,
+                    'exception_message' => $e->getMessage(),
+                ]);
+            }
+
+            Log::warning(self::OUTBOUND_DUE_EVENT_TYPE, [
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $company->id,
+                ...$outboundPayload,
+            ]);
         }
 
         Log::warning(self::EVENT_TYPE, [

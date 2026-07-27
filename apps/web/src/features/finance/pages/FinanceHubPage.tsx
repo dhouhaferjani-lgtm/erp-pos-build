@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '../../../hooks/usePageTitle'
-import { usePermissions } from '../../../hooks/usePermissions'
+import { usePermissions, type Permission } from '../../../hooks/usePermissions'
 import {
   Landmark,
   Wallet,
@@ -29,7 +29,7 @@ interface HubCardDef {
   icon: LucideIcon
   href: string
   permissionModule?: string
-  permission?: 'reports.view'
+  permission?: Permission
 }
 
 interface HubSection {
@@ -73,8 +73,9 @@ const sections: HubSection[] = [
         titleKey: 'hub.cards.bankReconciliation.title',
         descriptionKey: 'hub.cards.bankReconciliation.description',
         icon: ArrowLeftRight,
-        href: '/treasury/reconciliation',
+        href: '/treasury/statements',
         permissionModule: 'treasury',
+        permission: 'bank-statements.view',
       },
       {
         titleKey: 'hub.cards.expenses.title',

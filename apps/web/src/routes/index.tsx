@@ -78,7 +78,8 @@ const RemittanceDetailPage = lazy(() => import('../features/treasury/RemittanceD
 const RepositoryListPage = lazy(() => import('../features/treasury/RepositoryListPage').then((m) => ({ default: m.RepositoryListPage })))
 const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryDetailPage').then((m) => ({ default: m.RepositoryDetailPage })))
 const PaymentMethodsPage = lazy(() => import('../features/treasury/PaymentMethodsPage').then((m) => ({ default: m.PaymentMethodsPage })))
-const BankReconciliationPage = lazy(() => import('../features/treasury/BankReconciliationPage').then((m) => ({ default: m.BankReconciliationPage })))
+const StatementListPage = lazy(() => import('../features/treasury/statements/StatementListPage').then((m) => ({ default: m.StatementListPage })))
+const ReconciliationWorkspacePage = lazy(() => import('../features/treasury/statements/ReconciliationWorkspacePage').then((m) => ({ default: m.ReconciliationWorkspacePage })))
 
 // Withholding module
 const WithholdingCertificatesList = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificatesList })))
@@ -1835,11 +1836,22 @@ export function AppRoutes() {
           />
 
           <Route
-            path="reconciliation"
+            path="statements"
             element={
-              <RequirePermission permission="repositories.view">
+              <RequirePermission moduleKey="treasury" permission="bank-statements.view">
                 <SuspenseWrapper>
-                  <BankReconciliationPage />
+                  <StatementListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="statements/:id"
+            element={
+              <RequirePermission moduleKey="treasury" permission="bank-statements.view">
+                <SuspenseWrapper>
+                  <ReconciliationWorkspacePage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

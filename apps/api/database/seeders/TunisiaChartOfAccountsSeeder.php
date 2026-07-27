@@ -171,6 +171,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::SupplierPayable->value, 'is_system' => true],
             ['code' => '4011', 'name' => 'Fournisseurs - Achats de biens', 'type' => 'liability', 'parent_code' => '401'],
             ['code' => '4017', 'name' => 'Fournisseurs - Retenues de garantie', 'type' => 'liability', 'parent_code' => '401'],
+            ['code' => '403', 'name' => 'Fournisseurs - Effets à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
+            ['code' => '4035', 'name' => 'Fournisseurs - Chèques à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
             ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
             ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',

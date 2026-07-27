@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PERMISSIONS } from '../usePermissions'
+import { MODULE_PERMISSIONS, PERMISSIONS } from '../usePermissions'
 
 describe('treasury bank reconciliation permission alignment', () => {
   it('repositories.view follows the current seeder grants', () => {
@@ -12,5 +12,9 @@ describe('treasury bank reconciliation permission alignment', () => {
 
   it('registers treasury.adjust for the backend-authorized financial roles', () => {
     expect(PERMISSIONS['treasury.adjust']).toEqual(['accountant', 'admin', 'manager'])
+  })
+
+  it('gates statement navigation with the server-authoritative view permission', () => {
+    expect(MODULE_PERMISSIONS['bank-statements.view']).toEqual(['bank-statements.view'])
   })
 })

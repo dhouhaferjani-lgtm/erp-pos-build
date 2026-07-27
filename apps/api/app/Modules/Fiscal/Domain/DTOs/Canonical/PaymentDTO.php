@@ -19,8 +19,8 @@ use App\Modules\Fiscal\Domain\DTOs\FiscalPayloadArrayGuards;
  * card last-4.
  *
  * NOTE: `payment_method_id` is NOT on the canonical payload — Pass
- * 2A.PHP.2 projector resolves the tenant-scoped FK from
- * `(tenant_id, method_code)` lookup against `treasury_payment_methods`.
+ * 2A.PHP.2 projector resolves the tenant+company-scoped FK from
+ * `(tenant_id, company_id, method_code)` lookup against payment methods.
  */
 final readonly class PaymentDTO
 {

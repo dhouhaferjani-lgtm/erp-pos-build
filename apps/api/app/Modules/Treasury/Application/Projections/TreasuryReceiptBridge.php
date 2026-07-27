@@ -321,7 +321,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // PaymentMethodResolver seam (synthesis v5 §8.B + dispatch
             // §0 Gap A). `repository_id` is NOT on the canonical payload
             // either — the bridge resolves it via a tenant+company-scoped
-            // default-repository lookup (see resolveDefaultRepository).
+            // payment-method mapping with deterministic fallback (see
+            // resolveRepositoryForTender).
             $view = $this->canonicalReader->forSaleReceipt($event);
 
             // Task 21 — a refund/void rides the SALE_RECEIPT event carrying
@@ -383,9 +384,10 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      *
      * Pass 2A.PHP.2 canonical-payload variant of the bridge's per-payment
      * write. Resolves `payment_method_id` via the Shared/Contracts seam;
-     * `repository_id` via a tenant+company-scoped default-repository
-     * lookup (the 27-key contract doesn't carry per-payment repository
-     * selection — see resolveDefaultRepository).
+     * `repository_id` via a tenant+company-scoped payment-method mapping,
+     * with the deterministic GL-linked fallback retained for unmapped or
+     * unusable mappings. The canonical payload deliberately carries no
+     * mutable operational repository selection.
      */
     private function projectPaymentLineFromCanonical(
         FiscalEvent $event,
@@ -413,24 +415,29 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         }
 
         // Resolve payment_method_id via the Shared/Contracts seam (the
-        // same surface PosCoreReceiptProjection uses). Tenant-scoped
+        // same surface PosCoreReceiptProjection uses). Tenant+company-scoped
         // lookup; null return triggers fail-closed RuntimeException
         // (same security stance as the prior payment_method_id gate).
         $paymentMethodId = $this->paymentMethodResolver->resolveByCode(
             $event->tenant_id,
+            $event->company_id,
             $methodCode,
         );
 
         if ($paymentMethodId === null) {
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: payment_method_not_found:method_code=%s:tenant_id=%s',
+                'TreasuryReceiptBridge: payment_method_not_found:method_code=%s:tenant_id=%s:company_id=%s',
                 $methodCode,
                 $event->tenant_id,
+                $event->company_id,
             ));
         }
 
         try {
-            $paymentMethod = PaymentMethod::query()->find($paymentMethodId);
+            $paymentMethod = PaymentMethod::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->find($paymentMethodId);
         } catch (QueryException) {
             $paymentMethod = null;
         }
@@ -464,15 +471,24 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             $isMaturityLeg = false;
         }
 
-        // Repository resolution — the 27-key canonical payload does not
-        // carry per-payment `repository_id` (synthesis v5 §3 deliberately
-        // excludes it: the device-side fiscal seal contract is about
-        // audit data, not Treasury operational routing). The bridge picks
-        // the first tenant+company-scoped repository with a non-null
-        // `gl_account_id`. Phase 1.5 may introduce a payment_method →
-        // default_repository mapping; until then, the first matching
-        // repository is the deterministic per-tenant default.
-        $repository = $this->resolveDefaultRepository($event);
+        // Task 20 — PER-LEG idempotency key. Resolve the existing Payment
+        // BEFORE current routing configuration: mappings are mutable operator
+        // policy, while a projected payment's repository is immutable history.
+        $legKey = sprintf('fiscal_event:%s:payment:%d', $event->id, $index);
+        $existing = Payment::query()
+            ->where('company_id', $event->company_id)
+            ->where('idempotency_key', $legKey)
+            ->first();
+
+        if ($existing instanceof Payment) {
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->find($existing->repository_id);
+        } else {
+            $repository = $this->resolveRepositoryForTender($event, $paymentMethod);
+        }
+
         if ($repository === null) {
             throw new RuntimeException(sprintf(
                 'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s — '.
@@ -492,7 +508,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ));
         }
 
-        // Task 20 — PER-LEG idempotency key. The canonical index is the
+        // The canonical index is the
         // POSITION of this payment in the sealed, immutable
         // `payload.payments[]` array (both this bridge and
         // PosCoreReceiptProjection iterate the SAME canonical `$view->payments`
@@ -502,13 +518,6 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // (company_id, idempotency_key)) so a replay of an already-written leg
         // is a clean hit, while a partial prior write (only SOME legs) is
         // COMPLETED — the missing legs fall through to the create branch.
-        $legKey = sprintf('fiscal_event:%s:payment:%d', $event->id, $index);
-
-        $existing = Payment::query()
-            ->where('company_id', $event->company_id)
-            ->where('idempotency_key', $legKey)
-            ->first();
-
         $cashAccountOverrideId = null;
         $instrument = null;
         $shouldRecordMovement = true;
@@ -719,33 +728,36 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             createdBy: $payment->created_by ?? $receipt->cashier_id,
             notes: null,
             allowWhileFrozen: ! $event->event_type->isServerOnly(),
+            allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
         ));
     }
 
     /**
-     * Pass 2A.PHP.2 — resolve the default `payment_repositories` row for
-     * the event's tenant+company. The canonical SALE_RECEIPT payload does
-     * NOT carry a per-payment `repository_id` (synthesis v5 §3 — repository
-     * selection is a Treasury-operational concern, not part of the audit
-     * seal). The bridge picks the FIRST tenant+company-scoped repository
-     * with a non-null `gl_account_id` ordered by `id` (Codex P2-6 closure
-     * — `orderBy('id')` is the deterministic tiebreaker for the multi-
-     * repository case under concurrent transactions).
-     *
-     * **Phase 1.5 deferral (Codex P2-6).** When tenants run more than one
-     * repository per (tenant, company), the `id`-ordered tiebreaker is
-     * deterministic but not necessarily semantically correct — the bridge
-     * may bind every receipt's payments to the same repository regardless
-     * of `method_code`. The Phase 1.5 roadmap introduces a per-method
-     * default-repository mapping (e.g. `payment_methods.default_repository_id`)
-     * so that CASH lines route to the cash drawer and CARD lines route to
-     * the merchant account. Until then, single-repository deployments are
-     * unaffected and multi-repository deployments must configure the
-     * intended default via SQL fixture seeding.
+     * Resolve a tender's operational repository without adding mutable routing
+     * data to the sealed fiscal payload. A mapped repository wins only when it
+     * belongs to the event tenant+company, is active, and remains GL-linked.
+     * Otherwise preserve the historical deterministic fallback: the first
+     * tenant+company GL-linked repository ordered by stable UUID.
      */
-    private function resolveDefaultRepository(FiscalEvent $event): ?PaymentRepository
-    {
+    private function resolveRepositoryForTender(
+        FiscalEvent $event,
+        ?PaymentMethod $method,
+    ): ?PaymentRepository {
         try {
+            $mappedRepositoryId = $method?->default_repository_id;
+            if (is_string($mappedRepositoryId)) {
+                $mapped = PaymentRepository::query()
+                    ->where('tenant_id', $event->tenant_id)
+                    ->where('company_id', $event->company_id)
+                    ->where('is_active', true)
+                    ->whereNotNull('gl_account_id')
+                    ->find($mappedRepositoryId);
+
+                if ($mapped instanceof PaymentRepository) {
+                    return $mapped;
+                }
+            }
+
             return PaymentRepository::query()
                 ->where('tenant_id', $event->tenant_id)
                 ->where('company_id', $event->company_id)

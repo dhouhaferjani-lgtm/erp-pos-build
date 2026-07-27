@@ -21,6 +21,7 @@ interface PaymentMethodExtended {
   code: string
   name: string
   description: string | null
+  instrument_kind: 'cheque' | 'effet' | 'other' | null
   is_physical: boolean
   has_maturity: boolean
   requires_third_party: boolean

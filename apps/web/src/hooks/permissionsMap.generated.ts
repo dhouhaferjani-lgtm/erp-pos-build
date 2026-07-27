@@ -1,11 +1,15 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:aef7efcad22c718f408a26351c9ff711da9d2689682e27660b78d147b35541bd
+// Source hash: sha256:32135fe72d4016f5e93974414a73de1bfbcd0d3b7871d040fd799604bfec25ba
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
   'accounts.view': ['accountant', 'admin', 'manager', 'viewer'],
   'audit.view': ['accountant', 'admin'],
+  'bank-statements.import': ['accountant', 'admin'],
+  'bank-statements.reconcile': ['accountant', 'admin'],
+  'bank-statements.reopen': ['admin'],
+  'bank-statements.view': ['accountant', 'admin'],
   'batches.create': ['admin', 'manager'],
   'batches.delete': ['admin', 'manager'],
   'batches.recall': ['admin', 'manager'],
@@ -91,7 +95,9 @@ export const PERMISSIONS = {
   'income.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
   'instruments.bounce': ['accountant', 'admin', 'manager'],
   'instruments.cancel': ['accountant', 'admin', 'manager'],
+  'instruments.cancel-outbound': ['accountant', 'admin'],
   'instruments.clear': ['accountant', 'admin', 'manager'],
+  'instruments.clear-outbound': ['accountant', 'admin'],
   'instruments.create': ['admin', 'cashier', 'manager'],
   'instruments.remit': ['accountant', 'admin', 'manager'],
   'instruments.transfer': ['accountant', 'admin', 'manager'],

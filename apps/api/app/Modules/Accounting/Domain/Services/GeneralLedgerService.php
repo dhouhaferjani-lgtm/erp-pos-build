@@ -774,6 +774,169 @@ final class GeneralLedgerService
         return $entry;
     }
 
+    /** Draft Dr 401 (partner) / Cr payable-instrument at outbound issue time. */
+    public function createOutboundInstrumentIssueEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        ?string $partnerId,
+        string $payableAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        $supplierPayable = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+
+        return $this->createOutboundInstrumentEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            instrumentId: $instrumentId,
+            debitAccountId: $supplierPayable->id,
+            debitPartnerId: $partnerId,
+            creditAccountId: $payableAccountId,
+            creditPartnerId: null,
+            amount: $amount,
+            date: $date,
+            description: 'Outbound instrument issued',
+        );
+    }
+
+    /** Draft Dr payable-instrument / Cr exact repository GL at clearing. */
+    public function createOutboundInstrumentClearingEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        string $payableAccountId,
+        string $bankAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        return $this->createOutboundInstrumentEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            instrumentId: $instrumentId,
+            debitAccountId: $payableAccountId,
+            debitPartnerId: null,
+            creditAccountId: $bankAccountId,
+            creditPartnerId: null,
+            amount: $amount,
+            date: $date,
+            description: 'Outbound instrument cleared',
+        );
+    }
+
+    /** Draft Dr exact repository GL / Cr payable-instrument after dishonor. */
+    public function createOutboundInstrumentDishonorEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        string $bankAccountId,
+        string $payableAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        return $this->createOutboundInstrumentEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            instrumentId: $instrumentId,
+            debitAccountId: $bankAccountId,
+            debitPartnerId: null,
+            creditAccountId: $payableAccountId,
+            creditPartnerId: null,
+            amount: $amount,
+            date: $date,
+            description: 'Outbound instrument dishonored',
+        );
+    }
+
+    /** Draft Dr payable-instrument / Cr 401 (partner) on cancellation. */
+    public function createOutboundInstrumentCancellationEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        ?string $partnerId,
+        string $payableAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        $supplierPayable = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+
+        return $this->createOutboundInstrumentEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            instrumentId: $instrumentId,
+            debitAccountId: $payableAccountId,
+            debitPartnerId: null,
+            creditAccountId: $supplierPayable->id,
+            creditPartnerId: $partnerId,
+            amount: $amount,
+            date: $date,
+            description: 'Outbound instrument cancelled',
+        );
+    }
+
+    private function createOutboundInstrumentEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        string $debitAccountId,
+        ?string $debitPartnerId,
+        string $creditAccountId,
+        ?string $creditPartnerId,
+        string $amount,
+        \DateTimeInterface $date,
+        string $description,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Outbound instrument entries require an enclosing transaction.');
+        }
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $instrumentId,
+            $debitAccountId,
+            $debitPartnerId,
+            $creditAccountId,
+            $creditPartnerId,
+            $amount,
+            $date,
+            $description,
+        ): JournalEntry {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'instrument',
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $instrumentId,
+            ]);
+
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitAccountId,
+                'partner_id' => $debitPartnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => $description,
+                'line_order' => 0,
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $creditAccountId,
+                'partner_id' => $creditPartnerId,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => $description,
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
     /**
      * Create the settlement journal entry that pays down the accounts-payable
      * liability booked by {@see createFromExpense()} for an UNPAID expense.
@@ -958,6 +1121,75 @@ final class GeneralLedgerService
                     'line_order' => 1,
                 ]);
             }
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryNow($entry, $user, $currencyCode);
+
+        return $entry;
+    }
+
+    /**
+     * Create and synchronously post the fee retained by a card acquirer.
+     *
+     * Dr the payment method's configured fee expense account and Cr the exact
+     * GL account backing the statement repository. The statement line id is
+     * the immutable source identity used by the matching execution ledger.
+     */
+    public function createAcquirerFeeJournalEntry(
+        string $companyId,
+        string $tenantId,
+        string $statementLineId,
+        string $feeAccountId,
+        string $repositoryGlAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+        User $user,
+        string $currencyCode,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('createAcquirerFeeJournalEntry: requires an enclosing database transaction.');
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $statementLineId,
+            $feeAccountId,
+            $repositoryGlAccountId,
+            $amount,
+            $date,
+        ): JournalEntry {
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => 'Card acquirer fee retained from statement settlement',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'acquirer_fee',
+                'journal_code' => JournalCode::fromSourceType('acquirer_fee')->value,
+                'source_id' => $statementLineId,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $feeAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Card acquirer fee',
+                'line_order' => 0,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $repositoryGlAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Acquirer fee deducted from bank settlement',
+                'line_order' => 1,
+            ]);
 
             return $entry->load('lines');
         });

@@ -76,6 +76,25 @@ describe('FinanceHubPage canonicalization', () => {
     expect(link).toHaveAttribute('href', '/finance/overview')
   })
 
+  it('links bank reconciliation to the statement workspace', () => {
+    render(<FinanceHubPage />)
+
+    const link = screen.getByRole('link', {
+      name: /hub\.cards\.bankReconciliation\.title/i,
+    })
+    expect(link).toHaveAttribute('href', '/treasury/statements')
+  })
+
+  it('hides the statement workspace card without bank statement view permission', () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'bank-statements.view')
+    render(<FinanceHubPage />)
+
+    expect(screen.queryByRole('link', {
+      name: /hub\.cards\.bankReconciliation\.title/i,
+    })).not.toBeInTheDocument()
+    expect(mockHasPermission).toHaveBeenCalledWith('bank-statements.view')
+  })
+
   it('hides a whole section when none of its cards are accessible', () => {
     mockCanAccessModule.mockImplementation(
       (m: string) => m !== 'accounts' && m !== 'finance',

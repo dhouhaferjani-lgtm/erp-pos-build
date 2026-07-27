@@ -310,6 +310,22 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
   })
 
+  describe('Bank statement permission', () => {
+    it('shows the statement workspace link only through bank-statements.view', async () => {
+      const allowed = renderSidebar(mechanicFullConfig)
+      expect(await screen.findByRole('link', { name: /navigation\.bankReconciliation/i }))
+        .toHaveAttribute('href', '/treasury/statements')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('bank-statements.view')
+
+      allowed.unmount()
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'bank-statements.view')
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', { name: /navigation\.bankReconciliation/i }))
+        .not.toBeInTheDocument()
+    })
+  })
+
   describe('Expense analytics navigation', () => {
     it('links analytics through the expenses module permission map', async () => {
       renderSidebar(mechanicFullConfig)

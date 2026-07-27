@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Domain\Enums;
 enum InstrumentEventType: string
 {
     case Created = 'created';
+    case Issued = 'issued';
     case DetailsUpdated = 'details_updated';
     case CustodyTransferred = 'custody_transferred';
     case Remitted = 'remitted';

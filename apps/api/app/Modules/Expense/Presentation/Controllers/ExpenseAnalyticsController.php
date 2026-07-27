@@ -6,8 +6,8 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Expense\Application\DTOs\AnalyticsFilters;
 use App\Modules\Expense\Application\Services\ExpenseAnalyticsService;
 use App\Modules\Expense\Presentation\Requests\ExpenseAnalyticsRequest;

@@ -9,6 +9,10 @@ export type Permission = GeneratedPermission | UiAliasPermission
 
 const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'pricing.view_cost_prices',
+  'bank-statements.view',
+  'bank-statements.import',
+  'bank-statements.reconcile',
+  'bank-statements.reopen',
 ])
 
 // Module-level permission mapping for navigation
@@ -24,6 +28,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'expense-categories': ['expense-categories.view'],
   'expense-recurrences': ['expense-recurrences.view'],
   treasury: ['treasury.view'],
+  'bank-statements.view': ['bank-statements.view'],
   remittances: ['instruments.remit'],
   vehicles: ['vehicles.view'],
   services: ['services.view'],

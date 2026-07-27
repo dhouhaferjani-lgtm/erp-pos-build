@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property string $id
@@ -33,6 +34,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable $occurred_at
  * @property ?string $created_by
  * @property bool $recorded_while_frozen
+ * @property bool $recorded_behind_checkpoint
  * @property ?string $notes
  * @property CarbonImmutable $created_at
  */
@@ -52,6 +54,7 @@ final class RepositoryMovement extends Model
         'balance_after' => 'decimal:3',
         'ordinal' => 'integer',
         'recorded_while_frozen' => 'boolean',
+        'recorded_behind_checkpoint' => 'boolean',
         'occurred_at' => 'immutable_datetime',
         'created_at' => 'immutable_datetime',
     ];
@@ -92,5 +95,11 @@ final class RepositoryMovement extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class, 'journal_entry_id');
+    }
+
+    /** @return HasMany<BankStatementLineAllocation, $this> */
+    public function statementAllocations(): HasMany
+    {
+        return $this->hasMany(BankStatementLineAllocation::class, 'repository_movement_id');
     }
 }

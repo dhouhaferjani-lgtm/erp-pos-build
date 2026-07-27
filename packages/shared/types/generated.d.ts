@@ -2106,15 +2106,17 @@ writeoffCount: number;
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
+export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
 export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
-export type InstrumentAccountPurpose = 'checks_to_collect' | 'effects_receivable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';
+export type InstrumentAccountPurpose = 'checks_to_collect' | 'checks_to_pay' | 'effects_receivable' | 'effets_payable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';
 export type InstrumentDirection = 'inbound' | 'outbound';
-export type InstrumentEventType = 'created' | 'details_updated' | 'custody_transferred' | 'remitted' | 'cleared' | 'bounced' | 're_presented' | 'cancelled';
+export type InstrumentEventType = 'created' | 'issued' | 'details_updated' | 'custody_transferred' | 'remitted' | 'cleared' | 'bounced' | 're_presented' | 'cancelled';
 export type InstrumentKind = 'cheque' | 'effet' | 'other';
 export type InstrumentOrigin = 'web' | 'pos';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
+export type MatchActionType = 'outbound_clear' | 'inbound_clear' | 'expense_settle' | 'acquirer_fee' | 'create_expense' | 'create_income';
 export type MovementDirection = 'in' | 'out';
 export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' | 'other';
 export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument';
@@ -2127,6 +2129,11 @@ export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
 export type RemittanceStatus = 'draft' | 'remitted' | 'closed';
 export type RemittanceType = 'collection' | 'discount';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
+export type StatementDirectionConvention = 'signed_amount' | 'debit_credit_columns';
+export type StatementLineIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other';
+export type StatementLineMatchStatus = 'unmatched' | 'partial' | 'matched' | 'resolved_by_creation' | 'ignored';
+export type StatementMatchType = 'manual' | 'suggestion_confirmed' | 'created_from_line';
+export type StatementParserKey = 'csv' | 'xlsx';
 }
 declare namespace App.Modules.Uom.Application.DTOs {
 export type ConversionResultData = {

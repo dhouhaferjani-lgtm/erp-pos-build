@@ -13,6 +13,7 @@ use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\OutboundInstrumentService;
 use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
@@ -36,6 +37,7 @@ final class PaymentInstrumentController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly InstrumentLifecycleService $lifecycle,
         private readonly InstrumentAccountResolver $accountResolver,
+        private readonly OutboundInstrumentService $outboundLifecycle,
         private readonly LocationScopeResolver $locationScopeResolver,
     ) {}
 
@@ -387,6 +389,96 @@ final class PaymentInstrumentController extends Controller
         }
 
         return $this->show($instrument->id);
+    }
+
+    public function clearOutbound(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $validated = $request->validate([
+            'occurred_at' => ['nullable', 'date'],
+        ]);
+        try {
+            $this->outboundLifecycle->clear(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                userId: $this->actor($request)->id,
+                occurredAt: $validated['occurred_at'] ?? null,
+            );
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return $this->show($instrument->id);
+    }
+
+    public function bounceOutbound(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        try {
+            $this->outboundLifecycle->bounce(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                userId: $this->actor($request)->id,
+                reason: $validated['reason'] ?? null,
+            );
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return $this->show($instrument->id);
+    }
+
+    public function represent(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        try {
+            $this->outboundLifecycle->represent(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                userId: $this->actor($request)->id,
+            );
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return $this->show($instrument->id);
+    }
+
+    public function cancelOutbound(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+        try {
+            $this->outboundLifecycle->cancel(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                userId: $this->actor($request)->id,
+                reason: $validated['reason'],
+            );
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return $this->show($instrument->id);
+    }
+
+    private function actor(Request $request): User
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+
+        return $user;
     }
 
     private function findInstrument(string $id): PaymentInstrument

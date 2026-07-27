@@ -37,6 +37,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $default_journal_id
  * @property string|null $default_account_id
  * @property string|null $fee_account_id
+ * @property string|null $default_repository_id
  * @property bool $is_active
  * @property int $position
  * @property Carbon|null $created_at
@@ -44,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property string $company_id
  * @property-read Tenant $tenant
  * @property-read Company $company
+ * @property-read PaymentRepository|null $defaultRepository
  */
 class PaymentMethod extends Model
 {
@@ -78,6 +80,7 @@ class PaymentMethod extends Model
         'default_journal_id',
         'default_account_id',
         'fee_account_id',
+        'default_repository_id',
         'is_active',
         'position',
     ];
@@ -117,6 +120,14 @@ class PaymentMethod extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<PaymentRepository, $this>
+     */
+    public function defaultRepository(): BelongsTo
+    {
+        return $this->belongsTo(PaymentRepository::class, 'default_repository_id');
     }
 
     /**

@@ -16,15 +16,11 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Application\Services\BankReconciliationService;
-use App\Modules\Treasury\Domain\BankReconciliation;
-use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
-use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Events\InstrumentBounced;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
@@ -32,7 +28,6 @@ use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
 use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
-use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -353,57 +348,4 @@ class TreasuryEventDispatchTest extends TestCase
         $this->assertSame(0, bccomp((string) $repository->balance, '250.000', 3));
     }
 
-    // --- Task 4: ReconciliationCompleted ---
-
-    public function test_complete_reconciliation_dispatches_reconciliation_completed_event(): void
-    {
-        Event::fake([ReconciliationCompleted::class]);
-
-        $repository = $this->createBankRepository();
-
-        $reconciliation = BankReconciliation::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'repository_id' => $repository->id,
-            'statement_date' => now()->toDateString(),
-            'opening_balance' => '0.000',
-            'closing_balance' => '10000.000',
-            'statement_balance' => '10000.000',
-            'difference' => '0.000',
-            'status' => ReconciliationStatus::Draft,
-            'created_by' => $this->user->id,
-        ]);
-
-        $payment1 = $this->createCompletedPayment('1200.125');
-        $payment2 = $this->createCompletedPayment('300.375');
-
-        BankReconciliationItem::create([
-            'id' => Str::uuid()->toString(),
-            'reconciliation_id' => $reconciliation->id,
-            'payment_id' => $payment1->id,
-            'is_matched' => true,
-            'matched_by' => $this->user->id,
-            'matched_at' => now(),
-        ]);
-
-        BankReconciliationItem::create([
-            'id' => Str::uuid()->toString(),
-            'reconciliation_id' => $reconciliation->id,
-            'payment_id' => $payment2->id,
-            'is_matched' => true,
-            'matched_by' => $this->user->id,
-            'matched_at' => now(),
-        ]);
-
-        $service = app(BankReconciliationService::class);
-        $service->completeReconciliation($reconciliation->id, $this->user->id);
-
-        Event::assertDispatched(ReconciliationCompleted::class, function (ReconciliationCompleted $event) use ($reconciliation, $repository) {
-            return $event->reconciliationId === $reconciliation->id
-                && $event->repositoryId === $repository->id
-                && $event->matchedCount === 2
-                && $event->matchedTotal === '1500.500';
-        });
-    }
 }

@@ -19,36 +19,11 @@ use Tests\TestCase;
  *  test_store_accepts_4_decimal_withholding_rate).
  *
  * The remaining fields below MIRROR (do NOT bind to) their inline production
- * callsites with explicit pointers; their endpoints (bank reconciliation, payment
- * method CRUD) are costly to provision for a focused precision assertion.
+ * callsites with explicit pointers; payment-method CRUD is costly to provision
+ * for a focused precision assertion.
  */
 final class IngressPrecisionTest extends TestCase
 {
-    // ── Bank reconciliation statement_balance (signed money, scale 3) ─────────
-    //
-    // Mirrors BankReconciliationController inline validator
-    // (app/Modules/Treasury/Presentation/Controllers/BankReconciliationController.php).
-
-    public function test_statement_balance_rejects_4_decimal(): void
-    {
-        $rules = ['statement_balance' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['statement_balance' => '1000.1234'], $rules);
-
-        $this->assertTrue($v->fails());
-        $this->assertArrayHasKey('statement_balance', $v->errors()->toArray());
-    }
-
-    public function test_statement_balance_accepts_negative_3_decimal(): void
-    {
-        $rules = ['statement_balance' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['statement_balance' => '-250.500'], $rules);
-
-        $this->assertEmpty(
-            $v->errors()->get('statement_balance'),
-            'Expected negative (overdrawn) 3-decimal balance to pass'
-        );
-    }
-
     // ── PaymentMethod fee_fixed (money/3) + fee_percent (percent/2) ───────────
     //
     // Mirrors PaymentMethodController inline validator

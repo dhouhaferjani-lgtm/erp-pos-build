@@ -13,7 +13,7 @@ import {
 } from '@/components/molecules'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { api } from '@/lib/api'
-import { tokens, textColors } from '@/lib/designTokens'
+import { semanticColorTokens, tokens, textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { formatCurrency } from '@/lib/format'
 import { locationScopedKey } from '@/lib/locationScopedKey'
@@ -304,12 +304,49 @@ export function InstrumentListPage() {
         </label>
       </div>
       {maturityData ? (
-        <div className="flex flex-wrap gap-2" aria-label={t('treasury:instruments.buckets.label')}>
-          {bucketKeys.map((bucket) => (
-            <StatusBadge key={bucket} tone={bucket === 'overdue' ? 'danger' : 'neutral'}>
-              {maturityData.meta.buckets[bucket].count} {t(`treasury:instruments.buckets.${bucket}`)}
-            </StatusBadge>
-          ))}
+        <div className="grid gap-3 lg:grid-cols-2" aria-label={t('treasury:instruments.buckets.label')}>
+          {(['inbound', 'outbound'] as const).map((maturityDirection) => {
+            const totalKey = maturityDirection === 'inbound' ? 'total_in' : 'total_out'
+            const scheduleKey = maturityDirection === 'inbound' ? 'receivables' : 'payables'
+
+            return (
+              <section
+                key={maturityDirection}
+                aria-label={t(`treasury:instruments.schedule.${scheduleKey}`)}
+                className={cn(
+                  'rounded-lg border p-3',
+                  semanticColorTokens.border.subtle,
+                  semanticColorTokens.surface.page,
+                )}
+              >
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <h3 className={cn('text-sm font-semibold', textColors.primary)}>
+                    {t(`treasury:instruments.schedule.${scheduleKey}`)}
+                  </h3>
+                  <span
+                    className={cn('text-sm font-semibold tabular-nums', textColors.secondary)}
+                    data-testid={`maturity-${maturityDirection}-total`}
+                    data-total={maturityData.meta.grand_total[totalKey]}
+                  >
+                    {formatAmount(maturityData.meta.grand_total[totalKey])}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {bucketKeys.map((bucket) => {
+                    const count = maturityData.data.filter((row) => (
+                      row.direction === maturityDirection && row.bucket === bucket
+                    )).length
+                    return (
+                      <StatusBadge key={bucket} tone={bucket === 'overdue' ? 'danger' : 'neutral'}>
+                        {count} {t(`treasury:instruments.buckets.${bucket}`)} ·{' '}
+                        {formatAmount(maturityData.meta.buckets[bucket][totalKey])}
+                      </StatusBadge>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })}
         </div>
       ) : null}
       <p className={cn('text-sm', textColors.tertiary)}>{t('treasury:instruments.originGrainCaveat')}</p>

@@ -84,6 +84,13 @@ describe('BankPicker', () => {
     expect(onChange).toHaveBeenCalledWith(amenBank)
   })
 
+  it('can hide fallback entry when the caller cannot persist a bank name', () => {
+    renderPicker({ allowFallback: false })
+
+    fireEvent.focus(screen.getByRole('combobox'))
+    expect(screen.queryByRole('button', { name: 'bank.notListed' })).not.toBeInTheDocument()
+  })
+
   it('renders empty and error states', () => {
     mocks.useBanks.mockReturnValue({ data: [], isLoading: false, isError: false })
     const { unmount } = renderPicker()

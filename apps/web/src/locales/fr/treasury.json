@@ -155,6 +155,7 @@
     "amount": "Montant",
     "details": "Détails de l'effet",
     "receivedDate": "Date de réception",
+    "issuedDate": "Date d’émission",
     "maturityDate": "Date d'échéance",
     "repository": "Dépôt",
     "depositedTo": "Déposé à",
@@ -205,6 +206,10 @@
       "d61_90": "À 61–90 jours",
       "d90_plus": "À plus de 90 jours"
     },
+    "schedule": {
+      "receivables": "Échéancier à recevoir",
+      "payables": "Échéancier à payer"
+    },
     "kinds": {
       "cheque": "Chèque",
       "effet": "Traite",
@@ -225,6 +230,7 @@
     },
     "events": {
       "created": "Effet reçu",
+      "issued": "Effet émis",
       "details_updated": "Détails modifiés",
       "custody_transferred": "Garde transférée",
       "remitted": "Ajouté au bordereau",
@@ -699,11 +705,38 @@
     "unattributed": "Non attribué",
     "byLocation": "Par emplacement"
   },
-  "reconciliation": {
-    "openingBalance": "Solde d'ouverture",
-    "startModal": {
-      "openingBalanceHelp": "Par défaut {{amount}} si le champ reste vide.",
-      "liveDifference": "Différence actuelle"
+  "statements": {
+    "title": "Relevés bancaires",
+    "subtitle": "Importez les relevés et rapprochez chaque mouvement avec le grand livre de trésorerie.",
+    "columns": { "period": "Période du relevé", "repository": "Compte bancaire", "lines": "Lignes", "delta": "Mouvement du relevé", "status": "Statut" },
+    "status": { "imported": "Importé", "reconciling": "En rapprochement", "reconciled": "Rapproché", "voided": "Annulé" },
+    "filters": { "status": "Statut", "repository": "Compte bancaire", "allStatuses": "Tous les statuts", "allRepositories": "Tous les comptes bancaires" },
+    "empty": { "title": "Aucun relevé bancaire", "description": "Importez un relevé CSV ou Excel pour commencer le rapprochement." },
+    "upload": {
+      "action": "Importer un relevé", "title": "Importer un relevé bancaire", "subtitle": "Choisissez le compte, analysez le fichier avec un profil enregistré, puis contrôlez chaque exception avant l’import.",
+      "progress": "Progression de l’import", "steps": { "repository": "1 · Compte", "file": "2 · Fichier", "profile": "3 · Mappage", "preview": "4 · Contrôle" },
+      "repository": "Compte bancaire", "selectRepository": "Choisir un compte bancaire", "file": "Fichier du relevé", "fileHelp": "CSV ou XLSX, 20 Mo maximum.",
+      "profile": "Profil d’analyse", "selectProfile": "Choisir un profil enregistré", "newProfile": "Nouveau mappage", "next": "Continuer", "back": "Retour", "preview": "Prévisualiser le relevé", "previewing": "Lecture du fichier…",
+      "report": { "accepted": "Lignes acceptées", "duplicates": "Déjà importées", "droppedZero": "Lignes nulles écartées", "unparseable": "Lignes à vérifier" },
+      "row": "Ligne", "date": "Date de valeur", "label": "Libellé bancaire", "amount": "Montant", "periodStart": "Début de période", "periodEnd": "Fin de période", "openingBalance": "Solde d’ouverture", "closingBalance": "Solde de clôture",
+      "emptyGate": "Confirmation d’un import vide", "acknowledgeEmpty": "J’ai contrôlé le rapport et je souhaite conserver ce relevé sans ligne comme preuve d’audit.", "confirm": "Importer le relevé", "importing": "Import en cours…"
+    },
+    "profile": {
+      "name": "Nom du profil", "parser": "Type de fichier", "direction": "Présentation des montants", "signed": "Une colonne de montant signé", "debitCredit": "Colonnes débit et crédit séparées", "decimal": "Format numérique", "dateFormat": "Format de date", "headerRows": "Lignes d’en-tête à ignorer", "save": "Enregistrer le mappage",
+      "fields": { "value_date": "Colonne date de valeur", "booking_date": "Colonne date comptable", "amount": "Colonne montant", "debit": "Colonne débit", "credit": "Colonne crédit", "reference": "Colonne référence", "bank_transaction_id": "ID de transaction bancaire", "label": "Colonne libellé", "counterparty_hint": "Colonne contrepartie" }
+    },
+    "workspace": {
+      "title": "Rapprochement du relevé", "progress": "Lignes résolues", "remaining": "Montant restant", "balanceDelta": "Mouvement du solde", "search": "Rechercher les lignes", "filter": "Statut de ligne", "allStatuses": "Tous les statuts", "noReference": "Aucune référence bancaire", "noLines": "Aucune ligne ne correspond aux filtres.", "lineAmount": "Montant de la ligne", "allocations": "Affectations", "unallocate": "Retirer", "provenance": "Traçabilité d’exécution", "openTarget": "Ouvrir la pièce source", "movementsProduced": "mouvement(s) de grand livre produit(s)", "reconciledBy": "Rapproché par une ligne de relevé", "reopen": "Rouvrir le relevé", "cancel": "Annuler",
+      "status": { "unmatched": "Non rapproché", "partial": "Partiellement rapproché", "matched": "Rapproché", "resolved_by_creation": "Créé et rapproché", "ignored": "Ignoré" },
+      "actions": { "outbound_clear": "Instrument émis débité", "inbound_clear": "Instrument reçu encaissé", "expense_settle": "Dépense réglée", "acquirer_fee": "Lot carte et commission créés", "create_expense": "Dépense créée", "create_income": "Recette créée" },
+      "suggestions": { "title": "Suggestions classées", "empty": "Aucune suggestion automatique pour cette ligne.", "tier": "Niveau {{tier}}", "reference": "Référence concordante", "confirm": "Confirmer", "reasons": { "reference_amount_match": "La référence et le montant restant correspondent.", "unique_amount_window": "C’est le seul montant restant dans une fenêtre de {{days}} jours.", "bounced_instrument": "L’instrument sortant impayé est prêt à être représenté.", "pending_instrument": "Le montant et l’échéance de l’instrument correspondent.", "unsettled_expense": "La dépense non réglée {{label}} du {{date}} correspond.", "card_batch_fee": "Le lot carte {{method}} du {{date}} correspond après sa commission configurée.", "generic": "Cette ligne comporte une action de rapprochement suggérée." } },
+      "manual": { "title": "Rapprochement manuel", "search": "Rechercher les mouvements", "searchPlaceholder": "ID du mouvement ou de la source", "movement": "Mouvement", "none": "Aucun mouvement admissible", "original": "Montant d’origine", "available": "Disponible à affecter", "amount": "Montant partiel", "allocate": "Affecter" },
+      "matchType": { "manual": "Rapprochement manuel", "suggestion_confirmed": "Suggestion confirmée", "created_from_line": "Créé depuis la ligne du relevé" },
+      "sourceType": { "payment": "Paiement", "expense": "Dépense", "income": "Recette", "refund": "Remboursement", "fiscal_event": "Ticket fiscal", "transfer": "Virement", "adjustment": "Ajustement", "opening_balance": "Solde d’ouverture", "instrument": "Instrument de paiement" },
+      "ignore": { "title": "Ignorer la ligne", "reason": "Motif", "selectReason": "Choisir un motif", "explanation": "Explication obligatoire", "submit": "Ignorer", "unignore": "Restaurer", "reasons": { "duplicate": "Doublon", "informational": "Information", "bank_error": "Erreur bancaire", "out_of_scope": "Hors périmètre", "other": "Autre" } },
+      "create": { "expense": "Créer une dépense", "income": "Créer une recette", "expenseTitle": "Créer et régler une dépense", "incomeTitle": "Créer et enregistrer une recette", "vendor": "Nom du fournisseur", "source": "Source de la recette", "incomeAccount": "Compte de produit", "selectIncomeAccount": "Choisir un compte de produit", "notes": "Notes", "submit": "Créer et rapprocher", "required": "Ce champ est obligatoire." },
+      "complete": { "action": "Clôturer le relevé", "title": "Clôturer le rapprochement", "message": "La clôture verrouille le relevé et date le point de contrôle du compte.", "acknowledge": "J’ai vérifié le total signé ignoré de {{amount}} et l’accepte comme exception documentée.", "confirm": "Clôturer le relevé" },
+      "ignoredRequiresAdmin": "Les lignes ignorées doivent être reconnues par un administrateur avant la clôture."
     }
   }
 }

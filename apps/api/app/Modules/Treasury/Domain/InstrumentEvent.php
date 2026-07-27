@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Domain;
 
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
+use App\Modules\Treasury\Domain\Exceptions\InstrumentActionConflictException;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $company_id
  * @property string $instrument_id
  * @property InstrumentEventType $event_type
+ * @property string|null $action_key
+ * @property string|null $semantic_digest
  * @property string|null $from_status
  * @property string|null $to_status
  * @property string|null $from_repository_id
@@ -47,6 +50,13 @@ final class InstrumentEvent extends Model
         'occurred_at' => 'immutable_datetime',
         'created_at' => 'immutable_datetime',
     ];
+
+    public function assertSemanticDigest(string $semanticDigest): void
+    {
+        if ($this->semantic_digest === null || ! hash_equals($this->semantic_digest, $semanticDigest)) {
+            throw new InstrumentActionConflictException($this->action_key ?? 'unknown');
+        }
+    }
 
     /**
      * @return BelongsTo<PaymentInstrument, $this>

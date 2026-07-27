@@ -235,6 +235,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'instruments.bounce',
             'instruments.remit',
             'instruments.cancel',
+            'instruments.clear-outbound',
+            'instruments.cancel-outbound',
 
             'repositories.view',
             'repositories.manage',
@@ -243,6 +245,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'treasury.manage',
             'treasury.adjust',
             'treasury.transfer',
+
+            'bank-statements.view',
+            'bank-statements.import',
+            'bank-statements.reconcile',
+            'bank-statements.reopen',
 
             // Accounting
             'journal.view',
@@ -712,9 +719,10 @@ class RolesAndPermissionsSeeder extends Seeder
                 'expense-recurrences.view', 'expense-recurrences.create', 'expense-recurrences.update', 'expense-recurrences.delete', 'expenses.export',
                 'income.view', 'income.create', 'income.update', 'income.delete', 'income.post',
                 'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
-                'instruments.view', 'instruments.update', 'instruments.transfer', 'instruments.clear', 'instruments.bounce', 'instruments.remit', 'instruments.cancel',
+                'instruments.view', 'instruments.update', 'instruments.transfer', 'instruments.clear', 'instruments.bounce', 'instruments.remit', 'instruments.cancel', 'instruments.clear-outbound', 'instruments.cancel-outbound',
                 'repositories.view', 'repositories.manage',
                 'treasury.view', 'treasury.manage', 'treasury.adjust', 'treasury.transfer',
+                'bank-statements.view', 'bank-statements.import', 'bank-statements.reconcile',
                 'journal.view', 'journal.create', 'journal.post',
                 'accounts.view', 'accounts.manage',
                 'reports.financial', 'reports.manage',

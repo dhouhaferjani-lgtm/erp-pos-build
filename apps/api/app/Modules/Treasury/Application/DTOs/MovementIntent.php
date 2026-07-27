@@ -35,6 +35,8 @@ final readonly class MovementIntent
      *                                  server. Every interactive caller and every server-authored fiscal
      *                                  event (e.g. DEPOSIT_RECEIPT, which isServerOnly()) must leave this
      *                                  false.
+     * @param  bool  $allowBehindCheckpoint  Explicit offline-projection classification. Interactive and
+     *                                       server-only callers must leave this false.
      */
     public function __construct(
         public string $repositoryId,
@@ -53,6 +55,7 @@ final readonly class MovementIntent
         public ?string $createdBy,
         public ?string $notes,
         public bool $allowWhileFrozen = false,
+        public bool $allowBehindCheckpoint = false,
     ) {}
 
     public function idempotencyKey(): string

@@ -21,7 +21,7 @@ use Tests\TestCase;
  *
  * The interface docblock at `App\Shared\Contracts\Fiscal\PaymentMethodResolver`
  * locks the null contract: `null` ONLY means "no `payment_methods` row exists
- * in the given tenant with the given code." Transient infrastructure failures
+ * in the given tenant/company with the given code." Transient infrastructure failures
  * (DB timeout, deadlock, connection loss, malformed query) MUST propagate as
  * exceptions so the caller's wrapping transaction rolls back and Horizon
  * retries via the Task 23 R2 `catch (Throwable)` contract on
@@ -50,12 +50,39 @@ final class EloquentPaymentMethodResolverTest extends TestCase
         $resolver = $this->app->make(PaymentMethodResolver::class);
 
         $this->assertInstanceOf(EloquentPaymentMethodResolver::class, $resolver);
-        $this->assertSame($method->id, $resolver->resolveByCode($tenant->id, 'CASH'));
+        $this->assertSame($method->id, $resolver->resolveByCode($tenant->id, $company->id, 'CASH'));
+    }
+
+    public function test_resolver_selects_the_method_for_the_requested_company_when_codes_repeat_in_a_tenant(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $foreignCompany = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $requestedCompany = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $foreignCompany->id,
+            'code' => 'CARD',
+            'name' => 'Foreign company card',
+        ]);
+        $requestedMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $requestedCompany->id,
+            'code' => 'CARD',
+            'name' => 'Requested company card',
+        ]);
+
+        $resolver = $this->app->make(PaymentMethodResolver::class);
+
+        $this->assertSame(
+            $requestedMethod->id,
+            $resolver->resolveByCode($tenant->id, $requestedCompany->id, 'CARD'),
+        );
     }
 
     public function test_resolver_returns_null_for_code_absent_in_tenant(): void
     {
-        // Canonical null case: NO row exists for (tenant_id, code). This is
+        // Canonical null case: NO row exists for (tenant_id, company_id, code). This is
         // the ONLY case in which the resolver is permitted to return null —
         // the caller treats null as a fail-closed "method not found in tenant"
         // configuration error and rolls back the projection transaction.
@@ -63,13 +90,15 @@ final class EloquentPaymentMethodResolverTest extends TestCase
 
         $resolver = $this->app->make(PaymentMethodResolver::class);
 
-        $this->assertNull($resolver->resolveByCode($tenant->id, 'CODE_THAT_NEVER_EXISTED'));
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        $this->assertNull($resolver->resolveByCode($tenant->id, $company->id, 'CODE_THAT_NEVER_EXISTED'));
     }
 
     public function test_resolver_returns_null_for_cross_tenant_code(): void
     {
         // Cross-tenant null case: the code exists, but in a FOREIGN tenant.
-        // The unique `(tenant_id, code)` constraint partitions by tenant —
+        // The company-scoped uniqueness partitions by tenant and company —
         // the resolver MUST NOT bind a foreign row into the requesting
         // tenant's projection. This is the security stance Task 21 R2 Opus
         // F3 pinned for payment_method_id, now re-expressed via the
@@ -84,10 +113,11 @@ final class EloquentPaymentMethodResolverTest extends TestCase
         ]);
 
         $localTenant = Tenant::factory()->create();
+        $localCompany = Company::factory()->create(['tenant_id' => $localTenant->id]);
 
         $resolver = $this->app->make(PaymentMethodResolver::class);
 
-        $this->assertNull($resolver->resolveByCode($localTenant->id, 'CASH_FX_X'));
+        $this->assertNull($resolver->resolveByCode($localTenant->id, $localCompany->id, 'CASH_FX_X'));
     }
 
     public function test_resolver_propagates_query_exception_on_transient_db_failure(): void
@@ -112,7 +142,8 @@ final class EloquentPaymentMethodResolverTest extends TestCase
         // Confirm baseline: known-absent code returns null cleanly when the
         // table exists.
         $resolver = $this->app->make(PaymentMethodResolver::class);
-        $this->assertNull($resolver->resolveByCode($tenant->id, 'NONE'));
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $this->assertNull($resolver->resolveByCode($tenant->id, $company->id, 'NONE'));
 
         // Now drop the table — the schema is rebuilt at teardown via
         // RefreshDatabase, so this does not leak into sibling tests.
@@ -141,6 +172,6 @@ final class EloquentPaymentMethodResolverTest extends TestCase
         // re-introduces the `catch (QueryException) { return null; }`
         // swallow, this call would return null and the expectException
         // assertion would fail the test loudly.
-        $resolver->resolveByCode($tenant->id, 'CASH');
+        $resolver->resolveByCode($tenant->id, $company->id, 'CASH');
     }
 }

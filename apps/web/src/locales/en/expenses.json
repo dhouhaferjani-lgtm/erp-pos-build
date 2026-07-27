@@ -155,10 +155,26 @@
     "repository": "Payment repository",
     "selectRepository": "Select a repository",
     "repositoryRequired": "Payment repository is required",
+    "mode": "Payment type",
+    "modes": {
+      "cash": "Cash or transfer",
+      "instrument": "Cheque or bill of exchange"
+    },
     "method": "Payment method",
     "noMethod": "No payment method",
+    "methodRequired": "Payment method is required",
     "date": "Payment date",
     "dateRequired": "Payment date is required",
+    "instrument": {
+      "kind": "Instrument kind",
+      "kinds": { "cheque": "Cheque", "effet": "Bill of exchange" },
+      "reference": "Number or reference",
+      "referenceRequired": "Instrument reference is required",
+      "bank": "Bank",
+      "maturityDate": "Maturity date",
+      "maturityDateRequired": "Maturity date is required for a bill of exchange",
+      "drawerName": "Drawer name"
+    },
     "submit": "Pay",
     "success": "Expense paid successfully",
     "error": "Unable to pay expense"

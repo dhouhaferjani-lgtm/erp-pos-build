@@ -16,6 +16,9 @@
       },
       "instrument": {
         "maturity_alert": "Instrument maturity alert"
+      },
+      "maturity": {
+        "outbound_due": "Outbound instruments due"
       }
     },
     "expense": {
@@ -33,6 +36,9 @@
       },
       "instrument": {
         "maturity_alert": "{{receivedCount}} received and {{depositedCount}} deposited instruments need attention."
+      },
+      "maturity": {
+        "outbound_due": "{{count}} outbound instruments must be funded by their maturity date."
       }
     },
     "expense": {

@@ -51,7 +51,7 @@ use RuntimeException;
  * rows + voucher redemption + stock movement) are independent of the Treasury
  * operational module. They depend only on **mirrored reference data** — the
  * `PaymentMethodResolver` seam (Shared/Contracts/Fiscal) which resolves
- * `payment_methods.id` by `(tenant_id, method_code)`. The Treasury-side
+ * `payment_methods.id` by `(tenant_id, company_id, method_code)`. The Treasury-side
  * `Payment` row + GL is owned by `TreasuryReceiptBridge` (Task 22), which
  * runs only when the Treasury module is active.
  *
@@ -59,8 +59,8 @@ use RuntimeException;
  * Reads `fiscal_events.payload` through `CanonicalPayloadReader` for the
  * fiscal-event-backed path. The canonical SALE_RECEIPT payload no longer
  * carries `payment_method_id` per-payment — the projector resolves the
- * tenant-scoped FK via `PaymentMethodResolver::resolveByCode($tenantId,
- * $payment->methodCode)`. A null return triggers fail-closed RuntimeException
+ * tenant+company-scoped FK via `PaymentMethodResolver::resolveByCode($tenantId,
+ * $companyId, $payment->methodCode)`. A null return triggers fail-closed RuntimeException
  * (same security stance as Task 21 R2 Opus F3, now expressed via the
  * Shared/Contracts seam instead of a direct Treasury Eloquent traversal).
  *
@@ -719,13 +719,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * **Pass 2A.PHP.2 — `payment_method_id` resolution (synthesis v5 §8.B +
      * dispatch §0 Gap A).** The canonical payload no longer carries
-     * `payment_method_id`. The projector resolves the tenant-scoped FK
-     * via `PaymentMethodResolver::resolveByCode($tenantId, $methodCode)`.
+     * `payment_method_id`. The projector resolves the tenant+company-scoped FK
+     * via `PaymentMethodResolver::resolveByCode($tenantId, $companyId, $methodCode)`.
      * A null return triggers fail-closed RuntimeException — the wrapping
      * `DB::transaction` rolls back atomically. This preserves the Task 21
      * R2 Opus F3 cross-tenant security stance via the Shared/Contracts
-     * seam (the resolver scopes the lookup to the event's tenant; a
-     * cross-tenant `method_code` collision returns null).
+     * seam (the resolver scopes the lookup to the event's tenant and company;
+     * a cross-tenant or cross-company `method_code` collision returns null).
      *
      * Canonical-only fields NOT projected to columns:
      *   - foreign_currency_amount + foreign_currency_code (FX legs)
@@ -760,17 +760,19 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         // Resolve payment_method_id via the Shared/Contracts seam.
         $paymentMethodId = $this->paymentMethodResolver->resolveByCode(
             $event->tenant_id,
+            $event->company_id,
             $methodCode,
         );
 
         // Fail-closed when the method_code does not resolve in the tenant
-        // scope. Same security stance as Task 21 R2 Opus F3 (cross-tenant
-        // rejection), now expressed via the Shared/Contracts seam.
+        // and company scope. Same security stance as Task 21 R2 Opus F3,
+        // now extended to repeated codes across companies via the seam.
         if ($paymentMethodId === null) {
             throw new RuntimeException(sprintf(
-                'PosCoreReceiptProjection: payment_method_not_found:method_code=%s:tenant_id=%s',
+                'PosCoreReceiptProjection: payment_method_not_found:method_code=%s:tenant_id=%s:company_id=%s',
                 $methodCode,
                 $event->tenant_id,
+                $event->company_id,
             ));
         }
 
@@ -1362,6 +1364,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         foreach ($view->payments as $payment) {
             $paymentMethodId = $this->paymentMethodResolver->resolveByCode(
                 $event->tenant_id,
+                $event->company_id,
                 $payment->methodCode,
             );
             // Defensive fallback — `writePayment()` will throw before any

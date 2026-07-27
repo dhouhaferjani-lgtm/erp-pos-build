@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankController;
-use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
+use App\Modules\Treasury\Presentation\Controllers\BankStatementController;
 use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
 use App\Modules\Treasury\Presentation\Controllers\InstrumentRemittanceController;
 use App\Modules\Treasury\Presentation\Controllers\MaturingInstrumentsController;
@@ -19,6 +19,8 @@ use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController
 use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryTransferController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
+use App\Modules\Treasury\Presentation\Controllers\StatementLineController;
+use App\Modules\Treasury\Presentation\Controllers\StatementProfileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -142,6 +144,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:instruments.cancel')
         ->name('payment-instruments.cancel');
 
+    Route::post('/payment-instruments/{instrument}/clear-outbound', [PaymentInstrumentController::class, 'clearOutbound'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.clear-outbound');
+
+    Route::post('/payment-instruments/{instrument}/bounce-outbound', [PaymentInstrumentController::class, 'bounceOutbound'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.bounce-outbound');
+
+    Route::post('/payment-instruments/{instrument}/represent', [PaymentInstrumentController::class, 'represent'])
+        ->middleware('can:instruments.clear-outbound')
+        ->name('payment-instruments.represent');
+
+    Route::post('/payment-instruments/{instrument}/cancel-outbound', [PaymentInstrumentController::class, 'cancelOutbound'])
+        ->middleware('can:instruments.cancel-outbound')
+        ->name('payment-instruments.cancel-outbound');
+
     Route::get('/instrument-remittances', [InstrumentRemittanceController::class, 'index'])
         ->middleware('can:instruments.remit')->name('instrument-remittances.index');
     Route::post('/instrument-remittances', [InstrumentRemittanceController::class, 'store'])
@@ -245,36 +263,66 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:payments.view')
         ->name('partners.open-invoices');
 
-    // Bank Reconciliation
-    Route::get('/bank-reconciliations', [BankReconciliationController::class, 'index'])
-        ->middleware('can:repositories.view')
-        ->name('bank-reconciliations.index');
+    // Treasury-native bank statement staging and reconciliation aggregate.
+    Route::get('/bank-statements', [BankStatementController::class, 'index'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statements.index');
+    Route::get('/bank-statements/{bankStatement}', [BankStatementController::class, 'show'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statements.show');
+    Route::post('/bank-statements/upload', [BankStatementController::class, 'upload'])
+        ->middleware('can:bank-statements.import')
+        ->name('bank-statements.upload');
+    Route::post('/bank-statements', [BankStatementController::class, 'store'])
+        ->middleware('can:bank-statements.import')
+        ->name('bank-statements.store');
+    Route::post('/bank-statements/{bankStatement}/void', [BankStatementController::class, 'void'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statements.void');
+    Route::post('/bank-statements/{bankStatement}/complete', [BankStatementController::class, 'complete'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statements.complete');
+    Route::post('/bank-statements/{bankStatement}/reopen', [BankStatementController::class, 'reopen'])
+        ->middleware('can:bank-statements.reopen')
+        ->name('bank-statements.reopen');
 
-    Route::get('/bank-reconciliations/{reconciliation}', [BankReconciliationController::class, 'show'])
-        ->middleware('can:repositories.view')
-        ->name('bank-reconciliations.show');
+    Route::get('/bank-statement-targets/{targetType}/{targetId}/lines', [StatementLineController::class, 'targetProvenance'])
+        ->middleware('can:bank-statements.view')
+        ->name('bank-statement-targets.lines.index');
 
-    Route::get('/bank-reconciliations/{reconciliation}/summary', [BankReconciliationController::class, 'summary'])
-        ->middleware('can:repositories.view')
-        ->name('bank-reconciliations.summary');
+    Route::post('/bank-statement-lines/{statementLine}/allocations', [StatementLineController::class, 'allocate'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.allocations.store');
+    Route::get('/bank-statement-lines/{statementLine}/suggestions', [StatementLineController::class, 'suggestions'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.suggestions.index');
+    Route::delete('/bank-statement-lines/{statementLine}/allocations/{repositoryMovement?}', [StatementLineController::class, 'unallocate'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.allocations.destroy');
+    Route::post('/bank-statement-lines/{statementLine}/ignore', [StatementLineController::class, 'ignore'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.ignore');
+    Route::delete('/bank-statement-lines/{statementLine}/ignore', [StatementLineController::class, 'unignore'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.unignore');
+    Route::post('/bank-statement-lines/{statementLine}/actions', [StatementLineController::class, 'execute'])
+        ->middleware('can:bank-statements.reconcile')
+        ->name('bank-statement-lines.actions.store');
 
-    Route::post('/bank-reconciliations', [BankReconciliationController::class, 'store'])
-        ->middleware('can:repositories.manage')
-        ->name('bank-reconciliations.store');
+    Route::get('/statement-import-profiles', [StatementProfileController::class, 'index'])
+        ->middleware('can:bank-statements.view')
+        ->name('statement-import-profiles.index');
+    Route::get('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'show'])
+        ->middleware('can:bank-statements.view')
+        ->name('statement-import-profiles.show');
+    Route::post('/statement-import-profiles', [StatementProfileController::class, 'store'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.store');
+    Route::patch('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'update'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.update');
+    Route::delete('/statement-import-profiles/{statementProfile}', [StatementProfileController::class, 'destroy'])
+        ->middleware('can:bank-statements.import')
+        ->name('statement-import-profiles.destroy');
 
-    Route::post('/bank-reconciliations/{reconciliation}/match/{payment}', [BankReconciliationController::class, 'matchItem'])
-        ->middleware('can:repositories.manage')
-        ->name('bank-reconciliations.match');
-
-    Route::post('/bank-reconciliations/{reconciliation}/unmatch/{payment}', [BankReconciliationController::class, 'unmatchItem'])
-        ->middleware('can:repositories.manage')
-        ->name('bank-reconciliations.unmatch');
-
-    Route::post('/bank-reconciliations/{reconciliation}/complete', [BankReconciliationController::class, 'complete'])
-        ->middleware('can:repositories.manage')
-        ->name('bank-reconciliations.complete');
-
-    Route::post('/bank-reconciliations/{reconciliation}/cancel', [BankReconciliationController::class, 'cancel'])
-        ->middleware('can:repositories.manage')
-        ->name('bank-reconciliations.cancel');
 });

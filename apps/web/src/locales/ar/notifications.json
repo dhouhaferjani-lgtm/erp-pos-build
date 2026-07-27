@@ -16,6 +16,9 @@
       },
       "instrument": {
         "maturity_alert": "تنبيه استحقاق الأدوات"
+      },
+      "maturity": {
+        "outbound_due": "أدوات دفع مستحقة"
       }
     },
     "expense": {
@@ -33,6 +36,9 @@
       },
       "instrument": {
         "maturity_alert": "تحتاج {{receivedCount}} أدوات مستلمة و{{depositedCount}} أدوات مودعة إلى المراجعة."
+      },
+      "maturity": {
+        "outbound_due": "يجب توفير رصيد لـ {{count}} أدوات دفع قبل تاريخ استحقاقها."
       }
     },
     "expense": {

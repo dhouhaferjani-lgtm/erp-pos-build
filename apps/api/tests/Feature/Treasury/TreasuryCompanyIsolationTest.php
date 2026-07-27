@@ -15,7 +15,6 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -23,7 +22,6 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
@@ -39,7 +37,6 @@ use Tests\TestCase;
  * regenerate) surfaced 10 callsites on 5 controllers + 1 service whose lookup
  * was tenant-scoped only:
  *
- *   api.treasury.063  BankReconciliationService::startReconciliation()
  *   api.treasury.067  PaymentRepositoryController::show
  *   api.treasury.068  PaymentRepositoryController::update
  *   api.treasury.069  PaymentRepositoryController::balance
@@ -260,34 +257,6 @@ final class TreasuryCompanyIsolationTest extends TestCase
                 'reason' => 'cross-company smoke',
             ])
             ->assertNotFound();
-    }
-
-    // ---------------------------------------------------------------------
-    // BankReconciliationService — 063 (service-tier, defense-in-depth)
-    // ---------------------------------------------------------------------
-
-    public function test_start_reconciliation_service_refuses_cross_company_repository_id(): void
-    {
-        // The controller validates `repository_id` with
-        // ScopedExists::tenantAndCompany — so HTTP callers cannot reach this
-        // code path with a foreign repository. The service callsite is
-        // defense-in-depth: a programmatic caller bypassing the validator
-        // must still be refused. Cross-company same-tenant lookup must throw
-        // ModelNotFoundException, not silently bind the foreign repository.
-        $service = app(BankReconciliationService::class);
-
-        $this->expectException(ModelNotFoundException::class);
-
-        $service->startReconciliation(
-            companyId: $this->companyA->id,
-            tenantId: $this->tenant->id,
-            userId: $this->user->id,
-            data: [
-                'repository_id' => $this->repositoryB->id, // cross-company
-                'statement_date' => now()->toDateString(),
-                'statement_balance' => '0.00',
-            ],
-        );
     }
 
     // ---------------------------------------------------------------------

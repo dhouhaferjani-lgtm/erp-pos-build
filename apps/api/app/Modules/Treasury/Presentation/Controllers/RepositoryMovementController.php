@@ -9,6 +9,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ final class RepositoryMovementController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function index(Request $request, string $id): JsonResponse
@@ -53,12 +55,24 @@ final class RepositoryMovementController extends Controller
             'date_to' => ['sometimes', 'date'],
             'source_type' => ['sometimes', Rule::enum(MovementSourceType::class)],
             'direction' => ['sometimes', Rule::enum(MovementDirection::class)],
+            'search' => ['sometimes', 'string', 'max:100'],
         ]);
 
         $query = RepositoryMovement::query()
             ->where('payment_repository_id', $repository->id)
             ->where('tenant_id', $tenantId)
-            ->where('company_id', $company->id);
+            ->where('company_id', $company->id)
+            ->withSum('statementAllocations as allocated_amount', 'matched_amount');
+
+        if (array_key_exists('search', $validated)) {
+            $search = $validated['search'];
+            $query->where(function ($candidate) use ($search): void {
+                $candidate
+                    ->whereRaw('CAST(id AS TEXT) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('CAST(source_id AS TEXT) LIKE ?', ["%{$search}%"])
+                    ->orWhere('notes', 'like', "%{$search}%");
+            });
+        }
 
         if (array_key_exists('date_from', $validated)) {
             $query->where('occurred_at', '>=', $validated['date_from']);
@@ -84,20 +98,32 @@ final class RepositoryMovementController extends Controller
 
         $movements = $query->orderByDesc('ordinal')->paginate(20);
 
-        $data = $movements->getCollection()->map(fn (RepositoryMovement $movement): array => [
-            'id' => $movement->id,
-            'direction' => $movement->direction->value,
-            'amount' => $movement->amount,
-            'currency' => $movement->currency,
-            'balance_after' => $movement->balance_after,
-            'ordinal' => $movement->ordinal,
-            'source_type' => $movement->source_type->value,
-            'source_id' => $movement->source_id,
-            'journal_entry_id' => $movement->journal_entry_id,
-            'reason_code' => $movement->reason_code?->value,
-            'occurred_at' => $movement->occurred_at->toIso8601String(),
-            'recorded_while_frozen' => $movement->recorded_while_frozen,
-        ])->values();
+        $data = $movements->getCollection()->map(function (RepositoryMovement $movement): array {
+            $rawAllocatedAmount = $movement->getAttribute('allocated_amount') ?? '0';
+            if (! is_string($rawAllocatedAmount) || ! is_numeric($rawAllocatedAmount)) {
+                throw new \LogicException('Repository movement allocation aggregate must be a decimal string.');
+            }
+            $scale = $this->scaleResolver->getScale($movement->currency);
+            $allocatedAmount = bcadd($rawAllocatedAmount, '0', $scale);
+
+            return [
+                'id' => $movement->id,
+                'direction' => $movement->direction->value,
+                'amount' => $movement->amount,
+                'allocated_amount' => $allocatedAmount,
+                'remaining_allocatable_amount' => bcsub($movement->amount, $allocatedAmount, $scale),
+                'currency' => $movement->currency,
+                'balance_after' => $movement->balance_after,
+                'ordinal' => $movement->ordinal,
+                'source_type' => $movement->source_type->value,
+                'source_id' => $movement->source_id,
+                'journal_entry_id' => $movement->journal_entry_id,
+                'reason_code' => $movement->reason_code?->value,
+                'occurred_at' => $movement->occurred_at->toIso8601String(),
+                'recorded_while_frozen' => $movement->recorded_while_frozen,
+                'recorded_behind_checkpoint' => $movement->recorded_behind_checkpoint,
+            ];
+        })->values();
 
         return response()->json([
             'data' => $data,

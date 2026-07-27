@@ -6,10 +6,6 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e/smoke',
-  // Playwright's default testMatch only matches *.spec.ts / *.test.ts, so
-  // without this override every *.smoke.ts file (the repo's live-test naming
-  // convention) is silently invisible to this config — pre-existing gap,
-  // fixed here as part of moving treasury-spine onto the smoke convention.
   testMatch: /.*\.smoke\.ts$/,
   fullyParallel: false,
   retries: 1,
