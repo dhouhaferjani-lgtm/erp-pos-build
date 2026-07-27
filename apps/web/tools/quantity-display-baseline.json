@@ -1,5 +1,4 @@
 [
-  "apps/web/src/features/opening-balances/components/BatchPreview.tsx:line.quantity",
   "apps/web/src/features/workshop-bundles/components/molecules/BundleComponentRow.tsx:component.quantity",
   "apps/web/src/features/workshop-bundles/components/organisms/BundleComponentFormModal.tsx:state.quantity",
   "apps/web/src/features/workshop-bundles/components/organisms/BundleExpandedPreview.tsx:line.quantity",
