@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { StockLevelsPage } from './StockLevelsPage'
 
 vi.mock('react-i18next', () => ({
@@ -42,6 +43,7 @@ interface StockLevel {
   location_id: string
   location_name: string | null
   quantity: string
+  quantity_decimals: number
   reserved: string
   available: string
   min_quantity: string | null
@@ -55,6 +57,7 @@ function makeStock(overrides: Partial<StockLevel>): StockLevel {
     location_id: 'loc-1',
     location_name: 'Main',
     quantity: '10.0000',
+    quantity_decimals: 3,
     reserved: '0.0000',
     available: '10.0000',
     min_quantity: '2.0000',
@@ -121,5 +124,14 @@ describe('StockLevelsPage (canonical list)', () => {
     // rounded-full pill span (tokens.badge.base).
     const pill = screen.getByText('inventory:stock.status.outOfStock')
     expect(pill.className).toContain('rounded-full')
+  })
+
+  it('renders the selected stock quantity at the product unit precision', async () => {
+    const user = userEvent.setup()
+    render(<StockLevelsPage />)
+
+    await user.click(screen.getAllByRole('button', { name: 'inventory:stock.adjust' })[0])
+
+    expect(screen.getByText('inventory:stock.modal.currentQuantity').parentElement).toHaveTextContent('50.000')
   })
 })
