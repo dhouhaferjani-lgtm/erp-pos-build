@@ -17,6 +17,7 @@ use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Bundle\Domain\ValueObjects\BundleExpansionLine;
 use App\Modules\Workshop\Bundle\Domain\ValueObjects\ComponentServiceRef;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Collection;
 
 /**
@@ -147,6 +148,7 @@ final readonly class BundleExpansionService
             component_id: null,
             display_name: $bundle->name,
             quantity: $quantity,
+            quantity_decimals: QuantityScale::SCALE,
             unit: 'bundle',
             unit_price: $basePrice,
             line_total: $headerLineTotal,
@@ -197,6 +199,7 @@ final readonly class BundleExpansionService
                 component_id: $component->product_id,
                 display_name: $productRef->display_name,
                 quantity: $lineQty,
+                quantity_decimals: $productRef->quantity_decimals,
                 unit: $productRef->unit,
                 unit_price: $unitPrice,
                 line_total: $lineTotal,
@@ -220,6 +223,7 @@ final readonly class BundleExpansionService
                 component_id: $component->service_id,
                 display_name: $serviceRef->display_name,
                 quantity: $lineQty,
+                quantity_decimals: $this->componentQuantityDecimals($component),
                 unit: 'hour',
                 unit_price: $unitPrice,
                 line_total: $lineTotal,
@@ -270,6 +274,7 @@ final readonly class BundleExpansionService
                 component_id: $component->product_id,
                 display_name: $productRef->display_name,
                 quantity: $lineQty,
+                quantity_decimals: $productRef->quantity_decimals,
                 unit: $productRef->unit,
                 unit_price: $zero,
                 line_total: $zero,
@@ -289,6 +294,7 @@ final readonly class BundleExpansionService
                 component_id: $component->service_id,
                 display_name: $serviceRef->display_name,
                 quantity: $lineQty,
+                quantity_decimals: $this->componentQuantityDecimals($component),
                 unit: 'hour',
                 unit_price: $zero,
                 line_total: $zero,
@@ -305,6 +311,15 @@ final readonly class BundleExpansionService
         return $ref->pricing_type === PricingType::Hourly && $ref->hourly_rate !== null
             ? $ref->hourly_rate
             : $ref->base_price;
+    }
+
+    private function componentQuantityDecimals(ServiceBundleComponent $component): int
+    {
+        if (! $component->relationLoaded('unit')) {
+            return QuantityScale::SCALE;
+        }
+
+        return $component->unit->decimal_places;
     }
 
     private function assertSingleVatRate(ServiceBundle $bundle): void

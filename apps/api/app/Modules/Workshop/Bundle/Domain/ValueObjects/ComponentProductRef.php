@@ -20,5 +20,6 @@ final readonly class ComponentProductRef
         public string $currency,
         public ?string $tax_rate,     // scaled decimal string (VAT %)
         public string $unit,          // e.g. "liter", "piece"
+        public int $quantity_decimals,
     ) {}
 }

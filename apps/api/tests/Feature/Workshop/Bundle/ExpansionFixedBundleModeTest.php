@@ -77,6 +77,7 @@ final class ExpansionFixedBundleModeTest extends TestCase
         $this->assertSame('120.000', $header->line_total);
         $this->assertFalse($header->is_from_fixed_bundle);
         $this->assertSame('Vidange 10k Diesel', $header->display_name);
+        $this->assertSame(4, $header->quantity_decimals ?? null);
 
         // Informational component lines.
         foreach (array_slice($linesArr, 1) as $line) {

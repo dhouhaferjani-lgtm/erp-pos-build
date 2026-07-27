@@ -7,6 +7,7 @@ namespace App\Modules\Workshop\Bundle\Application\DTOs;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -20,6 +21,7 @@ final class ServiceBundleComponentData extends Data
         public string $component_id,
         public string $component_display_name,
         public string $quantity,
+        public int $quantity_decimals,
         public string $unit,
         public ?string $override_unit_price,
         public bool $is_optional,
@@ -52,6 +54,9 @@ final class ServiceBundleComponentData extends Data
             component_id: (string) ($componentId ?? ''),
             component_display_name: $displayName,
             quantity: CurrencyScale::bcformat($component->quantity, $scale),
+            quantity_decimals: $component->relationLoaded('unit')
+                ? $component->unit->decimal_places
+                : QuantityScale::SCALE,
             unit: $unit,
             override_unit_price: $component->override_unit_price !== null
                 ? CurrencyScale::bcformat($component->override_unit_price, $scale)

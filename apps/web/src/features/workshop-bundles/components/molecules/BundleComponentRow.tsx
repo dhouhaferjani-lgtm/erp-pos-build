@@ -3,6 +3,8 @@ import { borderColors, textColors } from '../../../../lib/designTokens'
 import { Button } from '@/components/atoms'
 import type { ServiceBundleComponentData } from '../../types'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 
 interface BundleComponentRowProps {
@@ -31,7 +33,7 @@ export function BundleComponentRow({
             {component.component_display_name}
           </div>
           <div className={`text-xs ${textColors.tertiary}`}>
-            {component.quantity} {component.unit}
+            {formatQuantity(component.quantity, getQuantityDecimals(component))} {component.unit}
             {component.notes !== null && ` · ${component.notes}`}
           </div>
         </div>

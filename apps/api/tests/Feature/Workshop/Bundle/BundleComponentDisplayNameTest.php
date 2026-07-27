@@ -63,7 +63,11 @@ final class BundleComponentDisplayNameTest extends TestCase
         $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create();
         $nested = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create(['name' => 'Nested Bundle X']);
 
-        $unit = Unit::factory()->create(['symbol' => 'u', 'name' => 'unité']);
+        $unit = Unit::factory()->create([
+            'symbol' => 'u',
+            'name' => 'unité',
+            'decimal_places' => 3,
+        ]);
 
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -109,12 +113,15 @@ final class BundleComponentDisplayNameTest extends TestCase
         $this->assertArrayHasKey(BundleComponentType::Part->value, $byType);
         $this->assertSame('Brake Pads Premium', $byType[BundleComponentType::Part->value]['component_display_name']);
         $this->assertNotSame('', $byType[BundleComponentType::Part->value]['unit']);
+        $this->assertSame(3, $byType[BundleComponentType::Part->value]['quantity_decimals'] ?? null);
 
         $this->assertArrayHasKey(BundleComponentType::Labor->value, $byType);
         $this->assertSame('Brake Inspection', $byType[BundleComponentType::Labor->value]['component_display_name']);
         $this->assertNotSame('', $byType[BundleComponentType::Labor->value]['unit']);
+        $this->assertSame(3, $byType[BundleComponentType::Labor->value]['quantity_decimals'] ?? null);
 
         $this->assertArrayHasKey(BundleComponentType::NestedBundle->value, $byType);
         $this->assertSame('Nested Bundle X', $byType[BundleComponentType::NestedBundle->value]['component_display_name']);
+        $this->assertSame(3, $byType[BundleComponentType::NestedBundle->value]['quantity_decimals'] ?? null);
     }
 }

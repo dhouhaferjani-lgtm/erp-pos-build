@@ -163,4 +163,42 @@ final class ExpansionStandardModeTest extends TestCase
         $this->assertSame(BundleComponentType::Part, $line->component_type);
         $this->assertFalse($line->is_from_fixed_bundle);
     }
+
+    public function test_expansion_lines_expose_part_and_labor_quantity_precision(): void
+    {
+        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create([
+            'pricing_mode' => BundlePricingMode::Standard,
+            'currency' => 'TND',
+        ]);
+        $productUnit = Unit::factory()->create(['decimal_places' => 3]);
+        $part = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $productUnit->id,
+            'sale_price' => '10.000',
+        ]);
+        $labor = Service::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'pricing_type' => PricingType::FlatRate,
+            'base_price' => '20.000',
+            'currency' => 'TND',
+        ]);
+
+        ServiceBundleComponent::factory()->forBundle($bundle)->part($part, '1.250')->create([
+            'unit_id' => $this->unit->id,
+        ]);
+        ServiceBundleComponent::factory()->forBundle($bundle)->labor($labor, '0.50')->create([
+            'unit_id' => $this->unit->id,
+        ]);
+
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
+        $partLine = $lines->first(fn ($line): bool => $line->component_type === BundleComponentType::Part);
+        $laborLine = $lines->first(fn ($line): bool => $line->component_type === BundleComponentType::Labor);
+
+        $this->assertNotNull($partLine);
+        $this->assertNotNull($laborLine);
+        $this->assertSame(3, $partLine->quantity_decimals ?? null);
+        $this->assertSame(2, $laborLine->quantity_decimals ?? null);
+    }
 }
