@@ -47,7 +47,7 @@ describe('CartLineItem', () => {
         onRemove={vi.fn()}
       />
     )
-    expect(getByText('2')).toBeInTheDocument()
+    expect(getByText('2.0000')).toBeInTheDocument()
   })
 
   it('displays unit price', () => {
