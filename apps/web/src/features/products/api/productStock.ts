@@ -1,19 +1,6 @@
 import { apiGet } from '@/lib/api'
 
-export interface StockLocation {
-  id: string
-  location_id: string
-  location_name: string
-  quantity: string
-  quantity_decimals: number
-  reserved: string
-  available: string
-  incoming: string
-  projected_available: string
-  min_quantity: string | null
-  max_quantity: string | null
-  is_below_minimum: boolean
-}
+export type StockLocation = App.Modules.Inventory.Application.DTOs.StockLevelData
 
 export interface StockTotals {
   quantity: string

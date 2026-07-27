@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
@@ -178,8 +178,13 @@ describe('ProductMovementsTab', () => {
       expect(screen.getByText('Warehouse B')).toBeInTheDocument()
     })
 
-    // Check that quantity data is present in the document
-    expect(document.body.textContent).toContain('-5.000')
+    const issueRow = screen.getByText('INV-2024-001').closest('tr')
+    expect(issueRow).not.toBeNull()
+    if (issueRow === null) throw new Error('Expected issue movement row')
+
+    expect(within(issueRow).getByText('-5.000')).toBeInTheDocument()
+    expect(within(issueRow).getByText('10.000')).toBeInTheDocument()
+    expect(within(issueRow).getByText('5.000')).toBeInTheDocument()
   })
 
   it('renders movement type badges correctly', async () => {

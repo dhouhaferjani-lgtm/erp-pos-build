@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { StockMovementsPage } from './StockMovementsPage'
 
 vi.mock('react-i18next', () => ({
@@ -123,11 +123,18 @@ describe('StockMovementsPage (canonical list)', () => {
     expect(pill.className).toContain('rounded-full')
   })
 
-  it('renders the signed quantity in a numeric (tabular-nums) cell', () => {
+  it('renders movement and conservation quantities at unit precision', () => {
     render(<StockMovementsPage />)
     const qty = screen.getByText('+5.000')
     // DataTable numeric columns right-align with tabular-nums on the <td>.
     const cell = qty.closest('td')
     expect(cell?.className).toContain('tabular-nums')
+
+    const alphaRow = screen.getByText('Alpha').closest('tr')
+    expect(alphaRow).not.toBeNull()
+    if (alphaRow === null) throw new Error('Expected Alpha movement row')
+
+    expect(within(alphaRow).getByText('0.000')).toBeInTheDocument()
+    expect(within(alphaRow).getByText('5.000')).toBeInTheDocument()
   })
 })
