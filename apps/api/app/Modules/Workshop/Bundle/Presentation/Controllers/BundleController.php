@@ -56,7 +56,7 @@ class BundleController extends Controller
 
         return response()->json([
             'data' => $page->getCollection()
-                ->map(fn ($b): ServiceBundleData => ServiceBundleData::fromModel($b->load(['components', 'vehicleApplicabilities'])))
+                ->map(fn ($b): ServiceBundleData => ServiceBundleData::fromModel($b->load(['components.unit', 'vehicleApplicabilities'])))
                 ->values(),
             'meta' => [
                 'current_page' => $page->currentPage(),

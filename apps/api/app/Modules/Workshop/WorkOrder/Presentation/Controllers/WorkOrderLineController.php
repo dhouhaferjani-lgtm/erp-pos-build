@@ -17,10 +17,12 @@ use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderLineType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrderLine;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\AddBundleRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\AddLineRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\ReorderLinesRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\UpdateLineRequest;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -82,13 +84,15 @@ final class WorkOrderLineController extends Controller
             company_id: $wo->company_id,
         ));
 
+        /** @var EloquentCollection<int, WorkOrderLine> $lineModels */
+        $lineModels = new EloquentCollection($lines);
+        $lineModels->loadMissing('product.unitOfMeasure');
+
         return response()->json([
-            'data' => array_map(
-                static fn ($l): array => WorkOrderLineData::fromModel(
-                    $l->loadMissing('product.unitOfMeasure')
-                )->toArray(),
-                $lines,
-            ),
+            'data' => $lineModels
+                ->map(static fn (WorkOrderLine $line): array => WorkOrderLineData::fromModel($line)->toArray())
+                ->values()
+                ->all(),
         ], 201);
     }
 

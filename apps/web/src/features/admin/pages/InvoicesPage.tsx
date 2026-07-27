@@ -478,7 +478,6 @@ export function InvoicesPage() {
                         onChange={(quantity) =>
                           { handleItemChange(index, 'quantity', quantity); }
                         }
-                        // eslint-disable-next-line precision/no-literal-decimal-places -- platform billing quantity column is fixed at scale 2
                         decimalPlaces={2}
                         placeholder="Qty"
                         className={`w-20 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}

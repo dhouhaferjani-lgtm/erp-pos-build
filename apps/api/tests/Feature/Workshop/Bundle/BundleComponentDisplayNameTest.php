@@ -101,7 +101,7 @@ final class BundleComponentDisplayNameTest extends TestCase
         $response = $this->getJson("/api/v1/workshop/bundles/{$bundle->id}");
         $response->assertOk();
 
-        /** @var array{data: array{components: array<int, array{component_type: string, component_display_name: string, unit: string}>}} $body */
+        /** @var array{data: array{components: array<int, array{component_type: string, component_display_name: string, unit: string, quantity_decimals: int}>}} $body */
         $body = $response->json();
         $this->assertCount(3, $body['data']['components']);
 
@@ -113,15 +113,65 @@ final class BundleComponentDisplayNameTest extends TestCase
         $this->assertArrayHasKey(BundleComponentType::Part->value, $byType);
         $this->assertSame('Brake Pads Premium', $byType[BundleComponentType::Part->value]['component_display_name']);
         $this->assertNotSame('', $byType[BundleComponentType::Part->value]['unit']);
-        $this->assertSame(3, $byType[BundleComponentType::Part->value]['quantity_decimals'] ?? null);
+        $this->assertSame(3, $byType[BundleComponentType::Part->value]['quantity_decimals']);
 
         $this->assertArrayHasKey(BundleComponentType::Labor->value, $byType);
         $this->assertSame('Brake Inspection', $byType[BundleComponentType::Labor->value]['component_display_name']);
         $this->assertNotSame('', $byType[BundleComponentType::Labor->value]['unit']);
-        $this->assertSame(3, $byType[BundleComponentType::Labor->value]['quantity_decimals'] ?? null);
+        $this->assertSame(3, $byType[BundleComponentType::Labor->value]['quantity_decimals']);
 
         $this->assertArrayHasKey(BundleComponentType::NestedBundle->value, $byType);
         $this->assertSame('Nested Bundle X', $byType[BundleComponentType::NestedBundle->value]['component_display_name']);
-        $this->assertSame(3, $byType[BundleComponentType::NestedBundle->value]['quantity_decimals'] ?? null);
+        $this->assertSame(3, $byType[BundleComponentType::NestedBundle->value]['quantity_decimals']);
+    }
+
+    public function test_index_returns_component_quantity_precision_from_its_unit(): void
+    {
+        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create();
+        $unit = Unit::factory()->create([
+            'symbol' => 'kg',
+            'decimal_places' => 2,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        ServiceBundleComponent::factory()
+            ->forBundle($bundle)
+            ->part($product, '1.25')
+            ->create(['unit_id' => $unit->id]);
+
+        $this->actingAs($this->user);
+
+        $this->getJson('/api/v1/workshop/bundles?per_page=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.components.0.quantity_decimals', 2);
+    }
+
+    public function test_expansion_endpoint_serializes_part_quantity_precision_from_the_value_object(): void
+    {
+        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create();
+        $unit = Unit::factory()->create([
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+            'sale_price' => '10.000',
+        ]);
+
+        ServiceBundleComponent::factory()
+            ->forBundle($bundle)
+            ->part($product, '1.250')
+            ->create(['unit_id' => $unit->id]);
+
+        $this->actingAs($this->user);
+
+        $this->getJson("/api/v1/workshop/bundles/{$bundle->id}/expansion?qty=1")
+            ->assertOk()
+            ->assertJsonPath('data.0.quantity_decimals', 3);
     }
 }
