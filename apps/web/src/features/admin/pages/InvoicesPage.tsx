@@ -7,6 +7,9 @@ import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/Sta
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 const STATUS_TONES: Record<InvoiceStatus, StatusTone> = {
   draft: 'neutral',
@@ -312,7 +315,9 @@ export function InvoicesPage() {
                       {selectedInvoice.items.map((item) => (
                         <tr key={item.id} className="border-b">
                           <td className="py-2">{item.description}</td>
-                          <td className="py-2 text-right">{item.quantity}</td>
+                          <td className="py-2 text-right">
+                            {formatQuantity(item.quantity, getQuantityDecimals(item))}
+                          </td>
                           <td className="py-2 text-right">
                             {formatCurrency(
                               item.unit_price,
@@ -468,12 +473,13 @@ export function InvoicesPage() {
                         placeholder="Description"
                         className={`flex-1 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}
                       />
-                      <input
-                        type="number"
+                      <QuantityInput
                         value={item.quantity}
-                        onChange={(e) =>
-                          { handleItemChange(index, 'quantity', e.target.value); }
+                        onChange={(quantity) =>
+                          { handleItemChange(index, 'quantity', quantity); }
                         }
+                        // eslint-disable-next-line precision/no-literal-decimal-places -- platform billing quantity column is fixed at scale 2
+                        decimalPlaces={2}
                         placeholder="Qty"
                         className={`w-20 rounded-md border ${colorClasses.borderGray300} px-3 py-2 text-sm`}
                       />
