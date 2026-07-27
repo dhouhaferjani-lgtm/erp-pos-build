@@ -138,7 +138,7 @@ final class EntryExitNoteController extends Controller
         $query = StockMovement::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->with(['product', 'location', 'user'])
+            ->with(['product.unitOfMeasure', 'location', 'user'])
             ->where(function ($outer) use ($groups): void {
                 foreach ($groups as $group) {
                     $outer->orWhere(function ($inner) use ($group): void {
@@ -244,6 +244,7 @@ final class EntryExitNoteController extends Controller
                         'name' => $movement->product->name,
                     ],
                     'quantity' => (string) $movement->quantity,
+                    'quantity_decimals' => $movement->product->unitOfMeasure->decimal_places ?? 4,
                     'quantity_before' => (string) $movement->quantity_before,
                     'quantity_after' => (string) $movement->quantity_after,
                     'movement_type' => $movement->movement_type->value,

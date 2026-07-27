@@ -91,6 +91,7 @@ beforeEach(() => {
               movement_id: 'm-1',
               product: { id: 'product-1', name: 'Brake Pad' },
               quantity: '2.0000',
+              quantity_decimals: 3,
               quantity_before: '0.0000',
               quantity_after: '2.0000',
               movement_type: 'receipt',
@@ -125,6 +126,6 @@ describe('EntryExitNotesPage', () => {
     })
     expect(screen.getByText('Main Warehouse')).toBeInTheDocument()
     expect(screen.getByText('Brake Pad')).toBeInTheDocument()
-    expect(screen.getByText('+2')).toBeInTheDocument()
+    expect(screen.getByText('+2.000')).toBeInTheDocument()
   })
 })
