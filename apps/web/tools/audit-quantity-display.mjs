@@ -19,7 +19,8 @@
  *     component_|required_).*|.*_count$/ (never flagged).
  *   EXEMPT — the flagged expression is (a) an argument of a call whose callee
  *     resolves to an import of `formatQuantity` from `lib/decimal` (web) /
- *     `lib/quantity` (pos), or (b) a `value` attribute on <QuantityInput>.
+ *     `lib/quantity` (pos), or (b) a `value` attribute on <QuantityInput> or
+ *     <QuantityCell> (which delegates decimalPlaces to QuantityInput).
  *
  * The callee -> import-declaration -> module-specifier resolution is NET-NEW
  * logic here (audit-tanstack-keys.mjs does no import resolution).
@@ -51,6 +52,8 @@ const BASELINE_PATH = path.join(__dirname, 'quantity-display-baseline.json');
 const INCLUDE_EXACT = new Set(['requested_qty', 'suggested_qty', 'received_qty']);
 /** Terminal name flagged ONLY as a member expression (line/item chain). */
 const INCLUDE_MEMBER_ONLY = new Set(['quantity']);
+/** Sanctioned quantity-input wrappers whose `value` prop is not display text. */
+const VALUE_ATTRIBUTE_EXEMPT_WRAPPERS = new Set(['QuantityInput', 'QuantityCell']);
 
 const EXCLUDE_REGEX = /^(total_|available_|reserved_|stock_|min_|max_|component_|required_).*|.*_count$/;
 
@@ -265,8 +268,10 @@ export function scanSource(sourceFile, relPath) {
         // Rendered child expression.
         scan = true;
       } else if (ts.isJsxAttribute(parent) && parent.name.getText(sourceFile) === 'value') {
-        // A `value` attribute — scanned, unless it is <QuantityInput value=...>.
-        scan = jsxAttributeTagName(parent) !== 'QuantityInput';
+        // A `value` attribute — scanned unless a sanctioned quantity-input
+        // wrapper owns it. QuantityCell delegates decimalPlaces to QuantityInput.
+        const tagName = jsxAttributeTagName(parent);
+        scan = tagName === null || !VALUE_ATTRIBUTE_EXEMPT_WRAPPERS.has(tagName);
       }
       if (scan) {
         const leaves = [];
