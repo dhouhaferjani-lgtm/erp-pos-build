@@ -1,5 +1,4 @@
 import type { RebalanceRow } from '../api/stockMatrix'
-import { formatQuantity } from '@/lib/format'
 
 export interface RebalanceMove {
   row: RebalanceRow
@@ -9,5 +8,5 @@ export interface RebalanceMove {
 }
 
 export function pairRebalanceRows(rows: RebalanceRow[]): RebalanceMove[] {
-  return rows.flatMap((row) => row.surpluses.flatMap((from) => row.deficits.map((to) => ({ row, from, to, quantity: formatQuantity(from.excess) }))))
+  return rows.flatMap((row) => row.surpluses.flatMap((from) => row.deficits.map((to) => ({ row, from, to, quantity: from.excess }))))
 }

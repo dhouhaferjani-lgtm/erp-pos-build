@@ -22,11 +22,12 @@ final class StockRebalanceQueryService
         }
 
         $products = DB::table('products')
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->whereNull('deleted_at')
-            ->orderBy('name')->orderBy('id')
-            ->get(['id', 'name', 'sku']);
+            ->leftJoin('units', 'units.id', '=', 'products.unit_id')
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.company_id', $companyId)
+            ->whereNull('products.deleted_at')
+            ->orderBy('products.name')->orderBy('products.id')
+            ->get(['products.id', 'products.name', 'products.sku', 'units.decimal_places']);
         $productIds = $products->pluck('id')->map(static fn (mixed $id): string => (string) $id)->all();
         if ($productIds === []) {
             return ['data' => []];
@@ -49,7 +50,13 @@ final class StockRebalanceQueryService
         }
         $names = [];
         foreach ($products as $product) {
-            $names[(string) $product->id] = ['name' => (string) $product->name, 'sku' => (string) $product->sku];
+            $names[(string) $product->id] = [
+                'name' => (string) $product->name,
+                'sku' => (string) $product->sku,
+                'quantity_decimals' => $product->decimal_places !== null
+                    ? (int) $product->decimal_places
+                    : QuantityScale::SCALE,
+            ];
         }
         $result = [];
         foreach ($groups as $group) {
@@ -98,7 +105,7 @@ final class StockRebalanceQueryService
                 }
             }
             $productId = $group['product_id'];
-            $result[] = ['product_id' => $productId, 'variant_id' => $group['variant_id'], 'name' => $names[$productId]['name'], 'sku' => $names[$productId]['sku'], 'deficits' => $deficits, 'surpluses' => $surpluses, '_severity' => $severity];
+            $result[] = ['product_id' => $productId, 'variant_id' => $group['variant_id'], 'name' => $names[$productId]['name'], 'sku' => $names[$productId]['sku'], 'quantity_decimals' => $names[$productId]['quantity_decimals'], 'deficits' => $deficits, 'surpluses' => $surpluses, '_severity' => $severity];
         }
         usort($result, fn (array $a, array $b): int => $this->compare($b['_severity'], $a['_severity']));
         foreach ($result as &$row) {
