@@ -37,6 +37,7 @@ export function useCustomerDisplaySync(): void {
           const displayItems: CartDisplayItem[] = items.map((item) => ({
             name: item.product.name,
             quantity: item.quantity,
+            quantity_decimals: item.product.quantity_decimals,
             line_total: item.line_total,
           }));
           const total = useCartStore.getState().total().toFixed(getCurrencyDecimals(currency));
