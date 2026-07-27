@@ -77,6 +77,7 @@ export interface WorkOrderLine {
   sku_or_code: string | null
   description: string | null
   quantity: string
+  quantity_decimals: number
   unit: string
   unit_price: string | null
   tax_rate: string | null

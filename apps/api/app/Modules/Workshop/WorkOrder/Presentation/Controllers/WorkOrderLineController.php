@@ -62,7 +62,7 @@ final class WorkOrderLineController extends Controller
         ));
 
         return response()->json([
-            'data' => WorkOrderLineData::fromModel($line)->toArray(),
+            'data' => WorkOrderLineData::fromModel($line->loadMissing('product.unitOfMeasure'))->toArray(),
         ], 201);
     }
 
@@ -84,7 +84,9 @@ final class WorkOrderLineController extends Controller
 
         return response()->json([
             'data' => array_map(
-                static fn ($l): array => WorkOrderLineData::fromModel($l)->toArray(),
+                static fn ($l): array => WorkOrderLineData::fromModel(
+                    $l->loadMissing('product.unitOfMeasure')
+                )->toArray(),
                 $lines,
             ),
         ], 201);
@@ -117,7 +119,7 @@ final class WorkOrderLineController extends Controller
         ));
 
         return response()->json([
-            'data' => WorkOrderLineData::fromModel($line)->toArray(),
+            'data' => WorkOrderLineData::fromModel($line->loadMissing('product.unitOfMeasure'))->toArray(),
         ]);
     }
 

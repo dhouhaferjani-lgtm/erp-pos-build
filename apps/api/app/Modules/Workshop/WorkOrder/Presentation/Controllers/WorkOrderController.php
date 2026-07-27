@@ -207,7 +207,7 @@ final class WorkOrderController extends Controller
      */
     private function serializeDetail(WorkOrder $wo, bool $canViewFinancials): array
     {
-        $wo->loadMissing(['lines', 'assignments', 'statusTransitions', 'customer', 'vehicle', 'primaryTechnician.user']);
+        $wo->loadMissing(['lines.product.unitOfMeasure', 'assignments', 'statusTransitions', 'customer', 'vehicle', 'primaryTechnician.user']);
 
         $payload = WorkOrderData::fromModel($wo)->toArray();
 

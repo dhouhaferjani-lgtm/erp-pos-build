@@ -2520,6 +2520,7 @@ display_name: string;
 sku_or_code: string | null;
 description: string | null;
 quantity: string;
+quantity_decimals: number;
 unit: string;
 unit_price: string;
 tax_rate: string;
