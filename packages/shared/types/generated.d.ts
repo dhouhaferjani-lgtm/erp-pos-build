@@ -709,6 +709,8 @@ description: string;
 quantity: string;
 free_quantity: string;
 quantity_delivered: string;
+quantity_received: string;
+free_quantity_received: string;
 unit_price: string;
 discount_percent: string | null;
 discount_amount: string | null;

@@ -16,6 +16,8 @@ final class DocumentLineDataTest extends TestCase
             'quantity' => '0.1250',
             'free_quantity' => '1.5000',
             'quantity_delivered' => '2.5000',
+            'quantity_received' => '3.2500',
+            'free_quantity_received' => '0.7500',
             'unit_price' => '12.345',
             'discount_amount' => '1.234',
             'line_total' => '11.111',
@@ -24,18 +26,24 @@ final class DocumentLineDataTest extends TestCase
         self::assertSame('0.1250', $data->quantity);
         self::assertSame('1.5000', $data->free_quantity);
         self::assertSame('2.5000', $data->quantity_delivered);
+        self::assertSame('3.2500', $data->quantity_received);
+        self::assertSame('0.7500', $data->free_quantity_received);
         self::assertSame('12.34', $data->unit_price);
         self::assertSame('1.23', $data->discount_amount);
         self::assertSame('11.11', $data->line_total);
     }
 
-    public function test_missing_delivered_quantity_defaults_to_canonical_zero(): void
+    public function test_missing_quantity_counters_default_to_canonical_zero(): void
     {
         $data = DocumentLineData::fromModel($this->line([
             'quantity_delivered' => null,
+            'quantity_received' => null,
+            'free_quantity_received' => null,
         ]), 2);
 
         self::assertSame('0.0000', $data->quantity_delivered);
+        self::assertSame('0.0000', $data->quantity_received);
+        self::assertSame('0.0000', $data->free_quantity_received);
     }
 
     /**
@@ -53,6 +61,8 @@ final class DocumentLineDataTest extends TestCase
             'quantity' => '1.0000',
             'free_quantity' => '0.0000',
             'quantity_delivered' => '0.0000',
+            'quantity_received' => '0.0000',
+            'free_quantity_received' => '0.0000',
             'unit_price' => '10.000',
             'discount_percent' => null,
             'discount_amount' => null,

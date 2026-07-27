@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,8 +24,8 @@ vi.mock('@/components/organisms/Modal', () => ({
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: mockHasPermission }),
 }))
-vi.mock('@/features/locations/hooks/useLocations', () => ({
-  useLocations: () => ({ data: [{ id: 'location-a', name: 'Main store', isActive: true, isDefault: true }] }),
+vi.mock('@/features/locations/hooks/useTransactionLocations', () => ({
+  useTransactionLocations: () => ({ data: [{ id: 'location-a', name: 'Main store', isActive: true, isDefault: true }] }),
 }))
 
 describe('ReceiveGoodsDialog', () => {
@@ -184,5 +184,53 @@ describe('ReceiveGoodsDialog', () => {
       <ReceiveGoodsDialog isOpen={true} isLoading={false} onClose={vi.fn()} onConfirm={vi.fn()} purchaseOrder={minimalPo} />,
     )
     expect(mockHasPermission).toHaveBeenCalledWith('goods-receipt.edit-price')
+  })
+
+  it('prefills and caps a reopened partial receipt at the paid and free quantities remaining', async () => {
+    const baseProps = {
+      isLoading: false,
+      onClose: vi.fn(),
+      onConfirm: vi.fn(),
+    }
+    const initialOrder = {
+      lines: [
+        {
+          id: 'line-1',
+          product_name: 'Serum Retinol',
+          description: 'Serum Retinol',
+          quantity: '5.0000',
+          quantity_received: '0.0000',
+          free_quantity: '2.0000',
+          free_quantity_received: '0.0000',
+          quantity_decimals: 4,
+          unit_price: '5.000',
+        },
+      ],
+    }
+    const partiallyReceivedOrder = {
+      lines: [
+        {
+          ...initialOrder.lines[0],
+          quantity_received: '2.0000',
+          free_quantity_received: '0.5000',
+        },
+      ],
+    }
+    const { rerender } = render(
+      <ReceiveGoodsDialog {...baseProps} isOpen={true} purchaseOrder={initialOrder} />,
+    )
+
+    rerender(<ReceiveGoodsDialog {...baseProps} isOpen={false} purchaseOrder={partiallyReceivedOrder} />)
+    rerender(<ReceiveGoodsDialog {...baseProps} isOpen={true} purchaseOrder={partiallyReceivedOrder} />)
+
+    const paidInput = screen.getByLabelText('purchaseOrders.receive.quantity Serum Retinol')
+    const freeInput = screen.getByLabelText('purchaseOrders.receive.freeQuantity Serum Retinol')
+
+    await waitFor(() => {
+      expect(paidInput).toHaveAttribute('value', '3.0000')
+      expect(freeInput).toHaveAttribute('value', '1.5000')
+    })
+    expect(paidInput).toHaveAttribute('max', '3.0000')
+    expect(freeInput).toHaveAttribute('max', '1.5000')
   })
 })

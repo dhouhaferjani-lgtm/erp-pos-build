@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -218,6 +219,15 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ])->assertStatus(201);
 
         $purchaseOrderId = $create->json('data.id');
+        DocumentLine::query()
+            ->where('document_id', $purchaseOrderId)
+            ->firstOrFail()
+            ->forceFill([
+                'quantity_received' => '1.2500',
+                'free_quantity' => '2.0000',
+                'free_quantity_received' => '0.5000',
+            ])
+            ->save();
 
         $index = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/purchase-orders?per_page=100')
@@ -227,6 +237,8 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
 
         $this->assertIsArray($purchaseOrder);
         $this->assertSame('2.5000', $purchaseOrder['lines'][0]['quantity']);
+        $this->assertSame('1.2500', $purchaseOrder['lines'][0]['quantity_received']);
+        $this->assertSame('0.5000', $purchaseOrder['lines'][0]['free_quantity_received']);
         $this->assertSame(3, $purchaseOrder['lines'][0]['quantity_decimals']);
     }
 }
