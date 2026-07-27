@@ -1,13 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { getProductStock } from '@/features/products/api/productStock'
-import { formatCurrency, formatQuantity } from '@/lib/format'
+import { formatCurrency } from '@/lib/format'
 import { useCurrency } from '@/hooks/useCurrency'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
-import { bccomp, bcmul } from '@/lib/decimal'
+import { bccomp, bcmul, formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { RequirePermission } from '@/components/auth'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable'
 import { Link } from 'react-router-dom'
@@ -100,10 +101,10 @@ export function ProductStockLevels({
 
   const locationColumns: DataTableColumn<(typeof locations)[number]>[] = [
     { key: 'location', header: t('stock.location'), render: (loc) => <span className={`whitespace-nowrap font-medium ${textColors.primary}`}>{loc.location_name}</span> },
-    { key: 'on-hand', header: t('stock.locationOnHand'), numeric: true, render: (loc) => formatQuantity(loc.quantity) },
-    { key: 'reserved', header: t('stock.locationReserved'), numeric: true, cellClassName: textColors.warningDark, render: (loc) => formatQuantity(loc.reserved) },
-    { key: 'available', header: t('stock.locationAvailable'), numeric: true, cellClassName: textColors.success, render: (loc) => formatQuantity(loc.available) },
-    { key: 'incoming', header: t('stock.locationIncoming'), numeric: true, cellClassName: textColors.brand, render: (loc) => formatQuantity(loc.incoming) },
+    { key: 'on-hand', header: t('stock.locationOnHand'), numeric: true, render: (loc) => formatQuantity(loc.quantity, getQuantityDecimals(loc)) },
+    { key: 'reserved', header: t('stock.locationReserved'), numeric: true, cellClassName: textColors.warningDark, render: (loc) => formatQuantity(loc.reserved, getQuantityDecimals(loc)) },
+    { key: 'available', header: t('stock.locationAvailable'), numeric: true, cellClassName: textColors.success, render: (loc) => formatQuantity(loc.available, getQuantityDecimals(loc)) },
+    { key: 'incoming', header: t('stock.locationIncoming'), numeric: true, cellClassName: textColors.brand, render: (loc) => formatQuantity(loc.incoming, getQuantityDecimals(loc)) },
     {
       key: 'thresholds',
       header: t('stock.thresholds'),
@@ -142,7 +143,7 @@ export function ProductStockLevels({
             </div>
             <div className={`mt-1 text-xs ${textColors.brand}`}>
               {/* eslint-disable-next-line local/no-untranslated-literal -- WAC is a canonical accounting acronym, not translatable prose */}
-              {formatQuantity(totals.quantity)} × {formatAmount(costPrice)} (WAC)
+              {formatQuantity(totals.quantity, getQuantityDecimals(totals))} × {formatAmount(costPrice)} (WAC)
             </div>
           </div>
         )}
@@ -153,7 +154,7 @@ export function ProductStockLevels({
               {t('stock.onHand')}
             </div>
             <div className={`mt-1 text-base font-semibold ${textColors.primary}`}>
-              {formatQuantity(totals.quantity)}
+              {formatQuantity(totals.quantity, getQuantityDecimals(totals))}
             </div>
           </div>
           <div>
@@ -161,7 +162,7 @@ export function ProductStockLevels({
               {t('stock.available')}
             </div>
             <div className={`mt-1 text-base font-semibold ${textColors.success}`}>
-              {formatQuantity(totals.available)}
+              {formatQuantity(totals.available, getQuantityDecimals(totals))}
             </div>
           </div>
         </div>
@@ -172,7 +173,7 @@ export function ProductStockLevels({
               {t('stock.reserved')}
             </div>
             <div className={`mt-1 text-base font-semibold ${textColors.warningDark}`}>
-              {formatQuantity(totals.reserved)}
+              {formatQuantity(totals.reserved, getQuantityDecimals(totals))}
             </div>
           </div>
           <div>
@@ -180,7 +181,7 @@ export function ProductStockLevels({
               {t('stock.incoming')}
             </div>
             <div className={`mt-1 text-base font-semibold ${textColors.brand}`}>
-              {formatQuantity(totals.incoming)}
+              {formatQuantity(totals.incoming, getQuantityDecimals(totals))}
             </div>
           </div>
         </div>
@@ -190,7 +191,7 @@ export function ProductStockLevels({
             {t('stock.projectedAvailable')}
           </div>
           <div className={`mt-1 text-base font-semibold ${textColors.primary}`}>
-            {formatQuantity(totals.projected_available)}
+            {formatQuantity(totals.projected_available, getQuantityDecimals(totals))}
           </div>
         </div>
       </div>

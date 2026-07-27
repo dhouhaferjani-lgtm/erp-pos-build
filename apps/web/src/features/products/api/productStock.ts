@@ -5,6 +5,7 @@ export interface StockLocation {
   location_id: string
   location_name: string
   quantity: string
+  quantity_decimals: number
   reserved: string
   available: string
   incoming: string
@@ -16,6 +17,7 @@ export interface StockLocation {
 
 export interface StockTotals {
   quantity: string
+  quantity_decimals: number
   reserved: string
   available: string
   incoming: string

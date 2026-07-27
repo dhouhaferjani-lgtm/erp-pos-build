@@ -9,7 +9,6 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
-use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
@@ -43,6 +42,7 @@ use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
+use App\Shared\Domain\QuantityScale;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Carbon\Carbon;
@@ -975,6 +975,7 @@ class ProductController extends Controller
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('id', $product)
+            ->with('unitOfMeasure')
             ->first();
 
         if (! $productModel) {
@@ -1004,11 +1005,11 @@ class ProductController extends Controller
             ->where('company_id', $companyId)
             ->where('product_id', $productModel->id)
             ->when($variantFilter !== null, fn ($q) => $q->where('variant_id', $variantFilter))
-            ->with('location')
+            ->with(['location', 'product.unitOfMeasure'])
             ->get();
 
         // Calculate incoming stock from confirmed purchase orders
-        $incomingByLocation = DocumentLine::query()
+        $incomingByLocation = DB::table('document_lines')
             ->join('documents', 'document_lines.document_id', '=', 'documents.id')
             ->where('documents.type', DocumentType::PurchaseOrder)
             ->where('documents.status', DocumentStatus::Confirmed)
@@ -1030,18 +1031,32 @@ class ProductController extends Controller
             return StockLevelData::fromModel($level, (string) $incoming);
         });
 
-        // Calculate totals
-        $totalQuantity = $stockLevels->sum('quantity');
-        $totalReserved = $stockLevels->sum('reserved');
-        /** @var numeric-string $totalQtyStr */
-        $totalQtyStr = (string) $totalQuantity;
-        /** @var numeric-string $totalResStr */
-        $totalResStr = (string) $totalReserved;
-        $totalAvailable = bcsub($totalQtyStr, $totalResStr, 2);
-        $totalIncoming = $incomingByLocation->sum('incoming');
-        /** @var numeric-string $totalIncStr */
-        $totalIncStr = (string) $totalIncoming;
-        $totalProjectedAvailable = bcadd($totalAvailable, $totalIncStr, 2);
+        // Aggregate canonical quantity strings without allowing Collection::sum
+        // to coerce them through PHP numeric types.
+        $zeroQuantity = QuantityScale::formatForUnit('0', null);
+        /** @var numeric-string $totalQuantity */
+        $totalQuantity = $zeroQuantity;
+        /** @var numeric-string $totalReserved */
+        $totalReserved = $zeroQuantity;
+        foreach ($stockLevels as $level) {
+            /** @var numeric-string $quantity */
+            $quantity = (string) $level->quantity;
+            /** @var numeric-string $reserved */
+            $reserved = (string) $level->reserved;
+            $totalQuantity = bcadd($totalQuantity, $quantity, QuantityScale::SCALE);
+            $totalReserved = bcadd($totalReserved, $reserved, QuantityScale::SCALE);
+        }
+        $totalAvailable = bcsub($totalQuantity, $totalReserved, QuantityScale::SCALE);
+
+        /** @var numeric-string $totalIncoming */
+        $totalIncoming = $zeroQuantity;
+        foreach ($incomingByLocation as $incomingRow) {
+            /** @var numeric-string $incoming */
+            $incoming = (string) $incomingRow->incoming;
+            $totalIncoming = bcadd($totalIncoming, $incoming, QuantityScale::SCALE);
+        }
+        $totalProjectedAvailable = bcadd($totalAvailable, $totalIncoming, QuantityScale::SCALE);
+        $quantityDecimals = $productModel->unitOfMeasure->decimal_places ?? QuantityScale::SCALE;
 
         return response()->json([
             'data' => [
@@ -1052,6 +1067,7 @@ class ProductController extends Controller
                     'available' => $totalAvailable,
                     'incoming' => (string) $totalIncoming,
                     'projected_available' => $totalProjectedAvailable,
+                    'quantity_decimals' => $quantityDecimals,
                 ],
             ],
             'meta' => [

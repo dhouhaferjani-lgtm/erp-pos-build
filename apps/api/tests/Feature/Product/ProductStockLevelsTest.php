@@ -23,6 +23,8 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -174,6 +176,54 @@ class ProductStockLevelsTest extends TestCase
 
         // Assert locations count
         $this->assertCount(2, $data['locations']);
+    }
+
+    /** @test */
+    public function it_returns_unit_precision_and_canonical_scale_four_totals(): void
+    {
+        $category = UnitCategory::factory()->create([
+            'tenant_id' => null,
+            'code' => 'product-stock-weight',
+            'name' => 'Product Stock Weight',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'product-stock-kg',
+            'name' => 'Product Stock Kilogram',
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location1->id,
+            'quantity' => '2.5000',
+            'reserved' => '0.2500',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/products/{$product->id}/stock-levels");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.locations.0.quantity', '2.5000');
+        $response->assertJsonPath('data.locations.0.quantity_decimals', 3);
+        $response->assertJsonPath('data.totals.quantity', '2.5000');
+        $response->assertJsonPath('data.totals.reserved', '0.2500');
+        $response->assertJsonPath('data.totals.available', '2.2500');
+        $response->assertJsonPath('data.totals.incoming', '0.0000');
+        $response->assertJsonPath('data.totals.projected_available', '2.2500');
+        $response->assertJsonPath('data.totals.quantity_decimals', 3);
     }
 
     /** @test */
