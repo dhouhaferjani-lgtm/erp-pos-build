@@ -7,8 +7,6 @@
   "apps/web/src/features/catalog/components/RecipeLineEditor.tsx:line.quantity",
   "apps/web/src/features/documents/components/DocumentLineEditor.tsx:line.quantity",
   "apps/web/src/features/inventory/StockLevelsPage.tsx:selectedStock.quantity",
-  "apps/web/src/features/inventory/StockMovementsPage.tsx:movement.quantity",
-  "apps/web/src/features/inventory/components/ProductMovementsTab.tsx:movement.quantity",
   "apps/web/src/features/inventory/components/ProductStockLevels.tsx:totals.quantity",
   "apps/web/src/features/inventory/components/RebalancingView.tsx:move.quantity",
   "apps/web/src/features/opening-balances/components/BatchPreview.tsx:line.quantity",

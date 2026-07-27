@@ -72,6 +72,7 @@ const mockMovements = [
     location_name: 'Warehouse A',
     movement_type: 'receipt',
     quantity: '10',
+    quantity_decimals: 3,
     quantity_before: '0',
     quantity_after: '10',
     reference: 'PO-2024-001',
@@ -90,6 +91,7 @@ const mockMovements = [
     location_name: 'Warehouse B',
     movement_type: 'issue',
     quantity: '-5',
+    quantity_decimals: 3,
     quantity_before: '10',
     quantity_after: '5',
     reference: 'INV-2024-001',
@@ -108,6 +110,7 @@ const mockMovements = [
     location_name: 'Warehouse A',
     movement_type: 'adjustment',
     quantity: '2',
+    quantity_decimals: 3,
     quantity_before: '5',
     quantity_after: '7',
     reference: 'ADJ-001',
@@ -176,7 +179,7 @@ describe('ProductMovementsTab', () => {
     })
 
     // Check that quantity data is present in the document
-    expect(document.body.textContent).toContain('-5')
+    expect(document.body.textContent).toContain('-5.000')
   })
 
   it('renders movement type badges correctly', async () => {
