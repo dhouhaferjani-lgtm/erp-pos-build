@@ -323,6 +323,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         sku: product.sku,
         price: priceValue,
         ...(product.sellableType ? { sellableType: product.sellableType } : {}),
+        quantity_decimals: product.quantity_decimals,
       };
       if (hasModifiers) {
         cartProduct.selectedModifiers = selectedModifiers;

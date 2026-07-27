@@ -251,6 +251,36 @@ final class StockTransferShowBatchAllocationsTest extends TestCase
             ->assertJsonPath('data.lines.0.quantity_decimals', 3);
     }
 
+    public function test_show_falls_back_to_scale_four_when_the_line_product_has_no_unit(): void
+    {
+        $product = $this->createProduct('PROD-NO-UNIT', requiresBatch: false);
+
+        $this->stockService->receive(
+            productId: $product->id,
+            locationId: $this->warehouse->id,
+            quantity: '5.0000',
+            reference: 'SEED-NO-UNIT',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+        );
+
+        $transfer = $this->service->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData(productId: $product->id, quantity: '2.5000'),
+            ],
+        ));
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/stock-transfers/{$transfer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.quantity_decimals', 4);
+    }
+
     private function createProduct(string $sku, bool $requiresBatch, ?Unit $unit = null): Product
     {
         return Product::create([

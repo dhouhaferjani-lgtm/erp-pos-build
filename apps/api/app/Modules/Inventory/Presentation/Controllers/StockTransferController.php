@@ -321,7 +321,7 @@ class StockTransferController extends Controller
                     'variant_sku' => $line->variant->sku ?? null,
                     'variant_name' => $line->variant->name_suffix ?? null,
                     'quantity' => $line->quantity,
-                    'quantity_decimals' => $lineProduct?->unitOfMeasure?->decimal_places,
+                    'quantity_decimals' => $lineProduct?->unitOfMeasure?->decimal_places ?? 4,
                     'unit_cost_snapshot' => $line->unit_cost_snapshot,
                     'allocated_transfer_cost' => $line->allocated_transfer_cost,
                     'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [

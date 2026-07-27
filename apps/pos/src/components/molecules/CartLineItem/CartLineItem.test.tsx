@@ -21,6 +21,23 @@ const baseItem: CartItem = {
 } as unknown as CartItem;
 
 describe('CartLineItem collapse/expand', () => {
+  it('formats a fractional quantity at the product unit precision in the cart line', () => {
+    const { getByText } = render(
+      <CartLineItem
+        item={{
+          ...baseItem,
+          quantity: 1.5,
+          product: { ...baseItem.product, quantity_decimals: 2 },
+        } as CartItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(getByText('×1.50')).toBeTruthy();
+    expect(getByText('1.50')).toBeTruthy();
+  });
+
   it('collapses by default when onToggleExpand is provided (no qty stepper visible)', () => {
     const { getByTestId, queryByLabelText } = render(
       <CartLineItem
