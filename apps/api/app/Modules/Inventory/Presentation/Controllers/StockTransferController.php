@@ -309,28 +309,32 @@ class StockTransferController extends Controller
         ];
 
         if ($includeLines) {
-            $payload['lines'] = $transfer->lines->map(fn ($line) => [
-                'id' => $line->id,
-                'product_id' => $line->product_id,
-                'product_name' => $line->product->name ?? null,
-                'product_sku' => $line->product->sku ?? null,
-                'variant_id' => $line->variant_id,
-                'variant_sku' => $line->variant->sku ?? null,
-                'variant_name' => $line->variant->name_suffix ?? null,
-                'quantity' => $line->quantity,
-                'quantity_decimals' => $line->product?->unitOfMeasure?->decimal_places,
-                'unit_cost_snapshot' => $line->unit_cost_snapshot,
-                'allocated_transfer_cost' => $line->allocated_transfer_cost,
-                'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
-                    'id' => $allocation->id,
-                    'batch_id' => $allocation->batch_id,
-                    'batch_number' => $allocation->batch->batch_number,
-                    'expiry_date' => $allocation->batch->expiry_date->toDateString(),
-                    'expiry_status' => $allocation->batch->expiryStatus()->value,
-                    'can_be_sold' => $allocation->batch->canBeSold(),
-                    'quantity' => $allocation->quantity,
-                ])->all(),
-            ])->all();
+            $payload['lines'] = $transfer->lines->map(function ($line): array {
+                $lineProduct = $line->relationLoaded('product') ? $line->product : null;
+
+                return [
+                    'id' => $line->id,
+                    'product_id' => $line->product_id,
+                    'product_name' => $lineProduct?->name,
+                    'product_sku' => $lineProduct?->sku,
+                    'variant_id' => $line->variant_id,
+                    'variant_sku' => $line->variant->sku ?? null,
+                    'variant_name' => $line->variant->name_suffix ?? null,
+                    'quantity' => $line->quantity,
+                    'quantity_decimals' => $lineProduct?->unitOfMeasure?->decimal_places,
+                    'unit_cost_snapshot' => $line->unit_cost_snapshot,
+                    'allocated_transfer_cost' => $line->allocated_transfer_cost,
+                    'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
+                        'id' => $allocation->id,
+                        'batch_id' => $allocation->batch_id,
+                        'batch_number' => $allocation->batch->batch_number,
+                        'expiry_date' => $allocation->batch->expiry_date->toDateString(),
+                        'expiry_status' => $allocation->batch->expiryStatus()->value,
+                        'can_be_sold' => $allocation->batch->canBeSold(),
+                        'quantity' => $allocation->quantity,
+                    ])->all(),
+                ];
+            })->all();
         }
 
         return $payload;

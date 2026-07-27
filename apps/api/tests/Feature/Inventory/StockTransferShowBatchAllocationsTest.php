@@ -285,6 +285,9 @@ final class StockTransferShowBatchAllocationsTest extends TestCase
         return $batch;
     }
 
+    /**
+     * @param  numeric-string  $quantity
+     */
     private function seedBatchStock(Product $product, Batch $batch, string $quantity): void
     {
         $this->stockService->receive(

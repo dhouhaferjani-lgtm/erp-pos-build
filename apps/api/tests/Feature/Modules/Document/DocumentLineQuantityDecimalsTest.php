@@ -152,7 +152,9 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ->getJson("/api/v1/invoices/{$invoiceId}")
             ->assertOk();
 
-        $lines = collect($show->json('data.lines'));
+        $lineRows = $show->json('data.lines');
+        $this->assertIsArray($lineRows);
+        $lines = collect($lineRows);
 
         $this->assertSame(0, $lines->firstWhere('product_id', $piecesProduct->id)['quantity_decimals']);
         $this->assertSame(3, $lines->firstWhere('product_id', $kgProduct->id)['quantity_decimals']);
@@ -191,7 +193,9 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ->getJson("/api/v1/purchase-orders/{$purchaseOrderId}")
             ->assertOk();
 
-        $line = collect($show->json('data.lines'))->firstWhere('product_id', $product->id);
+        $lineRows = $show->json('data.lines');
+        $this->assertIsArray($lineRows);
+        $line = collect($lineRows)->firstWhere('product_id', $product->id);
 
         $this->assertIsArray($line);
         $this->assertTrue($line['requires_batch_tracking']);
@@ -233,7 +237,9 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ->getJson('/api/v1/purchase-orders?per_page=100')
             ->assertOk();
 
-        $purchaseOrder = collect($index->json('data'))->firstWhere('id', $purchaseOrderId);
+        $purchaseOrderRows = $index->json('data');
+        $this->assertIsArray($purchaseOrderRows);
+        $purchaseOrder = collect($purchaseOrderRows)->firstWhere('id', $purchaseOrderId);
 
         $this->assertIsArray($purchaseOrder);
         $this->assertSame('2.5000', $purchaseOrder['lines'][0]['quantity']);
