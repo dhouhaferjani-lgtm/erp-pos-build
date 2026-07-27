@@ -171,6 +171,10 @@ routes:
     component: ExpenseDetailPage
     module_gate: null
     permission: expenses.view
+  - path: /expenses/analytics
+    component: ExpenseAnalyticsPage
+    module_gate: null
+    permission: expenses.view
   - path: /expenses/categories
     component: ExpenseCategoryPage
     module_gate: null
@@ -179,6 +183,10 @@ routes:
     component: ExpenseFormPage
     module_gate: null
     permission: expenses.create
+  - path: /expenses/recurring
+    component: RecurringExpensesPage
+    module_gate: null
+    permission: expense-recurrences.view
   - path: /finance
     component: FinanceHubPage
     module_gate: finance
@@ -343,6 +351,10 @@ routes:
     component: StockMovementsPage
     module_gate: inventory
     permission: null
+  - path: /inventory/placement
+    component: PlacementPage
+    module_gate: null
+    permission: inventory.view
   - path: /inventory/products
     component: ProductListPage
     module_gate: inventory
@@ -383,6 +395,10 @@ routes:
     component: StockLevelsPage
     module_gate: inventory
     permission: null
+  - path: /inventory/stock-by-location
+    component: StockByLocationPage
+    module_gate: null
+    permission: inventory.view
   - path: /inventory/stock-transfers
     component: StockTransferListPage
     module_gate: null
