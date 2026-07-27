@@ -1,0 +1,49 @@
+# POS Cash Rounding + Tender Tolerance — Spec Review Round 1 (vs Rev 1, commit 4383df560)
+
+**Date:** 2026-07-27
+**Lanes:** treasury-reviewer (Opus) — REJECT; fiscal-pos-reviewer (Opus) — REJECT; Codex (gpt session 019fa398-212b-7373-9308-f8e853ca69b8, 16m) — REJECT.
+**Outcome:** Rev 2 required. Both lanes verified ~85-95% of Rev 1's citations as accurate and confirmed the change-netting defect is REAL and the GL arithmetic correct — the rejects are about design shape, not the fact base.
+
+## Consolidated blocker list (drives Rev 2)
+
+- **T1 (treasury BLOCKER):** change-netting throws `IdempotencyConflictException` on replay of already-projected over-tender receipts (`TreasuryMovementService.php:74-76,559-575`); pre-cutover replays would also double-post new entries. → Rev 2: gate netting + new GL entries on **event_version 3** (payload-derived cutover, replay-deterministic); v1/v2 replay byte-identical; historical drift ticketed with quantification report.
+- **T2 (treasury BLOCKER):** zero-netted legs violate pgsql-only `CHECK (amount > 0)` on `repository_movements` (migration 2026_07_08_100100:53-57); invisible on SQLite. → suppress zero legs entirely (no Payment/GL/movement), document ordinal holes, PG-run regression tests.
+- **T3 (treasury BLOCKER):** tolerance GL entry activates on server deploy alone (PIN under-tender receipts exist today) → brownfield missing 6580 ⇒ whole-receipt projection outage. → v3-gating (T1) + `hasAccountForPurpose` precheck degrade-with-durable-alert + self-guarding artisan purpose-backfill command IN SCOPE (model: `BackfillPayableInstrumentAccountsCommand`) as server-release gate; config flip decoupled from auto-deployed migration.
+- **T4 (treasury BLOCKER) / F-M6:** canonical `tolerance_writeoff` writes break Z-report hash parity — device hardcodes `tolerance_summary` zero-shape (`zReportService.ts:323-337` TODO names this feature); server builds it live. → device Z tolerance + rounding aggregation IN SCOPE (prerequisite, not optional).
+- **F-B1 (fiscal BLOCKER, most severe):** unbounded signed `cash_rounding_adjustment` turns the aggregate identity into a free parameter — revenue suppression signs clean (e.g. total=5.000, adj=-95.000 on a 100 TND sale, auto-booked to 6580). → static validator magnitude cap per scale + projection-time policy reconciliation (`|adj| ≤ D/2` and recompute check) with post-and-flag stance + explicit rejection test.
+- **F-B2 (fiscal BLOCKER):** `pos_receipts` has no `shift_id`; projection has no shift lock pattern; `pos_shifts` aggregates unimplementable as written. → drop shift aggregates; derive per-shift rounding via time-window query (tolerance precedent).
+- **F-B3 (fiscal BLOCKER) / T-10:** top-level key-set version branching touches `validatePayloadKeySet` (version-blind, public) + 4 call sites (`StrictCanonicalParser:226`, `ParseFailureResolutionService:312` — quarantine-repair path would REJECT corrected v3 payloads, `TerminalRegistrySnapshotService:312`, `VirtualAdminFiscalEventService:353`) + `BestEffortPayloadParser:79,96,153` reads the const directly. → signature `int $eventVersion = 1`, `payloadKeysFor()` accessor, named `SALE_RECEIPT_PAYLOAD_KEYS_V3` const, all six touchpoints enumerated.
+- **F-B4 (fiscal BLOCKER):** pre-sign assert does NOT prove display-vs-payload consistency; `estimateCartTotal` vs `receiptService` compute exact_total at different intermediate scales — 1 ulp across a tie boundary flips the payable by a full coin. → single-source exact_total + displayed-rounded-total threaded into `createOfflineReceipt` and bccomp-asserted before `engine.append()`; convert `total: number` props to decimal strings (M10).
+- **F-B5 (fiscal BLOCKER) / T-9:** `gross ≠ net + vat` breaks in device Z (`zReportService.ts:768-786`), server Z/X (`ReportGenerationService.php:953-971`), NF525 `GrandtotalService.php:139`. → per-aggregator design: gross = rounded payable + explicit `cash_rounding_summary` line so `gross = net + vat + rounding` holds; report_data schema bump; `ZReportHashService` normalization; drop the "no Z_REPORT change" non-goal.
+
+## Major findings folded into Rev 2
+
+- **T5/F-M5:** worked example fails seeded TN tolerance (0.5% × 9.950 = 0.0498 < 0.050) — sub-10-TND single-coin shortfalls stay PIN-gated; → tolerance floor tied to denomination proposed, escalated to §8 owner decision; example fixed.
+- **T6/F-M15:** `getToleranceSettings` defaults **enabled** (0.5%/0.50 currency-blind) — resolver must fail CLOSED (explicit country row required); chain named (country-row-only in v1).
+- **T7:** `MEAL_VOUCHER` seeded `is_physical=true, has_maturity=false` — matches the cash predicate. → new `payment_methods.is_cash_tender` boolean (seeded/backfilled for CASH codes), single rule shared device+server; voucherTenders union caveat (F-edge-3).
+- **T8:** partial unique index on legacy-populated `pos_payment_tolerance` fails `tenants:migrate` on tenants with existing duplicates → bridge-authored entries use NEW source_types; indexes cover new types only; legacy/bridge disjointness asserted (fiscal_event_id null vs set).
+- **T11:** TN backfill UPDATE-only silently no-ops when no TN row → upsert.
+- **F-M7:** V1 builder is immutable by convention (`SaleReceiptV2Payload.ts:6-8`) → new `SaleReceiptV3Payload.ts` delegating to V2.
+- **F-M8:** `FiscalPayloadKeyDrift.test.ts` regex/hardcoded-28 cannot survive branching → named const + rewritten gate (29 keys).
+- **F-M9:** device `FiscalEventPayloadRegistry.ts:162-174` hardcodes SALE_RECEIPT → 2; missing this = 100% quarantine. PHP authoring bump is inert (no server path authors SALE_RECEIPT).
+- **F-M11:** signed regex broken at scale 0; canonical zero is scale-dependent → `signedMoneyRegex($scale)` two-branch; zero via `bcformatStrict('0', $scale)`.
+- **F-M12:** server Z expected-cash path is RETIRED for fiscal_schema_version ≥ 3 terminals (`assertServerReportAuthoringAllowed`) — change_due projection justified by `ReceiptPdfService.php:134-135` instead.
+- **F-M13/T17:** loyalty earn base becomes rounded total (`PosCoreReceiptProjection.php:893`) → decision: earn on `total − adj` (rounding-neutral), pinned by test.
+- **F-M14:** Treasury `payments.amount` (netted) vs `pos_receipt_payments.amount` (tendered) two-semantics rule documented; `ReceiptVoidService.php:246-268` audited + void-of-rounded-receipt test.
+- **F-M16:** live refund flow pays out untenderable exact amounts for rounded sales day 1 → escalated to §8 owner decision with minimal v1 remedy.
+- **T12-20/F-m17-21 minors:** citation corrections (decimal.ts:14; FiscalEventEngine.ts:1032/1397; Canonical/LineItemDTO; 7580 at :277-278; PaymentToleranceQueryService method lines; Shift.php:162-171 + hardcoded scale-3 warning), JournalCode explicit OD decision, `'string'` cast for denomination, fraud-settings auth description corrected (no terminal auth; sanctum+company-context), third `'CASH'` string match at `ReportGenerationService.php:513` noted as dependency, `CashTenderedModal.tsx` dead-code note.
+
+## Codex lane — additional findings (beyond the Opus overlap)
+
+- **C1 (High):** training receipts are NOT excluded from GL today — `TreasuryReceiptBridge` never checks `training_flag` (only loyalty guards it, `PosCoreReceiptProjection.php:878-880`). Rev 1's "excluded exactly as today" claim retracted; new entries training-guarded; wholesale fix ticketed as discovered defect.
+- **C2 (Critical, extends F-B1):** signed adjustment must be verifiable against the policy that authored it, including stale-offline events → Rev 2 signs `cash_rounding_denomination` INSIDE the payload (validator binds `|adj| ≤ D/2`, `total ≡ 0 mod D`, static denom cap) + projection-time policy reconciliation flag. Full policy-revision pinning deferred (ticket).
+- **C5 (High):** device can sign card-only over-tender; change-netting assumed "change only from cash" → new device invariant `change ≤ Σ cash legs` (reject pre-sign) + server alert path.
+- **C6/C15 (High):** no historical correction path; projection retries ~21 min then dead-letter → v3-gating + forward-only stance + quantification-report ticket; two-phase deploy.
+- **C10 (High):** no projection barrier before Z/shift close → signed device Z summary made authoritative; server never mutates closed-shift figures; no server shift aggregates.
+- **C11/C12 (High):** local receipt mirror (`offline_receipts`), device print paths, server PDF template, NF525 export all consume `total` with no adjustment field → all brought into scope (§4.3/§4.5 Rev 2).
+- **C13 (Medium):** consumer-semantics matrix added (drawer/Z/NF525 = rounded; revenue/loyalty = exact; VAT untouched; analytics rounded-in-v1 documented). Verified NOT total-dependent: voucher redemption, gift cards, QR token, FEC exporter.
+- **C17 (Medium):** `docs/factory/WORKFLOW.md:217-220` contradicts the owner-confirmed push-to-dev auto-migrate contract → design made safe in both orders; doc reconciliation ticketed.
+
+## Full lane verdicts
+
+The complete lane reviews (all findings, code evidence, and fix prescriptions) are preserved in the session transcript of 2026-07-27 and materially reproduced above; Rev 2 (same spec file, header updated) addresses every BLOCKER and MAJOR. Re-review of Rev 2 by both lanes is required before the owner gate.
