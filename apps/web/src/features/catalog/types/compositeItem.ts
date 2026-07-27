@@ -116,6 +116,7 @@ export interface RecipeCostData {
   lines: Array<{
     component_name: string
     quantity: string
+    quantity_decimals: number
     unit_cost: string
     line_cost: string
     percent_of_total: string

@@ -11,6 +11,7 @@ use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 
 final class RecipeCostCalculationService
 {
@@ -22,7 +23,11 @@ final class RecipeCostCalculationService
      */
     public function calculate(Recipe $recipe): RecipeCostData
     {
-        $recipe->loadMissing('lines.product', 'lines.compositeItemComponent.activeRecipe.lines');
+        $recipe->loadMissing(
+            'lines.unit',
+            'lines.product.unitOfMeasure',
+            'lines.compositeItemComponent.activeRecipe.lines'
+        );
 
         $totalCost = '0';
         $costLines = [];
@@ -54,6 +59,7 @@ final class RecipeCostCalculationService
             $costLines[] = [
                 'component_name' => $componentName,
                 'quantity' => (string) $line->quantity,
+                'quantity_decimals' => $this->resolveQuantityDecimals($line),
                 'unit_cost' => $unitCost,
                 'line_cost' => $lineCost,
                 'percent_of_total' => '0', // calculated below
@@ -148,5 +154,19 @@ final class RecipeCostCalculationService
         }
 
         return $line->product->name ?? 'Unknown';
+    }
+
+    private function resolveQuantityDecimals(RecipeLine $line): int
+    {
+        if ($line->unit !== null) {
+            return $line->unit->decimal_places;
+        }
+
+        $product = $line->product;
+        if ($product === null || $product->unitOfMeasure === null) {
+            return QuantityScale::SCALE;
+        }
+
+        return $product->unitOfMeasure->decimal_places;
     }
 }
