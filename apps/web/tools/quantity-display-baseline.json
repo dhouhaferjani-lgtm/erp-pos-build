@@ -15,7 +15,6 @@
   "apps/web/src/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx:item.quantity",
   "apps/web/src/features/pos/organisms/Analytics/DiscountBreakdownChart.tsx:p.quantity",
   "apps/web/src/features/pos/organisms/ProductInfoModal/ProductInfoModal.tsx:stock.quantity",
-  "apps/web/src/features/purchases/GoodsReceiptListPage.tsx:line.quantity",
   "apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:line.quantity",
   "apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:allocation.quantity",
   "apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:line.quantity",

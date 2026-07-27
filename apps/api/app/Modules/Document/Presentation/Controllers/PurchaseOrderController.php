@@ -253,11 +253,15 @@ class PurchaseOrderController extends Controller
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
 
-        // Use cursor pagination with vehicleContext eager loaded
-        $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
+        // The goods-receipt list renders purchase-order line progress directly
+        // from this index payload. Eager-load the product unit chain so each
+        // serialized line carries its real quantity_decimals without N+1 reads.
+        $paginator = $query
+            ->with(['vehicleContext', 'lines.product.unitOfMeasure'])
+            ->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
 
         // Transform items
-        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, true, $this->scale()))->all();
 
         return response()->json([
             'data' => $items,

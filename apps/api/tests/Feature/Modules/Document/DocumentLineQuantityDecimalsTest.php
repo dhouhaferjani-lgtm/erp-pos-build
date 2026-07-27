@@ -195,4 +195,38 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
         $this->assertIsArray($line);
         $this->assertTrue($line['requires_batch_tracking']);
     }
+
+    #[Test]
+    public function purchase_order_index_returns_lines_with_per_unit_quantity_decimals(): void
+    {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Index Precision Supplier',
+            'type' => 'supplier',
+            'code' => 'QTYLINES-INDEX',
+        ]);
+        $product = $this->makeProduct('Index Weighed Product', $this->makeUnit('idx-kg', 3));
+
+        $create = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-orders', [
+                'partner_id' => $supplier->id,
+                'document_date' => now()->format('Y-m-d'),
+                'lines' => [
+                    ['product_id' => $product->id, 'description' => 'Index Weighed Product', 'quantity' => '2.5000', 'unit_price' => '8.500'],
+                ],
+            ])->assertStatus(201);
+
+        $purchaseOrderId = $create->json('data.id');
+
+        $index = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/purchase-orders?per_page=100')
+            ->assertOk();
+
+        $purchaseOrder = collect($index->json('data'))->firstWhere('id', $purchaseOrderId);
+
+        $this->assertIsArray($purchaseOrder);
+        $this->assertSame('2.5000', $purchaseOrder['lines'][0]['quantity']);
+        $this->assertSame(3, $purchaseOrder['lines'][0]['quantity_decimals']);
+    }
 }
