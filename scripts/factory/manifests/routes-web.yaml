@@ -955,10 +955,6 @@ routes:
     component: PaymentForm
     module_gate: null
     permission: treasury.create
-  - path: /treasury/reconciliation
-    component: BankReconciliationPage
-    module_gate: null
-    permission: repositories.view
   - path: /treasury/remittances
     component: RemittanceListPage
     module_gate: null
@@ -983,6 +979,14 @@ routes:
     component: SalesWithholdingTrackingPage
     module_gate: null
     permission: withholding.view
+  - path: /treasury/statements
+    component: StatementListPage
+    module_gate: treasury
+    permission: bank-statements.view
+  - path: /treasury/statements/:id
+    component: ReconciliationWorkspacePage
+    module_gate: treasury
+    permission: bank-statements.view
   - path: /treasury/withholding-certificates
     component: WithholdingCertificatesList
     module_gate: null
