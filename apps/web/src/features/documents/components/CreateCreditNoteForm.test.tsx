@@ -175,6 +175,29 @@ describe('CreateCreditNoteForm', () => {
     expect(screen.getByText('Remaining creditable: 1190.000')).toBeInTheDocument()
   })
 
+  it('displays source line quantities at the product unit precision', async () => {
+    const user = userEvent.setup()
+    const invoice = {
+      ...mockInvoice,
+      lines: [{
+        id: 'line-1',
+        product_id: 'product-1',
+        product_code: 'PCS-1',
+        description: 'Precision part',
+        quantity: 1,
+        quantity_decimals: 3,
+        unit_price: '10.000',
+        tax_rate: '0.00',
+        total: '10.000',
+      }],
+    }
+
+    renderWithProviders(<CreateCreditNoteForm invoice={invoice} />)
+    await user.click(screen.getByRole('button', { name: 'sales:creditNotes.form.lineBased' }))
+
+    expect(screen.getByText('1.000')).toBeInTheDocument()
+  })
+
   // The Save button is disabled until a reason is selected (post-Phase-4
   // behaviour), so Zod's "amount required" message never surfaces from a
   // plain click. Instead we check that the submit button is unclickable

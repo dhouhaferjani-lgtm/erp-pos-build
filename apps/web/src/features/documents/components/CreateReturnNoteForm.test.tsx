@@ -91,6 +91,23 @@ describe('CreateReturnNoteForm', () => {
       expect(screen.getByText('1500.00')).toBeInTheDocument()
     })
 
+    it('displays source line quantities at the product unit precision', async () => {
+      const user = userEvent.setup()
+      renderForm({
+        sourceDocument: makeSourceDocument({
+          lines: [{
+            ...makeSourceDocument().lines![0],
+            quantity: 1,
+            quantity_decimals: 3,
+          }],
+        }),
+      })
+
+      await user.click(screen.getByRole('button', { name: 'Partial Return' }))
+
+      expect(screen.getByText('1.000')).toBeInTheDocument()
+    })
+
     it('shows full return mode by default', () => {
       renderForm()
 

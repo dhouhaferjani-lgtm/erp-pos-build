@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Package, TrendingUp } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { formatCurrency } from '../../../lib/format'
+import { formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { bccomp } from '../../../lib/decimal'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -491,13 +493,19 @@ export function PurchaseOrderDetailPage() {
                     )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatQuantity(line.quantity)}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   {canShowReceiptStatus && (
                     <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
                       {t('purchaseOrders.receivedOfTotal', {
-                        received: formatQuantity(receiptLineById.get(line.id)?.quantity_received ?? line.quantity_received ?? '0'),
-                        total: formatQuantity(receiptLineById.get(line.id)?.quantity_ordered ?? line.quantity),
+                        received: formatQuantity(
+                          receiptLineById.get(line.id)?.quantity_received ?? line.quantity_received ?? '0',
+                          getQuantityDecimals(line),
+                        ),
+                        total: formatQuantity(
+                          receiptLineById.get(line.id)?.quantity_ordered ?? line.quantity,
+                          getQuantityDecimals(line),
+                        ),
                       })}
                     </td>
                   )}

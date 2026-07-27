@@ -20,6 +20,8 @@ import type { ReturnCondition } from './ReturnConditionSelect'
 import type { RefundMethod } from './RefundMethodSelect'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 // Return mode enum
 type ReturnMode = 'full' | 'partial'
@@ -49,6 +51,7 @@ interface SourceDocumentLine {
   product_name: string
   description: string
   quantity: number
+  quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
   total: string
@@ -319,7 +322,7 @@ export function CreateReturnNoteForm({
                         <div className={`${colorClasses.textGray500}`}>{line.description}</div>
                       </td>
                       <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
-                        {line.quantity}
+                        {formatQuantity(line.quantity, getQuantityDecimals(line))}
                       </td>
                       <td className="px-3 py-2 text-end">
                         {isSelected ? (

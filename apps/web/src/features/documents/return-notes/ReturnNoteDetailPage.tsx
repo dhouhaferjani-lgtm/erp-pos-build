@@ -6,8 +6,9 @@ import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, FileText, Car, RotateCcw } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
-import { bccomp } from '../../../lib/decimal'
+import { formatCurrency } from '../../../lib/format'
+import { bccomp, formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms/Modal/Modal'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -253,7 +254,7 @@ export function ReturnNoteDetailPage() {
                     )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatQuantity(line.quantity)}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
                     {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}

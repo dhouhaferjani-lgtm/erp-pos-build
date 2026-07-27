@@ -28,6 +28,8 @@ import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 const creditNoteSchema = z.object({
   partner_id: z.string().nullable().refine((value) => value !== null && value.trim() !== '', 'Partner is required'),
@@ -586,9 +588,13 @@ export function CreateCreditNotePage() {
                                   className={`w-20 rounded border ${colorClasses.borderGray300} px-2 py-1 text-end`}
                                 />
                               ) : (
-                                <span className={`${colorClasses.textGray500}`}>{line.quantity}</span>
+                                <span className={`${colorClasses.textGray500}`}>
+                                  {formatQuantity(line.quantity, getQuantityDecimals(line))}
+                                </span>
                               )}
-                              <span className={`${colorClasses.textGray400} ms-1`}>/ {line.quantity}</span>
+                              <span className={`${colorClasses.textGray400} ms-1`}>
+                                / {formatQuantity(line.quantity, getQuantityDecimals(line))}
+                              </span>
                             </td>
                             <td className={`px-3 py-4 text-end text-sm ${colorClasses.textGray900}`}>
                               {Number(line.unit_price).toFixed(decimals)}

@@ -186,8 +186,9 @@ function orderFixture() {
       {
         id: 'line-1',
         description: 'Service',
-        quantity: '1.00',
-        quantity_delivered: '0.00',
+        quantity: '1',
+        quantity_delivered: '0',
+        quantity_decimals: 3,
         unit_price: '150.00',
         line_total: '150.00',
         notes: null,
@@ -223,6 +224,13 @@ afterEach(() => {
 })
 
 describe('SalesOrderDetailPage tenant scope', () => {
+  it('displays ordered and delivered quantities at the product unit precision', async () => {
+    render(<SalesOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByText('1.000')).toBeInTheDocument()
+    expect(screen.getByText('0.000')).toBeInTheDocument()
+  })
+
   it('wraps sales order detail read key and gates missing tenant/company (.238)', async () => {
     const queryClient = createClient()
     render(<SalesOrderDetailPage />, { wrapper: wrapper(queryClient) })

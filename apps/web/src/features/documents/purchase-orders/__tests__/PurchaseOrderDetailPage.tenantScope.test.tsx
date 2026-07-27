@@ -180,7 +180,8 @@ function purchaseOrderFixture() {
         product_code: 'STK-001',
         product_barcode: '619000000001',
         primary_image_url: '/stock.png',
-        quantity: '5.00',
+        quantity: '5.0000',
+        quantity_decimals: 3,
         requires_batch_tracking: false,
         unit_price: '100.00',
         line_total: '100.00',
@@ -250,6 +251,13 @@ afterEach(() => {
 })
 
 describe('PurchaseOrderDetailPage tenant scope', () => {
+  it('displays ordered and received quantities at the product unit precision', async () => {
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect((await screen.findAllByText('5.000')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('0.000 of 5.000')).toBeInTheDocument()
+  })
+
   it('wraps purchase order detail read key and gates missing tenant/company (.221)', async () => {
     const queryClient = createClient()
     render(<PurchaseOrderDetailPage />, { wrapper: wrapper(queryClient) })
@@ -406,7 +414,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
 
     expect(await screen.findByText('purchaseOrders.receiptStatus.partially_received')).toBeInTheDocument()
-    expect(screen.getByText('4 of 10')).toBeInTheDocument()
+    expect(screen.getByText('4.000 of 10.000')).toBeInTheDocument()
     expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1/receipt-status')
   })
 
@@ -468,7 +476,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     await waitFor(() => {
       expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
         quantities: {
-          'line-1': '5.0000',
+          'line-1': '5.000',
         },
         batches: {
           'line-1': {
