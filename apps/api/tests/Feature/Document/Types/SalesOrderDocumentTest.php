@@ -213,4 +213,68 @@ class SalesOrderDocumentTest extends TestCase
         $response->assertStatus(201);
         $this->assertEquals('PO-12345', $response->json('data.reference'));
     }
+
+    public function test_sales_order_show_exposes_delivered_quantity(): void
+    {
+        $order = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'SO-2025-0002',
+            'document_date' => '2025-01-15',
+            'currency' => 'EUR',
+        ]);
+
+        $order->lines()->create([
+            'line_number' => 1,
+            'description' => 'Partially delivered product',
+            'quantity' => '3.0000',
+            'quantity_delivered' => '2.5000',
+            'unit_price' => '50.000',
+            'line_total' => '150.000',
+        ]);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.quantity_delivered', '2.5000');
+    }
+
+    public function test_eur_get_patch_round_trip_preserves_scale_four_quantity(): void
+    {
+        $order = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SO-2025-0003',
+            'document_date' => '2025-01-15',
+            'currency' => 'EUR',
+        ]);
+
+        $line = $order->lines()->create([
+            'line_number' => 1,
+            'description' => 'Fractional product',
+            'quantity' => '0.1250',
+            'unit_price' => '8.000',
+            'line_total' => '1.000',
+        ]);
+
+        $showResponse = $this->actingAs($this->user)
+            ->getJson("/api/v1/orders/{$order->id}");
+        $updateResponse = $this->actingAs($this->user)
+            ->patchJson("/api/v1/orders/{$order->id}", [
+                'notes' => 'Unrelated edit',
+            ]);
+
+        $showResponse->assertOk()
+            ->assertJsonPath('data.lines.0.quantity', '0.1250');
+        $updateResponse->assertOk()
+            ->assertJsonPath('data.notes', 'Unrelated edit')
+            ->assertJsonPath('data.lines.0.quantity', '0.1250');
+        self::assertSame('0.1250', $line->fresh()?->quantity);
+    }
 }

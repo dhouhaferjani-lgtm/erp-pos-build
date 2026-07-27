@@ -708,6 +708,7 @@ line_number: number;
 description: string;
 quantity: string;
 free_quantity: string;
+quantity_delivered: string;
 unit_price: string;
 discount_percent: string | null;
 discount_amount: string | null;

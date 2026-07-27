@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -185,9 +185,19 @@ function orderFixture() {
     lines: [
       {
         id: 'line-1',
-        description: 'Service',
-        quantity: '1',
-        quantity_delivered: '0',
+        description: 'Whole item',
+        quantity: '4.0000',
+        quantity_delivered: '3.0000',
+        quantity_decimals: 0,
+        unit_price: '150.00',
+        line_total: '150.00',
+        notes: null,
+      },
+      {
+        id: 'line-2',
+        description: 'Fractional item',
+        quantity: '3.1250',
+        quantity_delivered: '2.5000',
         quantity_decimals: 3,
         unit_price: '150.00',
         line_total: '150.00',
@@ -227,8 +237,17 @@ describe('SalesOrderDetailPage tenant scope', () => {
   it('displays ordered and delivered quantities at the product unit precision', async () => {
     render(<SalesOrderDetailPage />, { wrapper: wrapper(createClient()) })
 
-    expect(await screen.findByText('1.000')).toBeInTheDocument()
-    expect(screen.getByText('0.000')).toBeInTheDocument()
+    const wholeItemRow = (await screen.findByText('Whole item')).closest('tr')
+    const fractionalItemRow = screen.getByText('Fractional item').closest('tr')
+
+    if (wholeItemRow === null || fractionalItemRow === null) {
+      throw new Error('Expected both sales order line rows to render')
+    }
+
+    expect(within(wholeItemRow).getByText('4')).toBeInTheDocument()
+    expect(within(wholeItemRow).getByText('3')).toBeInTheDocument()
+    expect(within(fractionalItemRow).getByText('3.125')).toBeInTheDocument()
+    expect(within(fractionalItemRow).getByText('2.500')).toBeInTheDocument()
   })
 
   it('wraps sales order detail read key and gates missing tenant/company (.238)', async () => {

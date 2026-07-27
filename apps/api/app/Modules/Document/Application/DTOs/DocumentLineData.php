@@ -6,6 +6,7 @@ namespace App\Modules\Document\Application\DTOs;
 
 use App\Modules\Document\Domain\DocumentLine;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -20,6 +21,7 @@ final class DocumentLineData extends Data
         public string $description,
         public string $quantity,
         public string $free_quantity,
+        public string $quantity_delivered,
         public string $unit_price,
         public ?string $discount_percent,
         public ?string $discount_amount,
@@ -41,8 +43,9 @@ final class DocumentLineData extends Data
             product_id: $line->product_id,
             line_number: $line->line_number,
             description: $line->description,
-            quantity: CurrencyScale::bcformat($line->quantity, $scale),
-            free_quantity: CurrencyScale::bcformat($line->free_quantity ?? '0', 4),
+            quantity: QuantityScale::formatForUnit($line->quantity, null),
+            free_quantity: QuantityScale::formatForUnit($line->free_quantity ?? '0', null),
+            quantity_delivered: QuantityScale::formatForUnit($line->quantity_delivered ?? '0', null),
             unit_price: CurrencyScale::bcformat($line->unit_price, $scale),
             discount_percent: $line->discount_percent !== null ? CurrencyScale::bcformat($line->discount_percent, 2) : null,
             discount_amount: $line->discount_amount !== null ? CurrencyScale::bcformat($line->discount_amount, $scale) : null,

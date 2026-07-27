@@ -190,8 +190,8 @@ class DeliveryNoteDocumentTest extends TestCase
 
         $response->assertStatus(201);
         $this->assertCount(2, $response->json('data.lines'));
-        $this->assertEquals('10.00', $response->json('data.lines.0.quantity'));
-        $this->assertEquals('5.00', $response->json('data.lines.1.quantity'));
+        $this->assertEquals('10.0000', $response->json('data.lines.0.quantity'));
+        $this->assertEquals('5.0000', $response->json('data.lines.1.quantity'));
     }
 
     public function test_delivery_note_has_no_financial_totals(): void
