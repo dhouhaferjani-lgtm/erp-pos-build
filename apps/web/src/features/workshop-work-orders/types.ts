@@ -10,6 +10,8 @@
  * Until then, keep shapes in sync with the PHP `#[TypeScript]` DTOs by hand.
  */
 
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type WorkOrderStatus =
   | 'received'
   | 'diagnosed'
@@ -187,12 +189,7 @@ export interface WorkOrderListFilters {
 
 export interface PaginatedWorkOrders {
   data: WorkOrderListItem[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface CreateWorkOrderInput {

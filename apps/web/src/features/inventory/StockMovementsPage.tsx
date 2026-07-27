@@ -9,14 +9,13 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { formatQuantity } from '../../lib/format'
 import { bccomp } from '../../lib/decimal'
-import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePermissions } from '../../hooks/usePermissions'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
-import { LocationSelector } from '../locations/LocationSelector'
-import { useLocation } from '../../hooks/useLocation'
+import { useViewScope } from '../locations/hooks/useViewScope'
 import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
@@ -89,7 +88,7 @@ const movementTypeConfig: Record<string, { tone: StatusTone; icon: typeof ArrowD
 
 export function StockMovementsPage() {
   const { t } = useTranslation(['inventory', 'common'])
-  const { currentLocationId } = useLocation()
+  const { scope, effectiveLocationIds } = useViewScope()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -104,11 +103,11 @@ export function StockMovementsPage() {
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['stock-movements', searchQuery, movementFilter, currentLocationId]),
+    queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
-      if (currentLocationId) params.append('location_id', currentLocationId)
+      effectiveLocationIds.forEach((id) => { params.append('location_ids[]', id) })
       if (movementFilter !== 'all' && movementFilter !== 'transfer' && movementFilter !== 'write_off') {
         params.append('movement_type', movementFilter)
       } else if (movementFilter === 'write_off') {
@@ -337,7 +336,6 @@ export function StockMovementsPage() {
             {t('common:actions.back')}
           </Link>
         }
-        actions={<LocationSelector />}
         className="mb-0"
       />
 

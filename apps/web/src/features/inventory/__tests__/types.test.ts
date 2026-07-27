@@ -1,5 +1,6 @@
 import { describe, it, expectTypeOf } from 'vitest'
 import type { StockLevel, StockLevelsResponse } from '../types'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 /**
  * Contract-lock tests for features/inventory/types.ts.
@@ -59,13 +60,7 @@ describe('StockLevelsResponse envelope', () => {
     // `meta` is optional (controller omits on single-record responses) but
     // when present MUST carry numeric counters for the pager component.
     expectTypeOf<StockLevelsResponse['meta']>().toEqualTypeOf<
-      | {
-          total: number
-          current_page: number
-          per_page: number
-          last_page: number
-        }
-      | undefined
+      OffsetPaginationMeta | undefined
     >()
   })
 })

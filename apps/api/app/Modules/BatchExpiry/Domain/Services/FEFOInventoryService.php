@@ -16,6 +16,7 @@ use App\Modules\Product\Domain\Product;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
 
 class FEFOInventoryService
@@ -285,22 +286,42 @@ class FEFOInventoryService
      * `reserved_quantity` are present on each loaded BatchStock row so the
      * caller can display the full picture to the operator.
      *
+     * @param  string|list<string>|null  $locationId  A legacy scalar location id,
+     *                                                a resolved location-id set, or null for an unscoped service call.
      * @return Collection<int, Batch>
      */
-    public function getExpiredBatchesWithStock(string $companyId, ?string $locationId = null): Collection
+    public function getExpiredBatchesWithStock(string $companyId, string|array|null $locationId = null): Collection
     {
+        $locationIds = is_array($locationId) ? $locationId : null;
+
         $query = Batch::query()
             ->where('company_id', $companyId)
             ->where('is_active', true)
             ->where('is_recalled', false)
             ->where('expiry_date', '<', now()->startOfDay())
-            ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
+            ->whereHas('batchStock', function (Builder $q) use ($locationId, $locationIds): void {
                 $q->whereRaw('available_quantity > 0');
-                if ($locationId) {
+                if (is_array($locationIds)) {
+                    if ($locationIds === []) {
+                        $q->whereRaw('1 = 0');
+                    } else {
+                        $q->whereIn('location_id', $locationIds);
+                    }
+                } elseif ($locationId !== null) {
                     $q->whereRaw('location_id = ?', [$locationId]);
                 }
             })
-            ->with(['product.unitOfMeasure', 'batchStock'])
+            ->with(['product.unitOfMeasure', 'batchStock' => function (Relation $q) use ($locationId, $locationIds): void {
+                if (is_array($locationIds)) {
+                    if ($locationIds === []) {
+                        $q->whereRaw('1 = 0');
+                    } else {
+                        $q->whereIn('location_id', $locationIds);
+                    }
+                } elseif ($locationId !== null) {
+                    $q->whereRaw('location_id = ?', [$locationId]);
+                }
+            }])
             ->orderBy('expiry_date', 'asc');
 
         return $query->get();

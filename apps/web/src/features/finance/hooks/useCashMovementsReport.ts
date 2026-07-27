@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface CashMovementsFilters {
   from?: string
@@ -24,13 +25,7 @@ export interface CashMovementRow {
   gl_account: string | null
 }
 
-export interface CashMovementsMeta {
-  current_page: number
-  per_page: number
-  total: number
-  last_page: number
-  from: number | null
-  to: number | null
+export interface CashMovementsMeta extends OffsetPaginationMeta {
   totals: Record<string, { in: string; out: string; net: string }>
 }
 

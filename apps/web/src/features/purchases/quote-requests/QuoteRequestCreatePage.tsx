@@ -281,6 +281,7 @@ export function QuoteRequestCreatePage() {
                 data-testid={`line-quantity-${String(index)}`}
                 value={line.quantity}
                 onChange={(quantity) => { updateLine(index, { quantity }) }}
+                // eslint-disable-next-line precision/no-literal-decimal-places -- RFQ free-text line — no bound product to derive precision from; see spec 2026-07-20 §3.3 pre-product exemption
                 decimalPlaces={4}
               />
               <MoneyInput

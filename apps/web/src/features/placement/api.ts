@@ -1,4 +1,5 @@
 import { api, apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export type LocationNode = App.Modules.Inventory.Application.DTOs.LocationNodeDto
 export type ProductPlacement = App.Modules.Inventory.Application.DTOs.ProductPlacementDto
@@ -16,12 +17,7 @@ export interface NodeInput {
 
 export interface NodeProductsPage {
   data: ProductPlacement[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export function listLocationNodes(locationId: string, includeDeleted = false): Promise<LocationNode[]> {

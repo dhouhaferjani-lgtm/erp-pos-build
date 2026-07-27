@@ -160,6 +160,8 @@ function pageFixture(id: string): PaginatedWorkOrders {
       last_page: 1,
       per_page: 25,
       total: 1,
+      from: 1,
+      to: 1,
     },
   }
 }

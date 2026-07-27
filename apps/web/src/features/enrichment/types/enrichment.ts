@@ -39,11 +39,7 @@ export interface EnrichmentResult {
 
 export interface EnrichmentResultsPage {
   data: EnrichmentResult[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
+  meta: OffsetPaginationMeta & {
     timestamp: string
     request_id: string
   }
@@ -57,3 +53,4 @@ export interface ComparisonField {
   confidence: number | null
   checked: boolean
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

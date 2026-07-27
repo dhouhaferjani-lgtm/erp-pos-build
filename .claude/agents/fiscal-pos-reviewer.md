@@ -59,6 +59,7 @@ You are the **fiscal-pos-reviewer** — an adversarial, code-grounded reviewer f
 - **FormRequests:** money columns keep `numeric` AND add a regex ceiling `/^-?\d+(\.\d{1,3})?$/` (quantity `…{1,4}`, percent `…{1,2}` — percent is NOT currency-scaled).
 - **Frontend:** no `parseFloat`/`Number(...)` on money/qty; use `<MoneyInput>` (`apps/web/src/components/atoms/MoneyInput/MoneyInput.tsx`, POS variant `apps/web/src/features/pos/atoms/MoneyInput.tsx`) / `<QuantityInput>` (`apps/web/src/components/atoms/QuantityInput/QuantityInput.tsx`) which emit strings; payloads carry strings; render via `formatCurrency`/`formatQuantity`.
 - Guards to keep green: PHPStan `ForbidFloatCastOnDecimalProperty` / `ForbidHardcodedBcmathScale`, ESLint `no-parsefloat-on-money` / `no-hardcoded-step`.
+- Quantity display precision: any human-facing quantity must render at units.decimal_places (see precision-contract.md Emission & display); flag raw scale-4 strings or literal decimalPlaces in product-quantity surfaces.
 
 ## Test-quality checks
 - Tests assert real behavior (not `assertTrue(true)`), use `RefreshDatabase` + real models + `RolesAndPermissionsSeeder`, never fake API payloads. Projection/queue tests must clear `CompanyContext` before `apply()`. Beware: the suite runs on SQLite, which can MASK PostgreSQL aggregate bugs — flag fiscal-aggregate logic that is only exercised under SQLite. Flag tests that assert nothing or mock the thing under test.

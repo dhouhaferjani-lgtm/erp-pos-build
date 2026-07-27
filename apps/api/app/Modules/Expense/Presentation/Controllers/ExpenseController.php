@@ -6,6 +6,8 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -39,6 +41,8 @@ class ExpenseController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
         private readonly ExpenseIndexQuery $expenseIndexQuery,
+        private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     /**
@@ -48,7 +52,8 @@ class ExpenseController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        $query = $this->expenseIndexQuery->build($request, $companyId)
+        $locationIds = $this->resolveLocationIds($request, $companyId);
+        $query = $this->expenseIndexQuery->build($request, $companyId, $locationIds)
             ->with([
                 'partner' => $this->partnerForCompany($companyId),
                 'expenseMetadata.category',
@@ -61,6 +66,26 @@ class ExpenseController extends Controller
             ->paginate($request->input('per_page', 20));
 
         return ExpenseResource::collection($expenses);
+    }
+
+    /** @return list<string> */
+    private function resolveLocationIds(Request $request, string $companyId): array
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
+        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
+    }
+
+    /** @return list<string> */
+    private function requestedLocationIds(mixed $value): array
+    {
+        return array_values(array_filter(
+            is_array($value) ? $value : [],
+            static fn (mixed $id): bool => is_string($id),
+        ));
     }
 
     /**

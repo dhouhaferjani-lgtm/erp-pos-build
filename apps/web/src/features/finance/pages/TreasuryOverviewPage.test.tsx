@@ -136,6 +136,7 @@ beforeEach(() => {
       net: '0.000',
       days: 30,
       as_of_date: '2026-07-03',
+      buckets_by_location: [{ location_id: 'loc-a', location_name: 'Store A', total_in: '0.000', total_out: '0.000', net: '0.000' }],
     },
     isLoading: false,
     error: null,
@@ -200,6 +201,7 @@ describe('TreasuryOverviewPage', () => {
         net: '-330.500',
         days: 60,
         as_of_date: '2026-07-03',
+        buckets_by_location: [{ location_id: 'loc-a', location_name: 'Store A', total_in: '90.000', total_out: '70.500', net: '19.500' }],
       },
       isLoading: false,
       error: null,
@@ -210,6 +212,8 @@ describe('TreasuryOverviewPage', () => {
 
     expect(screen.getByText('finance:overview.upcoming.moneyIn')).toBeInTheDocument()
     expect(screen.getByText('finance:overview.upcoming.moneyOut')).toBeInTheDocument()
+    expect(screen.getByText('finance:reports.defaultAttributedCaveat')).toBeInTheDocument()
+    expect(screen.getByText('Store A')).toBeInTheDocument()
     expect(document.body.textContent).toContain('finance:overview.upcoming.buckets.overdue')
     expect(document.body.textContent).toContain('finance:overview.upcoming.buckets.current')
     expect(document.body.textContent).toContain('finance:overview.upcoming.buckets.days31To60')
@@ -268,6 +272,7 @@ function upcomingLine(
     overdue,
     source: 'document',
     certainty: null,
+    location_id: null,
   }
 }
 

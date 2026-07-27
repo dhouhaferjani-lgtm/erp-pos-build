@@ -186,3 +186,48 @@ Guardrail matrix fully PASS (component reuse incl. PartnerSearchSelect exact imp
 - **Fix (commits `1aa80d210`, `6892fbe36`, `cad0da96e`):** FEFO auto-allocation INSIDE Inventory — extracted the existing validator's algorithm into shared `computeFefoSplit()` (provably identical: ordering incl. id tie-break, `canBeSold()` filter, scale-4, locks); opt-in `autoAllocateBatchesFefo` on `InitiateTransferData` (all 9 call sites named-args, zero callers affected); insufficient sellable batches → existing 422 path; + fulfilled-row links to the fulfilling transfer/PO; + lock-order contract documented (caller must lock stock_levels first — ABBA risk for future flag-true callers otherwise). Domain-reviewed CONFIRMED (behavior-identity, gating, lock geometry, honest tests).
 - **Browser pass 2 (@ cad0da96e):** batch-tracked transfer → 200; FEFO allocation verified at DB grain (earliest-expiry batch, qty split, source batch stock 200→195); history link → transfer detail. PASS.
 - **Follow-ups recorded:** StockTransferDetailPage does not render batch allocations (PRE-EXISTING UI gap, applies to manual transfers too); multi-batch FEFO ordering exercised in backend tests only (single batch in demo data); demo-tenant browser pass on real vertical data promoted to a standing Gate-D requirement.
+
+---
+
+## Round 8 — Wave A permission-map generator, pre-merge gate (2026-07-18)
+
+Target: `feat/permission-map-generator` delta `e948ccaaf..4f5e930dd` (impl `7ef795cbd` + dev-merge/regen `4f5e930dd`). Two Opus lanes.
+
+**frontend-conventions: APPROVE.** Verified by replay: exporter output byte-identical to committed map (incl. Phase-4 `expenses.export`/`expense-recurrences.*`); seeder grant sets net-zero vs dev for all roles; 5 dead FE roles removed from fallback map; alias file matches owner ruling; typecheck + 31 web tests green. Minors: `reports.view` admin-only narrowing is backend-truth (tiered-reporting ticket covers manager/accountant restore); drift-guard .mjs is wiring-only meta-test (real guard = CI/preflight regen+diff); "Source hash" header hashes emitted body, not seeder (cosmetic).
+
+**tenancy-authz: APPROVE-WITH-FIXES.** Proved seeder restructure grant-neutral (280 perms, 7 roles byte-identical) and drift guards cannot false-pass. MAJOR: `services.create`/`services.edit` FE gates deleted rather than migrated — Workshop service catalog write UI reachable by all roles; backend `/services` store/update/destroy have NO `can:` gate (pre-existing), so FE was de-facto authz. **FIXED @ `7126703e2`**: both keys restored as UI aliases (admin/sales/manager = dev behavior), routes re-wrapped, manifest mirrored; tests+typecheck re-verified green.
+
+**Follow-up tickets (not Wave A scope):**
+1. 🎫 Real `services.view/create/update/delete` permissions in seeder + `can:` middleware on `Service/Presentation/routes.php` store/update/destroy (both-layer gating per rule 12); then drop the two alias keys.
+2. 🎫 Tiered reporting (already owner-directed): seeder grants for manager=operational / accountant=financial; restores Finance nav for those roles.
+3. Minor: partner edit routes gate on `contacts.update` while backend enforces `partners.update` — operator hidden from partner edit UI (net-neutral vs dev; align if operator parity wanted).
+
+Verdict: **MERGE APPROVED** at `7126703e2` (post-fix).
+
+---
+
+## Round 9 — Wave B pagination-meta consolidation, pre-merge gate (2026-07-18)
+
+Target: `chore/pagination-meta-consolidation` @ `8c59d6d2a` (squashed, on dev `5af99f65d`). frontend-conventions lane (Opus).
+
+**Verdict: APPROVE — zero BLOCKER/MAJOR.** Adversarially verified: diff fully TS-erasable (type-only claim holds, incl. all 4 .tsx sites); canonical `types/pagination.ts` byte-matches backend `PaginatesResults.php:80-85` envelope incl. `from`/`to: number | null`; 14-file old-vs-new sample shows no silent widening/narrowing (extra meta via intersection, optional meta via `Partial<>`, no cursor endpoints force-fitted); both deprecated aliases (`AggregateChannelOrdersMeta`, `ReplenishmentPaginationMeta`) correct + barrel-exported, deleted local types have zero refs; AST guard scans all of src by SHAPE (rename-proof, cursor-safe, wired into vitest); rule 7 satisfied (lives in apps/web, distinct from generated `PaginationData` DTO); pre-existing failures structurally unrelated (no touched routing/sidebar/manifest files). Controller independently re-ran: typecheck 0, guard 3/3, TanStack audit 0.
+
+Minors (recorded, no action): (1) required-meta sites assume endpoints route through `PaginatesResults` — wrap in `Partial<>` if any hand-builds meta; (2) `import type` at bottom of ~15 files (cosmetic, `import/first` not enabled); (3) guard excludes test fixtures by design.
+
+Verdict: **MERGE APPROVED** at `8c59d6d2a`.
+
+---
+
+## Round 10 — Wave C POS refill quantity suggestions, pre-merge gate (2026-07-19)
+
+Target: `feat/pos-replenishment-suggested-qty` @ `6d399384e` (squashed, on dev `28c422cc8`). Two Opus lanes.
+
+**inventory: APPROVE.** Order-up-to math verified (`target = max ?? min`, `bcsub(target, available, 4)`, floor `1.0000`; negative available correctly increases order); variant grain mirrors the two partial unique indexes (no COALESCE); location grain = terminal's shop; `min/max_quantity` are existing per-location `stock_levels` columns — no dependency on unmerged multiloc §4; rule-19 clean (pure bcmath at `QuantityScale::SCALE`, numeric-string end-to-end); rule-6 clean (Inventory public service, constructor-injected, no model imports); single batched query, closed rows nulled without compute. MINOR-1 (two missing branch-coverage cases) **APPLIED post-review**: null-thresholds-with-row → `1.0000`, zero-available → full max (13 tests / 56 assertions green).
+
+**fiscal-pos: APPROVE.** Rule-19 POS side clean (string end-to-end, `bccomp` validation, no parseFloat); migration v61 additive nullable + dup-column-guarded, idempotence genuinely exercised, fresh-install ≡ upgrade schema; rule-20 clean (no new timestamp comparisons; `replaceOpenRequests` keeps upsert-first/delete-absent); sync guard rejects bad batch but caller swallow-and-logs → retries next tick, push outbox separate — no wedge; refill-sheet prefill race guarded by dirty-state functional setState (race test proves it); additive `suggested_qty` field breaks no consumer (web structural typing); zero fiscal surface; push null cannot clobber cached suggestion.
+
+Minors recorded no-action: concrete-service seam (rule-6-compliant; interface if deptrac tightens); overstocked grains suggest `1.0000` by design (floor-one, optional field); wide OR-predicate lookup acceptable (single query).
+
+Verdict: **MERGE APPROVED** (post test-coverage commit).
+
+DEPLOY: standard `tenants:migrate` NOT required (no server migration in this wave — feed computed from existing columns); POS device update REQUIRED (sqlite v61, stacks on owed v60).

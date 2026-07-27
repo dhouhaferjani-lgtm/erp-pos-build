@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { CertificationData } from '../types';
+import type { OffsetPaginationMeta } from '@/types/pagination';
 
 export interface CertificationTranslation {
   id?: string;
@@ -32,14 +33,7 @@ export interface UpdateCertificationInput {
 
 export interface CertificationsListResponse {
   data: CertificationData[];
-  meta: {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-    from: number | null;
-    to: number | null;
-  };
+  meta: OffsetPaginationMeta;
 }
 
 export async function fetchCertifications(params?: {

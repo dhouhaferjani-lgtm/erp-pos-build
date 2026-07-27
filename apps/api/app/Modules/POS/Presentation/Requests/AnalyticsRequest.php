@@ -26,6 +26,8 @@ final class AnalyticsRequest extends FormRequest
             'to' => ['required', 'date', 'after_or_equal:from'],
             'granularity' => ['sometimes', Rule::in(['hour', 'day', 'week', 'month'])],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'location_ids' => ['sometimes', 'array'],
+            'location_ids.*' => ['uuid'],
         ];
     }
 

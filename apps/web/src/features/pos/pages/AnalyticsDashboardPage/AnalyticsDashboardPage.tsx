@@ -24,6 +24,7 @@ import { FnbMetricsPanel } from '../../organisms/Analytics/FnbMetricsPanel'
 import { cn } from '@/lib/utils'
 import { textColors, borderColors } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 
 type Tab = 'summary' | 'products' | 'cashiers' | 'discounts' | 'customers' | 'fnb'
 
@@ -50,15 +51,20 @@ export function AnalyticsDashboardPage() {
   )
   const [activeTab, setActiveTab] = useState<Tab>('summary')
   const [filters, setFilters] = useState<AnalyticsFilters>(getDefaultFilters)
+  const { effectiveLocationIds } = useViewScope()
+  const scopedFilters = useMemo(
+    () => ({ ...filters, location_ids: effectiveLocationIds }),
+    [filters, effectiveLocationIds],
+  )
 
-  const summaryQuery = useSalesSummary(filters)
-  const periodQuery = useSalesByPeriod(filters)
-  const categoryQuery = useSalesByCategory(filters)
-  const productQuery = useSalesByProduct(filters)
-  const cashierQuery = useCashierPerformance(filters)
-  const discountQuery = useDiscountAnalysis(filters)
-  const customerQuery = useCustomerAnalytics(filters)
-  const fnbQuery = useFnbMetrics(filters)
+  const summaryQuery = useSalesSummary(scopedFilters)
+  const periodQuery = useSalesByPeriod(scopedFilters)
+  const categoryQuery = useSalesByCategory(scopedFilters)
+  const productQuery = useSalesByProduct(scopedFilters)
+  const cashierQuery = useCashierPerformance(scopedFilters)
+  const discountQuery = useDiscountAnalysis(scopedFilters)
+  const customerQuery = useCustomerAnalytics(scopedFilters)
+  const fnbQuery = useFnbMetrics(scopedFilters)
 
   const tabContent = useMemo(() => {
     switch (activeTab) {

@@ -423,6 +423,31 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
   })
 
+  it('renders the receipt-line quantity input at the unit precision from the receipt payload', async () => {
+    receiptLines.splice(0, receiptLines.length, {
+      id: 'receipt-line-1',
+      receipt_number: 'GRN-2026-0031',
+      product_id: 'product-1',
+      variant_id: null,
+      received_qty: '10.0000',
+      free_qty: '0.0000',
+      quantity_invoiced: '4.0000',
+      free_quantity_invoiced: '0.0000',
+      accrual_unit_cost: '5.200000',
+      received_unit_price: '5.200',
+      po_line_id: 'po-line-1',
+      quantity_decimals: 0,
+    })
+
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new?po=po-1',
+    })
+
+    const quantityInput = await screen.findByTestId('invoice-line-quantity-0')
+    // decimalPlaces 0 → QuantityInput derives step "1" (vs "0.0001" for scale-4)
+    expect(quantityInput).toHaveAttribute('step', '1')
+  })
+
   it('blocks submit and renders an inline error when issue date is missing', async () => {
     renderWithProviders(<SupplierInvoiceCreatePage />, {
       route: '/purchases/supplier-invoices/new?po=po-1',

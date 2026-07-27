@@ -49,6 +49,14 @@
       "variant": "Variante",
       "selectVariant": "Sélectionner une variante"
     },
+    "suggestion": {
+      "title": "Stock par emplacement",
+      "loading": "Chargement du stock…",
+      "useSource": "Utiliser cette source",
+      "none": "Aucune source appropriée trouvée.",
+      "confirmTitle": "Changer la source du transfert ?",
+      "confirmSwitch": "La disponibilité sera recalculée pour les {{count}} lignes."
+    },
     "entry": {
       "search": "Rechercher ou scanner un produit",
       "browseCatalog": "Parcourir le catalogue",

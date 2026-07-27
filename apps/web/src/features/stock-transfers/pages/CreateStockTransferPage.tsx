@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { fetchLocations, type LocationApiResponse } from '@/features/locations/api'
+import { fetchLocations, fetchTransactionLocations, type LocationApiResponse, type TransactionLocationApiResponse } from '@/features/locations/api'
 import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -32,6 +32,7 @@ import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Input, Select, Textarea } from '@/components/atoms'
+import { TransferSourceSuggestion } from '../components/TransferSourceSuggestion'
 
 interface DraftBatchAllocation {
   batch_id: number
@@ -473,18 +474,24 @@ function VariantSelectCell({ line, onSelect, onVariantsLoaded }: VariantSelectCe
 }
 
 export function CreateStockTransferPage() {
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
   const { handleSubmit: handleFormSubmit } = useForm()
   const { currency } = useCurrency()
 
-  const locationsQuery = useQuery({
+  const scopedLocationsQuery = useQuery({
     queryKey: tenantScopedKey(['locations', 'all']),
     queryFn: () => fetchLocations(),
   })
-  const locations: LocationApiResponse[] = locationsQuery.data ?? []
+  const transactionLocationsQuery = useQuery({
+    queryKey: tenantScopedKey(['locations', 'transaction-destinations']),
+    queryFn: () => fetchTransactionLocations(),
+  })
+  const sourceLocations: LocationApiResponse[] = scopedLocationsQuery.data ?? []
+  const destinationLocations: TransactionLocationApiResponse[] = transactionLocationsQuery.data ?? []
 
-  const [sourceLocationId, setSourceLocationId] = useState('')
+  const [sourceLocationId, setSourceLocationId] = useState(() => searchParams.get('source_location_id') ?? '')
   const [destinationLocationId, setDestinationLocationId] = useState('')
   const [notes, setNotes] = useState('')
   const [transferCost, setTransferCost] = useState('0')
@@ -726,7 +733,19 @@ export function CreateStockTransferPage() {
       header: t('create.field.availableAtSource'),
       headerClassName: 'w-36 text-start md:text-end',
       cellClassName: 'md:text-end',
-      Cell: ({ line }) => <AvailabilityCell line={line} sourceLocationId={sourceLocationId} />,
+      Cell: ({ line }) => (
+        <div>
+          <AvailabilityCell line={line} sourceLocationId={sourceLocationId} />
+          {line.product ? <TransferSourceSuggestion
+            productId={line.product.id}
+            variantId={line.variantId}
+            destinationLocationId={destinationLocationId}
+            requestedQuantity={line.quantity}
+            lineCount={lines.length}
+            onUseSource={setSourceLocationId}
+          /> : null}
+        </div>
+      ),
     },
     {
       id: 'quantity',
@@ -782,7 +801,7 @@ export function CreateStockTransferPage() {
         />
       ),
     },
-  ], [t, sourceLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine, handleVariantsLoaded])
+  ], [t, sourceLocationId, destinationLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine, handleVariantsLoaded])
 
   return (
     <div className="space-y-6">
@@ -822,7 +841,7 @@ export function CreateStockTransferPage() {
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
-                {locations.map((loc) => (
+                {sourceLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
                     {loc.name}
                   </option>
@@ -842,7 +861,7 @@ export function CreateStockTransferPage() {
                 required
               >
                 <option value="">{t('create.field.selectLocation')}</option>
-                {locations
+                {destinationLocations
                   .filter((loc) => loc.id !== sourceLocationId)
                   .map((loc) => (
                     <option key={loc.id} value={loc.id}>

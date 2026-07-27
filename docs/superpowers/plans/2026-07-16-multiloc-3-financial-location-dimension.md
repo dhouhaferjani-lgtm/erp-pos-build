@@ -74,7 +74,7 @@ Without this the whole package attributes ~100% to Unattributed (review BLOCKER 
 - Consumes: `GET /company/locations` (§1); `ScopedExists::tenantAndCompany('locations', $tenantId, $companyId)` (existing shared rule — locations are company-scoped, so validation must check **both** axes; `ScopedExists::tenant` would let a sibling company's location pass).
 - Produces: `formatRepository()` output now includes `'location_id'` + `'location_name'`. Every downstream reader (bridges, backfill, cash position) relies on `payment_repositories.location_id` being populated for cash registers/safes.
 
-- [ ] **Step 1: Write the failing BE test** — `formatRepository` exposes `location_id`, and store/update round-trip it with company-scoped validation. **No nonexistent harness:** there is no `SeedsTreasuryCompany` trait in this repo. Anchor to the real treasury feature-test idiom — `use RefreshDatabase;` plus a private `seedTreasuryCompany(): array` helper written in this class that builds `Tenant` + `Country`/`CountryPaymentSettings` + `Company` + authed `User` with direct `::create(...)` calls (copy the `setUp()` body of `apps/api/tests/Feature/Treasury/AuditDiscountsCommandTest.php:41-90` verbatim, returning `[$user, $company]`).
+- [x] **Step 1: Add dedicated `PaymentRepositoryLocationTest`** covering index exposure, store/update round-trip, and sibling-company rejection.
 
 ```php
 <?php
@@ -170,12 +170,12 @@ final class PaymentRepositoryLocationTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run it — expect FAIL** (location_id absent from `formatRepository`; foreign + sibling-company ids currently accepted because validation is `['nullable','uuid']`).
+- [x] **Step 2: PostgreSQL test now passes (3 tests / 8 assertions).**
 
 Run: `cd apps/api && php artisan test tests/Feature/Treasury/PaymentRepositoryLocationTest.php`
 Expected: FAIL (`location_id` path missing; foreign/sibling id 201 not 422).
 
-- [ ] **Step 3: Implement.** In `PaymentRepositoryController::formatRepository()` add the field and eager-load the relation.
+- [x] **Step 3: Implement.** `PaymentRepositoryController::formatRepository()` now exposes/eager-loads repository location and validates company-scoped location ids.
 
 ```php
 // index()/show()/store()/update(): add ->with('location:id,name') alongside glAccount
@@ -202,7 +202,7 @@ public function location(): BelongsTo
 }
 ```
 
-- [ ] **Step 4: Run BE test — expect PASS.**
+- [x] **Step 4: PostgreSQL repository-location test passes.**
 
 Run: `cd apps/api && php artisan test tests/Feature/Treasury/PaymentRepositoryLocationTest.php`
 Expected: PASS.
@@ -245,16 +245,16 @@ describe('AddRepositoryModal location assignment', () => {
 Run: `cd apps/web && pnpm test src/components/organisms/AddRepositoryModal/AddRepositoryModal.location.test.tsx`
 Expected: FAIL.
 
-- [ ] **Step 7: Implement FE.** Add `location_id: string` to `RepositoryFormData`; render a `FormField` + token-styled `<Select>` fed by a `useLocations()` hook (thin wrapper over `GET /company/locations`), gated to show for `cash_register`/`safe` types (bank_account/virtual may leave it blank = company-level). Add the `location_id` (empty-string → omit) to the submit payload. All labels via `t('treasury:repositories.location')`. Reflect `location_name` in the `RepositoryListPage` table (new column via existing `DataTable`).
+- [x] **Step 7: Implement FE.** Repository form/list now support cash-register/safe location assignment and display `location_name`.
 
-- [ ] **Step 8: Run FE test — expect PASS.**
+- [x] **Step 8: Existing AddRepositoryModal suite passes (4 tests), plus typecheck/scoped ESLint.**
 
 Run: `cd apps/web && pnpm test src/components/organisms/AddRepositoryModal/AddRepositoryModal.location.test.tsx`
 Expected: PASS.
 
 - [ ] **Step 9: typescript:transform is not needed** (no PHP DTO changed — `formatRepository` returns an array). Skip.
 
-- [ ] **Step 10: Commit.**
+- [x] **Step 10: Commits `40c7e6567` and `709e99e76`.**
 
 ```bash
 git add apps/api/app/Modules/Treasury apps/api/tests/Feature/Treasury/PaymentRepositoryLocationTest.php apps/web/src/components/organisms/AddRepositoryModal apps/web/src/features/treasury/RepositoryListPage.tsx
@@ -380,19 +380,19 @@ return new class extends Migration
 };
 ```
 
-- [ ] **Step 4: Add `'location_id'` to both `$fillable` arrays** (`Payment.php`, `PaymentInstrument.php`) and the `@property string|null $location_id` docblock line on each.
+- [x] **Step 4: Add `location_id` to both model fillable arrays and property docs.**
 
-- [ ] **Step 5: Migrate + run test — expect PASS.**
+- [x] **Step 5: Migration and `PaymentLocationSchemaTest` pass (2 tests / 4 assertions).**
 
 Run: `cd apps/api && php artisan migrate --path=database/migrations/tenant --database=tenant && php artisan test tests/Feature/Treasury/PaymentLocationSchemaTest.php`
 Expected: PASS.
 
-- [ ] **Step 6: PHPStan the touched models.**
+- [x] **Step 6: PHPStan and Pint pass.**
 
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Treasury/Domain/Payment.php app/Modules/Treasury/Domain/PaymentInstrument.php`
 Expected: no errors.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit `34c522443`.**
 
 ```bash
 git add apps/api/database/migrations/tenant/2026_07_16_110000_add_location_id_to_payments_and_instruments.php apps/api/app/Modules/Treasury/Domain/Payment.php apps/api/app/Modules/Treasury/Domain/PaymentInstrument.php apps/api/tests/Feature/Treasury/PaymentLocationSchemaTest.php
@@ -462,7 +462,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
 Run: `cd apps/api && php artisan test tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement.** In `TreasuryReceiptBridge`, add a resolver mirroring `PosCoreReceiptProjection::resolveTerminal`, compute once in `apply()`, thread into `projectPaymentLineFromCanonical`.
+- [x] **Step 3: Implement.** All three queued POS bridges now resolve terminal location once per event and thread it into payment/instrument writes via a shared worker-safe resolver.
 
 ```php
 // TreasuryReceiptBridge — new private method
@@ -490,9 +490,9 @@ In `apply()` compute `$terminalLocationId = $this->resolveTerminalLocationId($ev
 
 and in **both** `MaturityLegContext` constructions add `locationId: $terminalLocationId,`.
 
-- [ ] **Step 4: Thread `locationId` through the DTOs + handler.** Add `public ?string $locationId = null,` to `MaturityLegContext` and `ReceiveInstrumentData`. In `HandlesMaturityTenderLeg::handleMaturityLeg`, pass `locationId: $context->locationId,` into the `ReceiveInstrumentData` at :76. In `InstrumentLifecycleService::receive()` add `'location_id' => $data->locationId,` to the `PaymentInstrument::query()->create([...])` (Task 6 owns the freeze test, but the write goes in here).
+- [x] **Step 4: Thread `locationId` through the DTOs + handler and instrument write.**
 
-- [ ] **Step 5: Repeat the Payment.create + context change** in `TreasuryAccountPaymentBridge` and `TreasuryDepositBridge`. Both resolve the terminal the same way. **Note:** `DEPOSIT_RECEIPT` is server-authored/`isServerOnly()` and may carry a null/absent `terminal_id` — `resolveTerminalLocationId` returns null and we **fall back to `$repository->location_id`** for the deposit bridge:
+- [x] **Step 5: Repeat the Payment.create + context change** in the account-payment and deposit bridges, with repository fallback for server-authored deposits.
 
 ```php
 // TreasuryDepositBridge::apply() Payment::create
@@ -501,17 +501,17 @@ and in **both** `MaturityLegContext` constructions add `locationId: $terminalLoc
 
 Add the identical `resolveTerminalLocationId` helper to both bridges (or extract to a shared trait `ResolvesTerminalLocation` in `App\Modules\Treasury\Application\Projections\Concerns` — preferred, DRY).
 
-- [ ] **Step 6: Extend the test** to cover the account-payment + deposit bridges (deposit falls back to repository location when terminal is absent). Run — expect PASS.
+- [x] **Step 6: Dedicated three-bridge attribution test passes.**
 
 Run: `cd apps/api && php artisan test tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php`
 Expected: PASS.
 
-- [ ] **Step 7: PHPStan.**
+- [x] **Step 7: PHPStan and Pint pass on the projections/DTOs.**
 
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Treasury/Application/Projections app/Modules/Treasury/Application/DTOs/MaturityLegContext.php app/Modules/Treasury/Application/DTOs/ReceiveInstrumentData.php`
 Expected: no errors.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commits `dc818e945` and `709e99e76` (including the corrected `pos_terminals` table lookup).**
 
 ```bash
 git add apps/api/app/Modules/Treasury/Application/Projections apps/api/app/Modules/Treasury/Application/DTOs apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php apps/api/tests/Feature/Fiscal/PosBridgeLocationAttributionTest.php

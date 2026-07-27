@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
 use App\Modules\Replenishment\Application\Services\ReplenishmentQueryService;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
+use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -39,6 +44,8 @@ final class PosReplenishmentControllerTest extends TestCase
 
     private Product $product;
 
+    private Unit $pieceUnit;
+
     private User $cashier;
 
     protected function setUp(): void
@@ -54,9 +61,14 @@ final class PosReplenishmentControllerTest extends TestCase
             'company_id' => $this->company->id,
             'location_id' => $this->shop->id,
         ]);
+        $this->pieceUnit = Unit::factory()->create([
+            'decimal_places' => 0,
+            'rounding_method' => RoundingMethod::HalfUp,
+        ]);
         $this->product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
+            'unit_id' => $this->pieceUnit->id,
         ]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
         UserCompanyMembership::create([
@@ -77,7 +89,10 @@ final class PosReplenishmentControllerTest extends TestCase
         $secondUuid = Str::uuid()->toString();
         $payload = $this->payload($firstUuid, '2');
 
-        $first = $this->postCapture($payload)->assertCreated()->assertJsonPath('data.requested_qty', '2.0000');
+        $first = $this->postCapture($payload)
+            ->assertCreated()
+            ->assertJsonPath('data.requested_qty', '2.0000')
+            ->assertJsonPath('data.suggested_qty', null);
         $this->postCapture([...$payload, 'requested_qty' => '99'])
             ->assertOk()
             ->assertJsonPath('data.id', $first->json('data.id'))
@@ -145,12 +160,105 @@ final class PosReplenishmentControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('truncated', false)
             ->assertJsonStructure(['data' => [[
-                'id', 'product_id', 'variant_id', 'requested_qty', 'request_count', 'last_requested_at',
+                'id', 'product_id', 'variant_id', 'requested_qty', 'suggested_qty', 'quantity_decimals', 'request_count', 'last_requested_at',
             ]], 'as_of', 'truncated']);
 
-        $ids = array_column($response->json('data'), 'id');
-        $this->assertContains($visible->id, $ids);
-        $this->assertNotContains($hidden->id, $ids);
+        $rows = collect($response->json('data'))->keyBy('id');
+        $this->assertContains($visible->id, $rows->keys()->all());
+        $this->assertNotContains($hidden->id, $rows->keys()->all());
+        $this->assertSame(0, $rows[$visible->id]['quantity_decimals']);
+    }
+
+    public function test_pull_feed_calculates_order_up_to_max_with_min_and_one_fallbacks(): void
+    {
+        $maxProduct = $this->product;
+        $minProduct = $this->product();
+        $floorProduct = $this->product();
+        $missingStockProduct = $this->product();
+
+        $requests = [
+            $this->captureProduct($maxProduct),
+            $this->captureProduct($minProduct),
+            $this->captureProduct($floorProduct),
+            $this->captureProduct($missingStockProduct),
+        ];
+        $this->stock($maxProduct, quantity: '10.0000', reserved: '2.0000', min: '5.0000', max: '15.0000');
+        $this->stock($minProduct, quantity: '4.0000', reserved: '1.0000', min: '5.0000');
+        $this->stock($floorProduct, quantity: '8.0000', reserved: '0.0000', min: '2.0000', max: '5.0000');
+
+        $rows = $this->pullRowsById();
+
+        $this->assertSame('7', $rows[$requests[0]->id]['suggested_qty']);
+        $this->assertSame('2', $rows[$requests[1]->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$requests[2]->id]['suggested_qty']);
+        $this->assertSame('1', $rows[$requests[3]->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$requests[0]->id]['quantity_decimals']);
+    }
+
+    public function test_pull_feed_floors_to_one_for_null_thresholds_and_orders_full_max_at_zero_available(): void
+    {
+        $nullThresholdProduct = $this->product();
+        $zeroAvailableProduct = $this->product();
+
+        $requests = [
+            $this->captureProduct($nullThresholdProduct),
+            $this->captureProduct($zeroAvailableProduct),
+        ];
+        $this->stock($nullThresholdProduct, quantity: '9.0000', reserved: '0.0000');
+        $this->stock($zeroAvailableProduct, quantity: '6.0000', reserved: '6.0000', max: '12.0000');
+
+        $rows = $this->pullRowsById();
+
+        $this->assertSame('1', $rows[$requests[0]->id]['suggested_qty']);
+        $this->assertSame('12', $rows[$requests[1]->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$requests[0]->id]['quantity_decimals']);
+    }
+
+    public function test_pull_feed_suggestions_are_variant_exact_and_open_only(): void
+    {
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+        ]);
+        $variantRequest = $this->captureProduct($this->product, $variant->id);
+        $closedProduct = $this->product();
+        $closedRequest = $this->captureProduct($closedProduct);
+        $closedRequest->update([
+            'status' => ReplenishmentStatus::Fulfilled,
+            'processed_at' => now(),
+        ]);
+
+        $this->stock($this->product, quantity: '0.0000', reserved: '0.0000', max: '20.0000');
+        $this->stock($closedProduct, quantity: '0.0000', reserved: '0.0000', max: '20.0000');
+
+        $rows = $this->pullRowsById();
+
+        $this->assertSame('1', $rows[$variantRequest->id]['suggested_qty']);
+        $this->assertNull($rows[$closedRequest->id]['suggested_qty']);
+        $this->assertSame(0, $rows[$closedRequest->id]['quantity_decimals']);
+    }
+
+    public function test_pull_feed_emits_unit_decimals_and_formats_suggested_qty_for_fractional_units(): void
+    {
+        $kgUnit = Unit::factory()->create([
+            'decimal_places' => 3,
+            'rounding_method' => RoundingMethod::HalfUp,
+        ]);
+        $kgProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $kgUnit->id,
+        ]);
+        $request = $this->captureProduct($kgProduct);
+        $this->stock($kgProduct, quantity: '0.5000', reserved: '0.0000', max: '2.0000');
+
+        $rows = $this->pullRowsById();
+
+        // quantity_decimals must come from the eager-loaded product.unitOfMeasure;
+        // a missing eager-load silently degrades to the scale-4 default (4).
+        $this->assertSame(3, $rows[$request->id]['quantity_decimals']);
+        $this->assertSame('1.500', $rows[$request->id]['suggested_qty']);
     }
 
     public function test_cross_company_uuid_replay_returns_409_permanent_conflict(): void
@@ -262,17 +370,66 @@ final class PosReplenishmentControllerTest extends TestCase
 
     private function captureAt(Location $location): ReplenishmentRequest
     {
+        return $this->captureProduct($this->product, location: $location);
+    }
+
+    private function captureProduct(
+        Product $product,
+        ?string $variantId = null,
+        ?Location $location = null,
+    ): ReplenishmentRequest {
         return app(ReplenishmentCaptureService::class)->capture(new CaptureRequestData(
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
-            locationId: $location->id,
-            productId: $this->product->id,
-            variantId: null,
+            locationId: ($location ?? $this->shop)->id,
+            productId: $product->id,
+            variantId: $variantId,
             requestedQty: null,
             note: null,
             requestedByUserId: $this->cashier->id,
             channel: ReplenishmentChannel::Pos,
             clientRequestUuid: Str::uuid()->toString(),
         ));
+    }
+
+    private function product(): Product
+    {
+        return Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $this->pieceUnit->id,
+        ]);
+    }
+
+    private function stock(
+        Product $product,
+        string $quantity,
+        string $reserved,
+        ?string $min = null,
+        ?string $max = null,
+        ?string $variantId = null,
+    ): void {
+        StockLevel::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->shop->id,
+            'product_id' => $product->id,
+            'variant_id' => $variantId,
+            'quantity' => $quantity,
+            'reserved' => $reserved,
+            'min_quantity' => $min,
+            'max_quantity' => $max,
+        ]);
+    }
+
+    /** @return array<string, array<string, int|string|null>> */
+    private function pullRowsById(): array
+    {
+        $rows = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/replenishment-requests?terminal_id='.$this->terminal->id)
+            ->assertOk()
+            ->json('data');
+
+        return collect($rows)->keyBy('id')->all();
     }
 }

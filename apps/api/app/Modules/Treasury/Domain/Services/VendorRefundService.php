@@ -121,6 +121,7 @@ final class VendorRefundService
                 'partner_id' => $lockedPo->partner_id,
                 'payment_method_id' => $resolvedPaymentMethod->id,
                 'repository_id' => $resolvedRepository->id,
+                'location_id' => $lockedPo->location_id,
                 'amount' => $amount,
                 'currency' => $lockedPo->currency ?? 'EUR',
                 'payment_date' => now(),

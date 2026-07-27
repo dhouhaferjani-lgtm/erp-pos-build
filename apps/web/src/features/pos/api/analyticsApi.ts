@@ -3,6 +3,7 @@ import { apiGet } from '@/lib/api'
 export interface AnalyticsFilters {
   from: string
   to: string
+  location_ids?: string[]
 }
 
 export interface PaymentBreakdownItem {
@@ -77,6 +78,7 @@ export interface FnbMetrics {
 
 function buildParams(filters: AnalyticsFilters, extra?: Record<string, string>): string {
   const params = new URLSearchParams({ from: filters.from, to: filters.to })
+  for (const id of filters.location_ids ?? []) params.append('location_ids[]', id)
   if (extra) {
     Object.entries(extra).forEach(([k, v]) => { params.set(k, v); })
   }

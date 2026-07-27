@@ -6,6 +6,9 @@ namespace App\Modules\Expense\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Application\Queries\ExpenseIndexQuery;
 use App\Modules\Expense\Domain\ExpenseMetadata;
@@ -33,13 +36,22 @@ final class ExpenseExportController extends Controller
     public function __construct(
         private readonly ExpenseIndexQuery $expenseIndexQuery,
         private readonly CompanyContext $companyContext,
+        private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function __invoke(Request $request): StreamedResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        $expenses = $this->expenseIndexQuery->build($request, $companyId)
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
+        $locationIds = $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
+
+        $expenses = $this->expenseIndexQuery->build($request, $companyId, $locationIds)
             ->leftJoin('expense_metadata as export_metadata', 'export_metadata.document_id', '=', 'documents.id')
             ->leftJoin('expense_categories as export_category', function (JoinClause $join) use ($companyId): void {
                 $join->on('export_category.id', '=', 'export_metadata.expense_category_id')
@@ -90,6 +102,15 @@ final class ExpenseExportController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /** @return list<string> */
+    private function requestedLocationIds(mixed $value): array
+    {
+        return array_values(array_filter(
+            is_array($value) ? $value : [],
+            static fn (mixed $id): bool => is_string($id),
+        ));
     }
 
     /**

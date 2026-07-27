@@ -12,5 +12,6 @@ final readonly class MaturityLegContext
         public ?string $partnerId,
         public string $receivedDate,
         public ?string $createdBy,
+        public ?string $locationId = null,
     ) {}
 }

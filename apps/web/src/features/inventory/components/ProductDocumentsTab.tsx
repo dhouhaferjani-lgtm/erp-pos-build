@@ -23,6 +23,7 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 interface DocumentLine {
   id: string
@@ -49,14 +50,7 @@ interface Document {
 
 interface DocumentsResponse {
   data: Document[]
-  meta?: {
-    current_page?: number
-    last_page?: number
-    per_page?: number
-    total?: number
-    from?: number | null
-    to?: number | null
-  }
+  meta?: Partial<OffsetPaginationMeta>
 }
 
 interface ProductDocumentsTabProps {

@@ -780,6 +780,15 @@ class PurchaseOrderController extends Controller
             /** @var string|null $priceOverrideReason */
             $priceOverrideReason = $validated['price_override_reason'] ?? null;
             $saveAsDraft = (bool) ($validated['save_as_draft'] ?? false);
+            $destinationLocationId = isset($validated['location_id']) ? (string) $validated['location_id'] : null;
+
+            if ($destinationLocationId !== null) {
+                try {
+                    $this->locationContext->validateLocationAccess($destinationLocationId, $this->companyContext->requireCompanyId(), $user);
+                } catch (\RuntimeException $e) {
+                    return response()->json(['error' => ['code' => 'LOCATION_FORBIDDEN', 'message' => $e->getMessage()]], Response::HTTP_FORBIDDEN);
+                }
+            }
 
             if (is_array($freeQuantities) && count($freeQuantities) > 0 && ! $this->purchaseBonusGate->enabledFor($this->companyContext->requireCompany())) {
                 return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', 'free_quantities is not enabled for this company.');
@@ -794,6 +803,9 @@ class PurchaseOrderController extends Controller
                     is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
                     $priceOverrideReason,
                     $user->id,
+                    null,
+                    null,
+                    $destinationLocationId,
                 );
                 $updatedDocument = new GoodsReceiptResult(
                     $documentModel->fresh(['lines']) ?? $documentModel,
@@ -809,10 +821,11 @@ class PurchaseOrderController extends Controller
                     is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
                     $priceOverrideReason,
                     $user->id,
+                    $destinationLocationId,
                 );
             } else {
                 // Receive all remaining quantities
-                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id);
+                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id, $destinationLocationId);
             }
 
             // Get receipt status for response
@@ -900,7 +913,7 @@ class PurchaseOrderController extends Controller
             ->where('purchase_order_id', $purchaseOrder);
 
         $query = GoodsReceiptLine::query()
-            ->with('goodsReceipt')
+            ->with(['goodsReceipt', 'product.unitOfMeasure'])
             ->postedReceipts()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
@@ -915,21 +928,33 @@ class PurchaseOrderController extends Controller
             ->orderBy('created_at')
             ->orderBy('id')
             ->get()
-            ->map(fn (GoodsReceiptLine $line): array => [
-                'id' => $line->id,
-                'receipt_number' => $line->goodsReceipt->receipt_number,
-                'external_reference' => $line->goodsReceipt->external_reference,
-                'external_date' => $line->goodsReceipt->external_date?->toDateString(),
-                'product_id' => $line->product_id,
-                'variant_id' => $line->variant_id,
-                'received_qty' => $line->received_qty,
-                'free_qty' => $line->free_qty,
-                'quantity_invoiced' => $line->quantity_invoiced,
-                'free_quantity_invoiced' => $line->free_quantity_invoiced,
-                'accrual_unit_cost' => $line->accrual_unit_cost,
-                'received_unit_price' => $line->received_unit_price,
-                'po_line_id' => $line->po_line_id,
-            ])
+            ->map(function (GoodsReceiptLine $line): array {
+                // product uses SoftDeletes and goods_receipt_lines.product_id has no FK,
+                // so a soft-deleted/orphaned product yields relationLoaded('product') === true
+                // with a null relation value. Guard against that null before dereferencing.
+                $product = $line->relationLoaded('product') ? $line->product : null;
+
+                return [
+                    'id' => $line->id,
+                    'receipt_number' => $line->goodsReceipt->receipt_number,
+                    'external_reference' => $line->goodsReceipt->external_reference,
+                    'external_date' => $line->goodsReceipt->external_date?->toDateString(),
+                    'product_id' => $line->product_id,
+                    'variant_id' => $line->variant_id,
+                    'quantity_decimals' => ($product !== null
+                        && $product->relationLoaded('unitOfMeasure')
+                        && $product->unitOfMeasure !== null)
+                        ? $product->unitOfMeasure->decimal_places
+                        : 4,
+                    'received_qty' => $line->received_qty,
+                    'free_qty' => $line->free_qty,
+                    'quantity_invoiced' => $line->quantity_invoiced,
+                    'free_quantity_invoiced' => $line->free_quantity_invoiced,
+                    'accrual_unit_cost' => $line->accrual_unit_cost,
+                    'received_unit_price' => $line->received_unit_price,
+                    'po_line_id' => $line->po_line_id,
+                ];
+            })
             ->values()
             ->all();
 

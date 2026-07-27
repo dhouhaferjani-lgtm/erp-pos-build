@@ -49,6 +49,14 @@
       "variant": "Variant",
       "selectVariant": "Select a variant"
     },
+    "suggestion": {
+      "title": "Stock by location",
+      "loading": "Loading stock…",
+      "useSource": "Use this source",
+      "none": "No suitable source found.",
+      "confirmTitle": "Switch transfer source?",
+      "confirmSwitch": "This recomputes availability for all {{count}} lines."
+    },
     "entry": {
       "search": "Search or scan a product",
       "browseCatalog": "Browse catalog",

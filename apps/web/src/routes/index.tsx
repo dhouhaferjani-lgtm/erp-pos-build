@@ -103,6 +103,7 @@ const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetail
 const PlacementPage = lazy(() => import('../features/placement/PlacementPage').then((m) => ({ default: m.PlacementPage })))
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
+const StockByLocationPage = lazy(() => import('../features/inventory/pages/StockByLocationPage').then((m) => ({ default: m.StockByLocationPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
 const EntryExitNotesPage = lazy(() => import('../features/inventory/EntryExitNotesPage').then((m) => ({ default: m.EntryExitNotesPage })))
 const CategoriesPage = lazy(() => import('../features/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })))
@@ -544,7 +545,7 @@ export function AppRoutes() {
           <Route
             path="customers/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CustomerForm partnerType="customer" />
                 </SuspenseWrapper>
@@ -586,7 +587,7 @@ export function AppRoutes() {
           <Route
             path="quotes/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="quotes.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="quote" />
                 </SuspenseWrapper>
@@ -628,7 +629,7 @@ export function AppRoutes() {
           <Route
             path="orders/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="orders.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="sales_order" />
                 </SuspenseWrapper>
@@ -670,7 +671,7 @@ export function AppRoutes() {
           <Route
             path="invoices/:id/edit"
             element={
-              <RequirePermission permission="sales.edit">
+              <RequirePermission permission="invoices.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="invoice" />
                 </SuspenseWrapper>
@@ -791,7 +792,7 @@ export function AppRoutes() {
           <Route
             path="suppliers/:id/edit"
             element={
-              <RequirePermission permission="purchases.edit">
+              <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CustomerForm partnerType="supplier" />
                 </SuspenseWrapper>
@@ -875,7 +876,7 @@ export function AppRoutes() {
           <Route
             path="orders/:id/edit"
             element={
-              <RequirePermission permission="purchases.edit">
+              <RequirePermission permission="purchase-orders.update">
                 <SuspenseWrapper>
                   <DocumentForm documentType="purchase_order" />
                 </SuspenseWrapper>
@@ -1011,7 +1012,7 @@ export function AppRoutes() {
           <Route
             path="products/:id/edit"
             element={
-              <RequirePermission permission="inventory.edit">
+              <RequirePermission permission="products.update">
                 <SuspenseWrapper>
                   <ProductForm />
                 </SuspenseWrapper>
@@ -1025,6 +1026,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <StockLevelsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="stock-by-location"
+            element={
+              <RequirePermission permission="inventory.view">
+                <SuspenseWrapper>
+                  <StockByLocationPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1405,7 +1417,7 @@ export function AppRoutes() {
           path="vehicles/:id/edit"
           element={
             <ModuleGuard module="Vehicle">
-              <RequirePermission permission="vehicles.edit">
+              <RequirePermission permission="vehicles.update">
                 <SuspenseWrapper>
                   <VehicleForm />
                 </SuspenseWrapper>

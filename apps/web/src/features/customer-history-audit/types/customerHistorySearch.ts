@@ -17,11 +17,7 @@ export interface CustomerHistorySearch {
   partner_name: string | null
 }
 
-export interface CustomerHistorySearchMeta {
-  current_page: number
-  last_page: number
-  total: number
-  per_page: number
+export interface CustomerHistorySearchMeta extends OffsetPaginationMeta {
   rejected_total: number
 }
 
@@ -40,3 +36,4 @@ export interface CustomerHistorySearchFilters {
   page?: number
   per_page?: number
 }
+import type { OffsetPaginationMeta } from '@/types/pagination'

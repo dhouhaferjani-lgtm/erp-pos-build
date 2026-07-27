@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\BounceInstrumentData;
 use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
@@ -20,6 +22,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Presentation\Validation\ScopedExists;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +38,7 @@ final class PaymentInstrumentController extends Controller
         private readonly InstrumentLifecycleService $lifecycle,
         private readonly InstrumentAccountResolver $accountResolver,
         private readonly OutboundInstrumentService $outboundLifecycle,
+        private readonly LocationScopeResolver $locationScopeResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -50,10 +54,29 @@ final class PaymentInstrumentController extends Controller
             'maturity_from' => ['nullable', 'date'],
             'maturity_to' => ['nullable', 'date', 'after_or_equal:maturity_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
         ]);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $effectiveLocationIds = $this->locationScopeResolver->resolve(
+            $user,
+            $this->requestedLocationIds($validated['location_ids'] ?? []),
+            null,
+        );
+        $allLocationIds = Location::query()->where('company_id', $company->id)->pluck('id')->all();
+        $unrestricted = count(array_diff($allLocationIds, $effectiveLocationIds)) === 0;
         $query = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
+            ->where(function ($locationQuery) use ($effectiveLocationIds, $unrestricted): void {
+                $locationQuery->whereIn('location_id', $effectiveLocationIds);
+                if ($unrestricted) {
+                    $locationQuery->orWhereNull('location_id');
+                }
+            })
             ->with(['paymentMethod', 'partner', 'repository', 'depositedTo']);
         foreach (['status', 'kind', 'direction', 'partner_id', 'repository_id'] as $field) {
             if (isset($validated[$field])) {
@@ -76,9 +99,13 @@ final class PaymentInstrumentController extends Controller
         /** @var LengthAwarePaginator<int, PaymentInstrument> $instruments */
         $instruments = $query->orderByDesc('received_date')->orderByDesc('id')
             ->paginate((int) ($validated['per_page'] ?? 25));
+        $locationNames = Location::query()->whereIn('id', $effectiveLocationIds)->pluck('name', 'id');
 
         return response()->json([
-            'data' => collect($instruments->items())->map(fn (PaymentInstrument $instrument): array => $this->formatInstrument($instrument)),
+            'data' => collect($instruments->items())->map(fn (PaymentInstrument $instrument): array => $this->formatInstrument(
+                $instrument,
+                $instrument->location_id === null ? null : (string) ($locationNames->get($instrument->location_id) ?? $instrument->location_id),
+            )),
             'meta' => [
                 'current_page' => $instruments->currentPage(),
                 'last_page' => $instruments->lastPage(),
@@ -150,6 +177,10 @@ final class PaymentInstrumentController extends Controller
                 'required', 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
+            'location_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('locations', $company->tenant_id, $company->id),
+            ],
             'bank_id' => [
                 'nullable', 'uuid',
                 ScopedExists::tenant('banks', $company->tenant_id),
@@ -175,6 +206,12 @@ final class PaymentInstrumentController extends Controller
 
         $direction = InstrumentDirection::from($validated['direction'] ?? InstrumentDirection::Inbound->value);
         try {
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $company->tenant_id)
+                ->where('company_id', $company->id)
+                ->findOrFail($validated['repository_id']);
+            /** @var PaymentRepository $repository */
+            $locationId = $validated['location_id'] ?? $repository->location_id;
             if ($direction === InstrumentDirection::Inbound) {
                 $this->accountResolver->resolveOrFail(
                     $kind === InstrumentKind::Cheque
@@ -204,6 +241,7 @@ final class PaymentInstrumentController extends Controller
                 bankAccount: $validated['bank_account'] ?? null,
                 needsDetails: (bool) ($validated['needs_details'] ?? false),
                 createdBy: $user->id,
+                locationId: is_string($locationId) ? $locationId : null,
             ));
         } catch (DomainException $exception) {
             return $this->domainError($exception);
@@ -466,8 +504,17 @@ final class PaymentInstrumentController extends Controller
         ], 422);
     }
 
+    /** @return list<string> */
+    private function requestedLocationIds(mixed $value): array
+    {
+        return array_values(array_filter(
+            is_array($value) ? $value : [],
+            static fn (mixed $id): bool => is_string($id),
+        ));
+    }
+
     /** @return array<string, mixed> */
-    private function formatInstrument(PaymentInstrument $instrument): array
+    private function formatInstrument(PaymentInstrument $instrument, ?string $locationName = null): array
     {
         return [
             'id' => $instrument->id,
@@ -494,6 +541,8 @@ final class PaymentInstrumentController extends Controller
             'dishonor_routing' => $instrument->dishonor_routing?->value,
             'remittance_id' => $instrument->remittance_id,
             'repository_id' => $instrument->repository_id,
+            'location_id' => $instrument->location_id,
+            'location_name' => $locationName,
             'repository' => $instrument->repository ? [
                 'id' => $instrument->repository->id,
                 'code' => $instrument->repository->code,

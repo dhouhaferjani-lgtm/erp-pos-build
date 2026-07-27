@@ -155,6 +155,8 @@
     }
   },
   "reports": {
+    "locationBreakdown": "By location",
+    "defaultAttributedCaveat": "Historical rows without a location remain in the Unattributed bucket.",
     "trialBalance": "Trial Balance",
     "profitLoss": "Profit & Loss",
     "balanceSheet": "Balance Sheet",

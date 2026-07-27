@@ -12,6 +12,7 @@ const mockUseProductBatches = vi.hoisted(() => vi.fn())
 
 vi.mock('@/features/locations/api', () => ({
   fetchLocations: mockFetchLocations,
+  fetchTransactionLocations: mockFetchLocations,
 }))
 
 vi.mock('../api/queries', () => ({

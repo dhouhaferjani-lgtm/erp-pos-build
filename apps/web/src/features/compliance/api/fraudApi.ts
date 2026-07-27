@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, apiPost } from '../../../lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 import type {
   FraudAlert,
   FraudAlertFilters,
@@ -41,12 +42,8 @@ export const resetFraudSettings = async (): Promise<{
 export const getFraudAlerts = async (
   filters?: FraudAlertFilters,
   page = 1
-): Promise<{
+): Promise<OffsetPaginationMeta & {
   data: FraudAlert[]
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
 }> => {
   const params = new URLSearchParams({ page: page.toString() })
 

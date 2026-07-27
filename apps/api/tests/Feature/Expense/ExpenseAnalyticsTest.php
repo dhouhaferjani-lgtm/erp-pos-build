@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Expense;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -114,6 +115,22 @@ final class ExpenseAnalyticsTest extends TestCase
         self::assertIsArray($snapshotVendor);
         self::assertNull($snapshotVendor['partner_id']);
         self::assertSame('625.00', $snapshotVendor['total']);
+    }
+
+    public function test_analytics_filters_by_parent_document_location(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->company->id]);
+        $storeB = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->expense($this->company, $this->rent, '2026-07-01', '100.00')->update(['location_id' => $storeA->id]);
+        $this->expense($this->company, $this->rent, '2026-07-02', '40.00')->update(['location_id' => $storeB->id]);
+
+        $response = $this->getAnalytics([
+            'date_from' => '2026-07-01',
+            'date_to' => '2026-07-31',
+            'location_ids' => [$storeA->id],
+        ])->assertOk();
+
+        self::assertSame('100.00', $response->json('data.tiles.total'));
     }
 
     public function test_default_window_is_six_months_through_today_and_excludes_drafts(): void
@@ -351,6 +368,7 @@ final class ExpenseAnalyticsTest extends TestCase
         ?Partner $partner = null,
         ?string $vendorName = null,
     ): Document {
+        $documentNumber = 'EXP-'.str_replace('-', '', $date).'-'.Document::query()->count();
         $document = Document::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
@@ -359,13 +377,15 @@ final class ExpenseAnalyticsTest extends TestCase
             'fiscal_category' => FiscalCategory::TaxInvoice,
             'fiscal_status' => $status === DocumentStatus::Posted ? FiscalStatus::Sealed : FiscalStatus::Draft,
             'status' => $status,
-            'document_number' => 'EXP-'.str_replace('-', '', $date).'-'.Document::query()->count(),
+            'document_number' => $documentNumber,
             'document_date' => $date,
             'currency' => $company->currency,
             'subtotal' => $subtotal === '0.00' ? $total : $subtotal,
             'tax_amount' => $taxAmount,
             'total' => $total,
             'balance_due' => $isPaid ? '0.00' : $total,
+            'fiscal_hash' => hash('sha256', $documentNumber),
+            'chain_sequence' => Document::query()->count() + 1,
         ]);
 
         ExpenseMetadata::create([

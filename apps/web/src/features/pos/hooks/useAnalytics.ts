@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
@@ -36,11 +37,16 @@ function usePosAnalyticsTenantScope(): boolean {
   return tenantId !== null && companyId !== null
 }
 
+function useAnalyticsScope(): 'all' | string[] {
+  return useViewScope().scope
+}
+
 export function useSalesSummary(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.summary(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.summary(filters)], scope),
     queryFn: () => fetchSalesSummary(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -48,9 +54,10 @@ export function useSalesSummary(filters: AnalyticsFilters) {
 
 export function useSalesByCategory(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.salesByCategory(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.salesByCategory(filters)], scope),
     queryFn: () => fetchSalesByCategory(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -58,9 +65,10 @@ export function useSalesByCategory(filters: AnalyticsFilters) {
 
 export function useSalesByProduct(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.salesByProduct(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.salesByProduct(filters)], scope),
     queryFn: () => fetchSalesByProduct(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -68,9 +76,10 @@ export function useSalesByProduct(filters: AnalyticsFilters) {
 
 export function useSalesByPeriod(filters: AnalyticsFilters, granularity = 'day') {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.salesByPeriod(filters, granularity)]),
+    queryKey: locationScopedKey([...analyticsKeys.salesByPeriod(filters, granularity)], scope),
     queryFn: () => fetchSalesByPeriod(filters, granularity),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -78,9 +87,10 @@ export function useSalesByPeriod(filters: AnalyticsFilters, granularity = 'day')
 
 export function useCashierPerformance(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.cashiers(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.cashiers(filters)], scope),
     queryFn: () => fetchCashierPerformance(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -88,9 +98,10 @@ export function useCashierPerformance(filters: AnalyticsFilters) {
 
 export function useDiscountAnalysis(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.discounts(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.discounts(filters)], scope),
     queryFn: () => fetchDiscountAnalysis(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -98,9 +109,10 @@ export function useDiscountAnalysis(filters: AnalyticsFilters) {
 
 export function useCustomerAnalytics(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.customers(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.customers(filters)], scope),
     queryFn: () => fetchCustomerAnalytics(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
@@ -108,9 +120,10 @@ export function useCustomerAnalytics(filters: AnalyticsFilters) {
 
 export function useFnbMetrics(filters: AnalyticsFilters) {
   const hasTenantScope = usePosAnalyticsTenantScope()
+  const scope = useAnalyticsScope()
 
   return useQuery({
-    queryKey: tenantScopedKey([...analyticsKeys.fnb(filters)]),
+    queryKey: locationScopedKey([...analyticsKeys.fnb(filters)], scope),
     queryFn: () => fetchFnbMetrics(filters),
     enabled: !!filters.from && !!filters.to && hasTenantScope,
   })

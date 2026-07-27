@@ -9,7 +9,7 @@ vi.mock('../../../stores/authStore', () => ({
 vi.mock('../../../features/auth/useLogout', () => ({ useLogout: () => vi.fn() }))
 vi.mock('../../../hooks/useScopeChangeNotice', () => ({ useScopeChangeNotice: vi.fn() }))
 vi.mock('../CompanySelector', () => ({ CompanySelector: () => <div /> }))
-vi.mock('../LocationSwitcher', () => ({ LocationSwitcher: () => <div /> }))
+vi.mock('../ViewScopePicker', () => ({ ViewScopePicker: () => <div /> }))
 vi.mock('../../molecules/ConnectionStatusIndicator', () => ({ ConnectionStatusIndicator: () => <div /> }))
 vi.mock('./QuickCreateButton', () => ({ QuickCreateButton: () => <div /> }))
 vi.mock('../../../features/notifications/components/NotificationBell', () => ({

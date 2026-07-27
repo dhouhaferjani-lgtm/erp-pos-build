@@ -15,6 +15,7 @@ vi.mock('@/features/locations/api', async () => {
   return {
     ...actual,
     fetchLocations: () => mockFetchLocations(),
+    fetchTransactionLocations: () => mockFetchLocations(),
   }
 })
 

@@ -11,6 +11,9 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -57,6 +60,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -426,6 +430,11 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             // selectable lot at every location (PO/transfer unblock).
             $this->seedBatchesForBatchTrackedProducts($this->company);
 
+            // Replace the warehouse's synthetic DEFAULT lot for four stable
+            // products with three dated lots. This makes the live
+            // replenishment demo exercise a real FEFO split.
+            $this->seedTunisiaMultiBatchFefoDemo($this->company, $this->location);
+
             $this->seedTunisiaBalances($this->company);
 
             $this->seedTunisiaPurchaseOrders($this->company, $this->location);
@@ -440,6 +449,182 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $this->seedTunisiaExpenses($this->company);
 
         });
+    }
+
+    /**
+     * Give four batch-tracked warehouse products deterministic FEFO fixtures.
+     *
+     * Organic non-default batches make a product ineligible: this additive
+     * demo pass must never rewrite manually received lot stock. For selected
+     * products the DEFAULT lot is replaced, at the warehouse only, by three
+     * sellable lots whose quantities still reconcile exactly to StockLevel.
+     *
+     * Fixture identity is anchored to the product SKU (DEMO-FEFO-{SKU}-{A..C})
+     * — never to the selection position — and previously fixtured products
+     * seed first, so a reseed after real demo usage reuses the same lots
+     * instead of re-keying them onto different products. Any fixture lot whose
+     * product fell out of the selected set (stock consumed below the
+     * threshold, organic lot received, reservation held) is zeroed at the
+     * warehouse so it can never dangle on top of the DEFAULT lot the earlier
+     * reconcile pass refreshed to StockLevel.
+     */
+    protected function seedTunisiaMultiBatchFefoDemo(Company $company, Location $warehouse): void
+    {
+        $previouslyFixturedProductIds = Batch::query()
+            ->where('company_id', $company->id)
+            ->where('batch_number', 'like', 'DEMO-FEFO-%')
+            ->pluck('product_id')
+            ->unique()
+            ->flip();
+
+        // Stable sort: previously fixtured products first (selection
+        // stickiness), SKU order within each group.
+        $candidateProducts = Product::query()
+            ->where('company_id', $company->id)
+            ->where('requires_batch_tracking', true)
+            ->orderBy('sku')
+            ->orderBy('id')
+            ->get(['id', 'sku'])
+            ->sortBy(fn (Product $product): int => $previouslyFixturedProductIds->has($product->id) ? 0 : 1)
+            ->values();
+
+        /** @var Collection<int, array{stockLevel: StockLevel, sku: string}> $selectedFixtures */
+        $selectedFixtures = collect();
+
+        foreach ($candidateProducts as $product) {
+            $stockLevel = StockLevel::query()
+                ->where('product_id', $product->id)
+                ->whereNull('variant_id')
+                ->where('location_id', $warehouse->id)
+                ->where('quantity', '>=', '9.0000')
+                ->first();
+
+            if ($stockLevel === null) {
+                continue;
+            }
+
+            $organicBatchIds = Batch::query()
+                ->where('product_id', $product->id)
+                ->where('batch_number', '!=', BatchStockService::DEFAULT_BATCH_NUMBER)
+                ->where('batch_number', 'not like', 'DEMO-FEFO-%')
+                ->pluck('id');
+
+            $hasOrganicBatchStock = BatchStock::query()
+                ->where('location_id', $warehouse->id)
+                ->where('quantity', '>', 0)
+                ->whereIn('batch_id', $organicBatchIds)
+                ->exists();
+
+            if ($hasOrganicBatchStock) {
+                continue;
+            }
+
+            // A live reservation on ANY of the product's warehouse lots
+            // (DEFAULT or fixture) makes it unsafe to rewrite lot stock.
+            $hasReservedBatchStock = BatchStock::query()
+                ->where('location_id', $warehouse->id)
+                ->where('reserved_quantity', '>', 0)
+                ->whereIn('batch_id', Batch::query()
+                    ->where('product_id', $product->id)
+                    ->pluck('id'))
+                ->exists();
+
+            if ($hasReservedBatchStock) {
+                continue;
+            }
+
+            $selectedFixtures->push(['stockLevel' => $stockLevel, 'sku' => $product->sku]);
+
+            if ($selectedFixtures->count() === 4) {
+                break;
+            }
+        }
+
+        if ($selectedFixtures->count() !== 4) {
+            throw new \RuntimeException('Demo pharmacy requires four safe warehouse products for multi-batch FEFO fixtures.');
+        }
+
+        $asOfDate = now()->startOfDay();
+
+        DB::transaction(function () use ($company, $warehouse, $selectedFixtures, $asOfDate): void {
+            /** @var list<string> $fixtureBatchIds */
+            $fixtureBatchIds = [];
+
+            foreach ($selectedFixtures as $fixture) {
+                $stockLevel = $fixture['stockLevel'];
+                $remainingQuantity = bcsub((string) $stockLevel->quantity, '7.0000', 4);
+                $batchDefinitions = [
+                    ['suffix' => 'A', 'days' => 90, 'quantity' => '3.0000'],
+                    ['suffix' => 'B', 'days' => 180, 'quantity' => '4.0000'],
+                    ['suffix' => 'C', 'days' => 365, 'quantity' => $remainingQuantity],
+                ];
+
+                foreach ($batchDefinitions as $definition) {
+                    $batch = Batch::query()->updateOrCreate(
+                        [
+                            'company_id' => $company->id,
+                            'product_id' => $stockLevel->product_id,
+                            'variant_id' => null,
+                            'batch_number' => sprintf('DEMO-FEFO-%s-%s', $fixture['sku'], $definition['suffix']),
+                        ],
+                        [
+                            'tenant_id' => $company->tenant_id,
+                            'manufacturing_date' => $asOfDate->copy()->subDays(30)->toDateString(),
+                            'expiry_date' => $asOfDate->copy()->addDays($definition['days'])->toDateString(),
+                            'is_active' => true,
+                            'is_expired' => false,
+                            'is_recalled' => false,
+                            'recall_reason' => null,
+                            'recalled_at' => null,
+                            'notes' => 'Demo FEFO replenishment fixture — safe to reseed.',
+                        ],
+                    );
+
+                    BatchStock::query()->updateOrCreate(
+                        ['batch_id' => $batch->id, 'location_id' => $warehouse->id],
+                        [
+                            'tenant_id' => $company->tenant_id,
+                            'quantity' => $definition['quantity'],
+                            'reserved_quantity' => '0.0000',
+                        ],
+                    );
+
+                    $fixtureBatchIds[] = $batch->id;
+                }
+
+                $defaultBatch = Batch::query()
+                    ->where('company_id', $company->id)
+                    ->where('product_id', $stockLevel->product_id)
+                    ->whereNull('variant_id')
+                    ->where('batch_number', BatchStockService::DEFAULT_BATCH_NUMBER)
+                    ->firstOrFail();
+
+                BatchStock::query()
+                    ->where('batch_id', $defaultBatch->id)
+                    ->where('location_id', $warehouse->id)
+                    ->update(['quantity' => '0.0000', 'reserved_quantity' => '0.0000']);
+            }
+
+            // Stale fixture lots — products that fell out of the selected set,
+            // or lots under a retired numbering scheme — are zeroed at the
+            // warehouse only. The batch rows are kept (historical transfer
+            // allocations reference them) and lots holding a live reservation
+            // are left untouched: wiping a reservation is worse than a
+            // temporary aggregate overshoot that the next reseed self-heals.
+            $staleBatchIds = Batch::query()
+                ->where('company_id', $company->id)
+                ->where('batch_number', 'like', 'DEMO-FEFO-%')
+                ->whereNotIn('id', $fixtureBatchIds)
+                ->pluck('id');
+
+            BatchStock::query()
+                ->whereIn('batch_id', $staleBatchIds)
+                ->where('location_id', $warehouse->id)
+                ->where('reserved_quantity', '<=', 0)
+                ->update(['quantity' => '0.0000']);
+        });
+
+        $this->command->info('✓ Multi-batch FEFO demo fixtures reconciled (4 products × 3 warehouse lots)');
     }
 
     /**
@@ -480,10 +665,13 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 }
 
                 $qty = $this->shopQuantityFor($category);
+                [$min, $max] = $this->demoMinMaxFor($product->sku, $shop->code ?? $shop->id);
 
                 // Additive: update if already seeded (re-run safety), create otherwise.
                 // The non-variant unique key is (tenant_id, product_id, location_id)
                 // WHERE variant_id IS NULL — reflected here by omitting variant_id.
+                // min/max are in the VALUES array so a re-run backfills the
+                // reorder band onto rows seeded before this feature.
                 StockLevel::updateOrCreate(
                     [
                         'tenant_id' => $company->tenant_id,
@@ -495,11 +683,42 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                         'company_id' => $company->id,
                         'quantity' => $qty,
                         'reserved' => '0',
+                        'min_quantity' => $min,
+                        'max_quantity' => $max,
                     ],
                 );
 
                 $shopRowCounts[$shop->code]++;
             }
+        }
+
+        // Pinned deterministic grain so the replenishment-suggestion demo (and
+        // its regression test) has one stable, non-floor expectation:
+        // PB-BAB-0060 @ STORE-SOU with fixed on-hand 5 / min 6 / max 12 yields
+        // suggested_qty '7' (max 12 − available 5), whole-number-formatted
+        // because BabyCare is a pieces unit. updateOrCreate overwrites the
+        // random shop-loop row on the unique key; it runs AFTER the loop and
+        // (being inside seedTunisiaStock) BEFORE the shop default-lot backing
+        // so lot reconciliation sees the final quantity.
+        $pinnedProduct = $products->firstWhere('sku', 'PB-BAB-0060');
+        $pinnedShop = collect($this->shops)->firstWhere('code', 'STORE-SOU');
+
+        if ($pinnedProduct !== null && $pinnedShop !== null) {
+            StockLevel::updateOrCreate(
+                [
+                    'tenant_id' => $company->tenant_id,
+                    'product_id' => $pinnedProduct->id,
+                    'location_id' => $pinnedShop->id,
+                    'variant_id' => null,
+                ],
+                [
+                    'company_id' => $company->id,
+                    'quantity' => '5.0000',
+                    'reserved' => '0',
+                    'min_quantity' => '6.0000',
+                    'max_quantity' => '12.0000',
+                ],
+            );
         }
 
         foreach ($shopRowCounts as $code => $count) {

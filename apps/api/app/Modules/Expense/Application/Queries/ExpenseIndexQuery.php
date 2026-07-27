@@ -16,13 +16,18 @@ use Illuminate\Support\Carbon;
 final class ExpenseIndexQuery
 {
     /**
+     * @param list<string> $locationIds
      * @return Builder<Document>
      */
-    public function build(Request $request, string $companyId): Builder
+    public function build(Request $request, string $companyId, array $locationIds = []): Builder
     {
         $query = Document::query()
             ->where('documents.type', DocumentType::Expense)
             ->where('documents.company_id', $companyId);
+
+        if ($locationIds !== []) {
+            $query->whereIn('documents.location_id', $locationIds);
+        }
 
         if ($request->filled('status')) {
             $query->where('documents.status', $request->input('status'));

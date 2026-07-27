@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Package, AlertTriangle, MapPin, Plus, Minus, RefreshCw, X, ArrowRightLeft } from 'lucide-react'
 import { api, apiPost } from '../../lib/api'
 import { cn } from '../../lib/utils'
-import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { bccomp, bcsub } from '../../lib/decimal'
@@ -15,8 +15,6 @@ import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
-import { LocationSelector } from '../locations/LocationSelector'
-import { useLocation } from '../../hooks/useLocation'
 import { getLocations } from '../locations/api/locations'
 import { Button } from '../../components/atoms/Button/Button'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
@@ -29,6 +27,7 @@ import { DataTable, type DataTableColumn } from '../../components/molecules/Data
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import type { StockLevel, StockLevelsResponse } from './types'
 import { stockLevelsInvalidationPredicate } from './_invalidation'
+import { useViewScope } from '../locations/hooks/useViewScope'
 
 interface StockMovement {
   id: string
@@ -54,7 +53,7 @@ export function StockLevelsPage() {
   const { t } = useTranslation(['common', 'inventory'])
   usePageTitle('stockLevels.title', 'inventory')
   const queryClient = useQueryClient()
-  const { currentLocationId } = useLocation()
+  const { scope, effectiveLocationIds } = useViewScope()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -68,17 +67,17 @@ export function StockLevelsPage() {
 
   // Fetch all locations for transfer
   const { data: locationsData } = useQuery({
-    queryKey: tenantScopedKey(['locations']),
+    queryKey: locationScopedKey(['locations'], scope),
     queryFn: getLocations,
     enabled: !!tenantId && !!companyId,
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['stock-levels', searchQuery, currentLocationId]),
+    queryKey: locationScopedKey(['stock-levels', searchQuery], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
-      if (currentLocationId) params.append('location_id', currentLocationId)
+      effectiveLocationIds.forEach((id) => { params.append('location_ids[]', id) })
       const queryString = params.toString()
       const response = await api.get<StockLevelsResponse>(`/stock-levels${queryString ? `?${queryString}` : ''}`)
       return response.data
@@ -393,7 +392,6 @@ export function StockLevelsPage() {
         subtitle={t('inventory:stock.subtitle', { count: total })}
         actions={
           <>
-            <LocationSelector />
             <Link
               to="/inventory/movements"
               className={cn(

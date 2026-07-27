@@ -1,4 +1,5 @@
 import { api, apiGet, apiPost } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface VatBreakdownEntry {
   rate: string
@@ -34,6 +35,9 @@ export interface ZReportItem {
   id: string
   z_number: number
   terminal_id: string
+  terminal_name?: string
+  location_id?: string | null
+  location_name?: string | null
   shift_id: string
   fiscal_hash: string
   previous_z_hash: string | null
@@ -67,6 +71,7 @@ export interface ZReportItem {
 
 export interface ZReportListFilters {
   terminal_id?: string
+  location_ids?: string[]
   from_date?: string
   to_date?: string
   page?: number
@@ -75,12 +80,7 @@ export interface ZReportListFilters {
 
 export interface PaginatedZReports {
   data: ZReportItem[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
+  meta: OffsetPaginationMeta
 }
 
 export interface ChainVerificationResult {
@@ -101,6 +101,7 @@ export interface ChainVerificationResult {
 export async function fetchZReports(filters?: ZReportListFilters): Promise<PaginatedZReports> {
   const params = new URLSearchParams()
   if (filters?.terminal_id) params.set('terminal_id', filters.terminal_id)
+  filters?.location_ids?.forEach((id) => params.append('location_ids[]', id))
   if (filters?.from_date) params.set('from_date', filters.from_date)
   if (filters?.to_date) params.set('to_date', filters.to_date)
   if (filters?.page) params.set('page', String(filters.page))

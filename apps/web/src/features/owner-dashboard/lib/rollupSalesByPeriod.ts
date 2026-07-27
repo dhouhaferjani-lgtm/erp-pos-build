@@ -56,3 +56,7 @@ function toBig(value: string): Big {
     return new Big(0)
   }
 }
+
+export function toChartNumber(value: string): number {
+  return toBig(value).toNumber()
+}

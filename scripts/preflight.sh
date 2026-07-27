@@ -133,6 +133,33 @@ if ! git -C "$ROOT_DIR" diff --quiet -- "$GENERATED_TYPES" 2>/dev/null; then
 fi
 echo -e "${GREEN}✓ Generated types in sync${NC}"
 
+# Frontend permission map — drift guard
+# Regenerates the frontend fallback map from RolesAndPermissionsSeeder and
+# fails if the committed artifact no longer matches the backend source.
+echo -e "\n${YELLOW}Generating frontend permission map...${NC}"
+if ! php artisan permissions:export-frontend-map; then
+    echo -e "${RED}✗ Frontend permission map exporter failed (see output above)${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Frontend permission map generated${NC}"
+
+echo -e "\n${YELLOW}Checking frontend permission map is in sync with committed version...${NC}"
+GENERATED_PERMISSIONS="$ROOT_DIR/apps/web/src/hooks/permissionsMap.generated.ts"
+if ! git -C "$ROOT_DIR" diff --quiet -- "$GENERATED_PERMISSIONS" 2>/dev/null; then
+    echo -e "${RED}✗ apps/web/src/hooks/permissionsMap.generated.ts is out of date.${NC}"
+    echo -e "${RED}  To fix:${NC}"
+    echo -e "${RED}    (cd apps/api && php artisan permissions:export-frontend-map)${NC}"
+    echo -e "${RED}    git add apps/web/src/hooks/permissionsMap.generated.ts${NC}"
+    echo ""
+    echo -e "${YELLOW}Drift summary:${NC}"
+    git -C "$ROOT_DIR" --no-pager diff --stat -- "$GENERATED_PERMISSIONS"
+    echo ""
+    echo -e "${YELLOW}First 200 lines of the drift diff:${NC}"
+    git -C "$ROOT_DIR" --no-pager diff -- "$GENERATED_PERMISSIONS" | head -200
+    exit 1
+fi
+echo -e "${GREEN}✓ Frontend permission map in sync${NC}"
+
 # Frontend checks
 echo -e "\n${YELLOW}🌐 Frontend Checks${NC}"
 echo "=================================="
@@ -154,6 +181,14 @@ echo -e "${GREEN}✓ TanStack query key audit passed${NC}"
 echo -e "\n${YELLOW}Running design-system audit...${NC}"
 pnpm audit:design-system
 echo -e "${GREEN}✓ Design-system audit passed${NC}"
+
+echo -e "\n${YELLOW}Running quantity-display audit...${NC}"
+pnpm audit:quantity
+echo -e "${GREEN}✓ Quantity-display audit passed${NC}"
+
+echo -e "\n${YELLOW}Running POS ESLint rule tests...${NC}"
+( cd "$ROOT_DIR/apps/pos" && pnpm test:eslint-rules )
+echo -e "${GREEN}✓ POS ESLint rule tests passed${NC}"
 
 echo -e "\n${YELLOW}Running route manifest drift check...${NC}"
 bash "$ROOT_DIR/scripts/factory/check-manifest-drift.sh"

@@ -96,6 +96,7 @@ const APPROVED_STORE_OBJECTS = new Set([
 
 const APPROVED_FACTORY_CALLS = new Set([
   'tenantScopedKey',
+  'locationScopedKey',
 ]);
 
 const BASELINED_VIOLATION_KEYS = new Set([]);
@@ -439,8 +440,8 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
         line: line + 1,
         column: character + 1,
         reason:
-          `${factoryName}({ queryKey: tenantScopedKey([...]) }) is a no-op filter: ` +
-          'tenantScopedKey appends tenant/company as SUFFIXES but React Query matches ' +
+          `${factoryName}({ queryKey: ${innerKey.expression.text}([...]) }) is a no-op filter: ` +
+          `${innerKey.expression.text} appends tenant/company as SUFFIXES but React Query matches ` +
           "filter keys as positional PREFIXES — use a bare literal prefix (e.g. ['stock-transfers'])",
         factory: factoryName,
         enclosing_symbol: findEnclosingSymbol(queryKeyProp),

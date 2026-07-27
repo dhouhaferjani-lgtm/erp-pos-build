@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -11,7 +11,8 @@ import {
 } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { formatQuantity } from '../../../lib/format'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { locationScopedKey } from '../../../lib/locationScopedKey'
+import { bccomp } from '@/lib/decimal'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { LocationSelectorMulti } from '../../locations/components/LocationSelectorMulti'
@@ -22,6 +23,8 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { useViewScope } from '../../locations/hooks/useViewScope'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 interface StockMovement {
   id: string
@@ -44,14 +47,7 @@ interface StockMovement {
 
 interface StockMovementsResponse {
   data: StockMovement[]
-  meta?: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-    from?: number | null
-    to?: number | null
-  }
+  meta?: OffsetPaginationMeta
 }
 
 interface ProductMovementsTabProps {
@@ -102,22 +98,17 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
   const [showLocationFilter, setShowLocationFilter] = useState(false)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  const { scope } = useViewScope()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['product-movements', productId, selectedLocationIds, page, perPage]),
+    queryKey: locationScopedKey(['product-movements', productId, page, perPage, selectedLocationIds.join(',')], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       params.append('product_id', productId)
       params.append('page', String(page))
       params.append('per_page', String(perPage))
 
-      // If locations are selected, we need to fetch for each and merge
-      // OR the API supports multiple location_id params
-      // For simplicity, if multiple locations selected, we won't filter by location
-      // (show all and filter client-side)
-      if (selectedLocationIds.length === 1) {
-        params.append('location_id', selectedLocationIds[0])
-      }
+      selectedLocationIds.forEach((locationId) => params.append('location_ids[]', locationId))
 
       const response = await api.get<StockMovementsResponse>(
         `/stock-movements?${params.toString()}`
@@ -127,14 +118,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
     enabled: !!productId && !!tenantId && !!companyId,
   })
 
-  // Client-side filtering for multiple location selection
-  const movements = useMemo(() => {
-    const items = data?.data ?? []
-    if (selectedLocationIds.length > 1) {
-      return items.filter((m) => selectedLocationIds.includes(m.location_id))
-    }
-    return items
-  }, [data?.data, selectedLocationIds])
+  const movements = data?.data ?? []
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString(undefined, {
@@ -265,8 +249,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
               {movements.map((movement) => {
                 const config = getMovementConfig(movement.movement_type)
                 const Icon = config.icon
-                const qty = parseFloat(movement.quantity)
-                const isPositive = qty >= 0
+                const isPositive = bccomp(movement.quantity, '0') >= 0
                 const documentType = documentRouteTypeFromSource(movement.source_document_type)
 
                 return (

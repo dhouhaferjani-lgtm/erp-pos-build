@@ -40,6 +40,7 @@ use Illuminate\Support\Carbon;
  * @property InstrumentKind|null $kind
  * @property InstrumentOrigin $origin
  * @property string|null $repository_id
+ * @property string|null $location_id
  * @property string|null $bank_name
  * @property string|null $bank_branch
  * @property string|null $bank_account
@@ -91,6 +92,7 @@ class PaymentInstrument extends Model
         'kind',
         'origin',
         'repository_id',
+        'location_id',
         'bank_name',
         'bank_branch',
         'bank_account',

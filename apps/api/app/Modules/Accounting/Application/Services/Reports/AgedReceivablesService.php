@@ -9,6 +9,8 @@ use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
+use App\Modules\Company\Domain\Location;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -36,14 +38,19 @@ final readonly class AgedReceivablesService
      * @param  Carbon|null  $asOfDate  The snapshot date (defaults to today)
      * @return AgedReceivablesData The aged receivables report
      */
+    /**
+     * @param list<string> $locationIds
+     */
     public function generate(
         string $companyId,
-        ?Carbon $asOfDate = null
+        ?Carbon $asOfDate = null,
+        array $locationIds = [],
+        bool $groupByLocation = false,
     ): AgedReceivablesData {
         $asOfDate = $asOfDate ?? Carbon::today();
 
         // Get outstanding customer invoices
-        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate);
+        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate, $locationIds);
 
         // Group by customer and calculate aging buckets
         $customerBalances = $this->calculateCustomerAging($invoices, $asOfDate);
@@ -74,7 +81,49 @@ final readonly class AgedReceivablesService
             'total_days_90' => $totals['days_90'],
             'total_over_90' => $totals['over_90'],
             'grand_total' => $totals['total'],
+            'buckets_by_location' => $groupByLocation ? $this->locationBuckets($invoices, $companyId) : [],
         ]);
+    }
+
+    /**
+     * @param Collection<int, Document> $invoices
+     * @return list<LocationReportBucketData>
+     */
+    private function locationBuckets(Collection $invoices, string $companyId): array
+    {
+        $buckets = [];
+        foreach ($invoices as $invoice) {
+            $key = $invoice->location_id ?? 'unattributed';
+            $buckets[$key] ??= [
+                'location_id' => $invoice->location_id,
+                'total' => '0.0000',
+            ];
+            $buckets[$key]['total'] = bcadd(
+                $buckets[$key]['total'],
+                (string) ($invoice->balance_due ?? '0.0000'),
+                self::DECIMAL_SCALE,
+            );
+        }
+
+        $locationIds = array_values(array_filter(
+            array_keys($buckets),
+            static fn (string|int $id): bool => $id !== 'unattributed',
+        ));
+        $names = Location::query()
+            ->where('company_id', $companyId)
+            ->whereIn('id', $locationIds)
+            ->pluck('name', 'id');
+
+        return array_values(array_map(
+            static fn (array $bucket): LocationReportBucketData => LocationReportBucketData::from([
+                'location_id' => $bucket['location_id'],
+                'location_name' => $bucket['location_id'] === null
+                    ? 'Unattributed'
+                    : (string) ($names->get($bucket['location_id']) ?? $bucket['location_id']),
+                'total' => $bucket['total'],
+            ]),
+            $buckets,
+        ));
     }
 
     /**
@@ -88,16 +137,23 @@ final readonly class AgedReceivablesService
      *
      * @return Collection<int, Document>
      */
-    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate): Collection
+    /**
+     * @param list<string> $locationIds
+     * @return Collection<int, Document>
+     */
+    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate, array $locationIds = []): Collection
     {
-        return Document::query()
+        $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<=', $asOfDate)
-            ->where('balance_due', '>', 0)
-            ->with(['partner:id,name,type'])
-            ->get();
+            ->where('balance_due', '>', 0);
+        if ($locationIds !== []) {
+            $query->whereIn('location_id', $locationIds);
+        }
+
+        return $query->with(['partner:id,name,type'])->get();
     }
 
     /**

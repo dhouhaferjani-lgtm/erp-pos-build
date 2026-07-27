@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -48,9 +50,11 @@ export const expenseKeys = {
 export function useExpenses(filters?: ExpenseFilters) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  const { scope, effectiveLocationIds } = useViewScope()
+  const scopedFilters = { ...filters, location_ids: effectiveLocationIds }
   return useQuery({
-    queryKey: tenantScopedKey([...expenseKeys.list(filters)]),
-    queryFn: () => expenseApi.list(filters),
+    queryKey: locationScopedKey([...expenseKeys.list(scopedFilters)], scope),
+    queryFn: () => expenseApi.list(scopedFilters),
     enabled: !!tenantId && !!companyId,
   })
 }
@@ -58,9 +62,11 @@ export function useExpenses(filters?: ExpenseFilters) {
 export function useExpenseAnalytics(filters?: ExpenseAnalyticsFilters) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  const { scope, effectiveLocationIds } = useViewScope()
+  const scopedFilters = { ...filters, location_ids: effectiveLocationIds }
   return useQuery({
-    queryKey: tenantScopedKey([...expenseKeys.analytics(filters)]),
-    queryFn: () => expenseApi.getAnalytics(filters),
+    queryKey: locationScopedKey([...expenseKeys.analytics(scopedFilters)], scope),
+    queryFn: () => expenseApi.getAnalytics(scopedFilters),
     enabled: !!tenantId && !!companyId,
   })
 }

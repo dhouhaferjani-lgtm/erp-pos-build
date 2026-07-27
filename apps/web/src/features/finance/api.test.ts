@@ -22,6 +22,7 @@ describe('finance api', () => {
       net: '0.000',
       days: 45,
       as_of_date: '2026-07-03',
+      buckets_by_location: [],
     }
     mockApiGet.mockResolvedValueOnce(response)
 

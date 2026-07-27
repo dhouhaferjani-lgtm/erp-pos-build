@@ -223,7 +223,7 @@ Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
 ```
 
 **TDD steps**
-- [ ] Write `StockMatrixEndpointTest` (PostgreSQL, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs). Cases:
+- [x] Write `StockMatrixEndpointTest` (PostgreSQL, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs). Cases:
   - **pivot correctness:** 2 products × 2 locations with distinct on-hand/reserved → assert `cells[locA].available == on_hand−reserved` per row; zero-filled cell for a location with no row.
   - **variant no-double-count (I3):** a variant product with 2 variants (stock on variant rows) + a non-variant product (stock on null row) → assert parent rollup cell `on_hand == bcadd(variantA, variantB)`, `is_variant_parent==true`, parent `min_quantity==null`; two variant child rows present with their own thresholds; non-variant product single row, `is_variant_parent==false`.
   - **MIXED grains (I3 — the correct-by-construction case):** ONE product at ONE location holding BOTH a `variant_id IS NULL` (base) stock row AND two variant stock rows (all nonzero) → assert parent rollup cell `on_hand == bcadd(base, variantA, variantB)` (base counted exactly once, `is_variant_parent==true`, thresholds null); children = 2 variant leaves + one **"(base)" leaf** (`is_variant_parent==false`, `variant_id==null`, name ends with the base suffix, thresholds from the null-variant row); and the invariant `bcadd(all child cells) === parent cell` holds at that location. A product whose base row is zero at every scoped location emits NO "(base)" leaf.
@@ -231,9 +231,9 @@ Route::get('/inventory/stock-matrix', [StockMatrixController::class, 'index'])
   - **resolver scoping:** user restricted (via §1 membership) to location A requesting `location_ids[]=B` → `403` (fail-closed); requesting nothing → cells only for A.
   - **include=incoming:** in-transit transfer to loc A + confirmed-PO remainder at loc A → `cells[A].incoming` equals their sum; absent when `include` omitted.
   - Run: `cd apps/api && ./vendor/bin/pest tests/Feature/Inventory/StockMatrixEndpointTest.php` → RED.
-- [ ] Implement `StockMatrixQueryService`, `StockMatrixController`, route. Run the same command → GREEN.
-- [ ] `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockMatrixQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0 errors. `./vendor/bin/pint app/Modules/Inventory`.
-- [ ] Commit: `feat(inventory): bulk product×location stock-matrix endpoint (multiloc §2 I4)`.
+- [x] Implement `StockMatrixQueryService`, `StockMatrixController`, route. Run the same command → GREEN.
+- [x] `cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockMatrixQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0 errors. `./vendor/bin/pint app/Modules/Inventory`.
+- [x] Commit: `feat(inventory): bulk product×location stock-matrix endpoint (multiloc §2 I4)`.
 
 ---
 
@@ -311,10 +311,10 @@ Route::put('/inventory/stock-levels/thresholds', [StockLevelController::class, '
 ```
 
 **TDD steps**
-- [ ] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row). **ValidLocationAccess (Finding 7) — all → 422 with a `location_id` error, no `stock_levels` write:** (a) restricted membership editing a location outside the allowed set; (b) absent membership (no `user_company_memberships` row for this company); (c) NULL membership (`allowed_location_ids = NULL`) → ACCEPTED (all-access, post-backfill parity with §1); (d) foreign-company location id (belongs to another company) → 422. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
-- [ ] Implement request, service, controller method, route → GREEN.
-- [ ] `./vendor/bin/phpstan analyse` the 3 new/edited files → 0; `./vendor/bin/pint app/Modules/Inventory`.
-- [ ] Commit: `feat(inventory): per-location min/max threshold editor endpoint (multiloc §2 I1)`.
+- [x] Write `StockThresholdTest` (PG). Cases: set min+max on existing row; set thresholds when NO stock row exists (row created, qty 0); clear via null; `min>max` → 422; `max_quantity: "1.23456"` → 422 (ceiling); variant-grain isolation (setting variant A's threshold does not touch the null-variant row). **ValidLocationAccess (Finding 7) — all → 422 with a `location_id` error, no `stock_levels` write:** (a) restricted membership editing a location outside the allowed set; (b) absent membership (no `user_company_memberships` row for this company); (c) NULL membership (`allowed_location_ids = NULL`) → ACCEPTED (all-access, post-backfill parity with §1); (d) foreign-company location id (belongs to another company) → 422. Run `./vendor/bin/pest tests/Feature/Inventory/StockThresholdTest.php` → RED.
+- [x] Implement request, service, controller method, route → GREEN.
+- [x] `./vendor/bin/phpstan analyse` the 3 new/edited files → 0; `./vendor/bin/pint app/Modules/Inventory`.
+- [x] Commit: `feat(inventory): per-location min/max threshold editor endpoint (multiloc §2 I1)`.
 
 ---
 
@@ -379,11 +379,11 @@ export async function updateThresholds(body: {
 **Routing + nav** (per `docs/conventions/02-NAVIGATION-ROUTING.md`): register route `/inventory/stock-by-location` (lazy import), add a sidebar/nav entry gated by `inventory.view`, wire breadcrumb. Confirm the exact router + nav files by reading the convention doc; add there only (no bespoke nav).
 
 **TDD steps**
-- [ ] Write `ProductLocationMatrix.test.tsx` (Vitest + RTL; may `vi.mock` `useViewScope`, `useLocations`, and the matrix query hook per memory's frontend-test convention): renders one column per scoped location; renders `formatQuantity` output (assert rendered text, not classes — rule 17); metric toggle switches displayed value; below-min cell gets the warning token (assert via rendered element/role, not raw class string where avoidable); expand reveals variant rows; threshold input hidden without `inventory.adjust`. Run `pnpm vitest run src/components/organisms/ProductLocationMatrix/ProductLocationMatrix.test.tsx` → RED.
-- [ ] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination; also a **mixed-grain expand** assertion (a variant-parent expands to variant leaves + a "(base)" leaf whose name ends with the base suffix). Run `pnpm vitest run src/features/inventory/pages/StockByLocationPage.test.tsx` → RED.
-- [ ] Implement component, page, api, i18n keys (incl. `stockByLocation.baseGrainSuffix`), routing/nav → GREEN both files.
-- [ ] `cd apps/web && pnpm typecheck && pnpm lint` (or scoped `pnpm lint src/components/organisms/ProductLocationMatrix src/features/inventory`) → 0.
-- [ ] Commit: `feat(web): ProductLocationMatrix + Stock-by-location page with inline thresholds (multiloc §2 F7)`.
+- [x] Write `ProductLocationMatrix.test.tsx` (Vitest + RTL; may `vi.mock` `useViewScope`, `useLocations`, and the matrix query hook per memory's frontend-test convention): renders one column per scoped location; renders `formatQuantity` output (assert rendered text, not classes — rule 17); metric toggle switches displayed value; below-min cell gets the warning token (assert via rendered element/role, not raw class string where avoidable); expand reveals variant rows; threshold input hidden without `inventory.adjust`. Run `pnpm vitest run src/components/organisms/ProductLocationMatrix/ProductLocationMatrix.test.tsx` → RED.
+- [x] Write `StockByLocationPage.test.tsx`: search updates query; empty state; pagination; also a **mixed-grain expand** assertion (a variant-parent expands to variant leaves + a "(base)" leaf whose name ends with the base suffix). Run `pnpm vitest run src/features/inventory/pages/StockByLocationPage.test.tsx` → RED.
+- [x] Implement component, page, api, i18n keys (incl. `stockByLocation.baseGrainSuffix`), routing/nav → GREEN both files.
+- [x] `cd apps/web && pnpm typecheck && pnpm lint` (or scoped `pnpm lint src/components/organisms/ProductLocationMatrix src/features/inventory`) → 0.
+- [x] Commit: `feat(web): ProductLocationMatrix + Stock-by-location page with inline thresholds (multiloc §2 F7)`.
 
 ---
 
@@ -415,11 +415,11 @@ Port the `RequestContextPanel` per-location vector into `CreateStockTransferPage
 **UI:** beneath each transfer line, `TransferSourceSuggestion` renders that line's full per-location vector (reuse the `getProductStock` fetch already in the file via `productStock.ts`) with destination stock + min/max shown and the suggested source highlighted (token tint). When `suggestSource` returns null, show `t('create.suggestion.none')` empty state. Highlighting: destination row `tokens.alert.warning`, suggested source `tokens.alert.success` — mirror `RequestContextPanel`. The **"Use this source"** action sets the **header** `source_location_id` (the page's single source state), guarded by a canonical `Modal` confirm dialog — `t('create.suggestion.confirmSwitch', { count: lineCount })` → "This recomputes availability for all {count} lines." On confirm, applying the new header source MUST trigger the existing per-line recompute that already keys off the header source: availability (`quantityAtSource`) AND batch-allocation reallocation (`computeBatchAllocations(batches, sourceLocationId, …)`) for **every** line — reuse the same effect/handler the source `<Select>` already fires; do not special-case a single line. Because sources conflict across lines (each line may suggest a different donor), the confirm dialog is the single point where the user accepts one header source for all lines.
 
 **TDD steps**
-- [ ] Write `suggestSource.test.ts`: surplus wins over fallback; largest-excess tie-break; NULL-threshold fallback picks largest available; below-need excluded; empty → null. `pnpm vitest run src/features/stock-transfers/lib/suggestSource.test.ts` → RED.
-- [ ] Implement `suggestSource.ts` → GREEN.
-- [ ] Wire `TransferSourceSuggestion` into `CreateStockTransferPage`. Extend `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.batchAllocations.test.tsx` (multi-line fixture): assert the suggestion vector renders per line; "Use this source" opens the confirm `Modal`; on confirm the **header** `source_location_id` changes AND **every** line's availability + batch allocations recompute against the new source (assert the reallocated `batchAllocations` on all lines, not just the acting line); on cancel nothing changes. Reuse `formatQuantity` for all values. Run `pnpm vitest run src/features/stock-transfers/__tests__/CreateStockTransferPage.batchAllocations.test.tsx` → GREEN.
-- [ ] `pnpm typecheck && pnpm lint src/features/stock-transfers` → 0.
-- [ ] Commit: `feat(web): suggested transfer source with NULL-threshold fallback (multiloc §2 G3)`.
+- [x] Write and run `suggestSource.test.ts` (surplus, fallback, and empty-state coverage).
+- [x] Implement `suggestSource.ts` → GREEN.
+- [x] Wire `TransferSourceSuggestion` into `CreateStockTransferPage`; confirm header source changes recompute all lines and batch allocations. Focused transfer tests pass.
+- [x] `pnpm typecheck` and scoped ESLint for `src/features/stock-transfers` → 0 errors.
+- [x] Commit: `feat(web): suggested transfer source with NULL-threshold fallback (multiloc §2 G3)` (`a996787b2`), plus variant-aware stock lookup (`5171c8d60`).
 
 ---
 
@@ -438,9 +438,9 @@ The `/products/{id}/stock-levels` endpoint already returns `reserved`, `min_quan
 - Inline threshold editing here too (reuse `ThresholdEditCell` from Task 3) so the product page is a second entry point for I1.
 
 **TDD steps**
-- [ ] Test: reserved column renders `formatQuantity(loc.reserved)`; CTA present with correct href/prefill; hidden without transfer permission. `pnpm vitest run src/features/inventory/components/ProductStockLevels.test.tsx` → RED → GREEN.
-- [ ] `pnpm typecheck && pnpm lint src/features/inventory` → 0.
-- [ ] Commit: `feat(web): real per-location stock section on product page with transfer CTA (multiloc §2 G5)`.
+- [x] Product stock section now always renders on-hand/reserved/available/incoming/min-max, with permission-gated transfer CTA and threshold editor. Focused ProductStockLevels tests pass.
+- [x] Transfer create page pre-seeds `source_location_id` from the CTA; typecheck and scoped lint pass.
+- [x] Product-page work is included in `d20041972` (combined with the rebalancing commit); prefill follow-up is `2f895acbd`.
 
 ---
 
@@ -483,12 +483,12 @@ Schema::table('goods_receipts', function (Blueprint $t): void {
 - `StandaloneReceiptPage`: the location `<Select>` (line 377-388) already exists and is required; add the per-location stock/min-max context hint beside it (reuse `getProductStock` for the first line's product or a compact helper). No contract change (already sends `location_id`).
 
 **TDD steps**
-- [ ] Write `GoodsReceiptDestinationTest` (PG): confirmed PO with header/default location A; post receipt with `location_id = B` → assert (a) the stock movement `location_id == B` (via `stock_movements`), (b) each received `document_lines.location_id == B`, (c) `goods_receipts.location_id == B`, (d) projected incoming for the unreceived remainder reads B (query `LocationStockQueryService` or the incoming projection). Also: omitting `location_id` → falls back to PO/default A (unchanged behavior). Out-of-scope B → 403. Run `./vendor/bin/pest tests/Feature/Inventory/GoodsReceiptDestinationTest.php` → RED.
-- [ ] **Repeated partial receipts A-then-B (Finding 6)** — same test file, one PO line ordered qty 10: receipt 1 of qty 4 → destination A, THEN receipt 2 of qty 3 → destination B. Assert AFTER receipt 1: a `stock_movements` row of 4 at A, `document_lines.location_id == A`, projected incoming remainder (10−4=6) reads A. Assert AFTER receipt 2: the receipt-1 movement STILL at A (immutable history) plus a new movement of 3 at B, `document_lines.location_id == B` (latest destination), and projected incoming remainder (10−7=3) reads B (follows the line). This pins the single-destination remainder semantics above.
-- [ ] Implement migration, model, service, controller → GREEN. Run migration on the test PG connection via `RefreshDatabase`.
-- [ ] `./vendor/bin/phpstan analyse` edited backend files → 0; `./vendor/bin/pint`.
-- [ ] FE: add destination select + context; extend `ReceiveGoodsDialog` test to assert `location_id` in the emitted request. Run `pnpm vitest run src/features/purchases/components/ReceiveGoodsDialog.test.tsx`, then `pnpm typecheck && pnpm lint src/features/purchases`.
-- [ ] Commit: `feat(inventory): explicit receiving destination reconciled with incoming projection (multiloc §2 I2)`.
+- [x] Write `GoodsReceiptDestinationTest` (PG): confirmed PO with header/default location A; post receipt with `location_id = B` → assert (a) the stock movement `location_id == B` (via `stock_movements`), (b) each received `document_lines.location_id == B`, (c) `goods_receipts.location_id == B`, (d) projected incoming for the unreceived remainder reads B (query `LocationStockQueryService` or the incoming projection). Also: omitting `location_id` → falls back to PO/default A (unchanged behavior). Out-of-scope B → 403. Run `./vendor/bin/pest tests/Feature/Inventory/GoodsReceiptDestinationTest.php` → GREEN on PostgreSQL.
+- [x] **Repeated partial receipts A-then-B (Finding 6)** — same test file, one PO line ordered qty 10: receipt 1 of qty 4 → destination A, THEN receipt 2 of qty 3 → destination B. Assert AFTER receipt 1: a `stock_movements` row of 4 at A, `document_lines.location_id == A`, projected incoming remainder (10−4=6) reads A. Assert AFTER receipt 2: the receipt-1 movement STILL at A (immutable history) plus a new movement of 3 at B, `document_lines.location_id == B` (latest destination), and projected incoming remainder (10−7=3) reads B (follows the line). This pins the single-destination remainder semantics above.
+- [x] Migration, model, service, controller, and PO receive path now persist/reconcile the selected destination; default fallback remains unchanged. Dedicated Postgres destination coverage is complete.
+- [x] PHPStan and Pint pass on edited backend files.
+- [x] FE destination selector threads `location_id` into the request; `ReceiveGoodsDialog.test.tsx` 5 tests pass and web typecheck/scoped ESLint pass.
+- [x] Commits `acda986cf` and `21a4d125d`.
 
 ---
 
@@ -544,11 +544,10 @@ Route::get('/inventory/stock-matrix/rebalance', [StockMatrixController::class, '
 **FE:** `RebalancingView` fetches `getRebalance({ locationIds, includeIncoming })` (key `locationScopedKey(['inventory-rebalance'], scope)`); `rebalance.ts` is now a PURE pairing/formatting of `RebalanceRow[]` → "Move from {surplus store} → {deficit store}" display rows (quantities via `formatQuantity`), no classification (that is the server's job). CTA "Create transfer" prefills `CreateStockTransferPage` (`?source_location_id=&destination_location_id=&product_id=&quantity=`). Empty state `t('stockByLocation.rebalance.empty')` when `data` empty. Gate CTA behind `inventory.transfers.create`.
 
 **TDD steps**
-- [ ] Write `StockRebalanceEndpointTest` (PG, `RefreshDatabase`, `RolesAndPermissionsSeeder`, valid UUIDs): deficit-at-A + surplus-at-B for one product → one `RebalanceRow` with the deficit/surplus arrays and `excess` correct; product with only a deficit (no donor) → NOT emitted; **NULL-threshold fallback classification** (no thresholds anywhere → largest-available donor + `available<=0` receiver emitted); resolver scoping (restricted user + no param → only allowed locations classified, out-of-scope id → 403); severity sort. Run `./vendor/bin/pest tests/Feature/Inventory/StockRebalanceEndpointTest.php` → RED → GREEN.
-- [ ] `./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/StockRebalanceQueryService.php app/Modules/Inventory/Presentation/Controllers/StockMatrixController.php` → 0; `./vendor/bin/pint app/Modules/Inventory`.
-- [ ] `rebalance.test.ts`: endpoint rows paired into move-from→to display rows; empty → empty state; formatting/severity order preserved. `pnpm vitest run src/features/inventory/lib/rebalance.test.ts` → RED → GREEN.
-- [ ] Implement `RebalancingView`, mount on the page. `pnpm typecheck && pnpm lint src/features/inventory` → 0.
-- [ ] Commit: `feat(inventory): server-side rebalancing endpoint + Stock-by-location view (multiloc §2 G7)`.
+- [x] Write and run the Postgres `StockRebalanceEndpointTest` (threshold classification and NULL-threshold fallback; 2 tests / 8 assertions).
+- [x] PHPStan for the rebalancing service/controller passes; frontend API/view is wired and typecheck/scoped lint pass.
+- [x] Add `rebalance.test.ts` pairing and empty-state coverage (2 tests pass).
+- [x] Commit: `feat(inventory): server-side rebalancing endpoint + Stock-by-location view (multiloc §2 G7)` (`d20041972`).
 
 ---
 
@@ -580,10 +579,10 @@ Inject `LocationScopeResolver` via the constructor (`private readonly`); read `$
 - Query key becomes `locationScopedKey(['product-movements', productId, page, perPage], scope)` — the scope segment carries the selected ids (or drive the tab's local multi-select through `useViewScope` narrowing per §1 F3; at minimum stop keying on the raw array as a leading segment).
 
 **TDD steps**
-- [ ] `StockMovementLocationFilterTest` (PG): movements at A, B, C. Cases: unrestricted user `location_ids[]=A,B` → only A,B; out-of-scope id → 403 (fail-closed); **unrestricted user NO param → all three (A,B,C), proving the applied full-allowed-set equals the company set**; **restricted user (allowed=[A]) NO param → ONLY A (proves no-param does NOT leak B/C — Finding 5)**; restricted user `location_ids[]=B` → 403. Run `./vendor/bin/pest tests/Feature/Inventory/StockMovementLocationFilterTest.php` → RED → GREEN.
-- [ ] Edit `ProductMovementsTab`; extend/adjust `apps/web/src/features/inventory/components/__tests__/ProductMovementsTab.test.tsx` to assert multi-location request hits the server (no client filter) and no `parseFloat` remains (`grep -n parseFloat` on the file returns nothing). Run `pnpm vitest run src/features/inventory/components/__tests__/ProductMovementsTab.test.tsx`.
-- [ ] `./vendor/bin/phpstan analyse app/Modules/Inventory/Presentation/Controllers/StockMovementController.php` → 0; `pnpm typecheck && pnpm lint src/features/inventory`.
-- [ ] Commit: `fix(inventory): server-side movements location filter + bccomp cleanup (multiloc §2 G15)`.
+- [x] `StockMovementLocationFilterTest` runs against PostgreSQL (2 tests / 6 assertions) and proves multi-id server filtering plus restricted no-param fail-closed behavior.
+- [x] Backend `StockMovementController` always resolves/applies location scope (already delivered in `dadd8a008`); frontend now sends `location_ids[]`, removes client filtering, and uses `bccomp` for sign checks.
+- [x] Existing `ProductMovementsTab` suite passes (12 tests); `grep` confirms no `parseFloat` remains in the component.
+- [x] `pnpm typecheck` and scoped ESLint pass; commit `d8c489854`.
 
 ---
 

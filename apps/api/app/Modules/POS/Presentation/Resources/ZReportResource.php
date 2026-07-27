@@ -23,6 +23,9 @@ final class ZReportResource extends JsonResource
         return [
             'id' => $this->id,
             'terminal_id' => $this->terminal_id,
+            'terminal_name' => $this->whenLoaded('terminal', fn () => $this->terminal->name),
+            'location_id' => $this->whenLoaded('terminal', fn () => $this->terminal->location_id),
+            'location_name' => $this->whenLoaded('terminal', fn () => $this->terminal->relationLoaded('location') ? $this->terminal->location->name : null),
             'shift_id' => $this->shift_id,
             'z_number' => $this->z_number,
             'fiscal_hash' => $this->fiscal_hash,

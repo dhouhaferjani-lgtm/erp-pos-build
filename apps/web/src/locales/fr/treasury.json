@@ -148,7 +148,9 @@
     "type": "Type",
     "partner": "Partenaire",
     "maturity": "Échéance",
-    "location": "Emplacement actuel",
+    "location": "Emplacement d'origine",
+    "unattributed": "Non attribué",
+    "originGrainCaveat": "L'emplacement de l'effet est le magasin d'origine figé, et non le dépôt de garde actuel.",
     "status": "Statut",
     "amount": "Montant",
     "details": "Détails de l'effet",
@@ -316,6 +318,8 @@
     "singular": "dépôt",
     "plural": "dépôts",
     "add": "Ajouter un dépôt",
+    "location": "Emplacement",
+    "selectLocation": "Sélectionner un emplacement",
     "transfer": {
       "action": "Transférer des fonds",
       "title": "Transférer des fonds",
@@ -370,6 +374,7 @@
       "repository": "Dépôt",
       "type": "Type",
       "bankInfo": "Informations bancaires",
+      "location": "Emplacement",
       "status": "Statut",
       "balance": "Solde"
     },
@@ -696,7 +701,9 @@
     "viewOverview": "Voir l’aperçu",
     "viewMovements": "Voir les mouvements",
     "loading": "Chargement de la position de trésorerie…",
-    "unavailable": "La position de trésorerie est indisponible."
+    "unavailable": "La position de trésorerie est indisponible.",
+    "unattributed": "Non attribué",
+    "byLocation": "Par emplacement"
   },
   "statements": {
     "title": "Relevés bancaires",

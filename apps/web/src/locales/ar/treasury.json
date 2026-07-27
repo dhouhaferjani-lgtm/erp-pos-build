@@ -9,7 +9,9 @@
     "receivedDate": "تاريخ الاستلام",
     "issuedDate": "تاريخ الإصدار",
     "repository": "المستودع",
-    "location": "الموقع الحالي",
+    "location": "موقع الأصل",
+    "unattributed": "غير منسوب",
+    "originGrainCaveat": "موقع الأداة هو متجر الأصل الثابت، وليس مستودع الحيازة الحالي.",
     "buckets": {
       "label": "فترات الاستحقاق",
       "overdue": "متأخر",
@@ -64,9 +66,14 @@
     "viewOverview": "عرض النظرة العامة",
     "viewMovements": "عرض الحركات",
     "loading": "جارٍ تحميل وضع السيولة…",
-    "unavailable": "وضع السيولة غير متاح."
+    "unavailable": "وضع السيولة غير متاح.",
+    "unattributed": "غير منسوب",
+    "byLocation": "حسب الموقع"
   },
   "repositories": {
+    "location": "الموقع",
+    "selectLocation": "اختر الموقع",
+    "table": { "location": "الموقع" },
     "transfer": {
       "action": "تحويل النقد",
       "title": "تحويل النقد",

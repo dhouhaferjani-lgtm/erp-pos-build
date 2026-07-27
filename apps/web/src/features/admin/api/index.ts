@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 import { adminApi, adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
@@ -62,12 +63,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
 }
 
 // Tenants - API returns paginated data wrapped in { data: ... }
-interface PaginatedResponse<T> {
+interface PaginatedResponse<T> extends OffsetPaginationMeta {
   data: T[]
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
 }
 
 // Backend wraps paginated responses in { data: paginated_result }

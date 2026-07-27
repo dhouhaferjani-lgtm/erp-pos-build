@@ -28,6 +28,7 @@ final class AgedPayablesData extends Data
      * @param  string  $total_days_90  Total of all 91-120 days balances
      * @param  string  $total_over_90  Total of all over 120 days balances
      * @param  string  $grand_total  Grand total of all outstanding payables
+     * @param  DataCollection<int, LocationReportBucketData>|array<int, LocationReportBucketData>  $buckets_by_location  Location totals
      */
     public function __construct(
         public readonly string $as_of_date,
@@ -39,5 +40,7 @@ final class AgedPayablesData extends Data
         public readonly string $total_days_90,
         public readonly string $total_over_90,
         public readonly string $grand_total,
+        #[DataCollectionOf(LocationReportBucketData::class)]
+        public readonly DataCollection|array $buckets_by_location = [],
     ) {}
 }

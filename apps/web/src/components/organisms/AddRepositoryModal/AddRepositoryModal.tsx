@@ -15,6 +15,7 @@ import { BankPicker } from '../../molecules/pickers/BankPicker'
 import type { Bank } from '@/hooks/useBanks'
 import { useBankAccountValidation, type BankAccountValidationResult } from '@/hooks/useBankAccountValidation'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
+import { useTransactionLocations } from '@/features/locations/hooks/useTransactionLocations'
 
 interface Repository {
   id: string
@@ -41,6 +42,7 @@ interface RepositoryFormData {
   iban: string
   bic: string
   gl_account_id: string
+  location_id: string
   selected_bank: Bank | null
   bank_fallback: boolean
 }
@@ -197,6 +199,7 @@ export function AddRepositoryModal({
   // Form state with React Hook Form
   const { data: accountsData } = useAccounts({ active: true })
   const accounts = accountsData ?? []
+  const { data: locations = [] } = useTransactionLocations()
 
   const {
     register,
@@ -216,6 +219,7 @@ export function AddRepositoryModal({
       iban: '',
       bic: '',
       gl_account_id: '',
+      location_id: '',
       selected_bank: null,
       bank_fallback: false,
     },
@@ -234,6 +238,7 @@ export function AddRepositoryModal({
         iban: '',
         bic: '',
         gl_account_id: '',
+        location_id: '',
         selected_bank: null,
         bank_fallback: false,
       })
@@ -244,6 +249,7 @@ export function AddRepositoryModal({
   // Watch type to conditionally show bank fields
   const selectedType = useWatch({ control, name: 'type' })
   const isBankAccount = selectedType === 'bank_account'
+  const canAssignLocation = selectedType === 'cash_register' || selectedType === 'safe'
   const accountNumber = useWatch({ control, name: 'account_number' })
   const iban = useWatch({ control, name: 'iban' })
   const bankName = useWatch({ control, name: 'bank_name' })
@@ -279,6 +285,7 @@ export function AddRepositoryModal({
         iban: data.iban || null,
         bic: data.bic || null,
         gl_account_id: data.gl_account_id || null,
+        ...(data.location_id !== '' ? { location_id: data.location_id } : {}),
       }
       return apiPost<Repository>('/payment-repositories', payload)
     },
@@ -364,6 +371,17 @@ export function AddRepositoryModal({
                 ))}
               </Select>
             </FormField>
+
+            {canAssignLocation && (
+              <FormField label={t('treasury:repositories.location', 'Location')} htmlFor="repository-location">
+                <Select id="repository-location" {...register('location_id')}>
+                  <option value="">{t('treasury:repositories.selectLocation', 'Select location')}</option>
+                  {locations.filter((location) => location.isActive).map((location) => (
+                    <option key={location.id} value={location.id}>{location.name}</option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
 
             {/* Bank-specific fields (conditional) */}
             {isBankAccount && (

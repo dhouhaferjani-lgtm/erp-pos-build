@@ -549,6 +549,19 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        // Header attribution follows the first allocated document. Pure
+        // advances intentionally remain company-level (NULL location).
+        $attributionLocationId = null;
+        $firstAllocatedDocumentId = $adjustedAllocations[0]['document_id'] ?? null;
+        if (is_string($firstAllocatedDocumentId)) {
+            $attributionLocationId = Document::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->whereKey($firstAllocatedDocumentId)
+                ->value('location_id');
+            $attributionLocationId = is_string($attributionLocationId) ? $attributionLocationId : null;
+        }
+
         $isDeferredCustomer = ! $isSupplierPayment && $deferredKind !== null;
         $isDeferredSupplier = $isSupplierPayment && $deferredKind !== null;
         $portfolioDebitAccountId = null;
@@ -724,6 +737,7 @@ class PaymentController extends Controller
                 $user,
                 $paymentAmount,
                 $adjustedAllocations,
+                $attributionLocationId,
                 $tenantId,
                 $companyId,
                 $isSupplierPayment,
@@ -777,6 +791,7 @@ class PaymentController extends Controller
                             bankBranch: isset($instrumentData['bank_branch']) ? (string) $instrumentData['bank_branch'] : null,
                             bankAccount: isset($instrumentData['bank_account']) ? (string) $instrumentData['bank_account'] : null,
                             createdBy: $user->id,
+                            locationId: $attributionLocationId,
                         ));
                     }
                 }
@@ -802,6 +817,7 @@ class PaymentController extends Controller
                         bankBranch: isset($instrumentData['bank_branch']) ? (string) $instrumentData['bank_branch'] : null,
                         bankAccount: isset($instrumentData['bank_account']) ? (string) $instrumentData['bank_account'] : null,
                         createdBy: $user->id,
+                        locationId: $attributionLocationId,
                     ));
                 }
 
@@ -822,6 +838,7 @@ class PaymentController extends Controller
                         ? $instrument->id
                         : ($validated['instrument_id'] ?? null),
                     'repository_id' => $validated['repository_id'] ?? null,
+                    'location_id' => $attributionLocationId,
                     'amount' => $paymentAmount,
                     'currency' => $paymentCurrency,
                     'payment_date' => $validated['payment_date'],
@@ -1414,6 +1431,7 @@ class PaymentController extends Controller
                         'partner_id' => $validated['partner_id'],
                         'payment_method_id' => $paymentLine['payment_method_id'],
                         'repository_id' => $paymentLine['repository_id'] ?? null,
+                        'location_id' => $primaryDocument->location_id,
                         'amount' => $lineAmount,
                         'currency' => $validated['currency'] ?? $companyCurrency,
                         'payment_date' => $validated['payment_date'],

@@ -34,6 +34,8 @@ use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
 use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -94,6 +96,8 @@ class ReportsController extends Controller
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
         private readonly LiveSalesReportService $liveSalesReportService,
         private readonly FinanceSummaryService $financeSummaryService,
+        private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -738,11 +742,16 @@ class ReportsController extends Controller
                 ? Carbon::parse($request->input('as_of_date'))
                 : Carbon::today();
 
-            $reportData = $this->agedReceivablesService->generate($companyId, $asOfDate);
+            $reportData = $this->agedReceivablesService->generate(
+                $companyId,
+                $asOfDate,
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
-            return response()->json([
-                'data' => $reportData->toArray(),
-            ]);
+            $payload = $reportData->toArray();
+
+            return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => [
@@ -786,11 +795,16 @@ class ReportsController extends Controller
                 ? Carbon::parse($request->input('as_of_date'))
                 : Carbon::today();
 
-            $reportData = $this->agedPayablesService->generate($companyId, $asOfDate);
+            $reportData = $this->agedPayablesService->generate(
+                $companyId,
+                $asOfDate,
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
-            return response()->json([
-                'data' => $reportData->toArray(),
-            ]);
+            $payload = $reportData->toArray();
+
+            return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => [
@@ -815,11 +829,14 @@ class ReportsController extends Controller
         }
 
         try {
-            $reportData = $this->upcomingPaymentsService->generate($companyId, $request->days());
+            $reportData = $this->upcomingPaymentsService->generate(
+                $companyId,
+                $request->days(),
+                $this->reportLocationScope($request, $companyId),
+                $request->input('group_by') === 'location',
+            );
 
-            return response()->json([
-                'data' => $reportData->toArray(),
-            ]);
+            return response()->json(['data' => $reportData->toArray()]);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => [
@@ -828,6 +845,34 @@ class ReportsController extends Controller
                 ],
             ], 500);
         }
+    }
+
+    /**
+     * Resolve financial-report scope. A full company scope is represented by
+     * an empty list so the report includes the explicit Unattributed bucket; a strict
+     * membership scope is represented by the effective ids and therefore hides
+     * NULL location rows.
+     *
+     * @return list<string>
+     */
+    private function reportLocationScope(Request $request, string $companyId): array
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
+
+        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
+    }
+
+    /** @return list<string> */
+    private function requestedLocationIds(mixed $value): array
+    {
+        return array_values(array_filter(
+            is_array($value) ? $value : [],
+            static fn (mixed $id): bool => is_string($id),
+        ));
     }
 
     /**

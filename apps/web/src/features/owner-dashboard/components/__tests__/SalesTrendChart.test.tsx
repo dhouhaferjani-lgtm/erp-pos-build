@@ -59,6 +59,19 @@ describe('SalesTrendChart', () => {
       }),
     ])
   })
+
+  it('renders one line per location when requested', () => {
+    render(
+      <SalesTrendChart
+        data={[...todayRows, { ...todayRows[0], location_id: 'loc-2', location_name: 'Lac 1', period: '2026-07-03T10:00:00Z', gross_sales: '80.000' }]}
+        granularity="day"
+        seriesMode="per-location"
+      />,
+    )
+
+    const option = readCapturedOption()
+    expect(option.series.map((item) => item.name)).toEqual(['Lac 2', 'Lac 1'])
+  })
 })
 
 function readCapturedOption(): CapturedChartOption {

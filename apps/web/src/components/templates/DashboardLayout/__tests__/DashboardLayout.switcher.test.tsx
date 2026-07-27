@@ -7,18 +7,11 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { changeLanguage: vi.fn(), language: 'en' } }),
 }))
 
-// Mock LocationSwitcher with a testid so we can assert presence/absence
-vi.mock('../../../organisms/LocationSwitcher', () => ({
-  LocationSwitcher: () => <div data-testid="location-switcher" />,
-}))
-
-// Mock TopBar as a thin shim that renders LocationSwitcher based on the prop —
-// this verifies DashboardLayout computes and passes showLocationSwitcher correctly
-// without pulling in TopBar's heavy auth/router deps.
+// Mock TopBar as a thin shim; the canonical view-scope picker is always present.
 vi.mock('../../../organisms/TopBar', () => ({
-  TopBar: ({ showLocationSwitcher }: { showLocationSwitcher?: boolean }) => (
+  TopBar: () => (
     <div data-testid="topbar">
-      {showLocationSwitcher !== false && <div data-testid="location-switcher" />}
+      <div data-testid="view-scope-picker" />
     </div>
   ),
 }))
@@ -69,14 +62,14 @@ function renderAt(path: string) {
   )
 }
 
-describe('DashboardLayout location switcher visibility', () => {
-  it('hides the switcher on /reports', () => {
+describe('DashboardLayout view scope visibility', () => {
+  it('shows the view scope picker on /reports', () => {
     renderAt('/reports')
-    expect(screen.queryByTestId('location-switcher')).not.toBeInTheDocument()
+    expect(screen.getByTestId('view-scope-picker')).toBeInTheDocument()
   })
 
-  it('shows the switcher on an operational route', () => {
+  it('shows the view scope picker on an operational route', () => {
     renderAt('/inventory')
-    expect(screen.getByTestId('location-switcher')).toBeInTheDocument()
+    expect(screen.getByTestId('view-scope-picker')).toBeInTheDocument()
   })
 })

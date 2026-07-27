@@ -23,6 +23,9 @@ vi.mock('@/hooks/useBanks', () => ({
 vi.mock('@/features/finance/hooks/useAccounts', () => ({
   useAccounts: () => ({ data: [] }),
 }))
+vi.mock('@/features/locations/hooks/useTransactionLocations', () => ({
+  useTransactionLocations: () => ({ data: [{ id: 'loc-a', name: 'Store A', isActive: true }] }),
+}))
 
 const amenBank = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -117,5 +120,15 @@ describe('AddRepositoryModal bank account flow', () => {
 
     expect(await screen.findByText('Automatic RIB validation is not available for this country.')).toBeInTheDocument()
     expect(screen.queryByText('RIB checksum could not be verified. You can still save.')).not.toBeInTheDocument()
+  })
+
+  it('assigns a cash register to a selected location', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<AddRepositoryModal isOpen onClose={() => undefined} />, { companyConfig: mechanicCompanyConfig })
+    await user.type(screen.getByLabelText(/^Code/), 'CR-01')
+    await user.type(screen.getByLabelText(/^Name/), 'Store register')
+    await user.selectOptions(screen.getByLabelText(/Location/), 'loc-a')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/payment-repositories', expect.objectContaining({ location_id: 'loc-a' })))
   })
 })

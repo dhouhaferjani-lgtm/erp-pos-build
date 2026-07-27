@@ -142,6 +142,7 @@ class PaymentRefundService
                     'payment_method_id' => $original->payment_method_id,
                     'instrument_id' => $original->instrument_id,
                     'repository_id' => $original->repository_id,
+                    'location_id' => $original->location_id,
                     'amount' => bcmul($originalAmount, '-1', $this->scale()), // Negative amount
                     'currency' => $original->currency,
                     'payment_date' => now(),
@@ -269,6 +270,7 @@ class PaymentRefundService
                     'payment_method_id' => $original->payment_method_id,
                     'instrument_id' => $original->instrument_id,
                     'repository_id' => $original->repository_id,
+                    'location_id' => $original->location_id,
                     'amount' => bcmul($amount, '-1', $this->scale()), // Negative amount
                     'currency' => $original->currency,
                     'payment_date' => now(),
@@ -765,6 +767,7 @@ class PaymentRefundService
                         'payment_method_id' => $original->payment_method_id,
                         'instrument_id' => $original->instrument_id,
                         'repository_id' => $original->repository_id,
+                        'location_id' => $original->location_id,
                         // Negative amount — refunds reduce the cash side
                         'amount' => $negativeAmount,
                         'currency' => $original->currency,

@@ -88,6 +88,7 @@ class MultiPaymentService
                     'payment_method_id' => $split['payment_method_id'],
                     'instrument_id' => $split['instrument_id'] ?? null,
                     'repository_id' => $split['repository_id'] ?? null,
+                    'location_id' => $document->location_id,
                     'amount' => $lineAmount,
                     'currency' => $document->currency,
                     'payment_date' => now(),

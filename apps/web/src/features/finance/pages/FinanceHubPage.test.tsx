@@ -21,6 +21,7 @@ vi.mock('../../../hooks/usePageTitle', () => ({
 
 const mockCanAccessModule = vi.fn()
 const mockHasPermission = vi.fn()
+const mockScope = { current: 'all' as 'all' | string[] }
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({
     canAccessModule: mockCanAccessModule,
@@ -28,7 +29,17 @@ vi.mock('../../../hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({
+    scope: mockScope.current,
+    effectiveLocationIds: mockScope.current === 'all' ? [] : mockScope.current,
+    isAll: mockScope.current === 'all',
+    setScope: vi.fn(),
+  }),
+}))
+
 beforeEach(() => {
+  mockScope.current = 'all'
   mockCanAccessModule.mockReturnValue(true)
   mockHasPermission.mockReturnValue(true)
 })
@@ -93,5 +104,15 @@ describe('FinanceHubPage canonicalization', () => {
     expect(screen.queryByText('hub.sections.accounting')).not.toBeInTheDocument()
     expect(screen.queryByText('hub.sections.reports')).not.toBeInTheDocument()
     expect(screen.getByText('hub.sections.bankingAndPayments')).toBeInTheDocument()
+  })
+
+  it('preserves a selected location scope in finance deep links', () => {
+    mockScope.current = ['loc-a']
+    render(<FinanceHubPage />)
+
+    expect(screen.getByRole('link', { name: /hub\.cards\.treasuryOverview\.title/i })).toHaveAttribute(
+      'href',
+      '/finance/overview?location_ids%5B%5D=loc-a',
+    )
   })
 })

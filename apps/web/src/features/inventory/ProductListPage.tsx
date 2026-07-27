@@ -34,6 +34,7 @@ import {
   type DataTableColumn,
   EmptyState,
 } from '../../components/molecules'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface Product {
   id: string
@@ -55,14 +56,7 @@ interface Product {
 
 interface ProductsResponse {
   data: Product[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-    from: number | null
-    to: number | null
-  }
+  meta: OffsetPaginationMeta
   aggregates: {
     total_products: number
     total_active: number

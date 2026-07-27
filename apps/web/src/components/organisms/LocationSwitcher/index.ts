@@ -1,1 +1,0 @@
-export { LocationSwitcher } from './LocationSwitcher'

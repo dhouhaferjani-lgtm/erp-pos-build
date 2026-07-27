@@ -8,6 +8,11 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import { bccomp, bcmul } from '@/lib/decimal'
+import { RequirePermission } from '@/components/auth'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable'
+import { Link } from 'react-router-dom'
+import { ThresholdEditCell } from './ThresholdEditCell'
+import type { MatrixCell, MatrixRow } from '../api/stockMatrix'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -93,6 +98,35 @@ export function ProductStockLevels({
     ? bcmul(totals.quantity, costPrice, decimals)
     : '0'
 
+  const locationColumns: DataTableColumn<(typeof locations)[number]>[] = [
+    { key: 'location', header: t('stock.location'), render: (loc) => <span className={`whitespace-nowrap font-medium ${textColors.primary}`}>{loc.location_name}</span> },
+    { key: 'on-hand', header: t('stock.locationOnHand'), numeric: true, render: (loc) => formatQuantity(loc.quantity) },
+    { key: 'reserved', header: t('stock.locationReserved'), numeric: true, cellClassName: textColors.warningDark, render: (loc) => formatQuantity(loc.reserved) },
+    { key: 'available', header: t('stock.locationAvailable'), numeric: true, cellClassName: textColors.success, render: (loc) => formatQuantity(loc.available) },
+    { key: 'incoming', header: t('stock.locationIncoming'), numeric: true, cellClassName: textColors.brand, render: (loc) => formatQuantity(loc.incoming) },
+    {
+      key: 'thresholds',
+      header: t('stock.thresholds'),
+      render: (loc) => {
+        const cell: MatrixCell = { on_hand: loc.quantity, reserved: loc.reserved, available: loc.available, min_quantity: loc.min_quantity, max_quantity: loc.max_quantity, incoming: loc.incoming }
+        const row: MatrixRow = { product_id: productId, variant_id: null, name: '', sku: '', is_variant_parent: false, cells: { [loc.location_id]: cell } }
+        return <ThresholdEditCell row={row} locationId={loc.location_id} cell={cell} />
+      },
+    },
+    {
+      key: 'actions',
+      header: t('stock.actions'),
+      align: 'right',
+      render: (loc) => (
+        <RequirePermission permission="inventory.transfers.create">
+          <Link className={`whitespace-nowrap text-sm font-medium ${textColors.brand} underline-offset-2 hover:underline`} to={`/inventory/stock-transfers/new?source_location_id=${encodeURIComponent(loc.location_id)}&product_id=${encodeURIComponent(productId)}`}>
+            {t('stock.transferFromHere')}
+          </Link>
+        </RequirePermission>
+      ),
+    },
+  ]
+
   return (
     <StockLevelsFrame embedded={embedded} title={t('stock.title')}>
       {/* Summary Totals */}
@@ -161,39 +195,18 @@ export function ProductStockLevels({
         </div>
       </div>
 
-      {/* Per-Location Breakdown (Collapsible) */}
-      {locations.length > 1 && (
-        <details className={`border-t ${borderColors.light}`}>
-          <summary className={`cursor-pointer px-6 py-3 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50}`}>
+      {/* Per-location stock is always visible so product availability is never hidden. */}
+      <section className={`border-t ${borderColors.light}`} aria-labelledby="product-stock-by-location">
+        <div className="flex items-center justify-between gap-3 px-6 py-3">
+          <h3 id="product-stock-by-location" className={`text-sm font-semibold ${textColors.primary}`}>
             {t('stock.viewByLocation', { count: locations.length })}
-          </summary>
-          <div className={`divide-y ${borderColors.divideLight} px-6 pb-4`}>
-            {locations.map((loc) => (
-              <div key={loc.id} className="py-3">
-                <div className={`mb-2 font-medium ${textColors.primary}`}>{loc.location_name}</div>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.onHand')}:</span>{' '}
-                    <span className="font-medium">{formatQuantity(loc.quantity)}</span>
-                  </div>
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.available')}:</span>{' '}
-                    <span className={`font-medium ${textColors.success}`}>
-                      {formatQuantity(loc.available)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className={textColors.tertiary}>{t('stock.incoming')}:</span>{' '}
-                    <span className={`font-medium ${textColors.brand}`}>
-                      {formatQuantity(loc.incoming)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+          </h3>
+        </div>
+        <div className="overflow-x-auto px-6 pb-4">
+          <DataTable columns={locationColumns} data={locations} keyExtractor={(loc) => loc.id} className={`min-w-full divide-y ${borderColors.divideLight} text-sm`} ariaLabel={t('stock.viewByLocation', { count: locations.length })} />
+          {locations.length === 0 && <p className={`py-4 text-center text-sm ${textColors.tertiary}`}>{t('stock.noLocations')}</p>}
+        </div>
+      </section>
     </StockLevelsFrame>
   )
 }

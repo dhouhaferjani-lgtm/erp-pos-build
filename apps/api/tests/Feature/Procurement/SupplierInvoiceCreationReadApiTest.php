@@ -28,6 +28,8 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -138,6 +140,49 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         $response->assertJsonPath('data.0.accrual_unit_cost', '5.200000');
         $response->assertJsonPath('data.0.received_unit_price', '5.200');
         $response->assertJsonPath('data.0.po_line_id', $poLine->id);
+    }
+
+    public function test_purchase_order_receipt_lines_emit_quantity_decimals_from_product_unit(): void
+    {
+        $pieceUnit = Unit::factory()->create([
+            'decimal_places' => 0,
+            'rounding_method' => RoundingMethod::HalfUp,
+        ]);
+
+        [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-QDEC-001', '10.0000', '5.100', $pieceUnit->id);
+        $receipt = $this->createReceipt($po, 'GRN-QDEC-001');
+        $line = $this->createReceiptLine($receipt, $poLine, [
+            'received_qty' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders/{$po->id}/receipt-lines?uninvoiced=1");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $line->id);
+        $response->assertJsonPath('data.0.quantity_decimals', 0);
+    }
+
+    public function test_purchase_order_receipt_lines_default_quantity_decimals_when_product_soft_deleted(): void
+    {
+        [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-QDEC-DEL-001', '10.0000', '5.100');
+        $receipt = $this->createReceipt($po, 'GRN-QDEC-DEL-001');
+        $line = $this->createReceiptLine($receipt, $poLine, [
+            'received_qty' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+        ]);
+
+        $product = Product::findOrFail($poLine->product_id);
+        $product->delete();
+        $this->assertSoftDeleted($product);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders/{$po->id}/receipt-lines?uninvoiced=1");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $line->id);
+        $response->assertJsonPath('data.0.quantity_decimals', 4);
     }
 
     public function test_purchase_order_receipt_lines_uninvoiced_filter_ignores_free_only_open_window(): void
@@ -284,7 +329,7 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
     /**
      * @return array{Document, DocumentLine}
      */
-    private function createReceivedPurchaseOrder(string $number, string $qty, string $unitPrice): array
+    private function createReceivedPurchaseOrder(string $number, string $qty, string $unitPrice, ?string $unitId = null): array
     {
         $lineTotal = bcmul($qty, $unitPrice, 3);
         $product = Product::create([
@@ -298,6 +343,7 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
             'requires_batch_tracking' => false,
             'cost_price' => '0.000000',
             'last_purchase_cost' => '0.000000',
+            'unit_id' => $unitId,
         ]);
 
         $po = Document::create([

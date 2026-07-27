@@ -99,7 +99,11 @@ describe('replenishment repositories', () => {
 
     await expect(
       getOpenRequestForProduct(db, 'tenant-1', 'company-1', 'product-1', ''),
-    ).resolves.toMatchObject({ request_id: 'open-1', status: 'pending' });
+    ).resolves.toMatchObject({
+      request_id: 'open-1',
+      status: 'pending',
+      suggested_qty: '6.0000',
+    });
     await expect(
       getOpenRequestForProduct(db, 'tenant-1', 'company-1', 'product-2', ''),
     ).resolves.toBeNull();
@@ -109,7 +113,7 @@ describe('replenishment repositories', () => {
       db,
       'tenant-1',
       'company-1',
-      [serverRow('closed-1', 'product-2', 'rejected')],
+      [serverRow('closed-1', 'product-2', 'rejected', null)],
       '2026-07-10T12:05:00.000Z',
     );
 
@@ -275,13 +279,19 @@ function request(clientRequestUuid: string, now = '2026-07-10T12:00:00.000Z') {
   };
 }
 
-function serverRow(id: string, productId: string, status: string) {
+function serverRow(
+  id: string,
+  productId: string,
+  status: string,
+  suggestedQty: string | null = '6.0000',
+) {
   return {
     id,
     product_id: productId,
     variant_id: null,
     status,
     requested_qty: '1.0000',
+    suggested_qty: suggestedQty,
     request_count: 1,
     last_requested_at: '2026-07-10T11:59:00.000Z',
   };

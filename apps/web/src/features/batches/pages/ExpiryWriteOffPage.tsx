@@ -8,7 +8,7 @@ import { tokens, textColors, borderColors, colors } from '../../../lib/designTok
 import { formatQuantity } from '../../../lib/format'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { bccomp, bcadd, formatQuantity as toQuantityString } from '../../../lib/decimal'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { locationScopedKey } from '../../../lib/locationScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -17,7 +17,6 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../../components/molecules/DataTable/DataTable'
 import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
-import { LocationSelector } from '../../locations/LocationSelector'
 import {
   batchesInvalidationPredicate,
   stockLevelsInvalidationPredicate,
@@ -26,6 +25,7 @@ import {
 import { getExpiredBatches, groupedWriteOff } from '../api/batches'
 import type { ExpiredBatch, GroupedWriteOffPayload } from '../types'
 import { Button } from '@/components/atoms/Button/Button'
+import { useViewScope } from '../../locations/hooks/useViewScope'
 
 /** Quantity precision for write-off lines (precision contract: scale 4). */
 const QUANTITY_SCALE = 4
@@ -51,6 +51,7 @@ function reservedQuantity(batch: ExpiredBatch): string {
 export function ExpiryWriteOffPage() {
   const { t } = useTranslation(['batches', 'common'])
   const { currentLocationId } = useLocation()
+  const { scope, effectiveLocationIds } = useViewScope()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const queryClient = useQueryClient()
@@ -66,8 +67,8 @@ export function ExpiryWriteOffPage() {
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['batches', 'expired', currentLocationId]),
-    queryFn: () => getExpiredBatches(currentLocationId ?? undefined),
+    queryKey: locationScopedKey(['batches', 'expired'], scope),
+    queryFn: () => getExpiredBatches(effectiveLocationIds),
     enabled: !!tenantId && !!companyId,
   })
 
@@ -148,6 +149,7 @@ export function ExpiryWriteOffPage() {
   const hasInvalidLine = selectedBatches.some(lineHasError)
   const canSubmit =
     canWriteOff &&
+    effectiveLocationIds.length > 0 &&
     !!currentLocationId &&
     selectedBatches.length > 0 &&
     !hasInvalidLine
@@ -244,7 +246,6 @@ export function ExpiryWriteOffPage() {
       <PageHeader
         title={t('expiryWriteOff.title')}
         subtitle={t('expiryWriteOff.subtitle')}
-        actions={<LocationSelector />}
         className="mb-0"
       />
 

@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $payment_method_id
  * @property string|null $instrument_id
  * @property string|null $repository_id
+ * @property string|null $location_id
  * @property numeric-string $amount
  * @property string $currency
  * @property Carbon $payment_date
@@ -80,6 +81,7 @@ class Payment extends Model
         'withholding_certificate_id',
         'instrument_id',
         'repository_id',
+        'location_id',
         'amount',
         'currency',
         'payment_date',

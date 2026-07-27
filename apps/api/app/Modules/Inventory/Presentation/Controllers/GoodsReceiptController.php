@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
 use App\Modules\Inventory\Application\Services\GoodsReceiptPdfService;
@@ -21,6 +22,7 @@ final class GoodsReceiptController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly GoodsReceiptService $goodsReceiptService,
         private readonly GoodsReceiptPdfService $goodsReceiptPdfService,
     ) {}
@@ -103,8 +105,23 @@ final class GoodsReceiptController extends Controller
             abort(Response::HTTP_UNAUTHORIZED);
         }
 
+        $destinationLocationId = $request->validate([
+            'location_id' => ['nullable', 'uuid'],
+        ])['location_id'] ?? null;
+        if ($destinationLocationId !== null) {
+            try {
+                $this->locationContext->validateLocationAccess(
+                    (string) $destinationLocationId,
+                    $this->companyContext->requireCompanyId(),
+                    $user,
+                );
+            } catch (\RuntimeException $e) {
+                return response()->json(['error' => ['code' => 'LOCATION_FORBIDDEN', 'message' => $e->getMessage()]], Response::HTTP_FORBIDDEN);
+            }
+        }
+
         try {
-            $posted = $this->goodsReceiptService->post($this->receiptForCurrentCompany($receipt), $user->id);
+            $posted = $this->goodsReceiptService->post($this->receiptForCurrentCompany($receipt), $user->id, $destinationLocationId);
         } catch (\DomainException $e) {
             return response()->json([
                 'error' => [

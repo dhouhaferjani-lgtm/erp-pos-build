@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $purchase_order_id
+ * @property string|null $location_id
  * @property string|null $receipt_number
  * @property GoodsReceiptStatus $status
  * @property Carbon $received_at
@@ -50,6 +51,7 @@ class GoodsReceipt extends Model
         'tenant_id',
         'company_id',
         'purchase_order_id',
+        'location_id',
         'receipt_number',
         'status',
         'received_at',

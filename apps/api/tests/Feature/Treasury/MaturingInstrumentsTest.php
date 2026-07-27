@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -117,6 +118,41 @@ final class MaturingInstrumentsTest extends TestCase
         $response->assertJsonFragment(['id' => $remitted->id, 'certainty' => 'remitted', 'bucket' => 'd0_7']);
     }
 
+    public function test_location_filter_uses_frozen_instrument_origin_and_buckets_by_location(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Store A']);
+        $storeB = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Store B']);
+        $this->instrument('10.000', InstrumentDirection::Inbound, 2, InstrumentStatus::Received, false, $storeA->id);
+        $this->instrument('20.000', InstrumentDirection::Inbound, 2, InstrumentStatus::Received, false, $storeB->id);
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/treasury/maturing-instruments?group_by=location&location_ids[]='.$storeA->id);
+
+        $response->assertOk()->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.location_id', $storeA->id);
+        $response->assertJsonPath('meta.buckets_by_location.0.total_in', '10.000');
+    }
+
+    public function test_restricted_membership_hides_other_origins_and_unattributed_without_a_filter(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Store A']);
+        $storeB = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Store B']);
+        $this->instrument('10.000', InstrumentDirection::Inbound, 2, InstrumentStatus::Received, false, $storeA->id);
+        $this->instrument('20.000', InstrumentDirection::Inbound, 2, InstrumentStatus::Received, false, $storeB->id);
+        $this->instrument('30.000', InstrumentDirection::Inbound, 2, InstrumentStatus::Received);
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => [$storeA->id]]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/treasury/maturing-instruments?group_by=location')
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.location_id', $storeA->id);
+        $response->assertJsonMissing(['location_id' => null]);
+    }
+
     public function test_filters_are_company_scoped_and_compose(): void
     {
         $match = $this->instrument('12.000', InstrumentDirection::Inbound, 5, InstrumentStatus::Received, true);
@@ -166,6 +202,7 @@ final class MaturingInstrumentsTest extends TestCase
         ?int $maturityOffsetDays,
         InstrumentStatus $status,
         bool $needsDetails = false,
+        ?string $locationId = null,
     ): PaymentInstrument {
         return PaymentInstrument::query()->create([
             'tenant_id' => $this->tenant->id,
@@ -184,6 +221,7 @@ final class MaturingInstrumentsTest extends TestCase
             'kind' => InstrumentKind::Cheque,
             'origin' => InstrumentOrigin::Web,
             'repository_id' => $this->repository->id,
+            'location_id' => $locationId,
             'needs_details' => $needsDetails,
         ]);
     }

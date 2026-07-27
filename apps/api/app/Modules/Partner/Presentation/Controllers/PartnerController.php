@@ -126,8 +126,17 @@ class PartnerController extends Controller
 
         $paginator = $query->paginate($perPage);
 
+        // PartnerData::fromModel requires the bank-account validator, so the
+        // rows are mapped here instead of via the trait's 1-arg fromModel path.
+        $bankCountry = $this->companyContext->requireCompany()->country_code;
+        $paginator->through(fn (Partner $p): PartnerData => PartnerData::fromModel(
+            $p,
+            $this->bankAccountValidator,
+            $bankCountry,
+        ));
+
         return response()->json(
-            $this->formatOffsetPaginatedResponse($paginator, PartnerData::class, $aggregates)
+            $this->formatOffsetPaginatedResponse($paginator, null, $aggregates)
         );
     }
 

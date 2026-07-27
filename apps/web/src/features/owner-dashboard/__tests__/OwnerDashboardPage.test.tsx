@@ -21,8 +21,27 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({
+    scope: 'all',
+    effectiveLocationIds: [],
+    isAll: true,
+    setScope: vi.fn(),
+  }),
+}))
+
 vi.mock('@/features/treasury/components/CashPositionWidget', () => ({
   CashPositionWidget: () => <div data-testid="cash-position-widget" />,
+}))
+
+vi.mock('../components/CashAcrossStoresWidget', () => ({
+  CashAcrossStoresWidget: () => <div data-testid="cash-across-stores-widget" />,
+}))
+vi.mock('../components/DueThisWeekWidget', () => ({
+  DueThisWeekWidget: () => <div data-testid="due-this-week-widget" />,
+}))
+vi.mock('../components/RebalanceAlertsWidget', () => ({
+  RebalanceAlertsWidget: () => <div data-testid="rebalance-alerts-widget" />,
 }))
 
 const ownerReportHookMocks = vi.hoisted(() => ({
@@ -146,13 +165,15 @@ describe('OwnerDashboardPage', () => {
     expect(screen.getByText('reports:ownerDashboard.revenueByCategory.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.paymentMethods.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.cashReconciliation.title')).toBeInTheDocument()
-    expect(screen.getByTestId('cash-position-widget')).toBeInTheDocument()
+    expect(screen.getByTestId('cash-across-stores-widget')).toBeInTheDocument()
+    expect(screen.getByTestId('due-this-week-widget')).toBeInTheDocument()
+    expect(screen.getByTestId('rebalance-alerts-widget')).toBeInTheDocument()
   })
 
   it('renders chart-backed widgets through the shared owner chart wrapper', () => {
     renderPage()
 
-    expect(screen.getAllByTestId('owner-chart')).toHaveLength(3)
+    expect(screen.getAllByTestId('owner-chart')).toHaveLength(4)
   })
 
   it('renders the KPI summary row', () => {

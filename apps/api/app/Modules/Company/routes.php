@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Company\Presentation\Controllers\CompanyController;
+use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -41,4 +42,15 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Receipt customization settings
     Route::put('companies/{companyId}/receipt-settings', [CompanyController::class, 'updateReceiptSettings'])
         ->name('companies.receipt-settings.update');
+
+    Route::get('company/locations', [LocationController::class, 'scopedIndex'])
+        ->name('company.locations.scoped');
+
+    Route::get('company/locations/transaction-destinations', [LocationController::class, 'transactionIndex'])
+        ->middleware('require.any.permission:inventory.transfers.create,inventory.transfer,purchase-orders.receive,repositories.manage,document-ingestions.create')
+        ->name('company.locations.transaction-destinations');
+
+    Route::get('company/locations/all', [LocationController::class, 'managementIndex'])
+        ->middleware('can:users.manage_location_access')
+        ->name('company.locations.all');
 });

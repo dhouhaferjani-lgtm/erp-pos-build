@@ -7,6 +7,7 @@ export interface ServerOpenReplenishmentRow {
   variant_id: string | null;
   status: string;
   requested_qty: string | null;
+  suggested_qty: string | null;
   request_count: number;
   last_requested_at: string;
 }
@@ -19,6 +20,7 @@ export interface OpenReplenishmentCacheRow {
   variant_id: string;
   status: string;
   requested_qty: string | null;
+  suggested_qty: string | null;
   request_count: number;
   last_requested_at: string;
   fetched_at: string;
@@ -51,14 +53,15 @@ export async function replaceOpenRequests(
       db,
       `INSERT INTO open_replenishment_cache (
          tenant_id, company_id, request_id, product_id, variant_id, status,
-         requested_qty, request_count, last_requested_at, fetched_at
+         requested_qty, suggested_qty, request_count, last_requested_at, fetched_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT(tenant_id, company_id, request_id) DO UPDATE SET
          product_id = excluded.product_id,
          variant_id = excluded.variant_id,
          status = excluded.status,
          requested_qty = excluded.requested_qty,
+         suggested_qty = excluded.suggested_qty,
          request_count = excluded.request_count,
          last_requested_at = excluded.last_requested_at,
          fetched_at = excluded.fetched_at`,
@@ -70,6 +73,7 @@ export async function replaceOpenRequests(
         row.variant_id ?? '',
         row.status,
         row.requested_qty,
+        row.suggested_qty,
         row.request_count,
         row.last_requested_at,
         fetchedAt,

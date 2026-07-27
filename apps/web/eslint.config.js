@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
+import noLiteralDecimalPlaces from './eslint-rules/no-literal-decimal-places.js'
 import noHardcodedEntityRoute from './eslint-rules/no-hardcoded-entity-route.js'
 import noDeadTailwindTokenInterpolation from './eslint-rules/no-dead-tailwind-token-interpolation.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
@@ -19,6 +20,7 @@ import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 const precisionPlugin = {
   rules: {
     'no-hardcoded-step': noHardcodedStep,
+    'no-literal-decimal-places': noLiteralDecimalPlaces,
     'no-parsefloat-on-money': noParseFloatOnMoney,
   },
 }
@@ -85,6 +87,10 @@ export default tseslint.config(
       'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',
+      // UoM display-precision guard (2026-07-20) — WARN, ratcheted. Flags
+      // hardcoded decimalPlaces literals on <QuantityInput> in product-quantity
+      // surfaces; derive from the product unit (getQuantityDecimals) instead.
+      'precision/no-literal-decimal-places': 'warn',
       'precision/no-parsefloat-on-money': 'warn',
       // Downgrade pre-existing react-hooks violations to warn so CI gates on
       // regressions only. New feature directories re-enable these as errors

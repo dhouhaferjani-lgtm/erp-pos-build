@@ -1,5 +1,6 @@
 import { api, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import type { ApiResponse } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export interface Contact {
   id: string
@@ -60,14 +61,7 @@ export interface LinkPartyData {
 
 export interface ContactListResponse {
   data: Contact[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-    from: number | null
-    to: number | null
-  }
+  meta: OffsetPaginationMeta
 }
 
 /** React Query key factory for contacts */

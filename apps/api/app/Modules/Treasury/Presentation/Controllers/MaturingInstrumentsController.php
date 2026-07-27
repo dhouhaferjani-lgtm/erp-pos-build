@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationScopeBoundary;
+use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\MaturingInstrumentsData;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +25,8 @@ final class MaturingInstrumentsController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationScopeBoundary $locationScopeBoundary,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -32,12 +40,32 @@ final class MaturingInstrumentsController extends Controller
             'repository_id' => ['nullable', 'uuid'],
             'partner_id' => ['nullable', 'uuid'],
             'needs_details' => ['nullable', 'in:true,false,1,0'],
+            'group_by' => ['nullable', 'in:location'],
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
         ]);
+
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
+        }
+        $effectiveLocationIds = $this->locationScopeResolver->resolve(
+            $user,
+            $this->requestedLocationIds($validated['location_ids'] ?? []),
+            null,
+        );
+        $unrestricted = $this->locationScopeBoundary->isUnrestricted($company->id, $effectiveLocationIds);
 
         $query = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->whereIn('status', [InstrumentStatus::Received, InstrumentStatus::Deposited])
+            ->where(function ($locationQuery) use ($effectiveLocationIds, $unrestricted): void {
+                $locationQuery->whereIn('location_id', $effectiveLocationIds);
+                if ($unrestricted) {
+                    $locationQuery->orWhereNull('location_id');
+                }
+            })
             ->with(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
         foreach (['direction', 'kind', 'repository_id', 'partner_id'] as $field) {
@@ -81,6 +109,7 @@ final class MaturingInstrumentsController extends Controller
 
         $instruments = $query->orderBy('maturity_date')->orderBy('id')->get();
         $scale = $this->scaleResolver->getScale($company->currency);
+        $locationNames = Location::query()->whereIn('id', $effectiveLocationIds)->pluck('name', 'id');
         $buckets = $this->emptyBuckets($scale);
         $grandTotal = $this->emptyTotal($scale);
         $rows = [];
@@ -96,16 +125,49 @@ final class MaturingInstrumentsController extends Controller
                 $buckets[$bucket]['total_out'] = bcadd($buckets[$bucket]['total_out'], $instrument->amount, $scale);
                 $grandTotal['total_out'] = bcadd($grandTotal['total_out'], $instrument->amount, $scale);
             }
-            $rows[] = $this->formatRow($instrument, $bucket);
+            $rows[] = $this->formatRow($instrument, $bucket, $instrument->location_id === null
+                ? null
+                : (string) ($locationNames->get($instrument->location_id) ?? $instrument->location_id));
         }
 
-        return response()->json([
+        $bucketsByLocation = null;
+        if (($validated['group_by'] ?? null) === 'location') {
+            $locationTotals = [];
+            foreach ($instruments as $instrument) {
+                $key = $instrument->location_id ?? 'unattributed';
+                if ($key === 'unattributed' && ! $unrestricted) {
+                    continue;
+                }
+                $locationTotals[$key] ??= [
+                    'location_id' => $instrument->location_id,
+                    'location_name' => $instrument->location_id === null
+                        ? 'Unattributed'
+                        : (string) ($locationNames->get($instrument->location_id) ?? $instrument->location_id),
+                    'count' => 0,
+                    'total_in' => CurrencyScale::bcformatStrict('0', $scale),
+                    'total_out' => CurrencyScale::bcformatStrict('0', $scale),
+                ];
+                $locationTotals[$key]['count']++;
+                $directionKey = $instrument->direction === InstrumentDirection::Inbound ? 'total_in' : 'total_out';
+                $locationTotals[$key][$directionKey] = bcadd($locationTotals[$key][$directionKey], $instrument->amount, $scale);
+            }
+            $bucketsByLocation = array_values(array_map(
+                static fn (array $bucket): array => [
+                    ...$bucket,
+                    'total' => bcadd($bucket['total_in'], $bucket['total_out'], $scale),
+                ],
+                $locationTotals,
+            ));
+        }
+
+        return response()->json(MaturingInstrumentsData::from([
             'data' => $rows,
             'meta' => [
                 'buckets' => $buckets,
                 'grand_total' => $grandTotal,
+                'buckets_by_location' => $bucketsByLocation ?? [],
             ],
-        ]);
+        ])->toArray());
     }
 
     /** @return array{count: int, total_in: numeric-string, total_out: numeric-string} */
@@ -153,7 +215,7 @@ final class MaturingInstrumentsController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function formatRow(PaymentInstrument $instrument, string $bucket): array
+    private function formatRow(PaymentInstrument $instrument, string $bucket, ?string $locationName = null): array
     {
         return [
             'id' => $instrument->id,
@@ -166,10 +228,21 @@ final class MaturingInstrumentsController extends Controller
             'direction' => $instrument->direction->value,
             'kind' => $instrument->kind?->value,
             'repository_id' => $instrument->repository_id,
+            'location_id' => $instrument->location_id,
+            'location_name' => $locationName,
             'partner_id' => $instrument->partner_id,
             'needs_details' => $instrument->needs_details,
             'certainty' => $instrument->status === InstrumentStatus::Deposited ? 'remitted' : 'portfolio',
             'bucket' => $bucket,
         ];
+    }
+
+    /** @return list<string> */
+    private function requestedLocationIds(mixed $value): array
+    {
+        return array_values(array_filter(
+            is_array($value) ? $value : [],
+            static fn (mixed $id): bool => is_string($id),
+        ));
     }
 }

@@ -30,6 +30,10 @@ vi.mock('@/features/locations/api', () => ({
     { id: 'loc-a', name: 'Main Store' },
     { id: 'loc-b', name: 'Back Room' },
   ]),
+  fetchTransactionLocations: vi.fn().mockResolvedValue([
+    { id: 'loc-a', name: 'Main Store' },
+    { id: 'loc-b', name: 'Back Room' },
+  ]),
 }))
 
 vi.mock('../api/queries', () => ({

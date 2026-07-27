@@ -59,6 +59,23 @@ function CashPositionWidgetContent() {
               )
             })}
           </div>
+          {position.groups_by_location ? (
+            <div className={`mt-4 border-t pt-4 ${borderColors.light}`}>
+              <p className={`mb-2 text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
+                {t('cashWidget.byLocation')}
+              </p>
+              <div className={`divide-y ${borderColors.divideLight}`}>
+                {position.groups_by_location.map((group) => (
+                  <div key={group.location_id ?? 'unattributed'} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className={textColors.secondary}>{group.location_id === null ? t('cashWidget.unattributed') : group.location_name}</span>
+                    <span className={`font-medium ${textColors.primary}`}>
+                      {formatCurrency(group.total, { currency: position.currency })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {position.flows ? (
             <div className={`mt-4 border-t pt-4 ${borderColors.light}`}>

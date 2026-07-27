@@ -91,6 +91,7 @@ final readonly class InstrumentLifecycleService
                 'amount' => $amount,
                 'currency' => strtoupper($data->currency),
                 'repository_id' => $data->repositoryId,
+                'location_id' => $data->locationId,
                 'partner_id' => $data->partnerId,
                 'drawer_name' => $data->drawerName,
                 'maturity_date' => $data->maturityDate,

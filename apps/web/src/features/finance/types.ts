@@ -285,11 +285,13 @@ export interface AgedReceivablesData {
   total_over_90: string
   grand_total: string
   as_of_date: string
+  buckets_by_location?: LocationReportBucket[]
 }
 
 // FRONTEND-ONLY: query-string filter shape.
 export interface AgedReceivablesFilters {
   as_of_date?: string | undefined
+  location_ids?: string[]
 }
 
 // ===== Aged payables ====================================================
@@ -319,11 +321,19 @@ export interface AgedPayablesData {
   total_over_90: string
   grand_total: string
   as_of_date: string
+  buckets_by_location?: LocationReportBucket[]
+}
+
+export interface LocationReportBucket {
+  location_id: string | null
+  location_name: string
+  total: string
 }
 
 // FRONTEND-ONLY: query-string filter shape.
 export interface AgedPayablesFilters {
   as_of_date?: string | undefined
+  location_ids?: string[]
 }
 
 // ===== Finance widget summary ==========================================
