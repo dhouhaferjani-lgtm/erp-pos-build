@@ -12,7 +12,7 @@ class DiscountAnalysisData extends Data
 {
     /**
      * @param  array<int, array{reason: string, total_amount: string, count: int}>  $by_reason
-     * @param  array<int, array{product_name: string, discount_amount: string, quantity: int}>  $top_discounted_products
+     * @param  array<int, array{product_id: string|null, product_name: string, discount_amount: string, quantity: string, quantity_decimals: int}>  $top_discounted_products
      */
     public function __construct(
         public string $total_discount_amount,

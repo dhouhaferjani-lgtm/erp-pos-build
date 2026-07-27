@@ -54,7 +54,13 @@ export interface DiscountAnalysis {
   total_discount_amount: string
   discount_count: number
   by_reason: Array<{ reason: string; total_amount: string; count: number }>
-  top_discounted_products: Array<{ product_name: string; discount_amount: string; quantity: number }>
+  top_discounted_products: {
+    product_id: string | null
+    product_name: string
+    discount_amount: string
+    quantity: string
+    quantity_decimals: number
+  }[]
 }
 
 export interface CustomerAnalytics {

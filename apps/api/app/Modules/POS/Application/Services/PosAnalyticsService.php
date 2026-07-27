@@ -241,15 +241,19 @@ final class PosAnalyticsService
 
         $topProducts = DB::table('pos_receipt_lines')
             ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
+            ->leftJoin('products', 'products.id', '=', 'pos_receipt_lines.product_id')
+            ->leftJoin('units', 'units.id', '=', 'products.unit_id')
             ->where('pos_receipts.company_id', $companyId)
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->where('pos_receipt_lines.discount_amount', '>', 0)
-            ->groupBy('pos_receipt_lines.product_name')
+            ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'units.decimal_places')
+            ->selectRaw('pos_receipt_lines.product_id')
             ->selectRaw('pos_receipt_lines.product_name')
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.discount_amount), 0) as discount_amount')
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.quantity), 0) as quantity')
+            ->selectRaw('COALESCE(units.decimal_places, 4) as quantity_decimals')
             ->orderByDesc('discount_amount')
             ->limit(10)
             ->get();
@@ -263,9 +267,11 @@ final class PosAnalyticsService
                 'count' => (int) $row->count,
             ])->all(),
             top_discounted_products: $topProducts->map(fn (object $row) => [
+                'product_id' => $row->product_id,
                 'product_name' => $row->product_name,
                 'discount_amount' => (string) $row->discount_amount,
-                'quantity' => (int) $row->quantity,
+                'quantity' => (string) $row->quantity,
+                'quantity_decimals' => (int) $row->quantity_decimals,
             ])->all(),
         );
     }
