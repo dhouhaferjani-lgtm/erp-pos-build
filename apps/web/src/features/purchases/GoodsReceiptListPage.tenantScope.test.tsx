@@ -24,6 +24,12 @@ const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<stri
     return `${String(options?.['count'] ?? '?')} lines`
   }
 
+  if (key === 'inventory:goodsReceipt.progress') {
+    const received = options?.['received']
+    const total = options?.['total']
+    return `${typeof received === 'string' ? received : '?'} of ${typeof total === 'string' ? total : '?'} items received`
+  }
+
   return key
 }))
 
@@ -340,6 +346,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
 
     renderWithProviders(<GoodsReceiptListPage />)
 
+    expect(await screen.findByText('1.200 of 2.500 items received')).toBeInTheDocument()
     expect(await screen.findByText('(1.200/2.500)')).toBeInTheDocument()
   })
 

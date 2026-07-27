@@ -131,21 +131,28 @@ function formatReceiptCurrency(amount: number, currency: string, fallbackCurrenc
   return formatter.format(amount)
 }
 
-function calculateReceiptProgress(po: PurchaseOrder): { received: string; total: string; percentage: string } {
+function calculateReceiptProgress(po: PurchaseOrder): {
+  received: string
+  total: string
+  percentage: string
+  decimalPlaces: number
+} {
   let totalQty = '0.0000'
   let receivedQty = '0.0000'
+  let decimalPlaces = 0
 
   po.lines.forEach((line) => {
     if (line.product_id) {
       totalQty = bcadd(totalQty, line.quantity, 4)
       receivedQty = bcadd(receivedQty, line.quantity_received || '0', 4)
+      decimalPlaces = Math.max(decimalPlaces, getQuantityDecimals(line))
     }
   })
 
   const percentage = bccomp(totalQty, '0') > 0
     ? bcmul(bcdiv(receivedQty, totalQty, 6), '100', 0)
     : '0'
-  return { received: receivedQty, total: totalQty, percentage }
+  return { received: receivedQty, total: totalQty, percentage, decimalPlaces }
 }
 
 function scopedNamespacePredicate(
@@ -748,8 +755,8 @@ export function GoodsReceiptListPage() {
                         <div className={`mb-1 flex items-center justify-between text-xs ${textColors.disabled}`}>
                           <span>
                             {t('inventory:goodsReceipt.progress', {
-                              received: progress.received,
-                              total: progress.total,
+                              received: formatQuantity(progress.received, progress.decimalPlaces),
+                              total: formatQuantity(progress.total, progress.decimalPlaces),
                             })}
                           </span>
                           <span>{progress.percentage}%</span>
