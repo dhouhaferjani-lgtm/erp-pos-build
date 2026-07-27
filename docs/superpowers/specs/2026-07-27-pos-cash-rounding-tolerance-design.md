@@ -1,7 +1,7 @@
 # POS Cash Rounding + Tender Tolerance — Design Spec (Rev 2.2)
 
 **Date:** 2026-07-27 (Rev 1 → r1 3-lane REJECT → Rev 2 → r2 REJECT-narrow → Rev 2.1 → r3 verification (fiscal: criticals resolved, A-W-F; treasury: design sound, changes-requested) → Rev 2.2. Verdict history in `docs/superpowers/specs/reviews/2026-07-27-pos-cash-rounding-tolerance-spec-review.md`)
-**Status:** Rev 2.2 — REVIEW-STABLE, awaiting owner approval (§8)
+**Status:** Rev 2.2 — **APPROVED FOR PLANNING (owner 2026-07-27)**. §8 decisions: 8.1 floor+shift-guard APPROVED; 8.3/8.4/8.5 CONFIRMED; **8.2 refund payout PENDING** industry-practice research (owner-requested; two agents dispatched) — refund handling is a non-goal of the main track under every 8.2 option, so planning proceeds.
 **Owner decisions (LOCKED 2026-07-27, do not re-litigate):** (1) BOTH mechanisms — cash rounding (Swedish-round the cash-due total to the nearest practical coin at checkout; card/mixed stay exact; adjustment prints on the receipt) AND tolerance write-off (residual differences within the configured tolerance accepted and booked automatically to seeded 658/758). (2) Rounding denomination is a country-seeded default (0.050 TND for Tunisia) extending `country_payment_settings`; no per-company setup UI in v1.
 **Branch:** `feat/pos-cash-rounding`, worktree `../erp.cash-rounding`, base `1201ba37d`.
 
@@ -147,10 +147,10 @@ Corrupt/zero/non-representable denomination (helper disables; resolver never emi
 - Rollback: device rollback ⇒ v2 authoring; `--disable` kill-switch (sync-tick latency; offline devices keep signing verifiable receipts — policy-mismatch telemetry flags drift).
 - `docs/factory/WORKFLOW.md:217-220` contradicts the owner-confirmed auto-migrate contract — design safe under both (🎫 doc fix). No new permissions.
 
-## 8. Flagged for owner sign-off
+## 8. Owner sign-off (resolved 2026-07-27 except 8.2)
 
-1. **Tolerance denomination floor + per-shift auto-accept guard** (§4.1): floor `max(min(pct×total, max_amount), D)` when rounding active — else seeded TN values PIN-gate single-coin shortfalls on sub-10-TND baskets (the launch case). Exposure ≤ D/sale, guarded by the per-shift escalation counter, visible in 6580 + Z tolerance summary + drill-down.
-2. **Refund payout gap** (§4.7): fund the designed follow-up now, or launch documented-open. (The one-line remedy died in review — honest options only.)
-3. **Historical GL drift forward-only** + quantification report (incl. the v2 tail of PIN-shortfalls that will never book).
-4. **Analytics on rounded totals v1** (drift ≤ D/2 per sale).
-5. Confirm reading of locked decision 1b: in-tolerance auto-accept without PIN; PIN for beyond.
+1. **APPROVED (owner 2026-07-27):** tolerance denomination floor `max(min(pct×total, max_amount), D)` when rounding active + per-shift auto-accept escalation counter (default 10) surfaced on EOD.
+2. **PENDING (owner 2026-07-27 — industry-practice research requested before deciding):** refund payout handling. Options on the table: patch the current server refund path (payout rounding + delta to 6580/7580); ride the future offline canonical-refund track; documented gap. Research: jurisdictions' refund-rounding rules + major POS vendor implementations. Decision recorded here when taken. (Refund handling is a non-goal of the main track under every option — main-track planning is unblocked.)
+3. **CONFIRMED:** historical GL drift forward-only + one-off quantification report for the accountant (incl. the v2 tail of PIN-shortfalls that never book).
+4. **CONFIRMED:** analytics on rounded totals in v1 (drift ≤ D/2 per sale; exact-basis 🎫).
+5. **CONFIRMED:** locked decision 1b reading — in-tolerance auto-accept without PIN; PIN for beyond-tolerance.
