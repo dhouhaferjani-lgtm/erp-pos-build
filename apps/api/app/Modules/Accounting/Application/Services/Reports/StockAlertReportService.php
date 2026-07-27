@@ -26,6 +26,7 @@ final class StockAlertReportService
 
         $rows = DB::table('stock_levels')
             ->join('products', 'products.id', '=', 'stock_levels.product_id')
+            ->leftJoin('units', 'units.id', '=', 'products.unit_id')
             ->join('locations', 'locations.id', '=', 'stock_levels.location_id')
             ->whereIn('stock_levels.company_id', $companyIds)
             ->whereIn('stock_levels.location_id', $locationIds)
@@ -37,6 +38,7 @@ final class StockAlertReportService
             ->selectRaw('locations.name as location_name')
             ->selectRaw('stock_levels.quantity')
             ->selectRaw('stock_levels.min_quantity')
+            ->selectRaw('COALESCE(units.decimal_places, 4) as quantity_decimals')
             ->orderBy('products.name')
             ->get();
 
@@ -47,6 +49,7 @@ final class StockAlertReportService
             location_name: (string) $row->location_name,
             quantity: $this->decimalString($row->quantity),
             min_quantity: $this->decimalString($row->min_quantity),
+            quantity_decimals: (int) $row->quantity_decimals,
             threshold_pct: $thresholdPct,
             severity: $this->severity((float) $row->quantity, (float) $row->min_quantity),
         ))->all());

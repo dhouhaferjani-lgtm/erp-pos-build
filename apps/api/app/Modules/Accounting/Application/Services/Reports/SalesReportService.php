@@ -79,6 +79,7 @@ final class SalesReportService
         $query = DB::table('pos_receipt_lines')
             ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
             ->leftJoin('products', 'products.id', '=', 'pos_receipt_lines.product_id')
+            ->leftJoin('units', 'units.id', '=', 'products.unit_id')
             ->whereIn('pos_receipts.company_id', $companyIds)
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
@@ -88,12 +89,13 @@ final class SalesReportService
             // consistent with the headline KPIs regardless of return-total sign. (F-5)
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
-            ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'products.sku')
+            ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'products.sku', 'units.decimal_places')
             ->selectRaw('pos_receipt_lines.product_id')
             ->selectRaw('pos_receipt_lines.product_name')
             ->selectRaw('products.sku')
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as revenue')
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.quantity), 0) as quantity')
+            ->selectRaw('COALESCE(units.decimal_places, 4) as quantity_decimals')
             ->limit($limit);
 
         $sortBy === 'quantity'
@@ -106,6 +108,7 @@ final class SalesReportService
             sku: $row->sku === null ? null : (string) $row->sku,
             revenue: $this->decimalString($row->revenue),
             quantity: $this->decimalString($row->quantity),
+            quantity_decimals: (int) $row->quantity_decimals,
         ))->all());
     }
 

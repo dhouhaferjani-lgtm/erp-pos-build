@@ -2,8 +2,6 @@
   "apps/web/src/features/admin/pages/InvoicesPage.tsx:item.quantity",
   "apps/web/src/features/catalog/components/RecipeLineEditor.tsx:line.quantity",
   "apps/web/src/features/opening-balances/components/BatchPreview.tsx:line.quantity",
-  "apps/web/src/features/owner-dashboard/components/LowStockAlertsList.tsx:row.quantity",
-  "apps/web/src/features/owner-dashboard/components/TopSkusWidget.tsx:row.quantity",
   "apps/web/src/features/workshop-bundles/components/molecules/BundleComponentRow.tsx:component.quantity",
   "apps/web/src/features/workshop-bundles/components/organisms/BundleComponentFormModal.tsx:state.quantity",
   "apps/web/src/features/workshop-bundles/components/organisms/BundleExpandedPreview.tsx:line.quantity",

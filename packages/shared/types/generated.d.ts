@@ -240,6 +240,7 @@ location_id: string;
 location_name: string;
 quantity: string;
 min_quantity: string;
+quantity_decimals: number;
 threshold_pct: number;
 severity: string;
 };
@@ -249,6 +250,7 @@ product_name: string;
 sku: string | null;
 revenue: string;
 quantity: string;
+quantity_decimals: number;
 };
 export type TrialBalanceData = {
 lines: Array<App.Modules.Accounting.Application.DTOs.Reports.TrialBalanceLineData>;

@@ -16,5 +16,6 @@ final class TopSkuData extends Data
         public readonly ?string $sku,
         public readonly string $revenue,
         public readonly string $quantity,
+        public readonly int $quantity_decimals,
     ) {}
 }
