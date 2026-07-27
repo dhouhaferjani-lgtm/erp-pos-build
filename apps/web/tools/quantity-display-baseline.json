@@ -6,7 +6,6 @@
   "apps/web/src/features/admin/pages/InvoicesPage.tsx:item.quantity",
   "apps/web/src/features/catalog/components/RecipeLineEditor.tsx:line.quantity",
   "apps/web/src/features/documents/components/DocumentLineEditor.tsx:line.quantity",
-  "apps/web/src/features/documents/components/costing/LandedCostBreakdown.tsx:line.quantity",
   "apps/web/src/features/inventory/EntryExitNotesPage.tsx:line.quantity",
   "apps/web/src/features/inventory/StockLevelsPage.tsx:selectedStock.quantity",
   "apps/web/src/features/inventory/StockMovementsPage.tsx:movement.quantity",

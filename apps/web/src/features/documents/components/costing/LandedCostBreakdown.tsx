@@ -1,13 +1,16 @@
 import { Package, DollarSign, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCurrency } from '@/hooks/useCurrency'
+import { formatQuantity } from '@/lib/decimal'
 import { colorClasses } from '@/lib/designTokens'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface DocumentLine {
   id: string
   description: string
   quantity: number
+  quantity_decimals?: number | null
   unit_price: number
   total: number
   allocated_costs?: number
@@ -105,7 +108,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
                 <tr key={line.id} className={`${colorClasses.hoverBgGray50}`}>
                   <td className={`px-4 py-3 text-sm ${colorClasses.textGray900}`}>{line.description}</td>
                   <td className={`px-4 py-3 text-end text-sm ${colorClasses.textGray900}`}>
-                    {line.quantity}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   <td className={`px-4 py-3 text-end text-sm ${colorClasses.textGray900}`}>
                     ${Number(line.unit_price).toFixed(decimals)}
