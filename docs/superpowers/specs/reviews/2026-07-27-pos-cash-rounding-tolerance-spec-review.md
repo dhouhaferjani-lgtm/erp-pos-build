@@ -66,6 +66,23 @@ F4 unify `computeExactCartTotal` (EUR tie-flip); F5 bind order (bcmod-by-zero = 
 
 **Rev 2.1 outcome:** all r2 criticals/importants addressed in the same spec file. r3 = targeted verification of the critical fixes.
 
+---
+
+# Round 3 (targeted verification vs Rev 2.1, commit dd2992088)
+
+**Lanes:** fiscal-pos (Opus) — spec ✅, APPROVE-WITH-FIXES (F1/F2/F3/F5/F6/F9/F10 verified resolved); treasury (Opus) — spec ✅ design sound, CHANGES-REQUESTED (F-1/F-2 verified closed, F-3/F-4 partially). All remaining findings = spec-text edits, no redesign. **All folded into Rev 2.2.**
+
+## r3 findings → Rev 2.2 resolutions
+
+- **Fiscal CRITICAL:** the r2 F7 foreclosure ("device build stamps `fiscal_schema_version >= 3`") was unwritable — the column is server-assigned (cutover service) and SALE_RECEIPT authoring isn't gated on it; a schema-2 terminal on the new build would poison `GrandtotalService` `net_sales`. → §4.1 gains the device-side rounding gate `terminal.fiscal_schema_version === 3` (fail-closed, in the snapshot builder); pin tests replaced; Phase-2 checklist requires full terminal cutover before `--enable`.
+- **Treasury CRITICAL (T-F3 residual):** `is_cash_tender` wire-through stopped at the server; 4 device sites (types/payment.ts, PaymentMethodRow, rowToMethod, upsertPaymentMethods lockstep) unlisted — as specified the POS could not take cash at all. → enumerated in §4.2.
+- **Treasury CRITICAL (T-F4 residual):** seeder was hooked into the demo `DatabaseSeeder`, not the real provisioning path. → `TenantInitializationService::seedReferenceData()` + `ProductionSeeder`.
+- Fiscal importants: `cash_rounding_summary` derived server-side in `ZReportProjection::legacyReportData()` (projection REBUILDS report_data; legacy sync 409-retired for cutover terminals — device report_data never reaches the server there); dead ingress-regex claim dropped; device TS hash mirror (`apps/pos/src/lib/fiscal/zReportHashService.ts:86-95`) named; denomination string-fidelity pinned at every hop (DTO string / TS string / SQLite TEXT / signed-value regex assert); policy reconciliation via `bccomp` + no-CompanyContext note; `--verify` cash-method assertion moved to Phase 1.
+- Treasury importants: pgsql-guard on the CHECK swap (unguarded breaks every SQLite suite); TN row values pinned + Phase-1 B2B-tolerance-tightening (0.50→0.100) made owner-visible; **new `pos_tolerance_enabled` column** decouples the POS kill-switch from B2B; cash invariant exact `code = 'CASH'` (case-sensitive — device Z match is case-sensitive); minors (inline v3-gate restatement in netting, audit aggregate keys per precedent, decimal(12,3), citation fixes).
+- r3-verified clean: CHECK swap semantics incl. load-bearing COALESCE; single v3 gate both layers; source_type disjointness + unscoped index exemplar; audit-events mechanism; tenants:run scoping; V3 build order vs actual builders; bind order/`s+1` half-bound; Z value-level validation absent (real tolerance values trip nothing); `bcformatStrict` truncate-only. No new quarantine/money-loss-class defects found in either lane.
+
+**Round-3 outcome: Rev 2.2 is review-stable.** Remaining gate = owner §8 decisions.
+
 ## Full lane verdicts
 
 The complete lane reviews (all findings, code evidence, and fix prescriptions) are preserved in the session transcript of 2026-07-27 and materially reproduced above; Rev 2 (same spec file, header updated) addresses every BLOCKER and MAJOR. Re-review of Rev 2 by both lanes is required before the owner gate.
