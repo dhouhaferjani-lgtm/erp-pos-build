@@ -61,6 +61,8 @@ use InvalidArgumentException;
  * the shared `CashRoundingCaps` table. A value the resolver would reject must
  * never be stored: the resolver fail-closes silently, so the operator would
  * believe rounding is on while the device never rounds.
+ *
+ * @cross-tenant-by-design Runs inside the per-tenant DB bound by tenants:run; iterates only that tenant's companies.
  */
 final class ConfigureCashRoundingCommand extends Command
 {

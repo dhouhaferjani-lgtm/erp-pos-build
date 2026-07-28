@@ -291,6 +291,131 @@ final class BackfillTolerancePurposesCommandTest extends TestCase
         );
     }
 
+    /**
+     * A revenue account holding `payment_tolerance_expense` must NOT be counted
+     * satisfied: the gate would read clean while
+     * GeneralLedgerService::createRepositoryAdjustmentJournalEntry debits a cash
+     * loss to a revenue account. The holder branch validates type exactly as the
+     * code-matched branch does.
+     */
+    public function test_reports_a_purpose_holder_with_the_wrong_type_as_a_failure(): void
+    {
+        $this->seedAccount('65', 'expense', null);
+        $revenueParent = $this->seedAccount('75', 'revenue', null);
+        $this->seedAccount(
+            '758',
+            'revenue',
+            $revenueParent,
+            SystemAccountPurpose::PaymentToleranceExpense->value,
+        );
+        // Income side is healthy so the failure below is unambiguously the holder.
+        $this->seedAccount(
+            '7580',
+            'revenue',
+            $revenueParent,
+            SystemAccountPurpose::PaymentToleranceIncome->value,
+        );
+
+        $this->artisan('accounting:backfill-tolerance-purposes')
+            ->expectsOutputToContain('has wrong type')
+            ->expectsOutputToContain(BackfillTolerancePurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        // The expense parent exists, so a fall-through to the create path would
+        // have minted a duplicate purpose holder (and hit the unique index).
+        $this->assertDatabaseMissing('accounts', [
+            'company_id' => $this->company->id,
+            'code' => '6580',
+        ]);
+    }
+
+    public function test_reports_a_chart_with_the_two_purposes_swapped(): void
+    {
+        $expenseParent = $this->seedAccount('65', 'expense', null);
+        $revenueParent = $this->seedAccount('75', 'revenue', null);
+        // 6580 is an expense account but carries the INCOME purpose, and vice versa.
+        $this->seedAccount(
+            '6580',
+            'expense',
+            $expenseParent,
+            SystemAccountPurpose::PaymentToleranceIncome->value,
+        );
+        $this->seedAccount(
+            '7580',
+            'revenue',
+            $revenueParent,
+            SystemAccountPurpose::PaymentToleranceExpense->value,
+        );
+
+        $this->artisan('accounting:backfill-tolerance-purposes')
+            ->expectsOutputToContain('has wrong type')
+            ->expectsOutputToContain(BackfillTolerancePurposesCommand::SUMMARY_TOKEN_PREFIX.' 2')
+            ->assertFailed();
+    }
+
+    /**
+     * `companies` soft-deletes and this command uses the raw query builder, which
+     * applies no model scope. A trashed chartless company would otherwise inflate
+     * the deploy-gate token for an otherwise healthy tenant.
+     */
+    public function test_ignores_a_soft_deleted_company_without_a_chart(): void
+    {
+        $this->seedAccount('65', 'expense', null);
+        $this->seedAccount('75', 'revenue', null);
+
+        $trashed = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Closed Shop',
+            'legal_name' => 'Closed Shop SARL',
+            'tax_id' => 'TAX-BF-9',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+        ]);
+        $trashed->delete();
+        $this->assertNotNull($trashed->fresh()?->deleted_at);
+
+        $this->artisan('accounting:backfill-tolerance-purposes')
+            ->expectsOutputToContain(BackfillTolerancePurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->assertSuccessful();
+    }
+
+    public function test_does_not_write_accounts_into_a_soft_deleted_company(): void
+    {
+        $this->seedAccount('65', 'expense', null);
+        $this->seedAccount('75', 'revenue', null);
+
+        $trashed = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Closed Shop',
+            'legal_name' => 'Closed Shop SARL',
+            'tax_id' => 'TAX-BF-8',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+        ]);
+        // Parents present: without the deleted_at filter the command WOULD mint
+        // system accounts inside a deleted company.
+        $this->seedAccount('65', 'expense', null, null, true, $trashed->id);
+        $this->seedAccount('75', 'revenue', null, null, true, $trashed->id);
+        $trashed->delete();
+
+        $this->artisan('accounting:backfill-tolerance-purposes')
+            ->expectsOutputToContain(BackfillTolerancePurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('accounts', [
+            'company_id' => $trashed->id,
+            'code' => '6580',
+        ]);
+        $this->assertDatabaseMissing('accounts', [
+            'company_id' => $trashed->id,
+            'code' => '7580',
+        ]);
+    }
+
     public function test_reports_an_inactive_purpose_holder_as_a_failure(): void
     {
         $expenseParent = $this->seedAccount('65', 'expense', null);

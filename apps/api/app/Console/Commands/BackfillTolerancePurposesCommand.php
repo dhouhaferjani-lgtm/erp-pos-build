@@ -68,6 +68,8 @@ use Illuminate\Support\Str;
  *   #     tenant count, since ABSENCE of the token means the command aborted
  *   #     before finishing (e.g. the Schema guard tripped) and is a FAILURE:
  *   test "$(grep -c 'TOLERANCE-PURPOSE BACKFILL FAILURES:' /tmp/tolerance-backfill.log)" -eq "$TENANT_COUNT"
+ *
+ * @cross-tenant-by-design Runs inside the per-tenant DB bound by tenants:run; iterates only that tenant's companies.
  */
 final class BackfillTolerancePurposesCommand extends Command
 {
@@ -106,7 +108,13 @@ final class BackfillTolerancePurposesCommand extends Command
         $satisfied = 0;
         $invalid = 0;
 
+        // Company soft-deletes ({@see \App\Modules\Company\Domain\Company} uses
+        // SoftDeletes), and this is a raw query builder with no model scope. A
+        // trashed company would otherwise be (a) reported as a chart failure —
+        // inflating the deploy-gate token for an otherwise healthy tenant — or,
+        // worse, (b) have system accounts WRITTEN into it.
         $companies = $this->database->table('companies')
+            ->whereNull('deleted_at')
             ->select(['id', 'tenant_id', 'country_code'])
             ->orderBy('id')
             ->get();
@@ -123,6 +131,26 @@ final class BackfillTolerancePurposesCommand extends Command
                     ->first();
 
                 if ($holder !== null) {
+                    // The holder's TYPE must be validated exactly as the
+                    // code-matched branch validates it. A revenue account
+                    // holding payment_tolerance_expense — or a chart with the
+                    // two purposes swapped — otherwise reports a clean gate
+                    // while createRepositoryAdjustmentJournalEntry debits cash
+                    // losses to a revenue account.
+                    if ((string) $holder->type !== $definition['type']) {
+                        $this->error(sprintf(
+                            'Company %s account %s carries system_purpose %s but has wrong type %s; expected %s. Account was skipped.',
+                            $companyId,
+                            (string) $holder->code,
+                            $definition['purpose'],
+                            (string) $holder->type,
+                            $definition['type'],
+                        ));
+                        $invalid++;
+
+                        continue;
+                    }
+
                     if (! (bool) $holder->is_active) {
                         $this->error(sprintf(
                             'Company %s account %s carries system_purpose %s but is inactive; activate it before enabling POS rounding.',
