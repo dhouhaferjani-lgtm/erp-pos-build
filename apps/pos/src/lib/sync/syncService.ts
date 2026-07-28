@@ -110,6 +110,8 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
+import { removeStoredValue, setStoredValue, StorageKeys } from '@/lib/storage';
+import type { Terminal } from '@/stores/terminalStore';
 
 interface OperatorPinData {
   id: string;
@@ -145,6 +147,66 @@ interface TerminalStateResponse {
    * shape so a stale server (pre-6.1) does not break the pull; absent → seed 0.
    */
   max_shift_number?: number;
+  /**
+   * Live-counting state is optional so a stale server remains compatible.
+   * Missing means no active block; the pull must clear any cached block.
+   */
+  active_counting_block?: Terminal['active_counting_block'];
+  /**
+   * Zone advisories share the same stale-server contract: missing means an
+   * empty advisory list, never a reason to preserve stale client state.
+   */
+  counting_zone_advisories?: Terminal['counting_zone_advisories'];
+}
+
+async function projectTerminalCountingState(state: TerminalStateResponse): Promise<void> {
+  const { useTerminalStore } = await import('@/stores/terminalStore');
+  const current = useTerminalStore.getState().terminal;
+  // Activation seeds the hash chain before publishing a terminal to this
+  // store. Claim/status payloads already carry these same counting fields;
+  // this pull only projects freshness for an already-active terminal.
+  if (!current || current.id !== state.id) {
+    return;
+  }
+
+  const activeCountingBlock = state.active_counting_block ?? null;
+  const countingZoneAdvisories = state.counting_zone_advisories ?? [];
+  if (
+    JSON.stringify(current.active_counting_block ?? null) === JSON.stringify(activeCountingBlock)
+    && JSON.stringify(current.counting_zone_advisories ?? []) === JSON.stringify(countingZoneAdvisories)
+  ) {
+    return;
+  }
+
+  const next: Terminal = {
+    ...current,
+    active_counting_block: activeCountingBlock,
+    counting_zone_advisories: countingZoneAdvisories,
+  };
+
+  // Enforcement is memory-first: a best-effort cache write must never leave
+  // the cart gate open while the server reports an active counting block.
+  useTerminalStore.setState({ terminal: next });
+  try {
+    await setStoredValue(StorageKeys.TERMINAL, next);
+
+    // Another terminal action may have completed while persistence yielded.
+    // Make the durable cache converge on that newer state without restoring
+    // the stale snapshot in memory.
+    const latest = useTerminalStore.getState().terminal;
+    if (latest !== next) {
+      if (latest) {
+        await setStoredValue(StorageKeys.TERMINAL, latest);
+      } else {
+        await removeStoredValue(StorageKeys.TERMINAL);
+      }
+    }
+  } catch (error) {
+    console.error(
+      '[POS][sync] terminal counting-state persistence failed (non-fatal)',
+      serializeErrorForLog(error),
+    );
+  }
 }
 
 export interface SyncResult {
@@ -1217,6 +1279,7 @@ export async function pullTerminalState(
 
     try {
       await upsertTerminalState(db, hashState);
+      await projectTerminalCountingState(state);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
     } catch (error) {
@@ -1233,6 +1296,7 @@ export async function pullTerminalState(
         // rejected the whole write (seed included). The row already exists —
         // refresh the monotone shift-number seed on its own.
         await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
+        await projectTerminalCountingState(state);
         await logSyncOperation(
           db,
           'pull',

@@ -1,5 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const terminalStoreMock = vi.hoisted(() => {
+  let terminal: Record<string, unknown> | null = null;
+
+  return {
+    store: {
+      getState: vi.fn(() => ({ terminal })),
+      setState: vi.fn((next: { terminal: Record<string, unknown> | null }) => {
+        terminal = next.terminal;
+      }),
+    },
+    seed(next: Record<string, unknown> | null): void {
+      terminal = next;
+    },
+    current(): Record<string, unknown> | null {
+      return terminal;
+    },
+  };
+});
+
 vi.mock('@/lib/api', () => {
   class ApiRequestError extends Error {
     constructor(
@@ -75,6 +94,16 @@ vi.mock('@/lib/db/repositories/locationStockRepository', () => ({
   replaceIncoming: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/crossLocationStockRepository', () => ({
+  deleteDistributionForProducts: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/lib/db/repositories/variantRepository', () => ({
+  upsertVariants: vi.fn().mockResolvedValue(undefined),
+  deleteVariantsById: vi.fn().mockResolvedValue(undefined),
+  deleteVariantsForProducts: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/api/stockApi', () => ({
   fetchLocationStock: vi.fn().mockResolvedValue({
     data: { stock: [], incoming: [], as_of: '2026-01-01T00:00:00Z' },
@@ -125,6 +154,18 @@ vi.mock('@/stores/authStore', () => ({
   },
 }));
 
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: terminalStoreMock.store,
+}));
+
+vi.mock('@/lib/storage', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/storage')>('@/lib/storage');
+  return {
+    ...actual,
+    setStoredValue: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 // Task 22 — pullCustomers is now called by runFullSync. Mock it here so
 // the existing runFullSync test keeps result.errors.toHaveLength(0) and so
 // no apiGet slot is consumed by the customer sync path.
@@ -137,6 +178,11 @@ vi.mock('@/lib/customer/customerSyncService', () => ({
 // covered in syncService.customers.test.ts.
 vi.mock('@/lib/customer/pendingCustomerSyncService', () => ({
   pushPendingCustomers: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock('@/lib/replenishment/replenishmentSyncService', () => ({
+  pullOpenReplenishment: vi.fn().mockResolvedValue(0),
+  pushReplenishmentRequests: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
@@ -199,6 +245,7 @@ import {
   setShiftNumberSeed,
 } from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
+import { setStoredValue, StorageKeys } from '@/lib/storage';
 
 function makeMockDb() {
   return {} as import('@tauri-apps/plugin-sql').default;
@@ -256,6 +303,11 @@ describe('syncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db = makeMockDb();
+    terminalStoreMock.seed({
+      id: 'term-1',
+      code: 'T001',
+      pos_stock_policy: 'off',
+    });
   });
 
   describe('pushOfflineReceipts', () => {
@@ -699,6 +751,214 @@ describe('syncService', () => {
   });
 
   describe('pullTerminalState', () => {
+    it('projects an active counting block so the stock gate refuses cart ingress', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+        active_counting_block: {
+          counting_id: 'cnt-1',
+          counting_number: 'CNT-2026-001',
+          started_at: '2026-07-28T12:00:00.000Z',
+        },
+        counting_zone_advisories: [{
+          zone_name: 'A1',
+          counting_number: 'CNT-2026-002',
+        }],
+      });
+
+      const pulled = await pullTerminalState(db, 'term-1');
+      const { gateStockForAdd } = await import('@/lib/stock/stockGate');
+      const gate = await gateStockForAdd({
+        id: 'product-1',
+        name: 'Product 1',
+        sku: 'SKU-1',
+        sale_price: '10.000',
+        stock_quantity: 5,
+        sellableType: 'product',
+      }, null, '1.0000', []);
+
+      expect(pulled).toBe(true);
+      expect(terminalStoreMock.current()?.active_counting_block).toEqual({
+        counting_id: 'cnt-1',
+        counting_number: 'CNT-2026-001',
+        started_at: '2026-07-28T12:00:00.000Z',
+      });
+      expect(terminalStoreMock.current()?.counting_zone_advisories).toEqual([{
+        zone_name: 'A1',
+        counting_number: 'CNT-2026-002',
+      }]);
+      expect(setStoredValue).toHaveBeenCalledWith(StorageKeys.TERMINAL, expect.objectContaining({
+        active_counting_block: expect.objectContaining({ counting_id: 'cnt-1' }),
+        counting_zone_advisories: [{
+          zone_name: 'A1',
+          counting_number: 'CNT-2026-002',
+        }],
+      }));
+      expect(gate).toEqual({
+        ok: false,
+        blockedByCounting: true,
+        countingNumber: 'CNT-2026-001',
+      });
+    });
+
+    it('projects a cleared counting block so selling resumes', async () => {
+      terminalStoreMock.seed({
+        id: 'term-1',
+        code: 'T001',
+        pos_stock_policy: 'off',
+        active_counting_block: {
+          counting_id: 'cnt-1',
+          counting_number: 'CNT-2026-001',
+          started_at: '2026-07-28T12:00:00.000Z',
+        },
+      });
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+        active_counting_block: null,
+        counting_zone_advisories: [],
+      });
+
+      const pulled = await pullTerminalState(db, 'term-1');
+      const { gateStockForAdd } = await import('@/lib/stock/stockGate');
+      const gate = await gateStockForAdd({
+        id: 'product-1',
+        name: 'Product 1',
+        sku: 'SKU-1',
+        sale_price: '10.000',
+        stock_quantity: 5,
+        sellableType: 'product',
+      }, null, '1.0000', []);
+
+      expect(pulled).toBe(true);
+      expect(terminalStoreMock.current()?.active_counting_block).toBeNull();
+      expect(terminalStoreMock.current()?.counting_zone_advisories).toEqual([]);
+      expect(setStoredValue).toHaveBeenCalledWith(StorageKeys.TERMINAL, expect.objectContaining({
+        active_counting_block: null,
+        counting_zone_advisories: [],
+      }));
+      expect(gate).toEqual({ ok: true, warn: false });
+    });
+
+    it('treats omitted counting fields from a stale server as no block', async () => {
+      terminalStoreMock.seed({
+        id: 'term-1',
+        code: 'T001',
+        pos_stock_policy: 'off',
+        active_counting_block: {
+          counting_id: 'cnt-stale',
+          counting_number: 'CNT-STALE',
+          started_at: null,
+        },
+        counting_zone_advisories: [{ zone_name: 'A1', counting_number: 'CNT-STALE' }],
+      });
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+      });
+
+      const pulled = await pullTerminalState(db, 'term-1');
+      const { gateStockForAdd } = await import('@/lib/stock/stockGate');
+      const gate = await gateStockForAdd({
+        id: 'product-1',
+        name: 'Product 1',
+        sku: 'SKU-1',
+        sale_price: '10.000',
+        stock_quantity: 5,
+        sellableType: 'product',
+      }, null, '1.0000', []);
+
+      expect(pulled).toBe(true);
+      expect(terminalStoreMock.current()?.active_counting_block).toBeNull();
+      expect(terminalStoreMock.current()?.counting_zone_advisories).toEqual([]);
+      expect(setStoredValue).toHaveBeenCalledWith(StorageKeys.TERMINAL, expect.objectContaining({
+        active_counting_block: null,
+        counting_zone_advisories: [],
+      }));
+      expect(gate).toEqual({ ok: true, warn: false });
+    });
+
+    it('enforces an active block even when terminal persistence fails', async () => {
+      vi.mocked(setStoredValue).mockRejectedValueOnce(new Error('storage unavailable'));
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+        active_counting_block: {
+          counting_id: 'cnt-1',
+          counting_number: 'CNT-2026-001',
+          started_at: '2026-07-28T12:00:00.000Z',
+        },
+      });
+
+      const pulled = await pullTerminalState(db, 'term-1');
+
+      expect(pulled).toBe(true);
+      expect(terminalStoreMock.current()?.active_counting_block).toEqual(
+        expect.objectContaining({ counting_id: 'cnt-1' }),
+      );
+    });
+
+    it('does not restore a terminal that changes while counting state persists', async () => {
+      let resolvePersistence!: () => void;
+      vi.mocked(setStoredValue).mockImplementationOnce(
+        () => new Promise<void>((resolve) => {
+          resolvePersistence = resolve;
+        }),
+      );
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+        active_counting_block: {
+          counting_id: 'cnt-1',
+          counting_number: 'CNT-2026-001',
+          started_at: null,
+        },
+      });
+
+      const pull = pullTerminalState(db, 'term-1');
+      await vi.waitFor(() => {
+        expect(setStoredValue).toHaveBeenCalledOnce();
+      });
+      terminalStoreMock.seed({
+        id: 'term-2',
+        code: 'T002',
+        pos_stock_policy: 'off',
+      });
+      resolvePersistence();
+
+      expect(await pull).toBe(true);
+      expect(terminalStoreMock.current()).toEqual({
+        id: 'term-2',
+        code: 'T002',
+        pos_stock_policy: 'off',
+      });
+    });
+
     it('returns true and upserts state when terminal has genesis seed and last_hash', async () => {
       vi.mocked(apiGet).mockResolvedValue({
         id: 'term-1',
@@ -836,11 +1096,24 @@ describe('syncService', () => {
     });
 
     it('returns false on error', async () => {
+      const staleBlock = {
+        counting_id: 'cnt-stale',
+        counting_number: 'CNT-STALE',
+        started_at: null,
+      };
+      terminalStoreMock.seed({
+        id: 'term-1',
+        code: 'T001',
+        pos_stock_policy: 'off',
+        active_counting_block: staleBlock,
+      });
       vi.mocked(apiGet).mockRejectedValue(new Error('Not found'));
 
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(false);
+      expect(terminalStoreMock.current()?.active_counting_block).toEqual(staleBlock);
+      expect(setStoredValue).not.toHaveBeenCalled();
     });
 
     it('does NOT reset local hash_sequence when server returns a lower value', async () => {
@@ -874,6 +1147,47 @@ describe('syncService', () => {
       // The upsert rejected the whole write (seed included), so the regression
       // path refreshes the monotone shift-number seed on its own.
       expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'terminal-1', 5);
+    });
+
+    it('projects counting state when preserving a newer local fiscal head', async () => {
+      terminalStoreMock.seed({
+        id: 'terminal-1',
+        code: 'T001',
+        pos_stock_policy: 'off',
+      });
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'terminal-1',
+        code: 'T001',
+        location: { code: 'MAIN' },
+        genesis_seed: 'seed-abc',
+        last_hash: null,
+        hash_sequence: 0,
+        max_shift_number: 5,
+        active_counting_block: {
+          counting_id: 'cnt-regression',
+          counting_number: 'CNT-REGRESSION',
+          started_at: null,
+        },
+        counting_zone_advisories: [],
+      });
+      const { FiscalRegressionError } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      vi.mocked(upsertTerminalState).mockRejectedValueOnce(
+        new FiscalRegressionError('terminal-1', 'upsertTerminalState', 12, 0),
+      );
+
+      const ok = await pullTerminalState(db, 'terminal-1');
+
+      expect(ok).toBe(true);
+      expect(terminalStoreMock.current()?.active_counting_block).toEqual({
+        counting_id: 'cnt-regression',
+        counting_number: 'CNT-REGRESSION',
+        started_at: null,
+      });
+      expect(setStoredValue).toHaveBeenCalledWith(StorageKeys.TERMINAL, expect.objectContaining({
+        active_counting_block: expect.objectContaining({ counting_id: 'cnt-regression' }),
+      }));
     });
   });
 
