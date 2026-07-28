@@ -38,6 +38,7 @@ use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use App\Shared\Domain\CashRoundingCutover;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -127,12 +128,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     /**
      * Cash-rounding cutover version. `fiscal_events.event_version >= 3` is the
      * SINGLE discriminator gating every new write in this projection — the
-     * Treasury bridge (Tasks 9-10) gates on the same value, so the read model
-     * and the ledger can never disagree about which receipts are rounding-era.
-     * Below it, this projector must stay byte-identical to its pre-rounding
+     * Treasury bridge gates on the same value, so the read model and the
+     * ledger can never disagree about which receipts are rounding-era. Below
+     * it, this projector must stay byte-identical to its pre-rounding
      * behaviour on first apply AND on replay.
+     *
+     * Task 9 promoted the literal to {@see CashRoundingCutover::EVENT_VERSION}
+     * so this projection and `TreasuryReceiptBridge` read the same value from
+     * one place; the local alias is kept purely so the call site below still
+     * reads as a POS concept.
      */
-    private const int CASH_ROUNDING_EVENT_VERSION = 3;
+    private const int CASH_ROUNDING_EVENT_VERSION = CashRoundingCutover::EVENT_VERSION;
 
     /**
      * **Pass 2A.PHP.2 R2 (Codex P2-4 deferral).** The `PaymentMethodResolver`
@@ -817,6 +823,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * Canonical-only fields NOT projected to columns:
      *   - foreign_currency_amount + foreign_currency_code (FX legs)
+     *
+     * **Two-semantics rule (spec §4.6).** `pos_receipt_payments.amount` is the
+     * TENDERED amount — exactly what the canonical payload carries and what
+     * the customer handed over. Treasury's `payments.amount` is the RETAINED
+     * amount (tendered minus change), computed by
+     * `TreasuryReceiptBridge::computeNettedAmounts()`. The two columns are
+     * DELIBERATELY different numbers; never reconcile them directly. The
+     * over-tender that separates them is materialized once, here, as
+     * `pos_receipts.change_due`.
      */
     private function writePayments(
         string $receiptId,

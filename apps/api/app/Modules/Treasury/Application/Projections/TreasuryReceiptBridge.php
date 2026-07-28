@@ -9,6 +9,7 @@ use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -31,6 +32,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
+use App\Shared\Domain\CashRoundingCutover;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +61,13 @@ use RuntimeException;
  *     `GeneralLedgerService::createPOSPaymentEntry()`, posted immediately
  *     (no draft state — POS payments are DIRECT TO REVENUE).
  *   - the back-link `payments.journal_entry_id` populated post-post.
+ *
+ * **Change netting (spec §4.6, `event_version >= 3`).** From the cash-rounding
+ * cutover on, `payments.amount` is the RETAINED amount, not the tendered one:
+ * a pre-pass in `apply()` subtracts the over-tender from the last cash leg
+ * (cascading backwards) and a leg netted to zero writes NOTHING at all. See
+ * {@see computeNettedAmounts()} for the full contract, including why v1/v2
+ * must stay byte-identical on replay and not merely on first apply.
  *
  * **Out of scope.** `pos_receipt_payments` rows + voucher redemption +
  * stock movement + the `pos_receipts` projection — those live in
@@ -325,6 +334,17 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // resolveRepositoryForTender).
             $view = $this->canonicalReader->forSaleReceipt($event);
 
+            // Spec §4.6 netting pre-pass. Gated on
+            // `event_version >= CashRoundingCutover::EVENT_VERSION` — the same
+            // single discriminator PosCoreReceiptProjection uses, so the read
+            // model and the ledger can never disagree about a receipt.
+            //
+            // Deliberately placed AFTER the legacy null-key short-circuit
+            // above: a pre-Task-20 event returns before any netting work is
+            // even attempted, so it stays untouched.
+            $nettedAmounts = $this->computeNettedAmounts($event, $view, $receipt);
+            $currencyScale = $view->payload->currencyScale;
+
             // Task 21 — a refund/void rides the SALE_RECEIPT event carrying
             // `invoice_type_code='REFUND'` (or 'VOID') + a non-null
             // `original_receipt_reference` (there is NO separate REFUND event
@@ -352,10 +372,210 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     $isRefund,
                     $originalEventId,
                     $terminalLocationId,
+                    $nettedAmounts[$index] ?? $payment->amount,
+                    $currencyScale,
                 );
                 $index++;
             }
         });
+    }
+
+    /**
+     * Resolve the RETAINED amount per canonical tender leg (spec §4.6).
+     *
+     * **Two-semantics rule.** `payments.amount` (Treasury) is the RETAINED
+     * amount — what the business actually kept. `pos_receipt_payments.amount`
+     * (the POS read model, written by `PosCoreReceiptProjection::writePayments()`
+     * — named, deliberately not imported) is the TENDERED amount — what the
+     * customer handed over. The canonical
+     * payload carries TENDERED; this pre-pass is what converts it. The two
+     * columns are DELIBERATELY different numbers; never reconcile them
+     * directly.
+     *
+     * Change (`Σ legs − total`, clamped at zero so a tolerance SHORTFALL never
+     * inflates a leg) is subtracted from the LAST cash leg first, cascading
+     * backwards in canonical index order. That makes the result a deterministic
+     * pure function of the sealed, immutable payload — which is what keeps a
+     * replay landing on the same numbers. It has to: `TreasuryMovementService`
+     * throws `IdempotencyConflictException` when an existing movement key is
+     * re-recorded at a different amount, so a non-deterministic netting would
+     * not be a wrong number, it would be a permanently-failing queue job.
+     *
+     * Cash-ness comes from `payment_methods.is_cash_tender` (Task 1) and
+     * nothing else — never the method code, never the display name. A voucher
+     * leg IS a payment leg but is NOT a cash tender: no drawer ever hands
+     * change back out of a voucher.
+     *
+     * **Invariant: maturity legs are non-cash by construction, so they are
+     * never netted.** That is precisely what keeps `handleMaturityRefundLeg()`'s
+     * raw-amount instrument match correct, and what keeps a minted cheque
+     * carrying the face value of the paper the customer actually handed over.
+     *
+     * `change > Σ cash legs` means a foreign or malformed event violated the
+     * device invariant. Net what the cash legs allow, leave the remainder, and
+     * raise a durable `pos.change.exceeds_cash_legs` alert.
+     *
+     * v1/v2 events return the tendered amounts unchanged, before any
+     * validation or arithmetic runs — see the class-level replay contract.
+     *
+     * @return array<int, string> index-aligned with $view->payments
+     */
+    private function computeNettedAmounts(
+        FiscalEvent $event,
+        SaleReceiptCanonicalView $view,
+        Receipt $receipt,
+    ): array {
+        // Below the cutover: hand back exactly what the payload carries, with
+        // ZERO new work. Any validation added above this line would change the
+        // failure mode of a historical event.
+        if (! CashRoundingCutover::applies($event->event_version)) {
+            return array_map(
+                static fn (PaymentDTO $line): string => $line->amount,
+                $view->payments,
+            );
+        }
+
+        $scale = $view->payload->currencyScale;
+
+        /** @var list<numeric-string> $amounts */
+        $amounts = [];
+        /** @var numeric-string $sum */
+        $sum = bcadd('0', '0', $scale);
+        foreach ($view->payments as $line) {
+            if (! is_numeric($line->amount)) {
+                throw new RuntimeException(sprintf(
+                    'TreasuryReceiptBridge: payment amount %s is not numeric for fiscal_event %s',
+                    $line->amount,
+                    $event->id,
+                ));
+            }
+            $amounts[] = $line->amount;
+            $sum = bcadd($sum, $line->amount, $scale);
+        }
+
+        $total = $view->payload->total;
+        if (! is_numeric($total)) {
+            throw new RuntimeException(sprintf(
+                'TreasuryReceiptBridge: payload total %s is not numeric for fiscal_event %s',
+                $total,
+                $event->id,
+            ));
+        }
+
+        // `max(0, Σ legs − total)`. A NEGATIVE difference is an under-tender
+        // (tolerance shortfall, booked by the tolerance bridge) — it must never
+        // be added back onto a leg, which is what an unclamped bcsub would do.
+        $change = bcsub($sum, $total, $scale);
+        if (bccomp($change, '0', $scale) <= 0) {
+            return $amounts;
+        }
+
+        $remaining = $change;
+
+        // Resolve cash-ness ONCE per method code for the whole event — the
+        // resolver + model load are the expensive part and a split payment
+        // repeats codes.
+        /** @var array<string, bool> $cashByCode */
+        $cashByCode = [];
+        foreach ($view->payments as $line) {
+            $code = $line->methodCode;
+            if (array_key_exists($code, $cashByCode)) {
+                continue;
+            }
+            $cashByCode[$code] = $this->isCashTender($event, $code);
+        }
+
+        for ($i = count($amounts) - 1; $i >= 0; $i--) {
+            if (bccomp($remaining, '0', $scale) <= 0) {
+                break;
+            }
+            if (($cashByCode[$view->payments[$i]->methodCode] ?? false) !== true) {
+                continue;
+            }
+
+            $legAmount = $amounts[$i];
+            $deduction = bccomp($legAmount, $remaining, $scale) <= 0 ? $legAmount : $remaining;
+            $amounts[$i] = bcsub($legAmount, $deduction, $scale);
+            $remaining = bcsub($remaining, $deduction, $scale);
+        }
+
+        if (bccomp($remaining, '0', $scale) > 0) {
+            $this->recordChangeExceedsCashLegsAlert($event, $receipt, $change, $remaining);
+        }
+
+        return $amounts;
+    }
+
+    /**
+     * Canonical cash-ness for a tender leg: `payment_methods.is_cash_tender`,
+     * resolved through the same tenant+company-scoped seam the per-leg
+     * projection uses. Fail-CLOSED — an unresolvable or unloadable method is
+     * treated as NON-cash, so a leg is never netted on a guess. (The per-leg
+     * projection below then throws on the same method and rolls the whole
+     * apply() back, alert included.)
+     */
+    private function isCashTender(FiscalEvent $event, string $methodCode): bool
+    {
+        $methodId = $this->paymentMethodResolver->resolveByCode(
+            $event->tenant_id,
+            $event->company_id,
+            $methodCode,
+        );
+
+        if ($methodId === null) {
+            return false;
+        }
+
+        try {
+            $method = PaymentMethod::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->find($methodId);
+        } catch (QueryException) {
+            return false;
+        }
+
+        return $method !== null && $method->is_cash_tender === true;
+    }
+
+    /**
+     * Durable alert for a foreign/malformed event whose change exceeds the sum
+     * of its cash legs. Same idempotency-guarded `audit_events` pattern as
+     * {@see recordMaturityRefundAlert()}.
+     */
+    private function recordChangeExceedsCashLegsAlert(
+        FiscalEvent $event,
+        Receipt $receipt,
+        string $change,
+        string $unnetted,
+    ): void {
+        $exists = DB::table('audit_events')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('event_type', 'pos.change.exceeds_cash_legs')
+            ->where('aggregate_type', 'fiscal_event')
+            ->where('aggregate_id', $event->id)
+            ->exists();
+
+        if (! $exists) {
+            $this->auditService->record(
+                companyId: $event->company_id,
+                userId: $receipt->cashier_id,
+                eventType: 'pos.change.exceeds_cash_legs',
+                aggregateType: 'fiscal_event',
+                aggregateId: $event->id,
+                payload: [
+                    'fiscal_event_id' => $event->id,
+                    'change' => $change,
+                    'unnetted_remainder' => $unnetted,
+                ],
+            );
+        }
+
+        Log::warning('POS receipt change exceeds the sum of its cash tender legs; netted what cash allowed.', [
+            'fiscal_event_id' => $event->id,
+            'change' => $change,
+            'unnetted_remainder' => $unnetted,
+        ]);
     }
 
     /**
@@ -398,8 +618,16 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         bool $isRefund,
         ?string $originalEventId,
         ?string $terminalLocationId,
+        string $nettedAmount,
+        int $currencyScale,
     ): void {
-        $amount = $line->amount;
+        // RETAINED amount (spec §4.6 two-semantics rule) — this is what the
+        // Treasury Payment row, the GL entry and the repository movement all
+        // consume. The canonical TENDERED value stays on `$line->amount` and
+        // is used ONLY by the maturity instrument match below. On a v1/v2
+        // event `computeNettedAmounts()` hands back `$line->amount` verbatim,
+        // so this assignment is a no-op there.
+        $amount = $nettedAmount;
         $methodCode = $line->methodCode;
 
         // The canonical PaymentDTO carries `amount` as a plain string
@@ -448,6 +676,29 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 $event->tenant_id,
                 $event->company_id,
             ));
+        }
+
+        // A fully-netted cash leg (the customer's change consumed it) writes
+        // NOTHING: no Payment, no GL entry, no movement. `repository_movements`
+        // carries CHECK (amount > 0) (`2026_07_08_100100:55`) so a zero
+        // movement is not even representable, and the payments idempotency
+        // index is PARTIAL (`2026_07_08_150000:44-46`) so the ordinal HOLE this
+        // leaves in the per-leg keys is legal. The survivors deliberately keep
+        // their ORIGINAL canonical ordinals — re-indexing them would make the
+        // keys a function of the netting result rather than of the sealed
+        // payload, and a replay could then collide with a prior partial write.
+        //
+        // Gated on the cutover: v1/v2 behaviour is untouched (a v1/v2 leg
+        // reaches here with its tendered amount and is never zero unless the
+        // payload itself said so).
+        //
+        // Placed AFTER the payment-method resolution above, not before it, so
+        // a suppressed leg still passes through the cross-tenant fail-closed
+        // gate — a foreign `method_code` must throw whether or not netting
+        // happened to zero that leg out.
+        if (CashRoundingCutover::applies($event->event_version)
+            && bccomp($amount, '0', $currencyScale) === 0) {
+            return;
         }
 
         $isMaturityLeg = $this->maturityLegHandler->handles($paymentMethod);
@@ -786,6 +1037,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ->where('company_id', $event->company_id)
             ->where('idempotency_key', 'like', sprintf('fiscal_event:%s:instrument:%%', $originalEventId))
             ->where('kind', $method->instrument_kind?->value)
+            // The TENDERED `$line->amount`, deliberately — NOT the netted/retained
+            // amount. Spec §4.6 invariant: a maturity tender is non-cash by
+            // construction (`is_cash_tender` is false for cheque/effet methods),
+            // so `computeNettedAmounts()` never touches these legs and the paper
+            // was minted at its face value. If netting ever reached a maturity
+            // leg, this match would silently stop finding the instrument and
+            // every maturity refund would fall through to the cash path.
+            //
             // Raw equality on amount relies on the same-currency-scale invariant between
             // the canonical fiscal payload amounts and the stored decimal column (both are
             // scaled to the repository/company currency, single-currency today). A scale
