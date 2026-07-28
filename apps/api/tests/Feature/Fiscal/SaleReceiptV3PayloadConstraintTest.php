@@ -9,6 +9,7 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SellerDTO;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -249,20 +250,73 @@ final class SaleReceiptV3PayloadConstraintTest extends TestCase
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, 'operational', 3);
     }
 
-    public function test_v2_payload_carrying_a_rounding_field_is_rejected_by_both_layers(): void
+    public function test_negative_zero_adjustment_is_rejected_at_currency_scale_zero(): void
+    {
+        // The scale-0 signed branch has NO decimal point, so `-0` is the
+        // whole spelling — it must still be rejected as a second byte-distinct
+        // encoding of canonical zero.
+        $payload = $this->v3Payload([
+            'currency_code' => 'JPY',
+            'currency_scale' => 0,
+            'subtotal' => '1003',
+            'vat_total' => '0',
+            'transaction_discount_amount' => '0',
+            'total' => '1003',
+            'cash_rounding_adjustment' => '-0',
+            'cash_rounding_denomination' => '0',
+            'line_items' => [$this->lineItem([
+                'line_discount_amount' => '0',
+                'line_subtotal' => '1003',
+                'line_vat' => '0',
+                'name' => 'Yen item',
+                'product_id' => 'prod-jpy',
+                'sku' => 'SKU-JPY',
+                'unit_price' => '1003',
+            ])],
+            'payments' => [$this->payment('1003')],
+            'vat_breakdown' => [[
+                'gross_amount' => '1003',
+                'net_amount' => '1003',
+                'rate' => '0.00',
+                'tax_category_code' => 'Z',
+                'vat_amount' => '0',
+            ]],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_money_negative_zero:field=cash_rounding_adjustment:value=-0/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, 'operational', 3);
+    }
+
+    /**
+     * v1 AND v2 must both reject the keys — the forbidden rule is
+     * "every version below 3", not "version 2".
+     */
+    public static function belowV3VersionProvider(): \Generator
+    {
+        yield 'version 1' => [1];
+        yield 'version 2' => [2];
+    }
+
+    #[DataProvider('belowV3VersionProvider')]
+    public function test_v2_payload_carrying_a_rounding_field_is_rejected_by_both_layers(int $eventVersion): void
     {
         $payload = $this->v3Payload();
 
         $keySetError = $this->validator->validatePayloadKeySet(
-            FiscalEventType::SALE_RECEIPT, $payload, 'operational', 2
+            FiscalEventType::SALE_RECEIPT, $payload, 'operational', $eventVersion
         );
         $this->assertNotNull($keySetError);
         $this->assertStringStartsWith('payload_extra_field:', $keySetError);
         $this->assertStringContainsString('cash_rounding_adjustment', $keySetError);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/payload_cash_rounding_forbidden_for_version/');
-        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, 'operational', 2);
+        $this->expectExceptionMessageMatches(
+            '/payload_cash_rounding_forbidden_for_version:event_version='.$eventVersion.'/'
+        );
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT, $payload, 'operational', $eventVersion
+        );
     }
 
     public function test_v3_payload_missing_a_rounding_field_is_rejected(): void

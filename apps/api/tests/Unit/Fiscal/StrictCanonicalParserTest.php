@@ -834,6 +834,40 @@ final class StrictCanonicalParserTest extends TestCase
         return $payload;
     }
 
+    /**
+     * SaleReceiptV3 (cash rounding, spec §4.4): the V2 shape plus the two
+     * signed rounding siblings, with a REAL non-zero adjustment.
+     *
+     * exact_total 5.353 (net 5.003 + vat 0.350) → D 0.050 → rounded 5.350,
+     * adjustment -0.003. `total` is an exact multiple of D and the folded
+     * identity subtotal + vat == (total − adj) + discount holds.
+     *
+     * @return array<string, mixed>
+     */
+    private function canonicalSaleReceiptV3Payload(): array
+    {
+        $payload = $this->canonicalSaleReceiptV2Payload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['line_subtotal'] = '5.003';
+        $lines[0]['unit_price'] = '5.003';
+        $payload['line_items'] = $lines;
+
+        $payload['subtotal'] = '5.003';
+        $payload['vat_breakdown'] = [[
+            'gross_amount' => '5.353',
+            'net_amount' => '5.003',
+            'rate' => '7.00',
+            'tax_category_code' => '',
+            'vat_amount' => '0.350',
+        ]];
+        $payload['cash_rounding_adjustment'] = '-0.003';
+        $payload['cash_rounding_denomination'] = '0.050';
+        ksort($payload);
+
+        return $payload;
+    }
+
     private function canonicalSaleReceiptPayloadJson(array $overrides = []): string
     {
         $payload = array_replace($this->canonicalSaleReceiptPayload(), $overrides);
@@ -1268,6 +1302,66 @@ final class StrictCanonicalParserTest extends TestCase
 
         $this->assertFailed($result);
         $this->assertStringContainsString('payload_line_item_variant_id_invalid', $result->failureReason ?? '');
+    }
+
+    // ─── SaleReceiptV3 — event_version=3 cash-rounding key set ──────────────
+
+    public function test_accepts_v3_sale_receipt_envelope_with_cash_rounding_keys(): void
+    {
+        // The version threading at StrictCanonicalParser's validatePayloadKeySet
+        // call site is what admits these two keys; without it the whole
+        // envelope quarantines as payload_extra_field.
+        $bytes = $this->envelope(
+            'SALE_RECEIPT',
+            $this->canonicalSaleReceiptV3Payload(),
+            ['event_version' => 3],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        /** @var array<string, mixed> $payload */
+        $payload = $result->payload;
+        $this->assertCount(30, $payload);
+        $this->assertSame('-0.003', $payload['cash_rounding_adjustment']);
+        $this->assertSame('0.050', $payload['cash_rounding_denomination']);
+        $this->assertSame('5.350', $payload['total']);
+    }
+
+    public function test_rejects_v2_sale_receipt_carrying_the_cash_rounding_keys(): void
+    {
+        // Negative twin: the SAME payload on a version-2 envelope. v1/v2
+        // events are immutable forever — the rounding keys are foreign to
+        // that shape and must reject at the key-set gate.
+        $bytes = $this->envelope(
+            'SALE_RECEIPT',
+            $this->canonicalSaleReceiptV3Payload(),
+            ['event_version' => 2],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+        $this->assertStringContainsString('cash_rounding_adjustment', $result->failureReason ?? '');
+        $this->assertStringContainsString('cash_rounding_denomination', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_v3_sale_receipt_missing_the_cash_rounding_keys(): void
+    {
+        // A v2-shaped payload on a version-3 envelope: the two siblings are
+        // REQUIRED-always on v3 (canonical zero when no rounding applied).
+        $bytes = $this->envelope(
+            'SALE_RECEIPT',
+            $this->canonicalSaleReceiptV2Payload(),
+            ['event_version' => 3],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_missing_required', $result->failureReason ?? '');
+        $this->assertStringContainsString('cash_rounding_denomination', $result->failureReason ?? '');
     }
 
     public function test_rejects_envelope_with_zero_sequence_number(): void

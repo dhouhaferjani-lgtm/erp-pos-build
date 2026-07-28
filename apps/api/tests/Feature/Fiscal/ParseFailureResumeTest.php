@@ -406,6 +406,80 @@ final class ParseFailureResumeTest extends TestCase
         $this->assertNull($row->integrity_resolved_by);
     }
 
+    public function test_resolver_accepts_a_corrected_v3_payload_carrying_the_cash_rounding_keys(): void
+    {
+        // The QUARANTINE-REPAIR path validates against the EVENT'S OWN
+        // event_version. Without that threading at the validatePayloadKeySet
+        // call site, a legal 30-key v3 correction is rejected as
+        // `payload_extra_field` and the receipt can NEVER be un-quarantined.
+        $event = $this->storeParseFailedFiscalEvent(eventVersion: 3);
+        $this->assertSame(3, $event->event_version);
+
+        $payload = $this->correctedPayloadV3();
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $payload, $this->resolverUser);
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('parsed', $row->payload_parse_status);
+        $this->assertSame('verified', $row->integrity_status);
+        $this->assertNotNull($row->payload);
+
+        /** @var array<string, mixed> $stored */
+        $stored = json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCount(30, $stored);
+        $this->assertSame('-0.02', $stored['cash_rounding_adjustment']);
+        $this->assertSame('0.05', $stored['cash_rounding_denomination']);
+    }
+
+    public function test_resolver_rejects_the_same_v3_payload_on_a_version_two_event(): void
+    {
+        // Negative twin, alongside the v2 path staying unchanged: the very
+        // same corrected payload against a version-2 quarantined row must
+        // still be rejected as carrying extras, and the row must stay failed.
+        $event = $this->storeParseFailedFiscalEvent(eventVersion: 2);
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $this->correctedPayloadV3(), $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException for v3 keys on a v2 event.');
+        } catch (InvalidCorrectedPayloadException $e) {
+            $this->assertStringContainsString('payload_extra_field', $e->getMessage());
+            $this->assertStringContainsString('cash_rounding_adjustment', $e->getMessage());
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertNull($row->payload);
+    }
+
+    public function test_resolver_rejects_a_v3_event_whose_correction_omits_the_rounding_keys(): void
+    {
+        // The two siblings are REQUIRED-always on v3 — a v2-shaped correction
+        // submitted for a v3 row is incomplete, not "rounding-free".
+        $event = $this->storeParseFailedFiscalEvent(eventVersion: 3);
+
+        $payload = $this->correctedPayloadV3();
+        unset($payload['cash_rounding_adjustment'], $payload['cash_rounding_denomination']);
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $payload, $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException for missing v3 rounding keys.');
+        } catch (InvalidCorrectedPayloadException $e) {
+            $this->assertStringContainsString('payload_missing_required', $e->getMessage());
+            $this->assertStringContainsString('cash_rounding_denomination', $e->getMessage());
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertNull($row->payload);
+    }
+
     public function test_resolver_rejects_money_field_with_wrong_currency_scale(): void
     {
         $event = $this->storeParseFailedFiscalEvent();
@@ -574,6 +648,7 @@ final class ParseFailureResumeTest extends TestCase
         ?string $tenantId = null,
         ?string $companyId = null,
         ?string $terminalId = null,
+        int $eventVersion = 1,
     ): FiscalEvent {
         $tenantId ??= $this->tenantId;
         $companyId ??= $this->companyId;
@@ -592,7 +667,7 @@ final class ParseFailureResumeTest extends TestCase
             'terminal_id' => $terminalId,
             'operator_id' => $this->operatorId,
             'event_type' => FiscalEventType::SALE_RECEIPT,
-            'event_version' => 1,
+            'event_version' => $eventVersion,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $this->nextSequenceFor($terminalId),
             'event_time_device' => $eventTime,
@@ -743,6 +818,43 @@ final class ParseFailureResumeTest extends TestCase
             'vat_total' => '0.00',
             'vouchers_redeemed' => [],
         ];
+    }
+
+    /**
+     * 30-key SaleReceiptV3 correction (cash rounding, spec §4.4): the V2 line
+     * shape plus the two signed rounding siblings.
+     *
+     * EUR (scale 2), D 0.05: exact_total 10.02 → rounded 10.00, adj -0.02.
+     * |adj| 0.02 <= D/2 (0.025) and 10.00 is an exact multiple of 0.05.
+     *
+     * @return array<string, mixed>
+     */
+    private function correctedPayloadV3(): array
+    {
+        $payload = $this->correctedPayload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['line_subtotal'] = '10.02';
+        $lines[0]['unit_price'] = '10.02';
+        $lines[0]['variant_id'] = null;
+        $lines[0]['variant_name'] = null;
+        $lines[0]['variant_sku'] = null;
+        ksort($lines[0]);
+        $payload['line_items'] = $lines;
+
+        $payload['subtotal'] = '10.02';
+        $payload['vat_breakdown'] = [[
+            'gross_amount' => '10.02',
+            'net_amount' => '10.02',
+            'rate' => '0.00',
+            'tax_category_code' => 'Z',
+            'vat_amount' => '0.00',
+        ]];
+        $payload['cash_rounding_adjustment'] = '-0.02';
+        $payload['cash_rounding_denomination'] = '0.05';
+        ksort($payload);
+
+        return $payload;
     }
 
     /**

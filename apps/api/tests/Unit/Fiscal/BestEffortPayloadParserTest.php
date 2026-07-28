@@ -100,6 +100,62 @@ final class BestEffortPayloadParserTest extends TestCase
         $this->assertSame([], $result->defects);
     }
 
+    public function test_broken_v3_sale_receipt_surfaces_both_rounding_keys_without_spurious_extra_field_defects(): void
+    {
+        // Operator-assist forensics on a QUARANTINED v3 receipt: the parser
+        // must resolve the key set from the envelope's OWN event_version, or
+        // the two rounding siblings are dropped from ->parsed AND reported as
+        // payload_extra_field — hiding the real defect from the operator.
+        $payload = $this->saleReceiptV3Payload();
+        $payload['seller']['tax_number'] = 'TN-INVALID';
+
+        $result = $this->parser()->parse(
+            $this->envelope('SALE_RECEIPT', $payload, eventVersion: 3),
+            FiscalEventType::SALE_RECEIPT,
+        );
+
+        // Both v3 keys are carried into the operator-facing parsed payload.
+        $this->assertCount(30, $result->parsed);
+        $this->assertSame('-0.003', $result->parsed['cash_rounding_adjustment']);
+        $this->assertSame('0.050', $result->parsed['cash_rounding_denomination']);
+
+        $defects = $result->defectsToArray();
+        // The ONLY defect class reported is the real one — no key-set noise.
+        $this->assertNotContains('payload_extra_field', array_column($defects, 'code'));
+        $this->assertNotContains('payload_missing_required', array_column($defects, 'code'));
+        $this->assertContains('payload.seller', array_column($defects, 'path'));
+        $this->assertContains('payload_tax_number_format_mismatch', array_column($defects, 'code'));
+    }
+
+    public function test_v3_rounding_defect_path_resolves_to_the_v3_only_key(): void
+    {
+        // A v3-only key must be reachable by inferPayloadPath — before the
+        // version threading it was absent from the expected list, so the
+        // defect degraded to the bare 'payload' path.
+        $payload = $this->saleReceiptV3Payload();
+        $payload['cash_rounding_denomination'] = '5.000';
+        $payload['cash_rounding_adjustment'] = '0.000';
+        $payload['total'] = '5.353';
+        $payload['payments'] = [[
+            'amount' => '5.353',
+            'foreign_currency_amount' => null,
+            'foreign_currency_code' => null,
+            'instrument_serial' => null,
+            'instrument_type' => null,
+            'method_code' => 'CASH',
+        ]];
+
+        $result = $this->parser()->parse(
+            $this->envelope('SALE_RECEIPT', $payload, eventVersion: 3),
+            FiscalEventType::SALE_RECEIPT,
+        );
+
+        $defects = $result->defectsToArray();
+        $this->assertContains('payload_cash_rounding_denomination_above_cap', array_column($defects, 'code'));
+        $this->assertContains('payload.cash_rounding_denomination', array_column($defects, 'path'));
+        $this->assertNotContains('payload_extra_field', array_column($defects, 'code'));
+    }
+
     private function envelope(string $eventType, array $payload, int $eventVersion = 1): string
     {
         $fields = [
@@ -191,5 +247,40 @@ final class BestEffortPayloadParserTest extends TestCase
             'vat_total' => '0.350',
             'vouchers_redeemed' => [],
         ];
+    }
+
+    /**
+     * 30-key SaleReceiptV3 payload (cash rounding, spec §4.4): the V2 line
+     * shape plus the two signed rounding siblings, with a REAL non-zero
+     * adjustment. exact_total 5.353 → D 0.050 → rounded 5.350, adj -0.003.
+     *
+     * @return array<string, mixed>
+     */
+    private function saleReceiptV3Payload(): array
+    {
+        $payload = $this->saleReceiptPayload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['line_subtotal'] = '5.003';
+        $lines[0]['unit_price'] = '5.003';
+        $lines[0]['variant_id'] = null;
+        $lines[0]['variant_name'] = null;
+        $lines[0]['variant_sku'] = null;
+        ksort($lines[0]);
+        $payload['line_items'] = $lines;
+
+        $payload['subtotal'] = '5.003';
+        $payload['vat_breakdown'] = [[
+            'gross_amount' => '5.353',
+            'net_amount' => '5.003',
+            'rate' => '7.00',
+            'tax_category_code' => '',
+            'vat_amount' => '0.350',
+        ]];
+        $payload['cash_rounding_adjustment'] = '-0.003';
+        $payload['cash_rounding_denomination'] = '0.050';
+        ksort($payload);
+
+        return $payload;
     }
 }
