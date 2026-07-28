@@ -53,6 +53,22 @@ class TenantReferenceDataSeedingTest extends TestCase
             'Tax configuration must be seeded once countries exist.',
         );
 
+        // Country payment settings self-seeded (cash-rounding Phase 1 / spec §4.2).
+        // This is the ONLY test that pins TenantInitializationService::seedReferenceData()
+        // to CountryPaymentSettingsSeeder: on a fresh tenant DB the A2 migration's own
+        // TN upsert is skipped (its country_code FK guard sees an empty `countries`),
+        // so deleting the seeder call here silently leaves every new tenant with NO
+        // tolerance ceiling and NO rounding denomination.
+        $countrySettings = DB::table('country_payment_settings')->where('country_code', 'TN')->first();
+        $this->assertNotNull(
+            $countrySettings,
+            'seedReferenceData() must seed country_payment_settings after CountriesSeeder.',
+        );
+        $this->assertSame(0, bccomp((string) $countrySettings->max_payment_tolerance_amount, '0.1000', 4));
+        $this->assertSame(0, bccomp((string) $countrySettings->cash_rounding_denomination, '0.0500', 4));
+        $this->assertFalse((bool) $countrySettings->cash_rounding_enabled, 'Rounding must be provisioned OFF.');
+        $this->assertFalse((bool) $countrySettings->pos_tolerance_enabled, 'POS tolerance must be provisioned OFF.');
+
         // Roles/permissions self-seeded, and the owner got the admin role.
         $this->assertTrue(DB::table('roles')->where('name', 'admin')->exists(), 'roles must be self-seeded.');
         setPermissionsTeamId($tenant->id);

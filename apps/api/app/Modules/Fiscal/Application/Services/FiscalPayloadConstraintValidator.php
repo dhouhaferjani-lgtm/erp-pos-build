@@ -20,6 +20,7 @@ use App\Modules\Fiscal\Domain\DTOs\XReportPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Shared\Domain\CashRoundingCaps;
 use LogicException;
 use RuntimeException;
 
@@ -307,9 +308,75 @@ final class FiscalPayloadConstraintValidator
     ];
 
     /**
+     * SALE_RECEIPT **v3** key set — the 28-key v2 contract plus the two
+     * signed cash-rounding siblings (spec §4.4). Lexicographically sorted:
+     * `cash_rounding_*` sorts between `buyer` and `cashier_id` because
+     * `_` (0x5F) < `i` (0x69) under the code-unit ordering the device's JCS
+     * canonicalizer uses.
+     *
+     * A NAMED constant, never a mutation of PAYLOAD_KEYS — v1/v2 events must
+     * keep rejecting these keys as `payload_extra_field` forever.
+     *
+     * @var list<string>
+     */
+    public const SALE_RECEIPT_PAYLOAD_KEYS_V3 = [
+        'approval_references',
+        'business_date',
+        'buyer',
+        'cash_rounding_adjustment',
+        'cash_rounding_denomination',
+        'cashier_id',
+        'cashier_name',
+        'consumption_mode',
+        'currency_code',
+        'currency_scale',
+        'event_time_device',
+        'invoice_type_code',
+        'line_items',
+        'lottery_code',
+        'notes',
+        'original_receipt_reference',
+        'payments',
+        'receipt_uuid',
+        'seller',
+        'shift_id',
+        'subtotal',
+        'table_id',
+        'terminal_id',
+        'total',
+        'training_flag',
+        'transaction_discount_amount',
+        'transaction_discount_reason',
+        'vat_breakdown',
+        'vat_total',
+        'vouchers_redeemed',
+    ];
+
+    /**
+     * Version-aware expected key set for an event type.
+     *
+     * Deliberately takes NO chain context: the z-session CASH_OUT/SAFE_DROP
+     * override is a CHAIN-context concern and stays inside
+     * {@see validatePayloadKeySet()}.
+     *
+     * @return list<string>|null null when the type has no registered contract
+     */
+    public function payloadKeysFor(FiscalEventType $type, int $eventVersion): ?array
+    {
+        if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion >= 3) {
+            return self::SALE_RECEIPT_PAYLOAD_KEYS_V3;
+        }
+
+        return self::PAYLOAD_KEYS[$type->value] ?? null;
+    }
+
+    /**
      * Validate the payload's key set against the per-event expected keys.
      * Rejects both missing-required and extras. Returns a prefix-tagged
      * failure reason on violation; null when the key set is clean.
+     *
+     * `$eventVersion` defaults to 1 so every existing caller keeps today's
+     * behavior; the four production call sites pass it explicitly.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -317,8 +384,9 @@ final class FiscalPayloadConstraintValidator
         FiscalEventType $type,
         array $payload,
         string $chainContext = 'operational',
+        int $eventVersion = 1,
     ): ?string {
-        $expected = self::PAYLOAD_KEYS[$type->value] ?? null;
+        $expected = $this->payloadKeysFor($type, $eventVersion);
         if ($expected === null) {
             return 'event_type_unimplemented:'.$type->value;
         }
@@ -756,6 +824,46 @@ final class FiscalPayloadConstraintValidator
             $this->assertMoneyString($payload, $field, $moneyRegex, $scale);
         }
 
+        // ---- 3a. v3 cash-rounding siblings (spec §4.4). ----
+        // v1/v2 must NEVER carry these keys. The key-set gate already rejects
+        // them as `payload_extra_field`, but validatePerEventConstraints is
+        // reachable directly (BestEffortPayloadParser::schemaDefects), so the
+        // constraint layer states the same rule independently.
+        $hasAdjustment = array_key_exists('cash_rounding_adjustment', $payload);
+        $hasDenomination = array_key_exists('cash_rounding_denomination', $payload);
+
+        if ($eventVersion < 3) {
+            if ($hasAdjustment || $hasDenomination) {
+                throw new RuntimeException(
+                    'payload_cash_rounding_forbidden_for_version:event_version='.$eventVersion
+                );
+            }
+            // Absent fields ⇒ zero ⇒ v1/v2 identities are unchanged.
+            $roundingAdjustment = bcadd('0', '0', $scale);
+        } else {
+            $missingRounding = [];
+            if (! $hasAdjustment) {
+                $missingRounding[] = 'cash_rounding_adjustment';
+            }
+            if (! $hasDenomination) {
+                $missingRounding[] = 'cash_rounding_denomination';
+            }
+            if ($missingRounding !== []) {
+                throw new RuntimeException('payload_missing_required:'.implode(',', $missingRounding));
+            }
+
+            $this->assertSignedMoneyString($payload, 'cash_rounding_adjustment', $scale);
+            // The denomination is NON-negative and already normalized to the
+            // currency scale by the policy contract (§4.2) before it can reach
+            // a payload, so the existing non-negative regex is correct here.
+            $this->assertMoneyString($payload, 'cash_rounding_denomination', $moneyRegex, $scale);
+
+            $roundingAdjustment = $this->asNumericString(
+                $payload['cash_rounding_adjustment'],
+                'cash_rounding_adjustment',
+            );
+        }
+
         // ---- 4. discount-reason consistency (§6.A) — BCMath comparison,
         // ----    NOT literal "0" string equality (bcformat at scale=2 emits "0.00"). ----
         $discountAmount = $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount');
@@ -781,11 +889,18 @@ final class FiscalPayloadConstraintValidator
         $vatTotalN = $this->asNumericString($payload['vat_total'], 'vat_total');
         $totalN = $this->asNumericString($payload['total'], 'total');
         $lhs = bcadd($subtotalN, $vatTotalN, $scale);
-        $rhs = bcadd($totalN, $discountAmount, $scale);
+        // Spec §4.1 identity (1): subtotal + vat_total == (total − adj) + discount.
+        // Absent fields ⇒ adj = 0 ⇒ this reduces to the v1/v2 identity exactly.
+        $rhs = bcadd(bcsub($totalN, $roundingAdjustment, $scale), $discountAmount, $scale);
         if (bccomp($lhs, $rhs, $scale) !== 0) {
             throw new RuntimeException(
                 'payload_total_arithmetic_mismatch:lhs='.$lhs.':rhs='.$rhs
             );
+        }
+
+        // ---- 5a. v3 rounding binds — NORMATIVE ORDER (spec §4.1). ----
+        if ($eventVersion >= 3) {
+            $this->validateCashRoundingBinds($payload, $totalN, $roundingAdjustment, $scale);
         }
 
         // ---- 6. nested objects — seller (required) + buyer (nullable) +
@@ -845,7 +960,7 @@ final class FiscalPayloadConstraintValidator
         // projected) without touching canonical_bytes / current_hash. All checks
         // are EXACT (bccomp === 0) at the payload's currency_scale via bcmath.
         // @phpstan-ignore-next-line argument.type — validated as list above
-        $this->validateSaleReceiptAggregateConsistency($payload, $vatBreakdown, $scale);
+        $this->validateSaleReceiptAggregateConsistency($payload, $vatBreakdown, $scale, $roundingAdjustment);
     }
 
     /**
@@ -860,11 +975,16 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  array<string, mixed>  $payload
      * @param  list<array<string, mixed>>  $vatBreakdown
+     * @param  numeric-string  $roundingAdjustment  v3 signed cash-rounding adjustment; '0' on v1/v2
      *
      * @throws RuntimeException on aggregate inconsistency (→ quarantine)
      */
-    private function validateSaleReceiptAggregateConsistency(array $payload, array $vatBreakdown, int $scale): void
-    {
+    private function validateSaleReceiptAggregateConsistency(
+        array $payload,
+        array $vatBreakdown,
+        int $scale,
+        string $roundingAdjustment = '0',
+    ): void {
         $subtotal = $this->asNumericString($payload['subtotal'], 'subtotal');
         $vatTotal = $this->asNumericString($payload['vat_total'], 'vat_total');
         $total = $this->asNumericString($payload['total'], 'total');
@@ -881,7 +1001,10 @@ final class FiscalPayloadConstraintValidator
         // FALSE-POSITIVE on every valid ticket carrying a transaction discount —
         // exactly the failure class this rework removes at the line level.
         $subtotalPlusVat = bcadd($subtotal, $vatTotal, $scale);
-        $totalPlusDiscount = bcadd($total, $discount, $scale);
+        // v3 folds the signed cash-rounding adjustment out of `total` before
+        // the NF525 aggregate identity is evaluated; on v1/v2 the default '0'
+        // makes this byte-identical to the previous expression.
+        $totalPlusDiscount = bcadd(bcsub($total, $roundingAdjustment, $scale), $discount, $scale);
         if (bccomp($subtotalPlusVat, $totalPlusDiscount, $scale) !== 0) {
             throw new RuntimeException(
                 'payload_aggregate_consistency:subtotal_plus_vat_ne_total:expected='.$subtotalPlusVat.':got='.$totalPlusDiscount
@@ -2616,5 +2739,109 @@ final class FiscalPayloadConstraintValidator
         }
 
         return '/^(0|[1-9]\d*)\.\d{'.$scale.'}$/D';
+    }
+
+    /**
+     * Scale-aware regex for a SIGNED bcformat money string (spec §4.4).
+     * Mirrors {@see moneyRegex()} with an optional leading minus; the scale-0
+     * branch has NO decimal point.
+     */
+    private function signedMoneyRegex(int $scale): string
+    {
+        if ($scale === 0) {
+            return '/^-?(0|[1-9]\d*)$/D';
+        }
+
+        return '/^-?(0|[1-9]\d*)\.\d{'.$scale.'}$/D';
+    }
+
+    /**
+     * Assert a signed money field and reject `-0` in every spelling.
+     * Canonical zero is the UNSIGNED zero at the currency scale; a signed
+     * zero would produce two byte-distinct encodings of the same value and
+     * break replay determinism.
+     *
+     * @param  array<string, mixed>  $bag
+     */
+    private function assertSignedMoneyString(array $bag, string $field, int $scale): void
+    {
+        $this->assertMoneyString($bag, $field, $this->signedMoneyRegex($scale), $scale);
+
+        /** @var string $value */
+        $value = $bag[$field];
+        if (str_starts_with($value, '-') && bccomp($this->asNumericString($value, $field), '0', $scale) === 0) {
+            throw new RuntimeException(sprintf(
+                'payload_money_negative_zero:field=%s:value=%s',
+                $field,
+                $value,
+            ));
+        }
+    }
+
+    /**
+     * v3 cash-rounding binds in the NORMATIVE ORDER (spec §4.1):
+     *   2a. denominator positivity FIRST — never reach bcmod with a zero
+     *       divisor, because DivisionByZeroError is an `Error` that
+     *       StrictCanonicalParser's `catch (RuntimeException)` does NOT catch
+     *       and would kill the projection worker instead of quarantining.
+     *   2b. |adj| <= denomination / 2, computed and compared at scale+1 so
+     *       bcdiv truncation cannot reject a legal tie.
+     *   2c. total is an exact multiple of the denomination.
+     *   3.  static cap on the denomination (checked even when adj == 0), read
+     *       from {@see CashRoundingCaps} — the SINGLE source shared with the
+     *       policy resolver and the ops command. An unlisted scale is
+     *       fail-closed (no sanctioned cap ⇒ no rounding).
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  numeric-string  $total
+     * @param  numeric-string  $adjustment
+     */
+    private function validateCashRoundingBinds(array $payload, string $total, string $adjustment, int $scale): void
+    {
+        $denomination = $this->asNumericString(
+            $payload['cash_rounding_denomination'],
+            'cash_rounding_denomination',
+        );
+
+        if (bccomp($adjustment, '0', $scale) !== 0) {
+            if (bccomp($denomination, '0', $scale) <= 0) {
+                throw new RuntimeException(sprintf(
+                    'payload_cash_rounding_denomination_not_positive:adjustment=%s:denomination=%s',
+                    $adjustment,
+                    $denomination,
+                ));
+            }
+
+            $absAdjustment = bccomp($adjustment, '0', $scale) < 0
+                ? bcmul($adjustment, '-1', $scale)
+                : $adjustment;
+
+            $half = bcdiv($denomination, '2', $scale + 1);
+            if (bccomp($absAdjustment, $half, $scale + 1) > 0) {
+                throw new RuntimeException(sprintf(
+                    'payload_cash_rounding_adjustment_exceeds_half_denomination:adjustment=%s:half=%s',
+                    $adjustment,
+                    $half,
+                ));
+            }
+
+            $remainder = bcmod($total, $denomination, $scale);
+            if (bccomp($remainder, '0', $scale) !== 0) {
+                throw new RuntimeException(sprintf(
+                    'payload_cash_rounding_total_not_multiple:total=%s:denomination=%s:remainder=%s',
+                    $total,
+                    $denomination,
+                    $remainder,
+                ));
+            }
+        }
+
+        if (! CashRoundingCaps::isWithinCap($denomination, $scale)) {
+            throw new RuntimeException(sprintf(
+                'payload_cash_rounding_denomination_above_cap:denomination=%s:cap=%s',
+                $denomination,
+                CashRoundingCaps::forScale($scale) ?? 'unlisted_scale:'.$scale,
+            ));
+        }
     }
 }

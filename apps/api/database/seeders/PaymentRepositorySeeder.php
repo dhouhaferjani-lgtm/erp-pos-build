@@ -120,7 +120,12 @@ class PaymentRepositorySeeder extends Seeder
             }
         }
 
-        $this->command->info('Created '.count($repositories).' payment repositories for '.$company->name);
+        // Null-safe: this seeder is `new`-instantiated (not container-resolved) from
+        // TenantInitializationService::seedPaymentRepositories(), so `$command` is
+        // null on the live registration path. A hard call threw AFTER
+        // seedReferenceData(), and compensate() then dropped the tenant database —
+        // which made the country_payment_settings self-healing inert.
+        $this->command?->info('Created '.count($repositories).' payment repositories for '.$company->name);
     }
 
     /**

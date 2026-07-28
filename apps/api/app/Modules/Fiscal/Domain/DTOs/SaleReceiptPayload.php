@@ -10,9 +10,16 @@ namespace App\Modules\Fiscal\Domain\DTOs;
  * Replaces the Phase 1 v1 10-key shape (currency / discount_total / lines /
  * payment_lines / subtotal / tax_total / total / vat_breakdown / voucher_redemptions /
  * currency_scale). Per owner D4 (synthesis v5 §16 status / §11 Amended A4 closure),
- * event_version stays at 1 — there is no production tenant to migrate, so we
- * rewrite v1 in place. `FiscalEventPayloadRegistry::PHASE_1_MAP` mapping for
- * SALE_RECEIPT remains `[SaleReceiptPayload::class, 1]`.
+ * the 28-key shape was rewritten in place — there was no production tenant to
+ * migrate.
+ *
+ * This ONE DTO class serves every SALE_RECEIPT `event_version`; the version
+ * only changes which keys are REQUIRED, and that is enforced by
+ * `FiscalPayloadConstraintValidator`, not here:
+ *   - v2 (M4) adds `variant_id`/`variant_name`/`variant_sku` per line item;
+ *   - v3 (cash rounding, spec §4.4) adds the two top-level
+ *     `cash_rounding_adjustment` / `cash_rounding_denomination` siblings,
+ *     surfaced below as nullable properties (NULL == "v1/v2, key absent").
  *
  * Field semantics + invariants are documented in:
  *   - `docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md`
@@ -71,6 +78,16 @@ final readonly class SaleReceiptPayload
         public array $vatBreakdown,
         public string $vatTotal,
         public array $vouchersRedeemed,
+        /**
+         * v3 signed cash-rounding adjustment (`rounded_total − exact_total`).
+         * NULL on v1/v2 payloads — absent means zero, never "unknown".
+         */
+        public ?string $cashRoundingAdjustment = null,
+        /**
+         * v3 applied rounding denomination, normalized at currency scale.
+         * NULL on v1/v2 payloads.
+         */
+        public ?string $cashRoundingDenomination = null,
     ) {}
 
     /**
@@ -132,18 +149,39 @@ final readonly class SaleReceiptPayload
             vatTotal: FiscalPayloadArrayGuards::requireString($data, 'vat_total'),
             // @phpstan-ignore-next-line argument.type
             vouchersRedeemed: $vouchersRedeemed,
+            // v3 (cash rounding): present-and-nullable rather than optional —
+            // `array_key_exists` distinguishes "v1/v2 payload, key absent"
+            // from "v3 payload carrying an explicit null" (the LineItemDTO
+            // variant_id precedent). The constraint validator is what forbids
+            // an explicit null on v3.
+            cashRoundingAdjustment: array_key_exists('cash_rounding_adjustment', $data)
+                ? FiscalPayloadArrayGuards::optionalString($data, 'cash_rounding_adjustment')
+                : null,
+            cashRoundingDenomination: array_key_exists('cash_rounding_denomination', $data)
+                ? FiscalPayloadArrayGuards::optionalString($data, 'cash_rounding_denomination')
+                : null,
         );
     }
 
     /**
+     * Version-faithful array round-trip.
+     *
+     * The two v3 cash-rounding keys are emitted ONLY when the DTO actually
+     * carries them, so a v1/v2 payload round-trips to its exact 28-key shape
+     * (absent, not null) and a v3 payload round-trips to all 30 keys in
+     * lexicographic position. Emitting them unconditionally would inject
+     * `payload_extra_field` keys into every historical receipt.
+     *
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'approval_references' => $this->approvalReferences,
             'business_date' => $this->businessDate,
             'buyer' => $this->buyer,
+            'cash_rounding_adjustment' => $this->cashRoundingAdjustment,
+            'cash_rounding_denomination' => $this->cashRoundingDenomination,
             'cashier_id' => $this->cashierId,
             'cashier_name' => $this->cashierName,
             'consumption_mode' => $this->consumptionMode,
@@ -170,5 +208,11 @@ final readonly class SaleReceiptPayload
             'vat_total' => $this->vatTotal,
             'vouchers_redeemed' => $this->vouchersRedeemed,
         ];
+
+        if ($this->cashRoundingAdjustment === null && $this->cashRoundingDenomination === null) {
+            unset($array['cash_rounding_adjustment'], $array['cash_rounding_denomination']);
+        }
+
+        return $array;
     }
 }

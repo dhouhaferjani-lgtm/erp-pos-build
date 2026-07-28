@@ -426,6 +426,22 @@
                 <span>{{ __('pos.tax') }}:</span>
                 <span>{{ $formatMoney($receipt->tax_amount) }}</span>
             </div>
+            {{--
+                v3 cash rounding. The column is NULL on v1/v2 receipts and
+                '0.000' on a v3 receipt that landed on a denomination
+                boundary, so BOTH are suppressed: a customer-facing ticket
+                must never carry a "Cash Rounding: 0.000" line. `bccomp`
+                (not a float compare) does the zero test, and the amount is
+                rendered through the same $formatMoney helper as every other
+                money value here, so it prints at the receipt currency's
+                scale rather than a hardcoded one.
+            --}}
+            @if($receipt->cash_rounding_adjustment !== null && bccomp((string) $receipt->cash_rounding_adjustment, '0', 3) !== 0)
+                <div class="total-line">
+                    <span>{{ __('pos.cash_rounding') }}:</span>
+                    <span>{{ $formatMoney($receipt->cash_rounding_adjustment) }}</span>
+                </div>
+            @endif
             <div class="total-line grand-total">
                 <span>{{ __('pos.total') }}:</span>
                 <span>{{ $formatMoney($receipt->total) }}</span>

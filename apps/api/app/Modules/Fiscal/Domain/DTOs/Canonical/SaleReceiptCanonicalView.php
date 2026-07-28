@@ -80,4 +80,20 @@ final readonly class SaleReceiptCanonicalView
     {
         return $this->originalReceiptReference;
     }
+
+    /**
+     * Signed cash-rounding adjustment, or canonical '0' on a v1/v2 payload.
+     * Callers normalize to their own storage scale — this accessor is
+     * deliberately scale-free.
+     */
+    public function cashRoundingAdjustmentOrZero(): string
+    {
+        return $this->payload->cashRoundingAdjustment ?? '0';
+    }
+
+    /** Applied rounding denomination, or canonical '0' on a v1/v2 payload. */
+    public function cashRoundingDenominationOrZero(): string
+    {
+        return $this->payload->cashRoundingDenomination ?? '0';
+    }
 }

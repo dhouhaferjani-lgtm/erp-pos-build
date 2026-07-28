@@ -60,10 +60,11 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     {
         $r = new FiscalEventPayloadRegistry;
 
-        // SaleReceiptV2 (M4): SALE_RECEIPT authors version 2; versions {1,2}
-        // both remain parseable (Events are Immutable Forever).
-        $this->assertSame(2, $r->eventVersionFor(FiscalEventType::SALE_RECEIPT));
-        $this->assertSame([1, 2], $r->supportedVersionsFor(FiscalEventType::SALE_RECEIPT));
+        // SaleReceiptV3 (cash rounding, spec §4.4): SALE_RECEIPT authors
+        // version 3; versions {1,2,3} all remain parseable (Events are
+        // Immutable Forever).
+        $this->assertSame(3, $r->eventVersionFor(FiscalEventType::SALE_RECEIPT));
+        $this->assertSame([1, 2, 3], $r->supportedVersionsFor(FiscalEventType::SALE_RECEIPT));
         $this->assertSame([1], $r->supportedVersionsFor(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::CHAIN_BREAK_DETECTED));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::CHAIN_RESTART));

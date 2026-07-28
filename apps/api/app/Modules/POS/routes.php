@@ -15,6 +15,7 @@ use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
+use App\Modules\POS\Presentation\Controllers\PosPaymentPolicyController;
 use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
 use App\Modules\POS\Presentation\Controllers\PosReplenishmentController;
 use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
@@ -22,6 +23,7 @@ use App\Modules\POS\Presentation\Controllers\PosVariantController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
+use App\Modules\POS\Presentation\Controllers\ShiftToleranceController;
 use App\Modules\POS\Presentation\Controllers\StockDistributionController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
@@ -175,6 +177,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Shift receipts (transaction history)
     Route::get('/pos/shifts/{id}/receipts', [ShiftController::class, 'receipts']);
 
+    // Tolerance write-off drill-down behind the Z-report tolerance_summary.
+    // Same scoping contract as the shift-receipts route above: authorization
+    // and company scoping live in the controller, not in extra middleware.
+    Route::get('/pos/shifts/{id}/tolerance-receipts', [ShiftToleranceController::class, 'index']);
+
     // Discount Permissions & Preview
     Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);
     Route::post('/pos/cart/preview-discounts', [DiscountController::class, 'previewDiscounts']);
@@ -184,6 +191,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Fraud settings cache (POS fetches these to populate local SQLite cache)
     Route::get('/pos/fraud-settings', [FraudSettingsPosController::class, 'show']);
+
+    // Cash-rounding + tender-tolerance policy cache (device pulls + caches offline)
+    Route::get('/pos/payment-policy', [PosPaymentPolicyController::class, 'show']);
 
     // Authorized managers for variance-close PIN approval
     Route::get('/pos/authorized-managers', [AuthorizedManagersController::class, 'index']);
