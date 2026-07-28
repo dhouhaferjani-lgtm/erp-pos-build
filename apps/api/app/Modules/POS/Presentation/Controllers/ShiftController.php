@@ -302,22 +302,37 @@ final class ShiftController extends Controller
             ->orderByDesc('posted_at')
             ->paginate($request->input('per_page', 20));
 
-        $receipts->getCollection()->each(function (Receipt $receipt): void {
-            $receipt->lines->each(function (ReceiptLine $line): void {
+        /** @var array<string, int> $quantityDecimalsByProductId */
+        $quantityDecimalsByProductId = [];
+
+        $receipts->getCollection()->each(function (Receipt $receipt) use (&$quantityDecimalsByProductId): void {
+            $receipt->lines->each(function (ReceiptLine $line) use (&$quantityDecimalsByProductId): void {
                 $product = $line->relationLoaded('product') ? $line->product : null;
-                $quantityDecimals = 4;
 
                 if ($product !== null) {
                     $unit = $product->relationLoaded('unitOfMeasure')
                         ? $product->unitOfMeasure
                         : null;
-                    $quantityDecimals = $unit->decimal_places ?? 4;
-                    $product->unsetRelation('unitOfMeasure');
+                    $quantityDecimalsByProductId[$product->id] = $unit->decimal_places ?? 4;
                 }
+            });
+        });
 
+        $receipts->getCollection()->each(function (Receipt $receipt) use ($quantityDecimalsByProductId): void {
+            $receipt->lines->each(function (ReceiptLine $line) use ($quantityDecimalsByProductId): void {
                 // Presentation-only enrichment: the immutable receipt line and
                 // its signed historical fields are never persisted or rewritten.
-                $line->setAttribute('quantity_decimals', $quantityDecimals);
+                $line->setAttribute(
+                    'quantity_decimals',
+                    $quantityDecimalsByProductId[$line->product_id] ?? 4,
+                );
+            });
+        });
+
+        $receipts->getCollection()->each(function (Receipt $receipt): void {
+            $receipt->lines->each(function (ReceiptLine $line): void {
+                $product = $line->relationLoaded('product') ? $line->product : null;
+                $product?->unsetRelation('unitOfMeasure');
             });
         });
 

@@ -68,3 +68,24 @@ The required correction is narrow: derive all presentation precisions before rel
 ## Gate status
 
 **CHANGES REQUIRED — HARD STOP.** The quantity baseline is empty and all mechanical gates pass, but Gate 2 cannot be represented as approved while the repeated-product precision defect remains. No second fix wave was started, and Wave 3 remains untouched. Await controller review/adjudication before any further work.
+
+## Controller-adjudicated correction — 2026-07-28
+
+The controller confirmed the repeated-product defect and authorized one narrow correction on top of `d3b35367d`.
+
+- RED: the expanded endpoint regression created two lines for one scale-2 product, one line for a distinct scale-3 product, and one deleted-product snapshot. Before the correction, the endpoint emitted `[2, 4, 3, 4]`; the repeated line failed at scale 4 exactly as reviewed.
+- Fix: `ShiftController` now builds the complete `product_id -> quantity_decimals` presentation map before mutating any eager-loaded relation, enriches every receipt line from that map, and only then removes nested `unitOfMeasure` relations.
+- Contract coverage: the regression requires `[2, 2, 3, 4]`, preserves the distinct-product precision and deleted-product scale-4 fallback, and reasserts that quantities remain unchanged in storage with no persisted `quantity_decimals` attribute.
+- Scope: presentation-only. No receipt snapshot, signed field, fiscal hash, migration, inventory test, or Wave 3 file changed.
+
+### Correction verification
+
+- Targeted PHPUnit: `ShiftReceiptQuantityPrecisionTest.php` — 1 test, 22 assertions passed. The existing non-failing environment warning remains.
+- PHPStan level 8 on `ShiftController.php`: no errors.
+- Pint `--test` on the controller and regression test: passed.
+- Quantity audit: `0 total (0 baselined, 0 new, 0 stale baseline entries)`; baseline remains exactly `[]`.
+- Diff hygiene: `git diff --check` passed before commit.
+
+## Current Gate 2 status
+
+**CORRECTION COMPLETE — HARD STOP.** The controller-confirmed Important finding is covered and corrected, but Gate 2 is not self-approved. Wave 3 remains untouched. Await the controller's full external fiscal-POS and frontend-conventions review on the final branch tip.

@@ -26,7 +26,7 @@ final class ShiftReceiptQuantityPrecisionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_shift_receipts_use_current_product_unit_precision_with_a_scale_four_missing_product_fallback(): void
+    public function test_shift_receipts_preserve_precision_for_repeated_distinct_and_missing_products(): void
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
@@ -63,6 +63,12 @@ final class ShiftReceiptQuantityPrecisionTest extends TestCase
             'company_id' => $company->id,
             'unit_id' => $unit->id,
         ]);
+        $distinctUnit = Unit::factory()->create(['decimal_places' => 3]);
+        $distinctProduct = Product::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'unit_id' => $distinctUnit->id,
+        ]);
         $receipt = Receipt::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -73,7 +79,9 @@ final class ShiftReceiptQuantityPrecisionTest extends TestCase
         ]);
 
         $currentLine = $this->createLine($receipt, 1, $product, '1.2000');
-        $missingLine = $this->createLine($receipt, 2, null, '1.1250');
+        $repeatedLine = $this->createLine($receipt, 2, $product, '2.3000');
+        $distinctLine = $this->createLine($receipt, 3, $distinctProduct, '3.4560');
+        $missingLine = $this->createLine($receipt, 4, null, '1.1250');
 
         $response = $this->getJson("/api/v1/pos/shifts/{$shift->id}/receipts");
 
@@ -83,19 +91,38 @@ final class ShiftReceiptQuantityPrecisionTest extends TestCase
         $byId = collect($lines)->keyBy('id');
 
         $currentPayload = $byId->get($currentLine->id);
+        $repeatedPayload = $byId->get($repeatedLine->id);
+        $distinctPayload = $byId->get($distinctLine->id);
         $missingPayload = $byId->get($missingLine->id);
         $this->assertIsArray($currentPayload);
+        $this->assertIsArray($repeatedPayload);
+        $this->assertIsArray($distinctPayload);
         $this->assertIsArray($missingPayload);
         $this->assertIsInt($currentPayload['quantity_decimals'] ?? null);
-        $this->assertSame(2, $currentPayload['quantity_decimals'] ?? null);
-        $this->assertSame('1.2000', $currentPayload['quantity']);
+        $this->assertIsInt($repeatedPayload['quantity_decimals'] ?? null);
+        $this->assertIsInt($distinctPayload['quantity_decimals'] ?? null);
         $this->assertIsInt($missingPayload['quantity_decimals'] ?? null);
-        $this->assertSame(4, $missingPayload['quantity_decimals'] ?? null);
+        $this->assertSame(
+            [2, 2, 3, 4],
+            [
+                $currentPayload['quantity_decimals'],
+                $repeatedPayload['quantity_decimals'],
+                $distinctPayload['quantity_decimals'],
+                $missingPayload['quantity_decimals'],
+            ],
+        );
+        $this->assertSame('1.2000', $currentPayload['quantity']);
+        $this->assertSame('2.3000', $repeatedPayload['quantity']);
+        $this->assertSame('3.4560', $distinctPayload['quantity']);
         $this->assertSame('1.1250', $missingPayload['quantity']);
 
         $this->assertSame('1.2000', $currentLine->fresh()?->quantity);
+        $this->assertSame('2.3000', $repeatedLine->fresh()?->quantity);
+        $this->assertSame('3.4560', $distinctLine->fresh()?->quantity);
         $this->assertSame('1.1250', $missingLine->fresh()?->quantity);
         $this->assertArrayNotHasKey('quantity_decimals', $currentLine->fresh()?->getAttributes() ?? []);
+        $this->assertArrayNotHasKey('quantity_decimals', $repeatedLine->fresh()?->getAttributes() ?? []);
+        $this->assertArrayNotHasKey('quantity_decimals', $distinctLine->fresh()?->getAttributes() ?? []);
         $this->assertArrayNotHasKey('quantity_decimals', $missingLine->fresh()?->getAttributes() ?? []);
     }
 
