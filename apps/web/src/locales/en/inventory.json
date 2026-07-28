@@ -785,6 +785,11 @@
       "applyOverride": "Apply Override",
       "expectedNow": "Expected now",
       "movementsSinceCount": "Movements since count",
+      "adjustmentToPost": "Adjustment to post",
+      "willNotAutoPost": "Will not auto-post: {{reason}}",
+      "wasNotAutoPosted": "Was not auto-posted: {{reason}}",
+      "blocksFinalize": "Blocks finalization: {{reason}}",
+      "legacyDelta": "Legacy delta",
       "openingCost": "Opening cost",
       "saveCost": "Save"
     },

@@ -2,7 +2,9 @@ export interface QuantityScaleProduct {
   quantity_decimals?: number | null
 }
 
-const DEFAULT_QUANTITY_DECIMALS = 4
+export const QUANTITY_STORAGE_SCALE = 4
+
+const DEFAULT_QUANTITY_DECIMALS = QUANTITY_STORAGE_SCALE
 
 export function getQuantityDecimals(product: QuantityScaleProduct | null | undefined): number {
   const decimals = product?.quantity_decimals

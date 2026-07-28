@@ -121,7 +121,7 @@ describe('countingApi.getReport', () => {
       flagged_items: [
         {
           id: 'item-1',
-          product: { id: 1, name: 'Bandage', sku: 'BAND', barcode: null, image_url: null },
+          product: { id: 1, name: 'Bandage', sku: 'BAND', barcode: null, image_url: null, quantity_decimals: 4 },
           variant: null,
           location: { id: 1, code: 'WH-1', name: 'Warehouse' },
           warehouse: { id: 1, name: 'Warehouse' },
@@ -144,6 +144,7 @@ describe('countingApi.getReport', () => {
             onHandAtApply: '9.0000',
             expectedAtApply: '11.0000',
           },
+          replay_preview: null,
           flag_reasons: ['normalized_agreement'],
           opening_unit_cost: '4.000000',
           will_post_as_opening: true,

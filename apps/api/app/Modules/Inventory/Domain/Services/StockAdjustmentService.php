@@ -67,6 +67,7 @@ final class StockAdjustmentService
         private readonly MovementReplayService $replayService,
         private readonly FirstCountDetector $firstCountDetector,
         private readonly WeightedAverageCostService $weightedAverageCostService,
+        private readonly CountingReplayGuardEvaluator $countingReplayGuardEvaluator,
     ) {}
 
     /**
@@ -755,17 +756,26 @@ final class StockAdjustmentService
 
                 // Replay the window (finalQtyAsOf, now] UNDER the row lock so the
                 // summed delta and the on-hand read are consistent (a concurrent
-                // sale cannot commit while we hold the row lock).
-                $replayedDelta = $this->replayService->signedDelta($productId, $locationId, $variantId, $finalQtyAsOf, $now);
-                $expectedNow = bcadd($finalQty, $replayedDelta, $scale);
+                // sale cannot commit while we hold the row lock). The same pure
+                // computation powers the review preview.
+                $computation = $this->replayService->compute(
+                    $productId,
+                    $locationId,
+                    $variantId,
+                    $finalQty,
+                    $finalQtyAsOf,
+                    $now,
+                    $onHandNow,
+                );
+                $expectedNow = $computation->expectedNow;
 
                 // Guard: negative-at-apply (non-onboarding only). Onboarding
                 // deliberately permits negative on-hand (sell-before-count).
-                if (! $onboarding && bccomp($expectedNow, '0', $scale) < 0) {
+                if ($this->countingReplayGuardEvaluator->atApply($onboarding, $expectedNow) !== null) {
                     return null;
                 }
 
-                $adjustment = bcsub($expectedNow, $onHandNow, $scale);
+                $adjustment = $computation->adjustment;
 
                 $postOpening = $onboarding
                     && $this->firstCountDetector->isFirstCount($productId, $locationId, $variantId);
@@ -779,7 +789,7 @@ final class StockAdjustmentService
                 return new ReplayAuditDto(
                     windowFrom: $finalQtyAsOf->toIso8601String(),
                     windowTo: $now->toIso8601String(),
-                    replayedDelta: $replayedDelta,
+                    replayedDelta: $computation->movementsSinceCount,
                     onHandAtApply: $onHandNow,
                     expectedAtApply: $expectedNow,
                 );

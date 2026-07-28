@@ -18,9 +18,9 @@ use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
-use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
+use App\Modules\Inventory\Domain\Services\FinalQuantityAsOfResolver;
 use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
@@ -60,6 +60,7 @@ class InventoryCountingService
         private readonly LocationNodeService $zoneService,
         private readonly OpeningCostGate $openingCostGate,
         private readonly TerminalSyncHealthService $terminalSyncHealthService,
+        private readonly FinalQuantityAsOfResolver $finalQuantityAsOfResolver,
     ) {}
 
     /**
@@ -912,7 +913,7 @@ class InventoryCountingService
     public function getItemsForAdmin(InventoryCounting $counting): Collection
     {
         return $counting->items()
-            ->with(['product', 'location', 'resolvedBy'])
+            ->with(['product.unitOfMeasure', 'location', 'resolvedBy'])
             ->get();
     }
 
@@ -1063,7 +1064,7 @@ class InventoryCountingService
                     continue;
                 }
 
-                $asOf = $this->resolveFinalQtyAsOf($item);
+                $asOf = $this->finalQuantityAsOfResolver->resolve($item);
                 if ($asOf !== null) {
                     $item->final_qty_as_of = Carbon::instance($asOf);
                     $item->save();
@@ -1105,43 +1106,6 @@ class InventoryCountingService
                 );
             });
         });
-    }
-
-    /**
-     * Resolve the replay boundary (`final_qty_as_of`) for an auto-resolved item:
-     * the skew-corrected estimate of the count that produced `final_qty`.
-     *
-     * The lowest-numbered count whose value equals `final_qty` supplies the
-     * boundary. When counters agree (or all match theoretical) any agreeing
-     * count yields the same replay result — no net movement can sit between two
-     * agreeing counts — so the earliest is a safe, deterministic choice. Manual
-     * overrides never reach here (they stamp resolved_at at override time).
-     * Returns null when no count matches, which routes the item to the legacy
-     * delta path.
-     */
-    private function resolveFinalQtyAsOf(InventoryCountingItem $item): ?CarbonInterface
-    {
-        if ($item->resolution_method === ItemResolutionMethod::ManualOverride) {
-            return $item->resolved_at;
-        }
-
-        $finalQty = $item->final_qty;
-        if ($finalQty === null) {
-            return null;
-        }
-
-        foreach ([1, 2, 3] as $phase) {
-            /** @var numeric-string|null $qty */
-            $qty = $item->{"count_{$phase}_qty"};
-            /** @var CarbonInterface|null $estimate */
-            $estimate = $item->{"count_{$phase}_at_estimate"};
-
-            if ($qty !== null && $estimate !== null && bccomp((string) $qty, (string) $finalQty, InventoryScale::QUANTITY_SCALE) === 0) {
-                return $estimate;
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -13,8 +13,9 @@ use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
-use App\Modules\Inventory\Domain\Services\FirstCountDetector;
+use App\Modules\Inventory\Domain\Services\CountingReplayGuardEvaluator;
 use App\Modules\Inventory\Domain\Services\MovementReplayService;
+use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -45,7 +46,8 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly MovementReplayService $replayService,
-        private readonly FirstCountDetector $firstCountDetector,
+        private readonly OpeningCostGate $openingCostGate,
+        private readonly CountingReplayGuardEvaluator $guardEvaluator,
     ) {}
 
     public function handle(InventoryCountingCompleted $event): void
@@ -210,14 +212,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         /** @var CarbonInterface $asOf */
         $asOf = $item->final_qty_as_of;
 
-        // Basket-window guard (owned here — it needs no row lock and lets us
-        // attribute the correct flag). A movement within ±window of the count
-        // instant means the counted quantity is ambiguous; skip posting.
-        if ($this->replayService->hasMovementNear($item->product_id, $item->location_id, $item->variant_id, $asOf, $window)) {
-            $this->flagItem($item, CountingItemFlagReason::BasketWindow, $asOf);
-
-            return false;
-        }
+        $hasMovementNear = $this->replayService->hasMovementNear($item->product_id, $item->location_id, $item->variant_id, $asOf, $window);
 
         $location = Location::where('company_id', $counting->company_id)->find($item->location_id);
         // onboarding_mode is the precise signal for opening semantics; the
@@ -225,21 +220,16 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // what decides sell-before-count / first-count-as-opening here.
         $onboarding = $location !== null && $location->onboarding_mode;
 
-        $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
-
-        // An onboarding FIRST count with no resolvable opening cost must NOT
-        // post at zero cost — block it and leave it for cost backfill via the
-        // opening-cost endpoint. A subsequent (non-first) count posts a normal
-        // correction where cost is irrelevant, so gate on first-count too.
-        if (
-            $onboarding
-            && $openingUnitCost === null
-            && $this->firstCountDetector->isFirstCount($item->product_id, $item->location_id, $item->variant_id)
-        ) {
-            $this->flagItem($item, CountingItemFlagReason::PendingOpeningCost, $asOf);
+        $item->loadMissing('product');
+        $openingGate = $this->openingCostGate->evaluateItem($item, $onboarding);
+        $preApplyBlock = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+        if ($preApplyBlock !== null) {
+            $this->flagItem($item, $preApplyBlock, $asOf);
 
             return false;
         }
+
+        $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
 
         /** @var numeric-string $finalQty */
         $finalQty = (string) $item->final_qty;

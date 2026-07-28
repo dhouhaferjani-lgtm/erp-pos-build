@@ -785,6 +785,11 @@
       "applyOverride": "Appliquer la correction",
       "expectedNow": "Attendu maintenant",
       "movementsSinceCount": "Mouvements depuis le comptage",
+      "adjustmentToPost": "Ajustement à appliquer",
+      "willNotAutoPost": "Pas d'application automatique : {{reason}}",
+      "wasNotAutoPosted": "Non appliqué automatiquement : {{reason}}",
+      "blocksFinalize": "Bloque la finalisation : {{reason}}",
+      "legacyDelta": "Écart historique",
       "openingCost": "Coût d'ouverture",
       "saveCost": "Enregistrer"
     },

@@ -199,7 +199,7 @@ class CountingItemController extends Controller
         return response()->json([
             'data' => [
                 'summary' => $summary,
-                'items' => $this->payloadBuilder->transformMany($items),
+                'items' => $this->payloadBuilder->transformMany($items, $counting),
                 // Late-sale flags captured on the session during the block
                 // window — surfaced as a review banner.
                 'late_sales_flags' => $counting->late_sales_flags ?? [],

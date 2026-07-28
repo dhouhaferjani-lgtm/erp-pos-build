@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Domain\Services;
 
 use App\Modules\Inventory\Domain\InventoryScale;
+use App\Modules\Inventory\Domain\StockMovement;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
@@ -58,6 +59,122 @@ final class MovementReplayService
         $sumString = $sum === null ? '0' : (string) $sum;
 
         return bcadd($sumString, '0', InventoryScale::QUANTITY_SCALE);
+    }
+
+    /**
+     * Compute the replay result without mutating stock. The locked finalize
+     * path and the pre-finalize preview both call this method so their decimal
+     * arithmetic cannot drift apart.
+     *
+     * @param  numeric-string  $finalQty
+     * @param  numeric-string  $onHandNow
+     */
+    public function compute(
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        string $finalQty,
+        CarbonInterface $from,
+        CarbonInterface $to,
+        string $onHandNow,
+    ): ReplayComputation {
+        $movementsSinceCount = $this->signedDelta($productId, $locationId, $variantId, $from, $to);
+
+        return $this->computeFromDelta($finalQty, $onHandNow, $movementsSinceCount);
+    }
+
+    /**
+     * Batch preview replay into one movement query, avoiding three reads per
+     * counting line on coarse scopes.
+     *
+     * @param  list<ReplayPreviewInput>  $inputs
+     * @return array<string, ReplayBatchResult>
+     */
+    public function computeMany(array $inputs, CarbonInterface $to, string $companyId): array
+    {
+        if ($inputs === []) {
+            return [];
+        }
+
+        $minimumFrom = null;
+        $productIds = [];
+        $locationIds = [];
+        foreach ($inputs as $input) {
+            $candidate = CarbonImmutable::instance($input->from)->subMinutes($input->windowMinutes);
+            if ($minimumFrom === null || $candidate->lt($minimumFrom)) {
+                $minimumFrom = $candidate;
+            }
+            $productIds[$input->productId] = true;
+            $locationIds[$input->locationId] = true;
+        }
+
+        $rows = StockMovement::query()
+            ->where('company_id', $companyId)
+            ->whereIn('product_id', array_keys($productIds))
+            ->whereIn('location_id', array_keys($locationIds))
+            ->whereRaw('COALESCE(occurred_at, created_at) >= ?', [$this->boundary($minimumFrom)])
+            ->whereRaw('COALESCE(occurred_at, created_at) <= ?', [$this->boundary($to)])
+            ->get(['product_id', 'location_id', 'variant_id', 'quantity_before', 'quantity_after', 'occurred_at', 'created_at']);
+
+        /** @var array<string, list<StockMovement>> $byGrain */
+        $byGrain = [];
+        foreach ($rows as $row) {
+            $key = $this->grainKey((string) $row->product_id, (string) $row->location_id, $row->variant_id !== null ? (string) $row->variant_id : null);
+            $byGrain[$key][] = $row;
+        }
+
+        $results = [];
+        foreach ($inputs as $input) {
+            $delta = bcadd('0', '0', InventoryScale::QUANTITY_SCALE);
+            $near = false;
+            $from = CarbonImmutable::instance($input->from);
+            $nearFrom = $from->subMinutes($input->windowMinutes);
+            $nearTo = $from->addMinutes($input->windowMinutes);
+            foreach ($byGrain[$this->grainKey($input->productId, $input->locationId, $input->variantId)] ?? [] as $row) {
+                $eventAtValue = $row->occurred_at ?? $row->created_at;
+                if ($eventAtValue === null) {
+                    continue;
+                }
+                $eventAt = CarbonImmutable::instance($eventAtValue);
+                if ($eventAt->gt($from) && $eventAt->lte($to)) {
+                    $rowDelta = bcsub($row->quantity_after, $row->quantity_before, InventoryScale::QUANTITY_SCALE);
+                    $delta = bcadd($delta, $rowDelta, InventoryScale::QUANTITY_SCALE);
+                }
+                if ($eventAt->betweenIncluded($nearFrom, $nearTo)) {
+                    $near = true;
+                }
+            }
+
+            $results[$input->key] = new ReplayBatchResult(
+                $this->computeFromDelta($input->finalQty, $input->onHandNow, $delta),
+                $near,
+            );
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param  numeric-string  $finalQty
+     * @param  numeric-string  $onHandNow
+     * @param  numeric-string  $delta
+     */
+    private function computeFromDelta(string $finalQty, string $onHandNow, string $delta): ReplayComputation
+    {
+        $scale = InventoryScale::QUANTITY_SCALE;
+        $expectedNow = bcadd($finalQty, $delta, $scale);
+
+        return new ReplayComputation(
+            movementsSinceCount: $delta,
+            onHandNow: $onHandNow,
+            expectedNow: $expectedNow,
+            adjustment: bcsub($expectedNow, $onHandNow, $scale),
+        );
+    }
+
+    private function grainKey(string $productId, string $locationId, ?string $variantId): string
+    {
+        return $productId."\0".$locationId."\0".($variantId ?? '');
     }
 
     /**

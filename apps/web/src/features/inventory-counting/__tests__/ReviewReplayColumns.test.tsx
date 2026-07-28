@@ -33,7 +33,7 @@ vi.mock('../api/queries', () => ({
 function makeItem(overrides: Partial<ReconciliationItem> = {}): ReconciliationItem {
   return {
     id: '11111111-1111-4111-8111-111111111111',
-    product: { id: 1, name: 'Widget', sku: 'SKU-1', barcode: null, image_url: null },
+    product: { id: 1, name: 'Widget', sku: 'SKU-1', barcode: null, image_url: null, quantity_decimals: 4 },
     variant: null,
     location: { id: 1, code: 'WH-1', name: 'Main' },
     warehouse: { id: 1, name: 'Main' },
@@ -56,6 +56,7 @@ function makeItem(overrides: Partial<ReconciliationItem> = {}): ReconciliationIt
       onHandAtApply: '9.0000',
       expectedAtApply: '9.0000',
     },
+    replay_preview: null,
     flag_reasons: null,
     opening_unit_cost: null,
     will_post_as_opening: false,
@@ -106,16 +107,90 @@ function renderReviewPage() {
 }
 
 describe('ReconciliationTable replay columns + flags', () => {
-  it('renders the replay columns (expected now + movements since count)', () => {
+  it('renders pre-finalize movements, expected-now, and adjustment preview columns', () => {
     h.reconciliation = makeReconciliation([
-      makeItem({ expected_qty_at_apply: '9.0000' }),
+      makeItem({
+        expected_qty_at_apply: null,
+        replay_audit: null,
+        replay_preview: {
+          mode: 'timestamp_replay',
+          movements_since_count: '-3.0000',
+          expected_now: '17.0000',
+          adjustment: '5.0000',
+          will_auto_post: true,
+          blocked_reason: null,
+        },
+      }),
     ])
     render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     expect(screen.getByText('counting.reconciliation.expectedNow')).toBeInTheDocument()
     expect(screen.getByText('counting.reconciliation.movementsSinceCount')).toBeInTheDocument()
-    // Movements-since-count value from replay_audit.replayedDelta.
-    expect(screen.getByText('-1.0000')).toBeInTheDocument()
+    expect(screen.getByText('counting.reconciliation.adjustmentToPost')).toBeInTheDocument()
+    expect(screen.getByText('-3.0000')).toBeInTheDocument()
+    expect(screen.getByText('17.0000')).toBeInTheDocument()
+    expect(screen.getByText('+5.0000')).toBeInTheDocument()
+  })
+
+  it('renders the preview state when a replay guard will prevent auto-posting', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({
+        expected_qty_at_apply: null,
+        replay_audit: null,
+        replay_preview: {
+          mode: 'timestamp_replay',
+          movements_since_count: '-3.0000',
+          expected_now: '17.0000',
+          adjustment: '5.0000',
+          will_auto_post: false,
+          blocked_reason: 'basket_window',
+        },
+      }),
+    ])
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
+
+    expect(screen.getByText(/counting\.reconciliation\.willNotAutoPost/)).toHaveTextContent(
+      'counting.reconciliation.willNotAutoPost'
+    )
+  })
+
+  it('renders the legacy-delta expected quantity and adjustment', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({
+        product: { id: 1, name: 'Widget', sku: 'SKU-1', barcode: null, image_url: null, quantity_decimals: 0 },
+        expected_qty_at_apply: null,
+        replay_audit: null,
+        replay_preview: {
+          mode: 'legacy_delta',
+          movements_since_count: null,
+          expected_now: '17.0000',
+          adjustment: '5.0000',
+          will_auto_post: true,
+          blocked_reason: null,
+        },
+      }),
+    ])
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
+
+    expect(screen.getByText('17')).toBeInTheDocument()
+    expect(screen.getByText('+5')).toBeInTheDocument()
+    expect(screen.getByText('counting.reconciliation.legacyDelta')).toBeInTheDocument()
+  })
+
+  it('renders finalized replay audit values and suppresses skipped adjustments', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({ replay_preview: null }),
+      makeItem({
+        id: '22222222-2222-4222-8222-222222222222',
+        replay_preview: null,
+        flag_reasons: ['negative_at_apply'],
+      }),
+    ])
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
+
+    expect(screen.getAllByText('-1.0000')).toHaveLength(2)
+    expect(screen.getByText('0.0000')).toBeInTheDocument()
+    expect(screen.getByText(/counting\.reconciliation\.wasNotAutoPosted/)).toBeInTheDocument()
   })
 
   it('renders a chip per flag reason, styling blocking vs informational', () => {

@@ -111,6 +111,7 @@ export interface CountingItemProduct {
   sku: string
   barcode: string | null
   image_url: string | null
+  quantity_decimals: number
 }
 
 export interface CountingItemLocation {
@@ -133,6 +134,17 @@ export interface ReplayAudit {
   replayedDelta: string
   onHandAtApply: string
   expectedAtApply: string
+}
+
+// Read-only replay projection returned while a counting awaits final review.
+// All quantity values remain canonical scale-4 decimal strings.
+export interface ReplayPreview {
+  mode: 'timestamp_replay' | 'legacy_delta'
+  movements_since_count: string | null
+  expected_now: string
+  adjustment: string
+  will_auto_post: boolean
+  blocked_reason: CountingItemFlagReason | null
 }
 
 // A single late-sale flag captured on the session during the block window.
@@ -226,6 +238,7 @@ export interface ReconciliationItem {
   // cell. All are scale decimal STRINGS or null.
   expected_qty_at_apply: string | null
   replay_audit: ReplayAudit | null
+  replay_preview: ReplayPreview | null
   flag_reasons: string[] | null
   opening_unit_cost: string | null
 

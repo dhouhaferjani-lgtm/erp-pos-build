@@ -5,6 +5,7 @@ import type { ReconciliationItem } from '../types'
 import { formatQuantity } from '@/lib/decimal'
 import { QuantityInput } from '@/components/atoms/QuantityInput'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 interface Props {
   open: boolean
@@ -25,6 +26,7 @@ function ManualOverrideDialogContent({
   // Initialize with count_1 qty as starting point. Both are already
   // canonical scale-4 decimal strings — never parsed through a JS number.
   const initialQty = item.count_1?.qty ?? item.theoretical_qty
+  const quantityDecimals = getQuantityDecimals(item.product)
   const [quantity, setQuantity] = useState(initialQty)
   const [notes, setNotes] = useState('')
 
@@ -65,24 +67,24 @@ function ManualOverrideDialogContent({
           <div className="grid grid-cols-4 gap-2 mb-4 text-sm">
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
               <div className={colorTokens.text.subtle}>{t('counting.reconciliation.theoretical')}</div>
-              <div className="font-mono font-medium">{formatQuantity(item.theoretical_qty)}</div>
+              <div className="font-mono font-medium">{formatQuantity(item.theoretical_qty, quantityDecimals)}</div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
               <div className={colorTokens.text.subtle}>{t('counting.count1')}</div>
               <div className="font-mono font-medium">
-                {item.count_1 ? formatQuantity(item.count_1.qty) : '-'}
+                {item.count_1 ? formatQuantity(item.count_1.qty, quantityDecimals) : '-'}
               </div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
               <div className={colorTokens.text.subtle}>{t('counting.count2')}</div>
               <div className="font-mono font-medium">
-                {item.count_2 ? formatQuantity(item.count_2.qty) : '-'}
+                {item.count_2 ? formatQuantity(item.count_2.qty, quantityDecimals) : '-'}
               </div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
               <div className={colorTokens.text.subtle}>{t('counting.count3')}</div>
               <div className="font-mono font-medium">
-                {item.count_3 ? formatQuantity(item.count_3.qty) : '-'}
+                {item.count_3 ? formatQuantity(item.count_3.qty, quantityDecimals) : '-'}
               </div>
             </div>
           </div>
@@ -97,7 +99,7 @@ function ManualOverrideDialogContent({
                 id="manual-override-quantity"
                 value={quantity}
                 onChange={setQuantity}
-                decimalPlaces={4}
+                decimalPlaces={quantityDecimals}
                 required
               />
             </div>
