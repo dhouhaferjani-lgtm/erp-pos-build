@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Projections;
 
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
@@ -13,6 +14,8 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\POS\Application\DTOs\PosPaymentPolicyDTO;
+use App\Modules\POS\Application\Services\PosPaymentPolicyResolver;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -120,6 +123,12 @@ use RuntimeException;
  * sit on the same side of the asymmetric seam (both are operational
  * modules the POS-core projection is permitted to remain ignorant of).
  *
+ * The inbound POS surface stays read-only and is exactly two classes: the
+ * `Receipt` read model, and `PosPaymentPolicyResolver` — a public POS
+ * Application service consulted ONLY to decide whether a tolerance write-off
+ * exceeded the live effective ceiling (telemetry, never a gate). No POS write
+ * surface is imported.
+ *
  * **§14 retention disposition.** The legacy
  * `ReceiptPaymentService::processReceiptPayments()` still writes a
  * Treasury `Payment` + GL entry inline when invoked from
@@ -147,6 +156,11 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         private readonly HandlesMaturityTenderLeg $maturityLegHandler,
         private readonly InstrumentLifecycleService $instrumentLifecycle,
         private readonly AuditService $auditService,
+        // Read-only POS Application service (no write surface) — the SAME
+        // fail-closed effective-policy gate that decided what the device was
+        // allowed to cache, and the only worker-safe way to reach it (explicit
+        // company id, no CompanyContext, no no-arg getScale()).
+        private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
     ) {}
 
     public function name(): string
@@ -377,7 +391,434 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 );
                 $index++;
             }
+
+            // Spec §4.6 new entries — v3-gated and training-guarded, inside the
+            // SAME transaction as the tender legs. Both run AFTER the loop so a
+            // missing purpose account can never block revenue recognition: the
+            // legs are already written when the precheck decides to skip.
+            //
+            // Training receipts never reach GL at all (they are rehearsals, not
+            // sales), and a v1/v2 event has no rounding semantics to book.
+            if (CashRoundingCutover::applies($event->event_version) && $view->payload->trainingFlag !== true) {
+                $this->postCashRoundingEntry($event, $receipt, $view, $isRefund, $currencyScale);
+                $this->postToleranceWriteoffEntry($event, $receipt, $view, $currencyScale);
+            }
         });
+    }
+
+    /**
+     * Post the cash-rounding difference for a v3 receipt (spec §4.6 entry 1).
+     *
+     * No-ops on a canonical zero adjustment (an exact multiple of the
+     * denomination is not a difference).
+     *
+     * **This is the ONLY additional GL a rounded receipt gets.** Task 9 already
+     * netted the customer's change off the cash legs, so the sale entry balances
+     * at the retained figure — re-booking that change here would double-count it.
+     */
+    private function postCashRoundingEntry(
+        FiscalEvent $event,
+        Receipt $receipt,
+        SaleReceiptCanonicalView $view,
+        bool $isRefund,
+        int $currencyScale,
+    ): void {
+        $adjustment = $view->cashRoundingAdjustmentOrZero();
+        if (! is_numeric($adjustment) || bccomp($adjustment, '0', $currencyScale) === 0) {
+            return;
+        }
+
+        $sourceType = $isRefund ? 'pos_cash_rounding_refund' : 'pos_cash_rounding';
+
+        // Probe BEFORE creating. The Task-7 partial unique indexes on
+        // (source_type, source_id) are the DB-level backstop, not the guard: a
+        // second apply() that reached the insert would raise a 23505 and turn a
+        // clean replay into a permanently-failing queue job.
+        if ($this->journalEntryExists($sourceType, (string) $receipt->id)) {
+            return;
+        }
+
+        $roundedUp = bccomp($adjustment, '0', $currencyScale) > 0;
+        $requiredPurposes = [
+            // Both halves of the entry are prechecked. ProductRevenue is
+            // normally guaranteed by the tender legs having posted — but a
+            // receipt whose only cash leg was fully netted away writes no sale
+            // entry at all, so it cannot be assumed here.
+            SystemAccountPurpose::ProductRevenue,
+            $roundedUp
+                ? SystemAccountPurpose::PaymentToleranceIncome
+                : SystemAccountPurpose::PaymentToleranceExpense,
+        ];
+
+        foreach ($requiredPurposes as $purpose) {
+            if (! $this->generalLedgerService->hasAccountForPurpose($event->company_id, $purpose)) {
+                $this->recordTolerancePurposeMissingAlertSafely($event, $receipt, $purpose->value, $sourceType);
+
+                return;
+            }
+        }
+
+        $entry = $this->generalLedgerService->createPosCashRoundingEntry(
+            $receipt,
+            $adjustment,
+            $sourceType,
+            $currencyScale,
+        );
+        // Explicit currency: this projector runs on a Horizon worker where no
+        // CompanyContext is bound and the no-arg scale resolution fails loud.
+        $this->generalLedgerService->postEntryNow($entry, $receipt->cashier, $receipt->currency);
+    }
+
+    /**
+     * Post the tender-tolerance write-off for a v3 receipt (spec §4.6 entry 2).
+     *
+     * The shortfall is computed from the TENDERED leg amounts, never the netted
+     * ones — netting only ever removes an OVER-tender, so netted amounts would
+     * define the gap away. It is likewise computed here rather than read off
+     * `pos_receipts.tolerance_writeoff`: that column is `'0.000'` (not NULL) on
+     * a v3 no-shortfall receipt, and the bridge must not take a dependency on
+     * another projector's row shape.
+     *
+     * A REFUND/VOID posts the same direction as a sale. Entry 1 has an explicit
+     * spec-mandated reversal; entry 2 has none, and no device path produces a
+     * short-tendered refund today — flagged rather than invented.
+     */
+    private function postToleranceWriteoffEntry(
+        FiscalEvent $event,
+        Receipt $receipt,
+        SaleReceiptCanonicalView $view,
+        int $currencyScale,
+    ): void {
+        $tendered = bcadd('0', '0', $currencyScale);
+        foreach ($view->payments as $line) {
+            if (! is_numeric($line->amount)) {
+                // Unreachable: computeNettedAmounts() already threw on this at
+                // v3. Kept as an honest guard rather than an inline @var cast.
+                throw new RuntimeException(sprintf(
+                    'TreasuryReceiptBridge: payment amount %s is not numeric for fiscal_event %s',
+                    $line->amount,
+                    $event->id,
+                ));
+            }
+            $tendered = bcadd($tendered, $line->amount, $currencyScale);
+        }
+
+        $total = $view->payload->total;
+        if (! is_numeric($total)) {
+            throw new RuntimeException(sprintf(
+                'TreasuryReceiptBridge: payload total %s is not numeric for fiscal_event %s',
+                $total,
+                $event->id,
+            ));
+        }
+
+        $shortfall = bcsub($total, $tendered, $currencyScale);
+        if (bccomp($shortfall, '0', $currencyScale) <= 0) {
+            return;
+        }
+
+        if ($this->journalEntryExists('pos_tolerance_bridge', (string) $receipt->id)) {
+            return;
+        }
+
+        $requiredPurposes = [
+            SystemAccountPurpose::ProductRevenue,
+            SystemAccountPurpose::PaymentToleranceExpense,
+        ];
+
+        foreach ($requiredPurposes as $purpose) {
+            if (! $this->generalLedgerService->hasAccountForPurpose($event->company_id, $purpose)) {
+                $this->recordTolerancePurposeMissingAlertSafely(
+                    $event,
+                    $receipt,
+                    $purpose->value,
+                    'pos_tolerance_bridge',
+                );
+
+                return;
+            }
+        }
+
+        $entry = $this->generalLedgerService->createPosToleranceWriteoffEntry($receipt, $shortfall);
+        $this->generalLedgerService->postEntryNow($entry, $receipt->cashier, $receipt->currency);
+
+        $this->alertIfShortfallExceedsConfigSafely($event, $receipt, $view, $shortfall, $total, $currencyScale);
+    }
+
+    /**
+     * Source-type-scoped existence probe. The two new literals are disjoint from
+     * every other GL writer's, so `(source_type, source_id)` identifies exactly
+     * one entry per receipt per purpose.
+     */
+    private function journalEntryExists(string $sourceType, string $sourceId): bool
+    {
+        return DB::table('journal_entries')
+            ->where('source_type', $sourceType)
+            ->where('source_id', $sourceId)
+            ->exists();
+    }
+
+    /**
+     * Savepoint-contained wrapper — see {@see alertIfShortfallExceedsConfigSafely}
+     * for why the containment is load-bearing. Here the stakes are higher still:
+     * this alert fires on the path where NO entry was posted, so an uncontained
+     * throw would roll back the tender legs the precheck exists to protect.
+     */
+    private function recordTolerancePurposeMissingAlertSafely(
+        FiscalEvent $event,
+        Receipt $receipt,
+        string $purpose,
+        string $sourceType,
+    ): void {
+        try {
+            DB::transaction(function () use ($event, $receipt, $purpose, $sourceType): void {
+                $this->recordTolerancePurposeMissingAlert($event, $receipt, $purpose, $sourceType);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('TreasuryReceiptBridge: purpose-missing alert failed (tender legs unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'missing_purpose' => $purpose,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Durable signal that a chart of accounts cannot carry a rounding or
+     * tolerance entry. Same idempotency-guarded `audit_events` shape as
+     * {@see recordMaturityRefundAlert()}.
+     *
+     * The probe is keyed on the fiscal event, so a receipt that skips BOTH
+     * entries for the same missing purpose records one alert naming the first
+     * one it hit — the operator fix (seed/backfill the purpose) is identical
+     * either way.
+     */
+    private function recordTolerancePurposeMissingAlert(
+        FiscalEvent $event,
+        Receipt $receipt,
+        string $purpose,
+        string $sourceType,
+    ): void {
+        $exists = DB::table('audit_events')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('event_type', 'pos.gl.tolerance_purpose_missing')
+            ->where('aggregate_type', 'fiscal_event')
+            ->where('aggregate_id', $event->id)
+            ->exists();
+
+        if (! $exists) {
+            $this->auditService->record(
+                companyId: $event->company_id,
+                userId: $receipt->cashier_id,
+                eventType: 'pos.gl.tolerance_purpose_missing',
+                aggregateType: 'fiscal_event',
+                aggregateId: $event->id,
+                payload: [
+                    'fiscal_event_id' => $event->id,
+                    'receipt_id' => (string) $receipt->id,
+                    'missing_purpose' => $purpose,
+                    'skipped_source_type' => $sourceType,
+                ],
+            );
+        }
+
+        Log::warning('POS GL skipped a rounding/tolerance entry: the system-purpose account is missing.', [
+            'fiscal_event_id' => $event->id,
+            'missing_purpose' => $purpose,
+            'skipped_source_type' => $sourceType,
+        ]);
+    }
+
+    /**
+     * Run the beyond-config check inside a SAVEPOINT so telemetry can never cost
+     * the write-off that was already posted.
+     *
+     * The nested `DB::transaction()` is load-bearing and NOT interchangeable
+     * with a bare try/catch: on PostgreSQL a failed statement aborts the whole
+     * transaction (`25P02` on everything after it), so swallowing the exception
+     * without rolling back to a savepoint would poison the outer transaction and
+     * fail the commit anyway. Mirrors
+     * `PosCoreReceiptProjection::reconcileRoundingPolicySafely()`.
+     *
+     * @param  numeric-string  $shortfall
+     * @param  numeric-string  $total
+     */
+    private function alertIfShortfallExceedsConfigSafely(
+        FiscalEvent $event,
+        Receipt $receipt,
+        SaleReceiptCanonicalView $view,
+        string $shortfall,
+        string $total,
+        int $currencyScale,
+    ): void {
+        try {
+            DB::transaction(function () use ($event, $receipt, $view, $shortfall, $total, $currencyScale): void {
+                $this->alertIfShortfallExceedsConfig($event, $receipt, $view, $shortfall, $total, $currencyScale);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('TreasuryReceiptBridge: shortfall-ceiling check failed (write-off unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'shortfall' => $shortfall,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The write-off is POSTED regardless — the money moved. This only raises a
+     * durable signal when the shortfall exceeded the EFFECTIVE configured
+     * ceiling and no supervisor approval rode the payload.
+     *
+     * **The ceiling is `max(min(pct × total, max_amount), D)`** — spec §8.1's
+     * approved tolerance denomination floor, active when rounding is on. The
+     * floor is not decoration: the percentage cap is TRUNCATED at currency scale
+     * (0.5% of 9.950 = 0.049), so without it the spec's OWN worked example — a
+     * legitimately auto-accepted 0.050 shortfall on a 0.050 denomination — would
+     * alert, and so would every full-D shortfall the device is designed to
+     * accept. That is an alert storm on day one, which trains operators to
+     * ignore the one signal that matters.
+     *
+     * The config is read through `PosPaymentPolicyResolver`, NOT the raw
+     * `country_payment_settings` row: the resolver is the same fail-closed gate
+     * that decided what the device was allowed to cache (round-trip validity,
+     * non-positive values, the §4.1 `CashRoundingCaps` ceiling), so a
+     * denomination it refuses to emit is by definition not a live floor. It is
+     * worker-safe by construction — explicit company id, no `CompanyContext`,
+     * no no-arg `getScale()` (rule 20).
+     *
+     * Tolerance disabled ⇒ ceiling zero ⇒ every shortfall alerts. That is the
+     * intended fail-closed direction: a device that auto-accepted while the
+     * server says tolerance is off is exactly what this alert is for. Drift
+     * between the SIGNED denomination and the live one is a separate concern
+     * already reported by `pos.rounding.policy_mismatch` (Task 8), which is why
+     * the live policy is used here as the single source rather than a hybrid of
+     * signed and live values.
+     *
+     * @param  numeric-string  $shortfall
+     * @param  numeric-string  $total
+     */
+    private function alertIfShortfallExceedsConfig(
+        FiscalEvent $event,
+        Receipt $receipt,
+        SaleReceiptCanonicalView $view,
+        string $shortfall,
+        string $total,
+        int $currencyScale,
+    ): void {
+        // A supervisor already answered for this gap on the device, and the
+        // approval rode the SIGNED payload. Alerting anyway would just be noise
+        // on top of an authorized decision.
+        if ($this->hasTenderToleranceApproval($view)) {
+            return;
+        }
+
+        $policy = $this->posPaymentPolicyResolver->forCompany($event->company_id);
+        $effectiveMax = $this->effectiveToleranceCeiling($policy, $total, $currencyScale);
+
+        if (bccomp($shortfall, $effectiveMax, $currencyScale) <= 0) {
+            return;
+        }
+
+        $exists = DB::table('audit_events')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('event_type', 'pos.tolerance.shortfall_exceeds_config')
+            ->where('aggregate_type', 'fiscal_event')
+            ->where('aggregate_id', $event->id)
+            ->exists();
+
+        if (! $exists) {
+            $this->auditService->record(
+                companyId: $event->company_id,
+                userId: $receipt->cashier_id,
+                eventType: 'pos.tolerance.shortfall_exceeds_config',
+                aggregateType: 'fiscal_event',
+                aggregateId: $event->id,
+                payload: [
+                    'fiscal_event_id' => $event->id,
+                    'receipt_id' => (string) $receipt->id,
+                    'shortfall' => $shortfall,
+                    'effective_max' => $effectiveMax,
+                    'total' => $total,
+                ],
+            );
+        }
+
+        Log::warning('POS tolerance write-off exceeded the configured ceiling; posted and flagged.', [
+            'fiscal_event_id' => $event->id,
+            'shortfall' => $shortfall,
+            'effective_max' => $effectiveMax,
+        ]);
+    }
+
+    /**
+     * `max(min(pct × total, max_amount), D)` — spec §8.1, with the denomination
+     * floor applied only when rounding is live AND the sale is non-zero.
+     *
+     * The percentage cap is computed at the CURRENCY scale, i.e. TRUNCATED
+     * (bcmul truncates), never rounded up: the cap can only ever be
+     * conservative, and the floor is what admits a full-`D` shortfall. This
+     * mirrors the device's `toleranceEffectiveMax` exactly — the two must agree
+     * or the server flags what the device was told to accept.
+     *
+     * Anything the resolver refuses to emit (tolerance off, unusable
+     * percentage/max, rounding off, non-positive denomination) collapses the
+     * corresponding term to zero. Tolerance off ⇒ ceiling zero ⇒ every
+     * shortfall is beyond config, which is the fail-closed direction.
+     *
+     * @param  numeric-string  $total
+     * @return numeric-string
+     */
+    private function effectiveToleranceCeiling(
+        PosPaymentPolicyDTO $policy,
+        string $total,
+        int $currencyScale,
+    ): string {
+        $zero = bcadd('0', '0', $currencyScale);
+
+        if (! $policy->tenderToleranceEnabled) {
+            return $zero;
+        }
+
+        // The resolver already refuses to emit anything it cannot format, but
+        // its DTO is typed `string`; guard rather than assume.
+        $percentage = $policy->tenderTolerancePercentage;
+        $maxAmount = $policy->tenderToleranceMaxAmount;
+        if (! is_numeric($percentage) || ! is_numeric($maxAmount)) {
+            return $zero;
+        }
+
+        $percentageCap = bcmul($total, $percentage, $currencyScale);
+        $ceiling = bccomp($percentageCap, $maxAmount, $currencyScale) <= 0 ? $percentageCap : $maxAmount;
+
+        $denomination = $policy->cashRoundingDenomination;
+        $floorApplies = $policy->cashRoundingEnabled
+            && is_numeric($denomination)
+            && bccomp($denomination, '0', $currencyScale) > 0
+            && bccomp($total, '0', $currencyScale) > 0;
+
+        if ($floorApplies && bccomp($denomination, $ceiling, $currencyScale) > 0) {
+            $ceiling = $denomination;
+        }
+
+        return bcadd($ceiling, '0', $currencyScale);
+    }
+
+    /**
+     * True when the sealed payload carries supervisor approval for THIS gap.
+     *
+     * Scope-checked deliberately: a `discount_limit_override` approves a
+     * discount, not a till shortage. Treating "any approval" as evidence would
+     * let one supervisor tap launder an arbitrary tender gap past the alert.
+     */
+    private function hasTenderToleranceApproval(SaleReceiptCanonicalView $view): bool
+    {
+        foreach ($view->payload->approvalReferences as $reference) {
+            if (($reference['approval_scope'] ?? null) === 'tender_tolerance_override') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

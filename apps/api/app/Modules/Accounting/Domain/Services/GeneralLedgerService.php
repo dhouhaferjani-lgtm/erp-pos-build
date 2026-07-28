@@ -3457,6 +3457,188 @@ final class GeneralLedgerService
     }
 
     /**
+     * POS cash-rounding difference (cash-rounding spec §4.6 entry 1).
+     *
+     *   R > 0 (rounded UP — more was collected than the sale is worth):
+     *       Dr ProductRevenue R / Cr PaymentToleranceIncome (7580) R
+     *   R < 0 (rounded DOWN):
+     *       Dr PaymentToleranceExpense (6580) |R| / Cr ProductRevenue |R|
+     *
+     * Net effect: the revenue account ends at the EXACT sale value while the
+     * cash account carries what was actually collected.
+     *
+     * **`$sourceType` selects the DIRECTION, not just the label.** It is
+     * `'pos_cash_rounding'` on a sale and `'pos_cash_rounding_refund'` on a
+     * refund/void, and the refund posts the SYMMETRIC REVERSAL — the same two
+     * accounts with the legs flipped. Deriving direction from the sign of `R`
+     * alone would replay the sale's own legs onto its refund and DOUBLE the
+     * rounding expense instead of clearing it. The counter account still
+     * follows the sign (a refunded round-DOWN credits back the 6580 it
+     * originally debited), so both halves land on the same account pair.
+     *
+     * The two distinct literals are also the entire basis of disjointness from
+     * the legacy 658 writer, because `journal_entries` has no `fiscal_event_id`
+     * — and they are what the Task-7 partial unique indexes key on.
+     * `JournalCode::fromSourceType` deliberately has no arm for either: both
+     * fall through to Misc/OD, an explicit spec decision, no enum change.
+     *
+     * Returned in Draft; the caller posts it via `postEntryNow()` inside its own
+     * transaction, exactly as with {@see createPOSPaymentEntry}.
+     *
+     * @param  string  $adjustment  SIGNED adjustment at the receipt currency scale
+     * @param  int|null  $currencyScale  Explicit scale from the sealed canonical
+     *                                   payload. Pass it: the ISO fallback is a
+     *                                   SECOND scale source, and if it were the
+     *                                   narrower of the two the sign flip below
+     *                                   would silently TRUNCATE real money.
+     */
+    public function createPosCashRoundingEntry(
+        Receipt $receipt,
+        string $adjustment,
+        string $sourceType,
+        ?int $currencyScale = null,
+    ): JournalEntry {
+        // `is_numeric()` narrows the type; the regex rejects what bcmath cannot
+        // parse but is_numeric() still accepts (scientific notation, leading
+        // whitespace, hex-ish forms).
+        if (! is_numeric($adjustment) || preg_match('/^[+-]?\d+(\.\d+)?$/', $adjustment) !== 1) {
+            throw new \InvalidArgumentException('Cash-rounding adjustment must be a plain decimal string; got '.$adjustment);
+        }
+
+        $isReversal = match ($sourceType) {
+            'pos_cash_rounding' => false,
+            'pos_cash_rounding_refund' => true,
+            default => throw new \InvalidArgumentException(
+                'Unknown cash-rounding source type '.$sourceType.'; expected pos_cash_rounding or pos_cash_rounding_refund.'
+            ),
+        };
+
+        return DB::transaction(function () use ($receipt, $adjustment, $sourceType, $currencyScale, $isReversal): JournalEntry {
+            $companyId = (string) $receipt->company_id;
+            $scale = $currencyScale ?? CurrencyScale::for((string) $receipt->currency);
+
+            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+            $roundedUp = bccomp($adjustment, '0', $scale) > 0;
+            $counterAccount = $this->getAccountByPurpose(
+                $companyId,
+                $roundedUp ? SystemAccountPurpose::PaymentToleranceIncome : SystemAccountPurpose::PaymentToleranceExpense,
+            );
+
+            $magnitude = $roundedUp
+                ? bcadd($adjustment, '0', $scale)
+                : bcmul($adjustment, '-1', $scale);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => (string) $receipt->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $receipt->posted_at,
+                'description' => "POS cash rounding {$receipt->receipt_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => $sourceType,
+                'journal_code' => JournalCode::fromSourceType($sourceType)->value,
+                'source_id' => $receipt->id,
+            ]);
+
+            // XOR: a reversal swaps which side revenue sits on, the sign picks
+            // which counter account is involved.
+            $debitIsRevenue = $roundedUp !== $isReversal;
+            $debitAccountId = $debitIsRevenue ? $revenueAccount->id : $counterAccount->id;
+            $creditAccountId = $debitIsRevenue ? $counterAccount->id : $revenueAccount->id;
+            $description = $isReversal
+                ? 'POS cash rounding difference reversed (refund)'
+                : 'POS cash rounding difference';
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitAccountId,
+                'partner_id' => null,
+                'debit' => $magnitude,
+                'credit' => '0',
+                'description' => $description,
+                'line_order' => 0,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $creditAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $magnitude,
+                'description' => $description,
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
+     * POS tender-tolerance write-off (cash-rounding spec §4.6 entry 2).
+     *
+     *   Dr PaymentToleranceExpense (6580) S / Cr ProductRevenue S
+     *
+     * `S` is the positive shortfall between the receipt total and the TENDERED
+     * sum — what the customer was let off, which the drawer never received.
+     *
+     * `source_type = 'pos_tolerance_bridge'`, deliberately DISTINCT from the
+     * legacy `createPOSPaymentToleranceEntry`'s `'pos_payment_tolerance'`: the
+     * two writers must never be mistaken for one another in FEC/reporting, and
+     * the distinct literal is what the Task-7 partial unique index keys on.
+     *
+     * Returned in Draft; the caller posts it.
+     *
+     * @param  string  $shortfall  POSITIVE amount at the receipt currency scale
+     */
+    public function createPosToleranceWriteoffEntry(Receipt $receipt, string $shortfall): JournalEntry
+    {
+        if (! is_numeric($shortfall) || preg_match('/^\+?\d+(\.\d+)?$/', $shortfall) !== 1) {
+            throw new \InvalidArgumentException('Tolerance shortfall must be a non-negative plain decimal string; got '.$shortfall);
+        }
+
+        return DB::transaction(function () use ($receipt, $shortfall): JournalEntry {
+            $companyId = (string) $receipt->company_id;
+
+            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+            $expenseAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceExpense);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => (string) $receipt->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $receipt->posted_at,
+                'description' => "POS tender tolerance {$receipt->receipt_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_tolerance_bridge',
+                'journal_code' => JournalCode::fromSourceType('pos_tolerance_bridge')->value,
+                'source_id' => $receipt->id,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $expenseAccount->id,
+                'partner_id' => null,
+                'debit' => $shortfall,
+                'credit' => '0',
+                'description' => 'POS tender tolerance write-off',
+                'line_order' => 0,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $shortfall,
+                'description' => 'POS tender tolerance write-off',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
      * Create journal entry for a POS account charge.
      *
      * ACCOUNT_CHARGE is customer credit: it increases AR and recognizes sale
