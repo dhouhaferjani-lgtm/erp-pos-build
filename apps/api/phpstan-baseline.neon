@@ -1073,34 +1073,3 @@ parameters:
 			identifier: precision.hardcodedBcmathScale
 			count: 1
 			path: app/Modules/Voucher/Application/Services/VoucherLookupService.php
-
-		# uom-display-precision ratchet — pre-existing scale-4 quantity literals in Presentation (do not fix here; ticketed)
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
-			count: 3
-			path: app/Modules/POS/Presentation/Controllers/PosPendingCustomerController.php
-
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
-			count: 3
-			path: app/Modules/POS/Presentation/Controllers/ReceiptController.php
-
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
-			count: 1
-			path: app/Modules/POS/Presentation/Controllers/ZReportSyncController.php
-
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
-			count: 1
-			path: app/Modules/Pricing/Presentation/Controllers/DiscountPolicyController.php
-
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
-			count: 1
-			path: app/Modules/Procurement/Presentation/Controllers/StandaloneReceiptController.php

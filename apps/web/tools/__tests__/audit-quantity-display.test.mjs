@@ -65,6 +65,29 @@ describe('audit-quantity-display scanner', () => {
       `, 'apps/web/src/features/purchases/Row.tsx');
       expect(atom).toEqual([]);
     });
+
+    it('exempts QuantityCell values while raw input and display sites remain violations', () => {
+      const cell = scanCode(`
+        export function Row({ line }) {
+          return <QuantityCell value={line.quantity} decimalPlaces={0} onChange={() => {}} />;
+        }
+      `, 'apps/web/src/features/documents/Row.tsx');
+      expect(cell).toEqual([]);
+
+      const rawInput = scanCode(`
+        export function Row({ line }) {
+          return <input value={line.quantity} />;
+        }
+      `, 'apps/web/src/features/documents/Row.tsx');
+      expect(rawInput).toHaveLength(1);
+
+      const rawDisplay = scanCode(`
+        export function Row({ line }) {
+          return <span>{line.quantity}</span>;
+        }
+      `, 'apps/web/src/features/documents/Row.tsx');
+      expect(rawDisplay).toHaveLength(1);
+    });
   });
 
   describe('canonical formatQuantity wrap exempts (import resolution)', () => {

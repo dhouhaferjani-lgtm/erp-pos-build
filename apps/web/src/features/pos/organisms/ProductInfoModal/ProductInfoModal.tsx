@@ -8,6 +8,8 @@ import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { apiGet } from '@/lib/api'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useTaxConfigName } from '@/hooks/useTaxConfigName'
 import { useAuthStore } from '@/stores/authStore'
@@ -82,6 +84,7 @@ export interface StockLevel {
   location_id: string
   location_name: string
   quantity: string
+  quantity_decimals: number
   reserved: string
   available: string
   incoming: string
@@ -394,7 +397,7 @@ export function ProductInfoModal({
                               {stock.reserved}
                             </td>
                             <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm font-medium tabular-nums', textColors.primary)}>
-                              {stock.quantity}
+                              {formatQuantity(stock.quantity, getQuantityDecimals(stock))}
                             </td>
                           </tr>
                           )

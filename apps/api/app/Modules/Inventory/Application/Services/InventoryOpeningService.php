@@ -16,6 +16,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -293,12 +294,36 @@ class InventoryOpeningService
             ->orderBy('row_number')
             ->get();
 
-        $lines = $validRows->map(function (OpeningBalanceImportRow $row): array {
-            $mappedData = $row->mapped_data;
+        /** @var list<string> $productIds */
+        $productIds = [];
+        foreach ($validRows as $validRow) {
+            $mappedData = $validRow->mapped_data;
+            if (is_array($mappedData) && isset($mappedData['product_id'])) {
+                $productIds[] = (string) $mappedData['product_id'];
+            }
+        }
+
+        /** @var array<string, int> $quantityDecimalsByProductId */
+        $quantityDecimalsByProductId = Product::forCompany($batch->company_id)
+            ->with('unitOfMeasure')
+            ->whereIn('id', array_unique($productIds))
+            ->get()
+            ->mapWithKeys(static function (Product $product): array {
+                $unit = $product->unitOfMeasure;
+
+                return [
+                    $product->id => $unit !== null ? $unit->decimal_places : QuantityScale::SCALE,
+                ];
+            })
+            ->all();
+
+        $lines = $validRows->map(function (OpeningBalanceImportRow $row) use ($quantityDecimalsByProductId): array {
+            $mappedData = is_array($row->mapped_data) ? $row->mapped_data : [];
 
             $quantity = $mappedData['quantity'] ?? '0.00';
             $unitCost = $mappedData['unit_cost'] ?? '0.00';
             $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
+            $productId = (string) ($mappedData['product_id'] ?? '');
 
             return [
                 'row_number' => $row->row_number,
@@ -307,6 +332,7 @@ class InventoryOpeningService
                 'location_code' => $mappedData['location_code'] ?? 'N/A',
                 'location_name' => $mappedData['location_name'] ?? 'N/A',
                 'quantity' => $quantity,
+                'quantity_decimals' => $quantityDecimalsByProductId[$productId] ?? QuantityScale::SCALE,
                 'unit_cost' => $unitCost,
                 'line_value' => $lineValue,
             ];

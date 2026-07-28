@@ -26,6 +26,7 @@ export interface RebalanceRow {
   variant_id: string | null
   name: string
   sku: string
+  quantity_decimals: number
   deficits: Array<{ location_id: string; available: string; min_quantity: string | null }>
   surpluses: Array<{ location_id: string; available: string; max_quantity: string | null; excess: string }>
 }

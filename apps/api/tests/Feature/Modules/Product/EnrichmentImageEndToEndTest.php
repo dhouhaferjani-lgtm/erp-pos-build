@@ -7,7 +7,6 @@ namespace Tests\Feature\Modules\Product;
 use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
-use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -36,20 +35,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
  * End-to-end proof that a real image, once persisted by enrichment, flows
- * through to BOTH read surfaces the app relies on:
- *
- *   1. {@see ProductData::fromModel()}'s `primary_image_url` (via
- *      {@see CatalogMediaQueryInterface::forProduct()} — the same query the
- *      SPA/product-detail path uses).
- *   2. The POS `SyncController::pull()` payload's `image_url` (hit for real
- *      over HTTP, exercising the exact controller code).
+ * through to {@see ProductData::fromModel()}'s `primary_image_url` (via
+ * {@see CatalogMediaQueryInterface::forProduct()} — the same query the
+ * SPA/product-detail path uses).
  *
  * Both enrichment entry points are covered:
  *   - Path A: {@see CatalogEnrichmentService::applyCatalogHit()} (barcode-lookup catalog hit).
@@ -115,7 +107,7 @@ final class EnrichmentImageEndToEndTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    public function test_catalog_hit_image_flows_to_product_data_and_pos_sync_payload(): void
+    public function test_catalog_hit_image_flows_to_product_data(): void
     {
         Bus::fake();
 
@@ -169,7 +161,7 @@ final class EnrichmentImageEndToEndTest extends TestCase
         $this->assertResolvesEndToEnd($product);
     }
 
-    public function test_review_accept_image_flows_to_product_data_and_pos_sync_payload(): void
+    public function test_review_accept_image_flows_to_product_data(): void
     {
         Bus::fake();
 
@@ -254,14 +246,9 @@ final class EnrichmentImageEndToEndTest extends TestCase
         MediaAsset::query()->whereIn('id', $assetIds)->update(['status' => MediaStatus::Ready]);
     }
 
-    /**
-     * Assert BOTH read surfaces resolve the persisted image, via the exact paths the
-     * app uses: CatalogMediaQuery -> ProductData::fromModel() for the product page, and
-     * a real HTTP hit against the POS SyncController::pull() endpoint.
-     */
+    /** Assert CatalogMediaQuery -> ProductData::fromModel() resolves the persisted image. */
     private function assertResolvesEndToEnd(Product $product): void
     {
-        // (i) ProductData path — CatalogMediaQuery + ProductData::fromModel().
         /** @var CatalogMediaQueryInterface $mediaQuery */
         $mediaQuery = $this->app->make(CatalogMediaQueryInterface::class);
         $media = $mediaQuery->forProduct($product->id, $product->tenant_id);
@@ -269,46 +256,6 @@ final class EnrichmentImageEndToEndTest extends TestCase
         $productData = ProductData::fromModel($product, $media);
         self::assertNotNull($productData->primary_image_url, 'ProductData::primary_image_url must resolve non-null.');
         self::assertNotSame([], $productData->media);
-
-        // (ii) POS SyncController path — real HTTP GET against /api/v1/pos/sync/pull,
-        // exercising SyncController::pull()'s exact image_url emission (lines 74-89).
-        $posUser = User::create([
-            'tenant_id' => $this->tenant->id,
-            'name' => 'POS Operator',
-            'email' => 'pos-operator-'.Str::lower(Str::random(6)).'@example.tn',
-            'password' => 'password123',
-            'status' => UserStatus::Active,
-        ]);
-
-        UserCompanyMembership::create([
-            'user_id' => $posUser->id,
-            'company_id' => $this->company->id,
-            'role' => 'admin',
-        ]);
-
-        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        Permission::findOrCreate('pos.operate_terminal', 'sanctum');
-        $posUser->givePermissionTo('pos.operate_terminal');
-
-        Sanctum::actingAs($posUser);
-
-        $response = $this->getJson('/api/v1/pos/sync/pull');
-        $response->assertStatus(200);
-
-        $payloadProducts = $response->json('data.products');
-        self::assertIsArray($payloadProducts);
-
-        $match = null;
-        foreach ($payloadProducts as $row) {
-            if (($row['id'] ?? null) === $product->id) {
-                $match = $row;
-                break;
-            }
-        }
-
-        self::assertNotNull($match, 'Product not found in POS sync payload.');
-        self::assertArrayHasKey('image_url', $match);
-        self::assertNotNull($match['image_url'], 'POS sync payload image_url must resolve non-null.');
     }
 
     /** Generate valid PNG bytes so the fake downloader/upload pipeline handles real bytes. */

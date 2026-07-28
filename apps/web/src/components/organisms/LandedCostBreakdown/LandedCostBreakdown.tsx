@@ -1,13 +1,16 @@
 import { useTranslation } from 'react-i18next'
 import { useCompany } from '../../../hooks/useCompany'
+import { formatQuantity } from '../../../lib/decimal'
 import { formatPercent } from '../../../lib/format'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 export interface LineAllocation {
   lineId: string
   productName: string
   description?: string
   quantity: number
+  quantity_decimals: number
   unitPrice: number
   lineTotal: number
   allocatedCosts: number
@@ -41,6 +44,10 @@ export function LandedCostBreakdown({
 
   const totalAllocated = lines.reduce((sum, l) => sum + l.allocatedCosts, 0)
   const totalLineValue = lines.reduce((sum, l) => sum + l.lineTotal, 0)
+  const totalQuantityDecimals = lines.reduce(
+    (maximum, line) => Math.max(maximum, getQuantityDecimals(line)),
+    0,
+  )
 
   if (lines.length === 0) {
     return (
@@ -103,7 +110,7 @@ export function LandedCostBreakdown({
                   )}
                 </td>
                 <td className={`px-4 py-3 text-end text-sm ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray400}`}>
-                  {line.quantity}
+                  {formatQuantity(line.quantity, getQuantityDecimals(line))}
                 </td>
                 <td className={`px-4 py-3 text-end text-sm ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray400}`}>
                   {formatCurrency(line.unitPrice)}
@@ -128,7 +135,10 @@ export function LandedCostBreakdown({
                 {t('inventory:landedCost.total')}
               </td>
               <td className={`px-4 py-2 text-end text-sm ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray400}`}>
-                {lines.reduce((sum, l) => sum + l.quantity, 0)}
+                {formatQuantity(
+                  lines.reduce((sum, l) => sum + l.quantity, 0),
+                  totalQuantityDecimals,
+                )}
               </td>
               <td className={`px-4 py-2 text-end text-sm ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray400}`}>
                 {formatCurrency(totalLineValue)}

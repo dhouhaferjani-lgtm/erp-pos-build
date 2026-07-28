@@ -64,6 +64,7 @@ function buildBundle(): ServiceBundleData {
         component_id: 'prod-1',
         component_display_name: 'Oil filter',
         quantity: '1.000',
+        quantity_decimals: 3,
         unit: 'EA',
         override_unit_price: null,
         is_optional: false,

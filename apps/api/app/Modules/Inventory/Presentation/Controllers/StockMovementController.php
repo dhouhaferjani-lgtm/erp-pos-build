@@ -51,7 +51,7 @@ class StockMovementController extends Controller
         $query = StockMovement::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['product', 'location', 'user', 'reversalOf']);
+            ->with(['product.unitOfMeasure', 'location', 'user', 'reversalOf']);
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->input('product_id'));
@@ -122,7 +122,7 @@ class StockMovementController extends Controller
             userId: $user->id,
         );
 
-        $movement->load(['product', 'location', 'user']);
+        $movement->load(['product.unitOfMeasure', 'location', 'user']);
 
         return response()->json([
             'data' => $this->formatMovement($movement),
@@ -164,7 +164,7 @@ class StockMovementController extends Controller
                 userId: $user->id,
             );
 
-            $movement->load(['product', 'location', 'user']);
+            $movement->load(['product.unitOfMeasure', 'location', 'user']);
 
             return response()->json([
                 'data' => $this->formatMovement($movement),
@@ -275,7 +275,7 @@ class StockMovementController extends Controller
             reasonCode: $reasonCode,
         );
 
-        $movement->load(['product', 'location', 'user']);
+        $movement->load(['product.unitOfMeasure', 'location', 'user']);
 
         return response()->json([
             'data' => $this->formatMovement($movement),
@@ -300,6 +300,7 @@ class StockMovementController extends Controller
             // write-offs (reason = 'write_off') vs other issues.
             'reason' => $movement->reason?->value,
             'quantity' => $movement->quantity,
+            'quantity_decimals' => $movement->product->unitOfMeasure->decimal_places ?? 4,
             'quantity_before' => $movement->quantity_before,
             'quantity_after' => $movement->quantity_after,
             'reference' => $movement->reference,

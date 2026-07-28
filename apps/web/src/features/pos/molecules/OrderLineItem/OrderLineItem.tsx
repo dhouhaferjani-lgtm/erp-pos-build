@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { textColors, borderColors, colors } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { StatusBadge, statusTone, type StatusTone } from '@/components/atoms/StatusBadge'
 import type { OrderLineData } from '../../api/orderApi'
 
@@ -55,7 +57,7 @@ export function OrderLineItem({
 
         <div className={cn('mt-1 flex items-center gap-3 text-sm', textColors.tertiary)}>
           <span>
-            {t('orders.quantity')}: <span className="tabular-nums">{line.quantity}</span>
+            {t('orders.quantity')}: <span className="tabular-nums">{formatQuantity(line.quantity, getQuantityDecimals(line))}</span>
           </span>
           <span className="tabular-nums">@ {line.unit_price}</span>
           {parseFloat(line.discount_amount) > 0 && (

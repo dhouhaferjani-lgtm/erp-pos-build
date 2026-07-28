@@ -189,6 +189,7 @@ export interface InvoiceItem {
   description: string
   long_description: string | null
   quantity: string
+  quantity_decimals: number
   unit_price: string
   amount: string
   tax_rate: string

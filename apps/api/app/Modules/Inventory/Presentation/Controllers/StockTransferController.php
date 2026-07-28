@@ -40,7 +40,7 @@ class StockTransferController extends Controller
         $query = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         // Location scoping: a restricted user only sees transfers whose source
         // OR destination is in their allowed set (so incoming transfers from
@@ -104,7 +104,7 @@ class StockTransferController extends Controller
         $model = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch'])
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch'])
             ->findOrFail($transfer);
 
         // A transfer the user cannot see (neither endpoint in their allowed set)
@@ -195,7 +195,7 @@ class StockTransferController extends Controller
             ], 422);
         }
 
-        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
+        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($transfer, includeLines: true),
@@ -228,7 +228,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
+        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($completed, includeLines: true),
@@ -269,7 +269,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
+        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($cancelled, includeLines: true),
@@ -309,27 +309,32 @@ class StockTransferController extends Controller
         ];
 
         if ($includeLines) {
-            $payload['lines'] = $transfer->lines->map(fn ($line) => [
-                'id' => $line->id,
-                'product_id' => $line->product_id,
-                'product_name' => $line->product->name ?? null,
-                'product_sku' => $line->product->sku ?? null,
-                'variant_id' => $line->variant_id,
-                'variant_sku' => $line->variant->sku ?? null,
-                'variant_name' => $line->variant->name_suffix ?? null,
-                'quantity' => $line->quantity,
-                'unit_cost_snapshot' => $line->unit_cost_snapshot,
-                'allocated_transfer_cost' => $line->allocated_transfer_cost,
-                'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
-                    'id' => $allocation->id,
-                    'batch_id' => $allocation->batch_id,
-                    'batch_number' => $allocation->batch->batch_number,
-                    'expiry_date' => $allocation->batch->expiry_date->toDateString(),
-                    'expiry_status' => $allocation->batch->expiryStatus()->value,
-                    'can_be_sold' => $allocation->batch->canBeSold(),
-                    'quantity' => $allocation->quantity,
-                ])->all(),
-            ])->all();
+            $payload['lines'] = $transfer->lines->map(function ($line): array {
+                $lineProduct = $line->relationLoaded('product') ? $line->product : null;
+
+                return [
+                    'id' => $line->id,
+                    'product_id' => $line->product_id,
+                    'product_name' => $lineProduct?->name,
+                    'product_sku' => $lineProduct?->sku,
+                    'variant_id' => $line->variant_id,
+                    'variant_sku' => $line->variant->sku ?? null,
+                    'variant_name' => $line->variant->name_suffix ?? null,
+                    'quantity' => $line->quantity,
+                    'quantity_decimals' => $lineProduct?->unitOfMeasure->decimal_places ?? 4,
+                    'unit_cost_snapshot' => $line->unit_cost_snapshot,
+                    'allocated_transfer_cost' => $line->allocated_transfer_cost,
+                    'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
+                        'id' => $allocation->id,
+                        'batch_id' => $allocation->batch_id,
+                        'batch_number' => $allocation->batch->batch_number,
+                        'expiry_date' => $allocation->batch->expiry_date->toDateString(),
+                        'expiry_status' => $allocation->batch->expiryStatus()->value,
+                        'can_be_sold' => $allocation->batch->canBeSold(),
+                        'quantity' => $allocation->quantity,
+                    ])->all(),
+                ];
+            })->all();
         }
 
         return $payload;

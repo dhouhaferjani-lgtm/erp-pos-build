@@ -7,6 +7,7 @@ namespace App\Modules\Workshop\Bundle\Application\DTOs;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -20,6 +21,7 @@ final class ServiceBundleComponentData extends Data
         public string $component_id,
         public string $component_display_name,
         public string $quantity,
+        public int $quantity_decimals,
         public string $unit,
         public ?string $override_unit_price,
         public bool $is_optional,
@@ -27,7 +29,7 @@ final class ServiceBundleComponentData extends Data
         public ?string $notes,
     ) {}
 
-    public static function fromModel(ServiceBundleComponent $component, int $scale = 4): self
+    public static function fromModel(ServiceBundleComponent $component, int $moneyScale): self
     {
         $componentId = match ($component->component_type) {
             BundleComponentType::Part => $component->product_id,
@@ -44,6 +46,12 @@ final class ServiceBundleComponentData extends Data
         $unit = $component->relationLoaded('unit')
             ? $component->unit->symbol
             : '';
+        $quantityDecimals = $component->relationLoaded('unit')
+            ? $component->unit->decimal_places
+            : QuantityScale::SCALE;
+        $roundingMethod = $component->relationLoaded('unit')
+            ? $component->unit->rounding_method->value
+            : null;
 
         return new self(
             id: $component->id,
@@ -51,10 +59,11 @@ final class ServiceBundleComponentData extends Data
             component_type: $component->component_type,
             component_id: (string) ($componentId ?? ''),
             component_display_name: $displayName,
-            quantity: CurrencyScale::bcformat($component->quantity, $scale),
+            quantity: QuantityScale::formatForUnit($component->quantity, $quantityDecimals, $roundingMethod),
+            quantity_decimals: $quantityDecimals,
             unit: $unit,
             override_unit_price: $component->override_unit_price !== null
-                ? CurrencyScale::bcformat($component->override_unit_price, $scale)
+                ? CurrencyScale::bcformat($component->override_unit_price, $moneyScale)
                 : null,
             is_optional: $component->is_optional,
             display_order: $component->display_order,

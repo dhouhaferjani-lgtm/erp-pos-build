@@ -8,6 +8,8 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { formatDate } from '@/lib/format'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import {
   useCancelStockTransfer,
   useCompleteStockTransfer,
@@ -220,7 +222,7 @@ export function StockTransferDetailPage() {
                       {line.variant_sku ?? line.product_sku ?? '—'}
                     </td>
                     <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
-                      {line.quantity}
+                      {formatQuantity(line.quantity, getQuantityDecimals(line))}
                     </td>
                     <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
                       {line.unit_cost_snapshot ?? '—'}
@@ -253,7 +255,7 @@ export function StockTransferDetailPage() {
                                 )}
                                 <span className={textColors.secondary}>
                                   {t('detail.batch.quantity')}:{' '}
-                                  <span>{allocation.quantity}</span>
+                                  <span>{formatQuantity(allocation.quantity, getQuantityDecimals(line))}</span>
                                 </span>
                               </li>
                             ))}

@@ -4,7 +4,8 @@ import { Plus, Minus, Trash2, Tag } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
-import { formatCurrency } from '@/lib/decimal'
+import { formatCurrency, formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface SelectedModifier {
@@ -22,6 +23,7 @@ export interface CartItem {
     name: string
     sku: string
     price: string
+    quantity_decimals?: number | null
     sellableType?: 'product' | 'composite_item'
     selectedModifiers?: SelectedModifier[]
     comboComponents?: string[]
@@ -67,6 +69,7 @@ export function CartLineItem({
 
   // Check if item has discount
   const hasDiscount = item.discount_type && (item.discount_percent || item.discount_amount)
+  const quantity = formatQuantity(item.quantity, getQuantityDecimals(item.product))
 
   const handleIncrement = () => {
     onUpdateQuantity(item.product.id, item.quantity + 1)
@@ -175,7 +178,7 @@ export function CartLineItem({
               touchOptimized ? 'text-base' : 'text-sm'
             )}
           >
-            {item.unit_price} {currency} × {item.quantity}
+            {item.unit_price} {currency} × {quantity}
           </span>
           {showTax && item.tax_amount && (
             <span
@@ -243,7 +246,7 @@ export function CartLineItem({
             touchOptimized ? 'text-xl' : 'text-lg'
           )}
         >
-          {item.quantity}
+          {quantity}
         </span>
 
         <POSButton

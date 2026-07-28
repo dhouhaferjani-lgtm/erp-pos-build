@@ -16,6 +16,8 @@ import type { InvoiceForCreditNote } from '@/types/creditNote'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 // Credit mode enum
 type CreditMode = 'amount' | 'line'
@@ -48,6 +50,7 @@ interface CreateCreditNoteFormProps {
       product_code: string
       description: string
       quantity: number
+      quantity_decimals?: number | null
       unit_price: string
       tax_rate: string
       total: string
@@ -398,7 +401,7 @@ export function CreateCreditNoteForm({
                         <div className={`${colorClasses.textGray500}`}>{line.description}</div>
                       </td>
                       <td className={`px-3 py-2 text-end text-sm ${colorClasses.textGray900}`}>
-                        {line.quantity}
+                        {formatQuantity(line.quantity, getQuantityDecimals(line))}
                       </td>
                       <td className="px-3 py-2 text-end">
                         {isSelected ? (

@@ -11,6 +11,8 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\PosCustomerAlias;
 use App\Modules\POS\Presentation\Resources\PosCustomerAliasResource;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,14 +24,18 @@ final class PosPendingCustomerController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function store(Request $request): JsonResponse
     {
         Gate::authorize('pos.operate_terminal');
 
-        $tenantId = $this->companyContext->requireTenantId();
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+        $moneyScale = $this->scaleResolver->getScaleSafe($company->currency, 3);
+        $zeroMoney = CurrencyScale::bcformatStrict('0', $moneyScale);
         $payload = $this->validatePayload($request);
         $clientCustomerUuid = $payload['client_customer_uuid'];
 
@@ -72,7 +78,7 @@ final class PosPendingCustomerController extends Controller
         }
 
         try {
-            $alias = DB::transaction(function () use ($tenantId, $companyId, $clientCustomerUuid, $payload): PosCustomerAlias {
+            $alias = DB::transaction(function () use ($tenantId, $companyId, $clientCustomerUuid, $payload, $zeroMoney): PosCustomerAlias {
                 $partner = Partner::query()->create([
                     'tenant_id' => $tenantId,
                     'company_id' => $companyId,
@@ -81,9 +87,9 @@ final class PosPendingCustomerController extends Controller
                     'phone' => $payload['phone'] ?? null,
                     'email' => $payload['email'] ?? null,
                     'tax_status' => PartnerTaxStatus::NON_REGISTERED,
-                    'receivable_balance' => '0.0000',
-                    'credit_balance' => '0.0000',
-                    'payable_balance' => '0.0000',
+                    'receivable_balance' => $zeroMoney,
+                    'credit_balance' => $zeroMoney,
+                    'payable_balance' => $zeroMoney,
                     'is_active' => true,
                 ]);
 

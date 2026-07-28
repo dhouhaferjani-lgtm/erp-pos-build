@@ -65,6 +65,7 @@ vi.mock('@/stores/connectivityStore', () => ({
 import { generateXReport, fetchShiftReceipts } from '../reportApi';
 import { apiGet } from '@/lib/api';
 import { queryAll } from '@/lib/db';
+import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
 function offlineReceiptsCall() {
   return vi.mocked(queryAll).mock.calls.find(
@@ -115,6 +116,75 @@ describe('fetchShiftReceipts (offline fallback)', () => {
 
     expect(offlineReceiptsCall()).toBeDefined();
     expect(result).toEqual([]);
+  });
+
+  it('batch-enriches local historical lines from current product precision and leaves missing products on the fallback', async () => {
+    const offlineReceipt: OfflineReceipt = {
+      id: 'receipt-1',
+      idempotency_key: 'receipt-1-key',
+      receipt_number: 'POS01-0001',
+      terminal_id: 'term-1',
+      terminal_code: 'POS01',
+      operator_id: 'operator-1',
+      operator_name: 'Cashier',
+      lines: JSON.stringify([
+        {
+          product_id: 'product-scale-3',
+          name: 'Bulk oil',
+          quantity: 1.234,
+          unit_price: '10.00',
+          line_total: '12.34',
+        },
+        {
+          product_id: 'deleted-product',
+          name: 'Archived item',
+          quantity: 1.2,
+          unit_price: '5.00',
+          line_total: '6.00',
+        },
+      ]),
+      subtotal: '18.34',
+      tax_amount: '0.00',
+      discount_amount: '0.00',
+      total: '18.34',
+      currency: 'USD',
+      fiscal_hash: 'hash',
+      previous_hash: 'previous-hash',
+      hash_sequence: 1,
+      transaction_discount_amount: null,
+      transaction_discount_reason: null,
+      tendered_amount: '20.00',
+      change_due: '1.66',
+      payment_method_id: 'cash-method',
+      payment_repository_id: 'cash-repository',
+      status: 'pending',
+      payments_json: '[]',
+      consumption_mode: null,
+      table_id: null,
+      canonical_bytes: null,
+      server_receipt_id: null,
+      fiscal_schema_version: 3,
+      is_training: 0,
+      created_at: '2026-06-12 09:00:00',
+      synced_at: null,
+      sync_error: null,
+      retry_count: 0,
+    };
+
+    vi.mocked(apiGet).mockRejectedValue(new Error('network down'));
+    vi.mocked(queryAll)
+      .mockResolvedValueOnce([offlineReceipt])
+      .mockResolvedValueOnce([{ id: 'product-scale-3', quantity_decimals: 3 }]);
+
+    const result = await fetchShiftReceipts('shift-1');
+
+    expect(result[0]?.lines[0]?.quantity_decimals).toBe(3);
+    expect(result[0]?.lines[1]?.quantity_decimals).toBeUndefined();
+
+    const precisionCall = vi.mocked(queryAll).mock.calls.find(
+      ([, sql]) => (sql as string).includes('FROM products'),
+    );
+    expect(precisionCall?.[2]).toEqual(['product-scale-3', 'deleted-product']);
   });
 
   it('rethrows a non-404 server error while online so genuine failures surface', async () => {

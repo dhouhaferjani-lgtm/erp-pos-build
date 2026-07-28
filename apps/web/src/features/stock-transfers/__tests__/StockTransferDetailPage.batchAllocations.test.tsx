@@ -52,6 +52,7 @@ const batchLine: StockTransferLine = {
   variant_sku: null,
   variant_name: null,
   quantity: '4.0000',
+  quantity_decimals: 3,
   unit_cost_snapshot: '10.000',
   allocated_transfer_cost: '0.000',
   // As returned by the API: earliest expiry first (FEFO order).
@@ -86,6 +87,7 @@ const plainLine: StockTransferLine = {
   variant_sku: null,
   variant_name: null,
   quantity: '2.0000',
+  quantity_decimals: 0,
   unit_cost_snapshot: '5.000',
   allocated_transfer_cost: '0.000',
   batch_allocations: [],
@@ -102,8 +104,8 @@ describe('StockTransferDetailPage batch allocations', () => {
     expect(screen.getByText('LOT-LATE')).toBeInTheDocument()
     expect(screen.getByText(formatDate('2026-03-01'))).toBeInTheDocument()
     expect(screen.getByText(formatDate('2026-09-01'))).toBeInTheDocument()
-    expect(screen.getByText('3.0000')).toBeInTheDocument()
-    expect(screen.getByText('1.0000')).toBeInTheDocument()
+    expect(screen.getByText('3.000')).toBeInTheDocument()
+    expect(screen.getByText('1.000')).toBeInTheDocument()
 
     // Earliest-expiry lot renders before the later one (API/FEFO order preserved).
     const early = screen.getByText('LOT-EARLY')

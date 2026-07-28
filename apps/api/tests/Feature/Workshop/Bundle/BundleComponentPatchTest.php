@@ -56,8 +56,10 @@ final class BundleComponentPatchTest extends TestCase
 
     public function test_patch_updates_only_provided_fields(): void
     {
-        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create();
-        $unit = Unit::factory()->create();
+        $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create([
+            'currency' => 'USD',
+        ]);
+        $unit = Unit::factory()->create(['decimal_places' => 3]);
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -65,19 +67,25 @@ final class BundleComponentPatchTest extends TestCase
         $component = ServiceBundleComponent::factory()
             ->forBundle($bundle)
             ->part($product, '1.000')
-            ->create(['unit_id' => $unit->id, 'is_optional' => false, 'notes' => 'original']);
+            ->create([
+                'unit_id' => $unit->id,
+                'override_unit_price' => '10.129',
+                'is_optional' => false,
+                'notes' => 'original',
+            ]);
 
         $this->actingAs($this->user);
         $response = $this->patchJson(
             "/api/v1/workshop/bundles/{$bundle->id}/components/{$component->id}",
-            ['quantity' => '2.500'],
+            ['quantity' => '1.234'],
         );
 
         $response->assertOk();
-        /** @var array{data: array{id: string, quantity: string, notes: string, is_optional: bool}} $body */
+        /** @var array{data: array{id: string, quantity: string, override_unit_price: string, notes: string, is_optional: bool}} $body */
         $body = $response->json();
         $this->assertSame($component->id, $body['data']['id']);
-        $this->assertSame('2.5000', $body['data']['quantity']);
+        $this->assertSame('1.234', $body['data']['quantity']);
+        $this->assertSame('10.12', $body['data']['override_unit_price']);
         $this->assertSame('original', $body['data']['notes']);
         $this->assertFalse($body['data']['is_optional']);
     }

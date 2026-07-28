@@ -71,6 +71,16 @@ final class CreateManualInvoicePrecisionTest extends TestCase
         ]);
     }
 
+    public function test_invoice_item_serialization_exposes_the_billing_quantity_scale(): void
+    {
+        $item = new InvoiceItem;
+        $item->forceFill(['quantity' => '1.50']);
+
+        $serialized = $item->toArray();
+
+        $this->assertSame(2, $serialized['quantity_decimals'] ?? null);
+    }
+
     /**
      * Three EUR items at '33.3335' each must accumulate via bcmath.
      *

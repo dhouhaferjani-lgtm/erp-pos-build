@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { TopSkuReport } from '../api/ownerReportsApi'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
@@ -56,7 +58,9 @@ export function TopSkusWidget({ data, sortBy, onSortByChange }: TopSkusWidgetPro
                 />
                 {row.sku ? <span className={textColors.tertiary}>{row.sku}</span> : null}
               </td>
-              <td className={`py-2 text-end ${textColors.secondary}`}>{row.quantity}</td>
+              <td className={`py-2 text-end ${textColors.secondary}`}>
+                {formatQuantity(row.quantity, getQuantityDecimals(row))}
+              </td>
               <td className={`py-2 text-end ${textColors.primary}`}>{row.revenue}</td>
             </tr>
           ))}

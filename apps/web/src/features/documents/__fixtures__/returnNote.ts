@@ -13,6 +13,7 @@ export interface SourceDocumentLine {
   product_name: string
   description: string
   quantity: number
+  quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
   total: string

@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -116,6 +117,58 @@ class RecipeCostTest extends TestCase
         // Verify recipe model was updated
         $recipe->refresh();
         $this->assertEquals('1.2000', $recipe->calculated_cost);
+    }
+
+    /** @test */
+    public function it_exposes_recipe_line_quantity_precision_with_product_fallback(): void
+    {
+        $productUnit = Unit::factory()->create(['decimal_places' => 2]);
+        $recipeUnit = Unit::factory()->create(['decimal_places' => 3]);
+        $product = Product::factory()->for($this->tenant)->for($this->company)->create([
+            'name' => 'Precision ingredient',
+            'cost_price' => '2.0000',
+            'unit_id' => $productUnit->id,
+        ]);
+        $fallbackProduct = Product::factory()->for($this->tenant)->for($this->company)->create([
+            'name' => 'Product-unit ingredient',
+            'cost_price' => '1.0000',
+            'unit_id' => $productUnit->id,
+        ]);
+        $item = CompositeItem::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'PRECISION-RECIPE',
+            'name' => 'Precision Recipe',
+            'base_price' => 10.00,
+        ]);
+        $recipe = Recipe::create([
+            'composite_item_id' => $item->id,
+            'version' => 1,
+            'is_active' => true,
+        ]);
+
+        RecipeLine::create([
+            'recipe_id' => $recipe->id,
+            'component_type' => 'product',
+            'component_id' => $product->id,
+            'quantity' => '1.2500',
+            'unit_id' => $recipeUnit->id,
+            'wastage_percent' => 0,
+            'display_order' => 1,
+        ]);
+        RecipeLine::create([
+            'recipe_id' => $recipe->id,
+            'component_type' => 'product',
+            'component_id' => $fallbackProduct->id,
+            'quantity' => '2.50',
+            'wastage_percent' => 0,
+            'display_order' => 2,
+        ]);
+
+        $costData = $this->costService->calculate($recipe);
+
+        $this->assertSame(3, $costData->lines[0]['quantity_decimals'] ?? null);
+        $this->assertSame(2, $costData->lines[1]['quantity_decimals'] ?? null);
     }
 
     /** @test */

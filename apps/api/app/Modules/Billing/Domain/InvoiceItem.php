@@ -19,6 +19,7 @@ use Stancl\Tenancy\Database\Concerns\CentralConnection;
  * @property string $description
  * @property string|null $long_description
  * @property string $quantity
+ * @property-read int $quantity_decimals
  * @property string $unit_price
  * @property string $amount
  * @property string $tax_rate
@@ -41,6 +42,9 @@ final class InvoiceItem extends Model
     use HasUuids;
 
     protected $table = 'billing_invoice_items';
+
+    /** @var list<string> */
+    protected $appends = ['quantity_decimals'];
 
     protected $fillable = [
         'invoice_id',
@@ -79,6 +83,14 @@ final class InvoiceItem extends Model
             'sort_order' => 'integer',
             'metadata' => 'array',
         ];
+    }
+
+    /**
+     * Billing invoice quantities are stored at the central table's fixed scale.
+     */
+    public function getQuantityDecimalsAttribute(): int
+    {
+        return 2;
     }
 
     /**

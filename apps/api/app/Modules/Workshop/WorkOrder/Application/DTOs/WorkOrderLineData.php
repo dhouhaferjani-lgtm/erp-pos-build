@@ -7,6 +7,7 @@ namespace App\Modules\Workshop\WorkOrder\Application\DTOs;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\CoreDepositStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderLineType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrderLine;
+use App\Shared\Domain\QuantityScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -28,6 +29,7 @@ final class WorkOrderLineData extends Data
         public ?string $sku_or_code,
         public ?string $description,
         public string $quantity,
+        public int $quantity_decimals,
         public string $unit,
         public string $unit_price,
         public string $tax_rate,
@@ -63,6 +65,7 @@ final class WorkOrderLineData extends Data
             sku_or_code: $line->sku_or_code,
             description: $line->description,
             quantity: $line->quantity,
+            quantity_decimals: self::resolveQuantityDecimals($line),
             unit: $line->unit,
             unit_price: $line->unit_price,
             tax_rate: $line->tax_rate,
@@ -83,5 +86,17 @@ final class WorkOrderLineData extends Data
             is_completed: $line->is_completed,
             completed_at: $line->completed_at?->toIso8601String(),
         );
+    }
+
+    private static function resolveQuantityDecimals(WorkOrderLine $line): int
+    {
+        if ($line->relationLoaded('product')
+            && $line->product !== null
+            && $line->product->relationLoaded('unitOfMeasure')
+            && $line->product->unitOfMeasure !== null) {
+            return $line->product->unitOfMeasure->decimal_places;
+        }
+
+        return QuantityScale::SCALE;
     }
 }

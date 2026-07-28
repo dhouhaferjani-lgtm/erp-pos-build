@@ -211,7 +211,8 @@ function invoiceFixture() {
       {
         id: 'line-1',
         description: 'Service',
-        quantity: '1.00',
+        quantity: '1',
+        quantity_decimals: 3,
         unit_price: '150.00',
         line_total: '150.00',
         notes: null,
@@ -247,6 +248,12 @@ afterEach(() => {
 })
 
 describe('InvoiceDetailPage tenant scope', () => {
+  it('displays line quantities at the product unit precision', async () => {
+    render(<InvoiceDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByText('1.000')).toBeInTheDocument()
+  })
+
   it('wraps invoice detail read key and gates missing tenant/company (.204)', async () => {
     const queryClient = createClient()
     render(<InvoiceDetailPage />, { wrapper: wrapper(queryClient) })

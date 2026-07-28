@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { formatCurrency } from '../../../lib/format'
+import { formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
@@ -415,11 +417,11 @@ export function SalesOrderDetailPage() {
                     )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatQuantity(line.quantity)}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   {order.status === 'confirmed' && (
                     <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                      {formatQuantity(line.quantity_delivered || '0')}
+                      {formatQuantity(line.quantity_delivered || '0', getQuantityDecimals(line))}
                     </td>
                   )}
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>

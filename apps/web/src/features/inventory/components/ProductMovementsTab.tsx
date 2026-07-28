@@ -10,7 +10,8 @@ import {
   Filter,
 } from 'lucide-react'
 import { api } from '../../../lib/api'
-import { formatQuantity } from '../../../lib/format'
+import { formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { locationScopedKey } from '../../../lib/locationScopedKey'
 import { bccomp } from '@/lib/decimal'
 import { useAuthStore } from '../../../stores/authStore'
@@ -34,6 +35,7 @@ interface StockMovement {
   location_name: string
   movement_type: string
   quantity: string
+  quantity_decimals: number
   quantity_before: string
   quantity_after: string
   reference: string
@@ -275,14 +277,14 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                         className={`text-sm font-semibold tabular-nums ${isPositive ? textColors.success : textColors.error}`}
                       >
                         {isPositive ? '+' : ''}
-                        {formatQuantity(movement.quantity)}
+                        {formatQuantity(movement.quantity, getQuantityDecimals(movement))}
                       </span>
                     </td>
                     <td className={`whitespace-nowrap px-6 py-4 text-end text-sm tabular-nums ${textColors.tertiary}`}>
-                      {formatQuantity(movement.quantity_before)}
+                      {formatQuantity(movement.quantity_before, getQuantityDecimals(movement))}
                     </td>
                     <td className={`whitespace-nowrap px-6 py-4 text-end text-sm font-medium tabular-nums ${textColors.primary}`}>
-                      {formatQuantity(movement.quantity_after)}
+                      {formatQuantity(movement.quantity_after, getQuantityDecimals(movement))}
                     </td>
                     <td
                       className={`max-w-xs truncate px-6 py-4 text-sm ${textColors.tertiary}`}

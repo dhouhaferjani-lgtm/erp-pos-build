@@ -11,8 +11,10 @@ use App\Modules\Workshop\Bundle\Application\DTOs\ServiceBundleData;
 use App\Modules\Workshop\Bundle\Application\Services\BundleAuthoringService;
 use App\Modules\Workshop\Bundle\Domain\Contracts\BundleRepositoryInterface;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Presentation\Requests\StoreBundleRequest;
 use App\Modules\Workshop\Bundle\Presentation\Requests\UpdateBundleRequest;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -53,10 +55,19 @@ class BundleController extends Controller
             filters: $filters,
             perPage: $perPage,
         );
+        /** @var EloquentCollection<int, ServiceBundle> $bundleModels */
+        $bundleModels = new EloquentCollection($page->items());
+        $bundleModels->load([
+            'components.product',
+            'components.service',
+            'components.nestedBundle',
+            'components.unit',
+            'vehicleApplicabilities',
+        ]);
 
         return response()->json([
-            'data' => $page->getCollection()
-                ->map(fn ($b): ServiceBundleData => ServiceBundleData::fromModel($b->load(['components', 'vehicleApplicabilities'])))
+            'data' => $bundleModels
+                ->map(fn (ServiceBundle $bundle): ServiceBundleData => ServiceBundleData::fromModel($bundle))
                 ->values(),
             'meta' => [
                 'current_page' => $page->currentPage(),

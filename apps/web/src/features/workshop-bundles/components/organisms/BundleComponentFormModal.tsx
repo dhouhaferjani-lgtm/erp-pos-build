@@ -12,10 +12,12 @@ import { Button } from '@/components/atoms/Button'
 import { Checkbox } from '@/components/atoms'
 import { FormField } from '@/components/atoms/FormField'
 import { Input } from '@/components/atoms/Input'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { Select } from '@/components/atoms/Select'
 import { Textarea } from '@/components/atoms/Textarea'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { bccomp } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { ApplicableBundleData } from '@/features/workshop-bundles/types'
@@ -152,6 +154,7 @@ function BundleComponentFormModalReady({
         id: component.component_id,
         sku: '',
         name: component.component_display_name,
+        quantity_decimals: component.quantity_decimals,
       }
     } else if (component.component_type === 'labor') {
       seed.service = {
@@ -364,14 +367,13 @@ function BundleComponentFormModalReady({
               htmlFor="bundle-component-quantity"
               error={errors.quantity}
             >
-              <Input
+              <QuantityInput
                 id="bundle-component-quantity"
                 data-testid="bundle-component-quantity"
-                type="text"
-                inputMode="decimal"
                 value={state.quantity}
-                onChange={(e) => {
-                  setState((s) => ({ ...s, quantity: e.target.value }))
+                decimalPlaces={getQuantityDecimals(state.product ?? component)}
+                onChange={(quantity) => {
+                  setState((s) => ({ ...s, quantity }))
                 }}
               />
             </FormField>

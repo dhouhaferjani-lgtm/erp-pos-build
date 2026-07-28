@@ -376,6 +376,26 @@ final class ZReportSyncControllerSchema2Test extends TestCase
         );
     }
 
+    public function test_cash_count_recorded_defaults_missing_variance_at_company_currency_scale(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        unset($payload['shift_fields']['variance_amount']);
+
+        $this->postJson('/api/v1/pos/reports/z/sync', $payload)->assertCreated();
+
+        Event::assertDispatched(CashCountRecorded::class, function (CashCountRecorded $event): bool {
+            $this->assertSame('EUR', $event->currencyCode);
+            $this->assertSame('0.00', $event->aggregateVariance->amount);
+            $this->assertSame('balanced', $event->varianceDirection->value);
+            $this->assertSame('0.00', $event->descriptionParams['aggregate_amount'] ?? null);
+
+            return true;
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // 6. v1-only payload → 201, no counts, no event
     // ─────────────────────────────────────────────────────────────────────────

@@ -9,8 +9,7 @@ import { cn } from '../../lib/utils'
 import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { bccomp, bcsub } from '../../lib/decimal'
-import { formatQuantity } from '../../lib/format'
+import { bccomp, bcsub, formatQuantity } from '../../lib/decimal'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
@@ -287,14 +286,14 @@ export function StockLevelsPage() {
       numeric: true,
       header: t('inventory:stock.quantity'),
       cellClassName: textColors.primary,
-      render: (stock) => formatQuantity(stock.quantity),
+      render: (stock) => formatQuantity(stock.quantity, getQuantityDecimals(stock)),
     },
     {
       key: 'reserved',
       numeric: true,
       header: t('inventory:stock.reserved'),
       cellClassName: textColors.tertiary,
-      render: (stock) => formatQuantity(stock.reserved),
+      render: (stock) => formatQuantity(stock.reserved, getQuantityDecimals(stock)),
     },
     {
       key: 'available',
@@ -307,7 +306,7 @@ export function StockLevelsPage() {
         return (
           <>
             <span className={cn('text-sm font-semibold', isLowOrOut ? textColors.error : textColors.primary)}>
-              {formatQuantity(stock.available)}
+              {formatQuantity(stock.available, getQuantityDecimals(stock))}
             </span>
             {stock.min_quantity != null && (
               <span className={cn('ml-1 text-xs', textColors.disabled)}>
@@ -538,7 +537,7 @@ export function StockLevelsPage() {
 
               <div>
                 <span className={tokens.label.base}>{t('inventory:stock.modal.currentQuantity')}</span>
-                <p className={cn('mt-1 text-sm', textColors.primary)}>{formatQuantity(selectedStock.quantity)}</p>
+                <p className={cn('mt-1 text-sm', textColors.primary)}>{formatQuantity(selectedStock.quantity, getQuantityDecimals(selectedStock))}</p>
               </div>
 
               <div>

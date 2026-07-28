@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "pnpm lint:eslint && pnpm audit:keys && pnpm audit:design-system && pnpm audit:quantity && pnpm test:eslint-rules",
     "lint:eslint": "eslint .",
-    "test:eslint-rules": "node eslint-rules/no-dead-tailwind-token-interpolation.test.mjs && node eslint-rules/no-literal-decimal-places.test.mjs",
+    "test:eslint-rules": "node eslint-rules/no-dead-tailwind-token-interpolation.test.mjs && node eslint-rules/no-hardcoded-step.test.mjs && node eslint-rules/no-literal-decimal-places.test.mjs",
     "audit:keys": "node tools/audit-tanstack-keys.mjs",
     "audit:design-system": "node tools/audit-design-system.mjs",
     "audit:quantity": "node tools/audit-quantity-display.mjs",

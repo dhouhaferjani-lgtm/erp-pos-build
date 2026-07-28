@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Workshop\WorkOrder;
 
+use App\Modules\Product\Domain\Product;
+use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Workshop\WorkOrder\Application\DTOs\WorkOrderData;
 use App\Modules\Workshop\WorkOrder\Application\DTOs\WorkOrderLineData;
 use App\Modules\Workshop\WorkOrder\Application\DTOs\WorkOrderListItemData;
@@ -42,6 +44,30 @@ final class DtoRoundtripTest extends TestCase
         $this->assertSame($line->id, $dto->id);
         $this->assertNotNull($dto->service_id);
         $this->assertNull($dto->product_id);
+    }
+
+    public function test_line_data_exposes_product_quantity_precision_with_legacy_fallback(): void
+    {
+        $wo = WorkOrder::factory()->create();
+        $unit = Unit::factory()->create(['decimal_places' => 3]);
+        $product = Product::factory()->create([
+            'tenant_id' => $wo->tenant_id,
+            'company_id' => $wo->company_id,
+            'unit_id' => $unit->id,
+        ]);
+        $part = WorkOrderLine::factory()->for($wo)->part()->create([
+            'tenant_id' => $wo->tenant_id,
+            'product_id' => $product->id,
+        ]);
+        $labor = WorkOrderLine::factory()->for($wo)->labor()->create([
+            'tenant_id' => $wo->tenant_id,
+        ]);
+
+        $partDto = WorkOrderLineData::fromModel($part->load('product.unitOfMeasure'));
+        $laborDto = WorkOrderLineData::fromModel($labor);
+
+        $this->assertSame(3, $partDto->quantity_decimals ?? null);
+        $this->assertSame(4, $laborDto->quantity_decimals ?? null);
     }
 
     public function test_work_order_data_includes_nested_collections(): void

@@ -74,16 +74,33 @@ describe('LineItemsTable', () => {
 })
 
 describe('QuantityCell', () => {
-  it('derives the native input step from the line quantity decimals', () => {
+  it('formats readonly quantities for the unit precision without rendering an input', () => {
     render(
       <QuantityCell
-        value="1"
-        decimalPlaces={0}
+        value="1.2500"
+        decimalPlaces={2}
+        onChange={vi.fn()}
+        ariaLabel="Quantity"
+        readonly
+      />,
+    )
+
+    expect(screen.getByText('1.25')).toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Quantity' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the editable value raw while deriving its step from the unit precision', () => {
+    render(
+      <QuantityCell
+        value="1.2500"
+        decimalPlaces={2}
         onChange={vi.fn()}
         ariaLabel="Quantity"
       />,
     )
 
-    expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveAttribute('step', '1')
+    expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveAttribute('step', '0.01')
+    expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveValue(1.25)
+    expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveAttribute('value', '1.2500')
   })
 })

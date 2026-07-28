@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { StockMovementsPage } from './StockMovementsPage'
 
 vi.mock('react-i18next', () => ({
@@ -40,6 +40,7 @@ interface StockMovement {
   location_name: string
   movement_type: string
   quantity: string
+  quantity_decimals: number
   quantity_before: string
   quantity_after: string
   reference: string
@@ -58,6 +59,7 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
     location_name: 'Main',
     movement_type: 'receipt',
     quantity: '5.0000',
+    quantity_decimals: 3,
     quantity_before: '0.0000',
     quantity_after: '5.0000',
     reference: 'REF-0',
@@ -121,11 +123,18 @@ describe('StockMovementsPage (canonical list)', () => {
     expect(pill.className).toContain('rounded-full')
   })
 
-  it('renders the signed quantity in a numeric (tabular-nums) cell', () => {
+  it('renders movement and conservation quantities at unit precision', () => {
     render(<StockMovementsPage />)
-    const qty = screen.getByText('+5')
+    const qty = screen.getByText('+5.000')
     // DataTable numeric columns right-align with tabular-nums on the <td>.
     const cell = qty.closest('td')
     expect(cell?.className).toContain('tabular-nums')
+
+    const alphaRow = screen.getByText('Alpha').closest('tr')
+    expect(alphaRow).not.toBeNull()
+    if (alphaRow === null) throw new Error('Expected Alpha movement row')
+
+    expect(within(alphaRow).getByText('0.000')).toBeInTheDocument()
+    expect(within(alphaRow).getByText('5.000')).toBeInTheDocument()
   })
 })
