@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -51,13 +52,22 @@ return new class extends Migration
      *    `canonical_bytes`, then `ALTER TABLE pos_receipts VALIDATE
      *    CONSTRAINT pos_receipts_totals`. Task 13 deploy-checklist item.
      *
-     *    The VALIDATE is wrapped in `DB::transaction()` — NOT a bare
-     *    try/catch — because Laravel runs PG migrations inside a transaction
+     *    The catch is NARROW — SQLSTATE 23514 (check_violation) ONLY. That
+     *    is the single failure mode the residue produces and the only one
+     *    for which "leave it NOT VALID and warn" is the right answer.
+     *    Anything else (42704 wrong constraint name, 55P03/lock_timeout,
+     *    connection loss) RETHROWS and fails the migration, so the deploy
+     *    stops and is retryable — swallowing those would record the
+     *    migration as applied with the constraint silently NOT VALID
+     *    forever, under a warning naming a cause that never happened.
+     *
+     *    That one swallowed 23514 still aborts the surrounding transaction
+     *    in PostgreSQL, and Laravel runs PG migrations inside one
      *    (`Migration::$withinTransaction = true` + `PostgresGrammar
-     *    ::$transactions = true`), and in PostgreSQL a failed statement
-     *    poisons the whole transaction. `DB::transaction()` nested inside an
-     *    open transaction issues a SAVEPOINT and rolls back only to it, so
-     *    the migration survives the caught failure.
+     *    ::$transactions = true`), so the VALIDATE is wrapped in
+     *    `DB::transaction()`: nested inside an open transaction it issues a
+     *    SAVEPOINT and rolls back only to it. A bare try/catch would leave
+     *    the migration's transaction poisoned.
      *
      * 3. Partial unique indexes for the two new journal `source_type`
      *    families (procurement exemplar `2026_06_26_120000:44-48` — UNSCOPED
@@ -159,7 +169,15 @@ return new class extends Migration
                 DB::transaction(function (): void {
                     DB::statement('ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals');
                 });
-            } catch (Throwable $e) {
+            } catch (QueryException $e) {
+                // 23514 = check_violation, i.e. the residue rows. Everything
+                // else (42704 wrong constraint name, lock_timeout, connection
+                // loss) must fail the migration so the deploy is retryable —
+                // see the docblock.
+                if ((string) $e->getCode() !== '23514') {
+                    throw $e;
+                }
+
                 Log::warning(
                     'pos_receipts_totals left NOT VALID: existing rows violate the rounding-aware identity. '
                         .'This is the re-apply-after-rollback path — down() dropped cash_rounding_adjustment and '

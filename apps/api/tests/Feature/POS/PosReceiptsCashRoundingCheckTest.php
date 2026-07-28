@@ -401,6 +401,48 @@ final class PosReceiptsCashRoundingCheckTest extends TestCase
         ]);
     }
 
+    public function test_first_apply_over_a_populated_table_still_validates(): void
+    {
+        $this->requirePostgres();
+
+        // The load-bearing claim — "every row that satisfied the OLD
+        // constraint has a NULL adjustment, so COALESCE(...) = 0 and the new
+        // expression reduces to the old one" — is about EXISTING data, so it
+        // has to be exercised against a populated table, not an empty one.
+        DB::table('pos_receipts')->insert($this->receiptRow([
+            'subtotal' => '10.000',
+            'tax_amount' => '1.900',
+            'discount_amount' => '0.500',
+            'total' => '11.400',
+            'cash_rounding_adjustment' => null,   // legacy v1/v2 shape
+            'cash_rounding_denomination' => null,
+        ]));
+        DB::table('pos_receipts')->insert($this->receiptRow([
+            'subtotal' => '9.973',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '9.950',
+            'cash_rounding_adjustment' => '-0.023',  // rounded v3 shape
+            'cash_rounding_denomination' => '0.0500',
+        ]));
+
+        $migration = require database_path(
+            'migrations/tenant/2026_07_28_100200_add_cash_rounding_to_pos_receipts.php'
+        );
+
+        $migration->up();
+
+        $convalidated = DB::selectOne(
+            "SELECT convalidated FROM pg_constraint WHERE conname = 'pos_receipts_totals'"
+        );
+        $this->assertNotNull($convalidated);
+        $this->assertTrue(
+            (bool) $convalidated->convalidated,
+            'VALIDATE must succeed over a table holding both legacy-NULL and rounded rows',
+        );
+        $this->assertSame(2, DB::table('pos_receipts')->count());
+    }
+
     public function test_first_apply_leaves_the_constraint_fully_validated(): void
     {
         $this->requirePostgres();
