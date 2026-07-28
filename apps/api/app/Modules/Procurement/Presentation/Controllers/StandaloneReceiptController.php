@@ -13,6 +13,7 @@ use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
 use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
 use App\Modules\Procurement\Application\StandaloneReceiptService;
 use App\Modules\Procurement\Presentation\Requests\CreateStandaloneReceiptRequest;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 
@@ -80,7 +81,7 @@ final class StandaloneReceiptController extends Controller
                 productId: (string) $line['product_id'],
                 variantId: isset($line['variant_id']) ? (string) $line['variant_id'] : null,
                 quantity: (string) $line['qty'],
-                freeQuantity: (string) ($line['free_qty'] ?? '0.0000'),
+                freeQuantity: (string) ($line['free_qty'] ?? QuantityScale::formatForUnit('0', null)),
                 unitPrice: (string) $line['unit_price'],
                 batch: $line['batch'] ?? null,
             ),

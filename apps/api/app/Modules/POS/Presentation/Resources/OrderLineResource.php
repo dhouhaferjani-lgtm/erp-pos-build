@@ -27,6 +27,7 @@ final class OrderLineResource extends JsonResource
         $unit = $product instanceof Product && $product->relationLoaded('unitOfMeasure')
             ? $product->unitOfMeasure
             : null;
+        $quantityDecimals = $unit?->decimal_places;
 
         return [
             'id' => $this->id,
@@ -36,7 +37,7 @@ final class OrderLineResource extends JsonResource
             'product_name' => $this->product_name,
             'variant_name' => $this->variant_name,
             'barcode' => $this->barcode,
-            'quantity_decimals' => $unit->decimal_places ?? 4,
+            'quantity_decimals' => $quantityDecimals ?? 4,
             'quantity' => $this->quantity,
             'unit_price' => $this->unit_price,
             'discount_amount' => $this->discount_amount,

@@ -139,12 +139,13 @@ class DocumentAdditionalCostController extends Controller
                 : $unitPrice;
 
             $product = $line->product;
+            $quantityDecimals = $product?->unitOfMeasure?->decimal_places;
             $allocations[] = [
                 'line_id' => $line->id,
                 'product_name' => $product !== null ? $product->name : ($line->description ?? 'Unknown Product'),
                 'description' => $line->description ?? '',
                 'quantity' => $quantity,
-                'quantity_decimals' => $product?->unitOfMeasure->decimal_places ?? 4,
+                'quantity_decimals' => $quantityDecimals ?? 4,
                 'unit_price' => $unitPrice,
                 'line_total' => $lineTotal,
                 'allocated_costs' => $allocatedCosts,
