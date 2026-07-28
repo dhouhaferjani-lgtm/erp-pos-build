@@ -120,9 +120,14 @@ function normalizeDenomination(
  *
  * The server sends a canonical zero at currency scale ('0.000') when rounding
  * is off, which this correctly rejects; `null` only occurs on a device that has
- * never synced a policy.
+ * never synced a policy. `undefined` is accepted in the signature on purpose —
+ * an unvalidated policy response can hand us one despite the `string` type, and
+ * callers should not have to launder it through a cast to ask this question.
  */
-export function isValidDenomination(denomination: string | null, scale: number): boolean {
+export function isValidDenomination(
+  denomination: string | null | undefined,
+  scale: number,
+): boolean {
   return normalizeDenomination(denomination, scale) !== null;
 }
 
@@ -137,13 +142,32 @@ export function roundCashTotal(exactTotal: string, denomination: string, scale: 
   return bcformat(bcmul(units, denomination, scale), scale);
 }
 
-/** Signed `rounded - exact` at currency scale. Canonical zero when they agree. */
+/**
+ * Signed `rounded - exact` at currency scale. Canonical zero when they agree.
+ *
+ * BOTH operands are normalized to `scale` first, exactly as `roundCashTotal`
+ * normalizes its dividend. That is what guarantees the identity
+ *
+ *     rounded - adjustment == bcformat(exact, scale)
+ *
+ * which is the device-side form of Task 8's v3 aggregate bind
+ * (`subtotal + vat_total == (total - cash_rounding_adjustment) + discount`).
+ * Subtracting a RAW `exactTotal` here while `roundCashTotal` rounds a
+ * normalized one would make the two functions relative to different "exact"
+ * values whenever a caller passes more than `scale` decimals, and the one-ulp
+ * gap would throw `SaleReceiptAggregateInvariantError` on a signed receipt.
+ * The invariant must hold for ANY caller, not only for the ones that happen to
+ * pre-format their total.
+ */
 export function computeRoundingAdjustment(
   exactTotal: string,
   roundedTotal: string,
   scale: number,
 ): string {
-  return bcformat(bcsub(roundedTotal, exactTotal, scale), scale);
+  return bcformat(
+    bcsub(bcformat(roundedTotal, scale), bcformat(exactTotal, scale), scale),
+    scale,
+  );
 }
 
 /**
@@ -177,6 +201,15 @@ export interface ToleranceMaxInput {
  * currency-scale string; a zero result means "no auto-accept headroom".
  *
  * `percentage` is a FRACTION ('0.0050' == 0.5%) — there is no /100 anywhere.
+ *
+ * FAIL-CLOSED, and the floor cannot outlive it: if EITHER tolerance input is
+ * unusable (absent, blank, signed, non-numeric) the tolerance policy is not
+ * configured at all, so the result is zero and the denomination floor is NOT
+ * applied. The floor exists to WIDEN a configured cap so a full-D shortfall is
+ * acceptable while rounding is on — it is not itself a source of headroom, and
+ * manufacturing D of auto-accept out of a corrupt policy is exactly the guess
+ * this module must never make. A policy that legitimately configures zero
+ * tolerance parses fine and still gets the spec's floor.
  */
 export function toleranceEffectiveMax(input: ToleranceMaxInput): string {
   const { exactTotal, percentage, maxAmount, denomination, roundingActive, scale } = input;
@@ -187,11 +220,17 @@ export function toleranceEffectiveMax(input: ToleranceMaxInput): string {
     return zero;
   }
 
-  // Percentage kept at full precision for the multiply, then TRUNCATED (never
-  // rounded up) at currency scale so the cap can only ever be conservative.
   const pct = sanitizeNonNegativeDecimal(percentage);
-  const pctCap = pct === null ? zero : truncateAtScale(bcmul(total, pct, scale + 4), scale);
-  const maxCap = parseNonNegativeAtScale(maxAmount, scale) ?? zero;
+  const max = sanitizeNonNegativeDecimal(maxAmount);
+  if (pct === null || max === null) {
+    return zero;
+  }
+
+  // Both caps TRUNCATED (never rounded up) at currency scale, so an accepted
+  // ceiling can only ever be conservative. The percentage is kept at full
+  // precision for the multiply and truncated only once, at the end.
+  const pctCap = truncateAtScale(bcmul(total, pct, scale + 4), scale);
+  const maxCap = truncateAtScale(max, scale);
 
   let effective = bccomp(pctCap, maxCap) < 0 ? pctCap : maxCap;
 
