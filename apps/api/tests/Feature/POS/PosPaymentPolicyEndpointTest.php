@@ -233,6 +233,108 @@ final class PosPaymentPolicyEndpointTest extends TestCase
         $this->assertFalse($dto->cashRoundingEnabled);
     }
 
+    /**
+     * Fix round 1 / finding 1: the scale must come from the SAME source the
+     * rest of the system uses for a company-bound resolution —
+     * `countries.currency_decimal_places` first (CurrencyScaleResolver.php:56-70),
+     * ISO map only as fallback. A second scale source would let the device cache
+     * a scale the server's own receipt/Z math does not use.
+     */
+    public function test_countries_decimal_places_wins_over_the_iso_map(): void
+    {
+        // ISO 4217 says TND = 3. The tenant's lookup row says otherwise.
+        DB::table('countries')->where('code', 'TN')->update(['currency_decimal_places' => 2]);
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '0.0500',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertSame(2, $dto->currencyScale, 'countries.currency_decimal_places must win over the ISO map.');
+        $this->assertTrue($dto->cashRoundingEnabled);
+        $this->assertSame('0.05', $dto->cashRoundingDenomination, 'Denomination must be re-scaled to the RESOLVED scale.');
+        $this->assertSame('0.10', $dto->tenderToleranceMaxAmount);
+    }
+
+    /**
+     * Fix round 1 / finding 2: static history-stable §4.1 caps. This resolver is
+     * the last server gate before the denomination becomes signed device bytes,
+     * so an over-cap row must fail closed here rather than quarantine every
+     * receipt at the Task-6 validator bind.
+     */
+    public function test_denomination_above_the_scale_3_cap_disables_rounding(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '5.0000',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertFalse($dto->cashRoundingEnabled, '5.000 is a suppression payload, not a rounding step.');
+        $this->assertSame('0.000', $dto->cashRoundingDenomination);
+    }
+
+    public function test_denomination_at_the_scale_3_cap_is_allowed(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '1.0000',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertTrue($dto->cashRoundingEnabled, 'The cap is inclusive: 1.000 at scale 3 is legal.');
+        $this->assertSame('1.000', $dto->cashRoundingDenomination);
+    }
+
+    public function test_denomination_at_the_scale_0_cap_is_allowed(): void
+    {
+        // JPY-style 10-unit rounding is real (spec §4.1, r2 F6).
+        DB::table('countries')->where('code', 'TN')->update(['currency_decimal_places' => 0]);
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '10.0000',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertSame(0, $dto->currencyScale);
+        $this->assertTrue($dto->cashRoundingEnabled);
+        $this->assertSame('10', $dto->cashRoundingDenomination);
+    }
+
+    public function test_denomination_above_the_scale_0_cap_disables_rounding(): void
+    {
+        DB::table('countries')->where('code', 'TN')->update(['currency_decimal_places' => 0]);
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '11.0000',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertFalse($dto->cashRoundingEnabled);
+        $this->assertSame('0', $dto->cashRoundingDenomination);
+    }
+
+    public function test_scale_without_a_sanctioned_cap_disables_rounding(): void
+    {
+        // Scale 1 has no §4.1 cap entry — absence of a cap is never permission.
+        DB::table('countries')->where('code', 'TN')->update(['currency_decimal_places' => 1]);
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '0.5000',
+        ]);
+
+        $dto = app(PosPaymentPolicyResolver::class)->forCompany($this->company->id);
+
+        $this->assertSame(1, $dto->currencyScale);
+        $this->assertFalse($dto->cashRoundingEnabled);
+        $this->assertSame('0.0', $dto->cashRoundingDenomination);
+    }
+
     public function test_null_denomination_disables_rounding(): void
     {
         DB::table('country_payment_settings')->where('country_code', 'TN')->update([

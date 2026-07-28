@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Application\DTOs\PosPaymentPolicyDTO;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
+use App\Shared\Domain\CashRoundingCaps;
 use App\Shared\Domain\CurrencyScale;
 use InvalidArgumentException;
 
@@ -24,8 +26,9 @@ use InvalidArgumentException;
  *                                    consulted)
  *   - `companies.payment_tolerance_enabled === false` force-disables;
  *     `true`/`null` defer to the country row (fail-closed DIRECTION only)
- *   - a denomination that does not round-trip at the company currency scale
- *     is NEVER emitted — rounding is reported disabled instead
+ *   - a denomination that does not round-trip at the company currency scale,
+ *     is non-positive, or exceeds the static §4.1 cap for that scale is NEVER
+ *     emitted — rounding is reported disabled instead
  *
  * Always returns a complete DTO; the device caches it verbatim.
  */
@@ -42,7 +45,7 @@ final class PosPaymentPolicyResolver
         $company = Company::query()->findOrFail($companyId);
 
         $currencyCode = (string) $company->currency;
-        $scale = CurrencyScale::for($currencyCode);
+        $scale = $this->resolveScale($company, $currencyCode);
 
         /** @var CountryPaymentSettings|null $row */
         $row = CountryPaymentSettings::query()
@@ -85,6 +88,38 @@ final class PosPaymentPolicyResolver
     }
 
     /**
+     * Resolve the company currency scale through the SAME source the rest of
+     * the system uses for a company-bound resolution.
+     *
+     * `CurrencyScaleResolver::getScale()` reads `countries.currency_decimal_places`
+     * FIRST and only falls back to the static ISO 4217 map
+     * (`CurrencyScaleResolver.php:56-70`). Calling `CurrencyScale::for()` here
+     * would be a SECOND scale source: on a tenant whose `countries` row diverges
+     * from the ISO map, the device would cache a scale the server's own receipt
+     * and Z math does not use — the cross-layer mismatch class that quarantines
+     * receipts.
+     *
+     * The company path is mirrored explicitly rather than injecting
+     * `CurrencyScaleResolverInterface` because that interface only consults the
+     * `countries` column on its NO-ARGUMENT form (an explicit `$currencyCode`
+     * short-circuits straight to the ISO map, `:38-41`), and the no-arg form
+     * throws outside a bound `CompanyContext` — which this resolver must
+     * survive (rule 20: queued/console callers have none).
+     */
+    private function resolveScale(Company $company, string $currencyCode): int
+    {
+        $decimalPlaces = Country::query()->find((string) $company->country_code)?->currency_decimal_places;
+
+        // The column is a NOT-NULL tinyInteger, so the fallback only fires when
+        // the country row itself is absent (unseeded lookup table).
+        if (is_int($decimalPlaces)) {
+            return $decimalPlaces;
+        }
+
+        return CurrencyScale::for($currencyCode);
+    }
+
+    /**
      * @return array{0: bool, 1: string}
      */
     private function resolveRounding(CountryPaymentSettings $row, int $scale, string $zero): array
@@ -117,6 +152,17 @@ final class PosPaymentPolicyResolver
         }
 
         if (bccomp($scaled, '0', $scale) <= 0) {
+            return [false, $zero];
+        }
+
+        // Static §4.1 ceiling. This resolver is the LAST server gate before the
+        // value becomes signed device bytes: an oversized denomination (5.000 on
+        // scale 3) would be cached, signed, and then rejected by the Task-6
+        // validator bind — quarantining 100% of the tenant's receipts. The cap
+        // table is shared with the Task-4 ops command and the Task-6 validator
+        // (CashRoundingCaps) precisely so the two ends cannot drift.
+        // An unlisted scale has no sanctioned cap => fail closed.
+        if (! CashRoundingCaps::isWithinCap($scaled, $scale)) {
             return [false, $zero];
         }
 
