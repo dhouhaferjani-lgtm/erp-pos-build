@@ -1159,9 +1159,9 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_envelope_with_event_version_mismatch_to_registry(): void
     {
-        // SALE_RECEIPT supports event_version {1, 2} since SaleReceiptV2
-        // (M4); an unknown version 3 must reject.
-        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '3');
+        // SALE_RECEIPT supports event_version {1, 2, 3} since the cash-rounding
+        // v3 contract (spec §4.4); an unknown version 4 must reject.
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '4');
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 

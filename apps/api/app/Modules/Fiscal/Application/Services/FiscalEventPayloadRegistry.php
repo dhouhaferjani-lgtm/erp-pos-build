@@ -53,9 +53,23 @@ final class FiscalEventPayloadRegistry
     private const PHASE_1_MAP = [
         // SaleReceiptV2 (M4): version 2 adds variant_id/variant_name/
         // variant_sku to each line_items[] row (null for non-variant lines).
-        // The authoring version is 2; version 1 events remain parseable —
-        // see SUPPORTED_VERSIONS (Events are Immutable Forever).
-        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 2],
+        //
+        // SaleReceiptV3 (cash rounding, spec §4.4): version 3 adds the two
+        // signed cash-rounding siblings `cash_rounding_adjustment` +
+        // `cash_rounding_denomination` at the payload top level. Both are
+        // REQUIRED-always on v3 (canonical zero when no rounding applied) and
+        // FORBIDDEN on v1/v2 — see
+        // `FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V3`.
+        //
+        // The authoring version below is INERT for SALE_RECEIPT: no server
+        // path authors one (every `fiscal_events.event_version` for this type
+        // is copied from the DEVICE envelope in `OutboxIngestor`). It is
+        // bumped so the registry states the current contract; what actually
+        // admits a v3 receipt is SUPPORTED_VERSIONS.
+        //
+        // Versions 1 and 2 remain parseable FOREVER (Events are Immutable
+        // Forever) — see SUPPORTED_VERSIONS.
+        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 3],
         FiscalEventType::CHAIN_BREAK_DETECTED->value => [ChainBreakDetectedPayload::class, 1],
         FiscalEventType::CHAIN_RESTART->value => [ChainRestartPayload::class, 1],
         FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value => [TerminalRegistrySnapshotPayload::class, 1],
@@ -103,7 +117,7 @@ final class FiscalEventPayloadRegistry
      * @var array<value-of<FiscalEventType>, list<int>>
      */
     private const SUPPORTED_VERSIONS = [
-        FiscalEventType::SALE_RECEIPT->value => [1, 2],
+        FiscalEventType::SALE_RECEIPT->value => [1, 2, 3],
     ];
 
     /**
