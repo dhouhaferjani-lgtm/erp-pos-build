@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -152,6 +153,100 @@ final class PaymentMethodCashTenderTest extends TestCase
         $this->assertTrue($response->json('data.is_cash_tender'));
     }
 
+    public function test_store_rejects_case_variant_of_an_existing_code_with_422_not_500(): void
+    {
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        // Uppercasing AFTER validation would let this pass Rule::unique against
+        // the raw 'cash' and then violate unique(tenant_id, code) → HTTP 500.
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => '  cash  ',
+                'name' => 'Espèces bis',
+                'is_physical' => true,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+        $this->assertSame(1, PaymentMethod::query()->where('tenant_id', $this->tenant->id)->count());
+    }
+
+    public function test_update_rejects_case_variant_of_an_existing_code_with_422_not_500(): void
+    {
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        $card = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_physical' => false,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$card->id, [
+                'code' => 'cash',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+        $this->assertSame('CARD', $card->refresh()->code);
+    }
+
+    public function test_update_without_a_code_key_preserves_the_stored_code(): void
+    {
+        $card = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_physical' => false,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+
+        // Guards the has('code') condition on the pre-validation merge: an
+        // unconditional merge would inject '' and the `sometimes` rule would
+        // then overwrite the stored code with it.
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$card->id, [
+                'name' => 'Carte bancaire (CB)',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame('CARD', $card->refresh()->code);
+        $this->assertSame('Carte bancaire (CB)', $card->name);
+    }
+
     public function test_update_rejects_flipping_cash_tender_on_non_cash_method(): void
     {
         $method = PaymentMethod::create([
@@ -192,13 +287,137 @@ final class PaymentMethodCashTenderTest extends TestCase
             ->where('id', $id)
             ->update(['code' => 'cash', 'is_cash_tender' => false]);
 
-        // Re-run the backfill statement the migration performs.
-        DB::statement(
-            "UPDATE payment_methods SET is_cash_tender = true, code = 'CASH' WHERE UPPER(code) = 'CASH'"
-        );
+        $this->runBackfillMigration();
 
         $row = DB::table('payment_methods')->where('id', $id)->first();
         $this->assertSame('CASH', $row->code);
         $this->assertTrue((bool) $row->is_cash_tender);
+    }
+
+    public function test_migration_skips_variant_when_canonical_cash_row_already_exists(): void
+    {
+        // A brownfield tenant holding BOTH 'CASH' and 'cash'. unique(tenant_id,
+        // code) is case-sensitive in PostgreSQL, so both rows coexist legally
+        // and a blind normalization would abort the whole tenants:migrate run.
+        $canonicalId = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 1,
+        ])->id;
+
+        $variantId = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_LEGACY',
+            'name' => 'Espèces (legacy)',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 9,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $variantId)->update(['code' => 'cash']);
+        DB::table('payment_methods')
+            ->whereIn('id', [$canonicalId, $variantId])
+            ->update(['is_cash_tender' => false]);
+
+        Log::spy();
+
+        // Must not throw: a unique-violation here would abort tenants:migrate.
+        $this->runBackfillMigration();
+
+        $canonical = DB::table('payment_methods')->where('id', $canonicalId)->first();
+        $this->assertSame('CASH', $canonical->code);
+        $this->assertTrue((bool) $canonical->is_cash_tender, 'The canonical CASH row must be flagged.');
+
+        $variant = DB::table('payment_methods')->where('id', $variantId)->first();
+        $this->assertSame('cash', $variant->code, 'The colliding variant must be left untouched.');
+        $this->assertFalse(
+            (bool) $variant->is_cash_tender,
+            'The skipped variant must stay unflagged (fail-closed).',
+        );
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context) use ($variantId): bool {
+                return $message === 'cash_rounding.backfill.skipped_ambiguous_cash_code'
+                    && $context['payment_method_id'] === $variantId
+                    && $context['tenant_id'] === $this->tenant->id
+                    && $context['company_id'] === $this->company->id
+                    && $context['code'] === 'cash';
+            })
+            ->once();
+    }
+
+    public function test_migration_normalizes_a_sibling_companys_variant(): void
+    {
+        // The unique index is (company_id, code) — 2025_12_30_195300 replaced
+        // the original (tenant_id, code) so sibling companies can reuse codes.
+        // A second company's 'cash' therefore collides with NOTHING and must be
+        // normalized and flagged. Correlating the skip-check on tenant_id would
+        // wrongly skip it and leave this company without a cash tender.
+        $sibling = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cash Tender Shop II',
+            'legal_name' => 'Cash Tender Shop II SARL',
+            'tax_id' => 'TAX-CT-2',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        // Company 1 holds the canonical 'CASH'.
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        // Company 2 holds only the lowercase variant.
+        $siblingId = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $sibling->id,
+            'code' => 'CASH_SIBLING',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 1,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $siblingId)->update([
+            'code' => 'cash',
+            'is_cash_tender' => false,
+        ]);
+
+        $this->runBackfillMigration();
+
+        $row = DB::table('payment_methods')->where('id', $siblingId)->first();
+        $this->assertSame('CASH', $row->code, "The sibling company's variant must be normalized.");
+        $this->assertTrue((bool) $row->is_cash_tender, "The sibling company's row must be flagged.");
+    }
+
+    /**
+     * Execute the REAL migration file rather than a pasted copy of its SQL, so
+     * this suite fails if the migration is deleted or its backfill changes.
+     */
+    private function runBackfillMigration(): void
+    {
+        $migration = require base_path(
+            'database/migrations/tenant/2026_07_28_100000_add_is_cash_tender_to_payment_methods.php'
+        );
+
+        $migration->up();
     }
 }

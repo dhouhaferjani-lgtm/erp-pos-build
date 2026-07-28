@@ -10,6 +10,11 @@ export interface PaymentMethod {
   code: string
   name: string
   is_physical: boolean
+  /**
+   * Canonical cash-ness predicate (cash-rounding spec §4.1). True implies
+   * `code === 'CASH'` exactly — the server enforces the invariant on write.
+   */
+  is_cash_tender: boolean
   has_maturity: boolean
   requires_third_party: boolean
   is_push: boolean

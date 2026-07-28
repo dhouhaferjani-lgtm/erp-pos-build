@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -36,10 +37,66 @@ return new class extends Migration
             });
         }
 
-        // Backfill + code normalization in one statement so no row can end
-        // up flagged with a non-canonical code.
+        // Backfill + code normalization in one statement so no row can end up
+        // flagged with a non-canonical code.
+        //
+        // Collision-safe: PostgreSQL compares the unique index case-sensitively,
+        // so a company may legitimately hold BOTH 'CASH' and 'cash' today.
+        // Rewriting the variant to 'CASH' would violate the index and abort the
+        // whole `tenants:migrate` run (which auto-deploy executes unattended).
+        // Such a row is left alone and logged for manual reconciliation instead
+        // — it stays is_cash_tender = false, which is fail-closed.
+        //
+        // The collision scope is COMPANY, not tenant: the original
+        // unique(['tenant_id','code']) from 2025_11_30_120000 was dropped and
+        // replaced with unique(['company_id','code']) by
+        // 2025_12_30_195300_fix_multi_company_unique_constraints, precisely so
+        // sibling companies in one tenant can reuse codes. Correlating on
+        // tenant_id here would skip a second company's 'cash' row that has no
+        // collision at all, leaving that company with no cash-flagged method.
+        $skipped = DB::select(
+            <<<'SQL'
+                SELECT pm.id, pm.tenant_id, pm.company_id, pm.code
+                FROM payment_methods pm
+                WHERE UPPER(pm.code) = 'CASH'
+                  AND pm.code <> 'CASH'
+                  AND EXISTS (
+                      SELECT 1 FROM payment_methods x
+                      WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                  )
+                SQL
+        );
+
+        foreach ($skipped as $row) {
+            Log::warning('cash_rounding.backfill.skipped_ambiguous_cash_code', [
+                'migration' => '2026_07_28_100000_add_is_cash_tender_to_payment_methods',
+                'payment_method_id' => $row->id,
+                'tenant_id' => $row->tenant_id,
+                'company_id' => $row->company_id,
+                'code' => $row->code,
+                'reason' => "company already holds a canonical 'CASH' payment method; "
+                    .'normalizing this variant would violate unique(company_id, code). '
+                    .'Left unflagged — reconcile manually.',
+            ]);
+        }
+
+        // The target-row predicate is expressed as `id IN (SELECT …)` rather
+        // than an aliased `UPDATE payment_methods pm SET …`: SQLite rejects a
+        // table alias on an UPDATE target, and this migration must also apply
+        // on the sqlite :memory: test loop.
         DB::statement(
-            "UPDATE payment_methods SET is_cash_tender = true, code = 'CASH' WHERE UPPER(code) = 'CASH'"
+            <<<'SQL'
+                UPDATE payment_methods
+                SET is_cash_tender = true, code = 'CASH'
+                WHERE id IN (
+                    SELECT pm.id FROM payment_methods pm
+                    WHERE UPPER(pm.code) = 'CASH'
+                      AND (pm.code = 'CASH' OR NOT EXISTS (
+                          SELECT 1 FROM payment_methods x
+                          WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                      ))
+                )
+                SQL
         );
 
         if (DB::connection()->getDriverName() === 'pgsql') {

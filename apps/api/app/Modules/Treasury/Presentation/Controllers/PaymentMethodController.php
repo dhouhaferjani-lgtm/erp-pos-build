@@ -61,6 +61,13 @@ class PaymentMethodController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Normalize BEFORE validating: the `code` column is stored uppercase
+        // (spec §4.1 exact-code invariant) and `unique(['tenant_id','code'])`
+        // is case-sensitive in PostgreSQL. Uppercasing after validation would
+        // let `cash` pass the unique check against an existing `CASH` row and
+        // then blow up on the index with a 500 instead of a 422.
+        $request->merge(['code' => strtoupper(trim((string) $request->input('code')))]);
+
         $validated = $request->validate([
             'code' => [
                 'required',
@@ -121,7 +128,7 @@ class PaymentMethodController extends Controller
             $instrumentKind,
         );
 
-        $code = strtoupper(trim((string) $validated['code']));
+        $code = (string) $validated['code'];
         $isCashTender = (bool) ($validated['is_cash_tender'] ?? false);
         $this->assertCashTenderInvariant($code, $isCashTender);
 
@@ -166,6 +173,14 @@ class PaymentMethodController extends Controller
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->findOrFail($id);
+
+        // Normalize BEFORE validating (see store()). Guarded by has(): merging
+        // unconditionally would inject an empty `code` into a payload that
+        // never sent one, and the `sometimes` rule would then wipe the stored
+        // code on save.
+        if ($request->has('code')) {
+            $request->merge(['code' => strtoupper(trim((string) $request->input('code')))]);
+        }
 
         $validated = $request->validate([
             'code' => [
@@ -230,15 +245,14 @@ class PaymentMethodController extends Controller
             $validated['instrument_kind'] = $finalInstrumentKind;
         }
 
-        $finalCodeUpper = strtoupper(trim((string) ($validated['code'] ?? $method->code)));
+        // $finalCode is already normalized: an incoming `code` was uppercased
+        // before validation, and a stored one is uppercase by the migration's
+        // backfill. Compared EXACTLY — a brownfield row the backfill had to
+        // skip (see migration A1) must not be flaggable as a cash tender.
         $finalIsCashTender = array_key_exists('is_cash_tender', $validated)
             ? (bool) $validated['is_cash_tender']
             : $method->is_cash_tender;
-        $this->assertCashTenderInvariant($finalCodeUpper, $finalIsCashTender);
-
-        if (array_key_exists('code', $validated)) {
-            $validated['code'] = $finalCodeUpper;
-        }
+        $this->assertCashTenderInvariant($finalCode, $finalIsCashTender);
 
         $method->update($validated);
 
@@ -306,9 +320,9 @@ class PaymentMethodController extends Controller
      * `UPPER(code)`; only an exact-code invariant makes all three predicates
      * provably coincide. Custom cash methods are a separate ticket.
      */
-    private function assertCashTenderInvariant(string $upperCode, bool $isCashTender): void
+    private function assertCashTenderInvariant(string $code, bool $isCashTender): void
     {
-        if ($isCashTender && $upperCode !== 'CASH') {
+        if ($isCashTender && $code !== 'CASH') {
             throw ValidationException::withMessages([
                 'is_cash_tender' => 'Only the payment method with code CASH may be flagged as a cash tender.',
             ]);
