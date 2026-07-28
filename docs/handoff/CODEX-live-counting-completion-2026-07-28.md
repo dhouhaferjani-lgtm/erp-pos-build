@@ -155,6 +155,26 @@ Translate the missing `counting.*` keys into Arabic, matching the existing tone 
 
 ---
 
+### A6 — `batchAddProducts` accepts any string as a product ID
+
+**Size: S. Added 2026-07-28 after the mobile audit; verified in this worktree before writing.**
+
+**The gap:** `InventoryCountingController::batchAddProducts` validates `products.*.productId` as a bare `string` — no `uuid` rule, no `exists:products,id`. The barcode-lookup branch only runs when `productId` is falsy (`if (! $productId && isset($productData['barcode']))`). So when a client sends a barcode *in the `productId` field*, the lookup never fires, the raw value is appended via `$productIds[] = $productId` with no existence check, persisted into `scope_filters['product_ids']`, and the endpoint returns `"status": "success"`.
+
+The count's product list is silently poisoned with values that match no product. Item generation then yields nothing for those entries, and the counter has no idea because the scan reported success.
+
+The mobile app is currently doing exactly this (its own lane, B1, fixes the client). **Fix the server side too** — it is the durable half: a count must not be corruptible by any client, including old builds already in the field.
+
+**Implement:** validate `products.*.productId` as a real product reference — UUID-shaped **and** existing within the caller's company (company scoping matters; a valid UUID from another tenant must be rejected). Reject with a per-item error in the existing `errors[]` array rather than failing the whole batch, so a counter scanning 40 items doesn't lose the other 39.
+
+**Tests** — new `apps/api/tests/Feature/Inventory/BatchAddProductsValidationTest.php`: (a) a barcode string sent as `productId` is rejected with a clear per-item error and is NOT written to `scope_filters`; (b) a well-formed UUID belonging to another company is rejected; (c) a valid `productId` still succeeds; (d) a valid `barcode` with no `productId` still resolves through the existing lookup; (e) a mixed batch persists the good items and reports the bad ones.
+
+**Review gate A6:** `inventory-costing-reviewer` (Opus). Save to `docs/handoff/gate-reviews-counting/A6-<round>.md`.
+
+**Coordination note:** the mobile lane (B1) is fixing the client concurrently. The two fixes are independent and safe in either order — but once A6 lands, a mobile build that still sends barcodes as `productId` will start receiving errors instead of silent success. That is the correct outcome; mention it in your final report so the owner sequences the mobile release accordingly.
+
+---
+
 ## 3. Review protocol (applies to every gate)
 
 1. Dispatch the named reviewer agent(s), **pinned to Opus**.
@@ -166,7 +186,7 @@ Translate the missing `counting.*` keys into Arabic, matching the existing tone 
 
 ## 4. Definition of done for the lane
 
-- A1–A5 complete, each with an APPROVE review record committed.
+- A1–A6 complete, each with an APPROVE review record committed.
 - `./scripts/preflight.sh` green — or, if it is too heavy here, at minimum: PHPStan level 8 clean, Pint clean, the named test files green **by path**, web `pnpm lint` + `pnpm typecheck` green, and the UoM guard scanners still reporting empty baselines.
 - A final report at `docs/handoff/counting-completion-report.md` stating: what changed, what you verified, **anything you could not verify**, any migration added and why it is self-guarding, and any residual risk the owner should know before the tester starts.
 

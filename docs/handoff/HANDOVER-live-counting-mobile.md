@@ -1,5 +1,30 @@
 # Handover: Live Inventory Counting — Mobile (erp-mobile)
 
+> ## ✅ DELIVERED — this handover is CLOSED (verified 2026-07-28)
+>
+> **Every mobile work item described below was built and merged on 2026-07-07.** An audit
+> of the `erp-mobile` repo on 2026-07-28 confirmed all of it shipped and passing —
+> 89 counting tests across 11 suites, none skipped. **Do not rebuild any of it.**
+>
+> Confirmed done: `counted_at_device` + `device_now` on both the online and offline-drain
+> paths, with `device_now` correctly captured **fresh at drain time** (§2.3 / §3 — the
+> subtlest requirement in this document, implemented correctly and regression-tested);
+> the both-or-neither guard against the one-field trap; `'zone'` scope end-to-end with
+> location and zone pickers and correct `{location_id, zone_ids}` branching (§2.2);
+> the session-header zone label and blocking/advisory banners (§3); the onboarding-worklist
+> screen (§2.4, was optional — built anyway); barcode scanning during count entry.
+>
+> The `activateDraft` `product_ids` gap flagged as a **blocker** in §2.2 was fixed
+> server-side in `f14a50165` and verified end-to-end. That section is historical only.
+>
+> **The remaining mobile work is different work**, scoped in
+> [`CODEX-mobile-counting-hardening-2026-07-28.md`](CODEX-mobile-counting-hardening-2026-07-28.md):
+> a scan-to-draft bug that sends a barcode in the `productId` field, plus offline-queue
+> robustness (no retry ceiling, unused storage limits, no idempotency key).
+>
+> Read the sections below as an **API contract reference**, which is still accurate — not
+> as a to-do list.
+
 **Date:** 2026-07-07
 **Server branch:** `feat/live-inventory-counting` (`apps/erp.live-counting`)
 **Mobile repo:** `erp-mobile` (separate repo, ships separately — owner pushes it personally)

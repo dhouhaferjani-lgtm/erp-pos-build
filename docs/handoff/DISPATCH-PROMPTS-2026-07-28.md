@@ -30,8 +30,9 @@ STEP 1 — verify your ground before touching anything:
 
     git status && git log --oneline -3
 
-Expect branch `feat/live-counting-completion` with HEAD 9d5c8c393 and a clean tree.
-If either differs, STOP and report rather than proceeding.
+Expect branch `feat/live-counting-completion` with a clean tree, and HEAD on a commit
+whose message begins "docs(handoff):". If the tree is dirty or the branch differs,
+STOP and report rather than proceeding.
 
 STEP 2 — read your brief in full and follow it exactly:
 
@@ -41,7 +42,7 @@ Every file:line citation in that brief was verified on 2026-07-28. Re-verify eac
 before you change the file. If a citation does not match what you find, STOP and report
 the discrepancy — do not guess at what was meant.
 
-WHAT YOU ARE BUILDING — five tasks, strictly in order, each with a review gate that must
+WHAT YOU ARE BUILDING — six tasks, strictly in order, each with a review gate that must
 pass before you start the next:
 
   A1 (S) Counting must preserve precise placements inside the counted subtree.
@@ -71,6 +72,16 @@ pass before you start the next:
 
   A5 (S) Arabic i18n for counting — roughly 199 missing counting.* keys in
          apps/web/src/locales/ar/inventory.json. Do this last; it must not block A1-A4.
+
+  A6 (S) batchAddProducts accepts any string as a product ID. products.*.productId
+         validates as a bare `string` — no uuid rule, no exists check — and the barcode
+         lookup only runs when productId is falsy. A barcode sent in the productId field
+         is appended to scope_filters['product_ids'] unvalidated and returns "success",
+         silently poisoning the count's product list. Validate as a real product
+         reference, UUID-shaped AND existing within the caller's company. Reject per-item
+         into the existing errors[] array — do not fail the whole batch, or a counter
+         scanning 40 items loses the other 39. The mobile lane fixes the client side
+         concurrently; this is the durable half that protects against any client.
 
 HARD CONSTRAINTS — violating the first one corrupts a parallel lane:
 
