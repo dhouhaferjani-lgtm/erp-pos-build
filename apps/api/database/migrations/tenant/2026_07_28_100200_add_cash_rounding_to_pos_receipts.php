@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -31,11 +32,32 @@ return new class extends Migration
      *    all pre-v3 data. Without the swap entirely, every rounded v3 sale
      *    fails its projection INSERT and dead-letters after 5 tries.
      *
-     *    Backfill safety: any row that satisfied the OLD constraint
-     *    (`total = subtotal + tax_amount - discount_amount`) has a NULL
-     *    adjustment, so `COALESCE(...) = 0` and the new expression reduces
-     *    to the old one. ADD CONSTRAINT therefore cannot fail on existing
-     *    tenant data and needs no NOT VALID escape hatch.
+     *    The constraint is ALWAYS added `NOT VALID` and then immediately
+     *    VALIDATEd in a savepoint-protected try/catch. Net effect on a
+     *    first apply is identical to a plain validating ADD: every row
+     *    that satisfied the OLD constraint has a NULL adjustment, so
+     *    `COALESCE(...) = 0` and the new expression reduces to the old one
+     *    — VALIDATE succeeds and `convalidated` is true.
+     *
+     *    The try/catch exists for the RE-APPLY-AFTER-ROLLBACK path, which a
+     *    plain validating ADD cannot survive: `down()` DROPS
+     *    `cash_rounding_adjustment`, destroying the values, so a rounded
+     *    receipt is left as bare `total 9.950 / subtotal 9.973` residue that
+     *    satisfies NEITHER identity. A validating ADD would then 23514 and
+     *    hard-fail `tenants:migrate` for that tenant with no in-code remedy.
+     *    Instead the constraint stays NOT VALID (still enforced on every new
+     *    INSERT/UPDATE — only the historical scan is skipped) and a warning
+     *    names the manual remedy: backfill `cash_rounding_adjustment` from
+     *    `canonical_bytes`, then `ALTER TABLE pos_receipts VALIDATE
+     *    CONSTRAINT pos_receipts_totals`. Task 13 deploy-checklist item.
+     *
+     *    The VALIDATE is wrapped in `DB::transaction()` — NOT a bare
+     *    try/catch — because Laravel runs PG migrations inside a transaction
+     *    (`Migration::$withinTransaction = true` + `PostgresGrammar
+     *    ::$transactions = true`), and in PostgreSQL a failed statement
+     *    poisons the whole transaction. `DB::transaction()` nested inside an
+     *    open transaction issues a SAVEPOINT and rolls back only to it, so
+     *    the migration survives the caught failure.
      *
      * 3. Partial unique indexes for the two new journal `source_type`
      *    families (procurement exemplar `2026_06_26_120000:44-48` — UNSCOPED
@@ -127,8 +149,26 @@ return new class extends Migration
             DB::statement(
                 'ALTER TABLE pos_receipts ADD CONSTRAINT pos_receipts_totals CHECK ('.
                 'total = subtotal + tax_amount - discount_amount + COALESCE(cash_rounding_adjustment, 0)'.
-                ')'
+                ') NOT VALID'
             );
+
+            // Savepoint-protected: see the docblock. On a first apply this
+            // succeeds and the constraint ends up fully validated, exactly as
+            // a plain validating ADD would have left it.
+            try {
+                DB::transaction(function (): void {
+                    DB::statement('ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals');
+                });
+            } catch (Throwable $e) {
+                Log::warning(
+                    'pos_receipts_totals left NOT VALID: existing rows violate the rounding-aware identity. '
+                        .'This is the re-apply-after-rollback path — down() dropped cash_rounding_adjustment and '
+                        .'the values are gone. New writes ARE still enforced. Remedy: backfill '
+                        .'pos_receipts.cash_rounding_adjustment from canonical_bytes, then run '
+                        .'"ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals".',
+                    ['exception' => $e->getMessage()],
+                );
+            }
 
             DB::statement(
                 'COMMENT ON COLUMN pos_receipts.cash_rounding_adjustment IS '.
@@ -163,10 +203,24 @@ return new class extends Migration
      * place and stay out of compliance with the restored expression. Fully
      * symmetric rollback would require deleting the rounded receipts, which
      * fiscal immutability forbids (`prevent_receipt_modification` blocks
-     * DELETE on pos_receipts outright). Flag for the Task 13 deploy
-     * checklist: rolling this migration back is a one-way door for the
-     * totals invariant on already-rounded data; re-applying `up()` restores
-     * full validation.
+     * DELETE on pos_receipts outright).
+     *
+     * AND IT IS LOSSY: dropping `cash_rounding_adjustment` DESTROYS the
+     * adjustment values. A rounded receipt is left as bare
+     * `total 9.950 / subtotal 9.973` residue that satisfies neither the
+     * legacy identity nor the rounding-aware one. Re-applying `up()`
+     * therefore does NOT restore full validation — it re-adds an all-NULL
+     * column, and `up()`'s VALIDATE attempt fails on exactly those residue
+     * rows, leaving the rounding-aware constraint NOT VALID with a logged
+     * warning. `up()` still SUCCEEDS (that is what its savepointed try/catch
+     * is for); only the historical scan stays skipped.
+     *
+     * Full recovery is a manual, out-of-migration operation: backfill
+     * `cash_rounding_adjustment` from each receipt's `canonical_bytes`, then
+     * `ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals`.
+     * Task 13 deploy-checklist item: rolling this migration back on a tenant
+     * with rounded sales is a one-way door for the totals invariant until
+     * that backfill is run.
      */
     public function down(): void
     {

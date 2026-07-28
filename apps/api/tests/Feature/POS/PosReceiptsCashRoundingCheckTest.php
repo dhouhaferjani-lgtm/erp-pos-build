@@ -340,6 +340,83 @@ final class PosReceiptsCashRoundingCheckTest extends TestCase
         ]);
     }
 
+    public function test_reapplying_up_after_a_rollback_survives_the_lost_adjustment_residue(): void
+    {
+        $this->requirePostgres();
+
+        $migration = require database_path(
+            'migrations/tenant/2026_07_28_100200_add_cash_rounding_to_pos_receipts.php'
+        );
+
+        // A rounded receipt, then a rollback: down() DROPS the adjustment
+        // column, so the row survives as bare `total 9.950 / subtotal 9.973`
+        // residue that satisfies NEITHER identity.
+        DB::table('pos_receipts')->insert($this->receiptRow([
+            'subtotal' => '9.973',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '9.950',
+            'cash_rounding_adjustment' => '-0.023',
+            'cash_rounding_denomination' => '0.0500',
+        ]));
+
+        $migration->down();
+
+        $this->assertFalse(Schema::hasColumn('pos_receipts', 'cash_rounding_adjustment'));
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+
+        // Re-apply. A validating ADD CONSTRAINT would 23514 here and hard-fail
+        // tenants:migrate for this tenant; the savepointed VALIDATE must let
+        // up() succeed instead.
+        $migration->up();
+
+        $this->assertTrue(Schema::hasColumn('pos_receipts', 'cash_rounding_adjustment'));
+        $this->assertNull(
+            DB::table('pos_receipts')->value('cash_rounding_adjustment'),
+            'down() destroyed the adjustment values — the re-added column is all-NULL',
+        );
+
+        $definition = $this->totalsConstraintDefinition();
+        $this->assertNotNull($definition);
+        $this->assertStringContainsString('cash_rounding_adjustment', $definition);
+        $this->assertStringContainsString('COALESCE', strtoupper($definition));
+
+        // Left NOT VALID: the residue row could not be validated.
+        $convalidated = DB::selectOne(
+            "SELECT convalidated FROM pg_constraint WHERE conname = 'pos_receipts_totals'"
+        );
+        $this->assertNotNull($convalidated);
+        $this->assertFalse(
+            (bool) $convalidated->convalidated,
+            'Expected pos_receipts_totals to stay NOT VALID after re-apply over unvalidatable residue',
+        );
+
+        // But NEW writes are still fully enforced.
+        $this->assertViolatesTotalsCheck([
+            'subtotal' => '9.973',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '9.973',
+            'cash_rounding_adjustment' => '-0.023',
+        ]);
+    }
+
+    public function test_first_apply_leaves_the_constraint_fully_validated(): void
+    {
+        $this->requirePostgres();
+
+        // The NOT VALID + VALIDATE pair must be a no-op difference on the
+        // normal path: after a clean migrate the constraint is convalidated,
+        // exactly as a plain validating ADD would have left it.
+        $convalidated = DB::selectOne(
+            "SELECT convalidated FROM pg_constraint WHERE conname = 'pos_receipts_totals'"
+        );
+
+        $this->assertNotNull($convalidated);
+        $this->assertTrue((bool) $convalidated->convalidated);
+        $this->assertStringNotContainsString('NOT VALID', (string) $this->totalsConstraintDefinition());
+    }
+
     public function test_receipt_model_exposes_the_new_columns(): void
     {
         $receipt = new Receipt;
