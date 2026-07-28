@@ -7,9 +7,11 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\ZReportProjection;
@@ -258,6 +260,103 @@ final class ZReportCashRoundingSummaryTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Completeness gate — the unordered-projection race
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_z_applied_before_a_window_receipt_is_projected_throws_retryable(): void
+    {
+        // A verified v3 SALE_RECEIPT event exists in the window but its
+        // PosCoreReceiptProjection job has not landed (or is mid-retry).
+        $this->seedReceipt(['adjustment' => '-0.023', 'event_version' => 3]);
+        $orphan = $this->storeSaleReceiptFiscalEvent(3, $this->terminal->id);
+
+        $event = $this->storeZReportFiscalEvent();
+
+        try {
+            $this->app->make(ZReportProjection::class)->apply($event);
+            $this->fail('Expected ProjectionDependencyMissingException.');
+        } catch (ProjectionDependencyMissingException $e) {
+            $this->assertSame('pos_core_z_report', $e->projectorName);
+            $this->assertSame($event->id, $e->fiscalEventId);
+            $this->assertStringContainsString('pos_receipts rows for 1', $e->missingDependency);
+        }
+
+        // The wrapping DB::transaction rolled back — no half-built Z.
+        $this->assertSame(0, ZReport::query()->where('fiscal_event_id', $event->id)->count());
+        $this->assertSame(0, Receipt::query()->where('fiscal_event_id', $orphan->id)->count());
+    }
+
+    public function test_redelivery_after_the_late_receipt_lands_converges_on_the_correct_summary(): void
+    {
+        $this->seedReceipt(['adjustment' => '-0.023', 'event_version' => 3]);
+        $lateEvent = $this->storeSaleReceiptFiscalEvent(3, $this->terminal->id);
+
+        $event = $this->storeZReportFiscalEvent();
+        $projector = $this->app->make(ZReportProjection::class);
+
+        // Attempt 1 — the race. Throws, nothing persisted.
+        try {
+            $projector->apply($event);
+            $this->fail('Expected ProjectionDependencyMissingException on the first attempt.');
+        } catch (ProjectionDependencyMissingException) {
+            // expected
+        }
+
+        // The sibling projection finally commits its pos_receipts row.
+        $this->attachReceiptToEvent($lateEvent, '0.027');
+
+        // Attempt 2 — Horizon redelivery. Now complete, and the summary
+        // includes the receipt that lost the first race.
+        $projector->apply($event);
+
+        $summary = $this->projectedReportData($event)['cash_rounding_summary'];
+
+        $this->assertIsArray($summary);
+        $this->assertSame('0.004', $summary['total_adjustment']);
+        $this->assertSame(2, $summary['receipt_count']);
+    }
+
+    public function test_gate_ignores_unprojected_v2_and_out_of_window_events(): void
+    {
+        // Neither of these can contribute to a v3-gated in-window aggregate,
+        // so an unprojected one must NOT block the Z (that would be a poison
+        // pill, not a retry).
+        $this->storeSaleReceiptFiscalEvent(2, $this->terminal->id);
+        $this->storeSaleReceiptFiscalEvent(3, $this->terminal->id, '2026-05-24 19:30:00');
+        $this->seedReceipt(['adjustment' => '-0.023', 'event_version' => 3]);
+
+        $event = $this->storeZReportFiscalEvent();
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $summary = $this->projectedReportData($event)['cash_rounding_summary'];
+
+        $this->assertIsArray($summary);
+        $this->assertSame('-0.023', $summary['total_adjustment']);
+        $this->assertSame(1, $summary['receipt_count']);
+    }
+
+    public function test_gate_ignores_quarantined_receipt_events(): void
+    {
+        // A quarantined SALE_RECEIPT never projects, so gating on it would
+        // exhaust retries and permanently block the Z.
+        $this->storeSaleReceiptFiscalEvent(3, $this->terminal->id, overrides: [
+            'integrity_status' => IntegrityStatus::Quarantined,
+            'integrity_exception_class' => IntegrityExceptionClass::CanonicalHashMismatch,
+            'integrity_exception_reason' => 'canonical_hash_mismatch:sha256(canonical_bytes)!=current_hash',
+        ]);
+        $this->seedReceipt(['adjustment' => '-0.023', 'event_version' => 3]);
+
+        $event = $this->storeZReportFiscalEvent();
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $summary = $this->projectedReportData($event)['cash_rounding_summary'];
+
+        $this->assertIsArray($summary);
+        $this->assertSame('-0.023', $summary['total_adjustment']);
+        $this->assertSame(1, $summary['receipt_count']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Hash normalization — additive, legacy-safe
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -356,9 +455,40 @@ final class ZReportCashRoundingSummaryTest extends TestCase
         $terminalId = $spec['terminal_id'] ?? $this->terminal->id;
         $adjustment = $spec['adjustment'];
         $isV3 = $spec['event_version'] >= 3;
+        $postedAt = $spec['posted_at'] ?? '2026-05-24 12:00:00';
 
-        $saleEvent = $this->storeSaleReceiptFiscalEvent($spec['event_version'], $terminalId);
+        // `pos_receipts.posted_at` is written verbatim from
+        // `fiscal_events.event_time_device` (PosCoreReceiptProjection:260,331),
+        // so the fixture keeps them equal — the completeness gate windows on
+        // the event column and the summary on the receipt column.
+        $saleEvent = $this->storeSaleReceiptFiscalEvent($spec['event_version'], $terminalId, $postedAt);
 
+        $this->attachReceiptToEvent(
+            event: $saleEvent,
+            adjustment: $adjustment,
+            isV3: $isV3,
+            postedAt: $postedAt,
+            isVoided: $spec['is_voided'] ?? false,
+            isTraining: $spec['is_training'] ?? false,
+        );
+    }
+
+    /**
+     * Write the `pos_receipts` projection row for an already-ingested
+     * SALE_RECEIPT fiscal event — i.e. simulate `PosCoreReceiptProjection`
+     * committing. Split out of {@see self::seedReceipt()} so a test can
+     * deliberately let the Z run BEFORE this happens.
+     *
+     * @param  numeric-string|null  $adjustment
+     */
+    private function attachReceiptToEvent(
+        FiscalEvent $event,
+        ?string $adjustment,
+        bool $isV3 = true,
+        string $postedAt = '2026-05-24 12:00:00',
+        bool $isVoided = false,
+        bool $isTraining = false,
+    ): void {
         $subtotal = '10.000';
         $taxAmount = '1.900';
         $total = bcadd(bcadd($subtotal, $taxAmount, 3), $adjustment ?? '0', 3);
@@ -367,17 +497,17 @@ final class ZReportCashRoundingSummaryTest extends TestCase
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
             'location_id' => $this->locationId,
-            'terminal_id' => $terminalId,
+            'terminal_id' => $event->terminal_id,
             'cashier_id' => $this->cashier->id,
-            'posted_at' => $spec['posted_at'] ?? '2026-05-24 12:00:00',
+            'posted_at' => $postedAt,
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
             'discount_amount' => '0.000',
             'total' => $total,
             'currency' => 'TND',
-            'is_voided' => $spec['is_voided'] ?? false,
-            'is_training' => $spec['is_training'] ?? false,
-            'fiscal_event_id' => $saleEvent->id,
+            'is_voided' => $isVoided,
+            'is_training' => $isTraining,
+            'fiscal_event_id' => $event->id,
         ];
 
         if ($isV3) {
@@ -388,7 +518,7 @@ final class ZReportCashRoundingSummaryTest extends TestCase
             $attributes['cash_rounding_denomination'] = '0.0500';
         }
 
-        if ($attributes['is_voided'] === true) {
+        if ($isVoided) {
             // pos_receipts_void_logic CHECK: a voided row must carry both
             // voided_at and voided_by.
             $attributes['voided_at'] = '2026-05-24 12:30:00';
@@ -399,11 +529,18 @@ final class ZReportCashRoundingSummaryTest extends TestCase
         Receipt::factory()->create($attributes);
     }
 
-    private function storeSaleReceiptFiscalEvent(int $eventVersion, string $terminalId): FiscalEvent
-    {
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function storeSaleReceiptFiscalEvent(
+        int $eventVersion,
+        string $terminalId,
+        string $eventTimeDevice = '2026-05-24 12:00:00',
+        array $overrides = [],
+    ): FiscalEvent {
         $sourceId = Str::uuid()->toString();
 
-        return FiscalEvent::query()->create([
+        return FiscalEvent::query()->create(array_merge([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
@@ -413,7 +550,7 @@ final class ZReportCashRoundingSummaryTest extends TestCase
             'event_version' => $eventVersion,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $this->nextSequence++,
-            'event_time_device' => '2026-05-24 12:00:00',
+            'event_time_device' => $eventTimeDevice,
             'business_date' => '2026-05-24',
             'chain_context' => 'z_session',
             'last_server_time_seen' => null,
@@ -433,7 +570,7 @@ final class ZReportCashRoundingSummaryTest extends TestCase
             'integrity_exception_reason' => null,
             'payload' => [],
             'payload_parse_status' => PayloadParseStatus::Parsed,
-        ])->refresh();
+        ], $overrides))->refresh();
     }
 
     private function storeZReportFiscalEvent(): FiscalEvent

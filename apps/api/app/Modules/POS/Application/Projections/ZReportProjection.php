@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Projections;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\ZReport;
 use App\Shared\Domain\CashRoundingCutover;
@@ -188,6 +189,10 @@ final class ZReportProjection implements FiscalEventProjector
      * receipt that needed no rounding stores '0.000', not NULL, so a bare
      * `whereNotNull` would count every v3 receipt on the terminal.
      *
+     * Guarded by {@see self::assertWindowReceiptsProjected()} — an aggregate
+     * over projections that have not all landed yet would be a PERMANENT
+     * undercount, because `apply()` early-returns on redelivery.
+     *
      * Runs on a Horizon worker with NO CompanyContext: scale 3 is the
      * projection's fixed storage scale (`pos_receipts.cash_rounding_adjustment`
      * is `decimal(12,3)`, and every money string this method's siblings emit is
@@ -211,6 +216,8 @@ final class ZReportProjection implements FiscalEventProjector
         if ($terminalId === '' || $periodStart === null || $periodEnd === null) {
             return $zero;
         }
+
+        $this->assertWindowReceiptsProjected($event, $terminalId, $periodStart, $periodEnd);
 
         /** @var object{total: mixed, cnt: mixed}|null $row */
         $row = DB::table('pos_receipts')
@@ -242,6 +249,91 @@ final class ZReportProjection implements FiscalEventProjector
             'total_adjustment' => bcadd($total, '0', self::ROUNDING_SUMMARY_SCALE),
             'receipt_count' => is_numeric($row->cnt) ? (int) $row->cnt : 0,
         ];
+    }
+
+    /**
+     * COMPLETENESS GATE for the derived rounding aggregate.
+     *
+     * `OutboxIngestor` enqueues ONE unordered projection job per fiscal event,
+     * so nothing orders `PosCoreReceiptProjection` before this projector. A
+     * SALE_RECEIPT job that is mid-retry (e.g. it threw
+     * {@see OriginalReceiptUnresolvableException} on its first attempt) can
+     * lose the race to the Z. Without a gate the Z would project a summary
+     * that silently omits that receipt — and `apply()` early-returns on
+     * redelivery, so the undercount would be PERMANENT rather than
+     * self-healing.
+     *
+     * **The invariant.** Every fiscal event that is
+     *   `event_type = SALE_RECEIPT` AND `integrity_status = verified` AND
+     *   `event_version >= CashRoundingCutover::EVENT_VERSION` AND
+     *   on this terminal AND `event_time_device` inside the Z window
+     * MUST already have its `pos_receipts` projection row. Any missing row is
+     * a not-yet-visible cross-projector dependency → throw
+     * {@see ProjectionDependencyMissingException}; the job's fail-closed
+     * `catch (Throwable)` advances attempt accounting and Horizon redelivers
+     * with backoff until the sibling projection commits. Same retry contract
+     * as `PosCoreReceiptProjection::assertOriginalReceiptResolvableForRefundOrVoid()`.
+     *
+     * **Why the expected set is server-side fiscal events and NOT the device
+     * payload's own receipt count.** Both candidate payload fields count a
+     * differently-scoped set from the server's projected rows, so equality
+     * with them is not an invariant and a mismatch would be a PERMANENT poison
+     * pill (retries exhaust, the Z never projects) rather than a transient
+     * retry:
+     *   - `receipt_totals.count` is the device's `reportTotals.sales_count`
+     *     (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:480-481`) — sales
+     *     only, with refunds (`refunds_totals.count`) and voids
+     *     (`voids_totals.count`) counted in separate blocks, and with no v2/v3
+     *     discrimination at all.
+     *   - `operational_event_range.receipt_count` is
+     *     `receiptSnapshots.length` (`apps/pos/src/lib/offline/zReportService.ts:640`),
+     *     i.e. rows of the device's `offline_receipts` table for the shift
+     *     window with `is_training = 0` (`zReportService.ts:159-176`);
+     *     refunds settled at the terminal live in a SEPARATE
+     *     `local_refund_records` table and are excluded, while the server
+     *     projects them as `pos_receipts` rows.
+     * The fiscal-event set has none of those gaps: it is exactly the set of
+     * events whose projections this summary reads, is v3-scoped like the
+     * summary itself, and every member is guaranteed to land a
+     * `pos_receipts` row (that is `PosCoreReceiptProjection`'s contract), so
+     * the gate can only block on a genuinely unprojected receipt.
+     *
+     * Windowed on `fiscal_events.event_time_device` because
+     * `pos_receipts.posted_at` is written verbatim from it
+     * (`PosCoreReceiptProjection:260,331`) — the two sets are the same rows.
+     */
+    private function assertWindowReceiptsProjected(
+        FiscalEvent $event,
+        string $terminalId,
+        string $periodStart,
+        string $periodEnd,
+    ): void {
+        $unprojected = DB::table('fiscal_events')
+            ->leftJoin('pos_receipts', 'pos_receipts.fiscal_event_id', '=', 'fiscal_events.id')
+            ->where('fiscal_events.terminal_id', $terminalId)
+            ->where('fiscal_events.event_type', FiscalEventType::SALE_RECEIPT->value)
+            ->where('fiscal_events.integrity_status', IntegrityStatus::Verified->value)
+            ->where('fiscal_events.event_version', '>=', CashRoundingCutover::EVENT_VERSION)
+            ->whereBetween('fiscal_events.event_time_device', [$periodStart, $periodEnd])
+            ->whereNull('pos_receipts.id')
+            ->count();
+
+        if ($unprojected > 0) {
+            throw new ProjectionDependencyMissingException(
+                projectorName: $this->name(),
+                fiscalEventId: $event->id,
+                missingDependency: sprintf(
+                    'pos_receipts rows for %d verified v%d+ SALE_RECEIPT event(s) on terminal %s '.
+                    'inside the Z window [%s, %s] — deriving cash_rounding_summary before those '.
+                    'projections land would permanently undercount the Z',
+                    $unprojected,
+                    CashRoundingCutover::EVENT_VERSION,
+                    $terminalId,
+                    $periodStart,
+                    $periodEnd,
+                ),
+            );
+        }
     }
 
     /**
