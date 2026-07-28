@@ -551,7 +551,9 @@ Useful narrowing flags: `--projector=`, `--event-id=`, `--tenant=`,
 **🔴 The retry above does NOT cover the most likely cause. Check this FIRST.**
 
 `fiscal:retry-projections` only selects `dead_lettered` rows, and `pending` rows
-past the age threshold (`RetryFiscalProjectionsCommand.php:185-189`). But
+that are **both** past the age threshold **and** already at
+`attempts >= 5` (`EXHAUSTED_ATTEMPTS`) — the two are `AND`ed, not alternatives
+(`RetryFiscalProjectionsCommand.php:185-189`). But
 `PosCoreReceiptProjection`'s terminal-not-found branch **logs a warning and
 `return`s** (`:209-216`) instead of throwing — so `apply()` completes
 "successfully", and `ApplyFiscalEventProjectionJob` marks the projection
@@ -576,10 +578,21 @@ projection so the retry path can see it:**
 
 ```sql
 UPDATE fiscal_event_projections
-SET projection_status = 'pending', attempts = 0, last_error = NULL
+SET projection_status = 'dead_lettered'
 WHERE projector_name = 'pos_core_receipt'
   AND fiscal_event_id = '<the event id>';
 ```
+
+⚠️ **Reset to `dead_lettered`, NOT to `pending` with `attempts = 0`.** That
+looks like the natural "put it back at the start" reset and is exactly wrong
+here: the command's `pending` branch is conjoined with
+`attempts >= EXHAUSTED_ATTEMPTS` (`:189`, `EXHAUSTED_ATTEMPTS = 5` at `:25`), so
+a `pending`/`attempts = 0` row satisfies **neither** arm of the selector and
+becomes permanently invisible. **`--event-id` does not rescue it** — that flag
+`AND`s onto the same query (`:201-204`); it narrows the selection, it does not
+bypass the status filter. `dead_lettered` matches the first arm unconditionally,
+and the command zeroes `attempts` and clears `dead_lettered_at` itself when it
+picks the row up (`:231-235`).
 
 Then re-run `fiscal:retry-projections --event-id=<id>` (add `--min-age-minutes=0`
 if the row is younger than the threshold), and retry the Z afterwards.
@@ -720,9 +733,13 @@ signs v3 and become wrong the moment one does.
    purpose-holder still gets posted to.** `Account::findByPurpose`
    (`apps/api/app/Modules/Accounting/Domain/Account.php:238-243`) is
    `forCompany()->withPurpose()->first()` and never applies the `active` scope
-   that exists two methods up (`:196`). Both cash-rounding GL paths inherit
-   that: the pre-flight probe `GeneralLedgerService::hasAccountForPurpose`
-   (`:4369-4372`) and the posting path `getAccountByPurpose` →
+   that exists two methods up (`:194`). Both cash-rounding GL paths inherit
+   that, in
+   `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php`
+   (**`Domain/Services`, not `Application/Services`** — a sibling
+   `ChartOfAccountsService` lives under `Application/Services` and will catch a
+   careless grep): the pre-flight probe `hasAccountForPurpose` (`:4369-4372`)
+   and the posting path `getAccountByPurpose` →
    `findByPurposeOrFail` (`:4355-4358`). **Consequence:** an operator who
    "retires" the 658 / 758 tolerance account or the rounding account by
    unticking *active* — the obvious way to retire an account — does not get a
