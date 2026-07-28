@@ -21,6 +21,7 @@ final class CountingDiscrepancyReportService
         private readonly InventoryCountingService $countingService,
         private readonly CountingReconciliationPayloadBuilder $payloadBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly LateSyncResidualDetector $lateSyncResidualDetector,
     ) {}
 
     /**
@@ -52,6 +53,7 @@ final class CountingDiscrepancyReportService
                 static fn (array $item): bool => $item['is_flagged'] === true,
             )),
             'counter_performance' => $this->counterPerformance($counting, $items),
+            'late_sync_residuals' => $this->lateSyncResidualDetector->forCounting($counting),
         ];
     }
 

@@ -69,6 +69,12 @@ function makeReconciliation(items: ReconciliationItem[]): ReconciliationData {
     summary: { total: items.length, auto_resolved: 0, needs_attention: 0, manually_overridden: 0 },
     items,
     late_sales_flags: [],
+    terminal_sync_health: {
+      requires_acknowledgement: false,
+      acknowledgement_signature: null,
+      stale_after_seconds: 300,
+      terminals: [],
+    },
   }
 }
 
@@ -238,5 +244,116 @@ describe('CountingReviewPage finalize gating', () => {
     renderReviewPage()
 
     expect(screen.getByText('counting.review.lateSalesDetected')).toBeInTheDocument()
+  })
+
+  it('requires an explicit terminal-sync acknowledgement before finalize enables', async () => {
+    const user = userEvent.setup()
+    const recon = makeReconciliation([makeItem()])
+    recon.terminal_sync_health = {
+      requires_acknowledgement: true,
+      acknowledgement_signature: 'signature-1',
+      stale_after_seconds: 300,
+      terminals: [{
+        id: 'terminal-1',
+        code: 'POS01',
+        name: 'Front Till',
+        location_id: 'location-1',
+        state: 'pending',
+        pending_receipt_count: 3,
+        last_sync_at: '2026-07-28T12:00:00Z',
+        reported_at: '2026-07-28T12:00:00Z',
+      }],
+    }
+    h.reconciliation = recon
+    renderReviewPage()
+
+    const finalizeButton = screen.getByRole('button', { name: /counting\.actions\.finalize/ })
+    expect(finalizeButton).toBeDisabled()
+    expect(screen.getByText('counting.review.terminalSync.title')).toBeInTheDocument()
+    expect(screen.getByText('POS01 — Front Till')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', {
+      name: 'counting.review.terminalSync.acknowledge',
+    }))
+    expect(finalizeButton).not.toBeDisabled()
+
+    await user.click(finalizeButton)
+    const confirmButtons = screen.getAllByRole('button', {
+      name: /counting\.actions\.finalize/,
+    })
+    const confirmButton = confirmButtons.at(-1)
+    if (!confirmButton) {
+      throw new Error('Expected a finalize confirmation button.')
+    }
+    await user.click(confirmButton)
+
+    expect(h.finalizeMutate).toHaveBeenCalledWith(
+      {
+        id: '77777777-7777-4777-8777-777777777777',
+        acknowledgeTerminalSyncRisk: true,
+        terminalSyncHealthSignature: 'signature-1',
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('requires a new acknowledgement when refreshed terminal risk changes', async () => {
+    const user = userEvent.setup()
+    const recon = makeReconciliation([makeItem()])
+    recon.terminal_sync_health = {
+      requires_acknowledgement: true,
+      acknowledgement_signature: 'signature-1',
+      stale_after_seconds: 300,
+      terminals: [{
+        id: 'terminal-1',
+        code: 'POS01',
+        name: 'Front Till',
+        location_id: 'location-1',
+        state: 'pending',
+        pending_receipt_count: 3,
+        last_sync_at: '2026-07-28T12:00:00Z',
+        reported_at: '2026-07-28T12:00:00Z',
+      }],
+    }
+    h.reconciliation = recon
+    const view = renderReviewPage()
+
+    const acknowledgement = screen.getByRole('checkbox', {
+      name: 'counting.review.terminalSync.acknowledge',
+    })
+    const finalizeButton = screen.getByRole('button', { name: /counting\.actions\.finalize/ })
+
+    await user.click(acknowledgement)
+    expect(finalizeButton).not.toBeDisabled()
+
+    const reportedTerminal = recon.terminal_sync_health.terminals[0]
+    if (!reportedTerminal) {
+      throw new Error('Expected terminal sync-health fixture.')
+    }
+
+    h.reconciliation = {
+      ...recon,
+      terminal_sync_health: {
+        ...recon.terminal_sync_health,
+        acknowledgement_signature: 'signature-2',
+        terminals: [{
+          ...reportedTerminal,
+          pending_receipt_count: 4,
+          reported_at: '2026-07-28T12:01:00Z',
+        }],
+      },
+    }
+    view.rerender(
+      <MemoryRouter
+        initialEntries={['/inventory/counting/77777777-7777-4777-8777-777777777777/review']}
+      >
+        <Routes>
+          <Route path="/inventory/counting/:id/review" element={<CountingReviewPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(acknowledgement).not.toBeChecked()
+    expect(finalizeButton).toBeDisabled()
   })
 })

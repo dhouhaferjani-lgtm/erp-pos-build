@@ -77,8 +77,15 @@ export const countingApi = {
   },
 
   // Finalize
-  finalize: async (id: string): Promise<void> => {
-    await apiPost(`${BASE_URL}/${id}/finalize`, {})
+  finalize: async (
+    id: string,
+    acknowledgeTerminalSyncRisk: boolean,
+    terminalSyncHealthSignature: string | null,
+  ): Promise<void> => {
+    await apiPost(`${BASE_URL}/${id}/finalize`, {
+      acknowledge_terminal_sync_risk: acknowledgeTerminalSyncRisk,
+      terminal_sync_health_signature: terminalSyncHealthSignature,
+    })
   },
 
   // Reconciliation

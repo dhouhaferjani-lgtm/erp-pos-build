@@ -141,6 +141,38 @@ export interface LateSaleFlag {
   occurred_at: string
 }
 
+export type TerminalSyncHealthState = 'healthy' | 'pending' | 'stale' | 'unknown'
+
+export interface TerminalSyncHealth {
+  requires_acknowledgement: boolean
+  acknowledgement_signature: string | null
+  stale_after_seconds: number
+  terminals: {
+    id: string
+    code: string
+    name: string
+    location_id: string
+    state: TerminalSyncHealthState
+    pending_receipt_count: number | null
+    last_sync_at: string | null
+    reported_at: string | null
+  }[]
+}
+
+export interface LateSyncResidual {
+  movement_id: string
+  counting_id: string
+  counting_item_id: string
+  product_id: string
+  variant_id: string | null
+  location_id: string
+  product: { id: string; name: string; sku: string; quantity_decimals: number }
+  location: { id: string; name: string; code: string | null }
+  occurred_at: string
+  arrived_at: string
+  quantity: string
+}
+
 // Flag-reason semantics (mirror of the PHP CountingItemFlagReason enum).
 // Blocking reasons force review and disable finalize; `normalized_agreement`
 // is informational only.
@@ -230,6 +262,7 @@ export interface ReconciliationData {
   summary: ReconciliationSummary
   items: ReconciliationItem[]
   late_sales_flags: LateSaleFlag[]
+  terminal_sync_health: TerminalSyncHealth
 }
 
 export interface DiscrepancyReportSummary {
@@ -275,6 +308,7 @@ export interface DiscrepancyReport {
   summary: DiscrepancyReportSummary
   flagged_items: ReconciliationItem[]
   counter_performance: DiscrepancyReportCounterPerformance[]
+  late_sync_residuals: LateSyncResidual[]
 }
 
 // Form types

@@ -13,6 +13,7 @@ import { isBlockingFlag, type ReconciliationItem } from '../types'
 import { textColors } from '@/lib/designTokens'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Checkbox } from '@/components/atoms'
 
 // A line that must be resolved before the session can finalize: still pending,
 // an onboarding opening awaiting its cost, or carrying an unresolved blocking
@@ -45,6 +46,7 @@ export function CountingReviewPage() {
   const finalize = useFinalizeCounting()
 
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false)
+  const [acknowledgedTerminalSyncRisk, setAcknowledgedTerminalSyncRisk] = useState<string | null>(null)
 
   if (isLoading || !counting) {
     return (
@@ -55,15 +57,37 @@ export function CountingReviewPage() {
   }
 
   const lateSalesFlags = reconciliation?.late_sales_flags ?? []
+  const terminalSyncHealth = reconciliation?.terminal_sync_health
+  const terminalSyncRiskRequiresAcknowledgement =
+    terminalSyncHealth?.requires_acknowledgement === true
+  const terminalSyncRiskTerminals = (terminalSyncHealth?.terminals ?? []).reduce<
+    NonNullable<typeof terminalSyncHealth>['terminals']
+  >((terminals, terminal) => {
+    if (terminal.state !== 'healthy') {
+      terminals.push(terminal)
+    }
+
+    return terminals
+  }, [])
+  const terminalSyncRiskSignature = terminalSyncHealth?.acknowledgement_signature ?? ''
+  const terminalSyncRiskAcknowledged =
+    acknowledgedTerminalSyncRisk === terminalSyncRiskSignature
   const hasBlockingItem = (reconciliation?.items ?? []).some(itemBlocksFinalize)
 
   const canFinalize =
     counting.status === 'pending_review' &&
     reconciliation?.summary.needs_attention === 0 &&
-    !hasBlockingItem
+    !hasBlockingItem &&
+    (!terminalSyncRiskRequiresAcknowledgement || terminalSyncRiskAcknowledged)
 
   const handleFinalize = () => {
-    finalize.mutate(countingId, {
+    finalize.mutate({
+      id: countingId,
+      acknowledgeTerminalSyncRisk: terminalSyncRiskAcknowledged,
+      terminalSyncHealthSignature: terminalSyncRiskAcknowledged
+        ? terminalSyncRiskSignature
+        : null,
+    }, {
       onSuccess: () => {
         void navigate(`/inventory/counting/${String(countingId)}`)
       },
@@ -124,6 +148,46 @@ export function CountingReviewPage() {
             <p className={`text-sm ${colorTokens.intent.caution.textStrong} mt-1`}>
               {t('counting.review.resolveBeforeFinalize')}
             </p>
+          </div>
+        </div>
+      )}
+
+      {terminalSyncHealth?.requires_acknowledgement === true && (
+        <div className={`p-4 ${colorTokens.intent.caution.bgSubtle} border ${colorTokens.intent.caution.borderSubtle} rounded-lg`}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className={`w-5 h-5 ${colorTokens.intent.caution.text} flex-shrink-0 mt-0.5`} />
+            <div className="flex-1">
+              <p className={`font-medium ${colorTokens.intent.caution.textStronger}`}>
+                {t('counting.review.terminalSync.title')}
+              </p>
+              <p className={`text-sm ${colorTokens.intent.caution.textStrong} mt-1`}>
+                {t('counting.review.terminalSync.description')}
+              </p>
+              <ul className={`mt-3 space-y-1 text-sm ${colorTokens.intent.caution.textStrong}`}>
+                {terminalSyncRiskTerminals.map((terminal) => (
+                  <li key={terminal.id}>
+                    <span className="font-medium">
+                      {terminal.code} — {terminal.name}
+                    </span>{' '}
+                    {t(`counting.review.terminalSync.states.${terminal.state}`, {
+                      count: terminal.pending_receipt_count ?? 0,
+                    })}
+                  </li>
+                ))}
+              </ul>
+              <label className="mt-4 flex items-start gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={terminalSyncRiskAcknowledged}
+                  onChange={(event) => {
+                    setAcknowledgedTerminalSyncRisk(
+                      event.target.checked ? terminalSyncRiskSignature : null,
+                    )
+                  }}
+                  className="mt-0.5"
+                />
+                <span>{t('counting.review.terminalSync.acknowledge')}</span>
+              </label>
+            </div>
           </div>
         </div>
       )}

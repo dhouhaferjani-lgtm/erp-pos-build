@@ -17,8 +17,10 @@ vi.mock('@/stores/connectivityStore', () => ({
 const {
   setPendingCountSpy,
   getPendingReceiptCountSpy,
+  reportTerminalSyncHealthSpy,
   setSyncMetadataSpy,
   syncStoreState,
+  moduleState,
 } = vi.hoisted(() => {
   // Stateful mock — completeSync writes lastSyncAt the way the real
   // store action does, so the scheduler's post-completeSync read picks
@@ -48,7 +50,13 @@ const {
     syncStoreState: state,
     setPendingCountSpy: state.setPendingCount,
     getPendingReceiptCountSpy: vi.fn<(db: unknown) => Promise<number>>(),
+    reportTerminalSyncHealthSpy: vi.fn<(
+      terminalId: string,
+      pendingReceiptCount: number,
+      lastSyncAt: number,
+    ) => Promise<void>>(),
     setSyncMetadataSpy: vi.fn<(db: unknown, key: string, value: string) => Promise<void>>(),
+    moduleState: { inventoryEnabled: true },
   };
 });
 
@@ -66,6 +74,10 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
 vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   setSyncMetadata: setSyncMetadataSpy,
   getSyncMetadata: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/sync/terminalSyncHealth', () => ({
+  reportTerminalSyncHealth: reportTerminalSyncHealthSpy,
 }));
 
 vi.mock('@/stores/authStore', () => ({
@@ -90,8 +102,12 @@ const productRefreshSpy = vi.fn().mockResolvedValue(undefined);
 const paymentRefreshSpy = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/stores/productStore', () => ({
+  hasModule: vi.fn(() => moduleState.inventoryEnabled),
   useProductStore: {
-    getState: vi.fn(() => ({ refreshFromSQLite: productRefreshSpy })),
+    getState: vi.fn(() => ({
+      companyConfig: { all_enabled_modules: moduleState.inventoryEnabled ? ['Inventory'] : [] },
+      refreshFromSQLite: productRefreshSpy,
+    })),
   },
 }));
 
@@ -146,6 +162,9 @@ describe('SyncScheduler', () => {
     getPendingReceiptCountSpy.mockResolvedValue(0);
     setSyncMetadataSpy.mockReset();
     setSyncMetadataSpy.mockResolvedValue(undefined);
+    reportTerminalSyncHealthSpy.mockReset();
+    reportTerminalSyncHealthSpy.mockResolvedValue(undefined);
+    moduleState.inventoryEnabled = true;
   });
 
   describe('tick', () => {
@@ -246,6 +265,40 @@ describe('SyncScheduler', () => {
 
       const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
       await expect(scheduler.syncNow()).resolves.not.toThrow();
+    });
+
+    it('reports the SQLite pending count and completed-sync timestamp for counting review', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+      getPendingReceiptCountSpy.mockResolvedValueOnce(4);
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await scheduler.syncNow();
+
+      expect(reportTerminalSyncHealthSpy).toHaveBeenCalledOnce();
+      expect(reportTerminalSyncHealthSpy).toHaveBeenCalledWith(
+        'terminal-1',
+        4,
+        expect.any(Number),
+      );
+    });
+
+    it('keeps a completed sync successful when health reporting fails', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+      reportTerminalSyncHealthSpy.mockRejectedValueOnce(new Error('stale server'));
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+
+      await expect(scheduler.syncNow()).resolves.not.toThrow();
+    });
+
+    it('does not report inventory health when the Inventory module is disabled', async () => {
+      moduleState.inventoryEnabled = false;
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await scheduler.syncNow();
+
+      expect(reportTerminalSyncHealthSpy).not.toHaveBeenCalled();
     });
   });
 });

@@ -180,6 +180,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('inventory.onboarding-worklist');
 
+    Route::post('/inventory/terminal-sync-health', [InventoryCountingController::class, 'reportTerminalSyncHealth'])
+        ->middleware('can:pos.operate_terminal')
+        ->name('inventory.terminal-sync-health.store');
+
     // Dashboard
     Route::get('/inventory/countings/dashboard', [InventoryCountingController::class, 'dashboard'])
         ->middleware('can:inventory.view')

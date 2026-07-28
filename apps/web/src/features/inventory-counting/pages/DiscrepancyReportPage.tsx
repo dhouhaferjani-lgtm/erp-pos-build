@@ -13,6 +13,7 @@ import {
 import { CountingStatusBadge } from '../components/CountingStatusBadge'
 import { useDiscrepancyReport, useExportReport } from '../api/queries'
 import { formatTND } from '@/lib/format'
+import { formatQuantity } from '@/lib/decimal'
 import { cn } from '@/lib/utils'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
@@ -105,6 +106,56 @@ export function DiscrepancyReportPage() {
         </div>
         )}
       </div>
+
+      {report.late_sync_residuals.length > 0 && (
+        <div className={`${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle} rounded-lg p-6`}>
+          <h2 className={`text-lg font-semibold flex items-center gap-2 ${colorTokens.intent.danger.textStronger}`}>
+            <AlertTriangle className="w-5 h-5" />
+            {t('counting.report.lateSyncResiduals.title')}
+          </h2>
+          <p className={`mt-2 text-sm ${colorTokens.intent.danger.textStrong}`}>
+            {t('counting.report.lateSyncResiduals.description')}
+          </p>
+          <p className={`mt-1 text-sm font-medium ${colorTokens.intent.danger.textStronger}`}>
+            {t('counting.report.lateSyncResiduals.noAutoCorrection')}
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <DataTable className="min-w-full">
+              <thead>
+                <tr>
+                  <th className="px-3 py-2 text-start text-xs uppercase">
+                    {t('counting.reconciliation.product')}
+                  </th>
+                  <th className="px-3 py-2 text-start text-xs uppercase">
+                    {t('counting.reconciliation.location')}
+                  </th>
+                  <th className="px-3 py-2 text-end text-xs uppercase">
+                    {t('counting.report.lateSyncResiduals.quantity')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.late_sync_residuals.map((residual) => (
+                  <tr key={residual.movement_id}>
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{residual.product.name}</div>
+                      <div className={`text-xs ${colorTokens.text.subtle}`}>
+                        {residual.product.sku}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {residual.location.code ?? residual.location.name}
+                    </td>
+                    <td className="px-3 py-2 text-end font-mono">
+                      {formatQuantity(residual.quantity, residual.product.quantity_decimals)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">

@@ -8,6 +8,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\CountingReconciliationPayloadBuilder;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Application\Services\TerminalSyncHealthService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -26,6 +27,7 @@ class CountingItemController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
         private readonly CountingReconciliationPayloadBuilder $payloadBuilder,
+        private readonly TerminalSyncHealthService $terminalSyncHealthService,
     ) {}
 
     /**
@@ -201,6 +203,7 @@ class CountingItemController extends Controller
                 // Late-sale flags captured on the session during the block
                 // window — surfaced as a review banner.
                 'late_sales_flags' => $counting->late_sales_flags ?? [],
+                'terminal_sync_health' => $this->terminalSyncHealthService->forCounting($counting),
             ],
         ]);
     }

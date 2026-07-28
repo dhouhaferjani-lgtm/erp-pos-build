@@ -65,6 +65,7 @@ const mockReport = {
   },
   flagged_items: [],
   counter_performance: [],
+  late_sync_residuals: [],
 }
 
 describe('DiscrepancyReportPage', () => {
@@ -105,5 +106,41 @@ describe('DiscrepancyReportPage', () => {
     renderPage()
 
     expect(usedKeys).toContain('counting.report.currentCostBasisNote')
+  })
+
+  it('surfaces late-sync residuals and states that they are not auto-corrected', () => {
+    mockUseDiscrepancyReport.mockReturnValue({
+      data: {
+        ...mockReport,
+        late_sync_residuals: [{
+          movement_id: 'movement-1',
+          counting_id: 'counting-1',
+          counting_item_id: 'item-1',
+          product_id: 'product-1',
+          variant_id: null,
+          location_id: 'location-1',
+          product: {
+            id: 'product-1',
+            name: 'Late Widget',
+            sku: 'LW-1',
+            quantity_decimals: 2,
+          },
+          location: { id: 'location-1', name: 'Main Shop', code: 'SHOP' },
+          occurred_at: '2026-07-28T09:00:00Z',
+          arrived_at: '2026-07-28T12:00:00Z',
+          quantity: '2.0000',
+        }],
+      },
+      isLoading: false,
+      error: null,
+    })
+
+    renderPage()
+
+    expect(usedKeys).toContain('counting.report.lateSyncResiduals.title')
+    expect(usedKeys).toContain('counting.report.lateSyncResiduals.description')
+    expect(usedKeys).toContain('counting.report.lateSyncResiduals.noAutoCorrection')
+    expect(screen.getByText('Late Widget')).toBeInTheDocument()
+    expect(screen.getByText('2.00')).toBeInTheDocument()
   })
 })

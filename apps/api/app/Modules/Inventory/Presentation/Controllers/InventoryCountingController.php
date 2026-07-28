@@ -9,9 +9,11 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\CountingDiscrepancyReportService;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Application\Services\TerminalSyncHealthService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Domain\Exceptions\TerminalSyncAcknowledgementRequiredException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Presentation\Requests\ActivateCountingRequest;
@@ -20,6 +22,8 @@ use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\CreateDraftCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\POS\TerminalSyncHealthSource;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -35,6 +39,8 @@ class InventoryCountingController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
         private readonly CountingDiscrepancyReportService $reportService,
+        private readonly TerminalSyncHealthService $terminalSyncHealthService,
+        private readonly TerminalSyncHealthSource $terminalSyncHealthSource,
     ) {}
 
     /**
@@ -308,7 +314,6 @@ class InventoryCountingController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         /** @var User $user */
         $user = $request->user();
-
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
         $userId = (string) $user->id;
 
@@ -439,15 +444,74 @@ class InventoryCountingController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         /** @var User $user */
         $user = $request->user();
+        /** @var array{acknowledge_terminal_sync_risk?: bool, terminal_sync_health_signature?: string|null} $validated */
+        $validated = Validator::make($request->all(), [
+            'acknowledge_terminal_sync_risk' => ['sometimes', 'boolean'],
+            'terminal_sync_health_signature' => ['nullable', 'string', 'size:64'],
+        ])->validate();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
 
-        $this->countingService->finalize($counting, $user);
+        try {
+            $this->countingService->finalize(
+                $counting,
+                $user,
+                $validated['acknowledge_terminal_sync_risk'] ?? false,
+                $validated['terminal_sync_health_signature'] ?? null,
+            );
+        } catch (TerminalSyncAcknowledgementRequiredException $exception) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_SYNC_ACKNOWLEDGEMENT_REQUIRED',
+                    'message' => $exception->getMessage(),
+                    'terminal_sync_health' => $this->terminalSyncHealthService->forCounting($counting),
+                ],
+            ], 422);
+        }
 
         return response()->json([
             'message' => 'Counting finalized successfully',
             'data' => $this->transformCounting($counting->fresh() ?? $counting),
         ]);
+    }
+
+    /**
+     * Receive device-local pending-receipt truth after a POS sync tick.
+     */
+    public function reportTerminalSyncHealth(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        /** @var array{terminal_id: string, hardware_identifier: string, pending_receipt_count: int, last_sync_at: string} $validated */
+        $validated = Validator::make($request->all(), [
+            'terminal_id' => ['required', 'uuid'],
+            'hardware_identifier' => ['required', 'string', 'max:255'],
+            'pending_receipt_count' => ['required', 'integer', 'min:0'],
+            'last_sync_at' => ['required', 'date'],
+        ])->validate();
+
+        $terminal = $this->terminalSyncHealthSource->physicalForDevice(
+            $companyId,
+            $validated['terminal_id'],
+            $validated['hardware_identifier'],
+        );
+
+        if ($terminal === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_DEVICE_MISMATCH',
+                    'message' => 'The physical terminal is not claimed by this device.',
+                ],
+            ], 422);
+        }
+
+        $this->terminalSyncHealthService->record(
+            $companyId,
+            $terminal['id'],
+            $validated['pending_receipt_count'],
+            CarbonImmutable::parse($validated['last_sync_at']),
+        );
+
+        return response()->json(['data' => ['recorded' => true]]);
     }
 
     /**

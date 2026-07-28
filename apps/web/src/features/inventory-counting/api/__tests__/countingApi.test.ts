@@ -11,10 +11,24 @@ vi.mock('@/lib/api', () => ({
   apiPost: vi.fn(),
 }))
 
-import { api, apiGet } from '@/lib/api'
+import { api, apiGet, apiPost } from '@/lib/api'
 
 const mockApi = api as unknown as { get: ReturnType<typeof vi.fn> }
 const mockApiGet = vi.mocked(apiGet)
+const mockApiPost = vi.mocked(apiPost)
+
+describe('countingApi.finalize', () => {
+  it('sends the explicit terminal-sync-risk acknowledgement', async () => {
+    mockApiPost.mockResolvedValue(undefined)
+
+    await countingApi.finalize('counting-1', true, 'health-signature')
+
+    expect(mockApiPost).toHaveBeenCalledWith('/inventory/countings/counting-1/finalize', {
+      acknowledge_terminal_sync_risk: true,
+      terminal_sync_health_signature: 'health-signature',
+    })
+  })
+})
 
 describe('countingApi.list', () => {
   beforeEach(() => {
@@ -146,6 +160,7 @@ describe('countingApi.getReport', () => {
           accuracy_rate: 50,
         },
       ],
+      late_sync_residuals: [],
     } satisfies DiscrepancyReport
 
     mockApiGet.mockResolvedValue(report)

@@ -12,8 +12,10 @@ use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Projections\ZReportProjection;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
+use App\Modules\POS\Application\Services\TerminalSyncHealthSourceService;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
+use App\Shared\Contracts\POS\TerminalSyncHealthSource;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -37,6 +39,10 @@ final class POSServiceProvider extends ServiceProvider
         $this->app->bind(
             Nf525DataProviderContract::class,
             Nf525DataProvider::class,
+        );
+        $this->app->bind(
+            TerminalSyncHealthSource::class,
+            TerminalSyncHealthSourceService::class,
         );
 
         // Fiscal-event projector — Phase 1 §7.5 / SoT §13.6/D16.

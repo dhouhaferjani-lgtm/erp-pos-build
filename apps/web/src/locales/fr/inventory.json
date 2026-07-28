@@ -800,7 +800,19 @@
       },
       "lateSalesDetected_one": "{{count}} vente tardive enregistrée pendant le comptage",
       "lateSalesDetected_other": "{{count}} ventes tardives enregistrées pendant le comptage",
-      "lateSalesDescription": "Des ventes ont eu lieu pendant ce comptage et sont prises en compte dans le rejeu."
+      "lateSalesDescription": "Des ventes ont eu lieu pendant ce comptage et sont prises en compte dans le rejeu.",
+      "terminalSync": {
+        "title": "Risque de synchronisation des caisses détecté",
+        "description": "Une ou plusieurs caisses du point de vente ont des tickets en attente, une synchronisation ancienne ou n'ont pas communiqué leur état. Finaliser maintenant peut laisser un résidu de vente tardive.",
+        "acknowledge": "Je comprends le risque de synchronisation et souhaite activer la finalisation",
+        "changed": "Le risque de synchronisation des caisses a changé. Vérifiez le dernier état et confirmez-le à nouveau.",
+        "states": {
+          "pending": "— {{count}} ticket(s) en attente",
+          "stale": "— la caisse n'a pas communiqué son état récemment",
+          "unknown": "— l'état de synchronisation n'a pas été communiqué",
+          "healthy": "— synchronisée"
+        }
+      }
     },
     "report": {
       "title": "Rapport d'écarts",
@@ -825,7 +837,13 @@
       "provenWrong": "Invalidé par le 3ème",
       "flaggedItems": "Articles signalés",
       "reason": "Raison",
-      "currentCostBasisNote": "Valeurs indicatives, calculées au coût actuel"
+      "currentCostBasisNote": "Valeurs indicatives, calculées au coût actuel",
+      "lateSyncResiduals": {
+        "title": "Ventes reçues après la finalisation de ce comptage",
+        "description": "Ces ventes ont eu lieu avant le comptage de la ligne, mais sont arrivées au serveur après la finalisation. Le stock a été réduit deux fois pour ces lignes.",
+        "noAutoCorrection": "Aucune correction automatique n'a été effectuée. Vérifiez chaque ligne et décidez si un ajustement manuel du stock est nécessaire.",
+        "quantity": "Quantité déduite deux fois"
+      }
     },
     "messages": {
       "created": "Comptage créé avec succès",

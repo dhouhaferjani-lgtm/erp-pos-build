@@ -6,6 +6,7 @@ import { countingApi } from './countingApi'
 import type { CountingFilters, CreateCountingFormData } from '../types'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
+import { isApiError } from '@/lib/api'
 
 // Query Keys
 export const countingKeys = {
@@ -75,6 +76,7 @@ export function useReconciliation(countingId: string) {
     queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
     queryFn: () => countingApi.getReconciliation(countingId),
     enabled: !!countingId && !!tenantId && !!companyId,
+    refetchInterval: 30000,
   })
 }
 
@@ -156,15 +158,38 @@ export function useFinalizeCounting() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: (id: string) => countingApi.finalize(id),
-    onSuccess: async (_, id) => {
+    mutationFn: ({
+      id,
+      acknowledgeTerminalSyncRisk,
+      terminalSyncHealthSignature,
+    }: {
+      id: string
+      acknowledgeTerminalSyncRisk: boolean
+      terminalSyncHealthSignature: string | null
+    }) => countingApi.finalize(
+      id,
+      acknowledgeTerminalSyncRisk,
+      terminalSyncHealthSignature,
+    ),
+    onSuccess: async (_, { id }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [...countingKeys.detail(id)] }),
         queryClient.invalidateQueries({ queryKey: [...countingKeys.dashboard()] }),
       ])
       toast.success(t('counting.messages.finalized'))
     },
-    onError: (error: Error) => {
+    onError: async (error: Error, { id }) => {
+      if (
+        isApiError(error)
+        && error.response?.data.error.code === 'TERMINAL_SYNC_ACKNOWLEDGEMENT_REQUIRED'
+      ) {
+        await queryClient.invalidateQueries({
+          queryKey: [...countingKeys.reconciliation(id)],
+        })
+        toast.error(t('counting.review.terminalSync.changed'))
+        return
+      }
+
       toast.error(t('counting.messages.finalizeFailed', { error: error.message }))
     },
   })

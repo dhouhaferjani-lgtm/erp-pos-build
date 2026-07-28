@@ -13,6 +13,7 @@ use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
+use App\Modules\Inventory\Domain\Exceptions\TerminalSyncAcknowledgementRequiredException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
@@ -58,6 +59,7 @@ class InventoryCountingService
         private readonly CountingReconciliationService $reconciliationService,
         private readonly LocationNodeService $zoneService,
         private readonly OpeningCostGate $openingCostGate,
+        private readonly TerminalSyncHealthService $terminalSyncHealthService,
     ) {}
 
     /**
@@ -1006,8 +1008,12 @@ class InventoryCountingService
     /**
      * Finalize counting and create stock adjustments.
      */
-    public function finalize(InventoryCounting $counting, User $user): void
-    {
+    public function finalize(
+        InventoryCounting $counting,
+        User $user,
+        bool $terminalSyncRiskAcknowledged = false,
+        ?string $terminalSyncHealthSignature = null,
+    ): void {
         // Ensure all items are resolved
         $unresolvedCount = $counting->items()
             ->where('resolution_method', ItemResolutionMethod::Pending)
@@ -1032,7 +1038,22 @@ class InventoryCountingService
         // reviewer supplies (or explicitly zeroes) the cost first.
         $this->assertOpeningCostsResolved($counting);
 
-        DB::transaction(function () use ($counting, $user): void {
+        $terminalSyncHealth = $this->terminalSyncHealthService->forCounting($counting);
+        $validAcknowledgement = $terminalSyncRiskAcknowledged
+            && is_string($terminalSyncHealth['acknowledgement_signature'])
+            && is_string($terminalSyncHealthSignature)
+            && hash_equals($terminalSyncHealth['acknowledgement_signature'], $terminalSyncHealthSignature);
+        if ($terminalSyncHealth['requires_acknowledgement'] && ! $validAcknowledgement) {
+            throw new TerminalSyncAcknowledgementRequiredException;
+        }
+
+        DB::transaction(function () use (
+            $counting,
+            $user,
+            $terminalSyncHealth,
+            $validAcknowledgement,
+            $terminalSyncHealthSignature,
+        ): void {
             // Freeze each auto-resolved item's replay boundary before the
             // finalize event fires (the queued listener reads final_qty_as_of to
             // choose the replay path vs the legacy delta path). Manual overrides
@@ -1059,6 +1080,13 @@ class InventoryCountingService
                 'event_data' => [
                     'total_items' => $counting->items()->count(),
                     'items_with_variance' => $counting->items()->whereRaw('final_qty != theoretical_qty')->count(),
+                    'terminal_sync_health_acknowledged' => $validAcknowledgement,
+                    'terminal_sync_health_acknowledged_by' => $validAcknowledgement ? $user->id : null,
+                    'terminal_sync_health_acknowledged_at' => $validAcknowledgement ? now()->toIso8601String() : null,
+                    'terminal_sync_health_signature' => $validAcknowledgement
+                        ? $terminalSyncHealthSignature
+                        : null,
+                    'terminal_sync_health' => $terminalSyncHealth,
                 ],
                 'user_id' => $user->id,
             ]);

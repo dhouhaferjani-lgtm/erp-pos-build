@@ -39,6 +39,15 @@ enum CountingItemFlagReason: string
         };
     }
 
+    /** Whether the replay apply listener leaves the stock grain untouched. */
+    public function blocksStockApplication(): bool
+    {
+        return match ($this) {
+            self::BasketWindow, self::NegativeAtApply, self::PendingOpeningCost => true,
+            self::ClockSkew, self::NormalizedAgreement => false,
+        };
+    }
+
     public function label(): string
     {
         return match ($this) {

@@ -800,7 +800,19 @@
       },
       "lateSalesDetected_one": "{{count}} late sale recorded during the count",
       "lateSalesDetected_other": "{{count}} late sales recorded during the count",
-      "lateSalesDescription": "Sales occurred while this count was in progress and are reflected in the replay."
+      "lateSalesDescription": "Sales occurred while this count was in progress and are reflected in the replay.",
+      "terminalSync": {
+        "title": "POS sync risk detected",
+        "description": "One or more tills at the counted location have pending receipts, stale sync data, or have not reported their status. Finalizing now can leave a late-sale residual.",
+        "acknowledge": "I understand the sync risk and want to enable finalization",
+        "changed": "Till sync risk changed. Review the latest status and acknowledge it again.",
+        "states": {
+          "pending": "— {{count}} pending receipt(s)",
+          "stale": "— till has not reported its status recently",
+          "unknown": "— sync status has not been reported",
+          "healthy": "— synced"
+        }
+      }
     },
     "report": {
       "title": "Discrepancy Report",
@@ -825,7 +837,13 @@
       "provenWrong": "Proven Wrong by 3rd",
       "flaggedItems": "Flagged Items",
       "reason": "Reason",
-      "currentCostBasisNote": "Values are indicative, computed at current cost"
+      "currentCostBasisNote": "Values are indicative, computed at current cost",
+      "lateSyncResiduals": {
+        "title": "Sales arrived after this count was finalized",
+        "description": "These sales occurred before the line was counted but reached the server after finalization. Stock was reduced twice for these lines.",
+        "noAutoCorrection": "No automatic correction was made. Review each line and decide whether a manual stock adjustment is needed.",
+        "quantity": "Quantity reduced twice"
+      }
     },
     "messages": {
       "created": "Counting operation created successfully",

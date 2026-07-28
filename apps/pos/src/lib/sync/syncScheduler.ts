@@ -3,7 +3,7 @@ import { runFullSync, type SyncResult } from './syncService';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
-import { useProductStore } from '@/stores/productStore';
+import { hasModule, useProductStore } from '@/stores/productStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
@@ -121,11 +121,13 @@ export class SyncScheduler {
       // result.receiptsFailed (which only reflects this tick's failures
       // and drifts from reality across ticks). On failure leave the
       // store's prior value untouched rather than writing a stale 0.
+      let pendingReceiptCount: number | null = null;
       try {
         const { getPendingReceiptCount } = await import(
           '@/lib/db/repositories/offlineReceiptRepository'
         );
         const pendingCount = await getPendingReceiptCount(this.db);
+        pendingReceiptCount = pendingCount;
         useSyncStore.getState().setPendingCount(pendingCount);
       } catch (err) {
         console.error(
@@ -157,6 +159,31 @@ export class SyncScheduler {
           '[POS][syncScheduler] setSyncMetadata(last_sync_at) failed',
           serializeErrorForLog(err),
         );
+      }
+
+      // A manager reviewing a live count cannot inspect this device's SQLite
+      // queue directly. Publish the exact pending count and completed-sync
+      // timestamp through the Inventory-owned health seam. Stale servers and
+      // telemetry failures are non-fatal to the actual POS sync.
+      const completedSyncAt = useSyncStore.getState().lastSyncAt;
+      const inventoryEnabled = hasModule(
+        useProductStore.getState().companyConfig,
+        'Inventory',
+      );
+      if (
+        inventoryEnabled
+        && pendingReceiptCount !== null
+        && typeof completedSyncAt === 'number'
+      ) {
+        try {
+          const { reportTerminalSyncHealth } = await import('./terminalSyncHealth');
+          await reportTerminalSyncHealth(this.terminalId, pendingReceiptCount, completedSyncAt);
+        } catch (err) {
+          console.error(
+            '[POS][syncScheduler] terminal sync-health report failed (non-fatal)',
+            serializeErrorForLog(err),
+          );
+        }
       }
 
       // After any sync that pulled terminal_state, refresh the hashChainReady flag so
