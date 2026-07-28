@@ -42,6 +42,22 @@ final readonly class StatementSuggestionService
      */
     public const MAX_CANDIDATE_MOVEMENTS = 500;
 
+    /**
+     * Sanity ceiling on reference-bearing SOURCE rows (payments / instruments /
+     * remittances) or notes-bearing movements scanned in PHP for a single Tier-1
+     * pass. On overflow Tier-1 is SKIPPED for the line entirely (degrade to no
+     * suggestion — never a wrong or silently-partial one). This is the ONLY
+     * Tier-1 cap-degradation path.
+     */
+    public const MAX_REFERENCE_SOURCES = 5000;
+
+    /**
+     * Ceiling on allocation rows hydrated per candidate movement. A movement
+     * whose allocation load would exceed this is excluded from the candidate set
+     * (degrade safe) rather than hydrating unbounded rows.
+     */
+    public const MAX_ALLOCATIONS_PER_MOVEMENT = 500;
+
     public function __construct(
         private CurrencyScaleResolverInterface $scaleResolver,
         private CardBatchResolver $cardBatches,
@@ -204,15 +220,23 @@ final readonly class StatementSuggestionService
     /**
      * Movements that can produce a Tier-1 "reference and remaining amount match".
      *
-     * Tier-1 fires only when a movement's payment/instrument/remittance reference
-     * (or free-text notes) appears in the line text, so the candidate set is
-     * bounded in SQL by that reference predicate — a reference is a near-unique
-     * token, so this is naturally tiny — NOT by date. Tier-1 is window-independent
-     * because a reference can clear the bank long after its movement date (see
-     * StatementSuggestionServiceTest::test_reference_hit...). The exact
-     * containment is re-verified in PHP by the caller (referenceMatches), so the
-     * SQL predicate only has to avoid false negatives; {@see self::MAX_CANDIDATE_MOVEMENTS}
-     * is a belt-and-suspenders ceiling that a realistic line never approaches.
+     * Matched from the SOURCE side to keep the semantics byte-identical to the
+     * original PHP implementation (no SQL containment prefilter, so references
+     * with internal whitespace still match after normalize()), and to be immune
+     * to displacement (a valid match is never hidden behind a wall of other
+     * movements):
+     *  1. Pluck the reference-bearing columns from the candidate source tables
+     *     (payments / instruments / remittances) and the notes column from the
+     *     repository's movements — scoped tight, scalar rows only.
+     *  2. Match each reference against the line text with the EXISTING PHP
+     *     normalize() containment (referenceMatches) — identical semantics.
+     *  3. Load the movements for the matched source ids (source_id IN …) — a
+     *     naturally small set — plus notes-matched movements by id.
+     *
+     * Tier-1 is window-independent (a reference can clear the bank long after its
+     * movement date). Each pluck is bounded by {@see self::MAX_REFERENCE_SOURCES};
+     * if ANY overflows, Tier-1 is SKIPPED for the line (degrade to no suggestion,
+     * never a silently-partial one).
      *
      * @param  numeric-string  $remainingLine
      * @return list<array{movement: RepositoryMovement, remaining: numeric-string}>
@@ -228,40 +252,88 @@ final readonly class StatementSuggestionService
             return [];
         }
 
-        $paymentQuery = Payment::query()
-            ->where('tenant_id', $statement->tenant_id)
-            ->where('company_id', $statement->company_id);
-        $this->whereReferenceContains($paymentQuery, 'reference', $lineText);
-        $paymentIds = $paymentQuery->pluck('id')->all();
-
-        $fiscalQuery = Payment::query()
+        // 1 + 2 — payments (source of Payment/Refund AND FiscalEvent movements).
+        $payments = Payment::query()
             ->where('tenant_id', $statement->tenant_id)
             ->where('company_id', $statement->company_id)
-            ->whereNotNull('fiscal_event_id');
-        $this->whereReferenceContains($fiscalQuery, 'reference', $lineText);
-        $fiscalEventIds = $fiscalQuery->pluck('fiscal_event_id')->filter()->values()->all();
+            ->where('repository_id', $statement->payment_repository_id)
+            ->whereNotNull('reference')
+            ->limit(self::MAX_REFERENCE_SOURCES + 1)
+            ->get(['id', 'fiscal_event_id', 'reference']);
+        if ($payments->count() > self::MAX_REFERENCE_SOURCES) {
+            return [];
+        }
+        $paymentIds = [];
+        $fiscalEventIds = [];
+        foreach ($payments as $payment) {
+            if (! is_string($payment->reference) || ! $this->referenceMatches($lineText, [$payment->reference])) {
+                continue;
+            }
+            $paymentIds[] = $payment->id;
+            if (is_string($payment->fiscal_event_id)) {
+                $fiscalEventIds[] = $payment->fiscal_event_id;
+            }
+        }
 
-        $remittanceQuery = InstrumentRemittance::query()
-            ->where('tenant_id', $statement->tenant_id)
-            ->where('company_id', $statement->company_id);
-        $this->whereReferenceContains($remittanceQuery, 'number', $lineText);
-        $remittanceIds = $remittanceQuery->pluck('id')->all();
-
-        $instrumentIds = PaymentInstrument::query()
+        // Remittances (source of the instrument reference "remittance number").
+        $remittances = InstrumentRemittance::query()
             ->where('tenant_id', $statement->tenant_id)
             ->where('company_id', $statement->company_id)
-            ->where(function (Builder $query) use ($lineText, $remittanceIds): void {
-                $this->whereReferenceContains($query, 'reference', $lineText);
-                if ($remittanceIds !== []) {
-                    $query->orWhereIn('remittance_id', $remittanceIds);
-                }
-            })
+            ->where('bank_repository_id', $statement->payment_repository_id)
+            ->limit(self::MAX_REFERENCE_SOURCES + 1)
+            ->get(['id', 'number']);
+        if ($remittances->count() > self::MAX_REFERENCE_SOURCES) {
+            return [];
+        }
+        $matchedRemittanceIds = $remittances
+            ->filter(fn (InstrumentRemittance $remittance): bool => $this->referenceMatches($lineText, [$remittance->number]))
             ->pluck('id')
             ->all();
 
+        // Instruments (source of Instrument movements): match on the instrument's
+        // own reference OR its remittance number.
+        $instruments = PaymentInstrument::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where(function (Builder $query) use ($statement): void {
+                $query->where('repository_id', $statement->payment_repository_id)
+                    ->orWhere('deposited_to_id', $statement->payment_repository_id);
+            })
+            ->limit(self::MAX_REFERENCE_SOURCES + 1)
+            ->get(['id', 'remittance_id', 'reference']);
+        if ($instruments->count() > self::MAX_REFERENCE_SOURCES) {
+            return [];
+        }
+        $instrumentIds = $instruments
+            ->filter(fn (PaymentInstrument $instrument): bool => $this->referenceMatches($lineText, [$instrument->reference])
+                || ($instrument->remittance_id !== null && in_array($instrument->remittance_id, $matchedRemittanceIds, true)))
+            ->pluck('id')
+            ->all();
+
+        // Notes live on the movement, not a source table: pluck (id, notes) for
+        // this repository's candidate movements and match in PHP.
+        $notesRows = $this->candidateBaseQuery($statement, $direction, $remainingLine)
+            ->whereNotNull('notes')
+            ->limit(self::MAX_REFERENCE_SOURCES + 1)
+            ->pluck('notes', 'id');
+        if ($notesRows->count() > self::MAX_REFERENCE_SOURCES) {
+            return [];
+        }
+        $notesMatchedIds = $notesRows
+            ->filter(fn (?string $notes): bool => is_string($notes) && $this->referenceMatches($lineText, [$notes]))
+            ->keys()
+            ->all();
+
+        if ($paymentIds === [] && $fiscalEventIds === [] && $instrumentIds === [] && $notesMatchedIds === []) {
+            return [];
+        }
+
+        // 3 — load the (small) set of movements for the matched sources.
         $movements = $this->candidateBaseQuery($statement, $direction, $remainingLine)
-            ->where(function (Builder $query) use ($lineText, $paymentIds, $fiscalEventIds, $instrumentIds): void {
-                $this->whereReferenceContains($query, 'notes', $lineText);
+            ->where(function (Builder $query) use ($paymentIds, $fiscalEventIds, $instrumentIds, $notesMatchedIds): void {
+                if ($notesMatchedIds !== []) {
+                    $query->orWhereIn('id', $notesMatchedIds);
+                }
                 if ($paymentIds !== []) {
                     $query->orWhere(function (Builder $inner) use ($paymentIds): void {
                         $inner->whereIn('source_type', [
@@ -402,25 +474,15 @@ final readonly class StatementSuggestionService
     }
 
     /**
-     * Add "the trimmed, lower-cased $column value (min length 3) occurs as a
-     * substring of the normalized line text" as a boolean predicate. Mirrors the
-     * PHP referenceMatches() containment. $column is always a hard-coded literal
-     * ('reference' / 'number' / 'notes'), never user input.
+     * Compute each candidate movement's remaining capacity (gross − allocated)
+     * with bcmath and keep only those still open. When $onlyRemaining is given,
+     * keep only the movements whose remaining equals it exactly.
      *
-     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>  $query
-     */
-    private function whereReferenceContains(Builder $query, string $column, string $lineText): void
-    {
-        $query->whereRaw(
-            '(length(trim(lower('.$column.'))) >= 3 and ? like '."'%' || trim(lower(".$column.")) || '%')",
-            [$lineText],
-        );
-    }
-
-    /**
-     * Compute each movement's remaining capacity (gross − allocated) with bcmath
-     * and keep only those still open. When $onlyRemaining is given, keep only the
-     * movements whose remaining equals it exactly.
+     * Allocations are hydrated ONLY for the given (post-matching) candidates and
+     * are bounded: the fetch is capped at candidateCount ×
+     * {@see self::MAX_ALLOCATIONS_PER_MOVEMENT}, and any single movement whose
+     * allocation count reaches that per-movement ceiling is EXCLUDED (degrade
+     * safe) rather than trusting a possibly-truncated remaining.
      *
      * @param  EloquentCollection<int, RepositoryMovement>  $movements
      * @param  numeric-string|null  $onlyRemaining
@@ -429,15 +491,28 @@ final readonly class StatementSuggestionService
     private function withRemaining(EloquentCollection $movements, int $scale, ?string $onlyRemaining = null): array
     {
         $ids = $movements->map(static fn (RepositoryMovement $movement): string => $movement->id)->all();
-        $totals = [];
+        if ($ids === []) {
+            return [];
+        }
+        $capacity = count($ids) * self::MAX_ALLOCATIONS_PER_MOVEMENT;
         $allocations = BankStatementLineAllocation::query()
             ->whereIn('repository_movement_id', $ids)
             ->orderBy('repository_movement_id')
             ->orderBy('id')
+            ->limit($capacity + 1)
             ->get();
+        if ($allocations->count() > $capacity) {
+            // Pathological aggregate allocation volume for this candidate set —
+            // remaining cannot be computed exactly, so degrade to no candidate.
+            return [];
+        }
+        $totals = [];
+        $counts = [];
         foreach ($allocations as $allocation) {
-            $totals[$allocation->repository_movement_id] = bcadd(
-                $totals[$allocation->repository_movement_id] ?? CurrencyScale::bcformatStrict('0', $scale),
+            $movementId = $allocation->repository_movement_id;
+            $counts[$movementId] = ($counts[$movementId] ?? 0) + 1;
+            $totals[$movementId] = bcadd(
+                $totals[$movementId] ?? CurrencyScale::bcformatStrict('0', $scale),
                 $allocation->matched_amount,
                 $scale,
             );
@@ -445,6 +520,10 @@ final readonly class StatementSuggestionService
 
         $eligible = [];
         foreach ($movements as $movement) {
+            if (($counts[$movement->id] ?? 0) >= self::MAX_ALLOCATIONS_PER_MOVEMENT) {
+                // Excessive allocation load on this movement — exclude it.
+                continue;
+            }
             $remaining = bcsub(
                 $movement->amount,
                 $totals[$movement->id] ?? CurrencyScale::bcformatStrict('0', $scale),

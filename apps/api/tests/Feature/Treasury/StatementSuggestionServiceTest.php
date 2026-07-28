@@ -154,6 +154,69 @@ final class StatementSuggestionServiceTest extends TestCase
         self::assertSame('88.000', $reference->amount);
     }
 
+    public function test_reference_with_internal_whitespace_matches_via_php_normalization(): void
+    {
+        // The source reference has a doubled internal space; the line text has a
+        // single space. PHP normalize() collapses both, so this MUST match — an
+        // SQL trim/lower containment prefilter (round 2) would false-negative.
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $payment = Payment::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'amount' => '44.000',
+            'reference' => 'AB  123',
+        ]);
+        $referenceMovement = $this->movement('44.000', MovementDirection::In, '2026-07-18', MovementSourceType::Payment, $payment->id);
+        $line = $this->line('44.000', MovementDirection::In, 'Deposit AB 123 cleared');
+
+        $reference = collect(app(StatementSuggestionService::class)->suggest($line->id))->first(
+            static fn ($suggestion): bool => $suggestion->tier === 1 && $suggestion->movementIds === [$referenceMovement],
+        );
+
+        self::assertNotNull($reference);
+        self::assertSame('reference_amount_match', $reference->reasonCode);
+    }
+
+    public function test_reference_match_is_found_when_it_sits_beyond_five_hundred_movements(): void
+    {
+        // The valid reference match is dated AFTER 600 same-direction, same-amount
+        // movements. A hydration capped at 500 rows ordered by occurred_at (round 1)
+        // fills up with the noise and never reaches the match; the source-side load
+        // finds it by source_id regardless of how many other movements exist.
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $payment = Payment::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'amount' => '66.000',
+            'reference' => 'DISP-REF-7777',
+        ]);
+        // 600 noise movements dated earlier, same direction and amount, no reference.
+        $this->bulkNoiseMovements(600, '66.000', '2026-07-14');
+        $referenceMovement = $this->movement('66.000', MovementDirection::In, '2026-07-19', MovementSourceType::Payment, $payment->id);
+        $line = $this->line('66.000', MovementDirection::In, 'Wire DISP-REF-7777 settled');
+
+        $reference = collect(app(StatementSuggestionService::class)->suggest($line->id))->first(
+            static fn ($suggestion): bool => $suggestion->tier === 1 && $suggestion->movementIds === [$referenceMovement],
+        );
+
+        self::assertNotNull($reference);
+        self::assertSame('reference_amount_match', $reference->reasonCode);
+    }
+
     public function test_unique_amount_date_respects_profile_window_and_remaining_capacity(): void
     {
         $line = $this->line('50.000', MovementDirection::In, 'No reference');
