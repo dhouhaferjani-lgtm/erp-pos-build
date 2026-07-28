@@ -23,6 +23,7 @@ use App\Modules\POS\Presentation\Controllers\PosVariantController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
+use App\Modules\POS\Presentation\Controllers\ShiftToleranceController;
 use App\Modules\POS\Presentation\Controllers\StockDistributionController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
@@ -177,6 +178,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Shift receipts (transaction history)
     Route::get('/pos/shifts/{id}/receipts', [ShiftController::class, 'receipts']);
+
+    // Tolerance write-off drill-down behind the Z-report tolerance_summary.
+    // Same scoping contract as the shift-receipts route above: authorization
+    // and company scoping live in the controller, not in extra middleware.
+    Route::get('/pos/shifts/{id}/tolerance-receipts', [ShiftToleranceController::class, 'index']);
 
     // Discount Permissions & Preview
     Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);

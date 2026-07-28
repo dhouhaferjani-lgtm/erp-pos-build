@@ -15,6 +15,7 @@ return [
     'subtotal' => 'Subtotal',
     'tax' => 'Tax',
     'total' => 'TOTAL',
+    'cash_rounding' => 'Cash Rounding',
     'vat_breakdown' => 'VAT Breakdown',
     'vat' => 'VAT',
     'base' => 'Base',

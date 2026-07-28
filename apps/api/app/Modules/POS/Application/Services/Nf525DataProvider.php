@@ -648,6 +648,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             returnReasonValue: $view->originalReceiptReference?->refundReason,
             exchangeGroupId: $receipt->exchange_group_id,
             voucherLedgerEntries: $voucherLedgerEntries,
+            // Sourced from the SIGNED payload, never the pos_receipts mirror:
+            // the adjustment is part of what the device hashed. NULL here on
+            // a v1/v2 payload (the key does not exist), which is exactly the
+            // discriminator the JET builder keys its emission on.
+            cashRoundingAdjustment: $payload->cashRoundingAdjustment,
         );
     }
 

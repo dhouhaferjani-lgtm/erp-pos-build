@@ -115,6 +115,25 @@ final class Nf525XmlBuilder
             $this->addElement($ticket, 'Taxe', $receipt->taxAmount);
             $this->addElement($ticket, 'Remise', $receipt->discountAmount);
             $this->addElement($ticket, 'Total', $receipt->total);
+
+            // v3 cash rounding: `Total` stays the SIGNED, collected amount
+            // (the fiscal authority). The exact sale value and the adjustment
+            // are emitted alongside it so the VAT declaration reconciles —
+            // `TotalExact` is the base the VAT was computed on, `Total` is
+            // what the drawer took.
+            //
+            // Emitted whenever the adjustment is PRESENT, zero included: on a
+            // v1/v2 receipt the key does not exist at all, so presence is the
+            // audit-visible discriminator between a legacy ticket and a
+            // rounding-capable one that simply landed on a denomination.
+            if ($receipt->cashRoundingAdjustment !== null) {
+                $this->addElement($ticket, 'ArrondiEspeces', $receipt->cashRoundingAdjustment);
+                $this->addElement($ticket, 'TotalExact', $this->exactTotal(
+                    $receipt->total,
+                    $receipt->cashRoundingAdjustment,
+                ));
+            }
+
             $this->addElement($ticket, 'Devise', $receipt->currency);
             $this->addElement($ticket, 'Caissier', $receipt->cashierName);
 
@@ -656,6 +675,35 @@ final class Nf525XmlBuilder
         $result = $this->doc->saveXML();
 
         return $result !== false ? $result : '';
+    }
+
+    /**
+     * Exact (pre-rounding) sale value: `total − adjustment`, since the
+     * adjustment is signed as `rounded − exact`.
+     *
+     * bcmath only — a float here would reintroduce the very drift the
+     * rounding feature exists to control. The scale is DERIVED from the two
+     * operands (never hardcoded: 2 would truncate a TND ticket, 3 would
+     * inflate a EUR one) and taken as the wider of the two, so no significant
+     * digit of either side can be lost.
+     */
+    private function exactTotal(string $total, string $adjustment): string
+    {
+        $scale = max($this->decimalScaleOf($total), $this->decimalScaleOf($adjustment));
+
+        /** @var numeric-string $total */
+        /** @var numeric-string $adjustment */
+        return bcsub($total, $adjustment, $scale);
+    }
+
+    /**
+     * Number of fraction digits in a decimal string ("9.950" → 3, "10" → 0).
+     */
+    private function decimalScaleOf(string $value): int
+    {
+        $separator = strrpos($value, '.');
+
+        return $separator === false ? 0 : strlen($value) - $separator - 1;
     }
 
     /**

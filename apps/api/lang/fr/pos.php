@@ -15,6 +15,7 @@ return [
     'subtotal' => 'Sous-total',
     'tax' => 'Taxe',
     'total' => 'TOTAL',
+    'cash_rounding' => 'Arrondi Espèces',
     'vat_breakdown' => 'Détail TVA',
     'vat' => 'TVA',
     'base' => 'Base',
