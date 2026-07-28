@@ -3,6 +3,8 @@ import { Calculator, Package, Users, ArrowRight } from 'lucide-react'
 import type { PostPreview, OpeningBatchType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 interface BatchPreviewProps {
   preview: PostPreview
@@ -186,7 +188,9 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
                     </td>
                     <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>{line.product_name}</td>
                     <td className={`px-4 py-2 text-sm ${colorTokens.text.subtle}`}>{line.location_name}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${colorTokens.text.primary}`}>{line.quantity}</td>
+                    <td className={`px-4 py-2 text-sm text-right ${colorTokens.text.primary}`}>
+                      {formatQuantity(line.quantity ?? '0', getQuantityDecimals(line))}
+                    </td>
                     <td className={`px-4 py-2 text-sm text-right ${colorTokens.text.muted}`}>{line.unit_cost}</td>
                     <td className={`px-4 py-2 text-sm text-right font-medium ${colorTokens.intent.primary.text}`}>
                       {line.line_value}

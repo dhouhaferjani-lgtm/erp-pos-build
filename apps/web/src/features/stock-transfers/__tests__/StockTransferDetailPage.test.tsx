@@ -2,9 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { StockTransferDetailPage } from '../pages/StockTransferDetailPage'
-import type { StockTransfer } from '../types'
 
-const transfer: StockTransfer = {
+const transfer = {
   id: 'transfer-1',
   transfer_number: 'TR-2024-001',
   transfer_type: 'intracompany',
@@ -39,6 +38,7 @@ const transfer: StockTransfer = {
       variant_sku: null,
       variant_name: null,
       quantity: '5.0000',
+      quantity_decimals: 0,
       unit_cost_snapshot: '10.000',
       allocated_transfer_cost: '0.000',
       batch_allocations: [],
@@ -58,5 +58,12 @@ describe('StockTransferDetailPage', () => {
 
     const productLink = screen.getByRole('link', { name: 'Vitamin C Serum' })
     expect(productLink).toHaveAttribute('href', '/inventory/products/prod-42')
+  })
+
+  it('formats line quantity with the product unit precision', () => {
+    renderWithProviders(<StockTransferDetailPage />, { route: '/inventory/stock-transfers/transfer-1' })
+
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.queryByText('5.0000')).not.toBeInTheDocument()
   })
 })

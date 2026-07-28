@@ -24,6 +24,12 @@ const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<stri
     return `${String(options?.['count'] ?? '?')} lines`
   }
 
+  if (key === 'inventory:goodsReceipt.progress') {
+    const received = options?.['received']
+    const total = options?.['total']
+    return `${typeof received === 'string' ? received : '?'} of ${typeof total === 'string' ? total : '?'} items received`
+  }
+
   return key
 }))
 
@@ -154,8 +160,8 @@ const pendingPurchaseOrder = {
       product_id: 'product-1',
       product_name: 'Part',
       description: 'Part',
-      quantity: 2,
-      quantity_received: 0,
+      quantity: '2.0000',
+      quantity_received: '0.0000',
       quantity_decimals: 4,
       requires_batch_tracking: false,
       unit_price: 5,
@@ -318,6 +324,30 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(await screen.findByRole('link', { name: 'PO-1' })).toHaveAttribute('href', '/purchases/orders/po-1')
     expect(screen.getByRole('link', { name: 'Supplier' })).toHaveAttribute('href', '/purchases/suppliers/partner-1')
     expect(screen.getByRole('link', { name: 'Part' })).toHaveAttribute('href', '/inventory/products/product-1')
+  })
+
+  it('formats purchase-order line quantities with their unit precision', async () => {
+    const weighedPurchaseOrder = {
+      ...pendingPurchaseOrder,
+      lines: [{
+        ...pendingPurchaseOrder.lines[0],
+        quantity: '2.5',
+        quantity_received: '1.2',
+        quantity_decimals: 3,
+      }],
+    }
+
+    mockApiGet.mockImplementation((_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve({ data: { data: [weighedPurchaseOrder] } })
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    expect(await screen.findByText('1.200 of 2.500 items received')).toBeInTheDocument()
+    expect(await screen.findByText('(1.200/2.500)')).toBeInTheDocument()
   })
 
   it('submits partial quantities from the receipt list receive dialog', async () => {

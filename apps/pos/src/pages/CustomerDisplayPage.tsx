@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import type { CartDisplayItem } from '@/lib/customerDisplay';
+import { formatQuantity } from '@/lib/quantity';
 
 type DisplayMode =
   | { type: 'idle'; image_url: string }
@@ -73,7 +74,7 @@ function CartScreen({
             >
               <div className="flex items-baseline gap-3">
                 <span className="min-w-[2rem] text-right text-lg font-medium text-white/60">
-                  {item.quantity}x
+                  {formatQuantity(String(item.quantity), item.quantity_decimals)}x
                 </span>
                 <span className="text-xl text-white/90">{item.name}</span>
               </div>

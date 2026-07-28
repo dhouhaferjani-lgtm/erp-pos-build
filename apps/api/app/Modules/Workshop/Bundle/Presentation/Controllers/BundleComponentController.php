@@ -16,6 +16,7 @@ use App\Modules\Workshop\Bundle\Domain\Exceptions\BundleCycleException;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Bundle\Presentation\Requests\AddComponentRequest;
 use App\Modules\Workshop\Bundle\Presentation\Requests\PatchComponentRequest;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -76,7 +77,10 @@ class BundleComponentController extends Controller
         }
 
         return response()->json([
-            'data' => ServiceBundleComponentData::fromModel($component->load(['product', 'service', 'nestedBundle', 'unit'])),
+            'data' => ServiceBundleComponentData::fromModel(
+                $component->load(['product', 'service', 'nestedBundle', 'unit']),
+                CurrencyScale::for($bundle->currency),
+            ),
         ], 201);
     }
 
@@ -146,7 +150,10 @@ class BundleComponentController extends Controller
         }
 
         return response()->json([
-            'data' => ServiceBundleComponentData::fromModel($component->load(['product', 'service', 'nestedBundle', 'unit'])),
+            'data' => ServiceBundleComponentData::fromModel(
+                $component->load(['product', 'service', 'nestedBundle', 'unit']),
+                CurrencyScale::for($bundle->currency),
+            ),
         ]);
     }
 

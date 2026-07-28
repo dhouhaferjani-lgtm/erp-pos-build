@@ -8,6 +8,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Workshop\Bundle\Domain\Contracts\ProductResolverInterface;
 use App\Modules\Workshop\Bundle\Domain\ValueObjects\ComponentProductRef;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Str;
 
 final class EloquentProductResolver implements ProductResolverInterface
@@ -36,6 +37,9 @@ final class EloquentProductResolver implements ProductResolverInterface
         $unit = $product->unitOfMeasure !== null
             ? ($product->unitOfMeasure->symbol !== '' ? $product->unitOfMeasure->symbol : $product->unitOfMeasure->code)
             : ($product->unit ?? 'piece');
+        $quantityDecimals = $product->unitOfMeasure !== null
+            ? $product->unitOfMeasure->decimal_places
+            : QuantityScale::SCALE;
 
         return new ComponentProductRef(
             product_id: $product->id,
@@ -48,6 +52,8 @@ final class EloquentProductResolver implements ProductResolverInterface
                 ? CurrencyScale::bcformat($product->tax_rate, 2)
                 : null,
             unit: (string) $unit,
+            quantity_decimals: $quantityDecimals,
+            quantity_rounding_method: $product->unitOfMeasure?->rounding_method->value,
         );
     }
 }

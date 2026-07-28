@@ -22,6 +22,8 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -327,6 +329,41 @@ class StockMovementTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_stock_movement_list_exposes_product_unit_quantity_decimals(): void
+    {
+        $category = UnitCategory::factory()->create([
+            'tenant_id' => null,
+            'code' => 'stock-movement-weight',
+            'name' => 'Stock Movement Weight',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'stock-movement-kg',
+            'name' => 'Stock Movement Kilogram',
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $this->product->update(['unit_id' => $unit->id]);
+        app(StockAdjustmentService::class)->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '2.5000',
+            reference: 'UNIT-PRECISION',
+            userId: $this->user->id,
+        );
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/stock-movements');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.quantity', '2.5000');
+        $response->assertJsonPath('data.0.quantity_decimals', 3);
     }
 
     public function test_can_filter_movements_by_product(): void

@@ -102,8 +102,6 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/pos/reports/receipts/verify-chain', [ReportController::class, 'verifyReceiptChain']);
 
     // Sync endpoints (offline POS terminal synchronization)
-    Route::get('/pos/sync/pull', [SyncController::class, 'pull']);
-    Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
     Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
 
     // Location stock feed for the device sync (spec 2026-06-11 §4.1)

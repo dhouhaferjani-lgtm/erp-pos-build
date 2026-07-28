@@ -24,7 +24,7 @@ const line: DocumentLine = {
   primary_image_url: null,
   line_number: 1,
   description: 'Brake pads',
-  quantity: '2.0000',
+  quantity: '2',
   unit_price: '10.000',
   discount_percent: null,
   discount_amount: null,
@@ -32,7 +32,7 @@ const line: DocumentLine = {
   line_total: '23.800',
   notes: null,
   designation_default_snapshot: 'Brake pads',
-  quantity_decimals: 0,
+  quantity_decimals: 3,
   requires_batch_tracking: false,
 }
 
@@ -44,8 +44,8 @@ describe('DocumentLines', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.queryByText('2.0000')).not.toBeInTheDocument()
+    expect(screen.getByText('2.000')).toBeInTheDocument()
+    expect(screen.queryByText('2')).not.toBeInTheDocument()
   })
 
   it('does not repeat the product name as the article sub-line when the description is unchanged', () => {

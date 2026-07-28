@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { StockAlertReport } from '../api/ownerReportsApi'
 
@@ -31,7 +33,8 @@ export function LowStockAlertsList({ data }: LowStockAlertsListProps) {
               </div>
             </div>
             <p className={`text-sm font-medium ${severityText(row.severity)}`}>
-              {row.quantity}/{row.min_quantity}
+              {formatQuantity(row.quantity, getQuantityDecimals(row))}/
+              {formatQuantity(row.min_quantity, getQuantityDecimals(row))}
             </p>
           </div>
         ))}

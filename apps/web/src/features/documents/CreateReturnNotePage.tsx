@@ -31,6 +31,8 @@ import type { DeliveryNote } from '@/components/molecules/pickers/DeliveryNoteSe
 import type { ReturnReason } from '@/types/returnNote'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 // Source type for return note
 type SourceType = 'delivery_note' | 'invoice'
@@ -69,6 +71,7 @@ interface DocumentLine {
   product_code: string
   description: string
   quantity: number
+  quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
   total: string
@@ -497,7 +500,7 @@ export function CreateReturnNotePage() {
                               <div className={`text-sm ${colorClasses.textGray500}`}>{line.description}</div>
                             </td>
                             <td className={`px-3 py-3 text-end text-sm ${colorClasses.textGray900}`}>
-                              {line.quantity}
+                              {formatQuantity(line.quantity, getQuantityDecimals(line))}
                             </td>
                             <td className="px-3 py-3 text-end">
                               {isSelected ? (

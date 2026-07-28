@@ -10,7 +10,8 @@ import { PageHeader } from '../../components/molecules/PageHeader'
 import { StatusBadge, type StatusTone } from '../../components/atoms'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
-import { formatQuantity } from '../../lib/format'
+import { formatQuantity } from '../../lib/decimal'
+import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { borderColors, textColors, tokens } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
@@ -25,6 +26,7 @@ interface EntryExitNoteLine {
     name: string
   }
   quantity: string
+  quantity_decimals: number
   quantity_before: string
   quantity_after: string
   movement_type: string
@@ -131,7 +133,7 @@ export function EntryExitNotesPage() {
             <div key={line.movement_id} className="flex items-center justify-between gap-3 text-sm">
               <span className={textColors.primary}>{line.product.name}</span>
               <span className={cn('font-medium tabular-nums', note.direction === 'out' ? textColors.error : textColors.success)}>
-                {note.direction === 'out' ? '-' : '+'}{formatQuantity(line.quantity)}
+                {note.direction === 'out' ? '-' : '+'}{formatQuantity(line.quantity, getQuantityDecimals(line))}
               </span>
             </div>
           ))}

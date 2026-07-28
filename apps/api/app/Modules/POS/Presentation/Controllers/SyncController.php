@@ -5,24 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Catalog\Application\DTOs\ProductMediaData;
-use App\Modules\Catalog\Domain\Entities\CompositeItem;
-use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
-use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\SyncShiftCloseRequest;
-use App\Modules\Product\Domain\Category;
-use App\Modules\Product\Domain\Product;
-use App\Modules\Treasury\Domain\PaymentMethod;
-use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Shared\Contracts\CatalogMediaQueryInterface;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -30,128 +19,14 @@ use Illuminate\Support\Facades\Gate;
 /**
  * POS Sync Controller
  *
- * Handles data synchronization between offline Tauri POS terminals and the server.
- * Provides endpoints for pushing offline receipts and pulling reference data.
+ * Handles shift synchronization between offline Tauri POS terminals and the server.
  */
 final class SyncController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ShiftManagementService $shiftManagementService,
-        private readonly CatalogMediaQueryInterface $catalogMediaQuery,
     ) {}
-
-    /**
-     * Pull reference data for local cache.
-     *
-     * GET /api/v1/pos/sync/pull
-     *
-     * Returns products, categories, payment methods, payment repositories,
-     * and terminal configuration. Supports delta sync via `?updated_since=ISO8601`.
-     * Supports ETag for efficient polling (304 when unchanged).
-     */
-    public function pull(Request $request): JsonResponse
-    {
-        Gate::authorize('pos.operate_terminal');
-
-        $companyId = $this->companyContext->getCompanyId();
-        $tenantId = $this->companyContext->requireTenantId();
-        $updatedSince = $request->query('updated_since');
-        $parsedSince = null;
-
-        if (is_string($updatedSince) && $updatedSince !== '') {
-            $parsedSince = Carbon::parse($updatedSince);
-        }
-
-        // Fetch products (no primaryImage eager-load — media comes from CatalogMediaQueryInterface)
-        $productsQuery = Product::where('company_id', $companyId)
-            ->where('is_active', true);
-        if ($parsedSince !== null) {
-            $productsQuery->where('updated_at', '>', $parsedSince);
-        }
-        $productCollection = $productsQuery->get();
-
-        // Single batched media query — never N+1 (one call for all product ids).
-        /** @var array<string, ProductMediaData> $mediaByProduct */
-        $mediaByProduct = $this->catalogMediaQuery->forProducts(
-            $productCollection->pluck('id')->all(),
-            $tenantId,
-        );
-
-        $products = $productCollection->map(function (Product $product) use ($mediaByProduct): array {
-            $attributes = $product->toArray();
-            $media = $mediaByProduct[$product->id] ?? ProductMediaData::makeEmpty();
-
-            // POS contract: single scalar image_url with the
-            // /products/{productId}/images/{attachmentId}/download?variant=sm shape.
-            // Do NOT add a 'media' key — the POS only caches by image_url.
-            $attributes['image_url'] = $media->primary_image_url;
-
-            return $attributes;
-        });
-
-        // Fetch categories
-        $categoriesQuery = Category::where('company_id', $companyId);
-        if ($parsedSince !== null) {
-            $categoriesQuery->where('updated_at', '>', $parsedSince);
-        }
-        $categories = $categoriesQuery->get();
-
-        // Fetch payment methods
-        $paymentMethodsQuery = PaymentMethod::where('company_id', $companyId)
-            ->where('is_active', true);
-        if ($parsedSince !== null) {
-            $paymentMethodsQuery->where('updated_at', '>', $parsedSince);
-        }
-        $paymentMethods = $paymentMethodsQuery->get();
-
-        // Fetch payment repositories
-        $paymentReposQuery = PaymentRepository::where('company_id', $companyId)
-            ->where('is_active', true);
-        if ($parsedSince !== null) {
-            $paymentReposQuery->where('updated_at', '>', $parsedSince);
-        }
-        $paymentRepos = $paymentReposQuery->get();
-
-        // Fetch terminal config for this company
-        $terminals = Terminal::where('company_id', $companyId)
-            ->where('is_active', true)
-            ->get()
-            ->map(fn (Terminal $t) => [
-                'id' => $t->id,
-                'code' => $t->code,
-                'name' => $t->name,
-                'type' => $t->type->value,
-                'genesis_seed' => $t->genesis_seed,
-                'last_hash' => $t->last_hash,
-                'current_sequence' => $t->current_sequence,
-                'current_year' => $t->current_year,
-                'max_discount_percent' => $t->max_discount_percent,
-                'allow_line_discounts' => $t->allow_line_discounts,
-                'allow_transaction_discounts' => $t->allow_transaction_discounts,
-            ]);
-
-        $payload = [
-            'products' => $products,
-            'categories' => $categories,
-            'payment_methods' => $paymentMethods,
-            'payment_repositories' => $paymentRepos,
-            'terminals' => $terminals,
-            'synced_at' => Carbon::now()->toIso8601String(),
-        ];
-
-        // ETag support
-        $etag = '"'.md5(json_encode($payload, JSON_THROW_ON_ERROR)).'"';
-        $ifNoneMatch = $request->header('If-None-Match');
-
-        if ($ifNoneMatch === $etag) {
-            return response()->json(null, 304);
-        }
-
-        return response()->json([
-            'data' => $payload,
-        ])->header('ETag', $etag);
-    }
 
     /**
      * Sync close a shift that was closed offline.
@@ -218,76 +93,5 @@ final class SyncController extends Controller
                 'closed_at' => $closedShift->closed_at?->toIso8601String(),
             ],
         ]);
-    }
-
-    /**
-     * Pull menu data for F&B terminals.
-     *
-     * GET /api/v1/pos/sync/menu
-     *
-     * Returns active composite items with modifier groups and modifiers.
-     * Supports ETag for efficient polling.
-     */
-    public function menu(Request $request): JsonResponse
-    {
-        Gate::authorize('pos.operate_terminal');
-
-        $companyId = $this->companyContext->getCompanyId();
-
-        /** @var Collection<int, CompositeItem> $compositeItemsCollection */
-        $compositeItemsCollection = CompositeItem::query()
-            ->whereRaw('company_id = ?', [$companyId])
-            ->where('is_active', true)
-            ->with([
-                'modifierGroups' => function ($query): void {
-                    $query->where('is_active', true)->orderBy('position');
-                },
-                'modifierGroups.modifiers' => function ($query): void {
-                    $query->where('is_active', true)->orderBy('position');
-                },
-            ])
-            ->get();
-
-        $compositeItems = $compositeItemsCollection
-            ->map(fn (CompositeItem $item): array => [
-                'id' => $item->id,
-                'code' => $item->code,
-                'name' => $item->getSellableName(),
-                'description' => null,
-                'category_id' => $item->category_id,
-                'base_price' => $item->base_price,
-                'tax_rate' => $item->tax_rate,
-                'image_url' => $item->image_url ?? null,
-                'modifier_groups' => $item->modifierGroups->map(fn (ModifierGroup $group) => [
-                    'id' => $group->id,
-                    'name' => $group->name,
-                    'is_required' => $group->is_required,
-                    'min_selections' => $group->min_selections,
-                    'max_selections' => $group->max_selections,
-                    'modifiers' => $group->modifiers->map(fn ($mod) => [
-                        'id' => $mod->id,
-                        'name' => $mod->name,
-                        'price_adjustment' => $mod->price_adjustment,
-                        'is_default' => $mod->is_default ?? false,
-                    ])->values()->toArray(),
-                ])->values()->toArray(),
-            ]);
-
-        $payload = [
-            'composite_items' => $compositeItems,
-            'synced_at' => Carbon::now()->toIso8601String(),
-        ];
-
-        // ETag support
-        $etag = '"'.md5(json_encode($payload, JSON_THROW_ON_ERROR)).'"';
-        $ifNoneMatch = $request->header('If-None-Match');
-
-        if ($ifNoneMatch === $etag) {
-            return response()->json(null, 304);
-        }
-
-        return response()->json([
-            'data' => $payload,
-        ])->header('ETag', $etag);
     }
 }

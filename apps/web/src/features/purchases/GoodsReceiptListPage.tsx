@@ -20,7 +20,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, getErrorMessage } from '../../lib/api'
+import { bcadd, bccomp, bcdiv, bcmul, formatQuantity } from '../../lib/decimal'
 import { formatDate as formatLocaleDate } from '../../lib/format'
+import { getQuantityDecimals } from '../../lib/quantityScale'
 import { borderColors, colors, textColors, tokens } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
@@ -39,10 +41,10 @@ interface PurchaseOrderLine {
   product_id: string | null
   product_name: string | null
   description: string
-  quantity: number
-  quantity_received: number
-  free_quantity?: string | number | null
-  free_quantity_received?: string | number | null
+  quantity: string
+  quantity_received: string
+  free_quantity?: string | null
+  free_quantity_received?: string | null
   quantity_decimals?: number
   requires_batch_tracking?: boolean
   unit_price: number
@@ -129,19 +131,28 @@ function formatReceiptCurrency(amount: number, currency: string, fallbackCurrenc
   return formatter.format(amount)
 }
 
-function calculateReceiptProgress(po: PurchaseOrder): { received: number; total: number; percentage: number } {
-  let totalQty = 0
-  let receivedQty = 0
+function calculateReceiptProgress(po: PurchaseOrder): {
+  received: string
+  total: string
+  percentage: string
+  decimalPlaces: number
+} {
+  let totalQty = '0.0000'
+  let receivedQty = '0.0000'
+  let decimalPlaces = 0
 
   po.lines.forEach((line) => {
     if (line.product_id) {
-      totalQty += line.quantity
-      receivedQty += line.quantity_received || 0
+      totalQty = bcadd(totalQty, line.quantity, 4)
+      receivedQty = bcadd(receivedQty, line.quantity_received || '0', 4)
+      decimalPlaces = Math.max(decimalPlaces, getQuantityDecimals(line))
     }
   })
 
-  const percentage = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0
-  return { received: receivedQty, total: totalQty, percentage }
+  const percentage = bccomp(totalQty, '0') > 0
+    ? bcmul(bcdiv(receivedQty, totalQty, 6), '100', 0)
+    : '0'
+  return { received: receivedQty, total: totalQty, percentage, decimalPlaces }
 }
 
 function scopedNamespacePredicate(
@@ -676,7 +687,7 @@ export function GoodsReceiptListPage() {
         <div className="space-y-4">
           {orders.map((po) => {
             const progress = calculateReceiptProgress(po)
-            const isFullyReceived = po.payload?.fully_received ?? (progress.percentage === 100)
+            const isFullyReceived = po.payload?.fully_received ?? (progress.percentage === '100')
 
             return (
               <div
@@ -706,7 +717,7 @@ export function GoodsReceiptListPage() {
                           <CheckCircle2 className="h-3 w-3" />
                           {t('inventory:goodsReceipt.status.received')}
                         </span>
-                      ) : progress.percentage > 0 ? (
+                      ) : bccomp(progress.percentage, '0') > 0 ? (
                         <span className={`${tokens.badge.base} ${tokens.badge.yellow} inline-flex items-center gap-1`}>
                           <AlertCircle className="h-3 w-3" />
                           {t('inventory:goodsReceipt.status.partial')}
@@ -739,13 +750,13 @@ export function GoodsReceiptListPage() {
                     </div>
 
                     {/* Progress bar for partial receipts */}
-                    {activeTab === 'pending' && progress.total > 0 && (
+                    {activeTab === 'pending' && bccomp(progress.total, '0') > 0 && (
                       <div className="mt-3">
                         <div className={`mb-1 flex items-center justify-between text-xs ${textColors.disabled}`}>
                           <span>
                             {t('inventory:goodsReceipt.progress', {
-                              received: progress.received,
-                              total: progress.total,
+                              received: formatQuantity(progress.received, progress.decimalPlaces),
+                              total: formatQuantity(progress.total, progress.decimalPlaces),
                             })}
                           </span>
                           <span>{progress.percentage}%</span>
@@ -753,9 +764,9 @@ export function GoodsReceiptListPage() {
                         <div className={`h-2 w-full overflow-hidden rounded-full ${colors.neutral[100]}`}>
                           <div
                             className={`h-full rounded-full transition-all ${
-                              progress.percentage === 100
+                              progress.percentage === '100'
                                 ? colors.success[600]
-                                : progress.percentage > 0
+                                : bccomp(progress.percentage, '0') > 0
                                 ? colors.warning[600]
                                 : colors.neutral[300]
                             }`}
@@ -777,7 +788,7 @@ export function GoodsReceiptListPage() {
                             className="truncate"
                           />
                           <span className={textColors.disabled}>
-                            ({line.quantity_received ?? 0}/{line.quantity})
+                            ({formatQuantity(line.quantity_received ?? '0', getQuantityDecimals(line))}/{formatQuantity(line.quantity, getQuantityDecimals(line))})
                           </span>
                         </div>
                       ))}

@@ -108,6 +108,7 @@ export interface ReceiptPayment {
 export interface ShiftReceiptLine {
   id: string;
   quantity: number;
+  quantity_decimals?: number | null;
   unit_price: string;
   line_total: string;
   product?: { id: string; name: string } | null;
@@ -360,6 +361,13 @@ interface ReceiptLineJson {
   tax_amount?: string;
 }
 
+interface ProductQuantityPrecisionRow {
+  id: string;
+  quantity_decimals: number | null;
+}
+
+const PRODUCT_PRECISION_LOOKUP_BATCH_SIZE = 500;
+
 function getDb() {
   const { companyId } = useAuthStore.getState();
   return getDatabase(companyId ?? '');
@@ -556,8 +564,40 @@ async function fetchLocalShiftReceipts(): Promise<ShiftReceipt[]> {
     methodMap.set(m.id, m.code);
   }
 
-  return receipts.map((receipt): ShiftReceipt => {
-    const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
+  const parsedReceipts = receipts.map((receipt) => ({
+    receipt,
+    lines: JSON.parse(receipt.lines) as ReceiptLineJson[],
+  }));
+  const productIds = Array.from(new Set(
+    parsedReceipts.flatMap(({ lines }) => lines.flatMap((line) => (
+      line.product_id === undefined ? [] : [line.product_id]
+    ))),
+  ));
+  const quantityDecimalsByProductId = new Map<string, number | null>();
+  if (productIds.length > 0) {
+    const batches = Array.from(
+      { length: Math.ceil(productIds.length / PRODUCT_PRECISION_LOOKUP_BATCH_SIZE) },
+      (_, index) => productIds.slice(
+        index * PRODUCT_PRECISION_LOOKUP_BATCH_SIZE,
+        (index + 1) * PRODUCT_PRECISION_LOOKUP_BATCH_SIZE,
+      ),
+    );
+    const productRowsByBatch = await Promise.all(batches.map(async (batch) => {
+      const placeholders = batch.map((_, index) => `$${String(index + 1)}`).join(', ');
+      return queryAll<ProductQuantityPrecisionRow>(
+        db,
+        `SELECT id, quantity_decimals FROM products WHERE id IN (${placeholders})`,
+        batch,
+      );
+    }));
+    for (const productRows of productRowsByBatch) {
+      for (const product of productRows) {
+        quantityDecimalsByProductId.set(product.id, product.quantity_decimals);
+      }
+    }
+  }
+
+  return parsedReceipts.map(({ receipt, lines }): ShiftReceipt => {
     const methodCode = methodMap.get(receipt.payment_method_id) ?? 'CASH';
 
     return {
@@ -577,6 +617,9 @@ async function fetchLocalShiftReceipts(): Promise<ShiftReceipt[]> {
       lines: lines.map((line, idx) => ({
         id: `local-line-${receipt.id}-${String(idx)}`,
         quantity: line.quantity,
+        quantity_decimals: line.product_id === undefined
+          ? undefined
+          : quantityDecimalsByProductId.get(line.product_id),
         unit_price: line.unit_price,
         line_total: line.line_total,
         product_name: line.name,

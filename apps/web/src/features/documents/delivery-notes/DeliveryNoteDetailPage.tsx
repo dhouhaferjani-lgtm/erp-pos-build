@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { formatCurrency } from '../../../lib/format'
+import { formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { bccomp } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -248,7 +250,7 @@ export function DeliveryNoteDetailPage() {
                     )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatQuantity(line.quantity)}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
                     {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}

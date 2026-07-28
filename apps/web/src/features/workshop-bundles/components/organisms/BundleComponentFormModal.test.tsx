@@ -134,7 +134,7 @@ describe('BundleComponentFormModal', () => {
     mockApiGet.mockImplementation((url: string) => {
       if (url.startsWith('/products')) {
         return Promise.resolve(listResponse([
-          { id: 'prod-1', sku: 'FILT-OIL-STD', name: 'Oil filter', sale_price: '25.000', currency: 'TND' },
+          { id: 'prod-1', sku: 'FILT-OIL-STD', name: 'Oil filter', sale_price: '25.000', currency: 'TND', quantity_decimals: 3 },
         ]))
       }
       return Promise.resolve(listResponse([]))
@@ -197,8 +197,10 @@ describe('BundleComponentFormModal', () => {
 
     // set quantity + unit
     const quantityInput = screen.getByTestId('bundle-component-quantity') as HTMLInputElement
-    await user.clear(quantityInput)
-    await user.type(quantityInput, '2.000')
+    expect(quantityInput).toHaveAttribute('type', 'number')
+    expect(quantityInput).toHaveAttribute('step', '0.001')
+    fireEvent.change(quantityInput, { target: { value: '2.000' } })
+    expect(quantityInput).toHaveAttribute('value', '2.000')
 
     const unitSelect = screen.getByTestId('bundle-component-unit-select') as HTMLSelectElement
     await waitFor(() => {
@@ -316,6 +318,7 @@ describe('BundleComponentFormModal', () => {
       component_id: 'prod-9',
       component_display_name: 'Brake pad',
       quantity: '3.000',
+      quantity_decimals: 3,
       unit: 'EA',
       override_unit_price: null,
       is_optional: false,
@@ -340,9 +343,12 @@ describe('BundleComponentFormModal', () => {
     const unitSelect = (await screen.findByTestId(
       'bundle-component-unit-select',
     )) as HTMLSelectElement
+    const quantityInput = screen.getByTestId('bundle-component-quantity')
 
     // Symbol "EA" in the DTO must resolve to the 'unit-each' id.
     expect(unitSelect.value).toBe('unit-each')
+    expect(quantityInput).toHaveAttribute('step', '0.001')
+    expect(quantityInput).toHaveAttribute('value', '3.000')
 
     await user.click(screen.getByRole('button', { name: /save component/i }))
 

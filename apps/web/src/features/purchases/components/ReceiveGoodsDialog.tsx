@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Input, MoneyInput, QuantityInput, Select, Textarea } from '@/components/atoms'
@@ -93,19 +93,35 @@ function initialReceiveState(lines: ReceivableLine[]): Record<string, ReceiveLin
   )
 }
 
-export function ReceiveGoodsDialog({
-  isOpen,
-  purchaseOrder,
-  isLoading,
-  onClose,
-  onConfirm,
-}: {
+interface ReceiveGoodsDialogProps {
   isOpen: boolean
   purchaseOrder: ReceivablePurchaseOrder
   isLoading: boolean
   onClose: () => void
   onConfirm: (request: ReceiveGoodsRequest) => void
-}) {
+}
+
+export function ReceiveGoodsDialog({ isOpen, purchaseOrder, isLoading, onClose, onConfirm }: ReceiveGoodsDialogProps) {
+  const { t } = useTranslation(['sales', 'common'])
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={t('purchaseOrders.receiveGoodsTitle')} size="xl">
+      <ReceiveGoodsForm
+        purchaseOrder={purchaseOrder}
+        isLoading={isLoading}
+        onClose={onClose}
+        onConfirm={onConfirm}
+      />
+    </Modal>
+  )
+}
+
+function ReceiveGoodsForm({
+  purchaseOrder,
+  isLoading,
+  onClose,
+  onConfirm,
+}: Omit<ReceiveGoodsDialogProps, 'isOpen'> & { isOpen?: never }) {
   const { t } = useTranslation(['sales', 'common'])
   const { hasPermission } = usePermissions()
   const { data: locations = [] } = useTransactionLocations()
@@ -123,12 +139,13 @@ export function ReceiveGoodsDialog({
   )
   const [priceOverrideReason, setPriceOverrideReason] = useState('')
   const [destinationLocationId, setDestinationLocationId] = useState(purchaseOrder.location_id ?? '')
-
-  useEffect(() => {
-    if (destinationLocationId === '' && locations.length > 0) {
-      setDestinationLocationId(purchaseOrder.location_id ?? locations.find((location) => location.isDefault)?.id ?? locations[0].id)
-    }
-  }, [destinationLocationId, locations, purchaseOrder.location_id])
+  const firstLocationId = locations.length > 0 ? locations[0].id : ''
+  const configuredDestinationLocationId = purchaseOrder.location_id != null && purchaseOrder.location_id !== ''
+    ? purchaseOrder.location_id
+    : locations.find((location) => location.isDefault)?.id ?? firstLocationId
+  const resolvedDestinationLocationId = destinationLocationId !== ''
+    ? destinationLocationId
+    : configuredDestinationLocationId
 
   const hasEditedUnitPrice = receivableLines.some((line) =>
     (lineState[line.id]?.deliveredUnitPrice.trim() ?? '') !== ''
@@ -221,7 +238,7 @@ export function ReceiveGoodsDialog({
 
     return {
       quantities,
-      ...(destinationLocationId !== '' ? { location_id: destinationLocationId } : {}),
+      ...(resolvedDestinationLocationId !== '' ? { location_id: resolvedDestinationLocationId } : {}),
       ...(saveAsDraft ? { save_as_draft: true } : {}),
       ...(Object.keys(freeQuantities).length > 0 ? { free_quantities: freeQuantities } : {}),
       ...(Object.keys(receivedUnitPrices).length > 0 ? { received_unit_prices: receivedUnitPrices } : {}),
@@ -269,12 +286,11 @@ export function ReceiveGoodsDialog({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('purchaseOrders.receiveGoodsTitle')} size="xl">
-      <form className="space-y-4" onSubmit={handleSubmit}>
+    <form className="space-y-4" onSubmit={handleSubmit}>
         <label className={tokens.label.base}>
           {t('purchaseOrders.receive.destination')}
           <Select
-            value={destinationLocationId}
+            value={resolvedDestinationLocationId}
             onChange={(event) => { setDestinationLocationId(event.target.value) }}
             aria-label={t('purchaseOrders.receive.destination')}
           >
@@ -439,7 +455,6 @@ export function ReceiveGoodsDialog({
             {isLoading ? t('common:status.loading') : t('purchaseOrders.receive.saveAndPost')}
           </Button>
         </div>
-      </form>
-    </Modal>
+    </form>
   )
 }

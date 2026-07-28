@@ -9,6 +9,8 @@ import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { ProductLineSelect } from '@/components/molecules/line-items'
 import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
 import { textColors, borderColors, colors } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType, ComponentType } from '../types/compositeItem'
 import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
@@ -357,7 +359,9 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
               {costData.lines.map((line, idx) => (
                 <tr key={idx}>
                   <td className="py-1">{line.component_name}</td>
-                  <td className="text-right py-1">{line.quantity}</td>
+                  <td className="text-right py-1">
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
+                  </td>
                   <td className="text-right py-1">{line.unit_cost}</td>
                   <td className="text-right py-1">{line.line_cost}</td>
                   <td className="text-right py-1">{line.percent_of_total}%</td>

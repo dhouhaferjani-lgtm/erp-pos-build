@@ -3,6 +3,8 @@ import { borderColors, textColors } from '@/lib/designTokens'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { LineTypeIcon } from './LineTypeIcon'
 import type { WorkOrderLine } from '../types'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 interface WorkOrderLineRowProps {
   line: WorkOrderLine
@@ -34,7 +36,7 @@ export function WorkOrderLineRow({ line, currency, redactFinancials }: WorkOrder
         </div>
       </div>
       <div className={`col-span-2 text-xs ${textColors.tertiary}`}>
-        {line.quantity} {line.unit}
+        {formatQuantity(line.quantity, getQuantityDecimals(line))} {line.unit}
       </div>
       <div className={`col-span-2 text-right text-xs tabular-nums ${textColors.tertiary}`}>{unitPrice}</div>
       <div className={`col-span-2 text-right text-sm font-semibold tabular-nums ${textColors.primary}`}>

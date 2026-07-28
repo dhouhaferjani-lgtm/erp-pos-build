@@ -16,6 +16,7 @@ export interface CartItem {
     sku: string;
     price: string;
     sellableType?: 'product' | 'composite_item';
+    quantity_decimals?: number | null;
     selectedModifiers?: SelectedModifier[];
     comboComponents?: string[];
     /**

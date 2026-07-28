@@ -16,6 +16,7 @@ export interface ServiceBundleComponentData {
   component_id: string
   component_display_name: string
   quantity: string
+  quantity_decimals: number
   unit: string
   override_unit_price: string | null
   is_optional: boolean
@@ -73,6 +74,7 @@ export interface BundleExpansionLineData {
   component_id: string | null
   display_name: string
   quantity: string
+  quantity_decimals: number
   unit: string
   unit_price: string
   line_total: string

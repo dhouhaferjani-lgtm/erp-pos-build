@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { borderColors, colors, textColors } from '../../../../lib/designTokens'
 import { useBundleExpansion } from '../../hooks/useBundles'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 
 interface BundleExpandedPreviewProps {
   bundleId: string
@@ -51,7 +53,7 @@ export function BundleExpandedPreview({
             <div>
               <div className={`text-sm font-medium ${textColors.primary}`}>{line.display_name}</div>
               <div className={`text-xs ${textColors.tertiary}`}>
-                {line.quantity} {line.unit} × {line.unit_price} {currency}
+                {formatQuantity(line.quantity, getQuantityDecimals(line))} {line.unit} × {line.unit_price} {currency}
               </div>
             </div>
           </div>
@@ -75,7 +77,7 @@ export function BundleExpandedPreview({
                 <div className="text-sm">{line.display_name}</div>
               </div>
               <span className="font-mono text-xs">
-                {line.quantity} {line.unit}
+                {formatQuantity(line.quantity, getQuantityDecimals(line))} {line.unit}
               </span>
             </div>
           ))}

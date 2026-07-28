@@ -4,6 +4,8 @@ import { OrderStatusBadge } from '../molecules/OrderStatusBadge'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
 import { colors, textColors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import type { OrderData, OrderLineData } from '../api/orderApi'
 import { Button } from '@/components/atoms'
 
@@ -109,7 +111,7 @@ export function KitchenOrderCard({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className={`font-medium ${textColors.primary}`}>
-                    {line.quantity}x
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}x
                   </span>
                   <span className={`text-sm ${textColors.secondary}`}>
                     {line.product_name}

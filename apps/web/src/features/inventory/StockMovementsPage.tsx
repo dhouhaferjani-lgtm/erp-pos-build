@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 import { api, isApiError } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
-import { formatQuantity } from '../../lib/format'
-import { bccomp } from '../../lib/decimal'
+import { bccomp, formatQuantity } from '../../lib/decimal'
+import { getQuantityDecimals } from '../../lib/quantityScale'
 import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -40,6 +40,7 @@ interface StockMovement {
   /** MovementReason value e.g. 'write_off', 'expiry', 'damage', or null */
   reason: string | null
   quantity: string
+  quantity_decimals: number
   quantity_before: string
   quantity_after: string
   reference: string
@@ -244,7 +245,7 @@ export function StockMovementsPage() {
         const isPositive = bccomp(movement.quantity, '0') >= 0
         return (
           <span className={cn('text-sm font-semibold', isPositive ? textColors.success : textColors.error)}>
-            {isPositive ? '+' : ''}{formatQuantity(movement.quantity)}
+            {isPositive ? '+' : ''}{formatQuantity(movement.quantity, getQuantityDecimals(movement))}
           </span>
         )
       },
@@ -254,14 +255,14 @@ export function StockMovementsPage() {
       numeric: true,
       header: t('products.movementsTab.columns.before'),
       cellClassName: cn('text-sm', textColors.tertiary),
-      render: (movement) => formatQuantity(movement.quantity_before),
+      render: (movement) => formatQuantity(movement.quantity_before, getQuantityDecimals(movement)),
     },
     {
       key: 'after',
       numeric: true,
       header: t('products.movementsTab.columns.after'),
       cellClassName: cn('text-sm font-medium', textColors.primary),
-      render: (movement) => formatQuantity(movement.quantity_after),
+      render: (movement) => formatQuantity(movement.quantity_after, getQuantityDecimals(movement)),
     },
     {
       key: 'reference',

@@ -30,6 +30,12 @@ describe('cartStore', () => {
     expect(items[0]!.line_total).toBe('10.00');
   });
 
+  it('keeps the product quantity precision on a newly added cart line', () => {
+    useCartStore.getState().addItem(makeProduct({ quantity_decimals: 2 }));
+
+    expect(useCartStore.getState().items[0]!.product.quantity_decimals).toBe(2);
+  });
+
   it('exposes gross subtotal + line-discount total separately from the cart discount (PaymentSummary §5.1 breakdown)', () => {
     const store = useCartStore.getState();
     store.addItem(makeProduct({ sale_price: '10.00' }));

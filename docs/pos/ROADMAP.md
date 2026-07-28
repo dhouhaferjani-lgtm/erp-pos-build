@@ -357,7 +357,7 @@
 - [x] Fix "Composite item does not exist" sale flow bug
 
 **Phase 3 — Production Hardening ✅ COMPLETE:**
-- [x] Backend sync APIs: `POST /pos/receipts/sync` (batch with idempotency + hash chain validation), `GET /pos/sync/pull` (delta sync with ETag), `POST /pos/shifts/{id}/sync-close` (offline shift close), `GET /pos/sync/menu` (F&B menu sync)
+- [x] Backend sync APIs: `POST /pos/receipts/sync` (batch with idempotency + hash chain validation), `POST /pos/shifts/{id}/sync-close` (offline shift close). ~~`GET /pos/sync/pull`, `GET /pos/sync/menu`~~ RETIRED 2026-07-28 (zero callers ever; deleted, 404-pinned — clients use `/products` + `/active-menu`)
 - [x] `ReceiptSyncService` with chain break propagation, `SyncStatus` enum, `SyncReceiptPayload`/`SyncReceiptResult` DTOs
 - [x] Migration: `idempotency_key` on `pos_receipts`
 - [x] Offline VAT breakdown fix — cart items now propagate `tax_rate`, `computeVatBreakdown()` groups by rate (was hardcoded `[]`, breaking NF525 compliance)

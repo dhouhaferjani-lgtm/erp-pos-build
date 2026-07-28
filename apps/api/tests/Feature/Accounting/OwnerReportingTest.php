@@ -22,6 +22,7 @@ use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -276,6 +277,33 @@ final class OwnerReportingTest extends TestCase
         $this->assertCount(1, $response->json('data'));
     }
 
+    public function test_top_skus_exposes_product_unit_quantity_precision(): void
+    {
+        Sanctum::actingAs($this->owner);
+
+        $unit = Unit::factory()->create(['decimal_places' => 3]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+        ]);
+        $this->seedReceiptWithLine(
+            $product,
+            $this->locationA,
+            $this->terminalA,
+            '2026-05-03 10:00:00',
+            '20.000',
+            '1.2500',
+        );
+
+        $response = $this->getJson(
+            '/api/v1/reports/sales/top-skus?from=2026-05-01&to=2026-05-31',
+            $this->companyHeaders(),
+        );
+
+        $response->assertOk()->assertJsonPath('data.0.quantity_decimals', 3);
+    }
+
     public function test_revenue_by_category_groups_uncategorized_products(): void
     {
         Sanctum::actingAs($this->owner);
@@ -350,6 +378,26 @@ final class OwnerReportingTest extends TestCase
         $this->assertSame('out_of_stock', $rows->firstWhere('product_id', $out->id)['severity']);
         $this->assertSame('critical', $rows->firstWhere('product_id', $low->id)['severity']);
         $this->assertNull($rows->firstWhere('product_id', $ok->id));
+    }
+
+    public function test_stock_alerts_exposes_product_unit_quantity_precision(): void
+    {
+        Sanctum::actingAs($this->owner);
+
+        $unit = Unit::factory()->create(['decimal_places' => 2]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+        ]);
+        $this->seedStockLevel($product, '1.5000', '2.0000');
+
+        $response = $this->getJson(
+            '/api/v1/reports/stock/alerts?threshold_pct=100',
+            $this->companyHeaders(),
+        );
+
+        $response->assertOk()->assertJsonPath('data.0.quantity_decimals', 2);
     }
 
     public function test_cash_register_reconciliation_returns_shift_variance(): void

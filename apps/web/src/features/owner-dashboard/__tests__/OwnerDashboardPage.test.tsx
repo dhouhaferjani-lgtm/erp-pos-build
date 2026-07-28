@@ -106,7 +106,7 @@ describe('OwnerDashboardPage', () => {
       isError: false,
     })
     ownerReportHookMocks.useTopSkus.mockReturnValue({
-      data: [{ product_id: 'prod-1', product_name: 'Brake Pads', sku: 'BRAKE', revenue: '200', quantity: '2' }],
+      data: [{ product_id: 'prod-1', product_name: 'Brake Pads', sku: 'BRAKE', revenue: '200', quantity: '2', quantity_decimals: 0 }],
       isLoading: false,
       isError: false,
     })
@@ -121,7 +121,7 @@ describe('OwnerDashboardPage', () => {
       isError: false,
     })
     ownerReportHookMocks.useLowStockAlerts.mockReturnValue({
-      data: [{ product_id: 'prod-2', product_name: 'No Stock', location_id: 'loc-1', location_name: 'Downtown', quantity: '0', min_quantity: '10', threshold_pct: 100, severity: 'out_of_stock' }],
+      data: [{ product_id: 'prod-2', product_name: 'No Stock', location_id: 'loc-1', location_name: 'Downtown', quantity: '0', min_quantity: '10', quantity_decimals: 0, threshold_pct: 100, severity: 'out_of_stock' }],
       isLoading: false,
       isError: false,
     })

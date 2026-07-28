@@ -12,6 +12,7 @@ vi.mock('@tanstack/react-query', () => ({
     data: {
       totals: {
         quantity: '5.0000',
+        quantity_decimals: 3,
         reserved: '1.0000',
         available: '4.0000',
         incoming: '2.0000',
@@ -48,8 +49,8 @@ describe('ProductStockLevels', () => {
       />,
     )
 
-    expect(screen.getByText('stock.onHand').parentElement).toHaveTextContent('5')
-    expect(screen.getByText('stock.available').parentElement).toHaveTextContent('4')
+    expect(screen.getByText('stock.onHand').parentElement).toHaveTextContent('5.000')
+    expect(screen.getByText('stock.available').parentElement).toHaveTextContent('4.000')
     expect(screen.queryByText('stock.stockValue')).not.toBeInTheDocument()
     expect(screen.queryByText(/WAC/)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'stock.title' })).not.toBeInTheDocument()
@@ -72,7 +73,7 @@ describe('ProductStockLevels', () => {
   })
 
   it('renders reserved stock and a transfer-from CTA per location', () => {
-    queryData.locations = [{ id: 'row-a', location_id: 'loc-a', location_name: 'Main', quantity: '5.0000', reserved: '1.0000', available: '4.0000', incoming: '2.0000', projected_available: '6.0000', min_quantity: '2.0000', max_quantity: '8.0000', is_below_minimum: false }]
+    queryData.locations = [{ id: 'row-a', location_id: 'loc-a', location_name: 'Main', quantity: '5.0000', quantity_decimals: 3, reserved: '1.0000', available: '4.0000', incoming: '2.0000', projected_available: '6.0000', min_quantity: '2.0000', max_quantity: '8.0000', is_below_minimum: false }]
     render(<ProductStockLevels productId="product-1" costPrice={null} canViewCostPrices={false} embedded />)
     expect(screen.getByText('stock.reserved').parentElement).toHaveTextContent('1')
     expect(screen.getByRole('link', { name: /stock.transferFromHere/ })).toHaveAttribute('href', '/inventory/stock-transfers/new?source_location_id=loc-a&product_id=product-1')
@@ -80,7 +81,7 @@ describe('ProductStockLevels', () => {
 
   it('hides transfer CTA without transfer permission', () => {
     permissionState.canTransfer = false
-    queryData.locations = [{ id: 'row-a', location_id: 'loc-a', location_name: 'Main', quantity: '5.0000', reserved: '1.0000', available: '4.0000', incoming: '2.0000', projected_available: '6.0000', min_quantity: null, max_quantity: null, is_below_minimum: false }]
+    queryData.locations = [{ id: 'row-a', location_id: 'loc-a', location_name: 'Main', quantity: '5.0000', quantity_decimals: 3, reserved: '1.0000', available: '4.0000', incoming: '2.0000', projected_available: '6.0000', min_quantity: null, max_quantity: null, is_below_minimum: false }]
     render(<ProductStockLevels productId="product-1" costPrice={null} canViewCostPrices={false} embedded />)
     expect(screen.queryByRole('link', { name: /stock.transferFromHere/ })).not.toBeInTheDocument()
     permissionState.canTransfer = true

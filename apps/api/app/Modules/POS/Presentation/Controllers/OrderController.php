@@ -48,7 +48,7 @@ final class OrderController extends Controller
 
         $query = Order::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->with(['lines', 'terminal', 'table.floor']);
+            ->with(['lines.product.unitOfMeasure', 'terminal', 'table.floor']);
 
         if ($request->filled('terminal_id')) {
             $query->where('terminal_id', $request->input('terminal_id'));
@@ -100,7 +100,7 @@ final class OrderController extends Controller
         /** @var Order $order */
         $order = Order::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->with(['lines', 'terminal', 'table.floor'])
+            ->with(['lines.product.unitOfMeasure', 'terminal', 'table.floor'])
             ->findOrFail($id);
 
         return response()->json([
@@ -174,6 +174,7 @@ final class OrderController extends Controller
                 modifiers: $validated['modifiers'] ?? null,
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
+            $line->loadMissing('product.unitOfMeasure');
 
             // Reload the order to return updated totals.
             // Round-5 — anchor on BOTH tenant_id and company_id so the
@@ -184,7 +185,7 @@ final class OrderController extends Controller
             /** @var Order $order */
             $order = Order::where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
-                ->with('lines')
+                ->with('lines.product.unitOfMeasure')
                 ->findOrFail($id);
 
             return response()->json([
@@ -235,6 +236,7 @@ final class OrderController extends Controller
                 modifiers: $validated['modifiers'] ?? null,
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
+            $line->loadMissing('product.unitOfMeasure');
 
             // Round-5 — anchor on BOTH tenant_id and company_id.
             $tenantId = $this->companyContext->requireTenantId();
@@ -242,7 +244,7 @@ final class OrderController extends Controller
             /** @var Order $order */
             $order = Order::where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
-                ->with('lines')
+                ->with('lines.product.unitOfMeasure')
                 ->findOrFail($id);
 
             return response()->json([

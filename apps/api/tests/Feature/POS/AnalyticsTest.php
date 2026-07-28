@@ -14,8 +14,10 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -345,6 +347,138 @@ final class AnalyticsTest extends TestCase
         ]);
     }
 
+    public function test_discounts_keep_same_named_products_separate_with_their_own_aggregates_and_unit_precision(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $fractionalUnit = Unit::factory()->create(['decimal_places' => 3]);
+        $wholeUnit = Unit::factory()->create(['decimal_places' => 0]);
+
+        $fractionalProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Shared display name',
+            'unit_id' => $fractionalUnit->id,
+        ]);
+        $wholeProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Shared display name',
+            'unit_id' => $wholeUnit->id,
+        ]);
+
+        $includedReceipt = $this->createAnalyticsReceipt(
+            $this->company,
+            $this->location,
+            $this->terminal,
+            '2026-03-15 10:00:00',
+        );
+        $this->createAnalyticsReceiptLine($includedReceipt, 1, $fractionalProduct, '1.1250', '1.250');
+        $this->createAnalyticsReceiptLine($includedReceipt, 2, $fractionalProduct, '2.2500', '2.000');
+        $this->createAnalyticsReceiptLine($includedReceipt, 3, $wholeProduct, '2.0000', '5.500');
+        $this->createAnalyticsReceiptLine($includedReceipt, 4, $fractionalProduct, '99.0000', '0.000');
+
+        $otherLocation = $this->createLocationWithTerminal();
+        $otherLocationReceipt = $this->createAnalyticsReceipt(
+            $this->company,
+            $otherLocation['location'],
+            $otherLocation['terminal'],
+            '2026-03-15 11:00:00',
+        );
+        $this->createAnalyticsReceiptLine($otherLocationReceipt, 1, $wholeProduct, '20.0000', '12.000');
+
+        $outsideDateReceipt = $this->createAnalyticsReceipt(
+            $this->company,
+            $this->location,
+            $this->terminal,
+            '2026-04-01 10:00:00',
+        );
+        $this->createAnalyticsReceiptLine($outsideDateReceipt, 1, $fractionalProduct, '20.0000', '13.000');
+
+        $otherCompanyLocation = Location::factory()->create(['company_id' => $this->otherCompany->id]);
+        $otherCompanyTerminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->otherCompany->id,
+            'location_id' => $otherCompanyLocation->id,
+        ]);
+        $otherCompanyProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->otherCompany->id,
+            'name' => 'Shared display name',
+            'unit_id' => $wholeUnit->id,
+        ]);
+        $otherCompanyReceipt = $this->createAnalyticsReceipt(
+            $this->otherCompany,
+            $otherCompanyLocation,
+            $otherCompanyTerminal,
+            '2026-03-15 12:00:00',
+        );
+        $this->createAnalyticsReceiptLine($otherCompanyReceipt, 1, $otherCompanyProduct, '20.0000', '14.000');
+
+        $voidedReceipt = $this->createAnalyticsReceipt(
+            $this->company,
+            $this->location,
+            $this->terminal,
+            '2026-03-15 13:00:00',
+            true,
+        );
+        $this->createAnalyticsReceiptLine($voidedReceipt, 1, $fractionalProduct, '20.0000', '15.000');
+
+        $response = $this->getJson(
+            '/api/v1/pos/analytics/discounts?from=2026-03-01&to=2026-03-31&location_ids[]='.$this->location->id,
+        );
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $rows = $data['top_discounted_products'];
+
+        $this->assertCount(2, $rows);
+        $this->assertSame(3, $data['discount_count']);
+        $this->assertSame(0, bccomp((string) $data['total_discount_amount'], '8.750', 3));
+        $this->assertSame('Promo', $data['by_reason'][0]['reason']);
+        $this->assertSame(3, $data['by_reason'][0]['count']);
+        $this->assertSame(0, bccomp((string) $data['by_reason'][0]['total_amount'], '8.750', 3));
+
+        $this->assertSame($wholeProduct->id, $rows[0]['product_id']);
+        $this->assertSame('Shared display name', $rows[0]['product_name']);
+        $this->assertSame(0, bccomp((string) $rows[0]['discount_amount'], '5.500', 3));
+        $this->assertIsString($rows[0]['quantity']);
+        $this->assertSame(0, bccomp($rows[0]['quantity'], '2.0000', 4));
+        $this->assertSame(0, $rows[0]['quantity_decimals']);
+
+        $this->assertSame($fractionalProduct->id, $rows[1]['product_id']);
+        $this->assertSame('Shared display name', $rows[1]['product_name']);
+        $this->assertSame(0, bccomp((string) $rows[1]['discount_amount'], '3.250', 3));
+        $this->assertIsString($rows[1]['quantity']);
+        $this->assertSame(0, bccomp($rows[1]['quantity'], '3.3750', 4));
+        $this->assertSame(3, $rows[1]['quantity_decimals']);
+    }
+
+    public function test_discounts_retain_legacy_product_snapshots_with_the_scale_four_fallback(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $receipt = $this->createAnalyticsReceipt(
+            $this->company,
+            $this->location,
+            $this->terminal,
+            '2026-03-15 10:00:00',
+        );
+        $this->createAnalyticsReceiptLine($receipt, 1, null, '1.1250', '2.500');
+
+        $response = $this->getJson('/api/v1/pos/analytics/discounts?from=2026-03-01&to=2026-03-31');
+
+        $response->assertOk();
+        $row = $response->json('data.top_discounted_products.0');
+
+        $this->assertArrayHasKey('product_id', $row);
+        $this->assertNull($row['product_id']);
+        $this->assertSame('Shared display name', $row['product_name']);
+        $this->assertIsString($row['quantity']);
+        $this->assertSame(0, bccomp($row['quantity'], '1.1250', 4));
+        $this->assertSame(4, $row['quantity_decimals']);
+    }
+
     public function test_customers_endpoint(): void
     {
         Sanctum::actingAs($this->user);
@@ -547,6 +681,52 @@ final class AnalyticsTest extends TestCase
             'subtotal' => '25.000',
             'tax_amount' => '4.750',
             'total' => '29.750',
+        ]);
+    }
+
+    private function createAnalyticsReceipt(
+        Company $company,
+        Location $location,
+        Terminal $terminal,
+        string $postedAt,
+        bool $isVoided = false,
+    ): Receipt {
+        return Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->user->id,
+            'receipt_type' => ReceiptType::Sale,
+            'posted_at' => $postedAt,
+            'is_voided' => $isVoided,
+            'voided_at' => $isVoided ? $postedAt : null,
+            'voided_by' => $isVoided ? $this->user->id : null,
+            'fiscal_status' => $isVoided ? FiscalStatus::Voided : FiscalStatus::Fiscalized,
+        ]);
+    }
+
+    private function createAnalyticsReceiptLine(
+        Receipt $receipt,
+        int $lineNumber,
+        ?Product $product,
+        string $quantity,
+        string $discountAmount,
+    ): void {
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => $lineNumber,
+            'product_id' => $product?->id,
+            'product_name' => 'Shared display name',
+            'product_code' => $product?->sku ?? 'LEGACY-SNAPSHOT',
+            'quantity' => $quantity,
+            'unit' => 'unit',
+            'unit_price' => '10.000',
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'line_total' => '10.000',
+            'discount_amount' => $discountAmount,
+            'discount_reason' => 'Promo',
         ]);
     }
 }

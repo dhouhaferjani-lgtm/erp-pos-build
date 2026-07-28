@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -151,7 +152,9 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ->getJson("/api/v1/invoices/{$invoiceId}")
             ->assertOk();
 
-        $lines = collect($show->json('data.lines'));
+        $lineRows = $show->json('data.lines');
+        $this->assertIsArray($lineRows);
+        $lines = collect($lineRows);
 
         $this->assertSame(0, $lines->firstWhere('product_id', $piecesProduct->id)['quantity_decimals']);
         $this->assertSame(3, $lines->firstWhere('product_id', $kgProduct->id)['quantity_decimals']);
@@ -190,9 +193,58 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
             ->getJson("/api/v1/purchase-orders/{$purchaseOrderId}")
             ->assertOk();
 
-        $line = collect($show->json('data.lines'))->firstWhere('product_id', $product->id);
+        $lineRows = $show->json('data.lines');
+        $this->assertIsArray($lineRows);
+        $line = collect($lineRows)->firstWhere('product_id', $product->id);
 
         $this->assertIsArray($line);
         $this->assertTrue($line['requires_batch_tracking']);
+    }
+
+    #[Test]
+    public function purchase_order_index_returns_lines_with_per_unit_quantity_decimals(): void
+    {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Index Precision Supplier',
+            'type' => 'supplier',
+            'code' => 'QTYLINES-INDEX',
+        ]);
+        $product = $this->makeProduct('Index Weighed Product', $this->makeUnit('idx-kg', 3));
+
+        $create = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-orders', [
+                'partner_id' => $supplier->id,
+                'document_date' => now()->format('Y-m-d'),
+                'lines' => [
+                    ['product_id' => $product->id, 'description' => 'Index Weighed Product', 'quantity' => '2.5000', 'unit_price' => '8.500'],
+                ],
+            ])->assertStatus(201);
+
+        $purchaseOrderId = $create->json('data.id');
+        DocumentLine::query()
+            ->where('document_id', $purchaseOrderId)
+            ->firstOrFail()
+            ->forceFill([
+                'quantity_received' => '1.2500',
+                'free_quantity' => '2.0000',
+                'free_quantity_received' => '0.5000',
+            ])
+            ->save();
+
+        $index = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/purchase-orders?per_page=100')
+            ->assertOk();
+
+        $purchaseOrderRows = $index->json('data');
+        $this->assertIsArray($purchaseOrderRows);
+        $purchaseOrder = collect($purchaseOrderRows)->firstWhere('id', $purchaseOrderId);
+
+        $this->assertIsArray($purchaseOrder);
+        $this->assertSame('2.5000', $purchaseOrder['lines'][0]['quantity']);
+        $this->assertSame('1.2500', $purchaseOrder['lines'][0]['quantity_received']);
+        $this->assertSame('0.5000', $purchaseOrder['lines'][0]['free_quantity_received']);
+        $this->assertSame(3, $purchaseOrder['lines'][0]['quantity_decimals']);
     }
 }

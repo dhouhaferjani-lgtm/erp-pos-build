@@ -7,7 +7,9 @@ import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { formatCurrency } from '../../../lib/format'
+import { formatQuantity } from '../../../lib/decimal'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
@@ -449,7 +451,7 @@ export function InvoiceDetailPage() {
                     )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatQuantity(line.quantity)}
+                    {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
                     {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}

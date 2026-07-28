@@ -53,6 +53,7 @@ export function PurchaseOrderLandedCostBreakdown({
     productName: allocation.product_name,
     description: allocation.description,
     quantity: allocation.quantity,
+    quantity_decimals: allocation.quantity_decimals,
     unitPrice: allocation.unit_price,
     lineTotal: allocation.line_total,
     allocatedCosts: allocation.allocated_costs,

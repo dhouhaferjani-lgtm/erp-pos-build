@@ -17,6 +17,7 @@ final class StockAlertData extends Data
         public readonly string $location_name,
         public readonly string $quantity,
         public readonly string $min_quantity,
+        public readonly int $quantity_decimals,
         public readonly int $threshold_pct,
         public readonly string $severity,
     ) {}

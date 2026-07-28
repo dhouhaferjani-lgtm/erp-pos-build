@@ -17,6 +17,8 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -78,6 +80,38 @@ final class StockRebalanceEndpointTest extends TestCase
         self::assertSame($this->a->id, $row['deficits'][0]['location_id']);
         self::assertSame($this->b->id, $row['surpluses'][0]['location_id']);
         self::assertSame('6.0000', $row['surpluses'][0]['excess']);
+    }
+
+    public function test_rebalance_rows_expose_product_unit_quantity_decimals(): void
+    {
+        $category = UnitCategory::factory()->create([
+            'tenant_id' => null,
+            'code' => 'rebalance-weight',
+            'name' => 'Rebalance Weight',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'rebalance-kg',
+            'name' => 'Rebalance Kilogram',
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $product = $this->product('Weighted');
+        $product->update(['unit_id' => $unit->id]);
+        $this->stock($product, $this->a, '0', '0');
+        $this->stock($product, $this->b, '2.5', '0');
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/inventory/stock-matrix/rebalance')
+            ->assertOk();
+
+        $response->assertJsonPath('data.0.quantity_decimals', 3);
+        $response->assertJsonPath('data.0.surpluses.0.excess', '2.5000');
     }
 
     private function location(string $suffix): Location

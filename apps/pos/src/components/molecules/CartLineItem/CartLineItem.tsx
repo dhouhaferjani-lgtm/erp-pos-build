@@ -5,6 +5,7 @@ import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { Tag, SlidersHorizontal, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { bcadd, bccomp } from '@/lib/decimal';
+import { formatQuantity } from '@/lib/quantity';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { Stepper } from '@/components/ui/Stepper';
 import type { CartItem } from '@/types/cart';
@@ -86,6 +87,8 @@ export function CartLineItem({
   };
 
   const name = item.product.variant_name ?? item.product.name;
+  const quantity = item.quantity;
+  const displayedQuantity = formatQuantity(String(quantity), item.product.quantity_decimals);
 
   return (
     <div
@@ -126,7 +129,7 @@ export function CartLineItem({
                   {name}
                 </span>
                 <span className="shrink-0 rounded-pill bg-surface-sunken px-1.5 text-xs font-medium tabular-nums text-ink-muted">
-                  ×{item.quantity}
+                  ×{displayedQuantity}
                 </span>
               </div>
               {hasMods && (
@@ -214,11 +217,11 @@ export function CartLineItem({
           </span>
           <div className="ml-auto flex items-center gap-2">
             <Stepper
-              value={item.quantity}
+              value={quantity}
               onIncrement={handleIncrement}
               onDecrement={handleDecrement}
               onValueClick={onQuantityTap ? () => onQuantityTap(item.id) : undefined}
-              display={String(item.quantity)}
+              display={displayedQuantity}
               decrementLabel={t('cart.decrementQty')}
               incrementLabel={t('cart.incrementQty')}
             />

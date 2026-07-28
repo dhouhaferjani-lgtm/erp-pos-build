@@ -28,6 +28,7 @@ use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
 use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
 use App\Modules\Voucher\Application\Services\VoucherLookupService;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -556,12 +557,13 @@ final class ReceiptController extends Controller
 
         // Calculate already-returned quantities per line
         $returnedQuantities = $this->calculateReturnedQuantities($receipt);
+        $zeroQuantity = QuantityScale::formatForUnit('0', null);
 
         // Build response with returned_quantity on each line
         $receiptData = $receipt->toArray();
-        $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities) {
+        $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities, $zeroQuantity) {
             $lineData = $line->toArray();
-            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? '0.0000';
+            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? $zeroQuantity;
 
             return $lineData;
         })->values()->toArray();
@@ -586,6 +588,7 @@ final class ReceiptController extends Controller
     private function calculateReturnedQuantities(Receipt $receipt): array
     {
         $returned = [];
+        $zeroQuantity = QuantityScale::formatForUnit('0', null);
 
         foreach ($receipt->returnReceipts as $returnReceipt) {
             foreach ($returnReceipt->lines as $returnLine) {
@@ -594,7 +597,7 @@ final class ReceiptController extends Controller
                 // Prefer direct FK match when available (new return lines)
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;
-                    $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4);
+                    $returned[$key] = bcadd($returned[$key] ?? $zeroQuantity, $absQuantity, 4);
 
                     continue;
                 }
@@ -609,7 +612,7 @@ final class ReceiptController extends Controller
 
                     if ($sameProduct) {
                         $key = $originalLine->id;
-                        $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4);
+                        $returned[$key] = bcadd($returned[$key] ?? $zeroQuantity, $absQuantity, 4);
                         break;
                     }
                 }

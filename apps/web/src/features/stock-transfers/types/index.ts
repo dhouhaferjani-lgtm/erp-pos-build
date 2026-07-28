@@ -27,6 +27,7 @@ export interface StockTransferLine {
   variant_sku: string | null
   variant_name: string | null
   quantity: string
+  quantity_decimals: number | null
   unit_cost_snapshot: string | null
   allocated_transfer_cost: string
   batch_allocations: StockTransferLineBatchAllocation[]

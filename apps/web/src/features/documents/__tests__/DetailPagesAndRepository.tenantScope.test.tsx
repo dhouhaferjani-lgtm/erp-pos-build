@@ -11,6 +11,7 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 
 import { CreditNoteDetailPage } from '../credit-notes/CreditNoteDetailPage'
 import { DeliveryNoteDetailPage } from '../delivery-notes/DeliveryNoteDetailPage'
+import { ReturnNoteDetailPage } from '../return-notes/ReturnNoteDetailPage'
 import { RepositoryDetailPage } from '../../treasury/RepositoryDetailPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
@@ -158,7 +159,18 @@ const documentRecord = {
   partner_email: 'partner@example.test',
   source_document_id: null,
   source_document_number: null,
-  lines: [],
+  lines: [{
+    id: 'line-1',
+    product_id: 'product-1',
+    description: 'Precision part',
+    quantity: '1',
+    quantity_decimals: 3,
+    unit_price: '10.000',
+    line_total: '10.000',
+    discount_percent: null,
+    tax_rate: '0.00',
+    notes: null,
+  }],
   total: '10.000',
 }
 
@@ -197,6 +209,21 @@ afterEach(() => {
 })
 
 describe('detail pages and repository tenant scope', () => {
+  it.each([
+    ['credit note', '/sales/credit-notes/:id', '/sales/credit-notes/doc-1', <CreditNoteDetailPage />],
+    ['delivery note', '/inventory/delivery-notes/:id', '/inventory/delivery-notes/doc-1', <DeliveryNoteDetailPage />],
+    ['return note', '/inventory/return-notes/:id', '/inventory/return-notes/doc-1', <ReturnNoteDetailPage />],
+  ])('displays %s quantities at the product unit precision', async (_label, path, route, page) => {
+    renderWithProviders(
+      <Routes>
+        <Route path={path} element={page} />
+      </Routes>,
+      { queryClient: createClient(), route },
+    )
+
+    expect(await screen.findByText('1.000')).toBeInTheDocument()
+  })
+
   it('scopes credit note detail reads and confirm/post invalidations', async () => {
     const user = userEvent.setup()
     const queryClient = createClient()

@@ -29,6 +29,8 @@ use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -173,6 +175,36 @@ final class EntryExitNoteEndpointTest extends TestCase
         $response->assertJsonPath('data.0.lines.0.movement_id', $inboundA->id);
         $response->assertJsonPath('data.0.lines.0.product.name', 'Entry Exit Product');
         $response->assertJsonPath('data.0.lines.1.movement_id', $inboundB->id);
+    }
+
+    public function test_entry_exit_note_lines_expose_product_unit_quantity_decimals(): void
+    {
+        $category = UnitCategory::factory()->create([
+            'tenant_id' => null,
+            'code' => 'entry-exit-weight',
+            'name' => 'Entry Exit Weight',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'entry-exit-kg',
+            'name' => 'Entry Exit Kilogram',
+            'symbol' => 'kg',
+            'decimal_places' => 3,
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $this->product->update(['unit_id' => $unit->id]);
+        $this->movement(['quantity' => '2.5000']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/entry-exit-notes?per_page=10');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.lines.0.quantity', '2.5000');
+        $response->assertJsonPath('data.0.lines.0.quantity_decimals', 3);
     }
 
     public function test_entry_exit_notes_are_tenant_and_company_scoped(): void

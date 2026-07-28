@@ -96,6 +96,7 @@ export function makeStockLevel(overrides: Partial<StockLevel> = {}): StockLevel 
     id: 'stock-1',
     location_id: 'loc-1',
     location_name: 'Main Warehouse',
+    quantity_decimals: 4,
     quantity: '60',
     available: '50',
     reserved: '10',

@@ -27,6 +27,7 @@ function makeLine(overrides: Partial<OrderLineData> = {}): OrderLineData {
     product_name: 'Espresso',
     variant_name: null,
     barcode: null,
+    quantity_decimals: 4,
     quantity: '2',
     unit_price: '3.500',
     discount_amount: '0.000',
@@ -87,7 +88,19 @@ describe('KitchenOrderCard', () => {
     )
     expect(getByText('A-001')).toBeInTheDocument()
     expect(getByText('Espresso')).toBeInTheDocument()
-    expect(getByText('2x')).toBeInTheDocument()
+    expect(getByText('2.0000x')).toBeInTheDocument()
+  })
+
+  it('formats a kitchen line quantity at its product unit precision', () => {
+    const order = makeOrder({
+      lines: [makeLine({ quantity: '1.5', quantity_decimals: 2 })],
+    })
+
+    const { getByText } = render(
+      <KitchenOrderCard order={order} onLineStatusChange={noop} onBump={noop} isBumping={false} />
+    )
+
+    expect(getByText('1.50x')).toBeInTheDocument()
   })
 
   it('renders the translated line-status label for each line', () => {

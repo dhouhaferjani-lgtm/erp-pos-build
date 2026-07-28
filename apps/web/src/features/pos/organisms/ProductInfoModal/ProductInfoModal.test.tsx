@@ -319,6 +319,24 @@ describe('ProductInfoModal', () => {
     })
   })
 
+  it('uses stock quantity_decimals instead of the scale-four fallback in the stock table', async () => {
+    const user = userEvent.setup()
+    configureApiMock(mockProduct, [makeStockLevel({ quantity: '1.5', quantity_decimals: 2 })])
+
+    renderWithProviders(
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Product')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('Stock Levels'))
+
+    await waitFor(() => {
+      expect(screen.getByText('1.50')).toBeInTheDocument()
+    })
+  })
+
   it('should display parapharmacy data in parapharmacy tab', async () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)

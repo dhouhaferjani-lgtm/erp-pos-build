@@ -25,6 +25,7 @@ final readonly class BundleExpansionLine
         public ?string $component_id,
         public string $display_name,
         public string $quantity,              // scaled decimal string
+        public int $quantity_decimals,
         public string $unit,                  // liter, hour, piece, ...
         public string $unit_price,            // scaled decimal string (CurrencyScale)
         public string $line_total,            // qty * unit_price; scaled decimal string

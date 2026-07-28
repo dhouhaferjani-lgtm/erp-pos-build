@@ -2,6 +2,8 @@ import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
+import { formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import type { DiscountAnalysis } from '../../api/analyticsApi'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -68,9 +70,11 @@ export function DiscountBreakdownChart({ data }: DiscountBreakdownChartProps) {
             </thead>
             <tbody>
               {data.top_discounted_products.map((p) => (
-                <tr key={p.product_name} className={cn('border-b last:border-0', borderColors.light)}>
+                <tr key={`${p.product_id ?? 'legacy'}:${p.product_name}`} className={cn('border-b last:border-0', borderColors.light)}>
                   <td className={cn('py-2 pr-4', textColors.primary)}>{p.product_name}</td>
-                  <td className={cn('py-2 pr-4 text-right', textColors.primary)}>{p.quantity}</td>
+                  <td className={cn('py-2 pr-4 text-right', textColors.primary)}>
+                    {formatQuantity(p.quantity, getQuantityDecimals(p))}
+                  </td>
                   <td className={cn('py-2 text-right', textColors.primary)}>{formatCurrency(p.discount_amount)}</td>
                 </tr>
               ))}

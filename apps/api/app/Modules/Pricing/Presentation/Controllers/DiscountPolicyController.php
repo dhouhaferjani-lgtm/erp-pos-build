@@ -7,6 +7,7 @@ namespace App\Modules\Pricing\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Pricing\Domain\Enums\PriceBasis;
 use App\Shared\Contracts\DiscountPolicyInterface;
+use App\Shared\Domain\QuantityScale;
 use App\Shared\DTOs\DiscountPolicyContext;
 use App\Shared\Exceptions\DiscountPolicySubjectNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -49,7 +50,7 @@ final class DiscountPolicyController extends Controller
             variantId: $validated['variant_id'] ?? null,
             effectiveUnitPrice: $validated['effective_unit_price'],
             currency: strtoupper($validated['currency']),
-            quantity: $validated['quantity'] ?? '1.0000',
+            quantity: $validated['quantity'] ?? QuantityScale::formatForUnit('1', null),
             taxRate: $validated['tax_rate'] ?? null,
             taxConfigurationId: $validated['tax_configuration_id'] ?? null,
             priceBasis: $validated['price_basis'],

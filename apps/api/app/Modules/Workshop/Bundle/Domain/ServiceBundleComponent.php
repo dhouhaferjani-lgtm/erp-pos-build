@@ -23,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $product_id
  * @property string|null $service_id
  * @property string|null $nested_bundle_id
- * @property string $quantity
+ * @property numeric-string $quantity
  * @property string $unit_id
  * @property string|null $override_unit_price
  * @property bool $is_optional

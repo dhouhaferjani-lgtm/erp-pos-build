@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Resources;
 
 use App\Modules\POS\Domain\OrderLine;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,6 +23,12 @@ final class OrderLineResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $product = $this->relationLoaded('product') ? $this->product : null;
+        $unit = $product instanceof Product && $product->relationLoaded('unitOfMeasure')
+            ? $product->unitOfMeasure
+            : null;
+        $quantityDecimals = $unit?->decimal_places;
+
         return [
             'id' => $this->id,
             'order_id' => $this->order_id,
@@ -30,6 +37,7 @@ final class OrderLineResource extends JsonResource
             'product_name' => $this->product_name,
             'variant_name' => $this->variant_name,
             'barcode' => $this->barcode,
+            'quantity_decimals' => $quantityDecimals ?? 4,
             'quantity' => $this->quantity,
             'unit_price' => $this->unit_price,
             'discount_amount' => $this->discount_amount,

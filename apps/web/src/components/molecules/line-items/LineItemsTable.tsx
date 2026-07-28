@@ -1,6 +1,7 @@
 import { Fragment, useState, type ComponentType, type DragEvent, type ReactNode } from 'react'
 import { GripVertical } from 'lucide-react'
 import { QuantityInput } from '../../atoms/QuantityInput/QuantityInput'
+import { formatQuantity } from '../../../lib/decimal'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
 
 export interface LineItemsTableColumn<TLine> {
@@ -185,7 +186,7 @@ export function QuantityCell({
   className = 'w-20 text-end text-sm',
 }: QuantityCellProps) {
   if (readonly) {
-    return <span className={`text-sm ${textColors.primary}`}>{value}</span>
+    return <span className={`text-sm ${textColors.primary}`}>{formatQuantity(value, decimalPlaces)}</span>
   }
 
   return (

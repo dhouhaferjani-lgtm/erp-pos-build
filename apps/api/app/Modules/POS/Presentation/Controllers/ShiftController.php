@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -297,9 +298,43 @@ final class ShiftController extends Controller
             ->when($shift->closed_at, function ($query) use ($shift) {
                 $query->where('posted_at', '<=', $shift->closed_at);
             })
-            ->with(['lines.product', 'payments', 'vatDetails'])
+            ->with(['lines.product.unitOfMeasure', 'payments', 'vatDetails'])
             ->orderByDesc('posted_at')
             ->paginate($request->input('per_page', 20));
+
+        /** @var array<string, int> $quantityDecimalsByProductId */
+        $quantityDecimalsByProductId = [];
+
+        $receipts->getCollection()->each(function (Receipt $receipt) use (&$quantityDecimalsByProductId): void {
+            $receipt->lines->each(function (ReceiptLine $line) use (&$quantityDecimalsByProductId): void {
+                $product = $line->relationLoaded('product') ? $line->product : null;
+
+                if ($product !== null) {
+                    $unit = $product->relationLoaded('unitOfMeasure')
+                        ? $product->unitOfMeasure
+                        : null;
+                    $quantityDecimalsByProductId[$product->id] = $unit->decimal_places ?? 4;
+                }
+            });
+        });
+
+        $receipts->getCollection()->each(function (Receipt $receipt) use ($quantityDecimalsByProductId): void {
+            $receipt->lines->each(function (ReceiptLine $line) use ($quantityDecimalsByProductId): void {
+                // Presentation-only enrichment: the immutable receipt line and
+                // its signed historical fields are never persisted or rewritten.
+                $line->setAttribute(
+                    'quantity_decimals',
+                    $quantityDecimalsByProductId[$line->product_id] ?? 4,
+                );
+            });
+        });
+
+        $receipts->getCollection()->each(function (Receipt $receipt): void {
+            $receipt->lines->each(function (ReceiptLine $line): void {
+                $product = $line->relationLoaded('product') ? $line->product : null;
+                $product?->unsetRelation('unitOfMeasure');
+            });
+        });
 
         return response()->json([
             'data' => $receipts->items(),

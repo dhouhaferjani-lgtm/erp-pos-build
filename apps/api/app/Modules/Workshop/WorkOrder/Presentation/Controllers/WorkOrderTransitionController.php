@@ -226,7 +226,7 @@ final class WorkOrderTransitionController extends Controller
 
     private function detail(Request $request, WorkOrder $wo): JsonResponse
     {
-        $wo->loadMissing(['lines', 'assignments', 'statusTransitions', 'customer', 'vehicle', 'primaryTechnician.user']);
+        $wo->loadMissing(['lines.product.unitOfMeasure', 'assignments', 'statusTransitions', 'customer', 'vehicle', 'primaryTechnician.user']);
 
         $canViewFinancials = (bool) ($request->user()?->can('work-orders.view_financials'));
         $payload = WorkOrderData::fromModel($wo)->toArray();

@@ -5,6 +5,7 @@ import type { MonitorInfo } from '@/stores/customerDisplayStore';
 export interface CartDisplayItem {
   name: string;
   quantity: number;
+  quantity_decimals?: number | null;
   line_total: string;
 }
 

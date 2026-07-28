@@ -16,7 +16,8 @@ import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { bcadd, bcsub, bccomp } from '@/lib/decimal'
+import { bcadd, bcsub, bccomp, formatQuantity } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { fetchPaymentMethods } from '../../api/paymentMethodApi'
 import { fetchPaymentRepositories } from '../../api/paymentRepositoryApi'
 import type { CartItem } from '../../molecules/CartLineItem'
@@ -833,7 +834,7 @@ export function AdvancedPaymentsModal({
                       <div key={item.id} className="flex justify-between text-sm gap-2">
                         <div className="flex-1 min-w-0">
                           <span className={cn('font-medium', textColors.primary)}>{item.product.name}</span>
-                          <span className={cn('ml-1.5', textColors.tertiary)}>{'\u00D7'}{item.quantity}</span>
+                          <span className={cn('ml-1.5', textColors.tertiary)}>{'\u00D7'}{formatQuantity(item.quantity, getQuantityDecimals(item.product))}</span>
                         </div>
                         <span className={cn('font-medium tabular-nums shrink-0', textColors.primary)}>
                           {item.line_total}

@@ -107,6 +107,7 @@ export interface PostPreview {
     debit?: string
     credit?: string
     quantity?: string
+    quantity_decimals?: number
     unit_cost?: string
     line_value?: string
     total?: string

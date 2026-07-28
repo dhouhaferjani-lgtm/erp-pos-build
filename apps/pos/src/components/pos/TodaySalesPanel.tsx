@@ -9,11 +9,16 @@ import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
 import { bcsum, bcdiv, bccomp, bcformat } from '@/lib/decimal';
+import { formatQuantity } from '@/lib/quantity';
 import { printReceiptAsPdf } from '@/lib/printing';
 import { SaleDetailModal } from '@/components/pos/SaleDetailModal';
 
 function getLineName(line: ShiftReceipt['lines'][number]): string {
   return line.product?.name ?? line.product_name ?? '—';
+}
+
+function getLineSummary(line: ShiftReceipt['lines'][number]): string {
+  return `${formatQuantity(String(line.quantity), line.quantity_decimals)}× ${getLineName(line)}`;
 }
 
 function getPaymentLabel(receipt: ShiftReceipt): string {
@@ -186,11 +191,11 @@ export function TodaySalesPage() {
                           <span
                             className="block truncate"
                             title={receipt.lines
-                              .map((l) => `${l.quantity}× ${getLineName(l)}`)
+                              .map(getLineSummary)
                               .join(', ')}
                           >
                             {receipt.lines
-                              .map((l) => `${l.quantity}× ${getLineName(l)}`)
+                              .map(getLineSummary)
                               .join(', ')}
                           </span>
                         ) : (
