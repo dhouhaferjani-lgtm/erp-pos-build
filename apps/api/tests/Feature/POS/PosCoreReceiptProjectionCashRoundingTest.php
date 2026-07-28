@@ -342,11 +342,15 @@ final class PosCoreReceiptProjectionCashRoundingTest extends TestCase
     }
 
     /**
-     * Replaying a mismatched event must not stack duplicate alerts — the
-     * reconciliation runs OUTSIDE the `insertReceiptOnConflictDoNothing`
-     * early-return, so it needs its own idempotency probe.
+     * The alert must be single-shot per fiscal event.
+     *
+     * Replaying `apply()` does NOT exercise this: the second call exits at the
+     * `fiscal_event_id` fast-path probe long before the reconciliation, so a
+     * replay-based test would pass with the probe deleted. The probe is
+     * therefore driven directly — an alert row is planted BEFORE the single
+     * `apply()`, and the count must stay at 1.
      */
-    public function test_policy_mismatch_alert_is_idempotent_across_replays(): void
+    public function test_policy_mismatch_alert_is_not_duplicated_when_one_already_exists(): void
     {
         DB::table('country_payment_settings')->where('country_code', 'TN')->update([
             'cash_rounding_denomination' => '0.1000',
@@ -360,13 +364,121 @@ final class PosCoreReceiptProjectionCashRoundingTest extends TestCase
             eventVersion: 3,
         );
 
-        $this->project($event);
+        $this->plantPolicyMismatchAlert($event);
+
         $this->project($event);
 
         $this->assertSame(1, DB::table('audit_events')
             ->where('event_type', 'pos.rounding.policy_mismatch')
             ->where('aggregate_id', $event->id)
             ->count());
+    }
+
+    /**
+     * The canonical drift incident: an operator switches cash rounding OFF
+     * while a stale terminal keeps signing rounded receipts.
+     *
+     * Migration A2 seeds TN with `cash_rounding_enabled = false` AND a
+     * denomination of 0.0500, so a reconciliation that read the raw column
+     * would compare 0.0500 against 0.0500 and stay silent on exactly the
+     * scenario the telemetry exists for. Reading the EFFECTIVE policy through
+     * `PosPaymentPolicyResolver` makes "rounding disabled" a mismatch.
+     */
+    public function test_policy_with_rounding_disabled_alerts_despite_matching_stored_denomination(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => false,
+            'cash_rounding_denomination' => '0.0500',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            total: '9.950',
+            subtotal: '9.973',
+            cashRoundingAdjustment: '-0.023',
+            cashRoundingDenomination: '0.050',
+            eventVersion: 3,
+        );
+
+        $this->project($event);
+
+        $this->assertDatabaseHas('pos_receipts', ['fiscal_event_id' => $event->id]);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'pos.rounding.policy_mismatch',
+            'aggregate_type' => 'fiscal_event',
+            'aggregate_id' => $event->id,
+        ]);
+    }
+
+    /**
+     * A stored denomination the resolver REFUSES to emit is not the live
+     * policy either. 0.0025 does not round-trip at the TND scale-3 currency
+     * scale (`bcformatStrict` truncates it to 0.002), so the resolver reports
+     * rounding disabled — and a receipt signed against it must be flagged.
+     */
+    public function test_resolver_rejected_stored_denomination_alerts(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_enabled' => true,
+            'cash_rounding_denomination' => '0.0025',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            total: '9.950',
+            subtotal: '9.973',
+            cashRoundingAdjustment: '-0.023',
+            cashRoundingDenomination: '0.050',
+            eventVersion: 3,
+        );
+
+        $this->project($event);
+
+        $this->assertDatabaseHas('pos_receipts', ['fiscal_event_id' => $event->id]);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'pos.rounding.policy_mismatch',
+            'aggregate_type' => 'fiscal_event',
+            'aggregate_id' => $event->id,
+        ]);
+    }
+
+    /**
+     * Telemetry must never cost a sale.
+     *
+     * Soft-deleting the company makes the reconciliation throw: the resolver's
+     * `Company::findOrFail` raises `ModelNotFoundException`, and had it not,
+     * `AuditService::record` would raise `InvalidArgumentException` from
+     * `AuditEvent`'s `Company::find(...) === null` guard. Either way the
+     * receipt — already inserted, with lines, VAT rows and payments — must
+     * survive, because an uncontained throw here rolls the whole projection
+     * back and the deterministic retry dead-letters the event.
+     */
+    public function test_a_failing_reconciliation_does_not_roll_back_the_receipt(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->update([
+            'cash_rounding_denomination' => '0.1000',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            total: '9.950',
+            subtotal: '9.973',
+            cashRoundingAdjustment: '-0.023',
+            cashRoundingDenomination: '0.050',
+            eventVersion: 3,
+        );
+
+        Company::query()->findOrFail($this->companyId)->delete();
+
+        $this->project($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $this->assertSame(0, bccomp($this->numeric($receipt->cash_rounding_adjustment), '-0.023', 3));
+        $this->assertGreaterThan(0, DB::table('pos_receipt_lines')->where('receipt_id', $receipt->id)->count());
+        $this->assertGreaterThan(0, DB::table('pos_receipt_payments')->where('receipt_id', $receipt->id)->count());
+
+        // The alert itself is the thing that was lost, and that is the trade.
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'pos.rounding.policy_mismatch',
+            'aggregate_id' => $event->id,
+        ]);
     }
 
     /**
@@ -433,12 +545,41 @@ final class PosCoreReceiptProjectionCashRoundingTest extends TestCase
      * `RefreshDatabase` run, so migration A2's TN upsert self-skips. Seed both
      * rows here so the policy lookup has something real to read.
      */
+    /**
+     * Plant an existing `pos.rounding.policy_mismatch` alert on the same
+     * `(tenant_id, event_type, aggregate_type, aggregate_id)` key the
+     * projection probes, so the probe is exercised directly rather than
+     * through a replay that never reaches it.
+     */
+    private function plantPolicyMismatchAlert(FiscalEvent $event): void
+    {
+        DB::table('audit_events')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantId,
+            'user_id' => $this->operatorId,
+            'event_type' => 'pos.rounding.policy_mismatch',
+            'aggregate_type' => 'fiscal_event',
+            'aggregate_id' => $event->id,
+            'payload' => json_encode(['planted' => true]),
+            'metadata' => json_encode([]),
+            'event_hash' => str_repeat('0', 64),
+            'occurred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function seedTunisianRoundingPolicy(): void
     {
         DB::table('countries')->insertOrIgnore([
             'code' => 'TN',
             'name' => 'Tunisia',
             'currency_code' => 'TND',
+            // NOT the column default (2). `PosPaymentPolicyResolver` reads the
+            // company currency scale from HERE, and at scale 2 the 0.050
+            // denomination would fail its round-trip check and report rounding
+            // disabled — every test would then "pass" through the wrong branch.
+            'currency_decimal_places' => 3,
             'is_active' => true,
             'created_at' => now(),
         ]);
@@ -581,8 +722,12 @@ final class PosCoreReceiptProjectionCashRoundingTest extends TestCase
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',
             'consumption_mode' => null,
-            'currency_code' => 'EUR',
-            'currency_scale' => 2,
+            // TND / scale 3. The money in these fixtures is scale-3
+            // ("9.973", "-0.023"), which a scale-2 currency could never have
+            // survived ingestion with — EUR here would be a fixture that
+            // cannot exist in production.
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
             'event_time_device' => '2026-05-20T14:30:00.000Z',
             'invoice_type_code' => $invoiceTypeCode,
             'line_items' => $lineItems,

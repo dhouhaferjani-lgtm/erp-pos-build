@@ -21,6 +21,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Application\Services\PosPaymentPolicyResolver;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -152,6 +153,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly LoyaltyEarningContract $loyaltyEarning,
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
+        private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
     ) {}
 
     public function name(): string
@@ -411,7 +413,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // implies the v3 branch above ran, hence a non-null denomination.
             if ($roundingAdjustmentNorm !== null
                 && bccomp($roundingAdjustmentNorm, '0', self::SCALE) !== 0) {
-                $this->reconcileRoundingPolicy($event, $roundingDenominationNorm);
+                $this->reconcileRoundingPolicySafely($event, $roundingDenominationNorm);
             }
         });
     }
@@ -1438,43 +1440,83 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Run the policy reconciliation inside a SAVEPOINT so a telemetry failure
+     * can never cost the sale.
+     *
+     * This is called from inside `apply()`'s `DB::transaction`, after the
+     * receipt row and all its children are already written. An uncontained
+     * throw here would roll back the ENTIRE projection — and because the
+     * inputs are identical on every attempt, the retry fails the same way and
+     * the event dead-letters. A receipt would be lost to a *warning*.
+     *
+     * The nested `DB::transaction()` is load-bearing and is NOT
+     * interchangeable with a bare try/catch: on PostgreSQL a failed statement
+     * aborts the whole transaction (`SQLSTATE 25P02` on everything that
+     * follows), so swallowing the exception without rolling back to a
+     * savepoint would poison the outer transaction and fail the commit anyway.
+     * Task 7's savepointed `VALIDATE CONSTRAINT` uses the same construct for
+     * the same reason. (`earnLoyaltyPoints()` above catches without a
+     * savepoint and is the reason `PosCoreReceiptProjectionLoyaltyEarnTest`
+     * dies with `25P02` under PostgreSQL — the norm this mirrors is its
+     * try/catch containment, deliberately not its missing savepoint.)
+     *
+     * @param  numeric-string  $signedDenomination
+     */
+    private function reconcileRoundingPolicySafely(FiscalEvent $event, string $signedDenomination): void
+    {
+        try {
+            DB::transaction(function () use ($event, $signedDenomination): void {
+                $this->reconcileRoundingPolicy($event, $signedDenomination);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('PosCoreReceiptProjection: rounding-policy reconciliation failed (sale unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'signed_denomination' => $signedDenomination,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Flag a projected receipt whose SIGNED denomination no longer matches the
-     * live policy (spec §4.5). The receipt still projects — the signature is
-     * the fiscal authority; this is drift telemetry, not a gate.
+     * live EFFECTIVE policy (spec §4.5). The receipt still projects — the
+     * signature is the fiscal authority; this is drift telemetry, not a gate.
      *
-     * Runs on a Horizon worker with NO CompanyContext: the country row is read
-     * by direct query and every comparison is bcmath at the storage scale.
-     * NEVER string-compare here — PostgreSQL returns `0.0500` from
-     * decimal(15,4) while the signed value is `0.050`, so string equality
-     * would false-alarm on every rounded receipt.
+     * The comparison target is `PosPaymentPolicyResolver::forCompany()`, NOT
+     * the raw `country_payment_settings.cash_rounding_denomination` column.
+     * Reading the column directly misses the single most important drift case:
+     * migration A2 seeds TN with `cash_rounding_enabled = false` AND a
+     * denomination of `0.0500`, so an operator who switches rounding OFF while
+     * a stale terminal keeps signing rounded receipts would compare 0.0500
+     * against 0.0500 and stay silent — exactly the incident this telemetry
+     * exists to surface. The resolver is also the same fail-closed gate that
+     * decided what the device was allowed to cache (round-trip validity,
+     * non-positive values, the §4.1 `CashRoundingCaps` ceiling), so anything
+     * it refuses to emit is by definition not the live policy. Rounding being
+     * disabled is therefore a mismatch, not an exemption.
      *
-     * The `audit_events` probe is required because this runs OUTSIDE the
-     * `insertReceiptOnConflictDoNothing` early-return: a replay of an already-
-     * projected event still reaches here and must not stack duplicate alerts.
+     * Worker-safe by construction: the resolver takes an explicit company id
+     * and never touches `CompanyContext` or a no-arg `getScale()` (rule 20).
+     *
+     * NEVER string-compare here. The resolver emits at the COMPANY CURRENCY
+     * scale (`0.050` for TND) while the signed value is normalized to the
+     * decimal(15,4) storage scale (`0.0500`), so string equality would
+     * false-alarm on every single rounded receipt. `bccomp` at
+     * `DENOMINATION_SCALE` is the only correct comparison.
+     *
+     * The `audit_events` probe keeps the alert single-shot: the receipt insert
+     * is guarded by `insertReceiptOnConflictDoNothing`, but a caller that
+     * reaches this method twice for one event must not stack duplicates.
      *
      * @param  numeric-string  $signedDenomination
      */
     private function reconcileRoundingPolicy(FiscalEvent $event, string $signedDenomination): void
     {
-        $countryCode = DB::table('companies')
-            ->where('id', $event->company_id)
-            ->value('country_code');
+        $policy = $this->posPaymentPolicyResolver->forCompany($event->company_id);
 
-        $policyDenomination = is_string($countryCode)
-            ? DB::table('country_payment_settings')
-                ->where('country_code', $countryCode)
-                ->value('cash_rounding_denomination')
-            : null;
-
-        $policyDenominationString = match (true) {
-            is_string($policyDenomination) => $policyDenomination,
-            is_int($policyDenomination), is_float($policyDenomination) => (string) $policyDenomination,
-            default => null,
-        };
-
-        $matches = $policyDenominationString !== null
-            && is_numeric($policyDenominationString)
-            && bccomp($signedDenomination, $policyDenominationString, self::DENOMINATION_SCALE) === 0;
+        $matches = $policy->cashRoundingEnabled
+            && is_numeric($policy->cashRoundingDenomination)
+            && bccomp($signedDenomination, $policy->cashRoundingDenomination, self::DENOMINATION_SCALE) === 0;
 
         if ($matches) {
             return;
@@ -1497,8 +1539,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 payload: [
                     'fiscal_event_id' => $event->id,
                     'signed_denomination' => $signedDenomination,
-                    'policy_denomination' => $policyDenominationString,
-                    'country_code' => is_string($countryCode) ? $countryCode : null,
+                    'policy_rounding_enabled' => $policy->cashRoundingEnabled,
+                    'policy_denomination' => $policy->cashRoundingDenomination,
+                    'currency_code' => $policy->currencyCode,
                 ],
             );
         }
@@ -1506,7 +1549,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         Log::warning('POS receipt signed a rounding denomination that no longer matches live policy.', [
             'fiscal_event_id' => $event->id,
             'signed_denomination' => $signedDenomination,
-            'policy_denomination' => $policyDenominationString,
+            'policy_rounding_enabled' => $policy->cashRoundingEnabled,
+            'policy_denomination' => $policy->cashRoundingDenomination,
         ]);
     }
 
