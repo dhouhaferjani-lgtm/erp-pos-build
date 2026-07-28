@@ -1095,8 +1095,8 @@ class InventoryCountingController extends Controller
 
         $request->validate([
             'products' => 'required|array|max:100',
-            'products.*.barcode' => 'required_without:products.*.productId|string',
-            'products.*.productId' => 'required_without:products.*.barcode|string',
+            'products.*.barcode' => 'required_without:products.*.productId',
+            'products.*.productId' => 'required_without:products.*.barcode',
         ]);
 
         /** @var InventoryCounting $counting */
@@ -1120,21 +1120,91 @@ class InventoryCountingController extends Controller
         $errors = [];
         $scopeFilters = $counting->scope_filters;
         $productIds = $scopeFilters['product_ids'] ?? [];
+        $productsInput = $request->input('products');
+        $products = is_array($productsInput) ? $productsInput : [];
+        $submittedProductIds = [];
 
-        foreach ($request->input('products') as $productData) {
+        foreach ($products as $productData) {
+            if (! is_array($productData)) {
+                continue;
+            }
+
+            $productId = $productData['productId'] ?? null;
+
+            if (is_string($productId) && Str::isUuid($productId)) {
+                $submittedProductIds[strtolower($productId)] = true;
+            }
+        }
+
+        $validProductIds = [];
+        $companyProductIds = Product::query()
+            ->where('company_id', $companyId)
+            ->whereIn('id', array_keys($submittedProductIds))
+            ->pluck('id');
+
+        foreach ($companyProductIds as $companyProductId) {
+            $canonicalProductId = (string) $companyProductId;
+            $validProductIds[strtolower($canonicalProductId)] = $canonicalProductId;
+        }
+
+        foreach ($products as $productData) {
+            if (! is_array($productData)) {
+                continue;
+            }
+
             try {
                 $productId = $productData['productId'] ?? null;
+                $productId = $productId === '' ? null : $productId;
+
+                if ($productId !== null) {
+                    if (! is_string($productId) || ! Str::isUuid($productId)) {
+                        $errors[] = [
+                            'data' => $productData,
+                            'code' => 'invalid_product_id',
+                            'error' => 'Invalid product ID; expected a UUID',
+                        ];
+
+                        continue;
+                    }
+
+                    $normalizedProductId = strtolower($productId);
+
+                    if (! isset($validProductIds[$normalizedProductId])) {
+                        $errors[] = [
+                            'data' => $productData,
+                            'code' => 'product_not_found',
+                            'error' => 'Product not found for current company',
+                        ];
+
+                        continue;
+                    }
+
+                    $productId = $validProductIds[$normalizedProductId];
+                }
 
                 // Lookup by barcode if product_id not provided
-                if (! $productId && isset($productData['barcode'])) {
-                    $product = Product::where('barcode', $productData['barcode'])
+                $barcode = $productData['barcode'] ?? null;
+
+                if (! $productId && ! is_string($barcode)) {
+                    $errors[] = [
+                        'data' => $productData,
+                        'code' => 'invalid_barcode',
+                        'error' => 'Invalid barcode; expected a string',
+                    ];
+
+                    continue;
+                }
+
+                if (! $productId && is_string($barcode)) {
+                    $product = Product::where('barcode', $barcode)
                         ->where('company_id', $companyId)
                         ->first();
 
                     if (! $product) {
                         $errors[] = [
                             'data' => $productData,
-                            'error' => 'Product not found with barcode: '.$productData['barcode'],
+                            'code' => 'product_not_found',
+                            'error' => 'Product not found with barcode: '.$barcode,
                         ];
 
                         continue;
