@@ -803,7 +803,11 @@
         "description": "This will create stock adjustments based on the final quantities. This action cannot be undone.",
         "syncWarning": "Make sure all POS devices at this location have synced their sales before finalizing — late-syncing sales after finalize will only be corrected at the next count."
       },
+      "lateSalesDetected_zero": "No late sales recorded during the count",
       "lateSalesDetected_one": "{{count}} late sale recorded during the count",
+      "lateSalesDetected_two": "{{count}} late sales recorded during the count",
+      "lateSalesDetected_few": "{{count}} late sales recorded during the count",
+      "lateSalesDetected_many": "{{count}} late sales recorded during the count",
       "lateSalesDetected_other": "{{count}} late sales recorded during the count",
       "lateSalesDescription": "Sales occurred while this count was in progress and are reflected in the replay.",
       "terminalSync": {
