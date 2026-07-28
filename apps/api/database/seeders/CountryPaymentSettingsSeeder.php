@@ -18,9 +18,11 @@ use Illuminate\Support\Str;
  * TenantInitializationService::seedReferenceData() (the REAL provisioning
  * path) AFTER CountriesSeeder, plus ProductionSeeder.
  *
- * Rounding and POS tolerance stay DISABLED by default; only the tolerance
- * ceilings and the denomination VALUE are pinned. Existing rows keep their
- * operator-flipped switches and any operator-set denomination.
+ * The tolerance ceilings AND `payment_tolerance_enabled` are pinned per spec
+ * §4.2 — they are rewritten on every run. `cash_rounding_enabled`,
+ * `pos_tolerance_enabled` and a non-NULL `cash_rounding_denomination` are
+ * operator state and are never overwritten; a NULL denomination is backfilled
+ * once. New rows are always created with both rounding switches DISABLED.
  */
 class CountryPaymentSettingsSeeder extends Seeder
 {
@@ -83,6 +85,7 @@ class CountryPaymentSettingsSeeder extends Seeder
             }
 
             // BACKFILL only — never overwrite a denomination an operator chose.
+            // The two rounding switches are absent from $pinned for the same reason.
             if ($definition['cash_rounding_denomination'] !== null
                 && ($existing->cash_rounding_denomination ?? null) === null) {
                 $pinned['cash_rounding_denomination'] = $definition['cash_rounding_denomination'];

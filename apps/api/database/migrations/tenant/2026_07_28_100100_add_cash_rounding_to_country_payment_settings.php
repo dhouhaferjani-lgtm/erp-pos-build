@@ -60,8 +60,10 @@ return new class extends Migration
         $existing = DB::table('country_payment_settings')->where('country_code', 'TN')->first();
         $now = now();
 
-        // Ceilings are PINNED (spec §7 — the intended tightening). Switches and
-        // an already-configured denomination are NOT: they are operator state.
+        // The ceilings AND `payment_tolerance_enabled` are PINNED per spec §4.2
+        // (this is the intended spec §7 tightening, rewritten on every re-run).
+        // `cash_rounding_enabled` / `pos_tolerance_enabled` / a non-NULL
+        // denomination are operator state and are never overwritten.
         $pinned = [
             'payment_tolerance_enabled' => true,
             'payment_tolerance_percentage' => '0.0050',
@@ -82,9 +84,9 @@ return new class extends Migration
             return;
         }
 
-        // Never stomp operator-flipped switches, and only BACKFILL the
-        // denomination when it has never been set — an operator who pinned
-        // 0.1000 keeps 0.1000 across re-runs of tenants:migrate.
+        // Only BACKFILL the denomination when it has never been set — an operator
+        // who chose 0.1000 keeps 0.1000 across re-runs of tenants:migrate. The
+        // two rounding switches are absent from $pinned for the same reason.
         if (($existing->cash_rounding_denomination ?? null) === null) {
             $pinned['cash_rounding_denomination'] = '0.0500';
         }

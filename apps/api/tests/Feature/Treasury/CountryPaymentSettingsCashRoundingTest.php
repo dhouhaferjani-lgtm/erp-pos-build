@@ -12,6 +12,7 @@ use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
+use Database\Seeders\ProductionSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -155,6 +156,28 @@ final class CountryPaymentSettingsCashRoundingTest extends TestCase
         $this->assertNull($fr->cash_rounding_denomination, 'FR has no sub-unit rounding — denomination stays NULL.');
         $this->assertFalse((bool) $fr->cash_rounding_enabled);
         $this->assertFalse((bool) $fr->pos_tolerance_enabled);
+    }
+
+    /**
+     * Pins the ProductionSeeder wiring.
+     *
+     * The rows are cleared first so the assertion cannot be satisfied by setUp()'s
+     * migration upsert: only ProductionSeeder's own CountryPaymentSettingsSeeder
+     * call can put the TN row back. Deleting that call fails this test.
+     */
+    public function test_production_seeder_wires_country_payment_settings(): void
+    {
+        DB::table('country_payment_settings')->delete();
+        $this->assertSame(0, DB::table('country_payment_settings')->count());
+
+        $this->seed(ProductionSeeder::class);
+
+        $row = CountryPaymentSettings::query()->where('country_code', 'TN')->first();
+        $this->assertNotNull($row, 'ProductionSeeder must seed country_payment_settings after CountriesSeeder.');
+        $this->assertSame(0, bccomp((string) $row->max_payment_tolerance_amount, '0.1000', 4));
+        $this->assertSame(0, bccomp((string) $row->cash_rounding_denomination, '0.0500', 4));
+        $this->assertFalse((bool) $row->cash_rounding_enabled);
+        $this->assertFalse((bool) $row->pos_tolerance_enabled);
     }
 
     public function test_denomination_survives_decimal_round_trip_as_string(): void
