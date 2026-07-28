@@ -1,0 +1,95 @@
+You are working in erp-mobile, the React Native + Expo mobile app for AutoERP. This is a
+SEPARATE repository from the ERP monorepo — it is a sibling of apps/, not inside it.
+
+START HERE. Work only in this directory:
+
+    cd /Users/houssamr/Projects/syneriva/erp-mobile
+
+STEP 1 — verify your ground before touching anything:
+
+    git status && git log --oneline -3
+
+Expect branch `codex/location-hierarchy-mobile` at b610560, with ONE unstaged file:
+docs/handoff/HANDOVER-mobile-scan-capture.md. That file is someone else's uncommitted
+work — do NOT stash, discard, commit or modify it. Report it and wait for a decision.
+
+Then create a dedicated branch off current HEAD for your work.
+
+STEP 2 — read your brief in full. It lives in the ERP repo (read-only reference):
+
+    /Users/houssamr/Projects/syneriva/apps/erp.counting-completion/docs/handoff/CODEX-mobile-counting-hardening-2026-07-28.md
+
+SCOPE CORRECTION — read this before planning anything:
+
+This lane was originally scoped as "build live inventory counting on mobile." That scope
+is CANCELLED. A full audit on 2026-07-28 confirmed the live-counting mobile work is
+already complete and merged since 2026-07-07, passing 89 counting tests across 11 suites
+with none skipped. Already DONE, do NOT rebuild: counted_at_device + device_now on both
+the online and offline-drain paths with device_now correctly read fresh at drain time;
+the both-or-neither guard on those two fields; zone scope end-to-end including location
+and zone pickers and the correct {location_id, zone_ids} branching; session-header zone
+label and blocking/advisory banners; the onboarding-worklist screen; barcode scanning
+during count entry.
+
+WHAT YOU ARE ACTUALLY BUILDING, in priority order:
+
+  B1 (M) REAL BUG — scan-to-draft silently corrupts the draft's product scope.
+         app/(app)/counting/draft/[id]/scan.tsx stores the raw scanned barcode string
+         into DraftCounting.productIds, and draftSyncService.ts sends it as
+         {productId: <barcode>} rather than {barcode}. Server-side, batchAddProducts only
+         performs a barcode lookup when productId is ABSENT — so the lookup never fires
+         and the raw barcode is written into scope_filters.product_ids with no existence
+         validation, while the API returns success. Fix client-side. Choose between
+         sending {barcode: <value>} versus resolving barcode to productId on-device based
+         on what survives OFFLINE — drafts are built offline and synced later, so if
+         on-device resolution needs a network call it is the wrong choice. State your
+         reasoning. Also write up (do NOT fix here, and do NOT edit the ERP repo) the
+         server-side gap that batchAddProducts accepts an unvalidated productId.
+
+  B2 (M) Pending counts retry forever with no ceiling and no recovery UI.
+         useBackgroundSync.ts leaves failed items in the queue and retries every 30s
+         indefinitely. Drafts already solve this properly — draftSyncService.ts has
+         MAX_RETRY_ATTEMPTS = 3 plus a dedicated sync-errors screen. Mirror that proven
+         pattern. Distinguish retryable (network/5xx) from terminal (4xx — session
+         finalized, item gone) failures; terminal failures should park immediately rather
+         than burn three attempts.
+
+  B3 (S) useStorageLimits() in src/features/counting/services/storageLimits.ts is fully
+         built and unit-tested but has ZERO call sites. Either wire it into the real call
+         sites and surface the warnings, or delete it. Recommend one and say why. If you
+         wire it, caps must warn and block NEW work — never discard already-captured counts.
+
+  B4 (S) No idempotency key on count submission, unlike expenses. Combined with unbounded
+         retry this can re-stamp timestamps and raise false clock_skew flags on counts that
+         were fine. Add a client-generated request ID, or check already-counted state
+         before resubmitting.
+
+  B5     DECISION ONLY — there is no "flagged for review" visual state on the mobile
+         session/item screens. This may well be intentional, since review happens on the
+         web finalize page. Write up the trade-off for the owner. DO NOT BUILD IT.
+
+  B6     HANDBACK ONLY — the ERP repo's docs/handoff/HANDOVER-live-counting-mobile.md
+         describes all the already-done work above as outstanding. Report that it needs a
+         status header. Do NOT edit the ERP repo from this lane.
+
+CONSTRAINTS:
+
+  * TDD. Failing test first. The counting suites are green today — keep them green, and
+    run counting tests by path.
+  * Strict TypeScript. No any; use unknown plus type guards.
+  * Quantities stay decimal strings. No parseFloat/Number() on quantity.
+  * All user-facing text through the existing i18n mechanism. This app's counting UI is
+    French-facing ("Ventes suspendues", "Fenêtre d'ambiguïté") — match it.
+  * Follow this repo's existing patterns rather than importing ERP-monorepo idioms.
+
+REVIEW GATES: after B1 and again after B2, dispatch an adversarial review pinned to Opus,
+citing file:line, and SAVE the review to a file under docs/handoff/ in this repo — never
+inline only. Fix, re-review, iterate to APPROVE before moving on. B3 and B4 may share one
+review round.
+
+YOU DO NOT PUSH. The owner pushes this repository personally. Leave your branch committed
+and unpushed.
+
+WHEN DONE, write docs/handoff/mobile-counting-hardening-report.md covering what changed,
+what you verified, what you could not verify, the server-side batchAddProducts validation
+gap from B1, and the B5 decision put cleanly to the owner.
