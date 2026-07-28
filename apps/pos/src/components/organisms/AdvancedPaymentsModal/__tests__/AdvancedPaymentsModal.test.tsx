@@ -170,6 +170,7 @@ const cashMethod: PaymentMethod = {
   is_push: false,
   has_deducted_fees: false,
   is_restricted: false,
+  is_cash_tender: true,
   fee_type: null,
   fee_fixed: '0.00',
   fee_percent: '0.00',
@@ -184,6 +185,7 @@ const storeVoucherMethod: PaymentMethod = {
   code: 'store_voucher',
   name: 'Store Voucher',
   is_physical: false,
+  is_cash_tender: false,
   position: 2,
 };
 

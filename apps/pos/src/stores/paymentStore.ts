@@ -103,6 +103,7 @@ function paymentMethodsShallowEqual(
       ax.is_push !== bx.is_push ||
       ax.has_deducted_fees !== bx.has_deducted_fees ||
       ax.is_restricted !== bx.is_restricted ||
+      ax.is_cash_tender !== bx.is_cash_tender ||
       ax.fee_type !== bx.fee_type ||
       ax.fee_fixed !== bx.fee_fixed ||
       ax.fee_percent !== bx.fee_percent ||
