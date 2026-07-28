@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Projections;
 
+use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
@@ -116,6 +117,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     private const int SCALE = 3;
 
     /**
+     * `pos_receipts.cash_rounding_denomination` is decimal(15,4), matching
+     * `country_payment_settings.cash_rounding_denomination`, so the policy
+     * reconciliation below is a scale-4 bccomp rather than a string compare.
+     */
+    private const int DENOMINATION_SCALE = 4;
+
+    /**
+     * Cash-rounding cutover version. `fiscal_events.event_version >= 3` is the
+     * SINGLE discriminator gating every new write in this projection — the
+     * Treasury bridge (Tasks 9-10) gates on the same value, so the read model
+     * and the ledger can never disagree about which receipts are rounding-era.
+     * Below it, this projector must stay byte-identical to its pre-rounding
+     * behaviour on first apply AND on replay.
+     */
+    private const int CASH_ROUNDING_EVENT_VERSION = 3;
+
+    /**
      * **Pass 2A.PHP.2 R2 (Codex P2-4 deferral).** The `PaymentMethodResolver`
      * binding is registered by `TreasuryServiceProvider`. If a deployment
      * excludes the Treasury module entirely (theoretical POS-only minimal
@@ -133,6 +151,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly LoyaltyEarningContract $loyaltyEarning,
         private readonly CountingBlockService $countingBlockService,
+        private readonly AuditService $auditService,
     ) {}
 
     public function name(): string
@@ -195,6 +214,40 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $vatTotalNorm = $this->normalize($payload->vatTotal);
             $discountAmountNorm = $this->normalize($payload->transactionDiscountAmount);
             $totalNorm = $this->normalize($payload->total);
+
+            // ---- v3-gated derivations (spec §4.5). `event_version` is the
+            // ---- SINGLE cutover discriminator for both this read model and
+            // ---- the Treasury bridge, so the two can never diverge. On a
+            // ---- v1/v2 event every one of these stays null and the four
+            // ---- columns are omitted from the INSERT entirely.
+            $isV3 = $event->event_version >= self::CASH_ROUNDING_EVENT_VERSION;
+            $roundingAdjustmentNorm = null;
+            $roundingDenominationNorm = null;
+            $changeDueNorm = null;
+            $toleranceWriteoffNorm = null;
+
+            if ($isV3) {
+                $roundingAdjustmentNorm = $this->normalize($view->cashRoundingAdjustmentOrZero());
+                $roundingDenominationNorm = $this->normalizeDenomination($view->cashRoundingDenominationOrZero());
+
+                // Voucher legs ARE payment legs (`vouchers_redeemed` is derived
+                // from `payments[]`), so this sum is the full tendered amount.
+                $tenderedNorm = $this->normalize('0');
+                foreach ($view->payments as $paymentLine) {
+                    $tenderedNorm = bcadd($tenderedNorm, $this->normalize($paymentLine->amount), self::SCALE);
+                }
+
+                $overTender = bcsub($tenderedNorm, $totalNorm, self::SCALE);
+                $changeDueNorm = bccomp($overTender, '0', self::SCALE) > 0
+                    ? $overTender
+                    : $this->normalize('0');
+
+                $shortfall = bcsub($totalNorm, $tenderedNorm, self::SCALE);
+                // Training receipts never book a write-off (they never reach GL).
+                $toleranceWriteoffNorm = ($payload->trainingFlag === true)
+                    ? null
+                    : (bccomp($shortfall, '0', self::SCALE) > 0 ? $shortfall : $this->normalize('0'));
+            }
 
             $postedAt = $event->event_time_device;
             $receiptYear = (int) $postedAt->format('Y');
@@ -300,6 +353,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'updated_at' => now(),
             ];
 
+            // Cash-rounding columns are appended ONLY for v3+. A v1/v2 INSERT
+            // therefore carries exactly the same column list it carried before
+            // this feature existed, which is what makes the "v2 projects
+            // byte-identically" guarantee mechanical rather than aspirational.
+            //
+            // The `pos_receipts_totals` CHECK is
+            // `total = subtotal + tax_amount - discount_amount + COALESCE(cash_rounding_adjustment, 0)`,
+            // so a v3 row that omitted `cash_rounding_adjustment` would be
+            // rejected outright by PostgreSQL — the constraint is the backstop
+            // for this branch, not a separate concern.
+            if ($isV3) {
+                $row['cash_rounding_adjustment'] = $roundingAdjustmentNorm;
+                $row['cash_rounding_denomination'] = $roundingDenominationNorm;
+                $row['change_due'] = $changeDueNorm;
+                $row['tolerance_writeoff'] = $toleranceWriteoffNorm;
+            }
+
             // pos_receipts has a CHECK constraint requiring a return-type
             // row to ALSO carry a non-null return_reason (`pos_receipts_return_logic`).
             // The legacy `return_reason` column is a strict enum
@@ -325,8 +395,24 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
-            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $totalNorm);
+            // Spec §4.5 consumer matrix: loyalty earns on the SALE VALUE
+            // (total − adj), never on the rounded amount collected. On v1/v2
+            // there is no adjustment, so the base stays the projected total.
+            $earnBase = $roundingAdjustmentNorm !== null
+                ? bcsub($totalNorm, $roundingAdjustmentNorm, self::SCALE)
+                : $totalNorm;
+
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $earnBase);
             $this->applyStockMovementForLines($receiptId, $event, $terminal, $view, $receiptTypeEnum);
+
+            // Drift telemetry only — and only for a receipt that actually
+            // rounded. A zero adjustment signed no denomination, so there is
+            // nothing to reconcile against policy. A non-null adjustment
+            // implies the v3 branch above ran, hence a non-null denomination.
+            if ($roundingAdjustmentNorm !== null
+                && bccomp($roundingAdjustmentNorm, '0', self::SCALE) !== 0) {
+                $this->reconcileRoundingPolicy($event, $roundingDenominationNorm);
+            }
         });
     }
 
@@ -866,6 +952,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
      * synchronous, try/catch, must never break the sale projection.
      * Earns only on a real SALE (not REFUND/VOID → Return, not training).
+     *
+     * `$earnBase` is the SALE VALUE, not the projected total: from v3 onward
+     * the caller passes `total − cash_rounding_adjustment` so the customer
+     * neither gains nor loses points because the drawer rounded (spec §4.5).
+     * On v1/v2 there is no adjustment and the two are the same number.
      */
     private function earnLoyaltyPoints(
         string $receiptId,
@@ -873,7 +964,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         SaleReceiptCanonicalView $view,
         SaleReceiptPayload $payload,
         ReceiptType $receiptType,
-        string $totalNorm,
+        string $earnBase,
     ): void {
         // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
         if ($receiptType !== ReceiptType::Sale || $payload->trainingFlag === true) {
@@ -890,7 +981,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 sourceId: $receiptId,
                 receiptNumber: (string) $event->sequence_number,
                 postedAt: $event->event_time_device,
-                earnBase: $totalNorm,
+                earnBase: $earnBase,
                 items: array_map(static fn (LineItemDTO $li): array => [
                     'product_id' => $li->productId,
                     'quantity' => $li->quantity,
@@ -1325,6 +1416,98 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $normalized = bcadd($value, '0', self::SCALE);
 
         return $normalized;
+    }
+
+    /**
+     * Normalize a denomination to the decimal(15,4) storage scale.
+     *
+     * Deliberately separate from `normalize()`: the denomination is NOT a
+     * currency amount, it is a policy value stored at the same scale as
+     * `country_payment_settings.cash_rounding_denomination`, and rounding it
+     * to the scale-3 money scale would make the policy comparison lossy.
+     *
+     * @return numeric-string
+     */
+    private function normalizeDenomination(string $value): string
+    {
+        /** @var numeric-string $value */
+        /** @var numeric-string $normalized */
+        $normalized = bcadd($value, '0', self::DENOMINATION_SCALE);
+
+        return $normalized;
+    }
+
+    /**
+     * Flag a projected receipt whose SIGNED denomination no longer matches the
+     * live policy (spec §4.5). The receipt still projects — the signature is
+     * the fiscal authority; this is drift telemetry, not a gate.
+     *
+     * Runs on a Horizon worker with NO CompanyContext: the country row is read
+     * by direct query and every comparison is bcmath at the storage scale.
+     * NEVER string-compare here — PostgreSQL returns `0.0500` from
+     * decimal(15,4) while the signed value is `0.050`, so string equality
+     * would false-alarm on every rounded receipt.
+     *
+     * The `audit_events` probe is required because this runs OUTSIDE the
+     * `insertReceiptOnConflictDoNothing` early-return: a replay of an already-
+     * projected event still reaches here and must not stack duplicate alerts.
+     *
+     * @param  numeric-string  $signedDenomination
+     */
+    private function reconcileRoundingPolicy(FiscalEvent $event, string $signedDenomination): void
+    {
+        $countryCode = DB::table('companies')
+            ->where('id', $event->company_id)
+            ->value('country_code');
+
+        $policyDenomination = is_string($countryCode)
+            ? DB::table('country_payment_settings')
+                ->where('country_code', $countryCode)
+                ->value('cash_rounding_denomination')
+            : null;
+
+        $policyDenominationString = match (true) {
+            is_string($policyDenomination) => $policyDenomination,
+            is_int($policyDenomination), is_float($policyDenomination) => (string) $policyDenomination,
+            default => null,
+        };
+
+        $matches = $policyDenominationString !== null
+            && is_numeric($policyDenominationString)
+            && bccomp($signedDenomination, $policyDenominationString, self::DENOMINATION_SCALE) === 0;
+
+        if ($matches) {
+            return;
+        }
+
+        $alreadyRecorded = DB::table('audit_events')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('event_type', 'pos.rounding.policy_mismatch')
+            ->where('aggregate_type', 'fiscal_event')
+            ->where('aggregate_id', $event->id)
+            ->exists();
+
+        if (! $alreadyRecorded) {
+            $this->auditService->record(
+                companyId: $event->company_id,
+                userId: $event->operator_id,
+                eventType: 'pos.rounding.policy_mismatch',
+                aggregateType: 'fiscal_event',
+                aggregateId: $event->id,
+                payload: [
+                    'fiscal_event_id' => $event->id,
+                    'signed_denomination' => $signedDenomination,
+                    'policy_denomination' => $policyDenominationString,
+                    'country_code' => is_string($countryCode) ? $countryCode : null,
+                ],
+            );
+        }
+
+        Log::warning('POS receipt signed a rounding denomination that no longer matches live policy.', [
+            'fiscal_event_id' => $event->id,
+            'signed_denomination' => $signedDenomination,
+            'policy_denomination' => $policyDenominationString,
+        ]);
     }
 
     /**
