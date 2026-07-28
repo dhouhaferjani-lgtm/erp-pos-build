@@ -33,8 +33,10 @@ export interface CashPaymentScreenProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (tenderedAmount: string) => void;
-  total: number;
-  discountAmount?: number;
+  /** Currency-scale decimal string — NEVER a JS number (money must not cross a float boundary). */
+  total: string;
+  /** Currency-scale decimal string. */
+  discountAmount?: string;
   isProcessing: boolean;
   error?: string | null;
 }
@@ -64,11 +66,11 @@ export function CashPaymentScreen({
     }
   }, [isOpen]);
 
-  const totalStr = bcformat(String(total), decimals);
+  const totalStr = bcformat(total, decimals);
   const { changeDue, isValid } = computeCashTenderState(tenderedStr, totalStr, decimals);
 
   const handleExact = useCallback(() => {
-    setTenderedStr(bcformat(String(total), decimals));
+    setTenderedStr(bcformat(total, decimals));
     setPresetSet(true);
   }, [total, decimals]);
 
@@ -95,7 +97,7 @@ export function CashPaymentScreen({
     if (isValid && !isProcessing) onConfirm(tenderedStr);
   }, [isValid, isProcessing, onConfirm, tenderedStr]);
 
-  const denominations = getDenominations(currency, total);
+  const denominations = getDenominations(currency, totalStr);
 
   if (!isOpen) return null;
 
@@ -135,10 +137,10 @@ export function CashPaymentScreen({
             <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
               {t('cashPayment.amountDue')}
             </p>
-            <p className="mt-2 font-mono text-5xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</p>
+            <p className="mt-2 font-mono text-5xl font-bold tabular-nums text-pay-navy-fg">{format(totalStr)}</p>
           </div>
 
-          {discountAmount != null && discountAmount > 0 && (
+          {discountAmount != null && bccomp(discountAmount, '0') > 0 && (
             <div className="mt-4 text-center">
               <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
                 {t('cashPayment.discount')}

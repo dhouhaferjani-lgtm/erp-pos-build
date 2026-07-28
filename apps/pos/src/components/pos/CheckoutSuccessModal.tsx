@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
+import { bccomp } from '@/lib/decimal';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useCashDrawerStore } from '@/stores/cashDrawerStore';
 import {
@@ -19,7 +20,8 @@ interface CheckoutSuccessModalProps {
   onClose: () => void;
   receiptNumber: string;
   total: string;
-  changeDue: number;
+  /** Currency-scale decimal string — never a float. */
+  changeDue: string;
   /** Optional pre-built receipt data for ESC/POS printing. */
   receiptData?: ReceiptData;
 }
@@ -137,7 +139,7 @@ export function CheckoutSuccessModal({
         </div>
 
         {/* Change due */}
-        {changeDue > 0 && (
+        {bccomp(changeDue, '0') > 0 && (
           <div className="rounded-card border border-success-subtle bg-success-surface p-4">
             <p className="text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}

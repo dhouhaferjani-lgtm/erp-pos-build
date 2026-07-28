@@ -67,7 +67,8 @@ export interface CheckoutResult {
   subtotal: string;
   taxAmount: string;
   discountAmount: string;
-  changeDue: number;
+  /** Currency-scale decimal string — never a float. */
+  changeDue: string;
   currency: string;
   fiscalHash?: string;
 }

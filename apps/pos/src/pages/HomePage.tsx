@@ -131,6 +131,11 @@ export function HomePage() {
   const taxAmount = useCartStore((s) => s.taxAmount);
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
+  // Decimal-string selectors — money crossing into the cash screen must stay a
+  // string (precision contract); the `number` selectors above remain for the
+  // display-only panels that still take numeric props.
+  const totalString = useCartStore((s) => s.totalString);
+  const discountAmountString = useCartStore((s) => s.discountAmountString);
   const itemCount = useCartStore((s) => s.itemCount);
 
   // Smart Prompts
@@ -1617,8 +1622,8 @@ export function HomePage() {
         isOpen={showCashModal}
         onClose={() => setShowCashModal(false)}
         onConfirm={(amount) => void handleCashConfirm(amount)}
-        total={total()}
-        discountAmount={discountAmount()}
+        total={totalString()}
+        discountAmount={discountAmountString()}
         isProcessing={isProcessing}
         error={paymentError}
       />

@@ -1,6 +1,6 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
+import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
@@ -10,6 +10,7 @@ import {
   type SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 import { buildSaleReceiptV2Payload } from '@/lib/fiscal/payloads/SaleReceiptV2Payload';
+import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import type { CartTransactionDiscount } from '@/stores/cartStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
@@ -99,7 +100,8 @@ export interface OfflineReceiptResult {
   subtotal: string;
   taxAmount: string;
   discountAmount: string;
-  changeDue: number;
+  /** Currency-scale decimal string — money never crosses a float boundary. */
+  changeDue: string;
   fiscalHash: string;
   idempotencyKey: string;
   localId: string;
@@ -249,7 +251,7 @@ export async function createOfflineReceipt(
         subtotal: existing.subtotal,
         taxAmount: existing.tax_amount,
         discountAmount: existing.discount_amount,
-        changeDue: parseFloat(existing.change_due ?? '0'),
+        changeDue: existing.change_due ?? bcformat('0', getCurrencyDecimals(existing.currency)),
         fiscalHash: existing.fiscal_hash,
         idempotencyKey: existing.idempotency_key,
         localId: existing.id,
@@ -267,21 +269,18 @@ export async function createOfflineReceipt(
 
   // 2. Compute line totals
   const { subtotal, taxAmount } = computeLineTotals(input.cartItems);
-  let transactionDiscountAmount = '0';
-  if (input.transactionDiscount) {
-    if (input.transactionDiscount.type === 'percentage') {
-      // percentage is not a monetary value — safe to use for rate arithmetic
-      transactionDiscountAmount = bcdiv(
-        bcmul(subtotal, input.transactionDiscount.value),
-        '100',
-      );
-    } else {
-      // fixed-amount currency discount — keep as string, no parseFloat
-      transactionDiscountAmount = input.transactionDiscount.value;
-    }
-  }
-  const rawTotal = bcsub(subtotal, transactionDiscountAmount);
-  const total = bccomp(rawTotal, '0') >= 0 ? rawTotal : '0';
+  // Single-sourced (spec §4.3 r2 F4): the discount + total come from the SAME
+  // function the checkout gate used, at the CURRENCY scale.
+  const transactionDiscountAmount = computeExactDiscountAmount(
+    input.cartItems,
+    input.transactionDiscount,
+    input.currency,
+  );
+  const total = computeExactCartTotal(
+    input.cartItems,
+    input.transactionDiscount,
+    input.currency,
+  );
 
   const isTraining = input.isTraining === true;
   if (!input.tenantId || !input.companyId || !input.shiftId || !input.seller) {
@@ -572,7 +571,7 @@ export async function createOfflineReceipt(
     subtotal: bcformat(subtotal, decimals),
     taxAmount: bcformat(taxAmount, decimals),
     discountAmount: bcformat(transactionDiscountAmount, decimals),
-    changeDue: parseFloat(changeDueFormatted),
+    changeDue: changeDueFormatted,
     fiscalHash: fiscalEventResult.current_hash,
     idempotencyKey,
     localId: receiptId,

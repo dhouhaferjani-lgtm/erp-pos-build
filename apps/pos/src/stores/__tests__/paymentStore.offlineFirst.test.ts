@@ -25,7 +25,7 @@ vi.mock('@/lib/offline/receiptService', () => ({
     subtotal: '50.00',
     taxAmount: '0.00',
     discountAmount: '0.00',
-    changeDue: 50,
+    changeDue: '50.00',
     fiscalHash: 'mock-hash',
   })),
 }));
@@ -161,7 +161,7 @@ describe('paymentStore offline-first cash checkout', () => {
 
     const state = usePaymentStore.getState();
     expect(state.lastReceipt?.receipt_number).toBe('MAIN-T001-2026-00000001');
-    expect(state.changeDue).toBe(50);
+    expect(state.changeDue).toBe('50.00');
     expect(state.error).toBeNull();
   });
 
@@ -343,7 +343,7 @@ describe('paymentStore offline-first cash checkout', () => {
         subtotal: '50.00',
         taxAmount: '0.00',
         discountAmount: '0.00',
-        changeDue: 50,
+        changeDue: '50.00',
         fiscalHash: 'mock-hash',
         idempotencyKey,
         localId: crypto.randomUUID(),
@@ -399,7 +399,7 @@ describe('paymentStore offline-first cash checkout', () => {
         subtotal: '50.00',
         taxAmount: '0.00',
         discountAmount: '0.00',
-        changeDue: 50,
+        changeDue: '50.00',
         fiscalHash: 'mock-hash',
         idempotencyKey: input.idempotencyKey ?? 'fallback-key',
         localId: crypto.randomUUID(),
@@ -449,7 +449,7 @@ describe('paymentStore offline-first cash checkout', () => {
         subtotal: '50.00',
         taxAmount: '0.00',
         discountAmount: '0.00',
-        changeDue: 50,
+        changeDue: '50.00',
         fiscalHash: 'mock-hash',
         idempotencyKey,
         localId: crypto.randomUUID(),

@@ -41,7 +41,7 @@ function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): Che
     subtotal: '20.00',
     taxAmount: '0.00',
     discountAmount: '0.00',
-    changeDue: 0,
+    changeDue: '0.00',
     currency: 'EUR',
     // fiscalHash is optional (string | undefined)
     ...overrides,

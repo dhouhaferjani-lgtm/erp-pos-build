@@ -5,7 +5,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
 import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
-import { bcsum, bcmul, bcdiv, bcsub, bccomp, bcformat } from '@/lib/decimal';
+import { bcsum, bcsub, bccomp, bcformat } from '@/lib/decimal';
+import { computeExactCartTotal } from '@/lib/payment/cartTotals';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
@@ -193,7 +194,8 @@ interface PaymentState {
   isProcessing: boolean;
   lastReceipt: CreateReceiptResponse | null;
   pendingReceiptId: string | null;
-  changeDue: number;
+  /** Currency-scale decimal string — never a float. */
+  changeDue: string;
   error: string | null;
   /** Idempotency key (= SQLite offline_receipts.idempotency_key) for local-first print lookup. Null before first checkout. */
   lastReceiptIdempotencyKey: string | null;
@@ -363,7 +365,7 @@ const initialState: PaymentState = {
   isProcessing: false,
   lastReceipt: null,
   pendingReceiptId: null,
-  changeDue: 0,
+  changeDue: '0',
   error: null,
   lastReceiptIdempotencyKey: null,
   lastReceiptServerId: null,
@@ -423,37 +425,13 @@ function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
   }
 }
 
-/** @internal Exported for unit testing. */
+/** @internal Exported for unit testing. Delegates to the single-sourced total. */
 export function estimateCartTotal(
   cartItems: CartItem[],
   transactionDiscount?: CartTransactionDiscount,
   currency: string = 'EUR',
 ): string {
-  const decimals = getCurrencyDecimals(currency);
-  const subtotal = bcsum(cartItems.map((item) => item.line_total), decimals);
-  if (transactionDiscount === undefined) {
-    return subtotal;
-  }
-
-  // Use bccomp instead of parseFloat to keep the check in the decimal domain.
-  // safeBig handles empty string (→ 0); try/catch handles a non-numeric value.
-  let discountIsPositive = false;
-  try {
-    discountIsPositive = bccomp(transactionDiscount.value, '0') > 0;
-  } catch {
-    /* non-numeric discount value — treat as no discount */
-  }
-  if (!discountIsPositive) {
-    return subtotal;
-  }
-
-  const rawDiscount = transactionDiscount.type === 'percentage'
-    ? bcdiv(bcmul(subtotal, transactionDiscount.value, decimals), '100', decimals)
-    : transactionDiscount.value;
-  // Clamp discount to the subtotal so the total can never go negative.
-  const discount = bccomp(rawDiscount, subtotal) > 0 ? subtotal : rawDiscount;
-  const total = bcsub(subtotal, discount, decimals);
-  return bccomp(total, '0') < 0 ? bcformat('0', decimals) : total;
+  return computeExactCartTotal(cartItems, transactionDiscount, currency);
 }
 
 
@@ -1044,7 +1022,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         tableId,
       );
 
-      set({ changeDue: 0, isProcessing: false });
+      set({ changeDue: '0', isProcessing: false });
     } catch (error) {
       console.error('[POS][checkout][card] failed', {
         ...serializeErrorForLog(error),
@@ -1268,7 +1246,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const snapshot = result.payload.local_balance_snapshot;
       set({
         isProcessing: false,
-        changeDue: 0,
+        changeDue: '0',
         lastReceipt: {
           id: result.fiscalEventId,
           receipt_number: result.receiptNumber,
@@ -1340,7 +1318,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const snapshot = result.payload.local_balance_snapshot;
       set({
         isProcessing: false,
-        changeDue: 0,
+        changeDue: '0',
         lastReceipt: {
           id: result.fiscalEventId,
           receipt_number: result.accountChargeUuid,
@@ -1394,7 +1372,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({
       lastReceipt: null,
       pendingReceiptId: null,
-      changeDue: 0,
+      changeDue: '0',
       lastReceiptIdempotencyKey: null,
       lastReceiptServerId: null,
       lastReceiptPrintData: null,
