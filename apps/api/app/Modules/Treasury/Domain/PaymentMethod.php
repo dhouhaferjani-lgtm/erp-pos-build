@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string $code
  * @property string $name
  * @property bool $is_physical
+ * @property bool $is_cash_tender
  * @property bool $has_maturity
  * @property InstrumentKind|null $instrument_kind
  * @property bool $requires_third_party
@@ -67,6 +68,7 @@ class PaymentMethod extends Model
         'code',
         'name',
         'is_physical',
+        'is_cash_tender',
         'has_maturity',
         'instrument_kind',
         'requires_third_party',
@@ -92,6 +94,7 @@ class PaymentMethod extends Model
     {
         return [
             'is_physical' => 'boolean',
+            'is_cash_tender' => 'boolean',
             'has_maturity' => 'boolean',
             'instrument_kind' => InstrumentKind::class,
             'requires_third_party' => 'boolean',

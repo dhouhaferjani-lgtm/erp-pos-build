@@ -70,6 +70,7 @@ class PaymentMethodController extends Controller
             ],
             'name' => ['required', 'string', 'max:100'],
             'is_physical' => ['nullable', 'boolean'],
+            'is_cash_tender' => ['nullable', 'boolean'],
             'has_maturity' => ['nullable', 'boolean'],
             'instrument_kind' => [
                 Rule::requiredIf($request->boolean('has_maturity')),
@@ -120,12 +121,17 @@ class PaymentMethodController extends Controller
             $instrumentKind,
         );
 
+        $code = strtoupper(trim((string) $validated['code']));
+        $isCashTender = (bool) ($validated['is_cash_tender'] ?? false);
+        $this->assertCashTenderInvariant($code, $isCashTender);
+
         $method = PaymentMethod::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
-            'code' => $validated['code'],
+            'code' => $code,
             'name' => $validated['name'],
             'is_physical' => $validated['is_physical'] ?? false,
+            'is_cash_tender' => $isCashTender,
             'has_maturity' => $validated['has_maturity'] ?? false,
             'instrument_kind' => $instrumentKind,
             'requires_third_party' => $validated['requires_third_party'] ?? false,
@@ -172,6 +178,7 @@ class PaymentMethodController extends Controller
             ],
             'name' => ['sometimes', 'string', 'max:100'],
             'is_physical' => ['sometimes', 'boolean'],
+            'is_cash_tender' => ['sometimes', 'boolean'],
             'has_maturity' => ['sometimes', 'boolean'],
             'instrument_kind' => ['nullable', Rule::enum(InstrumentKind::class)],
             'requires_third_party' => ['sometimes', 'boolean'],
@@ -223,6 +230,16 @@ class PaymentMethodController extends Controller
             $validated['instrument_kind'] = $finalInstrumentKind;
         }
 
+        $finalCodeUpper = strtoupper(trim((string) ($validated['code'] ?? $method->code)));
+        $finalIsCashTender = array_key_exists('is_cash_tender', $validated)
+            ? (bool) $validated['is_cash_tender']
+            : $method->is_cash_tender;
+        $this->assertCashTenderInvariant($finalCodeUpper, $finalIsCashTender);
+
+        if (array_key_exists('code', $validated)) {
+            $validated['code'] = $finalCodeUpper;
+        }
+
         $method->update($validated);
 
         /** @var PaymentMethod $freshMethod */
@@ -243,6 +260,7 @@ class PaymentMethodController extends Controller
             'code' => $method->code,
             'name' => $method->name,
             'is_physical' => $method->is_physical,
+            'is_cash_tender' => $method->is_cash_tender,
             'has_maturity' => $method->has_maturity,
             'instrument_kind' => $method->instrument_kind?->value,
             'requires_third_party' => $method->requires_third_party,
@@ -277,6 +295,22 @@ class PaymentMethodController extends Controller
         if (PaymentInstrumentKind::requiresInstrumentForMethodCode($code)) {
             throw ValidationException::withMessages([
                 'code' => ['A voucher instrument method cannot also be configured as a maturity method.'],
+            ]);
+        }
+    }
+
+    /**
+     * Spec §4.1 invariant: `is_cash_tender = true` implies `code = 'CASH'`
+     * EXACT (case-sensitive). The device Z aggregation matches
+     * `method_code === 'CASH'` case-sensitively while the server matches
+     * `UPPER(code)`; only an exact-code invariant makes all three predicates
+     * provably coincide. Custom cash methods are a separate ticket.
+     */
+    private function assertCashTenderInvariant(string $upperCode, bool $isCashTender): void
+    {
+        if ($isCashTender && $upperCode !== 'CASH') {
+            throw ValidationException::withMessages([
+                'is_cash_tender' => 'Only the payment method with code CASH may be flagged as a cash tender.',
             ]);
         }
     }
