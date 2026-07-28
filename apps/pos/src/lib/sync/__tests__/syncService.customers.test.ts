@@ -131,6 +131,15 @@ vi.mock('@/lib/db/repositories/paymentRepository', () => ({
   upsertPaymentRepositories: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Cash rounding / tender tolerance (spec 2026-07-27 §4.3): runFullSync pulls
+// the payment policy right after pullPaymentConfig. Mock the SQLite cache so a
+// clean tick's policy pull actually succeeds instead of silently failing on the
+// bare `{}` mock db (which would hide the fact that it consumes an apiGet slot).
+vi.mock('@/lib/db/repositories/paymentPolicyCacheRepository', () => ({
+  upsertPaymentPolicy: vi.fn().mockResolvedValue(undefined),
+  getPaymentPolicy: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   upsertOperators: vi.fn().mockResolvedValue(undefined),
   pruneOperatorsExcept: vi.fn().mockResolvedValue(0),
@@ -212,6 +221,9 @@ import { purgeOutboxRows as purgeReplenishmentOutbox } from '@/lib/db/repositori
 import { purgeOutboxRows as purgePendingCustomerOutbox } from '@/lib/db/repositories/pendingCustomerRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { apiGet } from '@/lib/api';
+import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
+import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
+import { upsertPaymentPolicy } from '@/lib/db/repositories/paymentPolicyCacheRepository';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -226,14 +238,21 @@ function makeMockDb() {
  * Call order in runFullSync (pull phase):
  *   1. pullProducts           → [] (products)
  *   2. pullPaymentConfig      → [] + []  (methods + repos — Promise.all)
- *   3. pullOperatorPins       → []
- *   4. pullTerminalState      → terminal object
- *   5. pullZChainState        → z-chain object
- *   6. pullTables             → { data: [] }
- *   7. pullActiveMenu         → { categories: [] }
- *   8. pullVouchers           → { vouchers: [] }
- *   9. pullVoucherLedger      → { entries: [] }
- *  10. pullReceiptQrIndex     → { entries: [] }
+ *   3. pullPaymentPolicy      → policy object  (spec 2026-07-27 §4.3)
+ *   4. pullOperatorPins       → []
+ *   5. pullTerminalState      → terminal object
+ *   6. pullZChainState        → z-chain object
+ *   7. pullTables             → { data: [] }
+ *   8. pullActiveMenu         → { categories: [] }
+ *   9. pullVouchers           → { vouchers: [] }
+ *  10. pullVoucherLedger      → { entries: [] }
+ *  11. pullReceiptQrIndex     → { entries: [] }
+ *
+ * This sequence is POSITIONAL: an omitted slot does not fail loudly, it shifts
+ * every later payload by one (operator pins would receive the terminal object,
+ * terminal state the z-chain object, …) while customer-scoped assertions stay
+ * green. `runFullSync pull-phase alignment` at the bottom of this file guards
+ * that.
  *
  * pullCustomers is mocked at module level (returns 0) so it does NOT consume
  * any apiGet slot. pullProductVariants / pullLocationStock use separate APIs
@@ -244,6 +263,17 @@ function setupApiGetSequence() {
     .mockResolvedValueOnce([]) // products
     .mockResolvedValueOnce([]) // payment methods (Promise.all[0])
     .mockResolvedValueOnce([]) // payment repos  (Promise.all[1])
+    .mockResolvedValueOnce({ // payment policy (cash rounding + tender tolerance)
+      companyId: 'company-1',
+      currencyCode: 'TND',
+      currencyScale: 3,
+      cashRoundingEnabled: false,
+      cashRoundingDenomination: '0.000',
+      tenderToleranceEnabled: false,
+      tenderTolerancePercentage: '0.0000',
+      tenderToleranceMaxAmount: '0.000',
+      refreshedAt: '2026-07-27T08:00:00Z',
+    })
     .mockResolvedValueOnce([]) // operator pins
     .mockResolvedValueOnce({   // terminal state
       id: 'terminal-1',
@@ -487,5 +517,84 @@ describe('GB-3 — outbox retention sweep wired into runFullSync', () => {
     // the second outbox was still swept.
     expect(pullCustomers).toHaveBeenCalledOnce();
     expect(purgePendingCustomerOutbox).toHaveBeenCalledWith(db, 'tenant-1', 'company-1');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pull-phase alignment guard.
+//
+// setupApiGetSequence is a POSITIONAL fixture: every pull in runFullSync's pull
+// phase consumes the next queued apiGet value. Adding a pull without adding its
+// slot shifts every later payload by one, and because the assertions above are
+// customer-scoped the suite stays green over a misaligned tick — masking real
+// regressions in the shifted pulls. These tests assert that each payload lands
+// in the pull it was written for.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runFullSync pull-phase alignment (setupApiGetSequence positional fixture)', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+
+    // vi.clearAllMocks() does NOT drain a mockResolvedValueOnce queue, and the
+    // suites above leave unconsumed slots behind (their runFullSync calls bail
+    // early on some paths). Reset apiGet outright so THIS suite's assertions
+    // are about this suite's fixture and nothing else.
+    vi.mocked(apiGet).mockReset();
+
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      user: { id: 'u1', tenantId: 'tenant-1' },
+      companyId: 'company-1',
+      refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    void (async () => {
+      const { useProductStore } = await import('@/stores/productStore');
+      useProductStore.setState({
+        companyConfig: {
+          company_id: 'company-1',
+          all_enabled_modules: ['POS'],
+        } as never,
+      });
+    })();
+
+    setupApiGetSequence();
+  });
+
+  it('routes each queued payload to the pull it was written for', async () => {
+    const result = await runFullSync(db, 'terminal-1');
+
+    // Slot 3 → pullPaymentPolicy: the policy object reaches the policy cache
+    // with its money fields intact as decimal STRINGS.
+    expect(upsertPaymentPolicy).toHaveBeenCalledWith(db, expect.objectContaining({
+      company_id: 'company-1',
+      cash_rounding_denomination: '0.000',
+      currency_scale: 3,
+    }));
+
+    // Slot 4 → pullOperatorPins: the operator-pins pull receives the EMPTY
+    // ARRAY, not the terminal-state object a one-slot shift would hand it.
+    expect(upsertOperators).toHaveBeenCalledWith(db, []);
+
+    // Slot 5 → pullTerminalState: the terminal object reaches the terminal
+    // pull (a shift would give it `[]`, which has no genesis_seed, so
+    // pullTerminalState would bail before ever calling upsertTerminalState).
+    expect(upsertTerminalState).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ terminal_id: 'terminal-1' }),
+    );
+    expect(result.terminalStatePulled).toBe(true);
+  });
+
+  it('queues exactly as many apiGet slots as the pull phase consumes', async () => {
+    await runFullSync(db, 'terminal-1');
+
+    // Every queued mockResolvedValueOnce was consumed AND no pull fell through
+    // to the un-queued default (which resolves undefined and would surface as a
+    // degraded tick).
+    expect(vi.mocked(apiGet).mock.calls).toHaveLength(12);
+    expect(vi.mocked(apiGet).mock.results.some((r) => r.value === undefined)).toBe(false);
   });
 });
