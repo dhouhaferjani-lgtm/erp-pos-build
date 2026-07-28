@@ -22,10 +22,23 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Modules\Treasury\Domain\StatementImportProfile;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 
 final readonly class StatementSuggestionService
 {
+    /**
+     * Hard ceiling on movement candidates hydrated for a single suggestion pass.
+     *
+     * The value_date ± matching-window SQL bound already keeps the working set
+     * small; this is a sanity cap so a mis-configured window or a pathological
+     * movement volume can never hydrate unbounded rows. If the cap is reached
+     * the service degrades gracefully — suggestions remain best-effort and
+     * Tier-2 uniqueness is judged over the hydrated window slice.
+     */
+    public const MAX_CANDIDATE_MOVEMENTS = 500;
+
     public function __construct(
         private CurrencyScaleResolverInterface $scaleResolver,
         private CardBatchResolver $cardBatches,
@@ -57,7 +70,14 @@ final readonly class StatementSuggestionService
         $windowDays = $profile instanceof StatementImportProfile ? $profile->matching_window_days : 5;
         $windowStart = $line->value_date->subDays($windowDays)->toDateString();
         $windowEnd = $line->value_date->addDays($windowDays)->toDateString();
-        $eligible = $this->eligibleMovements($statement, $scale);
+        $eligible = $this->eligibleMovements(
+            $statement,
+            $scale,
+            $line->value_date,
+            $windowDays,
+            $remainingLine,
+            $line->direction,
+        );
         $references = $this->movementReferences($eligible);
         $lineText = $this->normalize(implode(' ', array_filter([
             $line->label,
@@ -175,18 +195,58 @@ final readonly class StatementSuggestionService
     }
 
     /**
+     * Movement candidates for Tier 1/2 matching, bounded in SQL and hard-capped.
+     *
+     * The candidate load is split into two SQL queries so the perf bound never
+     * changes suggestion output (the finding is "perf/robustness bound, not a
+     * bug fix"):
+     *
+     *  - In-window candidates (value_date ± matching window) serve Tier-2
+     *    "unique amount in window" AND in-window Tier-1 matching. The window is
+     *    applied in the query, not after hydration. The PHP window filter in
+     *    suggest() remains the semantic authority for Tier-2 date boundaries, so
+     *    uniqueness is still judged strictly within the window.
+     *  - Out-of-window candidates are loaded ONLY to preserve Tier-1 reference
+     *    matching, which is intentionally window-independent (a payment/instrument
+     *    reference can clear the bank days or weeks after its movement date — see
+     *    StatementSuggestionServiceTest::test_reference_hit...). They can never
+     *    surface as Tier-2 because that path re-checks the window in PHP.
+     *
+     * Both queries share the necessary conditions for ANY match (same direction,
+     * gross amount ≥ the line's remaining) — pure narrowing that cannot drop a
+     * real candidate — and each is hard-capped at {@see self::MAX_CANDIDATE_MOVEMENTS}
+     * so a mature repository or a mis-configured window can never hydrate
+     * unbounded rows. If a cap is hit, suggestions remain best-effort.
+     *
+     * @param  numeric-string  $remainingLine
      * @return list<array{movement: RepositoryMovement, remaining: numeric-string}>
      */
-    private function eligibleMovements(BankStatement $statement, int $scale): array
-    {
-        $movements = RepositoryMovement::query()
-            ->where('tenant_id', $statement->tenant_id)
-            ->where('company_id', $statement->company_id)
-            ->where('payment_repository_id', $statement->payment_repository_id)
-            ->where('currency', $statement->currency)
+    private function eligibleMovements(
+        BankStatement $statement,
+        int $scale,
+        CarbonImmutable $valueDate,
+        int $windowDays,
+        string $remainingLine,
+        MovementDirection $direction,
+    ): array {
+        $windowStartAt = $valueDate->subDays($windowDays)->startOfDay();
+        $windowEndAt = $valueDate->addDays($windowDays)->endOfDay();
+        $inWindow = $this->candidateBaseQuery($statement, $direction, $remainingLine)
+            ->whereBetween('occurred_at', [$windowStartAt, $windowEndAt])
             ->orderBy('occurred_at')
             ->orderBy('id')
+            ->limit(self::MAX_CANDIDATE_MOVEMENTS)
             ->get();
+        $outOfWindow = $this->candidateBaseQuery($statement, $direction, $remainingLine)
+            ->where(static function (Builder $query) use ($windowStartAt, $windowEndAt): void {
+                $query->where('occurred_at', '<', $windowStartAt)
+                    ->orWhere('occurred_at', '>', $windowEndAt);
+            })
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->limit(self::MAX_CANDIDATE_MOVEMENTS)
+            ->get();
+        $movements = $inWindow->concat($outOfWindow)->unique('id')->values();
         $ids = $movements->map(static fn (RepositoryMovement $movement): string => $movement->id)->all();
         $totals = [];
         $allocations = BankStatementLineAllocation::query()
@@ -215,6 +275,31 @@ final readonly class StatementSuggestionService
         }
 
         return $eligible;
+    }
+
+    /**
+     * Base candidate query shared by the in-window and out-of-window loads.
+     *
+     * The direction and gross-amount predicates are necessary conditions for
+     * ANY tier match (both tiers require the movement's remaining to equal the
+     * line's remaining, and remaining ≤ gross amount), so they narrow the
+     * hydrated set without ever dropping a real candidate.
+     *
+     * @param  numeric-string  $remainingLine
+     * @return Builder<RepositoryMovement>
+     */
+    private function candidateBaseQuery(
+        BankStatement $statement,
+        MovementDirection $direction,
+        string $remainingLine,
+    ): Builder {
+        return RepositoryMovement::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where('payment_repository_id', $statement->payment_repository_id)
+            ->where('currency', $statement->currency)
+            ->where('direction', $direction->value)
+            ->where('amount', '>=', $remainingLine);
     }
 
     /**

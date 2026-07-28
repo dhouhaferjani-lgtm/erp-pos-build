@@ -9,12 +9,14 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\StatementSuggestionService;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\BankStatementLine;
 use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Carbon\CarbonInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -171,6 +173,57 @@ final class StatementMatchingHttpTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_suggestion_uniqueness_is_judged_within_the_matching_window(): void
+    {
+        // No parser profile => default ±5 day window; line value_date is now().
+        $line = $this->line('25.000');
+        $inWindow = $this->movement($this->company, $this->repository, '25.000');
+        // Same amount, but 30 days before value_date => outside the ±5 day window.
+        $outOfWindow = $this->movement($this->company, $this->repository, '25.000', now()->subDays(30));
+
+        $response = $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tier', 2)
+            ->assertJsonPath('data.0.movement_ids.0', $inWindow)
+            ->assertJsonPath('data.0.amount', '25.000');
+
+        // The out-of-window movement must neither be suggested nor defeat the
+        // in-window movement's uniqueness (which would demote it out of Tier 2).
+        $suggested = collect($response->json('data'))
+            ->flatMap(static fn (array $suggestion): array => $suggestion['movement_ids'] ?? [])
+            ->all();
+        $this->assertContains($inWindow, $suggested);
+        $this->assertNotContains($outOfWindow, $suggested);
+    }
+
+    public function test_candidate_movement_query_is_window_bounded_and_capped(): void
+    {
+        $this->assertSame(500, StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS);
+
+        $line = $this->line('25.000');
+        $this->movement($this->company, $this->repository, '25.000');
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        app(StatementSuggestionService::class)->suggest($line->id);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $candidateQueries = array_filter(
+            $queries,
+            static fn (array $entry): bool => str_contains((string) $entry['query'], 'repository_movements')
+                && str_contains((string) $entry['query'], 'between')
+                && str_contains((string) $entry['query'], 'limit '.StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS),
+        );
+
+        $this->assertNotEmpty(
+            $candidateQueries,
+            'The movement candidate query must bound occurred_at to the matching window and apply the sanity limit in SQL.',
+        );
+    }
+
     public function test_statement_detail_exposes_matching_and_execution_provenance(): void
     {
         $line = $this->line('25.000');
@@ -276,8 +329,12 @@ final class StatementMatchingHttpTest extends TestCase
         ]);
     }
 
-    private function movement(Company $company, PaymentRepository $repository, string $amount): string
-    {
+    private function movement(
+        Company $company,
+        PaymentRepository $repository,
+        string $amount,
+        ?CarbonInterface $occurredAt = null,
+    ): string {
         $id = Str::uuid()->toString();
         DB::table('repository_movements')->insert([
             'id' => $id,
@@ -292,7 +349,7 @@ final class StatementMatchingHttpTest extends TestCase
             'source_type' => 'adjustment',
             'source_id' => Str::uuid()->toString(),
             'idempotency_key' => 'statement-http:'.Str::uuid()->toString(),
-            'occurred_at' => now(),
+            'occurred_at' => $occurredAt ?? now(),
             'created_by' => $this->accountant->id,
         ]);
 
