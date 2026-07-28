@@ -39,6 +39,20 @@ export function bcdiv(a: string, b: string, scale: number = 3): string {
   return safeBig(a).div(divisor).toFixed(scale);
 }
 
+/**
+ * Remainder of `a / b` at `scale`. Used by the v3 aggregate bind
+ * (`total mod denomination == 0`). Callers MUST assert `b > 0` BEFORE calling
+ * — the assert ORDER is normative (spec §4.1): reaching a zero divisor must be
+ * impossible, not merely caught.
+ */
+export function bcmod(a: string, b: string, scale: number = 3): string {
+  const divisor = safeBig(b);
+  if (divisor.eq(0)) {
+    throw new Error('Modulo by zero');
+  }
+  return safeBig(a).mod(divisor).toFixed(scale);
+}
+
 export function bccomp(a: string, b: string): number {
   return safeBig(a).cmp(safeBig(b));
 }
