@@ -168,7 +168,7 @@ final class PaymentMethodCashTenderTest extends TestCase
         ]);
 
         // Uppercasing AFTER validation would let this pass Rule::unique against
-        // the raw 'cash' and then violate unique(tenant_id, code) → HTTP 500.
+        // the raw 'cash' and then violate unique(company_id, code) → HTTP 500.
         $response = $this->actingAs($this->admin, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
             ->postJson('/api/v1/payment-methods', [
@@ -247,6 +247,71 @@ final class PaymentMethodCashTenderTest extends TestCase
         $this->assertSame('Carte bancaire (CB)', $card->name);
     }
 
+    public function test_update_rejects_an_explicit_null_code_and_preserves_the_stored_one(): void
+    {
+        $card = $this->makeCard();
+
+        // Normalizing an explicit null into '' would satisfy `sometimes` +
+        // `string` and silently persist a blank code with 200 OK; a second
+        // blanked row would then collide on unique(company_id, code).
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$card->id, [
+                'code' => null,
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+        $this->assertSame('CARD', $card->refresh()->code);
+    }
+
+    public function test_update_rejects_a_blank_code(): void
+    {
+        $card = $this->makeCard();
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$card->id, [
+                'code' => '   ',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+        $this->assertSame('CARD', $card->refresh()->code);
+    }
+
+    public function test_store_rejects_a_non_string_code_with_422_not_500(): void
+    {
+        // Uppercasing a non-string would fatal on `Array to string conversion`
+        // inside the pre-validation merge — a 500 raised before the `string`
+        // rule ever gets to return its 422.
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => ['CASH'],
+                'name' => 'Espèces',
+                'is_physical' => true,
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+    }
+
+    public function test_update_rejects_a_non_string_code_with_422_not_500(): void
+    {
+        $card = $this->makeCard();
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$card->id, [
+                'code' => ['CASH'],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('code', $response->json('error.errors'));
+        $this->assertSame('CARD', $card->refresh()->code);
+    }
+
     public function test_update_rejects_flipping_cash_tender_on_non_cash_method(): void
     {
         $method = PaymentMethod::create([
@@ -296,7 +361,7 @@ final class PaymentMethodCashTenderTest extends TestCase
 
     public function test_migration_skips_variant_when_canonical_cash_row_already_exists(): void
     {
-        // A brownfield tenant holding BOTH 'CASH' and 'cash'. unique(tenant_id,
+        // A brownfield company holding BOTH 'CASH' and 'cash'. unique(company_id,
         // code) is case-sensitive in PostgreSQL, so both rows coexist legally
         // and a blind normalization would abort the whole tenants:migrate run.
         $canonicalId = PaymentMethod::create([
@@ -406,6 +471,85 @@ final class PaymentMethodCashTenderTest extends TestCase
         $row = DB::table('payment_methods')->where('id', $siblingId)->first();
         $this->assertSame('CASH', $row->code, "The sibling company's variant must be normalized.");
         $this->assertTrue((bool) $row->is_cash_tender, "The sibling company's row must be flagged.");
+    }
+
+    public function test_migration_elects_one_winner_when_a_company_has_two_variants_and_no_canonical(): void
+    {
+        // 'cash' + 'Cash' and NO canonical 'CASH'. Both pass the
+        // canonical-row guard, so without a tie-break both would rewrite to
+        // 'CASH' and fire unique(company_id, code) mid tenants:migrate.
+        $firstId = $this->makeCashVariant('CASH_V1', 'cash');
+        $secondId = $this->makeCashVariant('CASH_V2', 'Cash');
+
+        // The winner is the lowest id, not the creation order — assert on the
+        // actual ordering rather than assuming how HasUuids generates them.
+        $ids = [$firstId, $secondId];
+        sort($ids);
+        [$winnerId, $loserId] = $ids;
+        $loserCode = $loserId === $firstId ? 'cash' : 'Cash';
+
+        Log::spy();
+
+        // Must not throw: a unique violation here would abort tenants:migrate.
+        $this->runBackfillMigration();
+
+        $winner = DB::table('payment_methods')->where('id', $winnerId)->first();
+        $this->assertSame('CASH', $winner->code, 'The lowest-id variant must be elected.');
+        $this->assertTrue((bool) $winner->is_cash_tender, 'The elected winner must be flagged.');
+
+        $loser = DB::table('payment_methods')->where('id', $loserId)->first();
+        $this->assertSame($loserCode, $loser->code, 'The losing variant must be left untouched.');
+        $this->assertFalse((bool) $loser->is_cash_tender, 'The losing variant must stay unflagged.');
+
+        // Exactly one skip is logged — the winner must not be reported.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context) use ($loserId, $loserCode): bool {
+                return $message === 'cash_rounding.backfill.skipped_ambiguous_cash_code'
+                    && $context['payment_method_id'] === $loserId
+                    && $context['code'] === $loserCode
+                    && str_contains($context['reason'], 'no canonical row');
+            })
+            ->once();
+    }
+
+    private function makeCard(): PaymentMethod
+    {
+        return PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_physical' => false,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+    }
+
+    /**
+     * Create a payment method under a placeholder code, then write the
+     * brownfield case-variant straight to the column (past the controller,
+     * which would uppercase it).
+     */
+    private function makeCashVariant(string $placeholderCode, string $variantCode): string
+    {
+        $id = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => $placeholderCode,
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 1,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $id)->update([
+            'code' => $variantCode,
+            'is_cash_tender' => false,
+        ]);
+
+        return $id;
     }
 
     /**

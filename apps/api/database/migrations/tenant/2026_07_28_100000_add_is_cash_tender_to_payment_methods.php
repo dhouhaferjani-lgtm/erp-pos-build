@@ -54,15 +54,36 @@ return new class extends Migration
         // sibling companies in one tenant can reuse codes. Correlating on
         // tenant_id here would skip a second company's 'cash' row that has no
         // collision at all, leaving that company with no cash-flagged method.
+        //
+        // Exactly ONE winner is elected per company:
+        //  - the canonical 'CASH' row always wins if the company has one;
+        //  - otherwise the lowest-id case-variant wins. Without that second
+        //    guard a company holding 'cash' AND 'Cash' but NO 'CASH' would see
+        //    both rows pass the canonical check and both rewrite to 'CASH',
+        //    which fires the unique index and aborts the migration.
+        // Every loser is logged below and left untouched.
         $skipped = DB::select(
             <<<'SQL'
-                SELECT pm.id, pm.tenant_id, pm.company_id, pm.code
+                SELECT pm.id, pm.tenant_id, pm.company_id, pm.code,
+                       CASE WHEN EXISTS (
+                           SELECT 1 FROM payment_methods c
+                           WHERE c.company_id = pm.company_id AND c.code = 'CASH'
+                       ) THEN 1 ELSE 0 END AS canonical_exists
                 FROM payment_methods pm
                 WHERE UPPER(pm.code) = 'CASH'
                   AND pm.code <> 'CASH'
-                  AND EXISTS (
-                      SELECT 1 FROM payment_methods x
-                      WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM payment_methods x
+                          WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM payment_methods y
+                          WHERE y.company_id = pm.company_id
+                            AND UPPER(y.code) = 'CASH'
+                            AND y.code <> 'CASH'
+                            AND y.id < pm.id
+                      )
                   )
                 SQL
         );
@@ -74,16 +95,20 @@ return new class extends Migration
                 'tenant_id' => $row->tenant_id,
                 'company_id' => $row->company_id,
                 'code' => $row->code,
-                'reason' => "company already holds a canonical 'CASH' payment method; "
-                    .'normalizing this variant would violate unique(company_id, code). '
+                'reason' => ((int) $row->canonical_exists === 1
+                    ? "company already holds a canonical 'CASH' payment method"
+                    : "company holds several 'CASH' case-variants and no canonical row; "
+                        .'a lower-id variant was elected instead')
+                    .'; normalizing this row would violate unique(company_id, code). '
                     .'Left unflagged — reconcile manually.',
             ]);
         }
 
         // The target-row predicate is expressed as `id IN (SELECT …)` rather
-        // than an aliased `UPDATE payment_methods pm SET …`: SQLite rejects a
-        // table alias on an UPDATE target, and this migration must also apply
-        // on the sqlite :memory: test loop.
+        // than an aliased UPDATE target. SQLite accepts `UPDATE payment_methods
+        // AS pm SET …` but rejects the AS-less `UPDATE payment_methods pm SET …`;
+        // the subquery form sidesteps the distinction entirely and reads the
+        // same on both drivers.
         DB::statement(
             <<<'SQL'
                 UPDATE payment_methods
@@ -91,10 +116,22 @@ return new class extends Migration
                 WHERE id IN (
                     SELECT pm.id FROM payment_methods pm
                     WHERE UPPER(pm.code) = 'CASH'
-                      AND (pm.code = 'CASH' OR NOT EXISTS (
-                          SELECT 1 FROM payment_methods x
-                          WHERE x.company_id = pm.company_id AND x.code = 'CASH'
-                      ))
+                      AND (
+                          pm.code = 'CASH'
+                          OR (
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_methods x
+                                  WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM payment_methods y
+                                  WHERE y.company_id = pm.company_id
+                                    AND UPPER(y.code) = 'CASH'
+                                    AND y.code <> 'CASH'
+                                    AND y.id < pm.id
+                              )
+                          )
+                      )
                 )
                 SQL
         );

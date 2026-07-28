@@ -61,12 +61,7 @@ class PaymentMethodController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        // Normalize BEFORE validating: the `code` column is stored uppercase
-        // (spec §4.1 exact-code invariant) and `unique(['tenant_id','code'])`
-        // is case-sensitive in PostgreSQL. Uppercasing after validation would
-        // let `cash` pass the unique check against an existing `CASH` row and
-        // then blow up on the index with a 500 instead of a 422.
-        $request->merge(['code' => strtoupper(trim((string) $request->input('code')))]);
+        $this->normalizeCodeInput($request);
 
         $validated = $request->validate([
             'code' => [
@@ -174,17 +169,16 @@ class PaymentMethodController extends Controller
             ->where('company_id', $companyId)
             ->findOrFail($id);
 
-        // Normalize BEFORE validating (see store()). Guarded by has(): merging
-        // unconditionally would inject an empty `code` into a payload that
-        // never sent one, and the `sometimes` rule would then wipe the stored
-        // code on save.
-        if ($request->has('code')) {
-            $request->merge(['code' => strtoupper(trim((string) $request->input('code')))]);
-        }
+        $this->normalizeCodeInput($request);
 
         $validated = $request->validate([
             'code' => [
                 'sometimes',
+                // `filled` rejects a PRESENT-but-empty code ({"code": null},
+                // {"code": ""}, {"code": "   "}). Without it the `sometimes`
+                // rule would happily persist a blank code, and a second blanked
+                // row would then collide on unique(company_id, code).
+                'filled',
                 'string',
                 'max:30',
                 Rule::unique('payment_methods', 'code')
@@ -311,6 +305,37 @@ class PaymentMethodController extends Controller
                 'code' => ['A voucher instrument method cannot also be configured as a maturity method.'],
             ]);
         }
+    }
+
+    /**
+     * Uppercase the incoming `code` BEFORE validation runs.
+     *
+     * The column is stored uppercase (spec §4.1 exact-code invariant) and
+     * `unique(['company_id','code'])` is case-sensitive in PostgreSQL, so
+     * uppercasing AFTER validation would let `cash` pass `Rule::unique`
+     * against an existing `CASH` row and then blow up on the index with a
+     * 500 instead of a 422.
+     *
+     * Deliberately a no-op unless the input is a NON-EMPTY STRING:
+     *  - a non-string (`{"code": ["x"]}`) would fatal on `Array to string
+     *    conversion` inside the merge, i.e. a 500 raised before the `string`
+     *    rule ever gets to return its 422;
+     *  - an absent or empty code (`{"code": null}` on PATCH) must reach the
+     *    validator untouched. Merging it as `''` would satisfy `sometimes` +
+     *    `string` and silently wipe the stored code.
+     *
+     * Both cases are then rejected by the rules: `required` (store) /
+     * `filled` + `string` (update).
+     */
+    private function normalizeCodeInput(Request $request): void
+    {
+        $raw = $request->input('code');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return;
+        }
+
+        $request->merge(['code' => strtoupper(trim($raw))]);
     }
 
     /**
