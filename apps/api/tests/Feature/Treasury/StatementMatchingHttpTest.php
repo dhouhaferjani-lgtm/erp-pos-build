@@ -198,30 +198,41 @@ final class StatementMatchingHttpTest extends TestCase
         $this->assertNotContains($outOfWindow, $suggested);
     }
 
-    public function test_candidate_movement_query_is_window_bounded_and_capped(): void
+    public function test_more_than_cap_same_amount_in_window_movements_produce_no_false_tier_two(): void
     {
-        $this->assertSame(500, StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS);
-
+        // More than MAX_CANDIDATE_MOVEMENTS in-window movements all sharing the
+        // line amount: the amount is NOT unique, so Tier 2 must NOT fire. A cap
+        // that judged uniqueness from a truncated hydration could wrongly report
+        // "unique in window" here.
         $line = $this->line('25.000');
-        $this->movement($this->company, $this->repository, '25.000');
+        $this->bulkMovements(StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS + 1, '25.000', now());
 
-        DB::flushQueryLog();
-        DB::enableQueryLog();
-        app(StatementSuggestionService::class)->suggest($line->id);
-        $queries = DB::getQueryLog();
-        DB::disableQueryLog();
+        $response = $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk();
 
-        $candidateQueries = array_filter(
-            $queries,
-            static fn (array $entry): bool => str_contains((string) $entry['query'], 'repository_movements')
-                && str_contains((string) $entry['query'], 'between')
-                && str_contains((string) $entry['query'], 'limit '.StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS),
-        );
+        $tierTwo = collect($response->json('data'))
+            ->filter(static fn (array $suggestion): bool => ($suggestion['tier'] ?? null) === 2)
+            ->all();
+        $this->assertSame([], $tierTwo, 'A non-unique in-window amount must not produce a Tier 2 suggestion.');
+    }
 
-        $this->assertNotEmpty(
-            $candidateQueries,
-            'The movement candidate query must bound occurred_at to the matching window and apply the sanity limit in SQL.',
-        );
+    public function test_unique_tier_two_candidate_is_found_despite_more_than_cap_noise_movements(): void
+    {
+        // One matching-amount movement plus > cap in-window noise movements of a
+        // different amount. The correct candidate must still be found: uniqueness
+        // is resolved by exact SQL predicate, not by scanning a truncated set.
+        $line = $this->line('25.000');
+        $correct = $this->movement($this->company, $this->repository, '25.000');
+        $this->bulkMovements(StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS + 1, '999.000', now());
+
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tier', 2)
+            ->assertJsonPath('data.0.movement_ids.0', $correct)
+            ->assertJsonPath('data.0.amount', '25.000');
     }
 
     public function test_statement_detail_exposes_matching_and_execution_provenance(): void
@@ -354,5 +365,32 @@ final class StatementMatchingHttpTest extends TestCase
         ]);
 
         return $id;
+    }
+
+    private function bulkMovements(int $count, string $amount, CarbonInterface $occurredAt): void
+    {
+        $rows = [];
+        for ($i = 0; $i < $count; $i++) {
+            $rows[] = [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->company->tenant_id,
+                'company_id' => $this->company->id,
+                'payment_repository_id' => $this->repository->id,
+                'direction' => MovementDirection::In->value,
+                'amount' => $amount,
+                'currency' => 'TND',
+                'balance_after' => $amount,
+                'ordinal' => random_int(1, 1000000000),
+                'source_type' => 'adjustment',
+                'source_id' => Str::uuid()->toString(),
+                'idempotency_key' => 'statement-http-bulk:'.Str::uuid()->toString(),
+                'occurred_at' => $occurredAt,
+                'created_by' => $this->accountant->id,
+            ];
+        }
+        // Chunk to stay under sqlite's bound-parameter ceiling.
+        foreach (array_chunk($rows, 50) as $chunk) {
+            DB::table('repository_movements')->insert($chunk);
+        }
     }
 }

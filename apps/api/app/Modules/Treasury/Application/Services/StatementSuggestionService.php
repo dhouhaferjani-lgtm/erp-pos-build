@@ -22,20 +22,23 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Modules\Treasury\Domain\StatementImportProfile;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
-use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 final readonly class StatementSuggestionService
 {
     /**
-     * Hard ceiling on movement candidates hydrated for a single suggestion pass.
+     * Belt-and-suspenders ceiling on movement rows hydrated for a single
+     * suggestion pass.
      *
-     * The value_date ± matching-window SQL bound already keeps the working set
-     * small; this is a sanity cap so a mis-configured window or a pathological
-     * movement volume can never hydrate unbounded rows. If the cap is reached
-     * the service degrades gracefully — suggestions remain best-effort and
-     * Tier-2 uniqueness is judged over the hydrated window slice.
+     * Correctness never depends on this cap: Tier-1 candidates are bounded in
+     * SQL by a reference predicate (a reference is a near-unique token, so the
+     * set is naturally tiny), and Tier-2 uniqueness is resolved with exact SQL
+     * predicates rather than by scanning a truncated hydration. The cap only
+     * guards against a pathological reference collision or an implausibly large
+     * partially-allocated in-window slice; if it is ever reached the service
+     * degrades to NO suggestion (never a wrong one).
      */
     public const MAX_CANDIDATE_MOVEMENTS = 500;
 
@@ -70,15 +73,6 @@ final readonly class StatementSuggestionService
         $windowDays = $profile instanceof StatementImportProfile ? $profile->matching_window_days : 5;
         $windowStart = $line->value_date->subDays($windowDays)->toDateString();
         $windowEnd = $line->value_date->addDays($windowDays)->toDateString();
-        $eligible = $this->eligibleMovements(
-            $statement,
-            $scale,
-            $line->value_date,
-            $windowDays,
-            $remainingLine,
-            $line->direction,
-        );
-        $references = $this->movementReferences($eligible);
         $lineText = $this->normalize(implode(' ', array_filter([
             $line->label,
             $line->reference,
@@ -87,10 +81,22 @@ final readonly class StatementSuggestionService
         $suggestions = [];
         $tierOneMovementIds = [];
 
-        foreach ($eligible as $candidate) {
+        // Tier 1 — reference + exact remaining amount. Window-INDEPENDENT: a
+        // reference can clear the bank long after its movement date, so the
+        // candidate set is bounded in SQL by the reference predicate, never by a
+        // capped date scan. The exact containment is re-verified here in PHP, so
+        // a valid reference match can never be silently dropped by a cap.
+        $referenceCandidates = $this->referenceMatchedMovements(
+            $statement,
+            $line->direction,
+            $remainingLine,
+            $lineText,
+            $scale,
+        );
+        $references = $this->movementReferences($referenceCandidates);
+        foreach ($referenceCandidates as $candidate) {
             $movement = $candidate['movement'];
-            if ($movement->direction !== $line->direction
-                || bccomp($candidate['remaining'], $remainingLine, $scale) !== 0
+            if (bccomp($candidate['remaining'], $remainingLine, $scale) !== 0
                 || ! $this->referenceMatches($lineText, $references[$movement->id] ?? [])) {
                 continue;
             }
@@ -109,30 +115,31 @@ final readonly class StatementSuggestionService
             );
         }
 
-        $amountDate = array_values(array_filter(
-            $eligible,
-            static fn (array $candidate): bool => $candidate['movement']->direction === $line->direction
-                && bccomp($candidate['remaining'], $remainingLine, $scale) === 0
-                && $candidate['movement']->occurred_at->toDateString() >= $windowStart
-                && $candidate['movement']->occurred_at->toDateString() <= $windowEnd,
-        ));
-        if (count($amountDate) === 1) {
-            $candidate = $amountDate[0];
-            $movement = $candidate['movement'];
-            if (! isset($tierOneMovementIds[$movement->id])) {
-                $suggestions[] = new StatementSuggestion(
-                    tier: 2,
-                    kind: 'movement',
-                    movementIds: [$movement->id],
-                    actionType: null,
-                    targetType: $movement->source_type->value,
-                    targetId: $movement->source_id,
-                    amount: $candidate['remaining'],
-                    reason: "Unique remaining amount inside ±{$windowDays} days.",
-                    reasonCode: 'unique_amount_window',
-                    reasonParams: ['days' => $windowDays],
-                );
-            }
+        // Tier 2 — unique remaining amount strictly inside the window. Resolved
+        // with exact SQL predicates (never a capped hydration) so the perf bound
+        // can neither manufacture a false "unique" nor omit the correct
+        // candidate.
+        $uniqueCandidate = $this->uniqueWindowCandidate(
+            $statement,
+            $line->direction,
+            $windowStart,
+            $windowEnd,
+            $remainingLine,
+            $scale,
+        );
+        if ($uniqueCandidate !== null && ! isset($tierOneMovementIds[$uniqueCandidate['id']])) {
+            $suggestions[] = new StatementSuggestion(
+                tier: 2,
+                kind: 'movement',
+                movementIds: [$uniqueCandidate['id']],
+                actionType: null,
+                targetType: $uniqueCandidate['source_type'],
+                targetId: $uniqueCandidate['source_id'],
+                amount: $remainingLine,
+                reason: "Unique remaining amount inside ±{$windowDays} days.",
+                reasonCode: 'unique_amount_window',
+                reasonParams: ['days' => $windowDays],
+            );
         }
 
         $suggestions = [
@@ -195,58 +202,232 @@ final readonly class StatementSuggestionService
     }
 
     /**
-     * Movement candidates for Tier 1/2 matching, bounded in SQL and hard-capped.
+     * Movements that can produce a Tier-1 "reference and remaining amount match".
      *
-     * The candidate load is split into two SQL queries so the perf bound never
-     * changes suggestion output (the finding is "perf/robustness bound, not a
-     * bug fix"):
-     *
-     *  - In-window candidates (value_date ± matching window) serve Tier-2
-     *    "unique amount in window" AND in-window Tier-1 matching. The window is
-     *    applied in the query, not after hydration. The PHP window filter in
-     *    suggest() remains the semantic authority for Tier-2 date boundaries, so
-     *    uniqueness is still judged strictly within the window.
-     *  - Out-of-window candidates are loaded ONLY to preserve Tier-1 reference
-     *    matching, which is intentionally window-independent (a payment/instrument
-     *    reference can clear the bank days or weeks after its movement date — see
-     *    StatementSuggestionServiceTest::test_reference_hit...). They can never
-     *    surface as Tier-2 because that path re-checks the window in PHP.
-     *
-     * Both queries share the necessary conditions for ANY match (same direction,
-     * gross amount ≥ the line's remaining) — pure narrowing that cannot drop a
-     * real candidate — and each is hard-capped at {@see self::MAX_CANDIDATE_MOVEMENTS}
-     * so a mature repository or a mis-configured window can never hydrate
-     * unbounded rows. If a cap is hit, suggestions remain best-effort.
+     * Tier-1 fires only when a movement's payment/instrument/remittance reference
+     * (or free-text notes) appears in the line text, so the candidate set is
+     * bounded in SQL by that reference predicate — a reference is a near-unique
+     * token, so this is naturally tiny — NOT by date. Tier-1 is window-independent
+     * because a reference can clear the bank long after its movement date (see
+     * StatementSuggestionServiceTest::test_reference_hit...). The exact
+     * containment is re-verified in PHP by the caller (referenceMatches), so the
+     * SQL predicate only has to avoid false negatives; {@see self::MAX_CANDIDATE_MOVEMENTS}
+     * is a belt-and-suspenders ceiling that a realistic line never approaches.
      *
      * @param  numeric-string  $remainingLine
      * @return list<array{movement: RepositoryMovement, remaining: numeric-string}>
      */
-    private function eligibleMovements(
+    private function referenceMatchedMovements(
         BankStatement $statement,
-        int $scale,
-        CarbonImmutable $valueDate,
-        int $windowDays,
-        string $remainingLine,
         MovementDirection $direction,
+        string $remainingLine,
+        string $lineText,
+        int $scale,
     ): array {
-        $windowStartAt = $valueDate->subDays($windowDays)->startOfDay();
-        $windowEndAt = $valueDate->addDays($windowDays)->endOfDay();
-        $inWindow = $this->candidateBaseQuery($statement, $direction, $remainingLine)
-            ->whereBetween('occurred_at', [$windowStartAt, $windowEndAt])
-            ->orderBy('occurred_at')
-            ->orderBy('id')
-            ->limit(self::MAX_CANDIDATE_MOVEMENTS)
-            ->get();
-        $outOfWindow = $this->candidateBaseQuery($statement, $direction, $remainingLine)
-            ->where(static function (Builder $query) use ($windowStartAt, $windowEndAt): void {
-                $query->where('occurred_at', '<', $windowStartAt)
-                    ->orWhere('occurred_at', '>', $windowEndAt);
+        if (trim($lineText) === '') {
+            return [];
+        }
+
+        $paymentQuery = Payment::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id);
+        $this->whereReferenceContains($paymentQuery, 'reference', $lineText);
+        $paymentIds = $paymentQuery->pluck('id')->all();
+
+        $fiscalQuery = Payment::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->whereNotNull('fiscal_event_id');
+        $this->whereReferenceContains($fiscalQuery, 'reference', $lineText);
+        $fiscalEventIds = $fiscalQuery->pluck('fiscal_event_id')->filter()->values()->all();
+
+        $remittanceQuery = InstrumentRemittance::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id);
+        $this->whereReferenceContains($remittanceQuery, 'number', $lineText);
+        $remittanceIds = $remittanceQuery->pluck('id')->all();
+
+        $instrumentIds = PaymentInstrument::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where(function (Builder $query) use ($lineText, $remittanceIds): void {
+                $this->whereReferenceContains($query, 'reference', $lineText);
+                if ($remittanceIds !== []) {
+                    $query->orWhereIn('remittance_id', $remittanceIds);
+                }
+            })
+            ->pluck('id')
+            ->all();
+
+        $movements = $this->candidateBaseQuery($statement, $direction, $remainingLine)
+            ->where(function (Builder $query) use ($lineText, $paymentIds, $fiscalEventIds, $instrumentIds): void {
+                $this->whereReferenceContains($query, 'notes', $lineText);
+                if ($paymentIds !== []) {
+                    $query->orWhere(function (Builder $inner) use ($paymentIds): void {
+                        $inner->whereIn('source_type', [
+                            MovementSourceType::Payment->value,
+                            MovementSourceType::Refund->value,
+                        ])->whereIn('source_id', $paymentIds);
+                    });
+                }
+                if ($fiscalEventIds !== []) {
+                    $query->orWhere(function (Builder $inner) use ($fiscalEventIds): void {
+                        $inner->where('source_type', MovementSourceType::FiscalEvent->value)
+                            ->whereIn('source_id', $fiscalEventIds);
+                    });
+                }
+                if ($instrumentIds !== []) {
+                    $query->orWhere(function (Builder $inner) use ($instrumentIds): void {
+                        $inner->where('source_type', MovementSourceType::Instrument->value)
+                            ->whereIn('source_id', $instrumentIds);
+                    });
+                }
             })
             ->orderBy('occurred_at')
             ->orderBy('id')
             ->limit(self::MAX_CANDIDATE_MOVEMENTS)
             ->get();
-        $movements = $inWindow->concat($outOfWindow)->unique('id')->values();
+
+        return $this->withRemaining($movements, $scale);
+    }
+
+    /**
+     * The single movement whose remaining equals the line's remaining and whose
+     * date falls inside the matching window — or null when there is none or more
+     * than one (uniqueness is the Tier-2 requirement).
+     *
+     * Resolved exactly and precision-safely WITHOUT hydrating a capped set, so
+     * the perf bound can neither manufacture a false "unique" nor omit the
+     * correct candidate:
+     *  - fully-unallocated movements match iff amount == remainingLine (an exact
+     *    equality on the stored decimal column — no float arithmetic in SQL,
+     *    honouring the precision contract); a LIMIT 2 tells us 0 / 1 / many;
+     *  - partially-allocated movements are few (each must own an allocation row),
+     *    so they are hydrated and their remaining compared with bcmath. If that
+     *    slice is implausibly large the cap trips and Tier-2 is suppressed rather
+     *    than risk a wrong suggestion.
+     *
+     * @param  numeric-string  $remainingLine
+     * @return array{id: string, source_type: string, source_id: string}|null
+     */
+    private function uniqueWindowCandidate(
+        BankStatement $statement,
+        MovementDirection $direction,
+        string $windowStart,
+        string $windowEnd,
+        string $remainingLine,
+        int $scale,
+    ): ?array {
+        $allocated = $this->inWindowQuery($statement, $direction, $windowStart, $windowEnd)
+            ->where('amount', '>', $remainingLine)
+            ->whereHas('statementAllocations')
+            ->orderBy('id')
+            ->limit(self::MAX_CANDIDATE_MOVEMENTS + 1)
+            ->get();
+        if ($allocated->count() > self::MAX_CANDIDATE_MOVEMENTS) {
+            return null;
+        }
+        $allocatedMatches = $this->withRemaining($allocated, $scale, $remainingLine);
+
+        $unallocated = $this->inWindowQuery($statement, $direction, $windowStart, $windowEnd)
+            ->where('amount', $remainingLine)
+            ->whereDoesntHave('statementAllocations')
+            ->orderBy('id')
+            ->limit(2)
+            ->get();
+
+        $matches = [
+            ...array_map(
+                static fn (array $candidate): array => [
+                    'id' => $candidate['movement']->id,
+                    'source_type' => $candidate['movement']->source_type->value,
+                    'source_id' => $candidate['movement']->source_id,
+                ],
+                $allocatedMatches,
+            ),
+            ...$unallocated->map(static fn (RepositoryMovement $movement): array => [
+                'id' => $movement->id,
+                'source_type' => $movement->source_type->value,
+                'source_id' => $movement->source_id,
+            ])->all(),
+        ];
+
+        return count($matches) === 1 ? $matches[0] : null;
+    }
+
+    /**
+     * In-window, same-direction movements in the statement's repository/currency.
+     * The date bound uses whereDate so it matches the PHP `occurred_at->toDateString()`
+     * comparison exactly (inclusive calendar-day boundaries).
+     *
+     * @return Builder<RepositoryMovement>
+     */
+    private function inWindowQuery(
+        BankStatement $statement,
+        MovementDirection $direction,
+        string $windowStart,
+        string $windowEnd,
+    ): Builder {
+        return RepositoryMovement::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where('payment_repository_id', $statement->payment_repository_id)
+            ->where('currency', $statement->currency)
+            ->where('direction', $direction->value)
+            ->whereDate('occurred_at', '>=', $windowStart)
+            ->whereDate('occurred_at', '<=', $windowEnd);
+    }
+
+    /**
+     * Base candidate query for the Tier-1 reference load: same repository,
+     * currency and direction, with the gross amount ≥ the line's remaining (a
+     * necessary condition for any exact-remaining match — pure narrowing that
+     * cannot drop a real candidate).
+     *
+     * @param  numeric-string  $remainingLine
+     * @return Builder<RepositoryMovement>
+     */
+    private function candidateBaseQuery(
+        BankStatement $statement,
+        MovementDirection $direction,
+        string $remainingLine,
+    ): Builder {
+        return RepositoryMovement::query()
+            ->where('tenant_id', $statement->tenant_id)
+            ->where('company_id', $statement->company_id)
+            ->where('payment_repository_id', $statement->payment_repository_id)
+            ->where('currency', $statement->currency)
+            ->where('direction', $direction->value)
+            ->where('amount', '>=', $remainingLine);
+    }
+
+    /**
+     * Add "the trimmed, lower-cased $column value (min length 3) occurs as a
+     * substring of the normalized line text" as a boolean predicate. Mirrors the
+     * PHP referenceMatches() containment. $column is always a hard-coded literal
+     * ('reference' / 'number' / 'notes'), never user input.
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     */
+    private function whereReferenceContains(Builder $query, string $column, string $lineText): void
+    {
+        $query->whereRaw(
+            '(length(trim(lower('.$column.'))) >= 3 and ? like '."'%' || trim(lower(".$column.")) || '%')",
+            [$lineText],
+        );
+    }
+
+    /**
+     * Compute each movement's remaining capacity (gross − allocated) with bcmath
+     * and keep only those still open. When $onlyRemaining is given, keep only the
+     * movements whose remaining equals it exactly.
+     *
+     * @param  EloquentCollection<int, RepositoryMovement>  $movements
+     * @param  numeric-string|null  $onlyRemaining
+     * @return list<array{movement: RepositoryMovement, remaining: numeric-string}>
+     */
+    private function withRemaining(EloquentCollection $movements, int $scale, ?string $onlyRemaining = null): array
+    {
         $ids = $movements->map(static fn (RepositoryMovement $movement): string => $movement->id)->all();
         $totals = [];
         $allocations = BankStatementLineAllocation::query()
@@ -269,37 +450,16 @@ final readonly class StatementSuggestionService
                 $totals[$movement->id] ?? CurrencyScale::bcformatStrict('0', $scale),
                 $scale,
             );
-            if (bccomp($remaining, '0', $scale) > 0) {
-                $eligible[] = ['movement' => $movement, 'remaining' => $remaining];
+            if (bccomp($remaining, '0', $scale) <= 0) {
+                continue;
             }
+            if ($onlyRemaining !== null && bccomp($remaining, $onlyRemaining, $scale) !== 0) {
+                continue;
+            }
+            $eligible[] = ['movement' => $movement, 'remaining' => $remaining];
         }
 
         return $eligible;
-    }
-
-    /**
-     * Base candidate query shared by the in-window and out-of-window loads.
-     *
-     * The direction and gross-amount predicates are necessary conditions for
-     * ANY tier match (both tiers require the movement's remaining to equal the
-     * line's remaining, and remaining ≤ gross amount), so they narrow the
-     * hydrated set without ever dropping a real candidate.
-     *
-     * @param  numeric-string  $remainingLine
-     * @return Builder<RepositoryMovement>
-     */
-    private function candidateBaseQuery(
-        BankStatement $statement,
-        MovementDirection $direction,
-        string $remainingLine,
-    ): Builder {
-        return RepositoryMovement::query()
-            ->where('tenant_id', $statement->tenant_id)
-            ->where('company_id', $statement->company_id)
-            ->where('payment_repository_id', $statement->payment_repository_id)
-            ->where('currency', $statement->currency)
-            ->where('direction', $direction->value)
-            ->where('amount', '>=', $remainingLine);
     }
 
     /**

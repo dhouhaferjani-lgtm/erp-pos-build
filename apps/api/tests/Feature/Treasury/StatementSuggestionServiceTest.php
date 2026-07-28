@@ -120,6 +120,40 @@ final class StatementSuggestionServiceTest extends TestCase
         self::assertDatabaseCount('bank_statement_match_executions', 0);
     }
 
+    public function test_out_of_window_reference_match_is_found_despite_many_in_window_movements(): void
+    {
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $payment = Payment::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'amount' => '88.000',
+            'reference' => 'OOW-REF-55123',
+        ]);
+        // Reference movement dated far outside the ±5 day window (value_date 2026-07-18).
+        $referenceMovement = $this->movement('88.000', MovementDirection::In, '2026-05-02', MovementSourceType::Payment, $payment->id);
+        // Many in-window movements with no reference and a non-matching amount:
+        // the reference match must still be found (it is bounded in SQL by the
+        // reference predicate, not dropped by a cap over a large hydration).
+        $this->bulkNoiseMovements(120, '13.000', '2026-07-18');
+
+        $line = $this->line('88.000', MovementDirection::In, 'Wire OOW-REF-55123 cleared');
+
+        $reference = collect(app(StatementSuggestionService::class)->suggest($line->id))->first(
+            static fn ($suggestion): bool => $suggestion->tier === 1 && $suggestion->movementIds === [$referenceMovement],
+        );
+
+        self::assertNotNull($reference);
+        self::assertSame('reference_amount_match', $reference->reasonCode);
+        self::assertSame('88.000', $reference->amount);
+    }
+
     public function test_unique_amount_date_respects_profile_window_and_remaining_capacity(): void
     {
         $line = $this->line('50.000', MovementDirection::In, 'No reference');
@@ -267,6 +301,32 @@ final class StatementSuggestionServiceTest extends TestCase
         ]);
 
         return $id;
+    }
+
+    private function bulkNoiseMovements(int $count, string $amount, string $occurredAt): void
+    {
+        $rows = [];
+        for ($i = 0; $i < $count; $i++) {
+            $rows[] = [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'payment_repository_id' => $this->repository->id,
+                'direction' => MovementDirection::In->value,
+                'amount' => $amount,
+                'currency' => 'TND',
+                'balance_after' => $amount,
+                'ordinal' => random_int(1, 1000000000),
+                'source_type' => MovementSourceType::Adjustment->value,
+                'source_id' => Str::uuid()->toString(),
+                'idempotency_key' => 'statement-suggestion-noise:'.Str::uuid()->toString(),
+                'occurred_at' => $occurredAt,
+                'created_by' => $this->user->id,
+            ];
+        }
+        foreach (array_chunk($rows, 50) as $chunk) {
+            DB::table('repository_movements')->insert($chunk);
+        }
     }
 
     private function allocate(BankStatementLine $line, string $movementId, string $amount): void
