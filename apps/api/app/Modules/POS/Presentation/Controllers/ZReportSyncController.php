@@ -15,6 +15,8 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\VarianceDirection;
 use App\Shared\Domain\Enums\VarianceSeverity;
 use Illuminate\Http\JsonResponse;
@@ -43,6 +45,7 @@ final class ZReportSyncController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly ZReportHashService $zReportHashService,
         private readonly ZReportCountRepository $zReportCountRepository,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -418,17 +421,19 @@ final class ZReportSyncController extends Controller
         ?array $shiftFields,
         ?string $managerUserId,
     ): void {
+        $company = Company::find($terminal->company_id);
+        $currencyCode = ($company instanceof Company) ? $company->currency : 'XXX';
+        $moneyScale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
+
         /** @var numeric-string $varianceRaw */
         $varianceRaw = ($shiftFields !== null && isset($shiftFields['variance_amount']) && is_string($shiftFields['variance_amount']))
             ? $shiftFields['variance_amount']
-            : '0.0000';
+            : CurrencyScale::bcformatStrict('0', $moneyScale);
 
         $severityRaw = ($shiftFields !== null && isset($shiftFields['variance_severity']) && is_string($shiftFields['variance_severity']))
             ? $this->normaliseVarianceSeverity($shiftFields['variance_severity'])
             : VarianceSeverity::Info->value;
 
-        $company = Company::find($terminal->company_id);
-        $currencyCode = ($company instanceof Company) ? $company->currency : 'XXX';
         $tenantId = (string) $terminal->tenant_id;
 
         $aggregateVariance = new VarianceAmount(
