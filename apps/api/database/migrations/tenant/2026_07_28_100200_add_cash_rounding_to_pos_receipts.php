@@ -84,6 +84,25 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Hoisted ABOVE the pos_receipts early return: the journal indexes are
+        // independent of pos_receipts. A tenant DB that (transiently) lacks
+        // pos_receipts would otherwise be recorded as having applied this
+        // migration with the indexes permanently absent — a silent, invisible
+        // loss of the idempotency guard the GL writers depend on.
+        if (Schema::hasTable('journal_entries')) {
+            DB::statement(<<<'SQL'
+                CREATE UNIQUE INDEX IF NOT EXISTS uniq_je_source_pos_cash_rounding
+                    ON journal_entries (source_type, source_id)
+                    WHERE source_type IN ('pos_cash_rounding', 'pos_cash_rounding_refund')
+                SQL);
+
+            DB::statement(<<<'SQL'
+                CREATE UNIQUE INDEX IF NOT EXISTS uniq_je_source_pos_tolerance_bridge
+                    ON journal_entries (source_type, source_id)
+                    WHERE source_type = 'pos_tolerance_bridge'
+                SQL);
+        }
+
         if (! Schema::hasTable('pos_receipts')) {
             return;
         }
@@ -120,22 +139,35 @@ return new class extends Migration
                 "'Denomination that was applied, as signed by the device. Compared to live policy by bccomp, never string equality.'"
             );
         }
-
-        if (Schema::hasTable('journal_entries')) {
-            DB::statement(<<<'SQL'
-                CREATE UNIQUE INDEX IF NOT EXISTS uniq_je_source_pos_cash_rounding
-                    ON journal_entries (source_type, source_id)
-                    WHERE source_type IN ('pos_cash_rounding', 'pos_cash_rounding_refund')
-                SQL);
-
-            DB::statement(<<<'SQL'
-                CREATE UNIQUE INDEX IF NOT EXISTS uniq_je_source_pos_tolerance_bridge
-                    ON journal_entries (source_type, source_id)
-                    WHERE source_type = 'pos_tolerance_bridge'
-                SQL);
-        }
     }
 
+    /**
+     * ROLLBACK IS DELIBERATELY ASYMMETRIC — read before running this on a
+     * tenant that has taken a rounded sale.
+     *
+     * The legacy identity is re-added `NOT VALID`. A plain ADD CONSTRAINT
+     * makes PostgreSQL validate the expression against every existing row,
+     * and any receipt with `cash_rounding_adjustment <> 0` fails
+     * `total = subtotal + tax_amount - discount_amount` by construction — so
+     * the rollback would abort with a check_violation the moment a single
+     * rounded receipt exists, i.e. exactly during the incident that motivated
+     * the rollback.
+     *
+     * `NOT VALID` is safe here because the direction that matters is still
+     * fully enforced: PostgreSQL applies a NOT VALID CHECK to every
+     * subsequent INSERT and UPDATE, and once the column is gone no new row
+     * can carry an adjustment. Only the historical scan is skipped.
+     *
+     * SEMANTIC CONSEQUENCE: the rolled-back schema no longer validates the
+     * legacy identity against historical rounded rows — those rows stay in
+     * place and stay out of compliance with the restored expression. Fully
+     * symmetric rollback would require deleting the rounded receipts, which
+     * fiscal immutability forbids (`prevent_receipt_modification` blocks
+     * DELETE on pos_receipts outright). Flag for the Task 13 deploy
+     * checklist: rolling this migration back is a one-way door for the
+     * totals invariant on already-rounded data; re-applying `up()` restores
+     * full validation.
+     */
     public function down(): void
     {
         if (Schema::hasTable('journal_entries')) {
@@ -148,10 +180,12 @@ return new class extends Migration
         }
 
         // Restore the pre-rounding identity BEFORE dropping the column the
-        // new expression references.
+        // new expression references. NOT VALID — see the method docblock:
+        // without it this statement aborts as soon as one rounded receipt
+        // exists, which is precisely when a rollback would be attempted.
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE pos_receipts DROP CONSTRAINT IF EXISTS pos_receipts_totals');
-            DB::statement('ALTER TABLE pos_receipts ADD CONSTRAINT pos_receipts_totals CHECK (total = subtotal + tax_amount - discount_amount)');
+            DB::statement('ALTER TABLE pos_receipts ADD CONSTRAINT pos_receipts_totals CHECK (total = subtotal + tax_amount - discount_amount) NOT VALID');
         }
 
         $columns = array_values(array_filter(

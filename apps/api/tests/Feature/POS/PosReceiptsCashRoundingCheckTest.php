@@ -278,6 +278,21 @@ final class PosReceiptsCashRoundingCheckTest extends TestCase
             'migrations/tenant/2026_07_28_100200_add_cash_rounding_to_pos_receipts.php'
         );
 
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            // THE regression case: a rounded receipt (adj <> 0) violates the
+            // LEGACY identity by construction. A plain ADD CONSTRAINT in
+            // down() validates against existing rows and aborts with
+            // check_violation right here. The NOT VALID re-add must survive it.
+            DB::table('pos_receipts')->insert($this->receiptRow([
+                'subtotal' => '9.973',
+                'tax_amount' => '0.000',
+                'discount_amount' => '0.000',
+                'total' => '9.950',
+                'cash_rounding_adjustment' => '-0.023',
+                'cash_rounding_denomination' => '0.0500',
+            ]));
+        }
+
         $migration->down();
 
         $this->assertFalse(Schema::hasColumn('pos_receipts', 'cash_rounding_adjustment'));
@@ -300,6 +315,29 @@ final class PosReceiptsCashRoundingCheckTest extends TestCase
         $this->assertNotNull($definition);
         $this->assertStringNotContainsString('cash_rounding_adjustment', $definition);
         $this->assertStringNotContainsString('COALESCE', strtoupper($definition));
+
+        // Re-added NOT VALID: pg_get_constraintdef spells it out, and
+        // pg_constraint.convalidated is false — that is what let the rollback
+        // survive the pre-existing rounded row above.
+        $this->assertStringContainsString('NOT VALID', $definition);
+        $convalidated = DB::selectOne(
+            "SELECT convalidated FROM pg_constraint WHERE conname = 'pos_receipts_totals'"
+        );
+        $this->assertNotNull($convalidated);
+        $this->assertFalse((bool) $convalidated->convalidated);
+
+        // The rounded row survived the rollback — fiscal immutability forbids
+        // deleting it, which is exactly why a validating re-add is impossible.
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+
+        // NOT VALID still enforces the restored identity on NEW writes: only
+        // the historical scan is skipped.
+        $this->assertViolatesTotalsCheck([
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '11.000',
+        ]);
     }
 
     public function test_receipt_model_exposes_the_new_columns(): void
