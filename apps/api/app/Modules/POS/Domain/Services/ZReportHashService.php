@@ -82,6 +82,11 @@ final class ZReportHashService
      *
      * Contract v1.1: all monetary normalizations use scale 3.
      *
+     * Nested per-key blocks (variance_summary, tolerance_summary,
+     * cash_rounding_summary, payment_methods) are ADDITIVE and `isset`-guarded:
+     * they are NOT tied to the schema_version ladder, so report_data that
+     * predates a given key normalizes — and therefore hashes — byte-identically.
+     *
      * @param  array<string, mixed>  $reportData
      * @return array<string, mixed>
      */
@@ -132,6 +137,18 @@ final class ZReportHashService
             && isset($reportData['tolerance_summary']['totalAmount'])) {
             $reportData['tolerance_summary']['totalAmount'] = CurrencyScale::bcformat(
                 (string) $reportData['tolerance_summary']['totalAmount'], 3
+            );
+        }
+
+        // Additive, per-key `isset`-guarded — legacy report_data that predates
+        // this key hashes byte-identically. Deliberately NOT tied to a
+        // schema_version bump: bumping the version would re-normalize
+        // refunds_amount (and the voucher keys) and break parity with the
+        // device mirror.
+        if (isset($reportData['cash_rounding_summary']) && is_array($reportData['cash_rounding_summary'])
+            && isset($reportData['cash_rounding_summary']['total_adjustment'])) {
+            $reportData['cash_rounding_summary']['total_adjustment'] = CurrencyScale::bcformat(
+                (string) $reportData['cash_rounding_summary']['total_adjustment'], 3
             );
         }
 
