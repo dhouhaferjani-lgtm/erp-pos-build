@@ -21,7 +21,7 @@ Three tenant migrations, in filename order:
 | Migration | Effect |
 |---|---|
 | `2026_07_28_100000_add_is_cash_tender_to_payment_methods` | Adds `payment_methods.is_cash_tender` (default `false`); backfills `is_cash_tender = true` **and normalizes `code` to exactly `'CASH'`** for the unambiguous case-variant rows. Ambiguous rows (a company holding both `'CASH'` and `'cash'`, or several variants and no canonical row) are **left alone, fail-closed** and logged as `cash_rounding.backfill.skipped_ambiguous_cash_code`. |
-| `2026_07_28_100100_add_cash_rounding_to_country_payment_settings` | Adds `cash_rounding_enabled` (`false`), `cash_rounding_denomination`, `pos_tolerance_enabled` (`false`); **UPSERTS the TN row** with `max_payment_tolerance_amount = 0.1000`, `cash_rounding_denomination = 0.0500`, both POS switches OFF. Skipped when the tenant's `countries` table has no `TN` row (fresh tenants — see §2 step 0). |
+| `2026_07_28_100100_add_cash_rounding_to_country_payment_settings` | Adds `cash_rounding_enabled` (`false`), `cash_rounding_denomination`, `pos_tolerance_enabled` (`false`); **UPSERTS the TN row** with `max_payment_tolerance_amount = 0.1000` and **`payment_tolerance_enabled = true`** (the `$pinned` array at `:66-71`, applied on BOTH the insert branch `:76` and the update branch `:94` — see §1). `cash_rounding_denomination = 0.0500` and both POS switches OFF are set on the **INSERT branch only**; the update branch never touches the two POS switches, and backfills the denomination only when it is still NULL. Skipped when the tenant's `countries` table has no `TN` row (fresh tenants — see §2 step 0). |
 | `2026_07_28_100200_add_cash_rounding_to_pos_receipts` | Adds `pos_receipts.cash_rounding_adjustment` `decimal(12,3)` **signed** + `cash_rounding_denomination` `decimal(15,4)`, both nullable. **Swaps the `pos_receipts_totals` CHECK** (pgsql-guarded). Creates two partial unique indexes on `journal_entries`: `uniq_je_source_pos_cash_rounding` and `uniq_je_source_pos_tolerance_bridge`. |
 
 Everything else in the batch is version-gated on
@@ -33,13 +33,23 @@ and is therefore **INERT** until a device signs a v3 receipt.
 The swap is `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT … NOT VALID`, then a
 separate savepoint-protected `VALIDATE CONSTRAINT`.
 
-- `ADD CONSTRAINT` takes **ACCESS EXCLUSIVE** on `pos_receipts`. It is brief
-  (`NOT VALID` skips the table scan), but it still blocks all readers and
-  writers for the duration. `VALIDATE CONSTRAINT` takes only SHARE UPDATE
-  EXCLUSIVE but **does a full table scan** — on a large tenant's `pos_receipts`
-  this is the long part of the migration. Schedule the deploy window
-  accordingly; on the biggest tenants expect the scan, not the lock, to
-  dominate.
+- `ADD CONSTRAINT` takes **ACCESS EXCLUSIVE** on `pos_receipts`. On its own
+  that would be brief (`NOT VALID` skips the table scan) — **but it is not on
+  its own.** Laravel runs PostgreSQL migrations inside a single transaction
+  (`Migration::$withinTransaction = true` + `PostgresGrammar::$transactions = true`,
+  stated in the migration's own docblock at `:64-70`), and the `VALIDATE
+  CONSTRAINT` runs in the same migration — inside that same transaction, as a
+  nested `DB::transaction()` savepoint. **A lock taken in a transaction is held
+  until that transaction commits.** So the ACCESS EXCLUSIVE lock acquired by
+  `ADD CONSTRAINT` is held *through* the VALIDATE scan and only released when
+  the migration commits.
+- **Practical effect: every reader AND writer of `pos_receipts` blocks for the
+  full duration of the validation scan.** The standalone
+  `VALIDATE CONSTRAINT`'s weaker SHARE UPDATE EXCLUSIVE lock buys nothing here,
+  because the stronger lock is already held. On a large tenant's
+  `pos_receipts` this is a hard outage window for POS sync and every report
+  touching that table — size the deploy window against the row count of your
+  biggest tenant, and run it out of trading hours.
 - On a **first apply** the net effect is identical to a plain validating ADD:
   every existing row has `cash_rounding_adjustment IS NULL`, so
   `COALESCE(...) = 0` and the new expression reduces to the old one. VALIDATE
@@ -100,15 +110,47 @@ already populated, which it is not at tenant-migration time), so
 system defaults. **This is the intended correction — confirm the accountant is
 aware before promoting to production.**
 
-Two further notes:
+### 1.1 🔴 The MIGRATION re-pins `payment_tolerance_enabled = true` on every `tenants:migrate`
 
-- `CountryPaymentSettingsSeeder` **pins** `payment_tolerance_enabled = true` and
-  the per-country ceilings on every run (`App\Shared\Domain\CountryPaymentDefaults`:
-  TN `0.0050 / 0.1000`, FR `0.0050 / 0.5000`). If it runs on a tenant where B2B
-  tolerance had been switched off by hand, it switches it back ON.
-- **POS behaviour is UNAFFECTED.** `cash_rounding_enabled` and
-  `pos_tolerance_enabled` both default to `false`, are independent of each
-  other, and **neither touches the B2B `payment_tolerance_enabled` column**.
+This is the second, easier-to-miss half of the same change, and it needs **zero
+operator action** to happen — it rides the auto-deploy.
+
+`2026_07_28_100100`'s `$pinned` array (`:66-71`) contains
+`'payment_tolerance_enabled' => true`, and `$pinned` is applied on **both**
+branches: merged into the INSERT (`:76`) and passed to the UPDATE (`:94`).
+
+**Consequence: a tenant that had B2B payment tolerance deliberately switched OFF
+by hand gets it switched back ON the moment `tenants:migrate` runs** — together
+with the tightened `0.1000` ceiling. Nobody runs a command; the auto-deploy does
+it. The migration is not one-shot either: `tenants:migrate` is idempotent for
+schema but this UPDATE re-runs whenever the migration is re-applied.
+
+`CountryPaymentSettingsSeeder` pins the same three values on every run for every
+country in `App\Shared\Domain\CountryPaymentDefaults` (TN `0.0050 / 0.1000`,
+FR `0.0050 / 0.5000`), so running it (§2 step 0) has the same effect and extends
+it to FR.
+
+**If any tenant has B2B tolerance intentionally disabled, capture that state
+BEFORE the deploy and restore it after:**
+
+```sql
+-- before
+SELECT country_code, payment_tolerance_enabled, payment_tolerance_percentage, max_payment_tolerance_amount
+FROM country_payment_settings;
+```
+
+### 1.2 What is NOT affected
+
+**POS behaviour is unaffected in Phase 1.** `cash_rounding_enabled` and
+`pos_tolerance_enabled` both default to `false` and are independent of each
+other.
+
+Scope this correctly — it is a claim about the two POS switches only:
+**flipping `cash_rounding_enabled` or `pos_tolerance_enabled` (via
+`pos:configure-cash-rounding`) never writes the B2B `payment_tolerance_enabled`
+column.** The reverse is NOT true in the other direction: the migration and the
+seeder both DO write `payment_tolerance_enabled` (§1.1). "Nothing touches B2B"
+is wrong; "the POS kill-switches do not touch B2B" is right.
 
 ---
 
@@ -130,6 +172,14 @@ Two further notes:
 > Both commands emit their token as the **last line of each tenant's block**, and
 > `tenants:run` prints `Tenant: <uuid>` before each block — which is what makes
 > the tenant count derivable from the same log.
+>
+> **The `|| echo 'GATE FAILED…'` lines below PRINT, they do not FAIL.** They
+> leave `$?` at 0 and will not stop a script or a CI step. **Read the output
+> with your eyes**, or wire the `!`/`test` expressions into your own
+> `set -e` / `exit 1` harness. And before trusting either gate, confirm
+> `tenants seen` is **greater than zero** and **matches your tenant inventory** —
+> a log with zero `Tenant:` lines makes `TENANT_COUNT=0`, and both halves of the
+> gate then pass vacuously on an empty file.
 
 ### Step 0 — fresh tenants self-heal; existing tenants may still need the seeder
 
@@ -254,10 +304,16 @@ Confirm for every tenant:
   the company's canonical `'CASH'` payment method
   (`is_cash_tender = true` implies `code = 'CASH'` **exactly**), then re-run.
 
-Two known blind spots of `--verify` (deliberate, but budget for them):
+Three known blind spots of `--verify` (deliberate, but budget for them):
 
 - a tenant with **zero companies** passes vacuously;
-- `--verify` ignores `--country` by design — it reports every settings row.
+- `--verify` ignores `--country` by design — it reports every settings row;
+- **`--verify` combined with any mutation flag silently discards the mutation.**
+  `ConfigureCashRoundingCommand:113-115` short-circuits into `verify()` before
+  the flags are read, so
+  `--option='verify=1' --option='enable-rounding=1'` verifies and **does not
+  enable anything**, with no warning. Never combine them — run the mutation and
+  the verification as two separate invocations.
 
 Also grep the deploy log for the migration's ambiguity warning, which is exactly
 the population that will fail this gate:
@@ -357,15 +413,23 @@ NULL adjustments. Two caveats:
 - **`…_100200` `down()` is lossy and one-way for the totals invariant on any
   tenant that has taken a rounded sale — read §0.2 before running it.** In
   Phase 1 no tenant has, so a Phase-1 rollback is clean.
-- The only non-additive *data* effect is the TN row's tightened B2B ceiling.
-  Restore it with a direct update if needed:
+- The only non-additive *data* effects are the TN row's tightened B2B ceiling
+  **and the re-pinned `payment_tolerance_enabled = true`** (§1.1). Restore them
+  with a direct update if needed:
 
   ```sql
-  UPDATE country_payment_settings SET max_payment_tolerance_amount = 0.5000 WHERE country_code = 'TN';
+  UPDATE country_payment_settings
+  SET max_payment_tolerance_amount = 0.5000,
+      payment_tolerance_enabled    = <your pre-deploy value>
+  WHERE country_code = 'TN';
   ```
 
-  Note that the next `CountryPaymentSettingsSeeder` run re-pins it to `0.1000`
-  (§1) — a durable revert means editing `App\Shared\Domain\CountryPaymentDefaults`.
+  **This revert is not durable.** Both the `…_100100` migration (on any re-apply
+  of `tenants:migrate`) and the next `CountryPaymentSettingsSeeder` run re-pin
+  the ceiling to `0.1000` and `payment_tolerance_enabled` back to `true`. A
+  durable revert means editing `App\Shared\Domain\CountryPaymentDefaults` (for
+  the seeder) — the migration's literals are deliberately frozen and are not
+  read from that class.
 
 ---
 
@@ -391,6 +455,15 @@ php artisan fiscal:retry-projections --limit=50
 
 Useful narrowing flags: `--projector=`, `--event-id=`, `--tenant=`,
 `--min-age-minutes=` (default 16), `--sync` (run inline instead of dispatching).
+
+**🎫 Ops-watch perf ticket (open, not fixed in Phase 1).** That completeness
+anti-join (`fiscal_events` LEFT JOIN `pos_receipts`, filtered on
+`terminal_id` + `event_time_device` + `SALE_RECEIPT` + verified) has **no
+supporting index** — it seq-scans `fiscal_events` **inside the shift-close
+lock**, and the cost grows unbounded with event volume. Watch Z-report close
+latency after cutover. Fix = a partial index
+`fiscal_events (terminal_id, event_time_device)` restricted to verified
+`SALE_RECEIPT` rows.
 
 ### 5.2 Journal entry numbering
 
@@ -449,6 +522,13 @@ signs v3 and become wrong the moment one does.
 3. **Two-semantics consumer sweep** — audit every remaining reader of the two
    payment tables against §5.4: `PosAnalyticsService`, `Nf525DataProvider`,
    `ReceiptPaymentService`, and any dashboard/export summing cash.
+   **Include `tolerance_writeoff` in the sweep:** on v3 rows the projection
+   ALWAYS writes it (canonical `'0.000'` when no tolerance applied — only v1/v2
+   legacy and training rows stay NULL), so any consumer using
+   `whereNotNull('tolerance_writeoff')` as a "has tolerance" predicate selects
+   **every v3 receipt**. Compare with `bccomp` against zero instead. The
+   `Receipt.php` docblock has been corrected; the consumers have not been
+   audited.
 
 **Environment / data hygiene:**
 
@@ -465,7 +545,25 @@ signs v3 and become wrong the moment one does.
 
 **Plan B (device) blockers — fix in `apps/pos` BEFORE the Phase-2 build:**
 
-6. **`apps/pos/src/api/toleranceApi.ts` field mismatch.** `ToleranceReceiptRow`
+6. **🔴 HIGHEST CONSEQUENCE — device TS key-set mirror + drift gate is MANDATORY
+   before any device signs v3.** The server's canonical v3 key set is
+   `FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V3` — **exactly
+   30 keys, lexicographically sorted** (pinned by
+   `tests/Unit/Fiscal/SaleReceiptV3KeySetTest.php:24,33`). The device must carry
+   a byte-identical mirror **plus an automated drift gate** that fails the build
+   when the two lists diverge. A device that signs with a key set the server
+   does not recognise **quarantines 100% of its receipts** — every sale, not a
+   sampled few — and the receipts are already signed, so the damage is
+   discovered only after the fact.
+   **Same item, second half: the device must canonical-zero-normalize.** It must
+   never emit `'-0.000'` — the server rejects it as
+   `payload_money_negative_zero`
+   (`app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:2774`).
+   `cash_rounding_adjustment` is the signed field, so a naive
+   `negate(0)` on the device is exactly how this happens. Canonical zero is the
+   unsigned `'0.000'`.
+
+7. **`apps/pos/src/api/toleranceApi.ts` field mismatch.** `ToleranceReceiptRow`
    declares `receiptId` and `cashierName`; the server's
    `TolerancePaymentReceiptDTO`
    (`apps/api/app/Modules/Treasury/Application/DTOs/TolerancePaymentReceiptDTO.php:23-32`)
@@ -473,7 +571,7 @@ signs v3 and become wrong the moment one does.
    `currencyCode`, `occurredAt`. **Fix the client before enabling the
    tolerance drill-down panel** — the two declared-but-absent fields arrive
    `undefined`.
-7. **Device Z hash-mirror ordering — HARD constraint.**
+8. **Device Z hash-mirror ordering — HARD constraint.**
    `apps/pos/src/lib/fiscal/zReportHashService.ts` must gain the **identical
    `isset`-guarded `cash_rounding_summary` block**
    (`apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php:148-152`)
@@ -489,14 +587,24 @@ In order. Do not reorder.
 
 1. **Step 1 (purpose backfill) and step 2 (`--verify`) both green** for the
    tenant. These are the two hard gates.
-2. **Close the §6 pre-cutover tickets** — at minimum items 1, 2, 6 and 7.
+2. **Close the §6 pre-cutover tickets** — at minimum items 1, 2, 6, 7 and 8.
 3. **Cut every terminal in the tenant over to `fiscal_schema_version = 3`**
    via `FiscalSchemaCutoverService`
    (`POST /api/v1/pos/terminals/{terminal}/fiscal-schema-cutover`, admin-only,
    gated on no-open-shift + no-unzreported + empty-queue) **BEFORE** running
-   `pos:configure-cash-rounding --enable-rounding`. The device's rounding gate
-   is the schema-version predicate; a non-cutover terminal on a new build would
-   sign rounded receipts that reach the still-legacy server Z path.
+   `pos:configure-cash-rounding --enable-rounding`.
+
+   **Why this order.** The device gates rounding on *both* the policy switch and
+   its own `fiscal_schema_version`. Doing the cutover first guarantees the device
+   can only ever observe two coherent states — `schema < 3` with rounding not yet
+   enabled, or `schema = 3` with rounding enabled. Enabling first opens the third,
+   incoherent state: **enabled policy on a terminal still at `schema < 3`**, where
+   the terminal's two gates disagree and its behaviour depends on which one the
+   build happens to check. Cutover-then-enable makes that drift state
+   unreachable by construction rather than relying on the device to resolve it
+   correctly. The cutover endpoint's own preconditions (no open shift, no
+   unZ-reported shift, empty queue) mean no in-flight receipt straddles the
+   boundary.
 4. **Then enable rounding**, per country:
 
    ```bash
@@ -528,9 +636,20 @@ In order. Do not reorder.
 **Kill-switch semantics.** `cash_rounding_enabled` and `pos_tolerance_enabled`
 are **independent** — `--enable-rounding` / `--disable-rounding` and
 `--enable-tolerance` / `--disable-tolerance`. Each pair is mutually exclusive
-(the command refuses both at once). **Neither touches the B2B
-`payment_tolerance_enabled` column.** Disabling rounding stops new rounded
-receipts; it does not and cannot un-round receipts already signed.
+(the command refuses both at once). **Neither of these two switches writes the
+B2B `payment_tolerance_enabled` column** — but note that the migration and the
+seeder DO write it (§1.1). Disabling rounding stops new rounded receipts; it
+does not and cannot un-round receipts already signed.
+
+**There IS a per-company force-disable for tolerance (but not for rounding).**
+`PosPaymentPolicyResolver::resolveToleranceEnabled` (`:175-188`) applies
+`companies.payment_tolerance_enabled` as a **fail-closed direction override**:
+an explicit `false` on the company disables POS tender tolerance for that
+company regardless of the country switch; `true` or `null` defers to the country
+row. So `--enable-tolerance` on the country will NOT enable tolerance for a
+company pinned to `false` — check that column when a company reports
+`tenderToleranceEnabled: false` after you enabled the country. Cash rounding has
+no such per-company override: it is country-wide, full stop.
 
 **Adding a new country.** A country that has no entry in
 `App\Shared\Domain\CountryPaymentDefaults` has no sanctioned tolerance ceilings,

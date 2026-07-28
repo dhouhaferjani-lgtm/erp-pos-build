@@ -57,7 +57,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $discount_reason Reason for transaction discount
  * @property numeric-string $total Gross total ((subtotal - discount) + tax)
  * @property numeric-string|null $change_due Cash change returned to customer; NULL on legacy rows
- * @property numeric-string|null $tolerance_writeoff Amount written off to GL 658 for cash-sale tolerance; NULL when no tolerance applied
+ * @property numeric-string|null $tolerance_writeoff Amount written off to GL 658 for cash-sale tolerance. On v3+ rows this is ALWAYS written — canonical zero ('0.000') when no tolerance applied, never NULL. NULL means a v1/v2 legacy row (or a training receipt); it does NOT mean "no tolerance". Do not use `whereNotNull` as a "has tolerance" predicate on v3 data — compare with bccomp against zero.
  * @property numeric-string|null $cash_rounding_adjustment Signed cash-rounding adjustment (rounded − exact); NULL on v1/v2 rows
  * @property numeric-string|null $cash_rounding_denomination Denomination applied, as signed by the device; NULL on v1/v2 rows
  * @property string $currency
