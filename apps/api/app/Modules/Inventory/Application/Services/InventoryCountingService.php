@@ -738,9 +738,9 @@ class InventoryCountingService
             $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
 
             // Assign-as-you-count: the first count of an item in a single-zone
-            // zone-scoped session upserts that product into the zone (labels the
-            // shelf the moment it is physically counted — including scanned-in
-            // unexpected items). Multiple zones in scope are ambiguous → skipped.
+            // session preserves a precise descendant placement and re-homes only
+            // an unplaced or out-of-subtree product. Multiple zones in scope are
+            // ambiguous, so assignment is skipped.
             $this->assignCountedItemToZone($item, $counting, $countNumber);
 
             // Record event
@@ -764,10 +764,11 @@ class InventoryCountingService
     }
 
     /**
-     * Upsert the just-counted product into the session's zone when the session
-     * is zone-scoped with exactly one zone. No-op for every other scope, for
-     * multi-zone sessions (ambiguous target), and for counts after the first
-     * (a later count must not overwrite a deliberate mid-count reassignment).
+     * Place the just-counted product in the session's single zone when it is
+     * unplaced or currently outside that zone's subtree. Preserve a precise
+     * descendant placement. No-op for every other scope, multi-zone sessions,
+     * and counts after the first (a later count must not overwrite a deliberate
+     * mid-count reassignment).
      */
     private function assignCountedItemToZone(
         InventoryCountingItem $item,
@@ -785,11 +786,32 @@ class InventoryCountingService
             return;
         }
 
+        $zone = LocationNode::query()
+            ->atLocation($item->location_id)
+            ->whereKey($zoneIds[0])
+            ->first();
+        $currentPlacement = ProductPlacement::query()
+            ->where('product_id', $item->product_id)
+            ->where('location_id', $item->location_id)
+            ->lockForUpdate()
+            ->first();
+
+        if (
+            $zone !== null
+            && $currentPlacement !== null
+            && LocationNode::query()
+                ->atLocation($item->location_id)
+                ->subtreeOf($zone->path)
+                ->whereKey($currentPlacement->node_id)
+                ->exists()
+        ) {
+            return;
+        }
+
         // Old flat-zone rows resolved tenant from the zone itself; the node
         // service takes it explicitly. tenant_id is nullable on the model but
         // always set for zone-scoped sessions — resolve via the node when absent.
-        $tenantId = $counting->tenant_id
-            ?? LocationNode::query()->whereKey($zoneIds[0])->value('tenant_id');
+        $tenantId = $counting->tenant_id ?? $zone?->tenant_id;
 
         if (! is_string($tenantId) || $tenantId === '') {
             return;

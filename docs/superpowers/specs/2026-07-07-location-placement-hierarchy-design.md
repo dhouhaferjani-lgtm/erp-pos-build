@@ -156,7 +156,7 @@ Create/move/code-change wrap in a transaction with `SELECT … FOR UPDATE` on th
 Every old reference migrates together, guarded by a test that all of these run against `location_nodes`/`product_placements`:
 `CreateCountingRequest` (validation table + `validateZonesBelongToLocation`), `InventoryCountingService::zoneItemSeeds` + `assignCountedItemToZone`, `CountingBlockService::zoneAdvisoriesFor`, zone-draft activation, DTO transform.
 - `zoneItemSeeds` becomes **subtree-aware** via the canonical §3.1 query; a placed product **expands to all its variants** at seed (counting items stay variant-grain — review Important 3).
-- **Assign-as-you-count** (review Important 5): assigns a first-counted item to **the one explicitly selected node, even if it is an ancestor** — only when exactly one node is scoped (unchanged single-scope rule). No "leaf" requirement.
+- **Assign-as-you-count** (review Important 5, refined 2026-07-28): with exactly one scoped node, a first-counted item keeps its current precise placement when it is already inside that node's subtree. An unplaced item or one outside the subtree is assigned to the explicitly selected node, which may be an ancestor. No "leaf" requirement.
 
 ---
 
@@ -190,7 +190,7 @@ TanStack `tenantScopedKey`, design tokens, `t()` i18n, no-`any`, constructor inj
 - **Onboarding explainer** on the placement/import screen: "Define your storage layout first, or let the import build it from `placement_path`."
 
 ## 7. Counting integration (the payoff)
-Wizard `ZoneScopeSelection` → **node-tree picker**: choose a location, select one or more nodes; a selected node counts its **entire subtree** (canonical §3.1 query). Assign-as-you-count per §4.5 (selected node, ancestor-ok). Zone-scoped counts stay non-blocking (advisory toasts). Existing counts referencing old ids keep working (rows migrate in place; enum value unchanged).
+Wizard `ZoneScopeSelection` → **node-tree picker**: choose a location, select one or more nodes; a selected node counts its **entire subtree** (canonical §3.1 query). Assign-as-you-count per §4.5 preserves an existing descendant placement and re-homes only unplaced or out-of-subtree products. Zone-scoped counts stay non-blocking (advisory toasts). Existing counts referencing old ids keep working (rows migrate in place; enum value unchanged).
 
 ## 8. Mobile sync contract
 See `docs/handoff/HANDOVER-location-hierarchy-mobile.md` (regenerated post-review). Full-sync `location_nodes`; delta-sync `product_placements` via the **§4.4 tuple-cursor contract** + tombstones; `path` for offline subtree counting; stock grain unchanged. Page size is the only tunable; cursor/format are defined.
@@ -237,7 +237,7 @@ Review verdict was **BLOCK**; every finding is resolved here:
 - **Important 2 (move atomicity)** → §4.2 locking + cycle check.
 - **Important 3 (variant grain)** → **D9** product-level, seed expands to variants.
 - **Important 4 (counting refs)** → §4.5 single phase + reference-migration test.
-- **Important 5 (assign-as-you-count)** → §4.5 "selected node, ancestor-ok"; removed "leaf" wording.
+- **Important 5 (assign-as-you-count)** → §4.5 selected-node semantics, refined to preserve an existing descendant placement and re-home only unplaced or out-of-subtree products; removed "leaf" wording.
 - **Important 6 (service authz)** → §3.4 service methods validate tenant/company/consistency in-transaction.
 - **Important 7 (indexes)** → §3.3.
 - **Important 8 (mobile timestamp/boundary)** → §4.4 wire-format + handover fix.

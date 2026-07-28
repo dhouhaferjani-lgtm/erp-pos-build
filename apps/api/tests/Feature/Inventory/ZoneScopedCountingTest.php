@@ -45,8 +45,8 @@ use Tests\Traits\AssertsApiValidation;
  *
  * - Node scope sources items from live product placements under each selected
  *   node subtree; theoretical qty is current location-level on-hand.
- * - Submitting the first count of a zone-scoped session (single zone) upserts
- *   the counted product into that zone via LocationNodeService::assignProduct.
+ * - Submitting the first count of a zone-scoped session (single zone) preserves
+ *   a descendant placement and re-homes only unplaced or out-of-subtree products.
  * - `block_sales=true` is rejected for a zone scope (soft advisory only).
  * - Onboarding-location full counts (and opt-in full/location counts) source
  *   the whole active catalog LEFT JOIN stock (theoretical 0 when absent) and
@@ -297,17 +297,10 @@ final class ZoneScopedCountingTest extends TestCase
     public function test_submit_count_assigns_scanned_in_product_to_the_single_zone(): void
     {
         $zoneA = $this->makeZone('A');
-        $child = $this->makeChildNode($zoneA, 'R1', LocationNodeType::Rack);
         $unassigned = $this->makeProduct('UNASSIGNED');
 
-        // Selecting an ancestor is valid: subtree membership determines what
-        // is seeded, while assign-as-count labels the product with the exact
-        // single node selected by the user (not an arbitrary descendant).
-        $this->zoneService->assignProduct($this->tenant->id, $unassigned->id, $this->location->id, $child->id);
-        $this->zoneService->unassignProduct($unassigned->id, $this->location->id);
-
-        // Zone counting with a manually-added item for a product NOT yet
-        // assigned to any zone (the scan-in / unexpected-item shape).
+        // Zone counting with a manually-added item for a product that has never
+        // had a placement row (the scan-in / unexpected-item shape).
         $counting = InventoryCounting::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -342,7 +335,6 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertDatabaseMissing('product_placements', [
             'product_id' => $unassigned->id,
             'location_id' => $this->location->id,
-            'deleted_at' => null,
         ]);
 
         $this->service->submitCount($item, 1, '3.0000', null, $this->user);
@@ -354,6 +346,165 @@ final class ZoneScopedCountingTest extends TestCase
 
         $this->assertNotNull($assignment, 'Submitting a count must assign the product to the zone.');
         $this->assertSame($zoneA->id, $assignment->node_id);
+    }
+
+    public function test_zone_count_preserves_existing_descendant_placement(): void
+    {
+        $aisle = $this->makeZone('A1');
+        $rack = $this->makeChildNode($aisle, 'R2', LocationNodeType::Rack);
+        $bin = $this->makeChildNode($rack, 'B7', LocationNodeType::Bin);
+        $product = $this->makeProduct('DESCENDANT-PLACEMENT');
+        $this->setStock($product, '4.0000');
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $bin->id);
+
+        $counting = $this->service->create([
+            'scope_type' => CountingScopeType::Zone->value,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$aisle->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ], $this->user, $this->company->id);
+
+        $this->service->activate($counting, $this->user);
+        $item = $counting->items()->sole();
+        $this->service->submitCount($item, 1, '4.0000', null, $this->user);
+
+        $placement = ProductPlacement::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->sole();
+
+        $this->assertSame($bin->id, $placement->node_id);
+    }
+
+    public function test_zone_count_rehomes_existing_placement_outside_subtree(): void
+    {
+        $countedAisle = $this->makeZone('A1');
+        $outsideAisle = $this->makeZone('B9');
+        $outsideRack = $this->makeChildNode($outsideAisle, 'R3', LocationNodeType::Rack);
+        $product = $this->makeProduct('OUTSIDE-PLACEMENT');
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $outsideRack->id);
+
+        $counting = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$countedAisle->id]],
+            'counting_number' => 'CNT-ZON-'.uniqid(),
+            'status' => CountingStatus::Count1InProgress,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => true,
+            'created_by_user_id' => $this->user->id,
+            'count_1_user_id' => $this->user->id,
+        ]);
+        $item = InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '0.0000',
+        ]);
+
+        $this->service->submitCount($item, 1, '1.0000', null, $this->user);
+
+        $placement = ProductPlacement::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->sole();
+
+        $this->assertSame($countedAisle->id, $placement->node_id);
+    }
+
+    public function test_zone_count_treats_similar_path_prefix_as_outside_subtree(): void
+    {
+        $countedAisle = $this->makeZone('A1');
+        $collisionAisle = $this->makeZone('A10');
+        $collisionRack = $this->makeChildNode($collisionAisle, 'R1', LocationNodeType::Rack);
+        $product = $this->makeProduct('PREFIX-COLLISION');
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $collisionRack->id);
+
+        $counting = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$countedAisle->id]],
+            'counting_number' => 'CNT-ZON-'.uniqid(),
+            'status' => CountingStatus::Count1InProgress,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => true,
+            'created_by_user_id' => $this->user->id,
+            'count_1_user_id' => $this->user->id,
+        ]);
+        $item = InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '0.0000',
+        ]);
+
+        $this->service->submitCount($item, 1, '1.0000', null, $this->user);
+
+        $placement = ProductPlacement::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->sole();
+
+        $this->assertSame($countedAisle->id, $placement->node_id);
+    }
+
+    public function test_zone_count_does_not_preserve_same_path_from_a_different_location(): void
+    {
+        $localAisle = $this->makeZone('A1');
+        $localRack = $this->makeChildNode($localAisle, 'R1', LocationNodeType::Rack);
+        $product = $this->makeProduct('CROSS-LOCATION-PATH');
+        $this->zoneService->assignProduct($this->tenant->id, $product->id, $this->location->id, $localRack->id);
+        $otherLocation = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-ZON-CROSS',
+            'name' => 'Cross Location Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => false,
+            'onboarding_mode' => false,
+        ]);
+        $foreignAisle = $this->makeZone('A1', $otherLocation);
+
+        $counting = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$foreignAisle->id]],
+            'counting_number' => 'CNT-ZON-'.uniqid(),
+            'status' => CountingStatus::Count1InProgress,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => true,
+            'created_by_user_id' => $this->user->id,
+            'count_1_user_id' => $this->user->id,
+        ]);
+        $item = InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '0.0000',
+        ]);
+
+        try {
+            $this->service->submitCount($item, 1, '1.0000', null, $this->user);
+            $this->fail('Expected the foreign-location node assignment to be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame(
+                "Node {$foreignAisle->id} is not in location {$this->location->id}.",
+                $exception->getMessage(),
+            );
+        }
+
+        $placement = ProductPlacement::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->sole();
+        $this->assertSame($localRack->id, $placement->node_id,
+            'The rejected cross-location submission must leave the local placement unchanged.');
     }
 
     public function test_location_hierarchy_counting_flow_keeps_variant_stock_at_location_grain(): void
@@ -380,6 +531,13 @@ final class ZoneScopedCountingTest extends TestCase
             'node_id' => $binTo->id,
             'deleted_at' => null,
         ]);
+        $stockRowsBeforeCounting = StockLevel::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->orderBy('variant_id')
+            ->get()
+            ->map(static fn (StockLevel $level): array => $level->getRawOriginal())
+            ->all();
 
         $counting = $this->service->create([
             'scope_type' => CountingScopeType::Zone->value,
@@ -405,6 +563,15 @@ final class ZoneScopedCountingTest extends TestCase
 
         $counting->refresh();
         $this->assertSame(CountingStatus::PendingReview, $counting->status);
+        $stockRowsAfterCounting = StockLevel::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->location->id)
+            ->orderBy('variant_id')
+            ->get()
+            ->map(static fn (StockLevel $level): array => $level->getRawOriginal())
+            ->all();
+        $this->assertSame($stockRowsBeforeCounting, $stockRowsAfterCounting,
+            'Assign-as-you-count must not alter stock rows.');
 
         Event::fake([InventoryCountingCompleted::class]);
         $this->service->finalize($counting, $this->user);
@@ -438,7 +605,7 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertDatabaseHas('product_placements', [
             'product_id' => $product->id,
             'location_id' => $this->location->id,
-            'node_id' => $aisle->id,
+            'node_id' => $binTo->id,
             'deleted_at' => null,
         ]);
     }
