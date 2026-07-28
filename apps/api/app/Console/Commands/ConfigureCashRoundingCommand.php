@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Shared\Domain\CashRoundingCaps;
+use App\Shared\Domain\CountryPaymentDefaults;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
 use Illuminate\Database\DatabaseManager;
@@ -16,9 +17,32 @@ use InvalidArgumentException;
 /**
  * Tenant-DB-scoped cash-rounding configuration (spec §4.2).
  *
- * Run via `php artisan tenants:run pos:configure-cash-rounding -- <flags>`.
- * There is deliberately NO `--tenant` flag: the tenancy runner switches the
- * default connection per tenant, and a flag would invite half-applied state.
+ * Run via `tenants:run`. There is deliberately NO `--tenant` flag: the tenancy
+ * runner switches the default connection per tenant, and a flag would invite
+ * half-applied state.
+ *
+ * INVOCATION — stancl/tenancy's runner takes the command NAME as its single
+ * argument and forwards flags ONLY through repeatable `--option='k=v'` pairs
+ * (`vendor/stancl/tenancy/src/Commands/Run.php:22-25,48-52`). There is no `--`
+ * passthrough; Symfony rejects it. Boolean flags are passed as `=1`:
+ *
+ *   php artisan tenants:run pos:configure-cash-rounding --option='verify=1'
+ *   php artisan tenants:run pos:configure-cash-rounding \
+ *       --option='country=TN' --option='denomination=0.0500'
+ *   php artisan tenants:run pos:configure-cash-rounding \
+ *       --option='country=TN' --option='enable-rounding=1'
+ *
+ * THE EXIT CODE IS NOT A GATE under `tenants:run`: `Run::handle()` returns null
+ * after `$this->call(...)`, so the child's status is swallowed and the runner
+ * always exits 0. `--verify` therefore emits ONE stable summary token as its
+ * last line — `CASH-ROUNDING VERIFY FAILURES: <n>` — which deploy checklists
+ * gate on:
+ *
+ *   php artisan tenants:run pos:configure-cash-rounding --option='verify=1' \
+ *     | tee /tmp/verify.log; grep -q 'CASH-ROUNDING VERIFY FAILURES: 0' /tmp/verify.log
+ *
+ * (grep for the token per tenant block; the ABSENCE of the token means the
+ * command aborted before verifying and must be treated as a failure.)
  *
  * The two switches are INDEPENDENT (`--enable-rounding` / `--disable-rounding`
  * vs `--enable-tolerance` / `--disable-tolerance`) and neither touches the B2B
@@ -47,6 +71,15 @@ final class ConfigureCashRoundingCommand extends Command
 
     /** Scale of the `country_payment_settings.cash_rounding_denomination` decimal(15,4) column. */
     private const DENOMINATION_STORAGE_SCALE = 4;
+
+    /**
+     * Machine-readable `--verify` result prefix, emitted as `<prefix> <n>`.
+     *
+     * Deploy checklists gate on this token because `tenants:run` swallows the
+     * exit code. Pinned by ConfigureCashRoundingCommandTest — changing it
+     * silently breaks every checklist that greps for it.
+     */
+    public const VERIFY_TOKEN_PREFIX = 'CASH-ROUNDING VERIFY FAILURES:';
 
     public function __construct(private readonly DatabaseManager $database)
     {
@@ -152,12 +185,37 @@ final class ConfigureCashRoundingCommand extends Command
             }
         }
 
+        // A row this command CREATES must carry the same pinned tolerance
+        // ceilings CountryPaymentSettingsSeeder would have written. Falling back
+        // to the raw column defaults would ship max_payment_tolerance_amount =
+        // 0.50 where TN sanctions 0.100 — the resolver hands that ceiling to the
+        // device verbatim, so POS auto-accept would silently loosen 5x from a
+        // command whose contract is that it never moves the tolerance numbers.
+        $pinned = $existing === null ? CountryPaymentDefaults::forCountry($countryCode) : null;
+
+        if ($existing === null && ($updates['pos_tolerance_enabled'] ?? null) === true && $pinned === null) {
+            $this->error(sprintf(
+                'Country %s has no country_payment_settings row and no pinned tolerance ceilings, so this command '
+                .'cannot create one without inventing a tolerance amount. Run `db:seed CountryPaymentSettingsSeeder` '
+                .'first (or add %s to App\Shared\Domain\CountryPaymentDefaults), then re-run with --enable-tolerance.',
+                $countryCode,
+                $countryCode,
+            ));
+
+            return self::FAILURE;
+        }
+
         if ((bool) $this->option('dry-run')) {
             $this->line(sprintf(
-                '[DRY-RUN] Country %s: would %s %s',
+                '[DRY-RUN] Country %s: would %s %s%s',
                 $countryCode,
                 $existing === null ? 'INSERT' : 'UPDATE',
                 json_encode($updates, JSON_THROW_ON_ERROR),
+                $pinned === null ? '' : sprintf(
+                    ' (+ pinned ceilings pct=%s max=%s)',
+                    $pinned['payment_tolerance_percentage'],
+                    $pinned['max_payment_tolerance_amount'],
+                ),
             ));
 
             return self::SUCCESS;
@@ -172,14 +230,21 @@ final class ConfigureCashRoundingCommand extends Command
                 return self::FAILURE;
             }
 
-            $this->database->table('country_payment_settings')->insert(array_merge([
+            $row = [
                 'id' => (string) Str::uuid(),
                 'country_code' => $countryCode,
                 'cash_rounding_enabled' => false,
                 'pos_tolerance_enabled' => false,
                 'created_at' => $now,
                 'updated_at' => $now,
-            ], $updates));
+            ];
+
+            if ($pinned !== null) {
+                $row['payment_tolerance_percentage'] = $pinned['payment_tolerance_percentage'];
+                $row['max_payment_tolerance_amount'] = $pinned['max_payment_tolerance_amount'];
+            }
+
+            $this->database->table('country_payment_settings')->insert(array_merge($row, $updates));
 
             $this->info(sprintf('Country %s: settings row created.', $countryCode));
 
@@ -470,6 +535,11 @@ final class ConfigureCashRoundingCommand extends Command
 
             $this->line(sprintf('Company %s: is_cash_tender OK.', (string) $company->id));
         }
+
+        // STABLE GATE TOKEN — the exit code is swallowed by tenants:run (see the
+        // class docblock), so this line is the machine-readable result. Its exact
+        // shape is pinned by a test; do not reword it.
+        $this->line(sprintf('%s %d', self::VERIFY_TOKEN_PREFIX, $failures));
 
         return $failures === 0 ? self::SUCCESS : self::FAILURE;
     }

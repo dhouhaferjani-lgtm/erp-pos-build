@@ -9,6 +9,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Domain\CountryPaymentDefaults;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -142,6 +143,60 @@ final class ConfigureCashRoundingCommandTest extends TestCase
         $this->assertFalse((bool) $row->pos_tolerance_enabled);
     }
 
+    /**
+     * A row this command creates must carry the seeder's PINNED ceilings — the
+     * raw column default (0.50) would ship a 5x looser POS tolerance than the
+     * 0.100 TN sanctions, straight through the resolver to the device.
+     */
+    public function test_enable_tolerance_on_a_missing_row_carries_the_pinned_ceilings(): void
+    {
+        DB::table('country_payment_settings')->where('country_code', 'TN')->delete();
+
+        $this->artisan('pos:configure-cash-rounding', [
+            '--country' => 'TN',
+            '--enable-tolerance' => true,
+        ])->assertSuccessful();
+
+        $row = DB::table('country_payment_settings')->where('country_code', 'TN')->first();
+        $this->assertNotNull($row);
+        $this->assertTrue((bool) $row->pos_tolerance_enabled);
+        $this->assertSame(
+            0,
+            bccomp((string) $row->max_payment_tolerance_amount, '0.1000', 4),
+            'The created row must carry the pinned TN ceiling, not the 0.50 column default.',
+        );
+        $this->assertSame(0, bccomp((string) $row->payment_tolerance_percentage, '0.0050', 4));
+        $this->assertFalse((bool) $row->cash_rounding_enabled);
+    }
+
+    public function test_enable_tolerance_on_a_missing_row_for_an_unseeded_country_is_refused(): void
+    {
+        // IT is in the countries lookup but has no pinned defaults.
+        $this->assertNull(CountryPaymentDefaults::forCountry('IT'));
+
+        $this->artisan('pos:configure-cash-rounding', [
+            '--country' => 'IT',
+            '--enable-tolerance' => true,
+        ])
+            ->expectsOutputToContain('CountryPaymentSettingsSeeder')
+            ->assertFailed();
+
+        $this->assertSame(0, DB::table('country_payment_settings')->where('country_code', 'IT')->count());
+    }
+
+    public function test_creating_a_row_for_an_unseeded_country_without_tolerance_is_allowed(): void
+    {
+        $this->artisan('pos:configure-cash-rounding', [
+            '--country' => 'IT',
+            '--denomination' => '0.0500',
+        ])->assertSuccessful();
+
+        $row = DB::table('country_payment_settings')->where('country_code', 'IT')->first();
+        $this->assertNotNull($row);
+        $this->assertFalse((bool) $row->pos_tolerance_enabled, 'POS tolerance stays off, so the ceiling never ships.');
+        $this->assertFalse((bool) $row->cash_rounding_enabled);
+    }
+
     public function test_upsert_refuses_to_create_a_row_for_an_unknown_country(): void
     {
         $this->artisan('pos:configure-cash-rounding', [
@@ -196,6 +251,27 @@ final class ConfigureCashRoundingCommandTest extends TestCase
 
         $this->artisan('pos:configure-cash-rounding', ['--verify' => true])
             ->assertSuccessful();
+    }
+
+    /**
+     * `tenants:run` swallows the child exit code (Run::handle() returns null),
+     * so deploy checklists gate on this token. Its EXACT shape is the contract.
+     */
+    public function test_verify_emits_the_stable_gate_token_when_clean(): void
+    {
+        $this->createCashMethod();
+
+        $this->artisan('pos:configure-cash-rounding', ['--verify' => true])
+            ->expectsOutputToContain('CASH-ROUNDING VERIFY FAILURES: 0')
+            ->assertSuccessful();
+    }
+
+    public function test_verify_emits_the_stable_gate_token_with_the_failure_count(): void
+    {
+        // One company, no cash tender => exactly one failure.
+        $this->artisan('pos:configure-cash-rounding', ['--verify' => true])
+            ->expectsOutputToContain('CASH-ROUNDING VERIFY FAILURES: 1')
+            ->assertFailed();
     }
 
     public function test_verify_fails_when_rounding_is_enabled_with_an_unusable_denomination(): void
