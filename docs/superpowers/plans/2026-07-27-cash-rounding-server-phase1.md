@@ -5720,22 +5720,50 @@ both default to `false` and are independent of the B2B switch.
 
 ## 2. Manual steps, in order
 
+> **HOW TO PASS FLAGS THROUGH `tenants:run` (read before copying any command
+> below).** `tenants:run <name> -- <flags>` **does not work** — Symfony rejects
+> the `--` passthrough. stancl's runner takes the command NAME as its single
+> argument and forwards flags only through repeatable `--option='k=v'` pairs
+> (`vendor/stancl/tenancy/src/Commands/Run.php:23-26` signature, `:50-51` the
+> option reduce); boolean flags are passed as `=1`.
+>
+> **And the exit code is NOT a gate:** `Run::handle()` returns null after
+> `$this->call(...)` (`Run.php:33-56`), so every child's status is swallowed and
+> `tenants:run` always exits 0 — for EVERY command in this checklist, not just
+> the cash-rounding one. Gate on output, never on `$?`.
+
 1. **Backfill the tolerance purpose accounts** — dry run first:
    ```bash
-   php artisan tenants:run accounting:backfill-tolerance-purposes -- --dry-run
+   php artisan tenants:run accounting:backfill-tolerance-purposes --option='dry-run=1'
    php artisan tenants:run accounting:backfill-tolerance-purposes
    ```
    A non-zero exit means at least one company is missing its chart parent
-   (`65`/`75` or `6000`/`7000`). Fix the chart — do NOT skip this: without
-   6580/7580 the bridge silently SKIPS the rounding/tolerance entries and only
-   emits `pos.gl.tolerance_purpose_missing`.
+   (`65`/`75` or `6000`/`7000`) — but see the box above: under `tenants:run` that
+   exit code is swallowed, so READ THE OUTPUT per tenant block rather than
+   trusting `$?` (or run the command inside a single tenant context to get a real
+   status). Fix the chart — do NOT skip this: without 6580/7580 the bridge
+   silently SKIPS the rounding/tolerance entries and only emits
+   `pos.gl.tolerance_purpose_missing`.
 
 2. **Verify the cash-tender predicate** — this MUST pass before the Phase-2
    device build ships, because the device's cash-method selection switches to
    `is_cash_tender`:
    ```bash
-   php artisan tenants:run pos:configure-cash-rounding -- --verify
+   php artisan tenants:run pos:configure-cash-rounding --option='verify=1' \
+     | tee /tmp/cr-verify.log
+
+   # (a) no tenant reported a failure. NEVER gate with `grep -q '… : 0'` —
+   #     that passes as soon as ANY ONE tenant is clean and lets a tenant
+   #     reporting "FAILURES: 3" straight through the gate.
+   ! grep -qE 'CASH-ROUNDING VERIFY FAILURES: [1-9]' /tmp/cr-verify.log
+
+   # (b) every tenant actually reported. Token ABSENCE means the command
+   #     aborted before verifying (e.g. the Schema guard tripped) and is a
+   #     FAILURE, so the token count must equal the tenant count.
+   test "$(grep -c 'CASH-ROUNDING VERIFY FAILURES:' /tmp/cr-verify.log)" -eq "$TENANT_COUNT"
    ```
+   `CASH-ROUNDING VERIFY FAILURES: <n>` is a stable machine-readable token pinned
+   by `ConfigureCashRoundingCommandTest` — do not reword it in either place.
    Every company must report `is_cash_tender OK`. A company with no active
    `is_cash_tender` method would have a DEAD cash checkout after Phase 2.
 

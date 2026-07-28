@@ -23,8 +23,9 @@ use InvalidArgumentException;
  *
  * INVOCATION — stancl/tenancy's runner takes the command NAME as its single
  * argument and forwards flags ONLY through repeatable `--option='k=v'` pairs
- * (`vendor/stancl/tenancy/src/Commands/Run.php:22-25,48-52`). There is no `--`
- * passthrough; Symfony rejects it. Boolean flags are passed as `=1`:
+ * (`vendor/stancl/tenancy/src/Commands/Run.php:23-26` signature, `:50-51` the
+ * `--option` reduce). There is no `--` passthrough; Symfony rejects it. Boolean
+ * flags are passed as `=1`:
  *
  *   php artisan tenants:run pos:configure-cash-rounding --option='verify=1'
  *   php artisan tenants:run pos:configure-cash-rounding \
@@ -33,16 +34,22 @@ use InvalidArgumentException;
  *       --option='country=TN' --option='enable-rounding=1'
  *
  * THE EXIT CODE IS NOT A GATE under `tenants:run`: `Run::handle()` returns null
- * after `$this->call(...)`, so the child's status is swallowed and the runner
- * always exits 0. `--verify` therefore emits ONE stable summary token as its
- * last line — `CASH-ROUNDING VERIFY FAILURES: <n>` — which deploy checklists
- * gate on:
+ * after `$this->call(...)` (`Run.php:33-56`), so the child's status is swallowed
+ * and the runner always exits 0. `--verify` therefore emits ONE stable summary
+ * token per tenant as its last line — `CASH-ROUNDING VERIFY FAILURES: <n>` —
+ * which deploy checklists gate on. The gate needs BOTH halves:
  *
  *   php artisan tenants:run pos:configure-cash-rounding --option='verify=1' \
- *     | tee /tmp/verify.log; grep -q 'CASH-ROUNDING VERIFY FAILURES: 0' /tmp/verify.log
+ *     | tee /tmp/cr-verify.log
  *
- * (grep for the token per tenant block; the ABSENCE of the token means the
- * command aborted before verifying and must be treated as a failure.)
+ *   # (a) no tenant reported a failure — NEVER `grep -q '… : 0'`, which passes
+ *   #     as soon as ANY ONE tenant is clean and lets a "FAILURES: 3" through:
+ *   ! grep -qE 'CASH-ROUNDING VERIFY FAILURES: [1-9]' /tmp/cr-verify.log
+ *
+ *   # (b) every tenant actually reported — the token count must equal the
+ *   #     tenant count, since ABSENCE of the token means the command aborted
+ *   #     before verifying (e.g. the Schema guard tripped) and is a FAILURE:
+ *   test "$(grep -c 'CASH-ROUNDING VERIFY FAILURES:' /tmp/cr-verify.log)" -eq "$TENANT_COUNT"
  *
  * The two switches are INDEPENDENT (`--enable-rounding` / `--disable-rounding`
  * vs `--enable-tolerance` / `--disable-tolerance`) and neither touches the B2B

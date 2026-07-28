@@ -21,6 +21,13 @@ namespace App\Shared\Domain;
  * Both MUST read the table from here. Duplicating the literals is how the
  * provisioning path and the ops path drift apart.
  *
+ * ONE deliberate exclusion: migration A2
+ * (`2026_07_28_100100_add_cash_rounding_to_country_payment_settings.php`) keeps
+ * its own frozen TN literals. A migration is a point-in-time record of what it
+ * actually wrote — pointing it at a mutable map would silently rewrite history
+ * on re-run. Editing a value here therefore does NOT retroactively change what
+ * that migration applied; the seeder re-pins live rows on its next run.
+ *
  * The ceilings are PINNED (rewritten on every seeder run). The denomination is
  * a one-time BACKFILL value only — operator state is never overwritten.
  */
