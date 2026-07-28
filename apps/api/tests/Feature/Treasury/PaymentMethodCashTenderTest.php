@@ -352,11 +352,74 @@ final class PaymentMethodCashTenderTest extends TestCase
             ->where('id', $id)
             ->update(['code' => 'cash', 'is_cash_tender' => false]);
 
+        Log::spy();
+
         $this->runBackfillMigration();
 
         $row = DB::table('payment_methods')->where('id', $id)->first();
         $this->assertSame('CASH', $row->code);
         $this->assertTrue((bool) $row->is_cash_tender);
+
+        // The REWRITE must be logged, not just the skips: after the UPDATE the
+        // old code is unrecoverable, and the operator needs the affected
+        // company list to force a device payment-method resync and re-drive
+        // in-flight projections carrying the old mixed-case method_code.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context) use ($id): bool {
+                return $message === 'cash_rounding.backfill.rewritten_cash_code'
+                    && $context['payment_method_id'] === $id
+                    && $context['tenant_id'] === $this->tenant->id
+                    && $context['company_id'] === $this->company->id
+                    && $context['code'] === 'cash'
+                    && $context['new_code'] === 'CASH';
+            })
+            ->once();
+    }
+
+    public function test_migration_does_not_log_a_rewrite_for_an_already_canonical_row(): void
+    {
+        // A row already sitting on 'CASH' is FLAGGED but not REWRITTEN. Logging
+        // it would hand the operator a resync list padded with companies whose
+        // code never moved.
+        $id = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 1,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $id)->update(['is_cash_tender' => false]);
+
+        Log::spy();
+
+        $this->runBackfillMigration();
+
+        $row = DB::table('payment_methods')->where('id', $id)->first();
+        $this->assertSame('CASH', $row->code);
+        $this->assertTrue((bool) $row->is_cash_tender, 'The canonical row must still be flagged.');
+
+        // `shouldHaveReceived(...)->times(0)` does NOT express this: Mockery
+        // verifies a spy expectation as "called at least once" before the count
+        // is consulted, so it fails on a spy that (correctly) never received the
+        // call. Assert the absence directly instead, matching the message
+        // EXACTLY and the context loosely — every `Log::warning` this migration
+        // emits passes an array context, so the pair pins the event key without
+        // the full-argument-list brittleness of a literal context array.
+        Log::shouldNotHaveReceived('warning', [
+            'cash_rounding.backfill.rewritten_cash_code',
+            \Mockery::type('array'),
+        ]);
+
+        // Guard the guard: the skip warning must not fire either — a canonical
+        // row is neither rewritten NOR ambiguous.
+        Log::shouldNotHaveReceived('warning', [
+            'cash_rounding.backfill.skipped_ambiguous_cash_code',
+            \Mockery::type('array'),
+        ]);
     }
 
     public function test_migration_skips_variant_when_canonical_cash_row_already_exists(): void

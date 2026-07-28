@@ -836,7 +836,9 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * Change (`Σ legs − total`, clamped at zero so a tolerance SHORTFALL never
      * inflates a leg) is subtracted from the LAST cash leg first, cascading
      * backwards in canonical index order. That makes the result a deterministic
-     * pure function of the sealed, immutable payload — which is what keeps a
+     * pure function of the sealed payload + the `payment_methods.is_cash_tender`
+     * flag (mutable operator state — never flip it while a terminal has
+     * unsettled projections; see the deploy checklist) — which is what keeps a
      * replay landing on the same numbers. It has to: `TreasuryMovementService`
      * throws `IdempotencyConflictException` when an existing movement key is
      * re-recorded at a different amount, so a non-deterministic netting would

@@ -104,6 +104,50 @@ return new class extends Migration
             ]);
         }
 
+        // Log the REWRITTEN set BEFORE the UPDATE runs — after it, the old code
+        // is gone and there is no way to reconstruct which rows moved.
+        //
+        // This is the exact complement of the skip pre-pass: the rows the
+        // UPDATE below elects AND whose `code` actually changes. Rows already
+        // sitting on the canonical 'CASH' are flagged but not rewritten, so
+        // they are deliberately absent — this log answers "which codes did the
+        // deploy silently change?", which is what the operator needs to force a
+        // device payment-method resync and re-drive in-flight projections
+        // carrying the old mixed-case `method_code` (deploy checklist §0/§1).
+        $rewritten = DB::select(
+            <<<'SQL'
+                SELECT pm.id, pm.tenant_id, pm.company_id, pm.code
+                FROM payment_methods pm
+                WHERE UPPER(pm.code) = 'CASH'
+                  AND pm.code <> 'CASH'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM payment_methods x
+                      WHERE x.company_id = pm.company_id AND x.code = 'CASH'
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM payment_methods y
+                      WHERE y.company_id = pm.company_id
+                        AND UPPER(y.code) = 'CASH'
+                        AND y.code <> 'CASH'
+                        AND y.id < pm.id
+                  )
+                SQL
+        );
+
+        foreach ($rewritten as $row) {
+            Log::warning('cash_rounding.backfill.rewritten_cash_code', [
+                'migration' => '2026_07_28_100000_add_is_cash_tender_to_payment_methods',
+                'payment_method_id' => $row->id,
+                'tenant_id' => $row->tenant_id,
+                'company_id' => $row->company_id,
+                'code' => $row->code,
+                'new_code' => 'CASH',
+                'reason' => "Normalized to the canonical 'CASH' and flagged is_cash_tender. "
+                    .'Force a device payment-method resync for this company, and re-drive any '
+                    .'projection still referencing the old code — the resolver matches `code` exactly.',
+            ]);
+        }
+
         // The target-row predicate is expressed as `id IN (SELECT …)` rather
         // than an aliased UPDATE target. SQLite accepts `UPDATE payment_methods
         // AS pm SET …` but rejects the AS-less `UPDATE payment_methods pm SET …`;

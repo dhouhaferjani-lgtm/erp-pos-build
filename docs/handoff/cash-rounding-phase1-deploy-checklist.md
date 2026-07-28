@@ -20,7 +20,7 @@ Three tenant migrations, in filename order:
 
 | Migration | Effect |
 |---|---|
-| `2026_07_28_100000_add_is_cash_tender_to_payment_methods` | Adds `payment_methods.is_cash_tender` (default `false`); backfills `is_cash_tender = true` **and normalizes `code` to exactly `'CASH'`** for the unambiguous case-variant rows. Ambiguous rows (a company holding both `'CASH'` and `'cash'`, or several variants and no canonical row) are **left alone, fail-closed** and logged as `cash_rounding.backfill.skipped_ambiguous_cash_code`. |
+| `2026_07_28_100000_add_is_cash_tender_to_payment_methods` | Adds `payment_methods.is_cash_tender` (default `false`); backfills `is_cash_tender = true` **and normalizes `code` to exactly `'CASH'`** for the unambiguous case-variant rows. Every rewritten row is logged as `cash_rounding.backfill.rewritten_cash_code` (id / tenant / company / old code) — **read §0.4, the rewrite has operator consequences.** Ambiguous rows (a company holding both `'CASH'` and `'cash'`, or several variants and no canonical row) are **left alone, fail-closed** and logged as `cash_rounding.backfill.skipped_ambiguous_cash_code`. |
 | `2026_07_28_100100_add_cash_rounding_to_country_payment_settings` | Adds `cash_rounding_enabled` (`false`), `cash_rounding_denomination`, `pos_tolerance_enabled` (`false`); **UPSERTS the TN row** with `max_payment_tolerance_amount = 0.1000` and **`payment_tolerance_enabled = true`** (the `$pinned` array at `:66-71`, applied on BOTH the insert branch `:76` and the update branch `:94` — see §1). `cash_rounding_denomination = 0.0500` and both POS switches OFF are set on the **INSERT branch only**; the update branch never touches the two POS switches, and backfills the denomination only when it is still NULL. Skipped when the tenant's `countries` table has no `TN` row (fresh tenants — see §2 step 0). |
 | `2026_07_28_100200_add_cash_rounding_to_pos_receipts` | Adds `pos_receipts.cash_rounding_adjustment` `decimal(12,3)` **signed** + `cash_rounding_denomination` `decimal(15,4)`, both nullable. **Swaps the `pos_receipts_totals` CHECK** (pgsql-guarded). Creates two partial unique indexes on `journal_entries`: `uniq_je_source_pos_cash_rounding` and `uniq_je_source_pos_tolerance_bridge`. |
 
@@ -28,7 +28,29 @@ Everything else in the batch is version-gated on
 `fiscal_events.event_version >= 3` (`App\Shared\Domain\CashRoundingCutover`)
 and is therefore **INERT** until a device signs a v3 receipt.
 
-### 0.1 Lock note — the `pos_receipts_totals` CHECK swap
+### 0.1 Lock note — `…_100200` takes TWO tenant-wide lock windows, not one
+
+**Window A — `journal_entries`, and it is NOT scoped to the POS.**
+
+Before it touches `pos_receipts` at all, `…_100200` creates the two partial
+unique indexes (`up()` hoists them above the `pos_receipts` early return —
+`:125-137`). They are **plain `CREATE UNIQUE INDEX`, not `CONCURRENTLY`**
+(`CONCURRENTLY` cannot run inside a transaction, and Laravel wraps the whole
+migration in one). A non-concurrent `CREATE INDEX` takes a **SHARE** lock on
+`journal_entries`, which blocks every INSERT/UPDATE/DELETE on that table.
+
+**And that lock is held until the migration COMMITS** — same transaction rule as
+the CHECK swap below. So the SHARE lock acquired at the very start is still held
+throughout the `pos_receipts` `VALIDATE CONSTRAINT` scan described in window B.
+
+**Practical effect: every GL write in the tenant blocks for the combined
+duration of both windows** — not just POS journal entries. `journal_entries` is
+the shared ledger table: invoices, credit notes, payments, expenses, inventory
+valuation, payroll, opening balances. **Any module that posts to the GL stalls
+for the full length of the biggest tenant's `pos_receipts` validation scan.**
+Size the deploy window against that, not against the index build.
+
+**Window B — the `pos_receipts_totals` CHECK swap.**
 
 The swap is `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT … NOT VALID`, then a
 separate savepoint-protected `VALIDATE CONSTRAINT`.
@@ -88,13 +110,63 @@ you are prepared to run that backfill.
 ### 0.3 `change_due` now written for v3 — expected-cash figures shift at cutover
 
 `PosCoreReceiptProjection` writes `pos_receipts.change_due` for v3 receipts
-(it did not before). Once a rounding terminal is cut over, its **expected-cash
+(it did not before). Once a terminal starts authoring v3, its **expected-cash
 and shift-variance figures move** — this is the correct direction (change given
 back is no longer counted as cash in the drawer), but it is a visible step
 change for the store manager. Brief them before cutover, and do not read it as
 a regression.
 
+**Word this precisely: the shift keys on the DEVICE BUILD, not on the
+`fiscal_schema_version` cutover.** The projection's gate is
+`$event->event_version >= CashRoundingCutover::EVENT_VERSION`
+(`PosCoreReceiptProjection.php:231`, applied at `:374-379`) — a property of the
+event the device authored, nothing else. A terminal running the Phase-2 build
+authors v3 **whether or not** its `fiscal_schema_version` has been flipped, so
+a not-yet-cut-over terminal on that build already moves its expected-cash
+figure. Ship the build ⇒ brief the manager; do not wait for the cutover call.
+
 This is inert in Phase 1: no device signs v3 yet.
+
+### 0.4 🔴 The `code = 'CASH'` rewrite has post-migration operator consequences
+
+`…_100000` does not only add a column — it **rewrites `payment_methods.code`**
+for every unambiguous case-variant row. That is a mutation of a value other
+layers match on **exactly**.
+
+**Run this BEFORE pushing** (a non-empty result is your affected-company list —
+after the migration the old codes are unrecoverable from the table):
+
+```sql
+SELECT id, company_id, code FROM payment_methods
+WHERE UPPER(code) = 'CASH' AND code <> 'CASH';
+```
+
+Run it per tenant DB. Keep the output. The migration logs the same set as
+`cash_rounding.backfill.rewritten_cash_code`, so the deploy log is the fallback
+if you forget — but the pre-flight query is what lets you plan the two actions
+below instead of discovering them from a support call.
+
+**If the result is non-empty, after the migration you MUST:**
+
+1. **Force a device payment-method resync for every affected company.** The
+   device holds a cached payment-method list keyed by `code`. A terminal still
+   holding `'Cash'` keeps stamping `method_code: 'Cash'` into receipts the
+   server can no longer resolve.
+2. **Re-drive any dead-lettered projection referencing the old mixed-case
+   code.** In-flight signed receipts carrying `method_code = 'Cash'` **stop
+   resolving the instant the rewrite lands** —
+   `EloquentPaymentMethodResolver::resolveByCode` (`:36-49`) matches on
+   `->where('code', $methodCode)`, case-sensitively, with no fallback. A receipt
+   signed before the migration and synced after it hits a resolver miss. The
+   receipt bytes are already sealed, so this is not repairable by re-signing;
+   it is repairable only by fixing the method row and re-driving the projection
+   (§5.1).
+
+> 🎫 **Ticket — the durable fix is in the resolver, not the runbook.**
+> `resolveByCode` should carry a case-insensitive CASH-family fallback (exact
+> match first, then `UPPER(code) = UPPER($methodCode)` when the requested code
+> is a CASH variant) so a sealed pre-migration receipt still resolves. Until
+> that lands, the two manual actions above are the only mitigation.
 
 ---
 
@@ -110,14 +182,14 @@ already populated, which it is not at tenant-migration time), so
 system defaults. **This is the intended correction — confirm the accountant is
 aware before promoting to production.**
 
-### 1.1 🔴 The MIGRATION re-pins `payment_tolerance_enabled = true` on every `tenants:migrate`
+### 1.1 🔴 The MIGRATION re-pins `payment_tolerance_enabled = true` when the migration applies
 
 This is the second, easier-to-miss half of the same change, and it needs **zero
 operator action** to happen — it rides the auto-deploy.
 
-`2026_07_28_100100`'s `$pinned` array (`:66-71`) contains
+`2026_07_28_100100`'s `$pinned` array (`:67-72`) contains
 `'payment_tolerance_enabled' => true`, and `$pinned` is applied on **both**
-branches: merged into the INSERT (`:76`) and passed to the UPDATE (`:94`).
+branches: merged into the INSERT (`:75`) and passed to the UPDATE (`:94`).
 
 **Consequence: a tenant that had B2B payment tolerance deliberately switched OFF
 by hand gets it switched back ON the moment `tenants:migrate` runs** — together
@@ -315,12 +387,23 @@ Three known blind spots of `--verify` (deliberate, but budget for them):
   enable anything**, with no warning. Never combine them — run the mutation and
   the verification as two separate invocations.
 
-Also grep the deploy log for the migration's ambiguity warning, which is exactly
-the population that will fail this gate:
+Also grep the deploy log for **both** migration warnings — the ambiguity one is
+exactly the population that will fail this gate, and the rewrite one is your
+resync / re-drive list (§0.4):
 
 ```bash
 grep -n 'cash_rounding.backfill.skipped_ambiguous_cash_code' <deploy-log>
+grep -n 'cash_rounding.backfill.rewritten_cash_code'         <deploy-log>
 ```
+
+> ⚠️ **Never flip `payment_methods.is_cash_tender` while a terminal has
+> unsettled projections.** `TreasuryReceiptBridge`'s change-netting reads the
+> **live** flag, not the sealed payload, so a flip landing between a
+> projection's first apply and a redelivery makes the same event net to a
+> different amount — and `TreasuryMovementService` answers a re-recorded
+> movement key at a changed amount with `IdempotencyConflictException`, i.e. a
+> **permanently failing queue job**, not a wrong number. Drain the queues first,
+> then flip.
 
 ### Step 3 — restart Horizon
 
@@ -407,15 +490,24 @@ and NO `permission:cache-reset` in this deploy.
 
 ## 4. Rollback
 
-Code rollback is safe: the migrations are additive and the CHECK swap tolerates
-NULL adjustments. Two caveats:
+Code rollback is safe and the CHECK swap tolerates NULL adjustments. **The
+migrations are NOT purely additive, though** — this batch carries **three**
+non-additive data effects, and no `down()` restores any of them. Caveats:
 
 - **`…_100200` `down()` is lossy and one-way for the totals invariant on any
   tenant that has taken a rounded sale — read §0.2 before running it.** In
   Phase 1 no tenant has, so a Phase-1 rollback is clean.
-- The only non-additive *data* effects are the TN row's tightened B2B ceiling
-  **and the re-pinned `payment_tolerance_enabled = true`** (§1.1). Restore them
-  with a direct update if needed:
+- 🔴 **The `code = 'CASH'` rewrite is the third non-additive data effect, and it
+  is the one with NO recovery path in the codebase.** `…_100000`'s `down()`
+  drops the `is_cash_tender` column and **nothing else** — it never restores the
+  original `'cash'` / `'Cash'` codes, and after the UPDATE the table holds no
+  record of what they were. Rolling the code back does not undo the rewrite.
+  Recovery is a manual UPDATE from the §0.4 pre-flight query's output (or, if
+  you skipped it, from the `cash_rounding.backfill.rewritten_cash_code` log
+  lines) — which is the concrete reason to run and KEEP that query.
+- The other two non-additive *data* effects are the TN row's tightened B2B
+  ceiling **and the re-pinned `payment_tolerance_enabled = true`** (§1.1).
+  Restore them with a direct update if needed:
 
   ```sql
   UPDATE country_payment_settings
@@ -455,6 +547,49 @@ php artisan fiscal:retry-projections --limit=50
 
 Useful narrowing flags: `--projector=`, `--event-id=`, `--tenant=`,
 `--min-age-minutes=` (default 16), `--sync` (run inline instead of dispatching).
+
+**🔴 The retry above does NOT cover the most likely cause. Check this FIRST.**
+
+`fiscal:retry-projections` only selects `dead_lettered` rows, and `pending` rows
+past the age threshold (`RetryFiscalProjectionsCommand.php:185-189`). But
+`PosCoreReceiptProjection`'s terminal-not-found branch **logs a warning and
+`return`s** (`:209-216`) instead of throwing — so `apply()` completes
+"successfully", and `ApplyFiscalEventProjectionJob` marks the projection
+`Applied` (`:408`). **Result: a receipt with NO `pos_receipts` row whose
+projection is recorded as `applied`, which `fiscal:retry-projections` can never
+pick up.** Retrying forever will not fix it, and the Z report stays blocked.
+
+Diagnose before retrying:
+
+```sql
+SELECT projection_status, attempts, last_error
+FROM fiscal_event_projections
+WHERE projector_name = 'pos_core_receipt'
+  AND fiscal_event_id = '<the event id from the Z failure>';
+```
+
+If it reads `applied` and `pos_receipts` has no row for that event, the retry
+command is a no-op. **Remedy: fix the underlying cause (usually a missing or
+soft-deleted `terminals` row — grep the worker log for
+`PosCoreReceiptProjection: terminal not found for fiscal event`), then reset the
+projection so the retry path can see it:**
+
+```sql
+UPDATE fiscal_event_projections
+SET projection_status = 'pending', attempts = 0, last_error = NULL
+WHERE projector_name = 'pos_core_receipt'
+  AND fiscal_event_id = '<the event id>';
+```
+
+Then re-run `fiscal:retry-projections --event-id=<id>` (add `--min-age-minutes=0`
+if the row is younger than the threshold), and retry the Z afterwards.
+
+> 🎫 **Ticket — make the terminal-not-found branch THROW instead of soft-return.**
+> A missing terminal is a genuine dependency failure, not a successful no-op.
+> Throwing (e.g. `ProjectionDependencyMissingException`, the same class the Z
+> projection already uses) would dead-letter the row and put it back inside the
+> retry command's reach, deleting this entire manual procedure. Until then, a
+> soft-returned projection is invisible to every automated recovery path.
 
 **🎫 Ops-watch perf ticket (open, not fixed in Phase 1).** That completeness
 anti-join (`fiscal_events` LEFT JOIN `pos_receipts`, filtered on
@@ -579,6 +714,68 @@ signs v3 and become wrong the moment one does.
    produces a false `CHAIN_BREAK`. Server zero-shape contract:
    `total_adjustment` = `'0.000'` (string, scale 3), `receipt_count` = int `0`.
 
+**Found in final review — server-side, verify/resolve before cutover:**
+
+9. **The purpose-account lookup ignores `is_active` — an INACTIVE
+   purpose-holder still gets posted to.** `Account::findByPurpose`
+   (`apps/api/app/Modules/Accounting/Domain/Account.php:238-243`) is
+   `forCompany()->withPurpose()->first()` and never applies the `active` scope
+   that exists two methods up (`:196`). Both cash-rounding GL paths inherit
+   that: the pre-flight probe `GeneralLedgerService::hasAccountForPurpose`
+   (`:4369-4372`) and the posting path `getAccountByPurpose` →
+   `findByPurposeOrFail` (`:4355-4358`). **Consequence:** an operator who
+   "retires" the 658 / 758 tolerance account or the rounding account by
+   unticking *active* — the obvious way to retire an account — does not get a
+   missing-purpose alert and does not get a graceful skip. The probe says the
+   account exists, the post succeeds, and the write-off lands on a deactivated
+   account with nothing flagged. This is **pre-existing platform behaviour, not
+   introduced here**, and it is deliberately left alone in Phase 1 — but the
+   cash-rounding entries are new consumers of it, so **before cutover: verify
+   the tolerance and rounding purpose-holders are `is_active = true` in every
+   tenant** (step 1's `--verify` checks existence, not activeness), and decide
+   whether the durable fix is `findByPurpose` filtering on active or the
+   purpose assignment refusing an inactive account. Do not change
+   `findByPurpose` inside this branch — every GL writer in the codebase reads
+   through it.
+
+10. **The tolerance approval evidence is scope-checked but NOT amount- or
+    target-checked.** `TreasuryReceiptBridge::hasTenderToleranceApproval`
+    (`:813-821`) returns true on the mere presence of an
+    `approval_scope === 'tender_tolerance_override'` reference in the sealed
+    payload, and `alertIfShortfallExceedsConfig` (`:711-713`) then returns
+    **before** computing the ceiling. The scope check is real and worth keeping
+    — a `discount_limit_override` correctly does not launder a till shortage —
+    but within the right scope, **one supervisor tap mutes the beyond-config
+    alert for a shortfall of ANY magnitude**: the reference carries no amount
+    and is not tied to this receipt's gap, so a 0.050-shaped approval and a
+    50.000 shortfall are indistinguishable to the server. The write-off still
+    posts (the money moved), so this is an *observability* hole, not a ledger
+    one — but it is the exact hole the alert exists to close. Fix = have the
+    device stamp the approved amount into the approval reference and compare it
+    against the actual shortfall here, alerting when the gap exceeds what was
+    approved. **Unreachable in Phase 1** (no v3 device), so it is a cutover
+    blocker rather than a deploy blocker.
+
+11. **🔓 SPEC QUESTION — refund tolerance direction is undecided, and the code
+    currently books it the same way as a sale.** A short-tendered canonical
+    REFUND (`invoice_type_code = 'REFUND'` / `'VOID'`, detected at
+    `TreasuryReceiptBridge.php:373-374`) flows into
+    `postToleranceWriteoffEntry` (`:486-545`), whose shortfall is a plain
+    `bcsub($total, $tendered)` (`:515`) with **no refund branch** — so the
+    write-off posts in the SAME direction as a sale's. That is documented as a
+    deliberate park, not an oversight (docblock `:482-484`): entry 1 (cash
+    rounding) has an explicit spec-mandated reversal for REFUND/VOID, **entry 2
+    (tolerance) has none**, and rather than invent a direction the
+    implementation kept the sale behaviour and flagged it. **It is unreachable
+    today** — no v1/v2 device authors a short-tendered refund, and the whole
+    path is v3-gated — which is why it did not block Phase 1. **It must be
+    resolved IN THE SPEC before the device is allowed to author refunds**, not
+    discovered from a mis-signed ledger: decide whether a refund shortfall is a
+    tolerance *income* (758) rather than *expense* (658), or whether a refund
+    may carry a tolerance gap at all (arguably it may not — the business
+    controls the tender on a refund). Until that ruling lands, do not enable
+    device-side refund authoring on a v3 build.
+
 ---
 
 ## 7. Phase 2 preconditions (NOT part of this deploy)
@@ -587,7 +784,11 @@ In order. Do not reorder.
 
 1. **Step 1 (purpose backfill) and step 2 (`--verify`) both green** for the
    tenant. These are the two hard gates.
-2. **Close the §6 pre-cutover tickets** — at minimum items 1, 2, 6, 7 and 8.
+2. **Close the §6 pre-cutover tickets** — at minimum items 1, 2, 6, 7 and 8,
+   plus the item 9 activeness *verification* (a one-query check, not a code
+   change). Items 10 and 11 gate later capabilities rather than the cutover
+   itself: 10 before the beyond-config alert is trusted operationally, 11
+   before device-side refund authoring is enabled on a v3 build.
 3. **Cut every terminal in the tenant over to `fiscal_schema_version = 3`**
    via `FiscalSchemaCutoverService`
    (`POST /api/v1/pos/terminals/{terminal}/fiscal-schema-cutover`, admin-only,
@@ -642,7 +843,7 @@ seeder DO write it (§1.1). Disabling rounding stops new rounded receipts; it
 does not and cannot un-round receipts already signed.
 
 **There IS a per-company force-disable for tolerance (but not for rounding).**
-`PosPaymentPolicyResolver::resolveToleranceEnabled` (`:175-188`) applies
+`PosPaymentPolicyResolver::resolveToleranceEnabled` (`:172-185`) applies
 `companies.payment_tolerance_enabled` as a **fail-closed direction override**:
 an explicit `false` on the company disables POS tender tolerance for that
 company regardless of the country switch; `true` or `null` defers to the country
