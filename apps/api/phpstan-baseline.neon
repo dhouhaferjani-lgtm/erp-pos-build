@@ -1078,11 +1078,5 @@ parameters:
 		-
 			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
 			identifier: precision.fixedScaleQuantityLiteral
-			count: 3
-			path: app/Modules/POS/Presentation/Controllers/PosPendingCustomerController.php
-
-		-
-			message: '#^Fixed scale\-4 quantity literal in Presentation layer — use QuantityScale\:\:formatForUnit\(\) or move to Application\.$#'
-			identifier: precision.fixedScaleQuantityLiteral
 			count: 1
 			path: app/Modules/POS/Presentation/Controllers/ZReportSyncController.php

@@ -84,6 +84,41 @@ final class PosPendingCustomerControllerTest extends TestCase
         ]);
     }
 
+    public function test_pending_customer_create_writes_zero_balances_at_company_currency_scale(): void
+    {
+        $this->company->update(['currency' => 'EUR']);
+        /** @var array{receivable_balance: string, credit_balance: string, payable_balance: string}|null $createdBalances */
+        $createdBalances = null;
+
+        Partner::creating(static function (Partner $partner) use (&$createdBalances): void {
+            if ($partner->name !== 'Currency Scale Customer') {
+                return;
+            }
+
+            $attributes = $partner->getAttributes();
+            $createdBalances = [
+                'receivable_balance' => (string) ($attributes['receivable_balance'] ?? ''),
+                'credit_balance' => (string) ($attributes['credit_balance'] ?? ''),
+                'payable_balance' => (string) ($attributes['payable_balance'] ?? ''),
+            ];
+        });
+
+        $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pos/customers/pending', [
+                'client_customer_uuid' => '00000000-0000-4000-8000-000000000110',
+                'name' => 'Currency Scale Customer',
+                'phone' => '+216 20 100 210',
+            ])
+            ->assertCreated();
+
+        $this->assertSame([
+            'receivable_balance' => '0.00',
+            'credit_balance' => '0.00',
+            'payable_balance' => '0.00',
+        ], $createdBalances);
+    }
+
     public function test_pending_customer_create_is_idempotent_by_client_customer_uuid(): void
     {
         $clientUuid = '00000000-0000-4000-8000-000000000102';
