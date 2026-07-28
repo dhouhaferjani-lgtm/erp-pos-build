@@ -46,7 +46,7 @@ Response: { results: { local_id: string, server_id: string, status: 'created' | 
 - Must be idempotent (retry-safe)
 
 ### 3. Menu Sync Endpoint (Bulk Pull)
-**Status:** `GET /api/v1/active-menu` exists but returns only the currently active menu
+**Status:** RETIRED 2026-07-28 — a `GET /pos/sync/menu` route existed but had ZERO client callers ever (proof in commit `1b5a5e57e`); it was deleted and now 404s (pinned by `SyncReadRouteRetirementTest`). Clients use `GET /api/v1/active-menu`. Do NOT re-add a caller against this path.
 
 **Gap:** Tauri needs to pull the full menu with last-modified timestamps for efficient caching.
 
@@ -59,7 +59,7 @@ Response: { menu: ActiveMenuData, last_modified: string, etag: string }
 Support `If-None-Match` / `304 Not Modified` for efficient polling.
 
 ### 4. Bulk Sync Pull Endpoint
-**Status:** Does not exist
+**Status:** RETIRED 2026-07-28 — a `GET /pos/sync/pull` route existed but had ZERO client callers ever (proof in commit `1b5a5e57e`); it was deleted and now 404s (pinned by `SyncReadRouteRetirementTest`). Clients pull via `/products` (`pullProductsCore`). Do NOT re-add a caller against this path.
 
 **Gap:** Single endpoint to pull all POS-relevant data for initial setup and periodic sync.
 
