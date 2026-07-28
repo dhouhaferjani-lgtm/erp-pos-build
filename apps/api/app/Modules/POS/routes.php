@@ -15,6 +15,7 @@ use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
+use App\Modules\POS\Presentation\Controllers\PosPaymentPolicyController;
 use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
 use App\Modules\POS\Presentation\Controllers\PosReplenishmentController;
 use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
@@ -186,6 +187,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Fraud settings cache (POS fetches these to populate local SQLite cache)
     Route::get('/pos/fraud-settings', [FraudSettingsPosController::class, 'show']);
+
+    // Cash-rounding + tender-tolerance policy cache (device pulls + caches offline)
+    Route::get('/pos/payment-policy', [PosPaymentPolicyController::class, 'show']);
 
     // Authorized managers for variance-close PIN approval
     Route::get('/pos/authorized-managers', [AuthorizedManagersController::class, 'index']);

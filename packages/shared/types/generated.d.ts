@@ -1399,6 +1399,17 @@ sent_at: string | null;
 prepared_at: string | null;
 created_at: string;
 };
+export type PosPaymentPolicyDTO = {
+companyId: string;
+currencyCode: string;
+currencyScale: number;
+cashRoundingEnabled: boolean;
+cashRoundingDenomination: string;
+tenderToleranceEnabled: boolean;
+tenderTolerancePercentage: string;
+tenderToleranceMaxAmount: string;
+refreshedAt: string;
+};
 export type SalesSummaryData = {
 receipt_count: number;
 gross_sales: string;
