@@ -36,8 +36,11 @@ export function getDenominations(currency: string, total: string): number[] {
 
   // ceil(total / largest) * largest, done in the decimal domain: subtract the
   // remainder, then add one more bill unless the total already sits on a
-  // multiple. The result is a whole multiple of `largest`, so the single
-  // Number() below is exact.
+  // multiple. The result is an exact whole multiple of a bill (<= 100), so the
+  // single Number() below is safe across the float boundary — the value does go
+  // on to become receipt money (button -> bcformat -> tenderedStr -> onConfirm
+  // -> input.tenderedAmount, which drives change_due), but it round-trips
+  // exactly and re-enters the decimal domain via bcformat before any arithmetic.
   const remainder = bcmod(total, String(largest));
   const firstMultipleDecimal = bccomp(remainder, '0') === 0
     ? total

@@ -47,9 +47,14 @@ function computeCartTotals(
     return { subtotal, discountAmount: zero, total: subtotal };
   }
 
+  // Round ONCE, here, at the currency scale — including the fixed-amount branch.
+  // A fixed value finer than the scale (e.g. '0.005' on EUR; DiscountModal caps
+  // neither the decimal count nor the scale) would otherwise be subtracted raw
+  // while being REPORTED rounded, so `total + discount != subtotal` and the
+  // signed payload's aggregate invariant aborts authoring mid-sale.
   const rawDiscount = transactionDiscount.type === 'percentage'
     ? bcdiv(bcmul(subtotal, transactionDiscount.value, decimals), '100', decimals)
-    : transactionDiscount.value;
+    : bcformat(transactionDiscount.value, decimals);
   // Clamp the discount to the subtotal so the total can never go negative.
   const isClamped = bccomp(rawDiscount, subtotal) > 0;
   const discount = isClamped ? subtotal : rawDiscount;
@@ -57,7 +62,7 @@ function computeCartTotals(
 
   return {
     subtotal,
-    discountAmount: isClamped ? subtotal : bcformat(rawDiscount, decimals),
+    discountAmount: discount,
     total: bccomp(total, '0') < 0 ? zero : total,
   };
 }

@@ -132,8 +132,9 @@ export function HomePage() {
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
   // Decimal-string selectors — money crossing into the cash screen must stay a
-  // string (precision contract); the `number` selectors above remain for the
-  // display-only panels that still take numeric props.
+  // string (precision contract). The `number` selectors above remain for the
+  // display-only cart panel AND for AdvancedPaymentsModal below, which is
+  // still a numeric payment-authoring surface pending its own conversion.
   const totalString = useCartStore((s) => s.totalString);
   const discountAmountString = useCartStore((s) => s.discountAmountString);
   const itemCount = useCartStore((s) => s.itemCount);

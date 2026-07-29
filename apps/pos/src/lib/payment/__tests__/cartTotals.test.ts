@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { computeExactCartTotal } from '@/lib/payment/cartTotals';
+import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import { estimateCartTotal } from '@/stores/paymentStore';
+import { bcadd } from '@/lib/decimal';
 import { makeCartItem } from '@/test/helpers';
 
 describe('computeExactCartTotal', () => {
@@ -36,5 +37,24 @@ describe('computeExactCartTotal', () => {
     const items = [makeCartItem({ id: 'i1', line_total: '7.500' })];
     expect(computeExactCartTotal(items, { type: 'fixed', value: '0' }, 'TND')).toBe('7.500');
     expect(computeExactCartTotal(items, { type: 'fixed', value: 'abc' }, 'TND')).toBe('7.500');
+  });
+
+  it('rounds a sub-scale FIXED discount once, so total + discount == subtotal exactly', () => {
+    // A fixed discount finer than the currency scale is reachable from the UI:
+    // DiscountModal caps neither the decimal count nor the scale, it only
+    // requires value > 0. Before this was rounded at source, the total
+    // subtracted the RAW 0.005 (→ '10.00', Big.RM half-up) while the reported
+    // discount rounded to '0.01' — two values from one raw input. The payload's
+    // subtotal + vat == total + discount invariant then fails and
+    // SaleReceiptAggregateInvariantError aborts authoring mid-sale.
+    const items = [makeCartItem({ id: 'i1', line_total: '10.00' })];
+    const discount = { type: 'fixed' as const, value: '0.005' };
+
+    const total = computeExactCartTotal(items, discount, 'EUR');
+    const discountAmount = computeExactDiscountAmount(items, discount, 'EUR');
+
+    expect(discountAmount).toBe('0.01');
+    expect(total).toBe('9.99');
+    expect(bcadd(total, discountAmount, 2)).toBe('10.00');
   });
 });

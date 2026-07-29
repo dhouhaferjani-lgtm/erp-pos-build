@@ -20,6 +20,12 @@ describe('getDenominations', () => {
     expect(getDenominations('TND', '123.000')).toEqual([150, 200, 250]);
   });
 
+  it('rounds a FRACTIONAL total up to the next multiple of the largest bill', () => {
+    // EUR largest bill is 100; 250.75 → ceil = 300 → 300, 400, 500. The only
+    // case exercising the decimal-domain ceiling on a non-integer total.
+    expect(getDenominations('EUR', '250.75')).toEqual([300, 400, 500]);
+  });
+
   it('uses default for unknown currency', () => {
     expect(getDenominations('XYZ', '5.00')).toEqual([5, 10, 20]);
   });
