@@ -54,6 +54,23 @@ import {
 // Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
 const CUMULATIVE_SCALE = 3;
 
+/**
+ * Scale of the two report_data summary blocks — FIXED at 3, never the currency
+ * scale.
+ *
+ * `tolerance_summary.totalAmount` is a scale-3 string by contract
+ * (`ZReportToleranceSummary` in types.ts; server side
+ * `TolerancePaymentTotalsDTO` / ReportGenerationService.php:284-295, whose
+ * zero-shape is `'0.000'` for EVERY currency), and
+ * `cash_rounding_summary.total_adjustment` mirrors
+ * `ZReportProjection::ROUNDING_SUMMARY_SCALE`, also 3. Both are additionally
+ * re-normalized to 3 by `normalizeForHash` on both sides, so emitting a
+ * currency-scale string here would only ever produce a device/server byte
+ * divergence outside the hash (fiscal Z_REPORT payload, sync body, UI) with
+ * nothing gained.
+ */
+const SUMMARY_SCALE = 3;
+
 // ─── Cash count input / opts types ───────────────────────────────────────────
 
 export interface CashCountInputForGeneration {
@@ -248,9 +265,47 @@ export async function generateZReport(
   reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
   reportData.variance = null;
 
+  const companyCurrency = company?.currency ?? 'EUR';
+
+  // 5a. Real tolerance + rounding aggregation (spec §4.3; closes the
+  // TODO(payment-tolerance-v3) zero-shape below). Both read the receipt-level
+  // columns receiptService writes inside the fiscal transaction — never
+  // re-derived here, so the Z reports exactly what was signed.
+  //
+  // `tolerance_shortfall` is written ONLY on the AUTO-ACCEPT path
+  // (receiptService.ts: `policySnapshot.toleranceDecision.applied`); a
+  // manager-PIN-approved shortfall carries its evidence in PosOverrideEvidence
+  // instead and is deliberately NOT counted here.
+  let toleranceTotal = bcformat('0', SUMMARY_SCALE);
+  let toleranceCount = 0;
+  let roundingTotal = bcformat('0', SUMMARY_SCALE);
+  let roundingCount = 0;
+  for (const receipt of receipts) {
+    const shortfall = receipt.tolerance_shortfall;
+    if (shortfall !== null && shortfall !== undefined && shortfall !== '' && bccomp(shortfall, '0') !== 0) {
+      toleranceTotal = bcadd(toleranceTotal, shortfall, SUMMARY_SCALE);
+      toleranceCount += 1;
+    }
+    const adjustment = receipt.cash_rounding_adjustment;
+    if (adjustment !== null && adjustment !== undefined && adjustment !== '' && bccomp(adjustment, '0') !== 0) {
+      roundingTotal = bcadd(roundingTotal, adjustment, SUMMARY_SCALE);
+      roundingCount += 1;
+    }
+  }
+  const toleranceSummary = {
+    totalAmount: toleranceTotal,
+    currencyCode: companyCurrency,
+    writeoffCount: toleranceCount,
+  };
+  // ABSENT, not a zero-shape, when nothing rounded: a shift with no rounded
+  // receipt must keep the legacy report_data shape byte-for-byte so its Z
+  // hashes identically on device and server (zReportHashService parity pin).
+  const cashRoundingSummary = roundingCount > 0
+    ? { total_adjustment: roundingTotal, receipt_count: roundingCount }
+    : null;
+
   // 5b. Compute cash count rows when opts.cashCounts is provided.
   //     Adds schema_version=2, cash_counts[], and tolerance_summary to report_data.
-  const companyCurrency = company?.currency ?? 'EUR';
   let zReportCountRows: ZReportCountRow[] | null = null;
   let cashCountEntries: ZReportCountEntry[] | null = null;
 
@@ -320,17 +375,17 @@ export async function generateZReport(
     // Stamp schema_version = 2 and cash_counts into report_data
     reportData.schema_version = 2;
     reportData.cash_counts = countEntries;
-    // Tolerance zero-shape (3dp amount, integer count) — byte-matches server ZReportHashService
-    // TODO(payment-tolerance-v3): when offline A1 short-pay ships, this
-    // tolerance_summary must aggregate `tolerance_writeoff` over the
-    // shift's local receipts (the data is already in
-    // endOfDayPreview.ts:184-192). Hash chain stability across
-    // offline-generated → server-synced Zs depends on this.
-    reportData.tolerance_summary = {
-      totalAmount: '0.000',
-      currencyCode: companyCurrency,
-      writeoffCount: 0,
-    };
+    // Real per-shift tolerance write-offs (was a hardcoded zero-shape). Still a
+    // v2-only key: it is stamped only alongside cash_counts, exactly as before,
+    // so a no-cash-count Z keeps its v1 report_data shape.
+    reportData.tolerance_summary = toleranceSummary;
+  }
+
+  // Local rounding observability. Stamped OUTSIDE the cash-count block so a
+  // rounding-only shift closed without counts still records it — and omitted
+  // entirely when nothing rounded (see `cashRoundingSummary` above).
+  if (cashRoundingSummary !== null) {
+    reportData.cash_rounding_summary = cashRoundingSummary;
   }
 
   // 6. Build receipt snapshots for fiscal export
@@ -412,9 +467,7 @@ export async function generateZReport(
     cash_counts: cashCountEntries ?? undefined,
     shift_fields: shiftFields,
     manager_user_id: opts.managerUserId ?? null,
-    tolerance_summary: cashCountEntries !== null
-      ? { totalAmount: '0.000', currencyCode: companyCurrency, writeoffCount: 0 }
-      : undefined,
+    tolerance_summary: cashCountEntries !== null ? toleranceSummary : undefined,
     currency_code: companyCurrency,
   };
 

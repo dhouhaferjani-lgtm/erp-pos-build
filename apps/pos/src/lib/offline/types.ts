@@ -109,6 +109,17 @@ export interface ZReportData {
   cash_counts?: ZReportCountEntry[];
   /** Tolerance write-off summary (zero-shape when no write-offs occurred). */
   tolerance_summary?: ZReportToleranceSummary | null;
+  /**
+   * Local-only rounding observability (spec §4.3). The SIGNED authority for
+   * rounding is each SALE_RECEIPT; server-side this line is DERIVED in
+   * ZReportProjection::legacyReportData() from projected
+   * pos_receipts.cash_rounding_adjustment. Never a signed Z key in v1.
+   *
+   * ABSENT (not a zero-shape) on a shift where nothing rounded, so a legacy Z
+   * keeps hashing byte-identically — see
+   * zReportHashService.legacyStability.test.ts.
+   */
+  cash_rounding_summary?: { total_adjustment: string; receipt_count: number } | null;
 }
 
 // ─── Grand Totals (perpetual counters) ───────────────────────────────────────

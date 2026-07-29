@@ -22,6 +22,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
+import { getToleranceAutoAcceptCount } from '@/lib/db/repositories/toleranceAutoAcceptRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -37,6 +38,10 @@ interface OfflineReceiptRow {
   // Primary payment method — used only for the legacy fallback when a receipt
   // has no usable payments_json (mirrors the signed-Z aggregation).
   payment_method_id: string;
+  // Signed v3 cash-rounding adjustment, NULL on an unrounded receipt (Task 9).
+  cash_rounding_adjustment: string | null;
+  // Auto-accepted tender shortfall, NULL when none was applied (Task 9).
+  tolerance_shortfall: string | null;
 }
 
 interface PaymentJsonRow {
@@ -44,9 +49,12 @@ interface PaymentJsonRow {
   // is the cashier's PHYSICALLY TENDERED amount (backend contract:
   // CashCountToleranceVarianceRegressionTest.php). `change_due` is NOT on the
   // payment row — it is a receipt-level column (see OfflineReceiptRow).
+  //
+  // There is deliberately NO `tolerance_writeoff` here: the writer never
+  // persisted one, so reading it always yielded zero. The write-off is a
+  // receipt-level column (see OfflineReceiptRow.tolerance_shortfall).
   method_code: string;
   amount: string;
-  tolerance_writeoff?: string;
 }
 
 interface ReceiptLineJson {
@@ -85,11 +93,36 @@ export interface EndOfDayPreview {
   variance: string | null;
   vat_breakdown: VatBreakdownItem[];
   payment_methods: PaymentMethodItem[];
+  /**
+   * Receipt-derived tender-tolerance write-offs for this shift: what the till
+   * reconciliation has to account for. Counts the shift's non-voided,
+   * non-training receipts carrying a `tolerance_shortfall`.
+   *
+   * NOT the §8.1 budget figure — see {@link EndOfDayPreview.tolerance_auto_accept_count}.
+   */
   tolerance_summary: {
     totalAmount: string;
     writeoffCount: number;
     currencyCode: string;
   } | null;
+  /** Signed net cash-rounding for the shift. Null when nothing rounded. */
+  cash_rounding_summary: { totalAdjustment: string; receiptCount: number } | null;
+  /**
+   * Auto-accepts already charged against this shift's §8.1 budget.
+   *
+   * Read from the DURABLE `tolerance_auto_accepts` row (SQLite migration v64) —
+   * the very number `paymentStore` feeds the gate as
+   * `autoAcceptCountThisShift`. Deliberately NOT derived from receipts: the two
+   * counts diverge in both directions. A training-mode or later-voided
+   * auto-accept spends budget but is excluded from the receipt query
+   * (`is_training = 0`, `voided = 0`), and the budget write is best-effort
+   * (paymentStore swallows a failed charge rather than failing an authored
+   * sale). Only this row answers "how much headroom is left".
+   *
+   * Zero when the preview is built without a shift id: with no shift there is
+   * no budget to attribute spend to.
+   */
+  tolerance_auto_accept_count: number;
 }
 
 /**
@@ -130,7 +163,8 @@ export async function buildEndOfDayPreview(
   // same-day receipt (' ' < 'T').
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
-    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id
+    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id,
+            cash_rounding_adjustment, tolerance_shortfall
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
@@ -152,6 +186,8 @@ export async function buildEndOfDayPreview(
   let cashChangeDueSum = '0';
   let toleranceTotal = '0';
   let toleranceCount = 0;
+  let roundingTotal = '0';
+  let roundingCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
   const perMethod = new Map<
@@ -170,6 +206,21 @@ export async function buildEndOfDayPreview(
     grossSales = bcadd(grossSales, receipt.total);
     netSales = bcadd(netSales, receipt.subtotal);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
+
+    // Receipt-level rounding / tolerance columns (Task 9), written inside the
+    // fiscal transaction from the sealed CheckoutPolicySnapshot. NULL means
+    // "did not happen"; a stored zero would mean "happened and came to zero",
+    // which is why both are compared rather than merely null-checked.
+    const shortfall = receipt.tolerance_shortfall;
+    if (shortfall !== null && shortfall !== '' && bccomp(shortfall, '0') !== 0) {
+      toleranceTotal = bcadd(toleranceTotal, shortfall);
+      toleranceCount += 1;
+    }
+    const adjustment = receipt.cash_rounding_adjustment;
+    if (adjustment !== null && adjustment !== '' && bccomp(adjustment, '0') !== 0) {
+      roundingTotal = bcadd(roundingTotal, adjustment);
+      roundingCount += 1;
+    }
 
     // VAT breakdown from receipt lines
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
@@ -212,11 +263,6 @@ export async function buildEndOfDayPreview(
       if (key === 'CASH') {
         cashTenderedSum = bcadd(cashTenderedSum, p.amount);
         receiptHasCash = true;
-        const writeoff = p.tolerance_writeoff ?? '0';
-        if (writeoff !== '' && bccomp(writeoff, '0') !== 0) {
-          toleranceTotal = bcadd(toleranceTotal, writeoff);
-          toleranceCount += 1;
-        }
       }
     }
 
@@ -281,7 +327,12 @@ export async function buildEndOfDayPreview(
   //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
   let drawerNet = '0';
   let cashRefundImpact = '0';
+  // The §8.1 budget is keyed by shift id only — there is no timestamp bind, so
+  // this read never touches the SQLite TEXT-boundary hazard that forces
+  // toSqliteUtc() on the receipt window above.
+  let toleranceAutoAcceptCount = 0;
   if (shiftId) {
+    toleranceAutoAcceptCount = await getToleranceAutoAcceptCount(db, shiftId);
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
     for (const op of drawerOps) {
       drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount) : bcsub(drawerNet, op.amount);
@@ -339,5 +390,10 @@ export async function buildEndOfDayPreview(
             currencyCode: resolvedCurrency,
           }
         : null,
+    cash_rounding_summary:
+      roundingCount > 0
+        ? { totalAdjustment: bcformat(roundingTotal, scale), receiptCount: roundingCount }
+        : null,
+    tolerance_auto_accept_count: toleranceAutoAcceptCount,
   };
 }

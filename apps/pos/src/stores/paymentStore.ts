@@ -82,14 +82,15 @@ export class ActiveTerminalRequiredError extends Error {
  * of the (rounded) due and the auto-accept branch declined.
  *
  * A named class so callers and tests can assert the IDENTITY of the refusal.
- * The message is a bare English literal — a pre-existing rule-11 violation kept
- * verbatim here so nothing that matches on the string changes behaviour — but
- * translating it later must not be a test-breaking change, and it will not be
- * as long as assertions bind to this class.
+ *
+ * The message is TRANSLATED because it is written straight onto the cashier's
+ * banner (`set({ error: approvalRequired.message })` in processAdvancedPayment,
+ * rendered by AdvancedPaymentsModal) — it is user-facing text, so rule 11
+ * applies. Assertions must bind to this class, never to the string.
  */
 export class TenderToleranceApprovalRequiredError extends Error {
   constructor() {
-    super('Tender tolerance requires a manager PIN.');
+    super(i18n.t('payment.tenderToleranceApprovalRequired', { ns: 'pos' }));
     this.name = 'TenderToleranceApprovalRequiredError';
   }
 }

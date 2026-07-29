@@ -150,6 +150,16 @@ export function buildEscPosReceiptData(
     && toleranceWriteoff !== ''
     && bccomp(toleranceWriteoff, '0') > 0;
 
+  // Same TS-boundary treatment for the SIGNED rounding adjustment: the Rust
+  // formatter branches on the flag and prints the string verbatim, so it never
+  // parses money. Unlike tolerance this compares !== 0, not > 0 — the
+  // adjustment can legitimately be negative (round down).
+  const cashRoundingAdjustment = receipt.cash_rounding_adjustment ?? null;
+  const hasCashRounding =
+    cashRoundingAdjustment !== null
+    && cashRoundingAdjustment !== ''
+    && bccomp(cashRoundingAdjustment, '0') !== 0;
+
   // Receipt-kind discriminator. Explicit override wins; otherwise infer from
   // receipt_type ('return' = refund, anything else = sale).
   const receiptKind: 'sale' | 'refund' =
@@ -215,6 +225,10 @@ export function buildEscPosReceiptData(
       ? bcformat(toleranceWriteoff, decimals)
       : null,
     has_tolerance: hasTolerance,
+    cash_rounding_adjustment: hasCashRounding
+      ? bcformat(cashRoundingAdjustment, decimals)
+      : null,
+    has_cash_rounding: hasCashRounding,
     fiscal_hash: receipt.fiscal_hash,
     fiscal_signature: null,
     customer_name: receipt.customer_name,
@@ -315,6 +329,8 @@ export function buildEscPosFromOfflineReceipt(
     change_due: bcformat(result.changeDue, decimals),
     tolerance_writeoff: null,
     has_tolerance: false,
+    cash_rounding_adjustment: null,
+    has_cash_rounding: false,
     fiscal_hash: result.fiscalHash ?? null,
     fiscal_signature: null,
     customer_name: null,
@@ -374,6 +390,8 @@ export function buildEscPosAccountPaymentReceiptData(
     change_due: bcformat('0', scale),
     tolerance_writeoff: null,
     has_tolerance: false,
+    cash_rounding_adjustment: null,
+    has_cash_rounding: false,
     fiscal_hash: input.fiscalHash,
     fiscal_signature: input.fiscalEventId,
     customer_name: payload.customer.name,
@@ -455,6 +473,8 @@ export function buildEscPosAccountChargeReceiptData(
     change_due: bcformat('0', scale),
     tolerance_writeoff: null,
     has_tolerance: false,
+    cash_rounding_adjustment: null,
+    has_cash_rounding: false,
     fiscal_hash: p.fiscalHash,
     fiscal_signature: p.fiscalEventId,
     customer_name: p.customerName,
@@ -501,6 +521,7 @@ export function buildReceiptLabels(): ReceiptLabels {
     payments: t('payments'),
     change_due: t('changeDue'),
     rounding: t('rounding'),
+    tolerance: t('tolerance'),
     vat_rate: t('vatRate'),
     taxable: t('taxable'),
     tax_col: t('taxCol'),
@@ -689,6 +710,8 @@ export function buildEscPosRefundReceiptData(
     change_due: bcformat('0', decimals),
     tolerance_writeoff: null,
     has_tolerance: false,
+    cash_rounding_adjustment: null,
+    has_cash_rounding: false,
     fiscal_hash: null,
     fiscal_signature: null,
     customer_name: null,

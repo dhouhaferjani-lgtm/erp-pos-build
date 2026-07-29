@@ -69,6 +69,7 @@
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
     "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant",
     "tenderBelowDue": "Le montant remis est inférieur au montant dû.",
+    "tenderToleranceApprovalRequired": "L'écart de règlement nécessite un code responsable.",
     "changeExceedsCashLegs": "La monnaie ne peut pas dépasser les espèces remises. Ajoutez un règlement espèces ou réduisez le montant non-espèces.",
     "totalIntegrityError": "Le total de la vente n'a pas pu être vérifié. Rien n'a été enregistré — veuillez recommencer la vente."
   },
@@ -837,6 +838,7 @@
     "payments": "Paiements :",
     "changeDue": "Monnaie Rendue :",
     "rounding": "Arrondi",
+    "tolerance": "Écart accepté",
     "vatRate": "TVA %",
     "taxable": "Base HT",
     "taxCol": "TVA",

@@ -546,3 +546,147 @@ describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {
     expect(card.payment_method_name).toBe('Card Terminal');
   });
 });
+
+// ── Cash rounding + tolerance (spec §4.3 / §8.1, Task 10) ───────────────────
+describe('buildEndOfDayPreview — cash rounding + tolerance (Task 10)', () => {
+    interface SeedRow {
+      total: string;
+      cash_rounding_adjustment?: string | null;
+      tolerance_shortfall?: string | null;
+    }
+
+    /** `tolerance_auto_accepts.accept_count` for `shift-1`; null = no row. */
+    let autoAcceptCount: number | null = null;
+
+    function mockShift(rows: SeedRow[]): void {
+      autoAcceptCount = null;
+      installMocks(rows);
+    }
+
+    function installMocks(rows: SeedRow[]): void {
+      vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+        const s = sql as string;
+        if (s.includes('tolerance_auto_accepts')) {
+          return (autoAcceptCount === null
+            ? []
+            : [{ accept_count: autoAcceptCount }]) as unknown as never[];
+        }
+        if (s.includes('FROM offline_receipts')) {
+          return rows.map((row, idx) => ({
+            id: `r${String(idx)}`,
+            total: row.total,
+            subtotal: row.total,
+            tax_amount: '0.00',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: row.total, method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([]),
+            created_at: '2026-07-27 10:00:00',
+            change_due: '0.00',
+            payment_method_id: 'pm-cash',
+            cash_rounding_adjustment: row.cash_rounding_adjustment ?? null,
+            tolerance_shortfall: row.tolerance_shortfall ?? null,
+          })) as unknown as never[];
+        }
+        if (s.includes('FROM payment_methods')) {
+          return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+        }
+        return [] as unknown as never[];
+      });
+    }
+
+    const build = () =>
+      buildEndOfDayPreview(mockDb, 'term-1', '2026-07-27T08:00:00Z', '0', 'EUR', 'shift-1');
+
+    it('selects the Task 9 receipt columns (an implicit column list would drop them)', async () => {
+      mockShift([]);
+
+      await build();
+
+      const receiptsCall = vi.mocked(queryAll).mock.calls.find(
+        ([, sql]) => (sql as string).includes('FROM offline_receipts'),
+      );
+      expect(String(receiptsCall![1])).toContain('cash_rounding_adjustment');
+      expect(String(receiptsCall![1])).toContain('tolerance_shortfall');
+    });
+
+    it('aggregates cash_rounding_adjustment into a signed cash_rounding_summary', async () => {
+      mockShift([
+        { total: '10.00', cash_rounding_adjustment: '0.02' },
+        { total: '9.95', cash_rounding_adjustment: '-0.03' },
+        { total: '5.00' },
+      ]);
+
+      const preview = await build();
+
+      expect(preview.cash_rounding_summary).toEqual({
+        totalAdjustment: '-0.01',
+        receiptCount: 2,
+      });
+    });
+
+    it('emits a null cash_rounding_summary when nothing rounded', async () => {
+      mockShift([{ total: '10.00' }]);
+
+      const preview = await build();
+
+      expect(preview.cash_rounding_summary).toBeNull();
+    });
+
+    it('derives tolerance_summary from the receipt column, not the dead payments_json field', async () => {
+      mockShift([
+        { total: '9.95', tolerance_shortfall: '0.05' },
+        { total: '10.00' },
+      ]);
+
+      const preview = await build();
+
+      expect(preview.tolerance_summary).toEqual({
+        totalAmount: '0.05',
+        writeoffCount: 1,
+        currencyCode: 'EUR',
+      });
+    });
+
+    it('reports the DURABLE §8.1 budget spend, not the receipt-derived write-off count', async () => {
+      // The two numbers answer different questions. `writeoffCount` counts the
+      // shift's non-voided, non-training receipts carrying a shortfall;
+      // `tolerance_auto_accept_count` is the authority the gate itself reads
+      // (paymentStore -> getToleranceAutoAcceptCount), and it also charges
+      // training-mode and later-voided sales. Surfacing the receipt count as
+      // the budget figure would tell a cashier they had headroom the gate has
+      // already spent.
+      mockShift([{ total: '9.95', tolerance_shortfall: '0.05' }]);
+      autoAcceptCount = 4;
+
+      const preview = await build();
+
+      expect(preview.tolerance_auto_accept_count).toBe(4);
+      expect(preview.tolerance_summary?.writeoffCount).toBe(1);
+    });
+
+    it('reads the budget by shift_id (no timestamp bind, so no SQLite TEXT boundary)', async () => {
+      mockShift([]);
+      autoAcceptCount = 2;
+
+      await build();
+
+      const budgetCall = vi.mocked(queryAll).mock.calls.find(
+        ([, sql]) => (sql as string).includes('tolerance_auto_accepts'),
+      );
+      expect(budgetCall).toBeDefined();
+      expect((budgetCall![2] as unknown[])).toEqual(['shift-1']);
+      expect(String(budgetCall![1])).not.toMatch(/updated_at/);
+    });
+
+    it('reports a zero budget spend when the preview is built without a shift id', async () => {
+      mockShift([]);
+      autoAcceptCount = 7;
+
+      const preview = await buildEndOfDayPreview(
+        mockDb, 'term-1', '2026-07-27T08:00:00Z', '0', 'EUR',
+      );
+
+      expect(preview.tolerance_auto_accept_count).toBe(0);
+    });
+});

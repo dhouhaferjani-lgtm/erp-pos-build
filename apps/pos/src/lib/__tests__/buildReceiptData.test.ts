@@ -170,6 +170,57 @@ describe('buildEscPosReceiptData — tolerance write-off (Phase 2 / Task 10)', (
   );
 });
 
+describe('buildEscPosReceiptData — cash rounding (spec §4.3, Task 10)', () => {
+  it('formats cash_rounding_adjustment to currency display scale and keeps the sign', () => {
+    const receipt = makeReceipt({ currency: 'EUR', cash_rounding_adjustment: '-0.020' });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.cash_rounding_adjustment).toBe('-0.02');
+    expect(result.has_cash_rounding).toBe(true);
+  });
+
+  it('keeps a 3-decimal adjustment intact for a 3-decimal currency', () => {
+    const receipt = makeReceipt({ currency: 'TND', cash_rounding_adjustment: '-0.020' });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.cash_rounding_adjustment).toBe('-0.020');
+  });
+
+  it.each([
+    ['0.020', 'positive adjustment (rounded up)'],
+    ['-0.020', 'negative adjustment (rounded down)'],
+    ['0.001', 'sub-cent adjustment'],
+  ])('sets has_cash_rounding=true for %s (%s)', (adjustment, _label) => {
+    const receipt = makeReceipt({ currency: 'TND', cash_rounding_adjustment: adjustment });
+
+    expect(buildEscPosReceiptData(receipt).has_cash_rounding).toBe(true);
+  });
+
+  it.each([
+    ['0', 'literal zero'],
+    ['0.000', 'zero at scale 3'],
+    ['', 'empty string'],
+    [null, 'null'],
+    [undefined, 'absent (legacy receipt)'],
+  ])('sets has_cash_rounding=false for %s (%s)', (adjustment, _label) => {
+    const receipt = makeReceipt({ cash_rounding_adjustment: adjustment });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.has_cash_rounding).toBe(false);
+    expect(result.cash_rounding_adjustment).toBeNull();
+  });
+
+  it('exposes a tolerance label distinct from the rounding label (two different lines)', () => {
+    const result = buildEscPosReceiptData(makeReceipt());
+
+    expect(result.labels?.rounding).toBe('pos:receiptLabel.rounding');
+    expect(result.labels?.tolerance).toBe('pos:receiptLabel.tolerance');
+  });
+});
+
 describe('buildEscPosReceiptData', () => {
   it('returns change_due as a plain decimal string when payment equals total', () => {
     const receipt = makeReceipt();

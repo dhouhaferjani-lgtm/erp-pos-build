@@ -93,6 +93,13 @@ export interface FullReceiptResponse {
   total: string;
   /** Cash-sale tolerance write-off (GL 658). Null when no tolerance was applied. */
   tolerance_writeoff: string | null;
+  /**
+   * Signed v3 cash-rounding adjustment (`rounded − exact`). Null when the sale
+   * was not rounded. Without it the printed ticket cannot reconcile: the stored
+   * `total` is ROUNDED while `subtotal` / `tax_amount` / `discount_amount` stay
+   * EXACT (receiptService.ts), so this line is what closes the arithmetic.
+   */
+  cash_rounding_adjustment?: string | null;
   currency: string;
   fiscal_hash: string | null;
   customer_name: string | null;

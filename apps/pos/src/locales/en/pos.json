@@ -69,6 +69,7 @@
     "pendingSyncCount": "{{count}} sale(s) pending sync",
     "configNotLoaded": "Payment config not loaded — try Sync Now",
     "tenderBelowDue": "The amount tendered is below the amount due.",
+    "tenderToleranceApprovalRequired": "Tender tolerance requires a manager PIN.",
     "changeExceedsCashLegs": "Change cannot exceed the cash tendered. Add a cash tender or lower the non-cash amount.",
     "totalIntegrityError": "The sale total could not be verified. Nothing was recorded — please retry the sale."
   },
@@ -837,6 +838,7 @@
     "payments": "Payments:",
     "changeDue": "Change Due:",
     "rounding": "Rounding",
+    "tolerance": "Tolerance",
     "vatRate": "VAT %",
     "taxable": "Taxable",
     "taxCol": "Tax",

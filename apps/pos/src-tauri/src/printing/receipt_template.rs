@@ -47,6 +47,21 @@ pub struct ReceiptData {
     /// smell even when the parsed value is only compared to zero.
     #[serde(default)]
     pub has_tolerance: bool,
+    /// SIGNED cash-rounding adjustment (`rounded − exact`). Printed VERBATIM in
+    /// the totals block — the string already carries its own `-` when negative,
+    /// so unlike the tolerance line no sign is forced on.
+    ///
+    /// It sits between Tax and TOTAL because the stored receipt is deliberately
+    /// mixed: `total` is ROUNDED while `subtotal` / `tax_amount` /
+    /// `discount_amount` stay EXACT. Without this line the ticket prints
+    /// `subtotal − discount + tax != TOTAL` with nothing to explain the gap.
+    #[serde(default)]
+    pub cash_rounding_adjustment: Option<String>,
+    /// Precomputed flag from the TS boundary: true iff `cash_rounding_adjustment`
+    /// is a non-zero monetary value (it may legitimately be negative, so this is
+    /// a `!= 0` test, not `> 0`). Rust never parses the monetary string.
+    #[serde(default)]
+    pub has_cash_rounding: Option<bool>,
     /// Fiscal compliance
     pub fiscal_hash: Option<String>,
     pub fiscal_signature: Option<String>,
@@ -125,7 +140,12 @@ pub struct ReceiptLabels {
     pub total: Option<String>,
     pub payments: Option<String>,
     pub change_due: Option<String>,
+    /// Label for the SIGNED cash-rounding line in the totals block.
     pub rounding: Option<String>,
+    /// Label for the tolerance write-off line. Distinct from `rounding`: two
+    /// identically-labelled money lines on one ticket would be unreadable.
+    #[serde(default)]
+    pub tolerance: Option<String>,
     pub vat_rate: Option<String>,
     pub taxable: Option<String>,
     pub tax_col: Option<String>,
@@ -597,6 +617,25 @@ pub fn format_receipt_with_settings(
             &format!("{}{}", data.currency_symbol, data.tax_amount),
         );
 
+        // ── Cash rounding (SIGNED) ──
+        // Deliberately inside the totals block, between Tax and TOTAL, NOT in
+        // the payments block: the stored receipt is mixed (rounded `total`,
+        // exact `subtotal`/`tax_amount`/`discount_amount`), so this is the one
+        // line that lets a customer's own arithmetic land on TOTAL. Putting it
+        // under Payments would also hide it whenever `show_payment_details` is
+        // off, leaving the mismatch printed with no explanation.
+        //
+        // Printed verbatim: the adjustment can be positive or negative and the
+        // TS boundary already formatted it at currency scale.
+        if data.has_cash_rounding.unwrap_or(false) {
+            if let Some(ref adjustment) = data.cash_rounding_adjustment {
+                b.two_column(
+                    &data.label(|l| &l.rounding, "Rounding"),
+                    &format!("{}{}", data.currency_symbol, adjustment),
+                );
+            }
+        }
+
         b.bold(true);
         b.font_size(FontSize::DoubleHeight);
         b.two_column(
@@ -649,7 +688,13 @@ pub fn format_receipt_with_settings(
                 b.bold(false);
             }
 
-            // ── Tolerance write-off (Rounding line) ──
+            // ── Tolerance write-off ──
+            // Belongs with the payment lines: it describes the gap between what
+            // was DUE and what was TENDERED, not the composition of the total.
+            // It keeps the forced `-` (a write-off is always in the customer's
+            // favour) and now carries its OWN label — the cash-rounding line
+            // above already owns `rounding`.
+            //
             // Printed only when a non-zero tolerance write-off is present on the receipt.
             // The TS layer (buildReceiptData) precomputes `has_tolerance` from the
             // monetary string using arbitrary-precision decimal — Rust does not parse
@@ -657,7 +702,7 @@ pub fn format_receipt_with_settings(
             if data.has_tolerance {
                 if let Some(ref tolerance) = data.tolerance_writeoff {
                     b.two_column(
-                        &data.label(|l| &l.rounding, "Rounding"),
+                        &data.label(|l| &l.tolerance, "Tolerance"),
                         &format!("-{}{}", data.currency_symbol, tolerance),
                     );
                 }
@@ -984,6 +1029,8 @@ mod tests_z_cash_counts {
             change_due: "0.00".to_string(),
             tolerance_writeoff: None,
             has_tolerance: false,
+            cash_rounding_adjustment: None,
+            has_cash_rounding: None,
             fiscal_hash: None,
             fiscal_signature: None,
             customer_name: None,
@@ -1052,6 +1099,8 @@ mod tests_z_cash_counts {
             change_due: "0.000".to_string(),
             tolerance_writeoff: None,
             has_tolerance: false,
+            cash_rounding_adjustment: None,
+            has_cash_rounding: None,
             fiscal_hash: Some("b".repeat(64)),
             fiscal_signature: Some("event-1".to_string()),
             customer_name: Some("Mariam Ben Ali".to_string()),
@@ -1134,6 +1183,8 @@ mod tests_z_cash_counts {
             change_due: "0.00".to_string(),
             tolerance_writeoff: None,
             has_tolerance: false,
+            cash_rounding_adjustment: None,
+            has_cash_rounding: None,
             fiscal_hash: None,
             fiscal_signature: None,
             customer_name: None,
@@ -1200,6 +1251,8 @@ mod tests_z_cash_counts {
             change_due: "0.00".to_string(),
             tolerance_writeoff: None,
             has_tolerance: false,
+            cash_rounding_adjustment: None,
+            has_cash_rounding: None,
             fiscal_hash: None,
             fiscal_signature: None,
             customer_name: None,
@@ -1270,6 +1323,8 @@ mod tests_z_cash_counts {
             change_due: "0.00".to_string(),
             tolerance_writeoff: None,
             has_tolerance: false,
+            cash_rounding_adjustment: None,
+            has_cash_rounding: None,
             fiscal_hash: None,
             fiscal_signature: None,
             customer_name: None,
@@ -1306,6 +1361,257 @@ mod tests_z_cash_counts {
         assert!(text.contains("Tax ID: BRANCH-FR-TAX"));
         assert!(text.contains("VAT No: FRBRANCHVAT"));
         assert!(text.contains("SIRET: 55210055400014"));
+    }
+
+    // ── Cash rounding on the printed ticket (spec §4.3, Task 10) ────────────
+    //
+    // The stored receipt is deliberately MIXED: `total` is ROUNDED while
+    // `subtotal` / `tax_amount` / `discount_amount` stay EXACT
+    // (receiptService.ts). Without a rounding line the customer's own
+    // arithmetic misses the total. These tests assert on the RENDERED bytes.
+
+    /// A TND cash sale rounded DOWN to the nearest 50 millimes.
+    /// 10.000 net + 1.900 VAT = 11.900 exact → 11.880 charged, adjustment −0.020.
+    fn make_rounded_sale() -> ReceiptData {
+        ReceiptData {
+            company: make_company(),
+            receipt_number: "R-T1-0007".to_string(),
+            date_time: "2026-07-27T10:00:00Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "10.000".to_string(),
+            discount_amount: "0.000".to_string(),
+            tax_amount: "1.900".to_string(),
+            total: "11.880".to_string(),
+            currency_symbol: "TND".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![PaymentLine {
+                method: "Cash".to_string(),
+                amount: "11.880".to_string(),
+            }],
+            change_due: "0.000".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
+            cash_rounding_adjustment: Some("-0.020".to_string()),
+            has_cash_rounding: Some(true),
+            fiscal_hash: None,
+            fiscal_signature: None,
+            customer_name: None,
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(true),
+            show_customer: Some(false),
+            is_reprint: Some(false),
+            cash_counts: None,
+            manager_name: None,
+            variance_reason: None,
+            variance_severity: None,
+            aggregate_variance: None,
+            qr_token: None,
+            receipt_kind: None,
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
+            account_balance_before: None,
+            account_balance_after: None,
+            account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
+        }
+    }
+
+    /// The rendered amount on the first line whose text starts with `label`,
+    /// as signed millimes. Test-only parsing — the formatter itself never
+    /// parses a monetary string.
+    fn printed_millimes(text: &str, label: &str) -> i64 {
+        // `contains`, not `starts_with`: the rendered stream interleaves ESC/POS
+        // control bytes with the text, so a line can begin with e.g. `E!`.
+        let line = text
+            .lines()
+            .find(|l| l.contains(label))
+            .unwrap_or_else(|| panic!("no printed line contains {label:?}\n---\n{text}\n---"));
+        let token = line
+            .split_whitespace()
+            .next_back()
+            .unwrap_or_else(|| panic!("no amount token on {line:?}"));
+        // The sign sits either side of the currency symbol depending on the
+        // line ("TND-0.020" vs "-TND0.050"), so read it from the whole token.
+        let negative = token.contains('-');
+        let digits: String = token
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let (whole, frac) = digits.split_once('.').unwrap_or((digits.as_str(), ""));
+        let frac = format!("{frac:0<3}");
+        let value: i64 = whole.parse::<i64>().expect("whole part") * 1000
+            + frac[..3].parse::<i64>().expect("fraction part");
+        if negative {
+            -value
+        } else {
+            value
+        }
+    }
+
+    #[test]
+    fn rounded_sale_prints_a_rounding_line_that_reconciles_the_printed_total() {
+        let bytes = format_receipt_with_settings(&make_rounded_sale(), None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        let subtotal = printed_millimes(&text, "Subtotal:");
+        let tax = printed_millimes(&text, "Tax:");
+        let rounding = printed_millimes(&text, "Rounding");
+        let total = printed_millimes(&text, "TOTAL:");
+
+        assert_eq!(rounding, -20, "the signed adjustment prints verbatim");
+        // The whole point: a customer adding up what is on the paper lands on
+        // the printed TOTAL. Without the rounding line this is 11.900 != 11.880.
+        assert_eq!(
+            subtotal + tax + rounding,
+            total,
+            "printed ticket must reconcile:\n{text}"
+        );
+    }
+
+    #[test]
+    fn the_rounding_line_prints_between_tax_and_total_not_below_the_payments() {
+        let bytes = format_receipt_with_settings(&make_rounded_sale(), None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        let index_of = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle:?} not printed\n---\n{text}\n---"))
+        };
+        // Adjacency is what makes the arithmetic readable, and it also keeps
+        // the line out of the `show_payment_details` gate.
+        assert!(index_of("Tax:") < index_of("Rounding"));
+        assert!(index_of("Rounding") < index_of("TOTAL:"));
+    }
+
+    #[test]
+    fn the_rounding_line_prints_even_when_payment_details_are_hidden() {
+        let mut data = make_rounded_sale();
+        data.show_payment_details = Some(false);
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Rounding"), "totals must still reconcile\n{text}");
+        assert_eq!(
+            printed_millimes(&text, "Subtotal:") + printed_millimes(&text, "Tax:")
+                + printed_millimes(&text, "Rounding"),
+            printed_millimes(&text, "TOTAL:"),
+        );
+    }
+
+    #[test]
+    fn a_positive_adjustment_prints_without_a_forced_minus() {
+        let mut data = make_rounded_sale();
+        data.cash_rounding_adjustment = Some("0.030".to_string());
+        data.total = "11.930".to_string();
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert_eq!(printed_millimes(&text, "Rounding"), 30);
+        assert!(!text.contains("TND-0.030"));
+    }
+
+    #[test]
+    fn an_unrounded_sale_prints_no_rounding_line() {
+        let mut data = make_rounded_sale();
+        data.cash_rounding_adjustment = None;
+        data.has_cash_rounding = None;
+        data.total = "11.900".to_string();
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(!text.contains("Rounding"));
+        assert_eq!(
+            printed_millimes(&text, "Subtotal:") + printed_millimes(&text, "Tax:"),
+            printed_millimes(&text, "TOTAL:"),
+        );
+    }
+
+    #[test]
+    fn tolerance_and_rounding_print_as_two_distinctly_labelled_lines() {
+        let mut data = make_rounded_sale();
+        data.tolerance_writeoff = Some("0.050".to_string());
+        data.has_tolerance = true;
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        // The tolerance line no longer borrows the `rounding` label.
+        assert!(text.contains("Tolerance"), "{text}");
+        assert_eq!(printed_millimes(&text, "Tolerance"), -50);
+        assert_eq!(printed_millimes(&text, "Rounding"), -20);
+        assert_eq!(text.matches("Rounding").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn a_localized_tolerance_label_is_used_when_supplied() {
+        let mut data = make_rounded_sale();
+        data.tolerance_writeoff = Some("0.050".to_string());
+        data.has_tolerance = true;
+        data.labels = Some(ReceiptLabels {
+            receipt: None,
+            date: None,
+            terminal: None,
+            operator: None,
+            customer: None,
+            item: None,
+            qty: None,
+            amount: None,
+            subtotal: None,
+            discount: None,
+            tax: None,
+            total: None,
+            payments: None,
+            change_due: None,
+            rounding: Some("Arrondi".to_string()),
+            tolerance: Some("Ecart accepte".to_string()),
+            vat_rate: None,
+            taxable: None,
+            tax_col: None,
+            thank_you: None,
+            tax_id: None,
+            vat_number: None,
+            tel: None,
+            cash_count_section_title: None,
+            cash_count_total_variance: None,
+            cash_count_approved_by: None,
+            cash_count_reason: None,
+            cash_count_col_tender: None,
+            cash_count_col_expected: None,
+            cash_count_col_actual: None,
+            cash_count_col_variance: None,
+            refund_header: None,
+            original_ticket: None,
+            original_qr_label: None,
+            account_payment_header: None,
+            balance_before: None,
+            balance_after: None,
+            stale_balance: None,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training: None,
+            customer_account: None,
+            customer_phone: None,
+        });
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Arrondi"), "{text}");
+        assert!(text.contains("Ecart accepte"), "{text}");
     }
 }
 
