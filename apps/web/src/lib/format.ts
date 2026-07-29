@@ -167,17 +167,16 @@ function daysInMonth(year: number, month: number): number {
 /**
  * Build a LOCAL Date from a validated `YYYY-MM-DD` string, or null when the parts
  * are out of range. The multi-arg Date constructor silently normalizes bad input
- * (month 13 → next year, day 30 in February → March) and two-digit-century-maps
- * years < 100 (99 → 1999), so validate the parts numerically first and pin the
- * year with setFullYear to defeat century mapping.
+ * (month 13 → next year, day 30 in February → March), so validate the parts
+ * numerically first. A year below 1000 is never a legitimate business date in this
+ * app, so it is rejected as invalid (this also side-steps two-digit-century mapping
+ * of sub-100 years, e.g. 0099 → 1999).
  */
 function parseDateOnly(year: number, month: number, day: number): Date | null {
-  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
     return null
   }
-  const parsed = new Date(year, month - 1, day)
-  parsed.setFullYear(year)
-  return parsed
+  return new Date(year, month - 1, day)
 }
 
 export function formatDate(

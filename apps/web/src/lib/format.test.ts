@@ -64,8 +64,8 @@ describe('formatDate', () => {
     expect(formatDate('not-a-date', 'DD/MM/YYYY', 'en-GB')).toBe('')
   })
 
-  it('does not two-digit-century-map a sub-100 year in a date-only string', () => {
-    expect(formatDate('0099-01-01', 'DD/MM/YYYY', 'en-GB')).not.toContain('1999')
+  it('rejects a year below 1000 as an invalid business date', () => {
+    expect(formatDate('0099-01-01', 'DD/MM/YYYY', 'en-GB')).toBe('')
   })
 
   it('rejects an out-of-range month instead of rolling it over', () => {
