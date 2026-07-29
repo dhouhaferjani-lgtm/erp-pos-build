@@ -55,6 +55,40 @@ checks freshness against the seeder from within PHPUnit. No overlap, no contradi
   than introduce a divergent lone ignore. (The full `app/` phpstan run additionally OOMs at
   512M in this worktree — an env limitation unrelated to this change.)
 
+## Codex round-1 fixes (APPROVE-WITH-FIXES → applied)
+Record: `docs/superpowers/reviews/2026-07-28-burndown-task6-codex.md`.
+
+1. **[Important] `freshExport()` temp-file lifecycle** — wrapped the command + read in
+   `try { ... } finally { if (is_file($path)) unlink($path); }` so the throwaway file is
+   removed on every failure path, not only the happy path.
+2. **[Minor] missing-committed-map message** — the `assertIsString($committed, ...)` guard
+   now uses `self::REGENERATE_HINT` (was a generic "map is missing" string), so a MISSING
+   committed map names `php artisan permissions:export-frontend-map` exactly like the drift
+   path.
+3. **[Minor] auditable RED evidence** — captured below.
+
+### Auditable RED protocol (re-run 2026-07-29)
+Staled the real committed map (`treasury.manage`: dropped `accountant`), ran the guard:
+
+```
+   FAIL  Tests\Feature\Console\ExportFrontendPermissionsMapCommandTest
+  ⨯ the committed frontend map is fresh against the seeder              35.51s
+  FAILED  ... > the committed frontend map is fresh against the seeder
+  The committed frontend permission map (apps/web/src/hooks/permissionsMap.generated.ts) is stale relative to RolesAndPermissionsSeeder. Run `php artisan permissions:export-frontend-map` and commit the regenerated file.
+Failed asserting that false is true.
+
+  at tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php:87
+```
+
+Restore proof:
+```
+git diff --quiet -- apps/web/src/hooks/permissionsMap.generated.ts; echo $?
+0
+```
+
+Post-fix GREEN: `php artisan test tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php`
+→ **3 passed (19 assertions)**. Pint → `{"result":"pass"}`.
+
 ## Concerns
 - The guard reads the committed artifact by relative path from `base_path()`; correct for
   the monorepo layout (`apps/api` ↔ `apps/web`). If the web app is ever relocated the path

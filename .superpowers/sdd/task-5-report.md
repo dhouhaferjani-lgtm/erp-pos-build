@@ -138,3 +138,42 @@ web `:5173`, `owner@pharmabio.tn` / `password`). Confirm:
   is outside every tsconfig project — e2e is intentionally out of lint scope).
 - **Runtime numeric check** of the derived `STATEMENT_DELTA` using the file's exact
   `addMoney`/`toMillimes`/`fromMillimes` logic → `'72.625'` (equals the prior literal).
+
+## Codex review fixes (record: docs/superpowers/reviews/2026-07-28-burndown-task5-codex.md)
+
+Verdict was APPROVE-WITH-FIXES (void-unreachable claim + reopen→re-complete teardown
+independently confirmed). Both fixes applied:
+
+### Fix 1 [Important] — CSV fixtures now interpolate the shared constants
+
+Previously the primer and main CSV rows hardcoded `15.000 / -37.125 / 98.500 / -2.500 /
+-1.250`, so the constants were not truly the single source of truth. Now every money-bearing
+CSV row interpolates its constant under the profile's `signed_amount` convention:
+`${ADJUSTMENT_AMOUNT}` (+in), `-${CHEQUE_AMOUNT}` (−out), `${CARD_NET}` (+in),
+`-${AGIO_AMOUNT}` (−out), `-${IGNORED_AMOUNT}` (INFO −out). The primer row and the main-CSV
+DUP row both use `-${IGNORED_AMOUNT}` — they must equal each other (dedup fingerprint =
+date+amount+reference) and the primer's closing-balance delta (`-${IGNORED_AMOUNT}`), so all
+three now flow from the one constant. The ZERO (`0.000`) and BAD (`9.999`) rows keep literal
+amounts — they are format-exception fixtures (zero-row drop / unparseable date), not money
+lines. Editing any amount constant now updates the fixture AND the derived `STATEMENT_DELTA`
+in lockstep.
+
+Coupling re-verified numerically with the file's helpers: `STATEMENT_DELTA` = `'72.625'`, and
+the signed sum of the five ACCEPTED CSV money rows (ADJ +, CHEQUE −, CARD +, AGIO −, INFO −;
+DUP is dropped as already-imported, ZERO/BAD dropped) = `'72.625'` = the delta.
+
+### Fix 2 [Minor] — pagination-aware statement reads
+
+Added a `fetchAllStatements(request, repositoryId, label)` helper that walks the
+`/bank-statements` index across all pages via the response `meta.last_page` (per_page capped
+at 100; envelope `{ data, meta: { current_page, last_page, ... } }`, confirmed in
+`BankStatementController::index`). Both the setup leftover-skip and the teardown
+"zero active non-terminal statements" proof now use it, so a repository with more than 100
+prior statements is fully evaluated instead of only its first page.
+
+### Re-verification after fixes
+
+- Standalone `tsc --noEmit --skipLibCheck --strict` on the file → clean.
+- `pnpm exec eslint e2e/smoke/treasury-phase5b-reconciliation.smoke.ts` → 0 errors.
+- Runtime check: `STATEMENT_DELTA` = `'72.625'`; accepted-CSV-rows signed sum = `'72.625'`
+  (matches the delta); primer/DUP amounts coupled.
