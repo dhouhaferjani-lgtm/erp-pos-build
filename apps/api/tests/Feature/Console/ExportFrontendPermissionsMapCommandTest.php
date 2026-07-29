@@ -82,7 +82,7 @@ final class ExportFrontendPermissionsMapCommandTest extends TestCase
     public function test_the_committed_frontend_map_is_fresh_against_the_seeder(): void
     {
         $committed = file_get_contents(base_path(self::COMMITTED_MAP_PATH));
-        self::assertIsString($committed, 'The committed frontend permission map is missing.');
+        self::assertIsString($committed, self::REGENERATE_HINT);
 
         self::assertTrue(
             $this->mapsMatch($this->freshExport(), $committed),
@@ -119,15 +119,19 @@ final class ExportFrontendPermissionsMapCommandTest extends TestCase
     {
         $path = sys_get_temp_dir().'/autoerp-permissions-map-fresh-'.bin2hex(random_bytes(8)).'.ts';
 
-        $this->artisan('permissions:export-frontend-map', ['--path' => $path])
-            ->assertSuccessful();
+        try {
+            $this->artisan('permissions:export-frontend-map', ['--path' => $path])
+                ->assertSuccessful();
 
-        $contents = file_get_contents($path);
-        unlink($path);
+            $contents = file_get_contents($path);
+            self::assertIsString($contents);
 
-        self::assertIsString($contents);
-
-        return $contents;
+            return $contents;
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 
     /**
