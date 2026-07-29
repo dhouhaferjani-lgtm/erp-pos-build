@@ -1,31 +1,63 @@
-# Wave 1 Task 6 report
+# Task 6 — Drift-guard hardens: committed permissions map freshness
 
-- Base: `c311a2090bad32f1ce8702b9490ca7f16c1ddc37`
-- Head: `107387ba5f1af0da7a8941cf8ca1252d3bd9a316`
-- Commit: `feat(multiloc): scoped + management locations endpoints, drop duplicate controller (§1 step 4c)`
+## Requirement
+`ExportFrontendPermissionsMapCommandTest` proved determinism only; a STALE COMMITTED
+`apps/web/src/hooks/permissionsMap.generated.ts` would pass CI. Add a PHP-side assertion
+that regenerates the map to a temp path and diffs (normalized) against the committed
+artifact, failing with a message telling the developer to run
+`php artisan permissions:export-frontend-map`. RED first, without committing a stale map.
 
-## Files
+## What changed
+Single file: `apps/api/tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php`
+(test-only; no production code needed — the exporter already renders deterministically).
 
-- `apps/api/app/Modules/Company/routes.php`
-- `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php`
-- `apps/api/app/Modules/Inventory/Presentation/Controllers/LocationController.php` (deleted; no references found)
-- `apps/api/tests/Feature/Company/LocationListEndpointsTest.php`
+Added two test methods plus three private helpers:
 
-## TDD evidence
+1. **`test_the_committed_frontend_map_is_fresh_against_the_seeder`** — the guard.
+   Regenerates via the command to a throwaway temp path (`--path`, no DB), reads the
+   committed artifact at `base_path('../web/src/hooks/permissionsMap.generated.ts')`, and
+   asserts line-ending-normalized equality. On failure it surfaces `REGENERATE_HINT`
+   verbatim: *"The committed frontend permission map (...) is stale relative to
+   RolesAndPermissionsSeeder. Run `php artisan permissions:export-frontend-map` and commit
+   the regenerated file."*
 
-- RED: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php` — 8 tests failed (10 assertions): the new company routes returned 404 and the existing `/locations` index was unscoped.
-- GREEN: same command — `OK (8 tests, 32 assertions)`.
+2. **`test_a_stale_committed_map_is_detected_as_drift`** — the RED-safe regression proof.
+   Perturbs an in-memory copy of the fresh export (drops a `treasury.manage` role grant)
+   and asserts the SAME `mapsMatch()` predicate the guard uses returns `false`. This proves
+   the guard catches drift without ever committing a stale artifact.
 
-## Verification
+Helpers: `freshExport()` (command → temp file → contents), `mapsMatch()` (the guard
+predicate), `normalize()` (CRLF→LF + single trailing newline). The original determinism
+test is preserved unchanged.
 
-- Existing location suites: `./vendor/bin/phpunit tests/Feature/Company/LocationStockPolicyResolverTest.php tests/Feature/Company/LocationScopeResolverTest.php tests/Feature/Inventory/StockManagementTest.php` — `OK (29 tests, 52 assertions)`.
-- Combined focused suite: `./vendor/bin/phpunit tests/Feature/Company/LocationListEndpointsTest.php tests/Feature/Company/LocationStockPolicyResolverTest.php tests/Feature/Company/LocationScopeResolverTest.php tests/Feature/Inventory/StockManagementTest.php` — `OK (37 tests, 84 assertions)`.
-- PHPStan: `./vendor/bin/phpstan analyse app/Modules/Company/Presentation/Controllers/LocationController.php app/Modules/Company/routes.php` — no errors.
-- Pint: focused controller/routes/test run completed; no remaining fixes.
-- `git diff --check` — clean.
-- `rg` reference proof for `App\\Modules\\Inventory\\Presentation\\Controllers\\LocationController` under `apps/api/app` and `apps/api/routes` — no matches.
+## RED-first proof
+Temporarily staled the REAL committed map (dropped `accountant` from `treasury.manage`),
+ran the guard → it FAILED with the exact `REGENERATE_HINT` message
+(`ExportFrontendPermissionsMapCommandTest.php:87`, "Failed asserting that false is true"),
+then restored the file (`git diff --quiet` confirmed clean). No stale map was committed.
 
-## Deviations and concerns
+## Relationship to the JS drift test
+`apps/web/tools/__tests__/permission-map-drift-guard.test.mjs` asserts the export+`git diff`
+wiring exists in `preflight.sh` and `ci.yml`. This PHP-side guard is complementary: it
+checks freshness against the seeder from within PHPUnit. No overlap, no contradiction.
 
-- The new module-agnostic endpoints were added to the registered Company route file (`app/Modules/Company/routes.php`). The existing legacy `/api/v1/locations` remains registered by Inventory presentation routes and continues using the Company controller.
-- Absent/suspended membership endpoint tests disable the global company-context middleware after binding the company in the test, so they exercise the resolver's required empty picker payload (`{"data": []}`); with normal middleware, the same users are rejected at company-context authorization before controller execution.
+## Gates
+- **Focused test:** `php artisan test tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php`
+  → **3 passed (19 assertions)**.
+- **Pint:** `./vendor/bin/pint --test tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php`
+  → `{"result":"pass"}`.
+- **PHPStan:** the configured run analyses `app/` only (tests are excluded from `paths`),
+  so the touched test file is never analysed in CI. Run directly on the file it reports 3
+  `method.nonObject` findings on `$this->artisan(...)->assertSuccessful()`
+  (`PendingCommand|int`) — 2 pre-existed on the original file, my `freshExport()` helper is
+  the 3rd identical instance. This idiom appears 6× across the test suite with **zero**
+  phpstan-ignore annotations; it is the uniform, tolerated convention. I followed it rather
+  than introduce a divergent lone ignore. (The full `app/` phpstan run additionally OOMs at
+  512M in this worktree — an env limitation unrelated to this change.)
+
+## Concerns
+- The guard reads the committed artifact by relative path from `base_path()`; correct for
+  the monorepo layout (`apps/api` ↔ `apps/web`). If the web app is ever relocated the path
+  const must move with it.
+- PHPStan does not gate test files in this project; the new helper's `PendingCommand|int`
+  finding is invisible to CI and consistent with existing test code.

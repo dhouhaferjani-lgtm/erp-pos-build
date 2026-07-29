@@ -8,6 +8,21 @@ use Tests\TestCase;
 
 final class ExportFrontendPermissionsMapCommandTest extends TestCase
 {
+    /**
+     * The committed artifact the frontend consumes, resolved relative to the
+     * command's own default output path (`base_path('../web/...')`).
+     */
+    private const COMMITTED_MAP_PATH = '../web/src/hooks/permissionsMap.generated.ts';
+
+    /**
+     * Surfaced verbatim when the committed map has drifted from the seeder so a
+     * developer knows exactly how to recover.
+     */
+    private const REGENERATE_HINT =
+        'The committed frontend permission map (apps/web/src/hooks/permissionsMap.generated.ts) '
+        .'is stale relative to RolesAndPermissionsSeeder. '
+        .'Run `php artisan permissions:export-frontend-map` and commit the regenerated file.';
+
     private string $outputPath;
 
     protected function setUp(): void
@@ -62,5 +77,70 @@ final class ExportFrontendPermissionsMapCommandTest extends TestCase
             ->assertSuccessful();
 
         self::assertSame($firstExport, file_get_contents($this->outputPath));
+    }
+
+    public function test_the_committed_frontend_map_is_fresh_against_the_seeder(): void
+    {
+        $committed = file_get_contents(base_path(self::COMMITTED_MAP_PATH));
+        self::assertIsString($committed, 'The committed frontend permission map is missing.');
+
+        self::assertTrue(
+            $this->mapsMatch($this->freshExport(), $committed),
+            self::REGENERATE_HINT,
+        );
+    }
+
+    public function test_a_stale_committed_map_is_detected_as_drift(): void
+    {
+        $fresh = $this->freshExport();
+
+        // Simulate a stale committed map WITHOUT committing one: perturb a copy
+        // of the fresh export (drop a role grant) so the guard has something to
+        // catch. This proves the freshness assertion above would fail RED if the
+        // real committed artifact ever drifted from the seeder.
+        $stale = str_replace(
+            "  'treasury.manage': ['accountant', 'admin'],",
+            "  'treasury.manage': ['admin'],",
+            $fresh,
+        );
+        self::assertNotSame($fresh, $stale, 'The fixture perturbation must actually mutate the map.');
+
+        self::assertFalse(
+            $this->mapsMatch($fresh, $stale),
+            'A perturbed (stale) committed map must be detected as drift by the freshness guard.',
+        );
+    }
+
+    /**
+     * Regenerate the map to a throwaway path (no database required) and return
+     * its contents.
+     */
+    private function freshExport(): string
+    {
+        $path = sys_get_temp_dir().'/autoerp-permissions-map-fresh-'.bin2hex(random_bytes(8)).'.ts';
+
+        $this->artisan('permissions:export-frontend-map', ['--path' => $path])
+            ->assertSuccessful();
+
+        $contents = file_get_contents($path);
+        unlink($path);
+
+        self::assertIsString($contents);
+
+        return $contents;
+    }
+
+    /**
+     * The exact predicate the freshness guard uses: line-ending-normalized
+     * equality between a fresh export and the committed artifact.
+     */
+    private function mapsMatch(string $freshContents, string $committedContents): bool
+    {
+        return $this->normalize($freshContents) === $this->normalize($committedContents);
+    }
+
+    private function normalize(string $contents): string
+    {
+        return rtrim(str_replace("\r\n", "\n", $contents), "\n")."\n";
     }
 }
