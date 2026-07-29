@@ -16,6 +16,11 @@ import {
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { bcformat, bcadd, bcsub, bccomp, bcsum } from '@/lib/decimal';
+import { makeIsCashMethodCode } from '@/lib/payment/cashMethods';
+import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
+import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
+import { usePaymentPolicyStore } from '@/stores/paymentPolicyStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { NumPad } from '@/components/molecules/NumPad';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
@@ -63,6 +68,13 @@ function getCompatibleRepositoryTypes(
 interface PaymentLineItem {
   id: string;
   methodId: string;
+  /**
+   * The immutable payment-method code. Carried on the line rather than looked
+   * up on demand because cash-ness (`is_cash_tender` keyed by code) decides
+   * whether this tender rounds, and the lookup table can change under a modal
+   * that stays open across a sync tick.
+   */
+  methodCode: string;
   methodName: string;
   /** Decimal string at the tenant's currency scale, e.g. "50.00". Set via bcformat. */
   amount: string;
@@ -76,19 +88,17 @@ export interface AdvancedPaymentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   /**
-   * Amount due as a decimal STRING at the tenant's currency scale (e.g.
-   * "50.00", TND "9.973"). Never a JS number: this value is compared against
-   * the tender legs that end up in the fiscal-event canonical hash, and a
-   * float round-trip here is exactly how 10.1 + 10.2 stops covering 20.3.
+   * The EXACT cart total as a decimal STRING at the tenant's currency scale
+   * (e.g. "50.00", TND "9.973"). Never a JS number: this value is compared
+   * against the tender legs that end up in the fiscal-event canonical hash, and
+   * a float round-trip here is exactly how 10.1 + 10.2 stops covering 20.3.
+   *
+   * NOT the amount due. Cash rounding depends on whether the tender is
+   * cash-only, which is only knowable from the legs the cashier adds inside
+   * this modal, so the modal derives the rounded due itself (see
+   * `displaySnapshot`) and the caller cannot pre-compute it.
    */
   total: string;
-  /**
-   * Signed cash-rounding adjustment (`rounded − exact`) at currency scale, when
-   * one applies to this sale. Rendered as its own footer line so the cashier
-   * can see why the due differs from the cart. Omit — or pass a canonical zero
-   * — when nothing was rounded.
-   */
-  roundingAdjustment?: string;
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
   onComplete: (
@@ -133,6 +143,26 @@ export interface AdvancedPaymentsModalProps {
 }
 
 /**
+ * Total tendered across the UNION of payment lines and voucher tenders.
+ *
+ * Split out of {@link computeTenderState} because the leg sum is needed BEFORE
+ * the amount due is known: the checkout snapshot takes the tendered amount as
+ * an input and yields the rounded due as an output, and `computeTenderState`
+ * then measures the tender against that due.
+ */
+export function sumTenderLegs(
+  paymentLines: readonly { amount: string }[],
+  voucherTenders: readonly { amount: string }[],
+  decimals: number,
+): string {
+  return bcadd(
+    bcsum(paymentLines.map((l) => l.amount), decimals),
+    bcsum(voucherTenders.map((v) => v.amount), decimals),
+    decimals,
+  );
+}
+
+/**
  * Pure helper extracted for unit-testability (D0-1, 2026-07-01).
  * Computes tender state using decimal-string bcmath (big.js) — no IEEE-754 float.
  * PaymentLineItem.amount is a decimal string (S4, 2026-07-01); amounts are passed
@@ -140,6 +170,10 @@ export interface AdvancedPaymentsModalProps {
  *
  * Task 7 (2026-07-27): `total` is a decimal string too — the last float in this
  * component's tender arithmetic. The `String(total)` bridge is gone with it.
+ *
+ * `total` is the amount DUE (the ROUNDED total when cash rounding applies), NOT
+ * the exact cart total. It must be the same value `paymentStore` gates on, or
+ * the button and the gate disagree about whether the sale can complete.
  */
 export function computeTenderState(
   paymentLines: readonly { amount: string }[],
@@ -148,12 +182,7 @@ export function computeTenderState(
   decimals: number,
 ): { totalPaid: string; remaining: string; overpayment: string; isFullyPaid: boolean } {
   const totalStr = bcformat(total, decimals);
-  const voucherTotal = bcsum(voucherTenders.map((v) => v.amount), decimals);
-  const totalPaid = bcadd(
-    bcsum(paymentLines.map((l) => l.amount), decimals),
-    voucherTotal,
-    decimals,
-  );
+  const totalPaid = sumTenderLegs(paymentLines, voucherTenders, decimals);
   const remaining =
     bccomp(totalPaid, totalStr) < 0
       ? bcsub(totalStr, totalPaid, decimals)
@@ -170,7 +199,6 @@ export function AdvancedPaymentsModal({
   isOpen,
   onClose,
   total,
-  roundingAdjustment,
   paymentMethods,
   paymentRepositories,
   onComplete,
@@ -277,17 +305,106 @@ export function AdvancedPaymentsModal({
     return '';
   }, [repositoryId, compatibleRepositories]);
 
+  // ── The DISPLAY half of the checkout decision (spec §4.1/§4.3) ─────────────
+  //
+  // `paymentStore.processAdvancedCheckout` gates on `snapshot.roundedTotal` and
+  // on `snapshot.toleranceDecision.applied`. This modal MUST ask the same
+  // builder the same question over the same legs, or the Complete button and
+  // the gate disagree about the same sale — in both rounding directions:
+  //
+  //   round UP   (exact 9.977, D 0.050 -> due 10.000): gating on the exact
+  //     total shows nothing remaining, renders no PIN field and enables
+  //     Complete, while the store sees a 0.023 shortfall. It would either
+  //     spend a silent tolerance auto-accept the cashier was never asked to
+  //     make, or demand a PIN with nowhere to type it.
+  //   round DOWN (exact 9.973 -> due 9.950): a 9.950 tender would leave 0.023
+  //     "remaining", forcing a manager PIN that the store then never verifies
+  //     because the tender already covers the due.
+  //
+  // This is display only. The authoritative snapshot is sealed by the store at
+  // confirm time from the same builder, so a policy tick between opening this
+  // modal and confirming cannot move what gets signed.
+  const paymentPolicy = usePaymentPolicyStore((s) => s.policy);
+  const terminal = useTerminalStore((s) => s.terminal);
+  const shift = useTerminalStore((s) => s.shift);
+  const toleranceAutoAcceptShiftId = usePaymentStore((s) => s.toleranceAutoAcceptShiftId);
+  const toleranceAutoAcceptCount = usePaymentStore((s) => s.toleranceAutoAcceptCount);
+
+  const tenderedSoFar = useMemo(
+    () => sumTenderLegs(paymentLines, voucherTenders, decimals),
+    [paymentLines, voucherTenders, decimals],
+  );
+
+  // The UNION of payment lines and voucher tenders — the same rule the store
+  // applies. Voucher legs are payment legs and are never cash, so a
+  // voucher-partial sale settles EXACTLY and never rounds.
+  const tenderLegs = useMemo(
+    () => [
+      ...paymentLines.map((l) => ({ methodCode: l.methodCode, amount: l.amount })),
+      ...voucherTenders.map((v) => ({
+        methodCode: storeVoucherMethod?.code ?? 'store_voucher',
+        amount: v.amount,
+      })),
+    ],
+    [paymentLines, voucherTenders, storeVoucherMethod],
+  );
+
+  const displaySnapshot = useMemo(
+    () => buildCheckoutPolicySnapshot({
+      exactTotal: total,
+      currency,
+      legs: tenderLegs,
+      tenderedAmount: tenderedSoFar,
+      isCashMethodCode: makeIsCashMethodCode(paymentMethods),
+      policy: paymentPolicy,
+      fiscalSchemaVersion: terminal?.fiscal_schema_version ?? null,
+      invoiceType: terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+      // The in-memory MIRROR, which is all a display surface can read
+      // synchronously. The store re-reads the authoritative SQLite budget at
+      // confirm time, so the worst case here is offering a floor the gate then
+      // refuses — never the reverse. Same deliberate inversion as the gate: no
+      // open shift means no budget to charge, hence no headroom.
+      autoAcceptCountThisShift: shift === null
+        ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
+        : toleranceAutoAcceptShiftId === shift.id ? toleranceAutoAcceptCount : 0,
+    }),
+    [
+      total,
+      currency,
+      tenderLegs,
+      tenderedSoFar,
+      paymentMethods,
+      paymentPolicy,
+      terminal,
+      shift,
+      toleranceAutoAcceptShiftId,
+      toleranceAutoAcceptCount,
+    ],
+  );
+
+  /** The amount actually owed — rounded when rounding is in play, else exact. */
+  const amountDue = displaySnapshot.roundedTotal;
+  const roundingAdjustment = displaySnapshot.roundingApplied
+    ? displaySnapshot.adjustment
+    : null;
+  /** True when the store's auto-accept branch would take this tender as-is. */
+  const toleranceAccepted = displaySnapshot.toleranceDecision.applied;
+
   // D0-1 (2026-07-01): tender arithmetic via decimal-string bcmath (big.js).
   // computeTenderState is a pure exported function — unit-tested independently.
   const { totalPaid, remaining, overpayment, isFullyPaid } = useMemo(
-    () => computeTenderState(paymentLines, voucherTenders, total, decimals),
-    [paymentLines, voucherTenders, total, decimals],
+    () => computeTenderState(paymentLines, voucherTenders, amountDue, decimals),
+    [paymentLines, voucherTenders, amountDue, decimals],
   );
+  // The PIN path is offered for exactly the shortfalls the store will route
+  // there: short of the ROUNDED due AND declined by the auto-accept branch.
+  const needsTenderToleranceApproval =
+    bccomp(remaining, '0') > 0 && !toleranceAccepted;
   const canSubmitWithTenderTolerance =
-    bccomp(remaining, '0') > 0 &&
+    needsTenderToleranceApproval &&
     bccomp(totalPaid, '0') > 0 &&
     tenderTolerancePin.trim() !== '';
-  const canComplete = isFullyPaid || canSubmitWithTenderTolerance;
+  const canComplete = isFullyPaid || toleranceAccepted || canSubmitWithTenderTolerance;
 
   // Codex review B4 (2026-04-30) UI half: tapping an instrument-bearing
   // payment method tile (store_voucher / restaurant_voucher / gift_card per
@@ -406,6 +523,7 @@ export function AdvancedPaymentsModal({
     const line: PaymentLineItem = {
       id: crypto.randomUUID(),
       methodId: selectedMethod.id,
+      methodCode: selectedMethod.code,
       methodName: selectedMethod.name,
       // S4: store as a decimal string at currency scale — no parseFloat ingress.
       amount: bcformat(trimmedAmount, decimals),
@@ -438,7 +556,7 @@ export function AdvancedPaymentsModal({
   }, []);
 
   const handleComplete = useCallback(async () => {
-    if (!isFullyPaid && !canSubmitWithTenderTolerance) {
+    if (!isFullyPaid && !toleranceAccepted && !canSubmitWithTenderTolerance) {
       setValidationError(t('advancedPayments.insufficientPayment'));
       return;
     }
@@ -495,6 +613,7 @@ export function AdvancedPaymentsModal({
     );
   }, [
     isFullyPaid,
+    toleranceAccepted,
     canSubmitWithTenderTolerance,
     tenderTolerancePin,
     paymentLines,
@@ -723,6 +842,11 @@ export function AdvancedPaymentsModal({
         {accountChargeMode ? (
           <div className="flex flex-1 items-center justify-center bg-surface-sunken p-4">
             <AccountChargeConfirmation
+              /*
+               * The EXACT total, deliberately NOT `amountDue`. A charge to
+               * account collects no tender at all, so it is never cash-only
+               * and cash rounding cannot apply to it.
+               */
               total={bcformat(total, decimals)}
               currency={currency}
               cashierUserId={cashierUserId}
@@ -781,7 +905,9 @@ export function AdvancedPaymentsModal({
             <p className="text-xs font-medium uppercase tracking-wider opacity-80">
               {t('advancedPayments.totalDue')}
             </p>
-            <p className="mt-1 text-3xl font-bold">{format(total)}</p>
+            <p data-testid="advanced-total-due" className="mt-1 text-3xl font-bold">
+              {format(amountDue)}
+            </p>
           </div>
 
           {/* Payment lines — scrollable */}
@@ -894,7 +1020,7 @@ export function AdvancedPaymentsModal({
                 takes the decimal string verbatim — the sign is part of the
                 value, never re-derived here.
               */}
-              {roundingAdjustment != null && bccomp(roundingAdjustment, '0') !== 0 && (
+              {roundingAdjustment !== null && bccomp(roundingAdjustment, '0') !== 0 && (
                 <div className="flex justify-between text-ink-muted">
                   <span>{t('advancedPayments.rounding')}</span>
                   <span className="font-medium">{format(roundingAdjustment)}</span>
@@ -909,7 +1035,7 @@ export function AdvancedPaymentsModal({
               </div>
             )}
 
-            {bccomp(remaining, '0') > 0 && (
+            {needsTenderToleranceApproval && (
               <label className="mb-2 block text-sm">
                 <span className="mb-1 block font-medium text-ink-muted">
                   {t('advancedPayments.tenderTolerancePinLabel')}

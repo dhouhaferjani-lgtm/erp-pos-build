@@ -18,11 +18,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { usePaymentStore } from '@/stores/paymentStore';
+import {
+  usePaymentStore,
+  TenderToleranceApprovalRequiredError,
+} from '@/stores/paymentStore';
 import { usePaymentPolicyStore, type PaymentPolicy } from '@/stores/paymentPolicyStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, type Shift, type Terminal } from '@/stores/terminalStore';
+import type { Operator } from '@/stores/operatorStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 // ── Module-level mocks required by paymentStore ──────────────────────────────
@@ -151,30 +155,56 @@ function setTndAuthState(): void {
   });
 }
 
+/**
+ * Fully-typed fixtures — no `as never`. The cutover gate is keyed on
+ * `fiscal_schema_version`, so a rename or a type change there MUST break this
+ * file rather than leave it green against a stale shape.
+ */
+const TERMINAL: Terminal = {
+  id: 'term-1',
+  code: 'T001',
+  name: 'Caisse 1',
+  type: 'fixed',
+  is_active: true,
+  is_training_mode: false,
+  fiscal_schema_version: 3,
+  hardware_identifier: null,
+  location: {
+    id: 'loc1',
+    name: 'Principale',
+    code: 'MAIN',
+    tax_id: null,
+    vat_number: null,
+    legal_identifiers: null,
+  },
+};
+
+const SHIFT: Shift = {
+  id: SHIFT_ID,
+  terminal_id: 'term-1',
+  shift_number: 1,
+  status: 'OPEN',
+  opening_cash: '0.000',
+  opened_at: '2026-07-27T08:00:00Z',
+  user: { id: 'user-1', name: 'Test Cashier' },
+};
+
+const OPERATOR: Operator = {
+  id: 'op-1',
+  name: 'Cashier Slim',
+  email: 'slim@example.com',
+  roles: [],
+  permissions: [],
+  can_discount: false,
+  max_discount_percent: null,
+};
+
 function setTerminalState(): void {
   useTerminalStore.setState({
-    terminal: {
-      id: 'term-1',
-      code: 'T001',
-      name: 'Caisse 1',
-      type: 'fixed',
-      is_active: true,
-      is_training_mode: false,
-      fiscal_schema_version: 3,
-      hardware_identifier: null,
-      location: { id: 'loc1', name: 'Principale', code: 'MAIN' },
-    },
-    shift: {
-      id: SHIFT_ID,
-      terminal_id: 'term-1',
-      shift_number: 1,
-      status: 'OPEN',
-      opening_cash: '0.000',
-      opened_at: '2026-07-27T08:00:00Z',
-      user: { id: 'user-1', name: 'Test Cashier' },
-    },
+    terminal: TERMINAL,
+    shift: SHIFT,
     hashChainReady: true,
-  } as never);
+  });
 }
 
 async function lastPolicySnapshot() {
@@ -191,23 +221,26 @@ describe('processAdvancedCheckout — change eligibility, rounded due, tolerance
    * the store state, never on the log.
    */
   let errorSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   afterEach(() => {
     errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   beforeEach(async () => {
     vi.clearAllMocks();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // `logToleranceDecline` warns on every refusal — expected here, and not
+    // something any assertion in this file depends on.
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     persistedAccepts.clear();
     const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
     __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     usePaymentPolicyStore.getState().reset();
     setTndAuthState();
-    useOperatorStore.setState({
-      operator: { id: 'op-1', name: 'Cashier Slim', email: 'slim@example.com', roles: [] },
-    } as never);
+    useOperatorStore.setState({ operator: OPERATOR });
     setTerminalState();
     usePaymentStore.setState({
       paymentMethods: [
@@ -371,7 +404,7 @@ describe('processAdvancedCheckout — change eligibility, rounded due, tolerance
         [makeCartItem({ id: 'i1', line_total: '9.973' })],
         [{ payment_method_id: 'pm-cash', amount: '9.900', repository_id: 'repo-cash' }],
       ),
-    ).rejects.toThrow('Tender tolerance requires a manager PIN.');
+    ).rejects.toThrow(TenderToleranceApprovalRequiredError);
     expect(persistedAccepts.get(SHIFT_ID)).toBe(10);
   });
 
@@ -389,7 +422,7 @@ describe('processAdvancedCheckout — change eligibility, rounded due, tolerance
           { payment_method_id: 'pm-card', amount: '5.000', repository_id: 'repo-bank' },
         ],
       ),
-    ).rejects.toThrow('Tender tolerance requires a manager PIN.');
+    ).rejects.toThrow(TenderToleranceApprovalRequiredError);
     expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(0);
   });
 
@@ -402,7 +435,7 @@ describe('processAdvancedCheckout — change eligibility, rounded due, tolerance
         [makeCartItem({ id: 'i1', line_total: '9.973' })],
         [{ payment_method_id: 'pm-cash', amount: '9.000', repository_id: 'repo-cash' }],
       ),
-    ).rejects.toThrow('Tender tolerance requires a manager PIN.');
+    ).rejects.toThrow(TenderToleranceApprovalRequiredError);
     expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(0);
   });
 

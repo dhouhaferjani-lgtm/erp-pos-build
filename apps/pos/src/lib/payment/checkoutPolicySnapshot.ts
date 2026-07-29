@@ -35,8 +35,12 @@ export const ROUNDABLE_INVOICE_TYPES: readonly CheckoutInvoiceType[] = ['SALE', 
  * auto-accept, but they are different incidents: `disabled` is an operator
  * turning the switch off, `not_cutover` is a terminal still on fiscal schema
  * v2. Collapsing them made a field report of "tolerance stopped working after
- * the update" indistinguishable from a config change — the reason string is
- * the only thing that tells support which one happened.
+ * the update" indistinguishable from a config change.
+ *
+ * Consumed by `paymentStore.logToleranceDecline`, which emits the reason on
+ * every refusal — that log is what makes the distinction observable in the
+ * field today. Task 9 additionally persists the whole decision onto the
+ * receipt.
  */
 export type ToleranceReason =
   | 'not_applicable'
