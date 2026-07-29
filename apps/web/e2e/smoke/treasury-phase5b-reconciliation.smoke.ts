@@ -138,6 +138,37 @@ async function expectStatus(response: APIResponse, expected: number, label: stri
   }
 }
 
+/**
+ * Fetch every bank statement for a repository across ALL pages. The
+ * `/bank-statements` index paginates (per_page capped at 100) and returns
+ * `{ data, meta: { current_page, last_page, ... } }`; a single-page read would
+ * silently miss statements past the cap, so both the setup leftover-skip and the
+ * teardown "zero active non-terminal statements" proof must walk the pagination.
+ */
+async function fetchAllStatements(
+  request: APIRequestContext,
+  repositoryId: string,
+  label: string,
+): Promise<Array<{ status: string }>> {
+  const collected: Array<{ status: string }> = []
+  let page = 1
+  let lastPage = 1
+  do {
+    const response = await request.get(
+      `${API_BASE}/bank-statements?payment_repository_id=${repositoryId}&per_page=100&page=${page}`,
+      { headers: authHeaders() },
+    )
+    await expectStatus(response, 200, `${label} (page ${page})`)
+    const body = await json(response)
+    collected.push(...((body.data ?? []) as Array<{ status: string }>))
+    const meta = (body.meta ?? {}) as { current_page?: number; last_page?: number }
+    lastPage = typeof meta.last_page === 'number' ? meta.last_page : page
+    page += 1
+  } while (page <= lastPage)
+
+  return collected
+}
+
 function toMillimes(value: string): bigint {
   const [whole = '0', fraction = ''] = value.split('.')
   const negative = whole.startsWith('-')
@@ -380,12 +411,11 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       // Reconciling forever (cannot void with allocations), and
       // assertNoEarlierOpenStatement 422s completion for every later period.
       // Skip repositories that still carry an active non-terminal statement.
-      const statementsResponse = await request.get(
-        `${API_BASE}/bank-statements?payment_repository_id=${candidate.id}&per_page=100`,
-        { headers: authHeaders() },
+      const priorStatements = await fetchAllStatements(
+        request,
+        candidate.id,
+        `statement leftover discovery (${candidate.code})`,
       )
-      await expectStatus(statementsResponse, 200, `statement leftover discovery (${candidate.code})`)
-      const priorStatements = ((await json(statementsResponse)).data ?? []) as Array<{ status: string }>
       const hasOpenStatement = priorStatements.some(
         (statement) => statement.status !== 'reconciled' && statement.status !== 'voided',
       )
@@ -709,7 +739,10 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
 
     const primerCsv = [
       'Date,Amount,Reference,Transaction ID,Label',
-      `${DISPLAY_DATE},-1.250,DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
+      // Amount is IGNORED_AMOUNT so this primer line's fingerprint (date + amount
+      // + reference) matches the main-CSV DUP row and the primer's closing-balance
+      // delta (-IGNORED_AMOUNT) below — all three flow from the one constant.
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
       '',
     ].join('\n')
     const primer = await uploadPreview(request, primerCsv, `phase5b-primer-${RUN_ID}.csv`)
@@ -734,14 +767,21 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     await page.getByLabel('Bank account', { exact: true }).selectOption(repository!.id)
     await page.getByRole('button', { name: 'Continue' }).click()
 
+    // Amounts flow from the shared row constants (the same ones STATEMENT_DELTA
+    // is derived from) under the profile's signed_amount convention: +in for the
+    // adjustment and card net, −out for the cheque, agio, informational, and
+    // duplicate debits. The ZERO (structural zero-row drop) and BAD (unparseable
+    // date) rows keep literal amounts — they are format-exception fixtures, not
+    // money lines. Editing a constant therefore updates both the fixture and the
+    // derived delta in lockstep.
     const mainCsv = [
       'Date,Amount,Reference,Transaction ID,Label',
-      `${DISPLAY_DATE},15.000,ADJ-${RUN_ID},ADJ-TX-${RUN_ID},${adjustmentLabel}`,
-      `${DISPLAY_DATE},-37.125,${chequeLabel.split(' ').at(-1)},CHEQUE-TX-${RUN_ID},${chequeLabel}`,
-      `${DISPLAY_DATE},98.500,CARD-${RUN_ID},CARD-TX-${RUN_ID},${cardLabel}`,
-      `${DISPLAY_DATE},-2.500,AGIO-${RUN_ID},AGIO-TX-${RUN_ID},${agioLabel}`,
-      `${DISPLAY_DATE},-1.250,INFO-${RUN_ID},INFO-TX-${RUN_ID},${ignoredLabel}`,
-      `${DISPLAY_DATE},-1.250,DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
+      `${DISPLAY_DATE},${ADJUSTMENT_AMOUNT},ADJ-${RUN_ID},ADJ-TX-${RUN_ID},${adjustmentLabel}`,
+      `${DISPLAY_DATE},-${CHEQUE_AMOUNT},${chequeLabel.split(' ').at(-1)},CHEQUE-TX-${RUN_ID},${chequeLabel}`,
+      `${DISPLAY_DATE},${CARD_NET},CARD-${RUN_ID},CARD-TX-${RUN_ID},${cardLabel}`,
+      `${DISPLAY_DATE},-${AGIO_AMOUNT},AGIO-${RUN_ID},AGIO-TX-${RUN_ID},${agioLabel}`,
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},INFO-${RUN_ID},INFO-TX-${RUN_ID},${ignoredLabel}`,
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
       `${DISPLAY_DATE},0.000,ZERO-${RUN_ID},ZERO-TX-${RUN_ID},P5B zero row ${RUN_ID}`,
       `not-a-date,9.999,BAD-${RUN_ID},BAD-TX-${RUN_ID},P5B unparseable row ${RUN_ID}`,
       '',
@@ -988,12 +1028,12 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
 
     // Confirm the repository carries zero active non-terminal statements, so the
     // setup's leftover-skip treats it as clean (terminal-only) on the next run.
-    const statementsResponse = await request.get(
-      `${API_BASE}/bank-statements?payment_repository_id=${repository!.id}&per_page=100`,
-      { headers: authHeaders() },
+    // Walk all pages so a repository with many prior statements is fully proven.
+    const statements = await fetchAllStatements(
+      request,
+      repository!.id,
+      'repository statements after teardown',
     )
-    await expectStatus(statementsResponse, 200, 'repository statements after teardown')
-    const statements = ((await json(statementsResponse)).data ?? []) as Array<{ status: string }>
     expect(
       statements.some((statement) => statement.status !== 'reconciled' && statement.status !== 'voided'),
       'no active non-terminal statement remains on the repository',
