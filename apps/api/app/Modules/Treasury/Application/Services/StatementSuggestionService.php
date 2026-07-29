@@ -32,13 +32,13 @@ final readonly class StatementSuggestionService
      * Belt-and-suspenders ceiling on movement rows hydrated for a single
      * suggestion pass.
      *
-     * Correctness never depends on this cap: Tier-1 candidates are bounded in
-     * SQL by a reference predicate (a reference is a near-unique token, so the
-     * set is naturally tiny), and Tier-2 uniqueness is resolved with exact SQL
-     * predicates rather than by scanning a truncated hydration. The cap only
-     * guards against a pathological reference collision or an implausibly large
-     * partially-allocated in-window slice; if it is ever reached the service
-     * degrades to NO suggestion (never a wrong one).
+     * Correctness never depends on this cap: Tier-2 uniqueness is resolved with
+     * exact SQL predicates rather than by scanning a truncated hydration, and the
+     * Tier-1 movement load (whose matched sources can legitimately fan out to
+     * many movements, since (source_type, source_id) is indexed but not unique)
+     * fetches one past the cap and SKIPS Tier-1 on overflow. Every path that
+     * reaches this cap degrades to NO suggestion — never a wrong or
+     * silently-truncated one.
      */
     public const MAX_CANDIDATE_MOVEMENTS = 500;
 
@@ -328,7 +328,10 @@ final readonly class StatementSuggestionService
             return [];
         }
 
-        // 3 — load the (small) set of movements for the matched sources.
+        // 3 — load the movements for the matched sources. (source_type, source_id)
+        // is indexed but NOT unique, so a single matched source can fan out to
+        // many movements; fetch one past the cap and, on overflow, SKIP Tier-1
+        // (degrade to no suggestion — never a silently-truncated set).
         $movements = $this->candidateBaseQuery($statement, $direction, $remainingLine)
             ->where(function (Builder $query) use ($paymentIds, $fiscalEventIds, $instrumentIds, $notesMatchedIds): void {
                 if ($notesMatchedIds !== []) {
@@ -357,8 +360,11 @@ final readonly class StatementSuggestionService
             })
             ->orderBy('occurred_at')
             ->orderBy('id')
-            ->limit(self::MAX_CANDIDATE_MOVEMENTS)
+            ->limit(self::MAX_CANDIDATE_MOVEMENTS + 1)
             ->get();
+        if ($movements->count() > self::MAX_CANDIDATE_MOVEMENTS) {
+            return [];
+        }
 
         return $this->withRemaining($movements, $scale);
     }

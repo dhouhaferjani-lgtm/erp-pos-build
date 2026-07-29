@@ -217,6 +217,41 @@ final class StatementSuggestionServiceTest extends TestCase
         self::assertSame('reference_amount_match', $reference->reasonCode);
     }
 
+    public function test_tier_one_is_skipped_when_a_matched_source_fans_out_beyond_the_cap(): void
+    {
+        // One matched payment reference, but it fans out to > cap movements
+        // (source index is not unique). The movement load must degrade to NO
+        // Tier-1 rather than return a silently-truncated set of suggestions.
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $payment = Payment::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $this->repository->id,
+            'currency' => 'TND',
+            'amount' => '55.000',
+            'reference' => 'FANOUT-REF-4242',
+        ]);
+        $this->bulkNoiseMovements(
+            StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS + 1,
+            '55.000',
+            '2026-07-18',
+            MovementSourceType::Payment,
+            $payment->id,
+        );
+        $line = $this->line('55.000', MovementDirection::In, 'Batch FANOUT-REF-4242 settled');
+
+        $tierOne = collect(app(StatementSuggestionService::class)->suggest($line->id))
+            ->filter(static fn ($suggestion): bool => $suggestion->tier === 1)
+            ->all();
+
+        self::assertSame([], $tierOne, 'Tier-1 must be skipped (not truncated) when matched movements exceed the cap.');
+    }
+
     public function test_unique_amount_date_respects_profile_window_and_remaining_capacity(): void
     {
         $line = $this->line('50.000', MovementDirection::In, 'No reference');
@@ -366,8 +401,13 @@ final class StatementSuggestionServiceTest extends TestCase
         return $id;
     }
 
-    private function bulkNoiseMovements(int $count, string $amount, string $occurredAt): void
-    {
+    private function bulkNoiseMovements(
+        int $count,
+        string $amount,
+        string $occurredAt,
+        MovementSourceType $sourceType = MovementSourceType::Adjustment,
+        ?string $sourceId = null,
+    ): void {
         $rows = [];
         for ($i = 0; $i < $count; $i++) {
             $rows[] = [
@@ -380,8 +420,10 @@ final class StatementSuggestionServiceTest extends TestCase
                 'currency' => 'TND',
                 'balance_after' => $amount,
                 'ordinal' => random_int(1, 1000000000),
-                'source_type' => MovementSourceType::Adjustment->value,
-                'source_id' => Str::uuid()->toString(),
+                'source_type' => $sourceType->value,
+                // A fixed $sourceId models a legitimate multi-movement fan-out
+                // from ONE source ((source_type, source_id) is indexed, not unique).
+                'source_id' => $sourceId ?? Str::uuid()->toString(),
                 'idempotency_key' => 'statement-suggestion-noise:'.Str::uuid()->toString(),
                 'occurred_at' => $occurredAt,
                 'created_by' => $this->user->id,
