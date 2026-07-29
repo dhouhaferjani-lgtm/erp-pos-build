@@ -39,6 +39,8 @@ class InventoryCountingController extends Controller
 
     private const BATCH_ERROR_PRODUCT_NOT_FOUND = 'PRODUCT_NOT_FOUND';
 
+    private const BATCH_ERROR_INVALID_BARCODE = 'INVALID_BARCODE';
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
@@ -1192,7 +1194,7 @@ class InventoryCountingController extends Controller
                 if (! $productId && ! is_string($barcode)) {
                     $errors[] = [
                         'data' => $productData,
-                        'code' => 'invalid_barcode',
+                        'code' => self::BATCH_ERROR_INVALID_BARCODE,
                         'error' => 'Invalid barcode; expected a string',
                     ];
 
