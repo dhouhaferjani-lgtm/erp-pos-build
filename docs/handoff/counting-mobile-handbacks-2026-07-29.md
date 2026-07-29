@@ -65,23 +65,27 @@ the typed error codes (`980f19b9e`), both now merged to local `dev`:
 
 - `InventoryCountingController.php:1163-1186` — rejects non-UUID IDs per item and IDs not
   resolving to a company product, keeping valid siblings in the same batch. Both branches
-  emit `PRODUCT_NOT_FOUND` (`:1167`, `:1179`).
+  emit `PRODUCT_NOT_FOUND` (`:1169`, `:1181`).
 - `InventoryCountingController.php:1189-1217` — barcode fallback preserved; unknown barcode
-  returns `PRODUCT_NOT_FOUND` (`:1210`) rather than silent success.
+  returns `PRODUCT_NOT_FOUND` (`:1212`) rather than silent success.
 
-**Minor inconsistency found while verifying (not fixed here).** The typed-code work
+**Minor inconsistency found while verifying — CLOSED by `cdc7d170d`.** The typed-code work
 (`980f19b9e`) standardized on UPPERCASE constants —
 `BATCH_ERROR_PRODUCT_ALREADY_IN_COUNT = 'PRODUCT_ALREADY_IN_COUNT'` and
 `BATCH_ERROR_PRODUCT_NOT_FOUND = 'PRODUCT_NOT_FOUND'` (`:38`, `:40`) — but the A6
-malformed-barcode branch at `:1195` still emits a bare lowercase literal `'invalid_barcode'`,
-not a constant, in the same `data.errors[].code` field. `BatchAddProductsValidationTest.php`
-asserts the two uppercase codes but has no case for `invalid_barcode`, which matches the
-A1–A6 report's own note that this branch is statically reviewed and untested.
+malformed-barcode branch emitted a bare lowercase literal `'invalid_barcode'`, not a
+constant, in the same `data.errors[].code` field, leaving a client switching on `code`
+looking at mixed casing on one field.
 
-A client switching on `code` therefore sees mixed casing on one field. Mobile is unaffected
-today: it only ever sends a string `barcode`, so it cannot reach this branch, and its
-duplicate detection keys on `PRODUCT_ALREADY_IN_COUNT`. Low severity, but it is a
-one-line constant plus one test in a lane that just shipped typed codes.
+Fixed 2026-07-29: `BATCH_ERROR_INVALID_BARCODE = 'INVALID_BARCODE'`
+(`InventoryCountingController.php:42`) is now used at `:1197`; the human-readable `error`
+message is byte-unchanged. Kept deliberately DISTINCT from `PRODUCT_NOT_FOUND` — this branch
+is malformed input (barcode is not a string), `:1212` is a valid barcode that missed lookup.
+The branch is now covered by
+`BatchAddProductsValidationTest::test_non_string_barcode_returns_typed_code_and_unchanged_message`,
+which was confirmed red against the lowercase literal first. Mobile was unaffected either
+way: it only ever sends a string `barcode`, so it cannot reach this branch, and its
+duplicate detection keys on `PRODUCT_ALREADY_IN_COUNT`.
 
 Mobile independently fixed its half (sends `{ barcode }` for scanned values, `{ productId }`
 only for UUID-shaped legacy drafts) and switched duplicate detection to the typed

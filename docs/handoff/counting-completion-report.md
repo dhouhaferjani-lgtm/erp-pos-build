@@ -78,7 +78,7 @@ No migration was added. There is therefore no migration ordering or self-guardin
 - A3 is detection and attribution only. Operators must decide how to correct an identified late-sync double reduction; automatic reversal remains intentionally out of scope.
 - A1 row-lock contention is not exercised by the SQLite test database. PostgreSQL lock placement was reviewed, but real concurrent finalization remains an integration risk.
 - Draft counts already poisoned before A6 with barcode strings or foreign IDs in `scope_filters.product_ids` are not repaired by this prevention change. Check or recreate suspicious staging drafts before testing.
-- The new A6 `invalid_barcode` error branch is statically reviewed but does not have a dedicated test; the required valid barcode path is covered.
+- ~~The new A6 `invalid_barcode` error branch is statically reviewed but does not have a dedicated test; the required valid barcode path is covered.~~ **Closed by `cdc7d170d` (2026-07-29):** the branch now emits the typed constant `INVALID_BARCODE` and has a dedicated test (`BatchAddProductsValidationTest::test_non_string_barcode_returns_typed_code_and_unchanged_message`).
 - Release sequencing matters: an old mobile build still sending a barcode in `productId` will receive a per-item `invalid_product_id` error after A6 instead of false success. That is the correct server behavior. Deploy the mobile B1 fix before or with this lane when possible, while accepting that already-installed old builds will surface explicit scan errors until updated.
 - Existing POS lint warnings remain outside this lane; this work introduced no lint errors.
 
