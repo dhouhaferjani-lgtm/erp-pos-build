@@ -15,6 +15,6 @@ describe('treasury bank reconciliation permission alignment', () => {
   })
 
   it('gates statement navigation with the server-authoritative view permission', () => {
-    expect(MODULE_PERMISSIONS['bank-statements.view']).toEqual(['bank-statements.view'])
+    expect(MODULE_PERMISSIONS['bank-statements']).toEqual(['bank-statements.view'])
   })
 })

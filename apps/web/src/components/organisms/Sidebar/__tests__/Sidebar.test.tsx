@@ -315,10 +315,10 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       const allowed = renderSidebar(mechanicFullConfig)
       expect(await screen.findByRole('link', { name: /navigation\.bankReconciliation/i }))
         .toHaveAttribute('href', '/treasury/statements')
-      expect(mockCanAccessModule).toHaveBeenCalledWith('bank-statements.view')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('bank-statements')
 
       allowed.unmount()
-      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'bank-statements.view')
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'bank-statements')
       renderSidebar(mechanicFullConfig)
 
       expect(screen.queryByRole('link', { name: /navigation\.bankReconciliation/i }))
