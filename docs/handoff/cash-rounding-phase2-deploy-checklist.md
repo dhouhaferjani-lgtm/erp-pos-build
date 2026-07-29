@@ -86,9 +86,83 @@ token is `CASH-ROUNDING VERIFY FAILURES: <n>`.
 - [ ] Run the backfill dry-run, gate on the token pair above (with the `TENANT_COUNT` check), review the diff, then re-run without `--option='dry-run=1'` and gate again.
 - [ ] Run `pos:configure-cash-rounding --option='verify=1'`, gate on `CASH-ROUNDING VERIFY FAILURES:` as above — but see the precondition bullet below for what the token does and does NOT cover.
 
+## What changes WHEN — the BINARY vs the POLICY
+
+Read this before scheduling either the build or the Enable step. They move
+different things, and only one of them is gated by anything you configure.
+
+> **Ledger semantics change with the BINARY. Rounding changes with the POLICY.**
+
+The device authors `SALE_RECEIPT event_version = 3` **unconditionally**:
+`FiscalEventPayloadRegistry.eventVersionFor('SALE_RECEIPT')` returns `3` with no
+policy, terminal or `fiscal_schema_version` check
+(`apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts:171-173`), and
+`receiptService` calls the v3 builder on every sale
+(`apps/pos/src/lib/offline/receiptService.ts:357`). Server-side the ONLY
+discriminator for the new semantics is the event's own version —
+`CashRoundingCutover::applies($event->event_version)`, i.e. `>= 3`
+(`apps/api/app/Shared/Domain/CashRoundingCutover.php:43`) — **not**
+`pos_terminals.fiscal_schema_version`, and not any `country_payment_settings`
+column.
+
+So from the first synced sale of the new build, on every terminal carrying it,
+**regardless of policy and regardless of cutover**:
+
+- **Treasury `payments.amount` changes meaning on over-tendered cash sales:
+  TENDERED → RETAINED.** `TreasuryReceiptBridge::computeNettedAmounts()` nets
+  change off the cash legs above the cutover and hands back the payload amounts
+  untouched below it
+  (`apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php:874-880`);
+  a leg netted fully to zero is then SUPPRESSED — no Treasury payment row is
+  written for it at all (`:1142-1145`). A 20.000 note against a 19.500 basket
+  used to post 20.000; it now posts 19.500.
+- **`pos_receipts` starts carrying `change_due` and `tolerance_writeoff`** (plus
+  the two `cash_rounding_*` columns) — `PosCoreReceiptProjection.php:373-378`,
+  written only under `$isV3`.
+- **Expected-cash and shift-variance figures step down** by the change given
+  back, because change stops being counted as cash in the drawer.
+
+This is the intended fix for a pre-existing over-tender GL defect — Treasury was
+booking money that went straight back out of the drawer — so the new figures are
+the correct ones. Two things it is **not**:
+
+- It is **not** a receipt-level drawer/variance change.
+  `pos_receipt_payments.amount` deliberately stays TENDERED
+  (`PosCoreReceiptProjection.php:827-834`, the "two-semantics rule"). Treasury's
+  `payments.amount` and `pos_receipt_payments.amount` are DIFFERENT numbers by
+  design; never reconcile the two columns directly.
+- It is **not** rounding. No total moves until the policy is enabled — the
+  device gate additionally requires `cash_rounding_enabled`, a usable
+  denomination, a cash-only tender and `fiscal_schema_version === 3`
+  (`apps/pos/src/lib/payment/checkoutPolicySnapshot.ts:163-169`).
+
+**Operational consequence:** whoever reads Treasury cash figures sees a step
+change on the day the **build** ships, not the day rounding is enabled. If you
+stage the rollout those are two different dates, possibly weeks apart — brief on
+the first, and do not let the second get blamed for the first.
+
 ## Terminal cutover verification (BEFORE enabling)
 
-There is no packaged **CLI/artisan** command for this — `FiscalSchemaCutoverService`
+`pos_terminals.fiscal_schema_version >= 3` is a **pre-existing** cutover (the
+device-authoritative shift / Z model), not a new rounding flag — but the device's
+rounding gate reuses it, so it is a real gate on this rollout too:
+`buildCheckoutPolicySnapshot` requires `fiscalSchemaVersion === 3` for BOTH
+rounding and tender-tolerance auto-accept
+(`apps/pos/src/lib/payment/checkoutPolicySnapshot.ts:168` and `:215`).
+
+**A terminal still at v2 is a reachable, supported state on this build — do not
+assume the fleet is already at 3.** The POS keeps its full legacy path:
+`openShift` branches on `fiscal_schema_version === 3` and otherwise falls back to
+the server-authoritative `POST /pos/shifts/open`
+(`apps/pos/src/stores/terminalStore.ts:882` vs `:911-921`). The server's 409s run
+the OTHER way round — `ShiftController.php:60` and `SyncController.php:53` reject
+the REST shift paths for terminals `>= 3` (`SHIFT_DEVICE_AUTHORITY_REQUIRED`),
+because those terminals author locally; nothing rejects a v2 terminal. So a v2
+terminal can take the new build, author v3 receipts (with every consequence in
+the section above) and never round a single total.
+
+That is exactly what this section is here to catch. There is no packaged
+**CLI/artisan** command for it — `FiscalSchemaCutoverService`
 exposes only a per-terminal cutover (`POST /api/v1/pos/terminals/{terminal}/fiscal-schema-cutover`),
 gated on no open shift, no un-Z-reported fiscalized receipts, and an empty
 offline-sync queue for that terminal. There is a **read** path:
@@ -108,6 +182,54 @@ direct query against the tenant DB is faster:
 
 ## Enable
 
+### 🔴 Hard precondition — refunds of rounded receipts
+
+**Enabling rounding makes every refund of a rounded receipt wrong by exactly the
+rounding adjustment.** Nothing on this branch fixes it and no code path stops
+it, so this is a decision, not a bug report. Take the decision before the Enable
+step, not after the first refund.
+
+The mechanism, end to end:
+
+- The device rebuilds the refund cart from the original receipt's stored `lines`
+  JSON and never reads the receipt's `total`
+  (`apps/pos/src/lib/refundFlow/hydrateFromReceipt.ts:53`). Line amounts are
+  pre-rounding — the adjustment lives on the RECEIPT, not on any line — so the
+  refund is denominated in the EXACT total while the sale settled at the ROUNDED
+  one.
+- The server caps a return by **quantity, not by amount**:
+  `validateReturnQuantities()` compares the requested quantity against
+  `original quantity − already returned`
+  (`apps/api/app/Modules/POS/Application/Services/ReceiptReturnService.php:1060-1082`).
+  Nothing anywhere compares the money refunded against the money collected.
+- The printed avoir carries no rounding line to explain the gap:
+  `buildEscPosRefundReceiptData` hardcodes `cash_rounding_adjustment: null` and
+  `has_cash_rounding: false` (`apps/pos/src/lib/buildReceiptData.ts:712-713`).
+
+Concretely, TND at `D = 0.050`. It cuts **both ways** — the direction follows how
+that receipt rounded:
+
+| | round DOWN | round UP |
+|---|---|---|
+| Exact basket | 9.973 | 9.977 |
+| Collected in cash (rounded) | **9.950** (adj −0.023) | **10.000** (adj +0.023) |
+| Full refund paid out (sum of lines) | **9.973** | **9.977** |
+| Net effect | customer is **up 0.023**; the refund exceeds the sale it reverses | customer is **down 0.023**; the customer is short-changed on their own return |
+
+Per-refund exposure is bounded by `D/2` (0.025 at `D = 0.050`; 0.02 at EUR
+`D = 0.05`) and applies to partial refunds of a rounded receipt too. The
+round-UP row is the one that generates complaints at the counter, and the
+cashier has nothing on the avoir to point at.
+
+Do **not** run the Enable step until ONE of these is true:
+
+- [ ] The refund-payout rounding track has landed and its own verification is
+      green — `docs/superpowers/specs/2026-07-27-refund-rounding-research.md`
+      (approved, NOT implemented as of this branch); **or**
+- [ ] The owner has explicitly accepted a per-refund discrepancy of up to `D/2`
+      in either direction on refunds of rounded receipts, with no ticket line
+      explaining it. Record it — who accepted, when: ________________
+
 - [ ] `php artisan tenants:run pos:configure-cash-rounding --tenants='<tenant-uuid>' --option='country=TN' --option='denomination=0.0500' --option='enable-rounding=1' --option='dry-run=1'` — review the diff (`[DRY-RUN] Country TN: would UPDATE/INSERT {...}`). **`--tenants='<tenant-uuid>'` is not optional** — omitting it runs the mutation against every tenant in the environment (`tenants:run`'s own default), not just the one being onboarded.
 - [ ] Re-run the same command (same `--tenants=`) without `--option='dry-run=1'`.
 - [ ] If POS tender tolerance is also going live for this tenant, repeat with `--option='enable-tolerance=1'` in a **separate** invocation (same `--tenants=`) — `--enable-rounding` and `--enable-tolerance` are independent switches on independent columns (`cash_rounding_enabled` and `pos_tolerance_enabled` on `country_payment_settings`), and neither one touches the B2B `payment_tolerance_enabled` column used by invoice write-offs.
@@ -115,7 +237,7 @@ direct query against the tenant DB is faster:
 
 ## Device rollout
 
-- [ ] **Brief the store manager BEFORE the build ships — this step is not optional and does not wait for the cutover call.** The device authors `SALE_RECEIPT event_version = 3` **unconditionally on the new build** (`FiscalEventPayloadRegistry.eventVersionFor('SALE_RECEIPT')` returns `3` with no policy or `fiscal_schema_version` check — `apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts:171-173`). Server-side, `PosCoreReceiptProjection` only writes `pos_receipts.change_due` for `event_version >= 3` events. So the moment a terminal is on this build — **cut over or not, rounding enabled or not** — its expected-cash and shift-variance figures move (change given back stops being counted as cash in the drawer; this is the correct direction, but it is a visible step change). Brief the manager per terminal as its build ships, not per tenant as rounding is enabled — otherwise the first post-rollout EOD reads as an unexplained regression.
+- [ ] **Brief the store manager BEFORE the build ships — this step is not optional and does not wait for the cutover call.** Read "What changes WHEN — the BINARY vs the POLICY" above and brief its contents: the moment a terminal is on this build — **cut over or not, rounding enabled or not** — its expected-cash and shift-variance figures move, and Treasury's `payments.amount` changes from tendered to retained on over-tendered cash sales. Brief per terminal as its build ships, not per tenant as rounding is enabled — otherwise the first post-rollout EOD reads as an unexplained regression.
 - [ ] Ship the POS build carrying SQLite schema **v64** and v3 authoring. (v63 adds the `payment_policy_cache` table, the three `offline_receipts` cash-rounding/tolerance columns, and `payment_methods.is_cash_tender`; v64 adds the durable per-shift `tolerance_auto_accepts(shift_id PK, accept_count, updated_at)` auto-accept budget — both are required, v64 is the final migration this track ships.)
 
 The three queries below all run against the device's per-company SQLite file, `izipos-<companyId>.db` (`apps/pos/src/lib/db.ts:12`) — it runs in WAL mode, so a copy taken for inspection must also grab the `-wal` and `-shm` sidecar files next to it or the copy may be missing recently-committed rows.
@@ -148,6 +270,13 @@ The three queries below all run against the device's per-company SQLite file, `i
 ## Rollback
 
 - [ ] **Device build only:** roll the POS build back to the previous version (pre-v64/v3): the device returns to v2 authoring immediately. The v63/v64 SQLite additions (`payment_policy_cache`, the three `offline_receipts` columns, `payment_methods.is_cash_tender`, `tolerance_auto_accepts`) are all additive and nullable/defaulted, so no data migration or teardown is needed on the DEVICE, and every v3 receipt already synced stays valid and verifiable forever.
+- [ ] **🔴 A build rollback is NOT a clean revert of the ledger — it opens a MIXED WINDOW in Treasury.** The netting described in "What changes WHEN" is keyed on the EVENT's version, not on the build running now (`CashRoundingCutover::applies($event->event_version)`), and an already-signed v3 receipt keeps its version forever. After a rollback the same Treasury ledger therefore holds both:
+  - **v3 receipts** (taken before the rollback — plus any still sitting in a device's offline queue when it happened) whose cash legs are **netted**: `payments.amount` = retained, with fully-netted legs absent from the table entirely; and
+  - **v2 receipts** (taken after) whose cash legs are **tendered**: `payments.amount` includes change that went straight back out of the drawer.
+
+  Nothing on the Treasury row says which it is — join back to `fiscal_events.event_version` on the source event to tell them apart, and treat any cash-in-Treasury total spanning the rollback moment as internally inconsistent until you have. Rolling FORWARD again does not repair the v2 rows: they are correct v2 rows, and re-netting them would be wrong.
+
+  **Prefer the policy kill switch (above) to a build rollback.** `disable-rounding` / `disable-tolerance` stop rounding and auto-accept without changing which event version the device authors, so Treasury semantics stay uniform across the incident. Roll the build back only for a defect in the build itself.
 - [ ] **🔴 Server-side migration rollback is a ONE-WAY DOOR the instant any tenant has taken a rounded sale — which is exactly the state this document's own Enable step puts a tenant into.** Do **NOT** run `php artisan migrate:rollback` (or the tenant equivalent) against `2026_07_28_100200_add_cash_rounding_to_pos_receipts.php` as a reflex incident response. Its `down()` re-adds the legacy `NOT VALID` totals identity and then **DROPS `pos_receipts.cash_rounding_adjustment`, destroying the values** (confirmed at `apps/api/database/migrations/tenant/2026_07_28_100200_add_cash_rounding_to_pos_receipts.php:243-275`). A rounded receipt is left as bare `total 9.950 / subtotal 9.973` residue satisfying neither identity, and fiscal immutability (`prevent_receipt_modification`) forbids deleting it to clean up. Re-applying `up()` afterwards succeeds but leaves `pos_receipts_totals` permanently `NOT VALID` for the historical rows. **Read Phase-1 §0.2 (`docs/handoff/cash-rounding-phase1-deploy-checklist.md`) in full before touching this migration on a tenant that is past the Enable step.** If it has already been rolled back: recovery is manual — backfill `pos_receipts.cash_rounding_adjustment` from each affected receipt's `canonical_bytes`, then run `ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals;`.
 - [ ] **Open question — not proven either way.** Whether v3 fiscal events already queued on a device at the moment of a device-build rollback (i.e. authored under the new build, not yet synced) push cleanly against the server once that device is back on a v2 build was not verified as part of this task. Do not assume it is safe; treat any device rolled back with a non-empty offline-sync queue as needing a case-by-case check before it resumes syncing.
 
@@ -173,7 +302,8 @@ cd apps/pos && pnpm vitest run \
   src/lib/offline/__tests__/zReportService.cashRounding.test.ts \
   src/lib/offline/__tests__/voucherCheckout.integration.test.ts \
   src/lib/offline/__tests__/idempotencyRetry.integration.test.ts \
-  src/components/pos/EndOfDayPreviewModal.test.tsx
+  src/components/pos/EndOfDayPreviewModal.test.tsx \
+  src/components/organisms/AdvancedPaymentsModal/__tests__/AdvancedPaymentsModal.test.tsx
 ```
 
 The last two additions beyond the original device-track list matter for
@@ -189,13 +319,18 @@ whatever separately pins the hash algorithm itself.
 `src/components/pos/EndOfDayPreviewModal.test.tsx` is the Task 10 fix-round
 modal suite — it is what actually pins the two new EOD rows (auto-accept
 budget, net cash rounding) described above.
+`src/components/organisms/AdvancedPaymentsModal/__tests__/AdvancedPaymentsModal.test.tsx`
+pins the split-tender screen against the store's gate in both directions, AND
+(final-review Finding 3) that the amount PREFILLED into the numpad is a tender
+the cashier can physically hand over — a rounded due on a cash tender, the exact
+total on a card/voucher one.
 
 Note: `src/__tests__/integration/offlineFirstFlow.test.ts` mocks
 `@/lib/fiscal/instance` and therefore does NOT exercise the real fiscal
 engine — it is not a substitute for the two integration suites above and is
 intentionally excluded from this list.
 
-**Result at HEAD (`a22c00e21`):** 17 files, 220 tests, all passed.
+**Result at HEAD (final fix wave, 2026-07-29):** 18 files, 284 tests, all passed.
 
 ### Known pre-existing failures (NOT regressions from this track)
 

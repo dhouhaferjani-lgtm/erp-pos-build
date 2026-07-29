@@ -18,7 +18,10 @@ import { useCurrency } from '@/lib/currency';
 import { bcformat, bcadd, bcsub, bccomp, bcsum } from '@/lib/decimal';
 import { makeIsCashMethodCode } from '@/lib/payment/cashMethods';
 import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
-import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutInvoiceType,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import { usePaymentPolicyStore } from '@/stores/paymentPolicyStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { NumPad } from '@/components/molecules/NumPad';
@@ -349,16 +352,30 @@ export function AdvancedPaymentsModal({
     [paymentLines, voucherTenders, storeVoucherMethod],
   );
 
-  const displaySnapshot = useMemo(
-    () => buildCheckoutPolicySnapshot({
+  /**
+   * Cash-ness resolver, hoisted so the display snapshot and the prefill probe
+   * below cannot answer "is this cash?" from two different tables.
+   */
+  const isCashMethodCode = useMemo(
+    () => makeIsCashMethodCode(paymentMethods),
+    [paymentMethods],
+  );
+
+  /**
+   * Everything the snapshot builder needs EXCEPT the legs and the tendered
+   * amount — the two inputs that differ between the gate's view (the legs that
+   * exist) and the prefill probe's view (the legs that would exist).
+   */
+  const snapshotInputs = useMemo(
+    () => ({
       exactTotal: total,
       currency,
-      legs: tenderLegs,
-      tenderedAmount: tenderedSoFar,
-      isCashMethodCode: makeIsCashMethodCode(paymentMethods),
+      isCashMethodCode,
       policy: paymentPolicy,
       fiscalSchemaVersion: terminal?.fiscal_schema_version ?? null,
-      invoiceType: terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+      invoiceType: (terminal?.is_training_mode === true
+        ? 'TRAINING'
+        : 'SALE') as CheckoutInvoiceType,
       // The in-memory MIRROR, which is all a display surface can read
       // synchronously. The store re-reads the authoritative SQLite budget at
       // confirm time, so the worst case here is offering a floor the gate then
@@ -371,15 +388,22 @@ export function AdvancedPaymentsModal({
     [
       total,
       currency,
-      tenderLegs,
-      tenderedSoFar,
-      paymentMethods,
+      isCashMethodCode,
       paymentPolicy,
       terminal,
       shift,
       toleranceAutoAcceptShiftId,
       toleranceAutoAcceptCount,
     ],
+  );
+
+  const displaySnapshot = useMemo(
+    () => buildCheckoutPolicySnapshot({
+      ...snapshotInputs,
+      legs: tenderLegs,
+      tenderedAmount: tenderedSoFar,
+    }),
+    [snapshotInputs, tenderLegs, tenderedSoFar],
   );
 
   /** The amount actually owed — rounded when rounding is in play, else exact. */
@@ -405,6 +429,77 @@ export function AdvancedPaymentsModal({
     bccomp(totalPaid, '0') > 0 &&
     tenderTolerancePin.trim() !== '';
   const canComplete = isFullyPaid || toleranceAccepted || canSubmitWithTenderTolerance;
+
+  // ── The PREFILL half (whole-branch review Finding 3, 2026-07-29) ──────────
+  //
+  // The gate above stays on the LIVE legs on purpose: nothing rounds until the
+  // tender is actually cash-only, because a pre-leg guess is a guess the store
+  // can contradict. The numpad PREFILL answers a DIFFERENT question — "how much
+  // is the cashier about to tender with THIS method?" — and the method IS known
+  // at the moment of the tap.
+  //
+  // Reading the gate's `remaining` for it offered the EXACT total while no leg
+  // existed: on a TND 9.973 cash sale the cashier was handed 9.973, an amount
+  // not tenderable in TND cash and the exact number rounding exists to
+  // eliminate. Accepting it sealed `payments[].amount = 9.973` and
+  // `change_due = 0.023` into a SIGNED receipt describing cash never handed
+  // over and change that cannot be given.
+  //
+  // A prefill is NOT a gate — it only seeds an editable numpad string, and
+  // `paymentStore` never sees it — so this probe cannot reintroduce the
+  // screen-vs-store divergence Task 7 fix round 1 closed. Everything the gate
+  // reads (`displaySnapshot`, `amountDue`, `remaining`, `toleranceAccepted`,
+  // `needsTenderToleranceApproval`, `canComplete`) is untouched by it.
+  //
+  // Same synthetic-leg model quick cash uses (`pages/HomePage.tsx:1243`).
+
+  /**
+   * The cash-tender method to assume when the cashier has not picked one yet.
+   * Any cash method gives the same answer — `isCashOnlyTender` reads cash-ness,
+   * not identity — and with none configured there is no candidate at all,
+   * which is the same fail-closed "not cash-only" quick cash falls back to.
+   */
+  const defaultCashMethod = useMemo(
+    () => activeMethods.find((m) => isCashMethodCode(m.code)) ?? null,
+    [activeMethods, isCashMethodCode],
+  );
+
+  /**
+   * What to seed the numpad with when `candidate` becomes the next tender leg:
+   * the due under THAT tender, minus what is already tendered.
+   *
+   * Falls back to the gate's `remaining` when there is no candidate, and when
+   * the probe yields zero while something is still owed (a cart below D/2
+   * rounds to nothing in cash, but a zero-amount line is rejected by
+   * `handleAddPayment`, so offering it would be a dead end).
+   */
+  const prefillAmountFor = useCallback(
+    (candidate: PaymentMethod | null): string => {
+      if (candidate === null) return remaining;
+      const probe = buildCheckoutPolicySnapshot({
+        ...snapshotInputs,
+        // The builder reads only `methodCode` off the legs (via
+        // `isCashOnlyTender`); the amount is carried for shape.
+        legs: [...tenderLegs, { methodCode: candidate.code, amount: remaining }],
+        tenderedAmount: tenderedSoFar,
+      });
+      const probeRemaining = bccomp(probe.roundedTotal, tenderedSoFar) > 0
+        ? bcsub(probe.roundedTotal, tenderedSoFar, decimals)
+        : bcformat('0', decimals);
+      return bccomp(probeRemaining, '0') > 0 ? probeRemaining : remaining;
+    },
+    [snapshotInputs, tenderLegs, tenderedSoFar, remaining, decimals],
+  );
+
+  /**
+   * What the "Pay Remaining" pill both LABELS and SETS. It is reachable before
+   * any tile is tapped, so it assumes the selected method, else cash — label
+   * and action must never name two different amounts.
+   */
+  const payRemainingAmount = useMemo(
+    () => prefillAmountFor(selectedMethod ?? defaultCashMethod),
+    [prefillAmountFor, selectedMethod, defaultCashMethod],
+  );
 
   // Codex review B4 (2026-04-30) UI half: tapping an instrument-bearing
   // payment method tile (store_voucher / restaurant_voucher / gift_card per
@@ -484,20 +579,24 @@ export function AdvancedPaymentsModal({
       }
 
       setSelectedMethodId(methodId);
-      setAmount(bccomp(remaining, '0') > 0 ? remaining : '');
+      // Seeded for the method just TAPPED — `selectedMethod` has not caught up
+      // in this render, and the tapped method is what decides whether this
+      // tender rounds.
+      const prefill = prefillAmountFor(tappedMethod ?? null);
+      setAmount(bccomp(prefill, '0') > 0 ? prefill : '');
       setRepositoryId('');
       setReference('');
       setCardLastFour('');
       setValidationError(null);
     },
-    [activeMethods, remaining, t, voucherDb],
+    [activeMethods, prefillAmountFor, t, voucherDb],
   );
 
   const handlePayRemaining = useCallback(() => {
-    if (bccomp(remaining, '0') > 0) {
-      setAmount(remaining);
+    if (bccomp(payRemainingAmount, '0') > 0) {
+      setAmount(payRemainingAmount);
     }
-  }, [remaining]);
+  }, [payRemainingAmount]);
 
   const handleAddPayment = useCallback(() => {
     if (!selectedMethod) {
@@ -879,7 +978,7 @@ export function AdvancedPaymentsModal({
                 onClick={handlePayRemaining}
                 className="inline-flex rounded-ctl bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover"
               >
-                {t('advancedPayments.payRemaining')}: {format(remaining)}
+                {t('advancedPayments.payRemaining')}: {format(payRemainingAmount)}
               </button>
             </div>
           )}

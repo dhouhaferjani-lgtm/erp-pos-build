@@ -1523,3 +1523,208 @@ describe('AdvancedPaymentsModal — the displayed due is the due the store gates
     expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Whole-branch review, Finding 3 (2026-07-29) — the modal must never PREFILL a
+ * tender that cannot be handed over.
+ *
+ * The gate above is right to stay on the LIVE legs: nothing rounds until the
+ * tender is actually cash-only, because a pre-leg guess is a guess the store
+ * can contradict. But the numpad PREFILL answers a different question —
+ * "how much is the cashier about to tender with THIS method?" — and the method
+ * is known at the moment of the tap. Before this round both prefill sites
+ * (`handleSelectMethod`, `handlePayRemaining`) read the gate's `remaining`,
+ * which is denominated in the EXACT total while no leg exists, so a TND 9.973
+ * cash sale offered the cashier 9.973: an amount not tenderable in cash, and
+ * the exact number rounding exists to eliminate. Accepting it sealed
+ * `payments[].amount = 9.973 / change_due = 0.023` into a SIGNED receipt
+ * describing cash never handed over.
+ *
+ * Same EUR scale-2 fixture as the block above (D = 0.05):
+ *   exact 9.97 -> cash due 9.95 (DOWN)   exact 9.98 -> cash due 10.00 (UP)
+ * A card/voucher leg in the candidate set settles EXACTLY, as always.
+ */
+describe('AdvancedPaymentsModal — the prefilled tender is one the cashier can hand over', () => {
+  const roundingPolicy: PaymentPolicy = {
+    cashRoundingEnabled: true,
+    cashRoundingDenomination: '0.05',
+    tenderToleranceEnabled: true,
+    tenderTolerancePercentage: '0.0050',
+    tenderToleranceMaxAmount: '0.10',
+    currencyCode: 'EUR',
+    currencyScale: 2,
+    refreshedAt: '2026-07-27 08:00:00',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+    mockSelectedCustomer = null;
+    mockPaymentPolicy = roundingPolicy;
+    mockTerminal = { fiscal_schema_version: 3, is_training_mode: false };
+    mockShift = { id: 'shift-1' };
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  afterEach(() => {
+    mockPaymentPolicy = null;
+    mockTerminal = null;
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  const prefill = () => screen.getByTestId('numpad-value').textContent;
+  /**
+   * The method TILE in the left column. Once a line has been added, the method
+   * name also appears on the added-payments row, so a bare `getByText` is
+   * ambiguous; the tiles render first, hence index 0.
+   */
+  const methodTile = (name: string) => screen.getAllByText(name)[0]!;
+  const payRemainingPill = () =>
+    screen.getByText(/advancedPayments\.payRemaining/i).closest('button')!;
+  const due = () => screen.getByTestId('advanced-total-due').textContent?.trim();
+  const completeButton = () =>
+    screen.getByText('advancedPayments.completeTransaction').closest('button')!;
+  const pinField = () => screen.queryByText('advancedPayments.tenderTolerancePinLabel');
+
+  it('FIRST prefill on a pure-cash sale offers the ROUNDED due, not the exact total', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // Pre-fix: '9.97' — 0.02 of cash that does not exist in the drawer.
+    expect(prefill()).toBe('9.95');
+  });
+
+  it('the Pay Remaining pill LABELS and SETS the same rounded due before any leg exists', () => {
+    renderModal({ total: '9.97' });
+
+    // The pill is reachable before a method is tapped, so it falls back to the
+    // sole active cash method — the same synthetic-leg model quick cash uses.
+    expect(payRemainingPill().textContent).toContain('9.95');
+    fireEvent.click(payRemainingPill());
+    expect(prefill()).toBe('9.95');
+  });
+
+  it('ROUND UP: the first cash prefill is the rounded-UP due, not the exact total', () => {
+    renderModal({ total: '9.98' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('10.00');
+  });
+
+  it('the prefilled amount is one the STORE then accepts: no PIN, no tolerance options', async () => {
+    const { onComplete } = renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    // The gate now sees a real cash leg and agrees on 9.95 — the same number
+    // the cashier was offered. `tendered == roundedTotal`, so
+    // `processAdvancedCheckout`'s refusal branch is not entered at all and no
+    // auto-accept budget is spent.
+    expect(due()).toBe('9.95 EUR');
+    expect(pinField()).not.toBeInTheDocument();
+    expect(completeButton()).not.toBeDisabled();
+
+    fireEvent.click(completeButton());
+    await Promise.resolve();
+    const payments = vi.mocked(onComplete).mock.calls[0]![0];
+    expect(payments[0]!.amount).toBe('9.95');
+    expect(vi.mocked(onComplete).mock.calls[0]![1]).toBeUndefined();
+  });
+
+  it('CARD-first: the prefill stays EXACT — a card tender never rounds', () => {
+    renderModal({ total: '9.97', paymentMethods: [cashMethod, cardMethod] });
+
+    fireEvent.click(screen.getByText('Card'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('a voucher leg already present: the cash prefill stays EXACT (union rule)', () => {
+    mockVoucherTenders = [{ code: 'SV-1', amount: '5.00' }];
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // The candidate union is voucher + cash, which is not cash-only, so the
+    // sale settles exactly: 9.97 - 5.00.
+    expect(prefill()).toBe('4.97');
+  });
+
+  it('a cash leg already present: a SECOND cash leg is offered the rounded remainder', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '5.00' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(methodTile('Cash'));
+
+    // Already cash-only with the live legs, so the candidate leg changes
+    // nothing: 9.95 - 5.00. Unchanged from before this round.
+    expect(prefill()).toBe('4.95');
+    expect(due()).toBe('9.95 EUR');
+  });
+
+  it('a cash leg already present: a CARD top-up is offered the EXACT remainder', () => {
+    renderModal({ total: '9.97', paymentMethods: [cashMethod, cardMethod] });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '5.00' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(screen.getByText('Card'));
+
+    // Adding a card leg makes the tender non-cash-only, so the due reverts to
+    // the exact 9.97 and the top-up is 4.97 — NOT the 4.95 the cash-only view
+    // shows. Pre-fix this offered 4.95 and left a 0.02 shortfall the store
+    // would then send to the manager-PIN path.
+    expect(prefill()).toBe('4.97');
+  });
+
+  it('a v2 terminal prefills the EXACT total — the fail-closed gate also fails the prefill closed', () => {
+    mockTerminal = { fiscal_schema_version: 2, is_training_mode: false };
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('no policy pulled: the prefill is the EXACT total', () => {
+    mockPaymentPolicy = null;
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('a fully-covered sale prefills nothing (regression guard)', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '9.95' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(methodTile('Cash'));
+
+    expect(prefill()).toBe('');
+  });
+
+  it('the GATE is untouched: the Total Due card still reads EXACT until a leg exists', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // The prefill is candidate-aware; the gate deliberately is NOT. Rounding
+    // the displayed due on a guessed leg is what the store could contradict.
+    expect(prefill()).toBe('9.95');
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+});
