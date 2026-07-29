@@ -35,6 +35,10 @@ use Illuminate\Support\Str;
 
 class InventoryCountingController extends Controller
 {
+    private const BATCH_ERROR_PRODUCT_ALREADY_IN_COUNT = 'PRODUCT_ALREADY_IN_COUNT';
+
+    private const BATCH_ERROR_PRODUCT_NOT_FOUND = 'PRODUCT_NOT_FOUND';
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
@@ -1160,7 +1164,7 @@ class InventoryCountingController extends Controller
                     if (! is_string($productId) || ! Str::isUuid($productId)) {
                         $errors[] = [
                             'data' => $productData,
-                            'code' => 'invalid_product_id',
+                            'code' => self::BATCH_ERROR_PRODUCT_NOT_FOUND,
                             'error' => 'Invalid product ID; expected a UUID',
                         ];
 
@@ -1172,7 +1176,7 @@ class InventoryCountingController extends Controller
                     if (! isset($validProductIds[$normalizedProductId])) {
                         $errors[] = [
                             'data' => $productData,
-                            'code' => 'product_not_found',
+                            'code' => self::BATCH_ERROR_PRODUCT_NOT_FOUND,
                             'error' => 'Product not found for current company',
                         ];
 
@@ -1203,7 +1207,7 @@ class InventoryCountingController extends Controller
                     if (! $product) {
                         $errors[] = [
                             'data' => $productData,
-                            'code' => 'product_not_found',
+                            'code' => self::BATCH_ERROR_PRODUCT_NOT_FOUND,
                             'error' => 'Product not found with barcode: '.$barcode,
                         ];
 
@@ -1217,6 +1221,7 @@ class InventoryCountingController extends Controller
                 if (in_array($productId, $productIds, true)) {
                     $errors[] = [
                         'data' => $productData,
+                        'code' => self::BATCH_ERROR_PRODUCT_ALREADY_IN_COUNT,
                         'error' => 'Product already added to this count',
                     ];
 
