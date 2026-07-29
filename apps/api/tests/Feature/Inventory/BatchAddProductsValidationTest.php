@@ -200,6 +200,22 @@ final class BatchAddProductsValidationTest extends TestCase
         $this->assertSame([], $this->persistedProductIds());
     }
 
+    public function test_non_string_barcode_returns_typed_code_and_unchanged_message(): void
+    {
+        $response = $this->postBatch([
+            ['barcode' => 12345],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.success', [])
+            ->assertJsonPath('data.errors.0.data.barcode', 12345)
+            ->assertJsonPath('data.errors.0.code', 'INVALID_BARCODE')
+            ->assertJsonPath('data.errors.0.error', 'Invalid barcode; expected a string')
+            ->assertJsonPath('data.total_products', 0);
+
+        $this->assertSame([], $this->persistedProductIds());
+    }
+
     public function test_duplicate_product_returns_typed_code_and_unchanged_message(): void
     {
         $this->counting->scope_filters = [
@@ -245,7 +261,7 @@ final class BatchAddProductsValidationTest extends TestCase
     }
 
     /**
-     * @param  list<array{productId?: string|int, barcode?: string}>  $products
+     * @param  list<array{productId?: string|int, barcode?: string|int}>  $products
      * @return TestResponse<Response>
      */
     private function postBatch(array $products): TestResponse
