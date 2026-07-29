@@ -25,6 +25,7 @@ use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Application\Services\XlsxStatementParser;
 use App\Modules\Treasury\Domain\Enums\StatementParserKey;
+use App\Modules\Treasury\Infrastructure\EloquentOutboundInstrumentPaymentLinkResolver;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand;
@@ -32,6 +33,7 @@ use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
+use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Contracts\Foundation\Application;
@@ -68,6 +70,15 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             TreasuryMovementServiceInterface::class,
             TreasuryMovementService::class,
+        );
+
+        // Task 3 (treasury burn-down) — read port so the Expense listener
+        // `SyncExpenseOnInstrumentLifecycle` resolves an outbound instrument's
+        // settlement linkage via Shared/Contracts instead of importing the
+        // Treasury `PaymentInstrument` model across the module boundary.
+        $this->app->bind(
+            OutboundInstrumentPaymentLinkResolver::class,
+            EloquentOutboundInstrumentPaymentLinkResolver::class,
         );
 
         $this->app->bind(InstrumentLifecycleService::class);
