@@ -28,9 +28,20 @@ export type CheckoutInvoiceType = 'SALE' | 'REFUND' | 'VOID' | 'TRAINING';
  */
 export const ROUNDABLE_INVOICE_TYPES: readonly CheckoutInvoiceType[] = ['SALE', 'TRAINING'];
 
+/**
+ * Why the tolerance decision came out the way it did.
+ *
+ * `disabled` and `not_cutover` are deliberately DISTINCT. Both refuse the
+ * auto-accept, but they are different incidents: `disabled` is an operator
+ * turning the switch off, `not_cutover` is a terminal still on fiscal schema
+ * v2. Collapsing them made a field report of "tolerance stopped working after
+ * the update" indistinguishable from a config change — the reason string is
+ * the only thing that tells support which one happened.
+ */
 export type ToleranceReason =
   | 'not_applicable'
   | 'disabled'
+  | 'not_cutover'
   | 'accepted'
   | 'exceeds_max'
   | 'shift_limit_reached';
@@ -184,15 +195,20 @@ export function buildCheckoutPolicySnapshot(
     // spent — without it an operator who turns tolerance off would still get D
     // of silent write-off on every cash sale.
     //
-    // The `fiscalSchemaVersion === 3` arm is an owner ruling (2026-07-29) that
-    // deliberately DEVIATES from the spec text, which states the tolerance
-    // condition with no schema-version arm. On a v2 terminal an auto-accepted
-    // shortfall has no fiscal trace whatsoever: the v2 payload carries no
+    enabled: policy?.tenderToleranceEnabled === true,
+    // The cutover arm is an owner ruling (2026-07-29) that deliberately
+    // DEVIATES from the spec text, which states the tolerance condition with
+    // no schema-version arm. On a v2 terminal an auto-accepted shortfall has
+    // no fiscal trace whatsoever: the v2 payload carries no
     // `tolerance_shortfall`, the projection's `tolerance_writeoff` write is
     // v3-gated, and no PosOverrideEvidence is authored because no PIN is taken.
     // A silent cash-vs-revenue gap is worse than sending the cashier to the
     // (fully evidenced) manager-PIN path, so v2 gets no headroom at all.
-    enabled: policy?.tenderToleranceEnabled === true && input.fiscalSchemaVersion === 3,
+    //
+    // It is a SEPARATE flag from `enabled` so the refusal keeps its own
+    // reason: a terminal left at v2 must not report as "the operator turned
+    // tolerance off".
+    cutover: input.fiscalSchemaVersion === 3,
     shortfall,
     effectiveMax,
     autoAcceptCountThisShift: input.autoAcceptCountThisShift,
@@ -261,6 +277,7 @@ export function computeCashScreenDisplay(
 function decideTolerance(input: {
   cashOnly: boolean;
   enabled: boolean;
+  cutover: boolean;
   shortfall: string;
   effectiveMax: string;
   autoAcceptCountThisShift: number;
@@ -272,8 +289,16 @@ function decideTolerance(input: {
   if (!input.cashOnly) {
     return { ...base, applied: false, reason: 'not_applicable' };
   }
+  // Order matters for diagnosability: an operator who switched tolerance off
+  // owns that refusal regardless of the terminal's schema version, so
+  // `disabled` is reported first. `not_cutover` therefore means "the policy
+  // WANTS to auto-accept and the terminal is what is stopping it" — the exact
+  // signal a "tolerance stopped working after the update" report needs.
   if (!input.enabled) {
     return { ...base, applied: false, reason: 'disabled' };
+  }
+  if (!input.cutover) {
+    return { ...base, applied: false, reason: 'not_cutover' };
   }
   if (bccomp(input.shortfall, input.effectiveMax) > 0) {
     return { ...base, applied: false, reason: 'exceeds_max' };

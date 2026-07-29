@@ -75,7 +75,20 @@ interface PaymentLineItem {
 export interface AdvancedPaymentsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  total: number;
+  /**
+   * Amount due as a decimal STRING at the tenant's currency scale (e.g.
+   * "50.00", TND "9.973"). Never a JS number: this value is compared against
+   * the tender legs that end up in the fiscal-event canonical hash, and a
+   * float round-trip here is exactly how 10.1 + 10.2 stops covering 20.3.
+   */
+  total: string;
+  /**
+   * Signed cash-rounding adjustment (`rounded − exact`) at currency scale, when
+   * one applies to this sale. Rendered as its own footer line so the cashier
+   * can see why the due differs from the cart. Omit — or pass a canonical zero
+   * — when nothing was rounded.
+   */
+  roundingAdjustment?: string;
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
   onComplete: (
@@ -124,14 +137,17 @@ export interface AdvancedPaymentsModalProps {
  * Computes tender state using decimal-string bcmath (big.js) — no IEEE-754 float.
  * PaymentLineItem.amount is a decimal string (S4, 2026-07-01); amounts are passed
  * directly to bcsum with no String() bridge.
+ *
+ * Task 7 (2026-07-27): `total` is a decimal string too — the last float in this
+ * component's tender arithmetic. The `String(total)` bridge is gone with it.
  */
 export function computeTenderState(
   paymentLines: readonly { amount: string }[],
   voucherTenders: readonly { amount: string }[],
-  total: number,
+  total: string,
   decimals: number,
 ): { totalPaid: string; remaining: string; overpayment: string; isFullyPaid: boolean } {
-  const totalStr = String(total);
+  const totalStr = bcformat(total, decimals);
   const voucherTotal = bcsum(voucherTenders.map((v) => v.amount), decimals);
   const totalPaid = bcadd(
     bcsum(paymentLines.map((l) => l.amount), decimals),
@@ -154,6 +170,7 @@ export function AdvancedPaymentsModal({
   isOpen,
   onClose,
   total,
+  roundingAdjustment,
   paymentMethods,
   paymentRepositories,
   onComplete,
@@ -205,7 +222,7 @@ export function AdvancedPaymentsModal({
     && selectedCustomer != null
     && (selectedCustomer.charge_account_enabled === true
       || selectedCustomer.charge_account_enabled === 1)
-    && total > 0;
+    && bccomp(total, '0') > 0;
   const cashierUserId = useAuthStore.getState().user?.id ?? '';
 
   const activeMethods = useMemo(
@@ -706,7 +723,7 @@ export function AdvancedPaymentsModal({
         {accountChargeMode ? (
           <div className="flex flex-1 items-center justify-center bg-surface-sunken p-4">
             <AccountChargeConfirmation
-              total={bcformat(String(total), decimals)}
+              total={bcformat(total, decimals)}
               currency={currency}
               cashierUserId={cashierUserId}
               approvalContext={approvalContext}
@@ -869,6 +886,18 @@ export function AdvancedPaymentsModal({
                 <div className="flex justify-between text-success-strong">
                   <span>{t('advancedPayments.changeDue')}</span>
                   <span className="font-medium">{format(overpayment)}</span>
+                </div>
+              )}
+              {/*
+                Cash rounding (spec §4.1): the signed `rounded − exact`
+                adjustment, shown only when one actually applies. `format`
+                takes the decimal string verbatim — the sign is part of the
+                value, never re-derived here.
+              */}
+              {roundingAdjustment != null && bccomp(roundingAdjustment, '0') !== 0 && (
+                <div className="flex justify-between text-ink-muted">
+                  <span>{t('advancedPayments.rounding')}</span>
+                  <span className="font-medium">{format(roundingAdjustment)}</span>
                 </div>
               )}
             </div>

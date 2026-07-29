@@ -68,7 +68,8 @@
     "processingQuickCheckout": "Traitement du paiement...",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
     "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant",
-    "tenderBelowDue": "Le montant remis est inférieur au montant dû."
+    "tenderBelowDue": "Le montant remis est inférieur au montant dû.",
+    "changeExceedsCashLegs": "La monnaie ne peut pas dépasser les espèces remises. Ajoutez un règlement espèces ou réduisez le montant non-espèces."
   },
   "cashPayment": {
     "back": "Retour",
@@ -771,7 +772,8 @@
     "voucherTenderFlowRequired": "Les bons d'achat utilisent un flux de scan / recherche dédié — utilisez le bouton « bon d'achat » ou scannez le code plutôt que de l'ajouter comme paiement normal.",
     "voucherKindNotSupportedInPhase1": "Ce mode de paiement n'est pas encore disponible. Seuls les bons d'achat peuvent être utilisés dans cette version. Les tickets restaurant et les cartes cadeaux arriveront dans une prochaine mise à jour.",
     "voucherMethodMissing": "Impossible d'appliquer le bon d'achat — le mode de paiement « bon d'achat » n'est pas configuré pour ce terminal.",
-    "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte de paiement virtuel n'est configuré pour ce terminal. Contactez votre administrateur."
+    "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte de paiement virtuel n'est configuré pour ce terminal. Contactez votre administrateur.",
+    "rounding": "Arrondi"
   },
   "consumptionMode": {
     "label": "Mode de consommation",

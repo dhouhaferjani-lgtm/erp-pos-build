@@ -219,7 +219,8 @@ const bankAccountRepo: PaymentRepository = {
 };
 
 function renderModal(overrides: {
-  total?: number;
+  total?: string;
+  roundingAdjustment?: string;
   paymentMethods?: PaymentMethod[];
   paymentRepositories?: PaymentRepository[];
   onComplete?: (payments: AdvancedPaymentLine[]) => Promise<void>;
@@ -238,7 +239,8 @@ function renderModal(overrides: {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={overrides.total ?? 50}
+        total={overrides.total ?? '50.00'}
+        roundingAdjustment={overrides.roundingAdjustment}
         paymentMethods={overrides.paymentMethods ?? [cashMethod, storeVoucherMethod]}
         paymentRepositories={overrides.paymentRepositories ?? [cashRepo, virtualRepo]}
         onComplete={onComplete}
@@ -271,7 +273,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
    */
   it('tapping store_voucher method tile does NOT add a free-form payment line', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
     });
 
@@ -294,7 +296,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
     // B4 dead-end message. This guarantees ANY user feedback is shown,
     // which is the contract B4 nailed down.
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       // voucherDb omitted on purpose
     });
@@ -312,7 +314,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
 
   it('tapping cash method tile still adds a normal PaymentLineItem (regression guard)', async () => {
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
     });
 
@@ -359,7 +361,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('tapping store_voucher tile WITH a voucherDb opens VoucherTenderModal (no dead-end message)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -379,7 +381,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal receives the remaining due (currency-formatted) and currency code', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -397,7 +399,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal closes after onApplied (cashier sees the tender row appear in this modal)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -417,7 +419,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     mockVoucherTenders = [{ code: 'SV-EXISTING-001', amount: '20.00' }];
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -433,7 +435,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal mock-close reverts the modal-open flag without breaking the modal', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -452,7 +454,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('tapping cash tile with a voucherDb still adds a free-form payment line (regression guard)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -467,7 +469,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('voucherDb prop matches the value forwarded to VoucherTenderModal', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -492,7 +494,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
   // at the tap handler instead.
   it('VoucherTenderModal receives methodCode = "store_voucher" when tapped from the store voucher tile', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -518,7 +520,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     };
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, restaurantVoucherMethod],
       voucherDb: mockDb,
     });
@@ -550,7 +552,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     };
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, giftCardMethod],
       voucherDb: mockDb,
     });
@@ -576,7 +578,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 20 });
+    renderModal({ total: "20.00" });
 
     expect(screen.getByTestId('voucher-tender-row-SV-2026-0099')).toBeInTheDocument();
     expect(screen.getByText('SV-2026-0099')).toBeInTheDocument();
@@ -587,7 +589,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '50.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     // Complete button must be enabled because voucher tenders cover the full total.
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
@@ -599,7 +601,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
     expect(completeBtn).toBeDisabled();
@@ -610,7 +612,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
 
   it('under-tender checkout can complete only when a manager PIN is supplied for tender tolerance approval', async () => {
     mockVoucherTenders = [];
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     fireEvent.click(screen.getByText('Cash'));
     fireEvent.click(screen.getByTestId('numpad-set-25'));
@@ -639,7 +641,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '50.00' },
     ];
 
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
     fireEvent.click(completeBtn!);
@@ -666,7 +668,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     // Add a cash payment line for the remaining 30. Mirrors the real cashier
     // flow: select Cash, type 30, click "Add Payment".
@@ -710,7 +712,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     const removeBtn = screen
       .getByTestId('voucher-tender-row-SV-2026-0099')
@@ -727,7 +729,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     ];
 
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       // No store_voucher method configured.
       paymentMethods: [cashMethod],
     });
@@ -757,7 +759,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     ];
 
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       // Tenant has cash_register + bank_account repos — but NO virtual repo.
       paymentRepositories: [cashRepo, bankAccountRepo],
     });
@@ -808,7 +810,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -828,7 +830,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -848,7 +850,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -868,7 +870,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={0}
+        total="0.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -888,7 +890,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -907,7 +909,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -936,7 +938,9 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        // Deliberately UNSCALED: the prop is a decimal string, but nothing
+        // guarantees a caller pre-formats it. The seam still has to normalize.
+        total="119"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -948,9 +952,9 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
 
-    // The modal formats the numeric total to the currency scale (EUR, 2dp)
-    // before handing it to AccountChargeConfirmation, so the strict
-    // credit-decision parser sees a canonical `^\d+\.\d{2}$` amount.
+    // The modal formats the total to the currency scale (EUR, 2dp) before
+    // handing it to AccountChargeConfirmation, so the strict credit-decision
+    // parser sees a canonical `^\d+\.\d{2}$` amount.
     expect(screen.getByTestId('acc-total').textContent).toBe('119.00');
     expect(screen.getByTestId('acc-currency').textContent).toBe('EUR');
     expect(screen.getByTestId('acc-cashier').textContent).toBe('cashier-1');
@@ -963,7 +967,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -986,7 +990,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1024,7 +1028,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
           <AdvancedPaymentsModal
             isOpen={isOpen}
             onClose={() => setIsOpen(false)}
-            total={119}
+            total="119.00"
             paymentMethods={[cashMethod, storeVoucherMethod]}
             paymentRepositories={[cashRepo, virtualRepo]}
             onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1085,7 +1089,7 @@ describe('AdvancedPaymentsModal — focus management (PR #97 follow-up)', () => 
           <AdvancedPaymentsModal
             isOpen={isOpen}
             onClose={() => setIsOpen(false)}
-            total={50}
+            total="50.00"
             paymentMethods={[cashMethod, storeVoucherMethod]}
             paymentRepositories={[cashRepo, virtualRepo]}
             onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1132,7 +1136,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '10.1' }, { amount: '10.2' }],
       [],
-      20.3,
+      '20.30',
       2,
     );
     // float: 10.1 + 10.2 = 20.299999999999997 < 20.3 → isFullyPaid=false (fiscal blocker)
@@ -1146,7 +1150,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '0.1' }, { amount: '0.2' }],
       [],
-      0.3,
+      '0.30',
       2,
     );
     expect(state.totalPaid).toBe('0.30');
@@ -1159,7 +1163,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [],
       [{ amount: '0.10' }, { amount: '0.20' }],
-      0.3,
+      '0.30',
       2,
     );
     expect(state.totalPaid).toBe('0.30');
@@ -1170,7 +1174,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '10.1' }],
       [{ amount: '10.20' }],
-      20.3,
+      '20.30',
       2,
     );
     expect(state.totalPaid).toBe('20.30');
@@ -1182,7 +1186,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '1.01' }],
       [],
-      1.0,
+      '1.00',
       2,
     );
     expect(state.overpayment).toBe('0.01');
@@ -1194,7 +1198,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '19.99' }],
       [],
-      20.0,
+      '20.00',
       2,
     );
     expect(state.remaining).toBe('0.01');
@@ -1206,7 +1210,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
       [],
-      99.999,
+      '99.999',
       3,
     );
     expect(state.totalPaid).toBe('99.999');
@@ -1249,7 +1253,7 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
       // RED: TS2322 on old { amount: number } signature; clean after S4.
       [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
       [],
-      99.999,
+      '99.999',
       3,
     );
     expect(state.totalPaid).toBe('99.999');
@@ -1263,7 +1267,7 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
    * this test locks the observed wire value.
    */
   it('onComplete wire amount is a decimal string at currency scale ("50.00" for EUR)', async () => {
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
     fireEvent.click(screen.getByText('Cash'));
     fireEvent.click(screen.getByText(/advancedPayments.payRemaining/i));
     fireEvent.click(screen.getByText('advancedPayments.addPayment'));
@@ -1281,5 +1285,40 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
     // Wire amount is the currency-scale string '50.00' (EUR, 2dp).
     expect(payments[0]!.amount).toBe('50.00');
     expect(typeof payments[0]!.amount).toBe('string');
+  });
+});
+
+/**
+ * Task 7 (2026-07-27): the cash-rounding footer line.
+ *
+ * The adjustment is SIGNED (`rounded − exact`) and is rendered verbatim — the
+ * sign belongs to the value and is never re-derived at the view. The row only
+ * appears when an adjustment actually applies, so an unrounded sale (the
+ * overwhelming majority of multi-tender checkouts, which are not cash-only)
+ * looks exactly as it did before.
+ */
+describe('AdvancedPaymentsModal — cash rounding footer line', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+  });
+
+  it('renders the signed adjustment when one applies', () => {
+    renderModal({ total: '9.95', roundingAdjustment: '-0.02' });
+
+    expect(screen.getByText('advancedPayments.rounding')).toBeInTheDocument();
+    expect(screen.getByText('-0.02 EUR')).toBeInTheDocument();
+  });
+
+  it('omits the row for a canonical zero adjustment', () => {
+    renderModal({ total: '50.00', roundingAdjustment: '0.00' });
+
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+
+  it('omits the row when no adjustment is supplied at all', () => {
+    renderModal({ total: '50.00' });
+
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
   });
 });

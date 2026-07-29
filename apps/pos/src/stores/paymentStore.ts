@@ -7,8 +7,15 @@ import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStor
 import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsum, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { computeExactCartTotal } from '@/lib/payment/cartTotals';
-import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
-import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
+import {
+  computeChange,
+  sumCashLegs,
+  TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT,
+} from '@/lib/payment/cashRounding';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutPolicySnapshot,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import { getActivePaymentPolicy } from '@/stores/paymentPolicyStore';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
@@ -592,6 +599,13 @@ async function createReceiptLocalFirst(
   consumptionMode?: string,
   tableId?: string | null,
   tenderToleranceEvidence?: PosOverrideEvidence,
+  /**
+   * The sealed checkout decision (spec §4.3) for this sale. Optional ONLY
+   * until Task 9 makes `OfflineReceiptInput.policySnapshot` required and the
+   * v3 payload starts signing the rounded total, the adjustment and the
+   * denomination out of it; every caller already builds one.
+   */
+  policySnapshot?: CheckoutPolicySnapshot,
 ): Promise<OfflineReceiptResult> {
   const authState = useAuthStore.getState();
   const operatorState = useOperatorStore.getState();
@@ -673,6 +687,7 @@ async function createReceiptLocalFirst(
         consumptionMode,
         tableId: tableId ?? undefined,
         isTraining,
+        policySnapshot,
       }),
     ),
   );
@@ -1253,7 +1268,75 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, currency);
       let tenderToleranceEvidence: PosOverrideEvidence | undefined;
 
-      if (bccomp(tenderedAmountStr, totalEstimate) < 0) {
+      // ── The sealed checkout decision (spec §4.3) ───────────────────────────
+      // Same builder, same seal-once discipline as quick cash: taken here from
+      // the policy/terminal/tender as they stand at tender time, and read by
+      // everything below instead of live state.
+      //
+      // The cash-only predicate runs over the UNION of the payment lines and
+      // the store's voucher tenders (spec §4.1). Voucher legs ARE payment legs
+      // — `SaleReceiptPayload` derives `vouchers_redeemed` from `payments[]` —
+      // and they are never cash, so a voucher-partial sale settles EXACTLY and
+      // is never rounded. AdvancedPaymentsModal already merges its voucher rows
+      // into `payments`, so in the live flow the voucher legs usually arrive
+      // both ways; the union term is what keeps the predicate correct for a
+      // caller that does not merge. Duplicating a NON-cash leg can change
+      // neither `isCashOnlyTender` nor `sumCashLegs`, and `tenderedAmountStr`
+      // is deliberately summed from `enriched` alone, so nothing double-counts.
+      const voucherLegs = get().voucherTenders.map((v) => ({
+        methodCode: 'store_voucher',
+        amount: bcformat(v.amount, decimals),
+      }));
+      const unionLegs = [
+        ...enriched.map((e) => ({ methodCode: e.methodCode, amount: e.amount })),
+        ...voucherLegs,
+      ];
+      const terminalSnapshot = useTerminalStore.getState();
+      const shiftId = terminalSnapshot.shift?.id ?? null;
+      // The SAME `paymentMethods` array `enriched` resolved its method codes
+      // from, so cash-ness cannot be decided against a list that changed
+      // between the two reads.
+      const isCashMethodCode = makeIsCashMethodCode(paymentMethods);
+      // Same deliberate inversion as quick cash: no open shift means there is
+      // nothing to charge an accept against, so the fail-closed reading is
+      // "budget fully spent". The SQLite row is the authority — the in-memory
+      // `toleranceAutoAcceptCount` mirror is wiped by reset() and by every app
+      // restart, either of which would refill the budget on an open shift.
+      const autoAcceptCountThisShift = shiftId === null
+        ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
+        : await readToleranceAutoAcceptCount(shiftId);
+      const snapshot = buildCheckoutPolicySnapshot({
+        exactTotal: totalEstimate,
+        currency,
+        legs: unionLegs,
+        tenderedAmount: tenderedAmountStr,
+        isCashMethodCode,
+        policy: getActivePaymentPolicy(),
+        fiscalSchemaVersion: terminalSnapshot.terminal?.fiscal_schema_version ?? null,
+        invoiceType: terminalSnapshot.terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+        autoAcceptCountThisShift,
+      });
+
+      // Change eligibility (spec §4.1): change can only ever come out of the
+      // drawer. A card-only over-tender would otherwise sign a receipt whose
+      // change exceeds the cash actually collected — money the cashier does not
+      // have. Refused BEFORE anything is authored.
+      const changeOwed = computeChange(snapshot.roundedTotal, tenderedAmountStr, decimals);
+      const cashLegTotal = sumCashLegs(unionLegs, isCashMethodCode, decimals);
+      if (bccomp(changeOwed, cashLegTotal) > 0) {
+        const msg = i18n.t('payment.changeExceedsCashLegs', { ns: 'pos' });
+        set({ error: msg });
+        throw new Error(msg);
+      }
+
+      // The hard tender gate, now against the ROUNDED due. The auto-accept
+      // branch is NEW and sits IN FRONT of the manager-PIN path below: when it
+      // declines (exceeds_max, shift_limit_reached, disabled, not_cutover,
+      // non-cash) control falls into that block unchanged.
+      if (
+        bccomp(tenderedAmountStr, snapshot.roundedTotal) < 0
+        && !snapshot.toleranceDecision.applied
+      ) {
         const pin = options?.tenderTolerancePin?.trim() ?? '';
         if (pin === '') {
           const msg = 'Tender tolerance requires a manager PIN.';
@@ -1270,8 +1353,10 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
 
         const businessDate = new Date().toISOString().slice(0, 10);
-        // totalEstimate is already at `decimals` scale (returned by estimateCartTotal).
-        const totalEstimateStr = totalEstimate;
+        // The ROUNDED due, already at `decimals` scale. The authored override
+        // evidence must describe the amount actually owed: denominating it in
+        // the exact total would record a shortfall the receipt never had.
+        const totalEstimateStr = snapshot.roundedTotal;
         // Exact shortfall = total − tendered, clamped at 0 (Big.js).
         const rawShortfall = bcsub(totalEstimateStr, tenderedAmountStr, decimals);
         const shortfall = bccomp(rawShortfall, '0') < 0 ? (0).toFixed(decimals) : rawShortfall;
@@ -1333,7 +1418,27 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         consumptionMode,
         tableId,
         tenderToleranceEvidence,
+        snapshot,
       );
+
+      // Charge the shift's auto-accept budget only once the receipt exists — a
+      // refused or failed checkout must never spend it.
+      //
+      // Budget accounting must NOT be able to fail an already-authored sale:
+      // the receipt is durable and printable by this point, so a SQLite hiccup
+      // here would show the cashier a failure for a completed sale and invite a
+      // retry. Under-counting one accept is the strictly cheaper failure.
+      if (snapshot.toleranceDecision.applied && shiftId !== null) {
+        try {
+          await get().recordToleranceAutoAccept(shiftId);
+        } catch (budgetError) {
+          console.error('[POS][tolerance] auto-accept budget write failed AFTER the receipt was authored', {
+            ...serializeErrorForLog(budgetError),
+            shiftId,
+            idempotencyKey,
+          });
+        }
+      }
 
       set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {

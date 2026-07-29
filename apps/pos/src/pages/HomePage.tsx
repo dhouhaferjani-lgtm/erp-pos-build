@@ -136,12 +136,14 @@ export function HomePage() {
   const taxAmount = useCartStore((s) => s.taxAmount);
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
-  // Decimal-string selectors — money crossing into the cash screen must stay a
-  // string (precision contract). The `number` selectors above remain for the
-  // display-only cart panel AND for AdvancedPaymentsModal below, which is
-  // still a numeric payment-authoring surface pending its own conversion.
-  // The cash screen's amount due now comes from `cashScreenSnapshot` (the
-  // ROUNDED due), not from the cart's exact `totalString`.
+  // Decimal-string selectors — money crossing into a payment-authoring surface
+  // must stay a string (precision contract). The `number` selectors above are
+  // now display-only (the cart panel). The cash screen's amount due comes from
+  // `cashScreenSnapshot` (the ROUNDED due) rather than the cart's exact
+  // `totalString`; AdvancedPaymentsModal takes `totalString()` — the exact
+  // total, because a multi-tender due can only be rounded once the tender
+  // composition is known, which happens inside `processAdvancedCheckout`.
+  const totalString = useCartStore((s) => s.totalString);
   const discountAmountString = useCartStore((s) => s.discountAmountString);
   const itemCount = useCartStore((s) => s.itemCount);
 
@@ -1707,7 +1709,7 @@ export function HomePage() {
       <AdvancedPaymentsModal
         isOpen={showAdvancedModal}
         onClose={() => setShowAdvancedModal(false)}
-        total={total()}
+        total={totalString()}
         paymentMethods={paymentMethods}
         paymentRepositories={paymentRepositories}
         onComplete={handleAdvancedComplete}

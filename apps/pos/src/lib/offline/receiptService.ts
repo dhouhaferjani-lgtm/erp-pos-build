@@ -27,6 +27,7 @@ import {
   type VoucherStatus,
 } from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
+import type { CheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSyncStore } from '@/stores/syncStore';
 import { withWriteTransaction } from '@/lib/db/writeGate';
@@ -92,6 +93,17 @@ interface OfflineReceiptInput {
    * Default false preserves the production path byte-for-byte.
    */
   isTraining?: boolean;
+  /**
+   * The sealed checkout decision (spec §4.3) taken at tender time by
+   * `buildCheckoutPolicySnapshot`: the rounded due, the signed rounding
+   * adjustment, the denomination and the tolerance outcome.
+   *
+   * Optional at this stage of the track — Task 7 threads it here from the
+   * checkout paths, Task 9 makes it REQUIRED and binds it into the SALE_RECEIPT
+   * v3 canonical payload plus the `offline_receipts` mirror columns. Until then
+   * nothing reads it, and a receipt is authored exactly as before.
+   */
+  policySnapshot?: CheckoutPolicySnapshot;
 }
 
 export interface OfflineReceiptResult {

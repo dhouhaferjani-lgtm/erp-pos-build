@@ -415,11 +415,25 @@ describe('buildCheckoutPolicySnapshot — tolerance auto-accept requires v3', ()
   it('REFUSES that same shortfall on a v2 terminal', () => {
     const s = build({ ...shortfallInput, fiscalSchemaVersion: 2 });
     expect(s.toleranceDecision.applied).toBe(false);
-    expect(s.toleranceDecision.reason).toBe('disabled');
+    // NOT 'disabled': the operator's switch is still ON. The terminal is what
+    // refuses, and support has to be able to tell those two apart.
+    expect(s.toleranceDecision.reason).toBe('not_cutover');
   });
 
   it('REFUSES it when the terminal version is unknown', () => {
     const s = build({ ...shortfallInput, fiscalSchemaVersion: null });
+    expect(s.toleranceDecision.applied).toBe(false);
+    expect(s.toleranceDecision.reason).toBe('not_cutover');
+  });
+
+  it('reports the OPERATOR switch, not the cutover, when tolerance is also off', () => {
+    // Both arms refuse. The one the operator controls is the one reported —
+    // otherwise turning tolerance off on a v2 fleet would read as a bug.
+    const s = build({
+      ...shortfallInput,
+      fiscalSchemaVersion: 2,
+      policy: { ...policy, tenderToleranceEnabled: false },
+    });
     expect(s.toleranceDecision.applied).toBe(false);
     expect(s.toleranceDecision.reason).toBe('disabled');
   });
@@ -435,7 +449,7 @@ describe('buildCheckoutPolicySnapshot — tolerance auto-accept requires v3', ()
     expect(s.toleranceDecision.shortfall).toBe('0.023');
     expect(s.toleranceDecision.effectiveMax).toBe('0.049');
     expect(s.toleranceDecision.applied).toBe(false);
-    expect(s.toleranceDecision.reason).toBe('disabled');
+    expect(s.toleranceDecision.reason).toBe('not_cutover');
   });
 });
 
