@@ -62,9 +62,11 @@ respected (can be a lighter unit-style assertion on the query/service).
 Finding (⑤b exit, carried): the manual-allocation FormRequest's amount regex allows
 more decimals than the repository currency's scale, so excess precision fails deep in
 the domain service instead of at validation. Align per CLAUDE.md rule 19: keep
-`numeric` and add the money regex ceiling `/^-?\d+(\.\d{1,3})?$/` (3 = currency scale
-floor used across Treasury FormRequests — mirror the existing pattern in other Treasury
-FormRequests, e.g. the adjustment/transfer requests). Non-breaking. RED test first:
+`numeric` and add the money regex ceiling `/^\d+(\.\d{1,3})?$/` — UNSIGNED (amended
+2026-07-29 after Codex r1: the allocation domain requires positive amounts —
+`matched_amount > 0` DB constraint, `StatementMatchingService` positive-amount guard —
+and 3 of 4 sibling Treasury FormRequests use the unsigned pattern; the original `-?`
+here was a mis-copy of the generic rule-19 money pattern). Non-breaking. RED test first:
 posting `10.1234` to the allocation endpoint must 422 at validation (not
 BUSINESS_ERROR from the domain).
 
