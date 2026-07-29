@@ -92,6 +92,32 @@ final class StatementMatchingHttpTest extends TestCase
             ->assertJsonPath('data.match_status', 'unmatched');
     }
 
+    public function test_allocation_amount_exceeding_currency_scale_is_rejected_at_validation(): void
+    {
+        $line = $this->line('100.000');
+        $movementId = $this->movement($this->company, $this->repository, '100.000');
+
+        $response = $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statement-lines/{$line->id}/allocations", [
+                'allocations' => [[
+                    'repository_movement_id' => $movementId,
+                    // 4 decimals — exceeds the TND currency scale (3). Must be
+                    // rejected at validation, NOT deep in the domain service.
+                    'amount' => '10.1234',
+                ]],
+            ])
+            ->assertUnprocessable();
+
+        // A validation rejection, not a domain BUSINESS_ERROR.
+        $this->assertNotSame('BUSINESS_ERROR', $response->json('error.code'));
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('allocations.0.amount', $errors);
+
+        // No allocation was written.
+        $this->assertDatabaseCount('bank_statement_line_allocations', 0);
+    }
+
     public function test_routes_enforce_permission_line_scope_and_movement_scope(): void
     {
         $line = $this->line('1.000');
