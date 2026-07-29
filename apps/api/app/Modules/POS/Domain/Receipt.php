@@ -57,7 +57,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $discount_reason Reason for transaction discount
  * @property numeric-string $total Gross total ((subtotal - discount) + tax)
  * @property numeric-string|null $change_due Cash change returned to customer; NULL on legacy rows
- * @property numeric-string|null $tolerance_writeoff Amount written off to GL 658 for cash-sale tolerance; NULL when no tolerance applied
+ * @property numeric-string|null $tolerance_writeoff Amount written off to GL 658 for cash-sale tolerance. On v3+ rows this is ALWAYS written — canonical zero ('0.000') when no tolerance applied, never NULL. NULL means a v1/v2 legacy row (or a training receipt); it does NOT mean "no tolerance". Do not use `whereNotNull` as a "has tolerance" predicate on v3 data — compare with bccomp against zero.
+ * @property numeric-string|null $cash_rounding_adjustment Signed cash-rounding adjustment (rounded − exact); NULL on v1/v2 rows
+ * @property numeric-string|null $cash_rounding_denomination Denomination applied, as signed by the device; NULL on v1/v2 rows
  * @property string $currency
  * @property ConsumptionMode|null $consumption_mode SUR_PLACE, A_EMPORTER
  * @property string|null $customer_name
@@ -157,6 +159,13 @@ class Receipt extends Model
         'total',
         'change_due',
         'tolerance_writeoff',
+        // Cash rounding Phase 1 (spec Rev 2.2 §4.5) — mirrored from the
+        // signed v3 SALE_RECEIPT payload. `cash_rounding_adjustment` is
+        // SIGNED and participates in the `pos_receipts_totals` CHECK;
+        // `cash_rounding_denomination` records the denomination the device
+        // actually applied so a later policy change is detectable.
+        'cash_rounding_adjustment',
+        'cash_rounding_denomination',
         'currency',
         'consumption_mode',
         'table_id',
@@ -237,6 +246,17 @@ class Receipt extends Model
             'total' => 'decimal:3',
             'change_due' => 'decimal:3',
             'tolerance_writeoff' => 'decimal:3',
+            // Column is numeric(12,3) — same scale as the totals it balances.
+            'cash_rounding_adjustment' => 'decimal:3',
+            // Column is numeric(15,4), matching
+            // `country_payment_settings.cash_rounding_denomination`. Cast to
+            // decimal:4 (not the bare `string` used on CountryPaymentSettings)
+            // so the value is normalised to 4dp on BOTH drivers — SQLite has
+            // no numeric scale and would otherwise hand back '0.05' where PG
+            // hands back '0.0500'. Comparisons against live policy are bccomp,
+            // never string equality, so the 4dp normalisation is safe; the
+            // authoritative signed bytes live in `canonical_bytes`.
+            'cash_rounding_denomination' => 'decimal:4',
             'fiscal_status' => FiscalStatus::class,
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',

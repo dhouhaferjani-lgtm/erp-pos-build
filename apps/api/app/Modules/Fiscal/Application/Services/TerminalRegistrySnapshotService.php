@@ -309,7 +309,11 @@ final class TerminalRegistrySnapshotService
      */
     private function validateServerAuthoredPayload(FiscalEventType $type, array $payload): void
     {
-        $keySetError = $this->payloadValidator->validatePayloadKeySet($type, $payload);
+        // Server-authored TERMINAL_REGISTRY_SNAPSHOT is a v1-only contract
+        // (FiscalEventPayloadRegistry::PHASE_1_MAP), and the authoring path
+        // above stamps `event_version => 1`. Passed explicitly so the version
+        // threading is auditable at every call site.
+        $keySetError = $this->payloadValidator->validatePayloadKeySet($type, $payload, 'operational', 1);
         if ($keySetError !== null) {
             throw new InvalidServerAuthoredPayloadException(sprintf(
                 'Server-authored %s payload failed key-set validation: %s',

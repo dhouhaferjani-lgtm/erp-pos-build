@@ -67,5 +67,15 @@ final readonly class Nf525ReceiptData
         public ?string $overrideReason = null,
         public ?bool $outOfWindow = null,
         public array $voucherLedgerEntries = [],
+        /**
+         * Signed cash-rounding adjustment (`rounded − exact`) from the v3
+         * SALE_RECEIPT payload, as a decimal string at the receipt currency's
+         * scale. NULL on v1/v2 receipts and on every legacy mapping path;
+         * '0.000' on a v3 receipt that rounded nothing. Presence — not
+         * non-zero-ness — is what tells an auditor the ticket came off a
+         * rounding-capable terminal, so the JET export emits the rounding
+         * elements whenever this is non-null.
+         */
+        public ?string $cashRoundingAdjustment = null,
     ) {}
 }

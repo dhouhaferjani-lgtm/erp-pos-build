@@ -15,6 +15,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\CountryPaymentSettingsSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
@@ -188,6 +189,11 @@ class TenantInitializationService
     {
         (new CountriesSeeder)->run();
         (new CountryTaxRatesSeeder)->run();
+        // MUST run after CountriesSeeder — the country_code FK requires the
+        // lookup rows to exist (spec §4.2 greenfield self-healing). The A2
+        // migration's own upsert is skipped on a fresh tenant because
+        // `countries` is still empty when tenants:migrate runs.
+        (new CountryPaymentSettingsSeeder)->run();
     }
 
     private function seedChartOfAccounts(Company $company): void

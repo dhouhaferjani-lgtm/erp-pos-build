@@ -61,10 +61,11 @@ final class BestEffortPayloadParser
         /** @var array<string, mixed> $payload */
         // Validate against the envelope's OWN event_version (M4 Codex P2-1)
         // so a v2 SALE_RECEIPT in the repair path is not mis-flagged with
-        // v1 line-item defects. Unparseable versions fall back to 1.
+        // v1 line-item defects, and a v3 payload is not mis-flagged as
+        // carrying extra fields. Unparseable versions fall back to 1.
         $eventVersion = is_int($envelope['event_version'] ?? null) ? $envelope['event_version'] : 1;
-        $parsed = $this->expectedPayloadFields($eventType, $payload);
-        $defects = array_merge($defects, $this->keySetDefects($eventType, $payload));
+        $parsed = $this->expectedPayloadFields($eventType, $payload, $eventVersion);
+        $defects = array_merge($defects, $this->keySetDefects($eventType, $payload, $eventVersion));
         $defects = array_merge($defects, $this->schemaDefects($eventType, $payload, $eventVersion));
 
         return new BestEffortParseResult($parsed, $this->uniqueDefects($defects));
@@ -74,9 +75,9 @@ final class BestEffortPayloadParser
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function expectedPayloadFields(FiscalEventType $eventType, array $payload): array
+    private function expectedPayloadFields(FiscalEventType $eventType, array $payload, int $eventVersion): array
     {
-        $expected = FiscalPayloadConstraintValidator::PAYLOAD_KEYS[$eventType->value] ?? [];
+        $expected = $this->constraintValidator->payloadKeysFor($eventType, $eventVersion) ?? [];
         $parsed = [];
         foreach ($expected as $key) {
             if (array_key_exists($key, $payload)) {
@@ -91,9 +92,9 @@ final class BestEffortPayloadParser
      * @param  array<string, mixed>  $payload
      * @return list<ParseDefect>
      */
-    private function keySetDefects(FiscalEventType $eventType, array $payload): array
+    private function keySetDefects(FiscalEventType $eventType, array $payload, int $eventVersion): array
     {
-        $expected = FiscalPayloadConstraintValidator::PAYLOAD_KEYS[$eventType->value] ?? null;
+        $expected = $this->constraintValidator->payloadKeysFor($eventType, $eventVersion);
         if ($expected === null) {
             return [new ParseDefect('event_type', 'event_type_unimplemented', 'No payload contract is registered for '.$eventType->value.'.')];
         }
@@ -122,7 +123,7 @@ final class BestEffortPayloadParser
             $dtoClass::fromArray($payload);
         } catch (Throwable $e) {
             $defects[] = new ParseDefect(
-                $this->inferPayloadPath($e->getMessage(), $eventType),
+                $this->inferPayloadPath($e->getMessage(), $eventType, $eventVersion),
                 'schema_violation',
                 $e->getMessage(),
             );
@@ -132,7 +133,7 @@ final class BestEffortPayloadParser
             $this->constraintValidator->validatePerEventConstraints($eventType, $payload, 'operational', $eventVersion);
         } catch (RuntimeException $e) {
             $defects[] = new ParseDefect(
-                $this->inferPayloadPath($e->getMessage(), $eventType),
+                $this->inferPayloadPath($e->getMessage(), $eventType, $eventVersion),
                 $this->reasonCode($e->getMessage()),
                 $e->getMessage(),
             );
@@ -148,9 +149,9 @@ final class BestEffortPayloadParser
         return $prefix === false || $prefix === '' ? 'parse_failure' : $prefix;
     }
 
-    private function inferPayloadPath(string $message, FiscalEventType $eventType): string
+    private function inferPayloadPath(string $message, FiscalEventType $eventType, int $eventVersion = 1): string
     {
-        $expected = FiscalPayloadConstraintValidator::PAYLOAD_KEYS[$eventType->value] ?? [];
+        $expected = $this->constraintValidator->payloadKeysFor($eventType, $eventVersion) ?? [];
         foreach ($expected as $key) {
             if (str_contains($message, $key)) {
                 return 'payload.'.$key;

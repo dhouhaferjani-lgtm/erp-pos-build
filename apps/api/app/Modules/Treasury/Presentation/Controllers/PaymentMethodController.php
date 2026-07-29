@@ -61,6 +61,8 @@ class PaymentMethodController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        $this->normalizeCodeInput($request);
+
         $validated = $request->validate([
             'code' => [
                 'required',
@@ -70,6 +72,7 @@ class PaymentMethodController extends Controller
             ],
             'name' => ['required', 'string', 'max:100'],
             'is_physical' => ['nullable', 'boolean'],
+            'is_cash_tender' => ['nullable', 'boolean'],
             'has_maturity' => ['nullable', 'boolean'],
             'instrument_kind' => [
                 Rule::requiredIf($request->boolean('has_maturity')),
@@ -120,12 +123,17 @@ class PaymentMethodController extends Controller
             $instrumentKind,
         );
 
+        $code = (string) $validated['code'];
+        $isCashTender = (bool) ($validated['is_cash_tender'] ?? false);
+        $this->assertCashTenderInvariant($code, $isCashTender);
+
         $method = PaymentMethod::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
-            'code' => $validated['code'],
+            'code' => $code,
             'name' => $validated['name'],
             'is_physical' => $validated['is_physical'] ?? false,
+            'is_cash_tender' => $isCashTender,
             'has_maturity' => $validated['has_maturity'] ?? false,
             'instrument_kind' => $instrumentKind,
             'requires_third_party' => $validated['requires_third_party'] ?? false,
@@ -161,9 +169,16 @@ class PaymentMethodController extends Controller
             ->where('company_id', $companyId)
             ->findOrFail($id);
 
+        $this->normalizeCodeInput($request);
+
         $validated = $request->validate([
             'code' => [
                 'sometimes',
+                // `filled` rejects a PRESENT-but-empty code ({"code": null},
+                // {"code": ""}, {"code": "   "}). Without it the `sometimes`
+                // rule would happily persist a blank code, and a second blanked
+                // row would then collide on unique(company_id, code).
+                'filled',
                 'string',
                 'max:30',
                 Rule::unique('payment_methods', 'code')
@@ -172,6 +187,7 @@ class PaymentMethodController extends Controller
             ],
             'name' => ['sometimes', 'string', 'max:100'],
             'is_physical' => ['sometimes', 'boolean'],
+            'is_cash_tender' => ['sometimes', 'boolean'],
             'has_maturity' => ['sometimes', 'boolean'],
             'instrument_kind' => ['nullable', Rule::enum(InstrumentKind::class)],
             'requires_third_party' => ['sometimes', 'boolean'],
@@ -223,6 +239,15 @@ class PaymentMethodController extends Controller
             $validated['instrument_kind'] = $finalInstrumentKind;
         }
 
+        // $finalCode is already normalized: an incoming `code` was uppercased
+        // before validation, and a stored one is uppercase by the migration's
+        // backfill. Compared EXACTLY — a brownfield row the backfill had to
+        // skip (see migration A1) must not be flaggable as a cash tender.
+        $finalIsCashTender = array_key_exists('is_cash_tender', $validated)
+            ? (bool) $validated['is_cash_tender']
+            : $method->is_cash_tender;
+        $this->assertCashTenderInvariant($finalCode, $finalIsCashTender);
+
         $method->update($validated);
 
         /** @var PaymentMethod $freshMethod */
@@ -243,6 +268,7 @@ class PaymentMethodController extends Controller
             'code' => $method->code,
             'name' => $method->name,
             'is_physical' => $method->is_physical,
+            'is_cash_tender' => $method->is_cash_tender,
             'has_maturity' => $method->has_maturity,
             'instrument_kind' => $method->instrument_kind?->value,
             'requires_third_party' => $method->requires_third_party,
@@ -277,6 +303,53 @@ class PaymentMethodController extends Controller
         if (PaymentInstrumentKind::requiresInstrumentForMethodCode($code)) {
             throw ValidationException::withMessages([
                 'code' => ['A voucher instrument method cannot also be configured as a maturity method.'],
+            ]);
+        }
+    }
+
+    /**
+     * Uppercase the incoming `code` BEFORE validation runs.
+     *
+     * The column is stored uppercase (spec §4.1 exact-code invariant) and
+     * `unique(['company_id','code'])` is case-sensitive in PostgreSQL, so
+     * uppercasing AFTER validation would let `cash` pass `Rule::unique`
+     * against an existing `CASH` row and then blow up on the index with a
+     * 500 instead of a 422.
+     *
+     * Deliberately a no-op unless the input is a NON-EMPTY STRING:
+     *  - a non-string (`{"code": ["x"]}`) would fatal on `Array to string
+     *    conversion` inside the merge, i.e. a 500 raised before the `string`
+     *    rule ever gets to return its 422;
+     *  - an absent or empty code (`{"code": null}` on PATCH) must reach the
+     *    validator untouched. Merging it as `''` would satisfy `sometimes` +
+     *    `string` and silently wipe the stored code.
+     *
+     * Both cases are then rejected by the rules: `required` (store) /
+     * `filled` + `string` (update).
+     */
+    private function normalizeCodeInput(Request $request): void
+    {
+        $raw = $request->input('code');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return;
+        }
+
+        $request->merge(['code' => strtoupper(trim($raw))]);
+    }
+
+    /**
+     * Spec §4.1 invariant: `is_cash_tender = true` implies `code = 'CASH'`
+     * EXACT (case-sensitive). The device Z aggregation matches
+     * `method_code === 'CASH'` case-sensitively while the server matches
+     * `UPPER(code)`; only an exact-code invariant makes all three predicates
+     * provably coincide. Custom cash methods are a separate ticket.
+     */
+    private function assertCashTenderInvariant(string $code, bool $isCashTender): void
+    {
+        if ($isCashTender && $code !== 'CASH') {
+            throw ValidationException::withMessages([
+                'is_cash_tender' => 'Only the payment method with code CASH may be flagged as a cash tender.',
             ]);
         }
     }

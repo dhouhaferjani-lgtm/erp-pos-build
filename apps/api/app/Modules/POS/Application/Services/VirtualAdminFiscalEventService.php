@@ -350,7 +350,11 @@ final class VirtualAdminFiscalEventService
      */
     private function validatePayload(FiscalEventType $type, array $payload): void
     {
-        $keySetError = $this->payloadValidator->validatePayloadKeySet($type, $payload);
+        // Every type this service authors (DEPOSIT_RECEIPT, cash-drawer
+        // movements, session events) is a v1 contract and is stamped
+        // `event_version => 1` above; no server path authors SALE_RECEIPT.
+        // Passed explicitly for auditability.
+        $keySetError = $this->payloadValidator->validatePayloadKeySet($type, $payload, 'operational', 1);
         if ($keySetError !== null) {
             throw new RuntimeException(sprintf('%s payload failed key-set validation: %s', $type->value, $keySetError));
         }

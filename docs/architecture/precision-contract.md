@@ -76,6 +76,94 @@ Quantity has TWO scales: the canonical **storage** scale (`decimal(N,4)`, unit-a
 - **ESLint** — web (`apps/web/eslint-rules/no-literal-decimal-places.js`, WARN): no hardcoded numeric `decimalPlaces={4}` literal on `<QuantityInput>` in the product-quantity feature dirs — derive via `getQuantityDecimals(...)`. POS (`apps/pos/eslint-rules/no-raw-quantity-input.js`, WARN→ERROR in the strict override): no raw `<input inputMode="decimal">` — route through `<QuantityInput>` (allowlist for money / non-quantity decimals). POS also copies `no-hardcoded-step`.
 - **Scanner** — `apps/web/tools/audit-quantity-display.mjs` (`pnpm audit:quantity`, wired into lint/preflight/CI) scans BOTH `apps/web/src` and `apps/pos/src`: flags any JSX rendering a raw quantity identifier (`requested_qty`/`suggested_qty`/`received_qty`, member `quantity`) unless wrapped in the canonical `formatQuantity` or inside a `<QuantityInput value>`. Baseline `quantity-display-baseline.json` (line-number-free `"file:identifier"` entries) is **shrink-only**: a NEW entry fails CI, and a STALE entry (baselined site now fixed/removed) also fails — forcing baseline removal.
 
+## Signed fiscal fields — the string-fidelity exception (SALE_RECEIPT v3 cash rounding)
+
+Everything above governs values at rest and in transit. Two fields are stricter
+still, because they live inside **cryptographically signed bytes** and any
+re-serialization is a permanent, unrepairable defect.
+
+`SALE_RECEIPT` payload v3 (`fiscal_events.event_version >= 3`, the single
+cutover discriminator `App\Shared\Domain\CashRoundingCutover::EVENT_VERSION`)
+carries:
+
+| Field | Type | Rule |
+|---|---|---|
+| `cash_rounding_adjustment` | **SIGNED** decimal string at `currency_scale` | The one sanctioned negative-allowed money field. `-0` is REJECTED — canonical zero is the unsigned zero at scale (`'0.000'`) |
+| `cash_rounding_denomination` | NON-NEGATIVE decimal string at `currency_scale` | Canonical zero when rounding did not apply |
+
+`cash_rounding_adjustment` is the **exception this feature creates** to the
+otherwise unqualified "money is non-negative at rest" habit: it is
+`rounded_total − exact_total`, so it is negative exactly when the cash total
+rounds DOWN. Every guard, CHECK and validator on its path must tolerate the
+minus sign; only `-0` is illegal.
+
+**The signed denomination must survive every hop UNMUTATED.** `'0.050'`
+becoming `0.05` anywhere on the path is 100% quarantine for every receipt
+authored after that point. Concretely:
+
+- `country_payment_settings.cash_rounding_denomination` is `decimal(15,4)` with
+  a `'string'` Eloquent cast (`app/Modules/Treasury/Domain/CountryPaymentSettings.php`)
+  — NEVER a float cast, which re-serializes `0.0500` as `0.05`. On SQLite the
+  raw query builder returns that column as a PHP float, so reads must go
+  through the model, never `DB::table(...)`.
+- `PosPaymentPolicyResolver` re-scales it to the company currency scale with
+  `CurrencyScale::bcformatStrict()` and validates round-trip equality; a
+  non-representable value is reported as `cashRoundingEnabled: false` rather
+  than emitted broken.
+- `PosPaymentPolicyDTO::$cashRoundingDenomination` is typed `string`; the
+  generated TypeScript type is `string`; the device SQLite cache column is
+  `TEXT` (NUMERIC/REAL affinity strips trailing zeros).
+
+**Comparisons against policy use `bccomp`, never string equality.** PostgreSQL
+renders `decimal(15,4)` as `0.0500` while the signed value is `0.050` — a string
+compare would false-alarm on every rounded receipt.
+
+**Sanctioned denominations are history-stable.**
+`App\Shared\Domain\CashRoundingCaps` maps currency scale → maximum legal
+denomination (`0 => '10'`, `2 => '1.00'`, `3 => '1.000'`; an unlisted scale
+disables rounding, fail-closed). Every writer and verifier — the resolver, the
+`pos:configure-cash-rounding` ops command, the payload validator — imports it
+and never re-types the literals. Editing a value there re-interprets receipts
+that were already signed under the old table, so treat it as a versioning
+constant, not a tunable. The same applies to
+`CashRoundingCutover::EVENT_VERSION`.
+
+**`total` semantics under rounding.** On a v3 receipt the signed `total` is the
+ROUNDED amount actually collected. The NF525 aggregate identity becomes:
+
+```
+subtotal + vat_total == (total − cash_rounding_adjustment) + discount
+```
+
+Absent fields mean zero, so v1/v2 reduce to the previous identity exactly.
+Revenue and loyalty consume the EXACT value `total − adjustment`; the drawer,
+the payable and the Z gross consume the rounded `total`; VAT is untouched
+(rounding is VAT-neutral and is never allocated across VAT buckets, so
+`total ≠ Σ vat gross` by exactly one adjustment is now legal).
+
+**Two-semantics payments rule (read before summing any cash column).** From the
+v3 cutover on, the two payment tables mean different things:
+
+| Column | Semantics |
+|---|---|
+| `pos_receipt_payments.amount` | **TENDERED** — what the customer handed over (canonical, from the signed payload) |
+| `payments.amount` (Treasury) | **RETAINED** — tendered minus the change given back; a leg fully netted to zero writes no row at all |
+
+`TreasuryReceiptBridge` performs the netting (`app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php`
+— see `computeNettedAmounts`). Any report that sums tendered cash as if it were
+banked cash overstates from the cutover forward; subtract
+`pos_receipts.change_due` or read the Treasury `payments` rows.
+
+**`pos_receipts_totals` (pgsql-only CHECK)** is:
+
+```sql
+total = subtotal + tax_amount - discount_amount + COALESCE(cash_rounding_adjustment, 0)
+```
+
+The `COALESCE` is load-bearing: without it the expression is NULL on every
+legacy row and PostgreSQL treats a NULL CHECK as satisfied, silently disabling
+the identity for all pre-v3 data.
+
 ## Regression guards (CI)
 
 - **PHPStan** (`app/PHPStan/Rules/`): `ForbidFloatCastOnDecimalProperty` (no `(float)` on a `decimal:N` prop), `ForbidHardcodedBcmathScale` (no literal scale arg in service-layer bcmath; use `$this->scale()`/`+N` or a `// precision-ok` exemption). Legacy hits are in `phpstan-baseline.neon`; NEW violations fail CI.

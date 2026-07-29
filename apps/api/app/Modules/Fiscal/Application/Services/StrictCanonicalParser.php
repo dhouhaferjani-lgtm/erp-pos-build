@@ -223,7 +223,7 @@ final class StrictCanonicalParser
             return ParseResult::failure('schema_violation:'.$e->getMessage());
         }
 
-        $extrasError = $this->constraintValidator->validatePayloadKeySet($type, $payload, $chainContext);
+        $extrasError = $this->constraintValidator->validatePayloadKeySet($type, $payload, $chainContext, $eventVersion);
         if ($extrasError !== null) {
             return ParseResult::failure($extrasError);
         }

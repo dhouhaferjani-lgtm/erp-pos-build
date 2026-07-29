@@ -309,9 +309,15 @@ final class ParseFailureResolutionService
         // StrictCanonicalParser round-2). The validator throws
         // RuntimeException; we rewrap so the caller's exception
         // contract is uniform.
+        // Validated against the EVENT'S OWN version, exactly like the
+        // per-event constraint pass below: a corrected v3 SALE_RECEIPT
+        // carries the two cash-rounding keys, and checking it against the
+        // v1/v2 key set would reject a legal correction as `payload_extra_field`.
         $extrasError = $this->constraintValidator->validatePayloadKeySet(
             $event->event_type,
             $correctedPayload,
+            'operational',
+            $event->event_version,
         );
         if ($extrasError !== null) {
             throw new InvalidCorrectedPayloadException(sprintf(

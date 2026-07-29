@@ -33,6 +33,12 @@ class ProductionSeeder extends Seeder
         $this->call(CountriesSeeder::class);
         $this->command->info('     Countries seeded successfully.');
 
+        // 1b. Country Payment Settings (tolerance ceilings + cash-rounding
+        //     denomination). MUST run after CountriesSeeder — country_code FK.
+        $this->command->info('[1b/6] Seeding country payment settings...');
+        $this->call(CountryPaymentSettingsSeeder::class);
+        $this->command->info('     Country payment settings seeded successfully.');
+
         // 2. Country Tax Rates (lookup table)
         $this->command->info('[2/6] Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);
