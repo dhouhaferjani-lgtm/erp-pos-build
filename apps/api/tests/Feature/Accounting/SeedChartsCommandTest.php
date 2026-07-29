@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\PendingCommand;
 use Mockery;
@@ -172,13 +173,31 @@ final class SeedChartsCommandTest extends TestCase
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
-        $this->command('accounting:seed-charts', ['--dry-run' => true])
-            ->expectsOutputToContain('Chart provisioning:')
-            ->assertSuccessful();
+        self::assertSame(0, Artisan::call('accounting:seed-charts', ['--dry-run' => true]));
+        $preview = Artisan::output();
         self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
 
-        $this->command('accounting:seed-charts')->assertSuccessful();
-        self::assertGreaterThan(0, Account::query()->where('company_id', $company->id)->count());
+        // This test's NAME is a claim about the reported count, so assert the number —
+        // a generic 'Chart provisioning:' marker would still pass if the preview
+        // dishonestly reported 0 created.
+        self::assertSame(
+            1,
+            preg_match('/Chart provisioning: (\d+) created/', $preview, $matches),
+            'the dry-run summary must report a creation count',
+        );
+        // `?? '0'` keeps the capture access type-safe (the match array is only proven
+        // non-empty at runtime); a missing capture yields 0 and trips the guard below.
+        $previewed = (int) ($matches[1] ?? '0');
+        self::assertGreaterThan(0, $previewed, 'dry-run must preview a non-zero creation count');
+
+        self::assertSame(0, Artisan::call('accounting:seed-charts'));
+        $actual = Account::query()->where('company_id', $company->id)->count();
+        self::assertGreaterThan(0, $actual);
+        self::assertSame(
+            $previewed,
+            $actual,
+            'the previewed creation count must equal what the real run actually creates',
+        );
     }
 
     public function test_no_companies_reports_stable_marker_exit_zero(): void
