@@ -487,7 +487,11 @@
       "successReused": "Ce service avait déjà un rapport Z — affichage de l'existant.",
       "printReceipt": "Imprimer le ticket",
       "printError": "Échec de l'envoi du ticket à l'imprimante.",
-      "done": "Terminer"
+      "done": "Terminer",
+      "toleranceAutoAcceptsUsed": "Écarts acceptés automatiquement",
+      "toleranceAutoAcceptsValue": "{{used}} / {{limit}}",
+      "toleranceAutoAcceptsUnknown": "Inconnu / {{limit}}",
+      "netCashRounding": "Arrondi espèces net"
     },
     "zList": {
       "title": "Rapports Z",

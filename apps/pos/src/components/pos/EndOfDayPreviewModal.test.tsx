@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { EndOfDayPreviewModal, type CompanyFraudSettings } from './EndOfDayPreviewModal';
+import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,11 @@ vi.mock('react-i18next', () => ({
         'reports.endOfDay.successReused': 'Already had a Z report.',
         'reports.endOfDay.printReceipt': 'Print Receipt',
         'reports.endOfDay.done': 'Done',
+        'reports.endOfDay.toleranceAutoAcceptsUsed': 'Auto-accepts used',
+        'reports.endOfDay.toleranceAutoAcceptsValue':
+          `${String(opts?.used ?? '')} / ${String(opts?.limit ?? '')}`,
+        'reports.endOfDay.toleranceAutoAcceptsUnknown': `Unknown / ${String(opts?.limit ?? '')}`,
+        'reports.endOfDay.netCashRounding': 'Net cash rounding',
         'reports.vatRate': 'Rate',
         'reports.vatNet': 'Net',
         'reports.vatVat': 'VAT',
@@ -90,6 +96,8 @@ const samplePreview = {
   expected_cash: '130.00',
   variance: null,
   tolerance_summary: null,
+  cash_rounding_summary: null,
+  tolerance_auto_accept_count: 0,
   vat_breakdown: [
     { tax_rate: 19, net_amount: '37.82', vat_amount: '7.18', gross_amount: '45.00' },
   ],
@@ -567,6 +575,93 @@ describe('EndOfDayPreviewModal', () => {
       renderModal();
       await screen.findByText('Confirm and Close Day');
       expect(screen.getByTestId('tolerance-drill')).toBeInTheDocument();
+    });
+  });
+
+  // ── Cash rounding + auto-accept budget (fix round 1, owner ruling) ─────────
+
+  describe('cash rounding summary row', () => {
+    it('renders the signed net adjustment and the rounded-receipt count', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        cash_rounding_summary: { totalAdjustment: '-0.020', receiptCount: 2 },
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      const row = screen.getByTestId('cash-rounding-summary');
+      expect(within(row).getByText('Net cash rounding')).toBeInTheDocument();
+      // The sign must survive: a round-DOWN must not read as a round-up.
+      expect(row).toHaveTextContent('-0.020');
+      expect(row).toHaveTextContent('(2)');
+    });
+
+    it('renders a POSITIVE adjustment without inventing a minus', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        cash_rounding_summary: { totalAdjustment: '0.030', receiptCount: 1 },
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      const row = screen.getByTestId('cash-rounding-summary');
+      expect(row).toHaveTextContent('0.030');
+      expect(row).not.toHaveTextContent('-0.030');
+    });
+
+    it('renders NO row at all when nothing rounded (never a zero row)', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        cash_rounding_summary: null,
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      expect(screen.queryByTestId('cash-rounding-summary')).not.toBeInTheDocument();
+      expect(screen.queryByText('Net cash rounding')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tolerance auto-accept budget row', () => {
+    it('renders spent against the imported §8.1 limit, not a hardcoded 10', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        tolerance_auto_accept_count: 3,
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      const row = screen.getByTestId('tolerance-auto-accept-budget');
+      expect(within(row).getByText('Auto-accepts used')).toBeInTheDocument();
+      expect(row).toHaveTextContent(`3 / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`);
+    });
+
+    it('renders an unspent budget as 0 / limit', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        tolerance_auto_accept_count: 0,
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      expect(screen.getByTestId('tolerance-auto-accept-budget')).toHaveTextContent(
+        `0 / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`,
+      );
+    });
+
+    it('renders a shiftless (null) count as UNKNOWN, never as full headroom', async () => {
+      // The gate treats a null shift as the budget FULLY SPENT, so a "0 / 10"
+      // here would promise headroom the very next short tender is refused.
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        tolerance_auto_accept_count: null,
+      });
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+
+      const row = screen.getByTestId('tolerance-auto-accept-budget');
+      expect(row).toHaveTextContent(`Unknown / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`);
+      expect(row).not.toHaveTextContent(`0 / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`);
     });
   });
 });

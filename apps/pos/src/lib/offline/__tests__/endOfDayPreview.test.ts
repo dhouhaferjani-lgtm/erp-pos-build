@@ -679,7 +679,11 @@ describe('buildEndOfDayPreview — cash rounding + tolerance (Task 10)', () => {
       expect(String(budgetCall![1])).not.toMatch(/updated_at/);
     });
 
-    it('reports a zero budget spend when the preview is built without a shift id', async () => {
+    it('reports UNKNOWN (null), not zero, when the preview is built without a shift id', async () => {
+      // Zero would render as full headroom, but the GATE reads a null shift as
+      // the budget FULLY SPENT (paymentStore's fail-closed inversion) — so the
+      // screen would promise budget the next short tender is refused. Null is
+      // the only reading that cannot mislead in either direction.
       mockShift([]);
       autoAcceptCount = 7;
 
@@ -687,6 +691,6 @@ describe('buildEndOfDayPreview — cash rounding + tolerance (Task 10)', () => {
         mockDb, 'term-1', '2026-07-27T08:00:00Z', '0', 'EUR',
       );
 
-      expect(preview.tolerance_auto_accept_count).toBe(0);
+      expect(preview.tolerance_auto_accept_count).toBeNull();
     });
 });

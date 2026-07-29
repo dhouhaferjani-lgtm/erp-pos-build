@@ -119,10 +119,16 @@ export interface EndOfDayPreview {
    * (paymentStore swallows a failed charge rather than failing an authored
    * sale). Only this row answers "how much headroom is left".
    *
-   * Zero when the preview is built without a shift id: with no shift there is
-   * no budget to attribute spend to.
+   * NULL — meaning UNKNOWN, never "zero spent" — when the preview is built
+   * without a shift id. There is no row to read, and the two honest readings
+   * disagree: nothing was charged, yet the gate treats a null shift as the
+   * budget FULLY SPENT and refuses the next short tender
+   * (`paymentStore.ts:1030-1033`, the deliberate fail-closed inversion). Zero
+   * would render as full headroom and contradict what the cashier is about to
+   * experience; the limit would fabricate spend that never happened. The UI
+   * must render null as unknown, never as available budget.
    */
-  tolerance_auto_accept_count: number;
+  tolerance_auto_accept_count: number | null;
 }
 
 /**
@@ -329,8 +335,9 @@ export async function buildEndOfDayPreview(
   let cashRefundImpact = '0';
   // The §8.1 budget is keyed by shift id only — there is no timestamp bind, so
   // this read never touches the SQLite TEXT-boundary hazard that forces
-  // toSqliteUtc() on the receipt window above.
-  let toleranceAutoAcceptCount = 0;
+  // toSqliteUtc() on the receipt window above. Stays NULL (unknown) without a
+  // shift — see the field doc on EndOfDayPreview.
+  let toleranceAutoAcceptCount: number | null = null;
   if (shiftId) {
     toleranceAutoAcceptCount = await getToleranceAutoAcceptCount(db, shiftId);
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
