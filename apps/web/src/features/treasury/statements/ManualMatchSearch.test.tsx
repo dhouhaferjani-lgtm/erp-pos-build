@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import Big from 'big.js'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ManualMatchSearch } from './ManualMatchSearch'
@@ -55,9 +54,10 @@ describe('ManualMatchSearch', () => {
     renderSearch({ movements: [], lineRemaining: '100.000' })
 
     const amount = screen.getByLabelText('statements.workspace.manual.amount')
-    const min = amount.getAttribute('min') ?? '0'
-    const max = amount.getAttribute('max') ?? '0'
-    expect(new Big(min).lte(new Big(max))).toBe(true)
+    // With no capacity the max collapses to 0.000; the min must be clamped to the
+    // exact same value (never the smallest-unit 0.001, which would be min > max).
+    expect(amount).toHaveAttribute('max', '0.000')
+    expect(amount).toHaveAttribute('min', '0.000')
     expect(amount).toBeDisabled()
   })
 

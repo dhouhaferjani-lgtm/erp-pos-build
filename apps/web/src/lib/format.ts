@@ -151,6 +151,34 @@ export function formatQuantity(
  * US: MM/DD/YYYY
  */
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2 && isLeapYear(year)) {
+    return 29
+  }
+  return DAYS_IN_MONTH[month - 1]
+}
+
+/**
+ * Build a LOCAL Date from a validated `YYYY-MM-DD` string, or null when the parts
+ * are out of range. The multi-arg Date constructor silently normalizes bad input
+ * (month 13 → next year, day 30 in February → March) and two-digit-century-maps
+ * years < 100 (99 → 1999), so validate the parts numerically first and pin the
+ * year with setFullYear to defeat century mapping.
+ */
+function parseDateOnly(year: number, month: number, day: number): Date | null {
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+    return null
+  }
+  const parsed = new Date(year, month - 1, day)
+  parsed.setFullYear(year)
+  return parsed
+}
 
 export function formatDate(
   date: string | Date,
@@ -159,15 +187,20 @@ export function formatDate(
 ): string {
   // A date-ONLY string (`YYYY-MM-DD`) carries no time or zone. `new Date(str)`
   // would parse it as UTC midnight, which then shifts back a calendar day when
-  // formatted in a timezone behind UTC. Build a LOCAL date from its parts so the
-  // rendered calendar date matches the input in every timezone. Datetime strings
-  // (with a time or offset) keep their instant-based, zone-converting behavior.
+  // formatted in a timezone behind UTC. Build a validated LOCAL date from its parts
+  // so the rendered calendar date matches the input in every timezone. Datetime
+  // strings (with a time or offset) keep their instant-based, zone-converting behavior.
   const dateOnlyMatch = typeof date === 'string' ? DATE_ONLY_PATTERN.exec(date) : null
-  const d = dateOnlyMatch
-    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
-    : typeof date === 'string'
-      ? new Date(date)
-      : date
+  let d: Date | null
+  if (dateOnlyMatch) {
+    d = parseDateOnly(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]), Number(dateOnlyMatch[3]))
+  } else {
+    d = typeof date === 'string' ? new Date(date) : date
+  }
+
+  if (d === null) {
+    return ''
+  }
 
   if (isNaN(d.getTime())) {
     return ''

@@ -29,7 +29,13 @@ describe('formatDate', () => {
   })
 
   afterAll(() => {
-    process.env.TZ = originalTz
+    // Assigning `undefined` would store the literal string "undefined"; delete when
+    // TZ was originally unset so the environment is restored faithfully.
+    if (originalTz === undefined) {
+      delete process.env.TZ
+    } else {
+      process.env.TZ = originalTz
+    }
   })
 
   it('renders a date-only string as its calendar date without a timezone day-shift', () => {
@@ -56,5 +62,21 @@ describe('formatDate', () => {
 
   it('returns an empty string for an invalid date input', () => {
     expect(formatDate('not-a-date', 'DD/MM/YYYY', 'en-GB')).toBe('')
+  })
+
+  it('does not two-digit-century-map a sub-100 year in a date-only string', () => {
+    expect(formatDate('0099-01-01', 'DD/MM/YYYY', 'en-GB')).not.toContain('1999')
+  })
+
+  it('rejects an out-of-range month instead of rolling it over', () => {
+    expect(formatDate('2026-13-01', 'DD/MM/YYYY', 'en-GB')).toBe('')
+  })
+
+  it('rejects an out-of-range day instead of rolling it over', () => {
+    expect(formatDate('2026-02-30', 'DD/MM/YYYY', 'en-GB')).toBe('')
+  })
+
+  it('accepts a valid leap day', () => {
+    expect(formatDate('2028-02-29', 'DD/MM/YYYY', 'en-GB')).toBe('29/02/2028')
   })
 })
