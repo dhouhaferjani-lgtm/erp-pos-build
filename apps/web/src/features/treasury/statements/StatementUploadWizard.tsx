@@ -40,6 +40,22 @@ type Step = 'repository' | 'file' | 'profile' | 'preview'
 const mappingFields = ['value_date', 'booking_date', 'amount', 'debit', 'credit', 'reference', 'bank_transaction_id', 'label', 'counterparty_hint'] as const
 const wizardSteps: Step[] = ['repository', 'file', 'profile', 'preview']
 
+const parserKeys: StatementParserKey[] = ['csv', 'xlsx']
+const directionConventions: StatementDirectionConvention[] = ['signed_amount', 'debit_credit_columns']
+const decimalFormats: StatementDecimalFormat[] = ['comma', 'comma_decimal', 'dot', 'dot_decimal']
+
+function isParserKey(value: string): value is StatementParserKey {
+  return parserKeys.some((key) => key === value)
+}
+
+function isDirectionConvention(value: string): value is StatementDirectionConvention {
+  return directionConventions.some((convention) => convention === value)
+}
+
+function isDecimalFormat(value: string): value is StatementDecimalFormat {
+  return decimalFormats.some((format) => format === value)
+}
+
 export function StatementUploadWizard({
   repositories,
   profiles,
@@ -222,9 +238,9 @@ export function StatementUploadWizard({
             <div className={cn('space-y-4 rounded-lg border p-4', semanticColorTokens.border.subtle, semanticColorTokens.surface.pageAlpha)}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className={tokens.label.base}>{t('statements.profile.name')}<Input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
-                <label className={tokens.label.base}>{t('statements.profile.parser')}<Select value={parserKey} onChange={(event) => setParserKey(event.target.value as StatementParserKey)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></Select></label>
-                <label className={tokens.label.base}>{t('statements.profile.direction')}<Select value={directionConvention} onChange={(event) => setDirectionConvention(event.target.value as StatementDirectionConvention)}><option value="signed_amount">{t('statements.profile.signed')}</option><option value="debit_credit_columns">{t('statements.profile.debitCredit')}</option></Select></label>
-                <label className={tokens.label.base}>{t('statements.profile.decimal')}<Select value={decimalFormat} onChange={(event) => setDecimalFormat(event.target.value as StatementDecimalFormat)}><option value="comma_decimal">1 234,56</option><option value="dot_decimal">1,234.56</option><option value="comma">1234,56</option><option value="dot">1234.56</option></Select></label>
+                <label className={tokens.label.base}>{t('statements.profile.parser')}<Select value={parserKey} onChange={(event) => { const value = event.target.value; /* Invalid values cannot come from the fixed <option> set; drop them by design (no error UI). */ if (!isParserKey(value)) return; setParserKey(value) }}><option value="csv">CSV</option><option value="xlsx">XLSX</option></Select></label>
+                <label className={tokens.label.base}>{t('statements.profile.direction')}<Select value={directionConvention} onChange={(event) => { const value = event.target.value; /* Invalid values cannot come from the fixed <option> set; drop them by design (no error UI). */ if (!isDirectionConvention(value)) return; setDirectionConvention(value) }}><option value="signed_amount">{t('statements.profile.signed')}</option><option value="debit_credit_columns">{t('statements.profile.debitCredit')}</option></Select></label>
+                <label className={tokens.label.base}>{t('statements.profile.decimal')}<Select value={decimalFormat} onChange={(event) => { const value = event.target.value; /* Invalid values cannot come from the fixed <option> set; drop them by design (no error UI). */ if (!isDecimalFormat(value)) return; setDecimalFormat(value) }}><option value="comma_decimal">1 234,56</option><option value="dot_decimal">1,234.56</option><option value="comma">1234,56</option><option value="dot">1234.56</option></Select></label>
                 <label className={tokens.label.base}>{t('statements.profile.dateFormat')}<Input value={dateFormat} onChange={(event) => setDateFormat(event.target.value)} /></label>
                 <label className={tokens.label.base}>{t('statements.profile.headerRows')}<Input type="number" min="0" max="100" value={headerRows} onChange={(event) => setHeaderRows(event.target.value)} /></label>
               </div>

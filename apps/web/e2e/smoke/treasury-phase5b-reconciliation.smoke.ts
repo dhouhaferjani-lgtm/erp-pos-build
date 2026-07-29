@@ -27,7 +27,18 @@ const CHEQUE_AMOUNT = '37.125'
 const ADJUSTMENT_AMOUNT = '15.000'
 const AGIO_AMOUNT = '2.500'
 const IGNORED_AMOUNT = '1.250'
-const STATEMENT_DELTA = '72.625'
+// Signed statement delta (closing − opening): the net of every parsed line that
+// the statement's closing balance reflects. Adjustment (+in) and card net (+in)
+// credit the account; cheque, agio, and the ignored informational debit (−out)
+// reduce it. The ignored line is INCLUDED because closing−opening captures the
+// raw bank movement even though reconciliation treats it as metadata-only (see
+// step 6: live balance = closing + IGNORED_AMOUNT). Derived from the row
+// constants with the file's decimal-string millime math (no floats) — equals
+// '72.625'.
+const STATEMENT_DELTA = addMoney(
+  addMoney(addMoney(ADJUSTMENT_AMOUNT, CARD_NET), `-${CHEQUE_AMOUNT}`),
+  addMoney(`-${AGIO_AMOUNT}`, `-${IGNORED_AMOUNT}`),
+)
 
 test.skip(
   !!process.env.CI && !process.env.TREASURY_PHASE5B_API_BASE,
@@ -125,6 +136,37 @@ async function expectStatus(response: APIResponse, expected: number, label: stri
   if (response.status() !== expected) {
     throw new Error(`${label}: expected ${expected}, got ${response.status()}\n${await response.text()}`)
   }
+}
+
+/**
+ * Fetch every bank statement for a repository across ALL pages. The
+ * `/bank-statements` index paginates (per_page capped at 100) and returns
+ * `{ data, meta: { current_page, last_page, ... } }`; a single-page read would
+ * silently miss statements past the cap, so both the setup leftover-skip and the
+ * teardown "zero active non-terminal statements" proof must walk the pagination.
+ */
+async function fetchAllStatements(
+  request: APIRequestContext,
+  repositoryId: string,
+  label: string,
+): Promise<Array<{ status: string }>> {
+  const collected: Array<{ status: string }> = []
+  let page = 1
+  let lastPage = 1
+  do {
+    const response = await request.get(
+      `${API_BASE}/bank-statements?payment_repository_id=${repositoryId}&per_page=100&page=${page}`,
+      { headers: authHeaders() },
+    )
+    await expectStatus(response, 200, `${label} (page ${page})`)
+    const body = await json(response)
+    collected.push(...((body.data ?? []) as Array<{ status: string }>))
+    const meta = (body.meta ?? {}) as { current_page?: number; last_page?: number }
+    lastPage = typeof meta.last_page === 'number' ? meta.last_page : page
+    page += 1
+  } while (page <= lastPage)
+
+  return collected
 }
 
 function toMillimes(value: string): bigint {
@@ -269,10 +311,17 @@ async function seedAuth(page: Page): Promise<void> {
     state: { user, token, isAuthenticated: true, isLoading: false },
     version: 0,
   }
-  await page.addInitScript(({ auth, selectedCompany }) => {
+  // Pin the UI locale to English BEFORE the app bootstraps so every
+  // English-string locator in this smoke matches BY CONTRACT, not by the
+  // runner's ambient language. i18next resolves the active language from this
+  // localStorage key (detection order: querystring → localStorage → navigator;
+  // lookupLocalStorage: 'autoerp-language'), so seeding it in the same init
+  // script that seeds auth guarantees deterministic English on every page load.
+  await page.addInitScript(({ auth, selectedCompany, language }) => {
     window.localStorage.setItem('autoerp-auth', auth)
     window.localStorage.setItem('autoerp-company-selection', selectedCompany)
-  }, { auth: JSON.stringify(authState), selectedCompany: companyId })
+    window.localStorage.setItem('autoerp-language', language)
+  }, { auth: JSON.stringify(authState), selectedCompany: companyId, language: 'en' })
 }
 
 async function chooseLine(page: Page, label: string): Promise<void> {
@@ -362,16 +411,26 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       // Reconciling forever (cannot void with allocations), and
       // assertNoEarlierOpenStatement 422s completion for every later period.
       // Skip repositories that still carry an active non-terminal statement.
-      const statementsResponse = await request.get(
-        `${API_BASE}/bank-statements?payment_repository_id=${candidate.id}&per_page=100`,
-        { headers: authHeaders() },
+      const priorStatements = await fetchAllStatements(
+        request,
+        candidate.id,
+        `statement leftover discovery (${candidate.code})`,
       )
-      await expectStatus(statementsResponse, 200, `statement leftover discovery (${candidate.code})`)
-      const priorStatements = ((await json(statementsResponse)).data ?? []) as Array<{ status: string }>
       const hasOpenStatement = priorStatements.some(
         (statement) => statement.status !== 'reconciled' && statement.status !== 'voided',
       )
       if (hasOpenStatement) {
+        continue
+      }
+      // Best-effort SMOKE reaper: repositories this smoke self-provisioned in
+      // earlier runs (code `SMOKE-*`) accumulate because a completed/degraded
+      // teardown cannot be voided (its executions are irreversible via the API,
+      // see step 7) and deletion is forbidden inside a smoke. Skip an empty
+      // SMOKE leftover — zero balance, and (proven just above) zero active
+      // non-terminal statements — SILENTLY, so selection stays deterministic and
+      // each run builds on a freshly provisioned, known-clean fixture rather than
+      // an ambiguous hand-me-down. Non-destructive: the leftover is left intact.
+      if (candidate.code.startsWith('SMOKE-') && toMillimes(candidateBalance.balance) === 0n) {
         continue
       }
       repository = candidate
@@ -680,7 +739,10 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
 
     const primerCsv = [
       'Date,Amount,Reference,Transaction ID,Label',
-      `${DISPLAY_DATE},-1.250,DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
+      // Amount is IGNORED_AMOUNT so this primer line's fingerprint (date + amount
+      // + reference) matches the main-CSV DUP row and the primer's closing-balance
+      // delta (-IGNORED_AMOUNT) below — all three flow from the one constant.
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
       '',
     ].join('\n')
     const primer = await uploadPreview(request, primerCsv, `phase5b-primer-${RUN_ID}.csv`)
@@ -705,14 +767,21 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     await page.getByLabel('Bank account', { exact: true }).selectOption(repository!.id)
     await page.getByRole('button', { name: 'Continue' }).click()
 
+    // Amounts flow from the shared row constants (the same ones STATEMENT_DELTA
+    // is derived from) under the profile's signed_amount convention: +in for the
+    // adjustment and card net, −out for the cheque, agio, informational, and
+    // duplicate debits. The ZERO (structural zero-row drop) and BAD (unparseable
+    // date) rows keep literal amounts — they are format-exception fixtures, not
+    // money lines. Editing a constant therefore updates both the fixture and the
+    // derived delta in lockstep.
     const mainCsv = [
       'Date,Amount,Reference,Transaction ID,Label',
-      `${DISPLAY_DATE},15.000,ADJ-${RUN_ID},ADJ-TX-${RUN_ID},${adjustmentLabel}`,
-      `${DISPLAY_DATE},-37.125,${chequeLabel.split(' ').at(-1)},CHEQUE-TX-${RUN_ID},${chequeLabel}`,
-      `${DISPLAY_DATE},98.500,CARD-${RUN_ID},CARD-TX-${RUN_ID},${cardLabel}`,
-      `${DISPLAY_DATE},-2.500,AGIO-${RUN_ID},AGIO-TX-${RUN_ID},${agioLabel}`,
-      `${DISPLAY_DATE},-1.250,INFO-${RUN_ID},INFO-TX-${RUN_ID},${ignoredLabel}`,
-      `${DISPLAY_DATE},-1.250,DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
+      `${DISPLAY_DATE},${ADJUSTMENT_AMOUNT},ADJ-${RUN_ID},ADJ-TX-${RUN_ID},${adjustmentLabel}`,
+      `${DISPLAY_DATE},-${CHEQUE_AMOUNT},${chequeLabel.split(' ').at(-1)},CHEQUE-TX-${RUN_ID},${chequeLabel}`,
+      `${DISPLAY_DATE},${CARD_NET},CARD-${RUN_ID},CARD-TX-${RUN_ID},${cardLabel}`,
+      `${DISPLAY_DATE},-${AGIO_AMOUNT},AGIO-${RUN_ID},AGIO-TX-${RUN_ID},${agioLabel}`,
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},INFO-${RUN_ID},INFO-TX-${RUN_ID},${ignoredLabel}`,
+      `${DISPLAY_DATE},-${IGNORED_AMOUNT},DUP-${RUN_ID},DUP-TX-${RUN_ID},${duplicateLabel}`,
       `${DISPLAY_DATE},0.000,ZERO-${RUN_ID},ZERO-TX-${RUN_ID},P5B zero row ${RUN_ID}`,
       `not-a-date,9.999,BAD-${RUN_ID},BAD-TX-${RUN_ID},P5B unparseable row ${RUN_ID}`,
       '',
@@ -904,25 +973,70 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     await expectStatus(voidPrimerResponse, 200, 'duplicate primer cleanup')
   })
 
-  test('7. teardown: reopen the statement so the repository fixture stays re-runnable', async ({ request }) => {
-    // The completion in step 6 stamps last_reconciled_at on the shared bank
-    // repository; without this reopen, every future run of any suite that
-    // needs an unreconciled GL-linked bank repository would exhaust the
-    // tenant's fixtures. Reopen recomputes the checkpoint from the remaining
-    // reconciled statements (none), releasing the repository. All statement,
-    // line, allocation, and execution evidence is preserved.
+  test('7. teardown: reopen (proving the admin capability + checkpoint release) then re-complete so the fixture stays terminal-clean', async ({ request }) => {
+    // Step 6 stamped last_reconciled_at on the shared bank repository. The prior
+    // teardown reopened the statement and STOPPED there — which parked it in
+    // `reconciling` (a non-terminal status) forever: the setup's leftover-skip
+    // then permanently avoided the repository, so every cross-day run provisioned
+    // a brand-new SMOKE-* fixture, and `assertNoEarlierOpenStatement` would 422
+    // any later-period completion on that repository.
+    //
+    // The brief's intended clean teardown is unallocate-all -> void, but voiding
+    // is UNREACHABLE here. BankStatementVoidService (StatementImportService::void)
+    // forbids voiding a statement that still carries allocations OR executions,
+    // and two lines carry irreversible executions: the Tier 4 card settlement
+    // (acquirer_fee + card-batch executions) and the agio line
+    // (resolved_by_creation). `unallocate` deletes allocation rows only; there is
+    // NO endpoint that reverses a BankStatementMatchExecution (no unmatch route,
+    // no DELETE on /actions), so the execution residue can never be unwound and
+    // void() would 422. Unallocating first would only strand the statement in
+    // `reconciling` with unmatched lines (un-voidable AND un-completable) — the
+    // exact parking bug — so this teardown deliberately does NOT unallocate.
+    //
+    // Degrade per the brief: prove the reopen admin capability works and releases
+    // the checkpoint (the assertion step 7 exists to make), then RE-COMPLETE so
+    // the statement returns to a terminal `reconciled` state instead of being
+    // left parked in `reconciling`. End state: zero active non-terminal statements
+    // on the repository. The repository stays checkpointed, so the setup
+    // self-provisions a fresh SMOKE-* fixture on the next run — the only
+    // sustainable path while executions remain irreversible. Full trace in
+    // .superpowers/sdd/task-5-report.md.
     const reopenResponse = await request.post(
       `${API_BASE}/bank-statements/${mainStatementId}/reopen`,
       { headers: authHeaders() },
     )
     await expectStatus(reopenResponse, 200, 'teardown statement reopen')
 
-    const balanceResponse = await request.get(
+    const releasedBalanceResponse = await request.get(
       `${API_BASE}/payment-repositories/${repository!.id}/balance`,
       { headers: authHeaders() },
     )
-    await expectStatus(balanceResponse, 200, 'released repository checkpoint')
-    const balance = (await json(balanceResponse)).data as { last_reconciled_at: string | null }
-    expect(balance.last_reconciled_at, 'repository checkpoint released for future runs').toBeNull()
+    await expectStatus(releasedBalanceResponse, 200, 'released repository checkpoint')
+    const released = (await json(releasedBalanceResponse)).data as { last_reconciled_at: string | null }
+    expect(released.last_reconciled_at, 'reopen releases the repository checkpoint').toBeNull()
+
+    // Re-complete: reopen preserves every allocation, execution, and ignore, so
+    // the same balance-integrity proof that passed in step 6 passes again. The
+    // ignored informational line still requires acknowledgment by a reopen-capable
+    // user (owner holds bank-statements.reopen, asserted in step 1).
+    const recompleteResponse = await request.post(
+      `${API_BASE}/bank-statements/${mainStatementId}/complete`,
+      { headers: authHeaders(), data: { acknowledge_ignored_total: true } },
+    )
+    await expectStatus(recompleteResponse, 200, 'teardown statement re-complete')
+    expect(((await json(recompleteResponse)).data as { status: string }).status).toBe('reconciled')
+
+    // Confirm the repository carries zero active non-terminal statements, so the
+    // setup's leftover-skip treats it as clean (terminal-only) on the next run.
+    // Walk all pages so a repository with many prior statements is fully proven.
+    const statements = await fetchAllStatements(
+      request,
+      repository!.id,
+      'repository statements after teardown',
+    )
+    expect(
+      statements.some((statement) => statement.status !== 'reconciled' && statement.status !== 'voided'),
+      'no active non-terminal statement remains on the repository',
+    ).toBe(false)
   })
 })

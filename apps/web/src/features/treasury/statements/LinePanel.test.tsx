@@ -7,7 +7,10 @@ import { LinePanel } from './LinePanel'
 import type { BankStatementLine, RepositoryMovementCandidate, StatementSuggestion } from './api'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      options && 'count' in options ? `${key}#${String(options['count'])}` : key,
+  }),
 }))
 
 vi.mock('@/features/finance/hooks/useAccounts', () => ({
@@ -117,6 +120,26 @@ describe('LinePanel', () => {
     expect(screen.getAllByText(new RegExp(formatDate('2026-07-18'))).length).toBeGreaterThan(0)
     expect(screen.getByRole('option', { name: /statements\.workspace\.sourceType\.payment/ })).toHaveTextContent(formatDate('2026-07-18T10:00:00Z'))
     expect(screen.queryByText(/2026-07-18/)).not.toBeInTheDocument()
+  })
+
+  it('pluralizes produced movements through i18n count instead of string concatenation', () => {
+    const executedLine: BankStatementLine = {
+      ...line,
+      match_status: 'matched',
+      allocations: [],
+      executions: [
+        {
+          action_type: 'outbound_clear',
+          target_type: null,
+          target_id: null,
+          produced_repository_movement_ids: ['movement-a', 'movement-b'],
+        },
+      ],
+    }
+    render(<LinePanel line={executedLine} currency="TND" suggestions={[]} movements={[]} onExecute={vi.fn()} onAllocate={vi.fn()} onIgnore={vi.fn()} onUnignore={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getByText('statements.workspace.movementsProduced#2')).toBeInTheDocument()
+    expect(screen.queryByText(/^2 statements\.workspace\.movementsProduced$/)).not.toBeInTheDocument()
   })
 
   it('does not render mutation controls for a reconciled or view-only statement', () => {

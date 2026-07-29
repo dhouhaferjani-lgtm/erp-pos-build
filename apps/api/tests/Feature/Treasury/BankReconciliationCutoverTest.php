@@ -15,6 +15,10 @@ class BankReconciliationCutoverTest extends TestCase
         $this->assertFileDoesNotExist(app_path('Modules/Treasury/Presentation/Controllers/BankReconciliationController.php'));
         $this->assertFileDoesNotExist(app_path('Modules/Treasury/Presentation/Requests/StartBankReconciliationRequest.php'));
 
+        // Legacy read-side models retained zero writers after the ⑤b cutover.
+        $this->assertFileDoesNotExist(app_path('Modules/Treasury/Domain/BankReconciliation.php'));
+        $this->assertFileDoesNotExist(app_path('Modules/Treasury/Domain/BankReconciliationItem.php'));
+
         $demoSeeder = file_get_contents(database_path('seeders/DemoPharmacySeeder.php'));
         $this->assertIsString($demoSeeder);
         $this->assertStringNotContainsString('BankReconciliationService', $demoSeeder);

@@ -9,12 +9,14 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\StatementSuggestionService;
 use App\Modules\Treasury\Domain\BankStatement;
 use App\Modules\Treasury\Domain\BankStatementLine;
 use App\Modules\Treasury\Domain\Enums\BankStatementStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\StatementLineMatchStatus;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Carbon\CarbonInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +90,32 @@ final class StatementMatchingHttpTest extends TestCase
             ->deleteJson("/api/v1/bank-statement-lines/{$line->id}/ignore")
             ->assertOk()
             ->assertJsonPath('data.match_status', 'unmatched');
+    }
+
+    public function test_allocation_amount_exceeding_currency_scale_is_rejected_at_validation(): void
+    {
+        $line = $this->line('100.000');
+        $movementId = $this->movement($this->company, $this->repository, '100.000');
+
+        $response = $this->actingAs($this->accountant)
+            ->postJson("/api/v1/bank-statement-lines/{$line->id}/allocations", [
+                'allocations' => [[
+                    'repository_movement_id' => $movementId,
+                    // 4 decimals — exceeds the TND currency scale (3). Must be
+                    // rejected at validation, NOT deep in the domain service.
+                    'amount' => '10.1234',
+                ]],
+            ])
+            ->assertUnprocessable();
+
+        // A validation rejection, not a domain BUSINESS_ERROR.
+        $this->assertNotSame('BUSINESS_ERROR', $response->json('error.code'));
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('allocations.0.amount', $errors);
+
+        // No allocation was written.
+        $this->assertDatabaseCount('bank_statement_line_allocations', 0);
     }
 
     public function test_routes_enforce_permission_line_scope_and_movement_scope(): void
@@ -169,6 +197,68 @@ final class StatementMatchingHttpTest extends TestCase
         $this->actingAs($this->manager)
             ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
             ->assertForbidden();
+    }
+
+    public function test_suggestion_uniqueness_is_judged_within_the_matching_window(): void
+    {
+        // No parser profile => default ±5 day window; line value_date is now().
+        $line = $this->line('25.000');
+        $inWindow = $this->movement($this->company, $this->repository, '25.000');
+        // Same amount, but 30 days before value_date => outside the ±5 day window.
+        $outOfWindow = $this->movement($this->company, $this->repository, '25.000', now()->subDays(30));
+
+        $response = $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tier', 2)
+            ->assertJsonPath('data.0.movement_ids.0', $inWindow)
+            ->assertJsonPath('data.0.amount', '25.000');
+
+        // The out-of-window movement must neither be suggested nor defeat the
+        // in-window movement's uniqueness (which would demote it out of Tier 2).
+        $suggested = collect($response->json('data'))
+            ->flatMap(static fn (array $suggestion): array => $suggestion['movement_ids'] ?? [])
+            ->all();
+        $this->assertContains($inWindow, $suggested);
+        $this->assertNotContains($outOfWindow, $suggested);
+    }
+
+    public function test_more_than_cap_same_amount_in_window_movements_produce_no_false_tier_two(): void
+    {
+        // More than MAX_CANDIDATE_MOVEMENTS in-window movements all sharing the
+        // line amount: the amount is NOT unique, so Tier 2 must NOT fire. A cap
+        // that judged uniqueness from a truncated hydration could wrongly report
+        // "unique in window" here.
+        $line = $this->line('25.000');
+        $this->bulkMovements(StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS + 1, '25.000', now());
+
+        $response = $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk();
+
+        $tierTwo = collect($response->json('data'))
+            ->filter(static fn (array $suggestion): bool => ($suggestion['tier'] ?? null) === 2)
+            ->all();
+        $this->assertSame([], $tierTwo, 'A non-unique in-window amount must not produce a Tier 2 suggestion.');
+    }
+
+    public function test_unique_tier_two_candidate_is_found_despite_more_than_cap_noise_movements(): void
+    {
+        // One matching-amount movement plus > cap in-window noise movements of a
+        // different amount. The correct candidate must still be found: uniqueness
+        // is resolved by exact SQL predicate, not by scanning a truncated set.
+        $line = $this->line('25.000');
+        $correct = $this->movement($this->company, $this->repository, '25.000');
+        $this->bulkMovements(StatementSuggestionService::MAX_CANDIDATE_MOVEMENTS + 1, '999.000', now());
+
+        $this->actingAs($this->accountant)
+            ->getJson("/api/v1/bank-statement-lines/{$line->id}/suggestions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tier', 2)
+            ->assertJsonPath('data.0.movement_ids.0', $correct)
+            ->assertJsonPath('data.0.amount', '25.000');
     }
 
     public function test_statement_detail_exposes_matching_and_execution_provenance(): void
@@ -276,8 +366,12 @@ final class StatementMatchingHttpTest extends TestCase
         ]);
     }
 
-    private function movement(Company $company, PaymentRepository $repository, string $amount): string
-    {
+    private function movement(
+        Company $company,
+        PaymentRepository $repository,
+        string $amount,
+        ?CarbonInterface $occurredAt = null,
+    ): string {
         $id = Str::uuid()->toString();
         DB::table('repository_movements')->insert([
             'id' => $id,
@@ -292,10 +386,37 @@ final class StatementMatchingHttpTest extends TestCase
             'source_type' => 'adjustment',
             'source_id' => Str::uuid()->toString(),
             'idempotency_key' => 'statement-http:'.Str::uuid()->toString(),
-            'occurred_at' => now(),
+            'occurred_at' => $occurredAt ?? now(),
             'created_by' => $this->accountant->id,
         ]);
 
         return $id;
+    }
+
+    private function bulkMovements(int $count, string $amount, CarbonInterface $occurredAt): void
+    {
+        $rows = [];
+        for ($i = 0; $i < $count; $i++) {
+            $rows[] = [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->company->tenant_id,
+                'company_id' => $this->company->id,
+                'payment_repository_id' => $this->repository->id,
+                'direction' => MovementDirection::In->value,
+                'amount' => $amount,
+                'currency' => 'TND',
+                'balance_after' => $amount,
+                'ordinal' => random_int(1, 1000000000),
+                'source_type' => 'adjustment',
+                'source_id' => Str::uuid()->toString(),
+                'idempotency_key' => 'statement-http-bulk:'.Str::uuid()->toString(),
+                'occurred_at' => $occurredAt,
+                'created_by' => $this->accountant->id,
+            ];
+        }
+        // Chunk to stay under sqlite's bound-parameter ceiling.
+        foreach (array_chunk($rows, 50) as $chunk) {
+            DB::table('repository_movements')->insert($chunk);
+        }
     }
 }

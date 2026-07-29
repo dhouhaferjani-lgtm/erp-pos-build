@@ -31,7 +31,20 @@ final class AllocateStatementLineRequest extends FormRequest
                     $company->id,
                 ),
             ],
-            'allocations.*.amount' => ['required', 'string', 'regex:/^\d+(?:\.\d+)?$/'],
+            // Money — regex ceiling per CLAUDE.md rule 19 (3 decimal places =
+            // currency scale floor). Excess precision is rejected here, not deep
+            // in the allocation domain service.
+            'allocations.*.amount' => ['required', 'string', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'allocations.*.amount.regex' => 'Amount must have at most 3 decimal places.',
         ];
     }
 }

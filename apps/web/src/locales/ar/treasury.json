@@ -2,7 +2,133 @@
   "payments": {
     "newForSupplierInvoice": "تسجيل دفعة مورد لـ {{invoiceNumber}}",
     "form": {
-      "paymentForSupplierInvoice": "دفعة لفاتورة المورد {{invoiceNumber}}"
+      "paymentForSupplierInvoice": "دفعة لفاتورة المورد {{invoiceNumber}}",
+      "amount": "المبلغ",
+      "amountRequired": "المبلغ مطلوب",
+      "amountPositive": "يجب أن يكون المبلغ موجبًا",
+      "paymentMethod": "طريقة الدفع",
+      "paymentMethodRequired": "طريقة الدفع مطلوبة",
+      "selectMethod": "اختر الطريقة",
+      "repository": "المستودع",
+      "repositoryRequired": "المستودع مطلوب",
+      "selectRepository": "اختر المستودع",
+      "addRepository": "إضافة مستودع جديد",
+      "partnerRequired": "الشريك مطلوب",
+      "selectPartner": "اختر الشريك",
+      "addPartner": "إضافة شريك جديد",
+      "paymentDate": "تاريخ الدفع",
+      "paymentDateRequired": "تاريخ الدفع مطلوب",
+      "referencePlaceholder": "رقم الشيك، معرّف المعاملة، إلخ.",
+      "notesPlaceholder": "ملاحظات إضافية…",
+      "paymentForInvoice": "دفعة للفاتورة {{invoiceNumber}}",
+      "instrumentNumber": "رقم الشيك / الأداة",
+      "instrumentNumberRequired": "رقم الشيك / الأداة مطلوب",
+      "instrumentNumberPlaceholder": "رقم الشيك / الأداة",
+      "maturityDate": "تاريخ الاستحقاق",
+      "maturityDateRequired": "تاريخ الاستحقاق مطلوب",
+      "thirdParty": "الطرف الثالث / اسم البنك",
+      "thirdPartyRequired": "الطرف الثالث / اسم البنك مطلوب",
+      "thirdPartyPlaceholder": "البنك المُصدِر أو اسم الطرف الثالث",
+      "feeDeducted": "عمولة المعالجة",
+      "netAmount": "المبلغ الصافي",
+      "feeNote": "تخصم هذه الطريقة عمولة معالجة. المبلغ الصافي إرشادي فقط."
+    },
+    "title": "المدفوعات",
+    "singular": "دفعة",
+    "plural": "مدفوعات",
+    "new": "تسجيل دفعة",
+    "newForInvoice": "تسجيل دفعة لـ {{invoiceNumber}}",
+    "record": "تسجيل دفعة",
+    "recordPayment": "تسجيل دفعة",
+    "paymentRecorded": "تم تسجيل الدفعة بنجاح",
+    "recordedSuccess": "تم تسجيل الدفعة بنجاح",
+    "number": "الرقم",
+    "partner": "الشريك",
+    "method": "الطريقة",
+    "date": "التاريخ",
+    "status": "الحالة",
+    "amount": "المبلغ",
+    "amountPositive": "يجب أن يكون المبلغ موجبًا",
+    "reference": "المرجع",
+    "referencePlaceholder": "رقم الشيك، معرّف المعاملة…",
+    "notes": "ملاحظات",
+    "notesPlaceholder": "ملاحظات إضافية…",
+    "created": "تم الإنشاء",
+    "invoice": "الفاتورة",
+    "balanceBefore": "الرصيد قبل",
+    "allocated": "المُخصَّص",
+    "remaining": "المتبقي",
+    "fullyPaid": "مدفوعة بالكامل",
+    "allocationSummary": "ملخص تخصيص الدفعة",
+    "totalAllocatedToInvoices": "إجمالي المخصص للفواتير",
+    "toleranceWriteoff": "شطب ضمن هامش التسامح",
+    "toleranceWriteoffExplanation": "فرق بسيط تم شطبه (ضمن هامش التسامح)",
+    "excessCreditBalance": "الزائد (رصيد دائن)",
+    "excessCreditExplanation": "المبلغ الزائد محتفظ به كرصيد دائن للفواتير المستقبلية",
+    "noInvoicesAllocated": "تم تسجيل الدفعة دون تخصيصها لأي فاتورة",
+    "payingFor": "دفع مقابل",
+    "documentStatus": "حالة المستند",
+    "balanceDue": "الرصيد المستحق",
+    "allocate": "تخصيص",
+    "sections": {
+      "paymentInfo": "معلومات الدفعة",
+      "partner": "الشريك",
+      "allocations": "تخصيصات الفواتير"
+    },
+    "fields": {
+      "totalAllocated": "إجمالي المخصص",
+      "document": "المستند"
+    },
+    "statuses": {
+      "pending": "قيد الانتظار",
+      "completed": "مكتملة",
+      "failed": "فاشلة",
+      "reversed": "معكوسة",
+      "cleared": "محصّلة",
+      "voided": "ملغاة",
+      "cancelled": "ملغاة",
+      "dishonored": "مرفوضة"
+    },
+    "types": {
+      "document_payment": "دفعة فاتورة",
+      "advance": "دفعة مقدمة/زائدة",
+      "refund": "استرداد",
+      "credit_application": "تطبيق رصيد دائن",
+      "supplier_payment": "دفعة مورد"
+    },
+    "creditBalance": "رصيد دائن",
+    "creditBalanceExplanation": "المبلغ الزائد محتفظ به كرصيد للفواتير المستقبلية",
+    "allocatedToInvoices": "مُخصَّص للفواتير",
+    "messages": {
+      "cancelPayment": "إلغاء الدفعة",
+      "confirmCancelPayment": "هل أنت متأكد أنك تريد إلغاء هذه الدفعة البالغة {{amount}}؟ لا يمكن التراجع عن هذا الإجراء.",
+      "notFound": "لم يُعثر على الدفعة أو حدث خطأ في تحميل البيانات.",
+      "noPartnerLinked": "لا يوجد شريك مرتبط",
+      "created": "تم إنشاء الدفعة",
+      "deleted": "تم حذف الدفعة",
+      "refunded": "تم استرداد الدفعة",
+      "partialRefunded": "تمت معالجة استرداد جزئي",
+      "reversed": "تم عكس الدفعة"
+    },
+    "empty": {
+      "title": "لا توجد مدفوعات بعد",
+      "description": "ستظهر المدفوعات هنا بمجرد تسجيلها."
+    },
+    "refund": {
+      "refund": "استرداد",
+      "partialRefund": "استرداد جزئي",
+      "fullRefund": "استرداد كامل",
+      "reverse": "عكس",
+      "history": "سجل الاسترداد",
+      "remaining": "المتبقي",
+      "reason": "السبب",
+      "reasonPlaceholder": "أدخل سبب هذا الاسترداد…",
+      "refundTitle": "استرداد الدفعة",
+      "refundMessage": "سيؤدي هذا إلى استرداد {{amount}} للعميل.",
+      "partialRefundTitle": "استرداد جزئي",
+      "maxRefundable": "الحد الأقصى القابل للاسترداد",
+      "reverseTitle": "عكس الدفعة",
+      "reverseMessage": "سيؤدي هذا إلى عكس الدفعة بالكامل ووضع علامة ملغاة عليها. لا يمكن التراجع عن هذا الإجراء."
     }
   },
   "instruments": {
@@ -35,6 +161,114 @@
       "bounced": "مرفوضة",
       "re_presented": "تمت إعادة التقديم",
       "cancelled": "ملغاة"
+    },
+    "title": "أدوات الدفع",
+    "count": "{{count}} أداة",
+    "formTitle": "تفاصيل الأداة",
+    "reference": "مرجع الأداة",
+    "referenceRequired": "مرجع الأداة مطلوب",
+    "referencePlaceholder": "أدخل مرجع الشيك أو الأداة",
+    "maturityDateRequired": "تاريخ الاستحقاق مطلوب للكمبيالة",
+    "drawerName": "اسم الساحب",
+    "withholdingUnavailable": "الخصم من المنبع غير متاح للمدفوعات المؤجلة",
+    "singular": "أداة",
+    "plural": "أدوات",
+    "new": "أداة جديدة",
+    "number": "الرقم",
+    "type": "النوع",
+    "partner": "الشريك",
+    "maturity": "الاستحقاق",
+    "status": "الحالة",
+    "amount": "المبلغ",
+    "details": "تفاصيل الأداة",
+    "maturityDate": "تاريخ الاستحقاق",
+    "depositedTo": "مودعة في",
+    "bankInfo": "معلومات البنك",
+    "bankName": "اسم البنك",
+    "bankBranch": "الفرع",
+    "bankAccount": "رقم الحساب",
+    "history": "السجل",
+    "received": "مستلمة",
+    "cleared": "محصّلة",
+    "bounced": "مرفوضة",
+    "deposit": "إيداع",
+    "depositToBank": "إيداع في حساب بنكي",
+    "selectBankAccount": "اختر حسابًا بنكيًا",
+    "transfer": "تحويل",
+    "transferTo": "تحويل إلى المستودع",
+    "selectRepository": "اختر المستودع",
+    "clear": "تحصيل",
+    "bounce": "رفض",
+    "markAsBounced": "وضع علامة مرفوضة",
+    "bounceReason": "السبب (اختياري)",
+    "bounceReasonPlaceholder": "مثال: رصيد غير كافٍ",
+    "unknownMethod": "طريقة دفع غير معروفة",
+    "kind": "النوع",
+    "direction": "الاتجاه",
+    "remit": "إضافة إلى حافظة التحصيل",
+    "cancel": "إلغاء الأداة",
+    "cancelReason": "سبب الإلغاء",
+    "feeAmount": "عمولة بنكية",
+    "feeVatAmount": "ضريبة القيمة المضافة على العمولة",
+    "valueDate": "تاريخ القيمة",
+    "bounceRouting": "مسار معالجة الرفض",
+    "bounceRoutingPlaceholder": "اختر مسار الاسترداد",
+    "filters": {
+      "all": "الكل",
+      "kind": "نوع الأداة",
+      "direction": "الاتجاه",
+      "needsDetails": "تفاصيل مطلوبة",
+      "maturityFrom": "الاستحقاق من",
+      "maturityTo": "الاستحقاق إلى"
+    },
+    "kinds": {
+      "cheque": "شيك",
+      "effet": "كمبيالة",
+      "other": "أخرى"
+    },
+    "directions": {
+      "inbound": "واردة",
+      "outbound": "صادرة"
+    },
+    "certainty": {
+      "portfolio": "في الحافظة",
+      "remitted": "مُرسلة للتحصيل"
+    },
+    "routings": {
+      "re_present": "إعادة التقديم",
+      "receivable": "إرجاع إلى الذمم المدينة",
+      "doubtful": "ذمة مدينة مشكوك في تحصيلها"
+    },
+    "clearDialog": {
+      "title": "تحصيل الأداة"
+    },
+    "bounceDialog": {
+      "title": "تسجيل الرفض"
+    },
+    "cancelDialog": {
+      "title": "إلغاء الأداة"
+    },
+    "types": {
+      "check": "شيك",
+      "promissory_note": "سند إذني",
+      "promissoryNote": "سند إذني",
+      "billOfExchange": "كمبيالة",
+      "voucher": "قسيمة"
+    },
+    "statuses": {
+      "received": "مستلمة",
+      "in_transit": "قيد النقل",
+      "deposited": "مودعة",
+      "clearing": "قيد التحصيل",
+      "cleared": "محصّلة",
+      "bounced": "مرفوضة",
+      "expired": "منتهية الصلاحية",
+      "cancelled": "ملغاة",
+      "collected": "مقبوضة"
+    },
+    "empty": {
+      "title": "لا توجد أدوات بعد",
+      "description": "ستظهر هنا أدوات الدفع مثل الشيكات."
     }
   },
   "cashWidget": {
@@ -73,7 +307,14 @@
   "repositories": {
     "location": "الموقع",
     "selectLocation": "اختر الموقع",
-    "table": { "location": "الموقع" },
+    "table": {
+      "location": "الموقع",
+      "repository": "المستودع",
+      "type": "النوع",
+      "bankInfo": "معلومات البنك",
+      "status": "الحالة",
+      "balance": "الرصيد"
+    },
     "transfer": {
       "action": "تحويل النقد",
       "title": "تحويل النقد",
@@ -92,40 +333,616 @@
       "fromRequired": "اختر المستودع المصدر",
       "toRequired": "اختر المستودع الوجهة",
       "notesTooLong": "يجب ألا تتجاوز الملاحظات 1000 حرف"
+    },
+    "title": "المستودعات",
+    "singular": "مستودع",
+    "plural": "مستودعات",
+    "add": "إضافة مستودع",
+    "cash": "صندوق نقدي",
+    "bank": "حساب بنكي",
+    "safe": "خزنة",
+    "code": "الرمز",
+    "name": "الاسم",
+    "type": "النوع",
+    "glAccount": "الحساب المحاسبي",
+    "noGlAccount": "— لا يوجد —",
+    "bankName": "البنك",
+    "accountNumber": "الحساب",
+    "iban": "IBAN",
+    "bic": "BIC/SWIFT",
+    "codePlaceholder": "CASH-01",
+    "namePlaceholder": "الصندوق الرئيسي",
+    "bankNamePlaceholder": "البنك الوطني",
+    "accountNumberPlaceholder": "1234567890",
+    "ibanPlaceholder": "FR1234567890",
+    "bicPlaceholder": "BNPAFRPP",
+    "validation": {
+      "validRib": "RIB تونسي صالح",
+      "invalidRibWarning": "تعذّر التحقق من خانة تدقيق RIB. لا يزال بإمكانك الحفظ.",
+      "unsupportedCountry": "التحقق التلقائي من RIB غير متاح لهذا البلد.",
+      "validIban": "IBAN صالح",
+      "invalidIbanWarning": "تعذّر التحقق من خانة تدقيق IBAN. لا يزال بإمكانك الحفظ."
+    },
+    "types": {
+      "cash_register": "صندوق نقدي",
+      "safe": "خزنة",
+      "bank_account": "حساب بنكي",
+      "virtual": "افتراضي"
+    },
+    "account": "حساب",
+    "accounts": "حسابات",
+    "empty": {
+      "title": "لا توجد مستودعات",
+      "description": "ابدأ بإضافة صندوق نقدي أو خزنة أو حساب بنكي.",
+      "descriptionNoPermission": "تواصل مع المسؤول لإضافة المستودعات."
+    },
+    "noGlAccountWarning": "غير مُهيأ",
+    "glAccountUpdated": "تم تحديث الحساب المحاسبي",
+    "currentBalance": "الرصيد الحالي",
+    "summary": "الملخص",
+    "totalTransactions": "إجمالي المعاملات",
+    "totalReceived": "إجمالي المقبوضات",
+    "transactionHistory": "سجل المعاملات",
+    "noTransactions": "لا توجد معاملات بعد",
+    "allocatedTo": "مُخصَّص لـ",
+    "moreAllocations": "المزيد",
+    "tabs": {
+      "overview": "نظرة عامة",
+      "movements": "الحركات"
+    },
+    "adjustBalance": {
+      "action": "تعديل الرصيد",
+      "title": "تعديل رصيد المستودع",
+      "direction": "الاتجاه",
+      "amount": "المبلغ",
+      "reasonCode": "السبب",
+      "reasonText": "التفسير",
+      "directions": {
+        "in": "فائض نقدي (داخل)",
+        "out": "عجز نقدي (خارج)"
+      },
+      "reasons": {
+        "count_variance": "فرق في الجرد",
+        "correction": "تصحيح",
+        "theft_loss": "سرقة أو خسارة",
+        "other": "أخرى"
+      },
+      "validation": {
+        "amount": "أدخل مبلغًا موجبًا بحد أقصى 3 منازل عشرية.",
+        "reasonText": "أدخل تفسيرًا.",
+        "reasonTextMax": "يجب ألا يتجاوز التفسير 1000 حرف."
+      },
+      "submit": "تعديل الرصيد",
+      "success": "تم تعديل رصيد المستودع",
+      "error": "تعذّر تعديل رصيد المستودع"
+    },
+    "movements": {
+      "title": "حركات الدفتر",
+      "subtitle": "{{count}} حركة",
+      "subtitle_other": "{{count}} حركة",
+      "filters": {
+        "direction": "الاتجاه",
+        "directionAll": "كل الاتجاهات",
+        "sourceType": "المصدر",
+        "sourceTypeAll": "كل المصادر",
+        "dateRange": "نطاق التاريخ"
+      },
+      "directions": {
+        "in": "داخل",
+        "out": "خارج"
+      },
+      "sourceTypes": {
+        "payment": "دفعة",
+        "expense": "مصروف",
+        "income": "إيراد",
+        "refund": "استرداد",
+        "fiscal_event": "حدث جبائي",
+        "transfer": "تحويل",
+        "adjustment": "تسوية",
+        "opening_balance": "رصيد افتتاحي",
+        "instrument": "أداة"
+      },
+      "columns": {
+        "date": "التاريخ",
+        "direction": "الاتجاه",
+        "amount": "المبلغ",
+        "balanceAfter": "الرصيد بعد",
+        "source": "المصدر",
+        "journalEntry": "قيد اليومية"
+      },
+      "frozenBadge": "مُسجَّلة أثناء التجميد",
+      "noSourceLink": "—",
+      "noJournalEntry": "—",
+      "copyId": "نسخ المعرّف",
+      "idCopied": "تم نسخ المعرّف",
+      "empty": {
+        "title": "لا توجد حركات",
+        "description": "لا توجد حركات دفتر تطابق المرشحات الحالية."
+      },
+      "loadError": "فشل تحميل الحركات",
+      "subtitle_zero": "لا توجد حركات",
+      "subtitle_one": "حركة واحدة",
+      "subtitle_two": "حركتان",
+      "subtitle_few": "{{count}} حركات",
+      "subtitle_many": "{{count}} حركة"
     }
   },
   "statements": {
     "title": "الكشوف البنكية",
     "subtitle": "استورد الكشوف وطابق كل حركة بنكية مع دفتر الخزينة.",
-    "columns": { "period": "فترة الكشف", "repository": "الحساب البنكي", "lines": "الأسطر", "delta": "حركة الكشف", "status": "الحالة" },
-    "status": { "imported": "مستورد", "reconciling": "قيد المطابقة", "reconciled": "تمت المطابقة", "voided": "ملغى" },
-    "filters": { "status": "الحالة", "repository": "الحساب البنكي", "allStatuses": "كل الحالات", "allRepositories": "كل الحسابات البنكية" },
-    "empty": { "title": "لا توجد كشوف بنكية", "description": "استورد كشف CSV أو Excel لبدء المطابقة." },
+    "columns": {
+      "period": "فترة الكشف",
+      "repository": "الحساب البنكي",
+      "lines": "الأسطر",
+      "delta": "حركة الكشف",
+      "status": "الحالة"
+    },
+    "status": {
+      "imported": "مستورد",
+      "reconciling": "قيد المطابقة",
+      "reconciled": "تمت المطابقة",
+      "voided": "ملغى"
+    },
+    "filters": {
+      "status": "الحالة",
+      "repository": "الحساب البنكي",
+      "allStatuses": "كل الحالات",
+      "allRepositories": "كل الحسابات البنكية"
+    },
+    "empty": {
+      "title": "لا توجد كشوف بنكية",
+      "description": "استورد كشف CSV أو Excel لبدء المطابقة."
+    },
     "upload": {
-      "action": "استيراد كشف", "title": "استيراد كشف بنكي", "subtitle": "اختر الحساب وحلّل الملف بملف تعريف محفوظ، ثم راجع كل الاستثناءات قبل الاستيراد.",
-      "progress": "تقدم الاستيراد", "steps": { "repository": "1 · الحساب", "file": "2 · الملف", "profile": "3 · التعيين", "preview": "4 · المراجعة" },
-      "repository": "الحساب البنكي", "selectRepository": "اختر حسابًا بنكيًا", "file": "ملف الكشف", "fileHelp": "CSV أو XLSX، حتى 20 ميغابايت.",
-      "profile": "ملف التحليل", "selectProfile": "اختر ملفًا محفوظًا", "newProfile": "تعيين جديد", "next": "متابعة", "back": "رجوع", "preview": "معاينة الكشف", "previewing": "جارٍ قراءة الملف…",
-      "report": { "accepted": "الأسطر المقبولة", "duplicates": "مستوردة سابقًا", "droppedZero": "أسطر صفرية مستبعدة", "unparseable": "أسطر تحتاج مراجعة" },
-      "row": "السطر", "date": "تاريخ القيمة", "label": "بيان البنك", "amount": "المبلغ", "periodStart": "بداية الفترة", "periodEnd": "نهاية الفترة", "openingBalance": "الرصيد الافتتاحي", "closingBalance": "الرصيد الختامي",
-      "emptyGate": "تأكيد الاستيراد الفارغ", "acknowledgeEmpty": "راجعت التقرير وأريد الاحتفاظ بهذا الكشف الخالي من الأسطر كدليل تدقيق.", "confirm": "استيراد الكشف", "importing": "جارٍ الاستيراد…"
+      "action": "استيراد كشف",
+      "title": "استيراد كشف بنكي",
+      "subtitle": "اختر الحساب وحلّل الملف بملف تعريف محفوظ، ثم راجع كل الاستثناءات قبل الاستيراد.",
+      "progress": "تقدم الاستيراد",
+      "steps": {
+        "repository": "1 · الحساب",
+        "file": "2 · الملف",
+        "profile": "3 · التعيين",
+        "preview": "4 · المراجعة"
+      },
+      "repository": "الحساب البنكي",
+      "selectRepository": "اختر حسابًا بنكيًا",
+      "file": "ملف الكشف",
+      "fileHelp": "CSV أو XLSX، حتى 20 ميغابايت.",
+      "profile": "ملف التحليل",
+      "selectProfile": "اختر ملفًا محفوظًا",
+      "newProfile": "تعيين جديد",
+      "next": "متابعة",
+      "back": "رجوع",
+      "preview": "معاينة الكشف",
+      "previewing": "جارٍ قراءة الملف…",
+      "report": {
+        "accepted": "الأسطر المقبولة",
+        "duplicates": "مستوردة سابقًا",
+        "droppedZero": "أسطر صفرية مستبعدة",
+        "unparseable": "أسطر تحتاج مراجعة"
+      },
+      "row": "السطر",
+      "date": "تاريخ القيمة",
+      "label": "بيان البنك",
+      "amount": "المبلغ",
+      "periodStart": "بداية الفترة",
+      "periodEnd": "نهاية الفترة",
+      "openingBalance": "الرصيد الافتتاحي",
+      "closingBalance": "الرصيد الختامي",
+      "emptyGate": "تأكيد الاستيراد الفارغ",
+      "acknowledgeEmpty": "راجعت التقرير وأريد الاحتفاظ بهذا الكشف الخالي من الأسطر كدليل تدقيق.",
+      "confirm": "استيراد الكشف",
+      "importing": "جارٍ الاستيراد…"
     },
     "profile": {
-      "name": "اسم ملف التعريف", "parser": "نوع الملف", "direction": "تنسيق المبلغ", "signed": "عمود مبلغ واحد بإشارة", "debitCredit": "عمودا مدين ودائن منفصلان", "decimal": "تنسيق الرقم", "dateFormat": "تنسيق التاريخ", "headerRows": "أسطر الرأس المتجاوزة", "save": "حفظ التعيين",
-      "fields": { "value_date": "عمود تاريخ القيمة", "booking_date": "عمود تاريخ القيد", "amount": "عمود المبلغ", "debit": "عمود المدين", "credit": "عمود الدائن", "reference": "عمود المرجع", "bank_transaction_id": "معرف المعاملة البنكية", "label": "عمود البيان", "counterparty_hint": "عمود الطرف المقابل" }
+      "name": "اسم ملف التعريف",
+      "parser": "نوع الملف",
+      "direction": "تنسيق المبلغ",
+      "signed": "عمود مبلغ واحد بإشارة",
+      "debitCredit": "عمودا مدين ودائن منفصلان",
+      "decimal": "تنسيق الرقم",
+      "dateFormat": "تنسيق التاريخ",
+      "headerRows": "أسطر الرأس المتجاوزة",
+      "save": "حفظ التعيين",
+      "fields": {
+        "value_date": "عمود تاريخ القيمة",
+        "booking_date": "عمود تاريخ القيد",
+        "amount": "عمود المبلغ",
+        "debit": "عمود المدين",
+        "credit": "عمود الدائن",
+        "reference": "عمود المرجع",
+        "bank_transaction_id": "معرف المعاملة البنكية",
+        "label": "عمود البيان",
+        "counterparty_hint": "عمود الطرف المقابل"
+      }
     },
     "workspace": {
-      "title": "مطابقة الكشف البنكي", "progress": "الأسطر المحسومة", "remaining": "المبلغ المتبقي", "balanceDelta": "حركة رصيد الكشف", "search": "البحث في الأسطر", "filter": "حالة السطر", "allStatuses": "كل الحالات", "noReference": "لا يوجد مرجع بنكي", "noLines": "لا توجد أسطر مطابقة للمرشحات.", "lineAmount": "مبلغ السطر", "allocations": "التخصيصات", "unallocate": "إزالة", "provenance": "سجل التنفيذ", "openTarget": "فتح السجل المصدر", "movementsProduced": "حركة دفتر منتجة", "reconciledBy": "تمت المطابقة بسطر كشف", "reopen": "إعادة فتح الكشف", "cancel": "إلغاء",
-      "status": { "unmatched": "غير مطابق", "partial": "مطابق جزئيًا", "matched": "مطابق", "resolved_by_creation": "تم الإنشاء والمطابقة", "ignored": "متجاهل" },
-      "actions": { "outbound_clear": "تحصيل أداة صادرة", "inbound_clear": "تحصيل أداة واردة", "expense_settle": "تسوية مصروف", "acquirer_fee": "إنشاء دفعة البطاقات والعمولة", "create_expense": "إنشاء مصروف", "create_income": "إنشاء إيراد" },
-      "suggestions": { "title": "الاقتراحات المرتبة", "empty": "لا يوجد اقتراح تلقائي لهذا السطر.", "tier": "المستوى {{tier}}", "reference": "تطابق المرجع", "confirm": "تأكيد المطابقة", "reasons": { "reference_amount_match": "يتطابق المرجع والمبلغ المتبقي.", "unique_amount_window": "هذا هو المبلغ المتبقي الوحيد خلال {{days}} أيام.", "bounced_instrument": "الأداة الصادرة المرتجعة جاهزة لإعادة التقديم.", "pending_instrument": "يتطابق مبلغ الأداة وتاريخ استحقاقها.", "unsettled_expense": "يتطابق المصروف غير المسدد {{label}} بتاريخ {{date}}.", "card_batch_fee": "تتطابق دفعة بطاقة {{method}} بتاريخ {{date}} بعد العمولة المضبوطة.", "generic": "يحتوي هذا السطر على إجراء مطابقة مقترح." } },
-      "manual": { "title": "مطابقة حركة يدويًا", "search": "البحث في حركات الدفتر", "searchPlaceholder": "معرف الحركة أو المصدر", "movement": "الحركة", "none": "لا توجد حركة مؤهلة", "original": "المبلغ الأصلي", "available": "المتاح للتخصيص", "amount": "مبلغ التخصيص الجزئي", "allocate": "تخصيص" },
-      "matchType": { "manual": "مطابقة يدوية", "suggestion_confirmed": "اقتراح مؤكد", "created_from_line": "أُنشئ من سطر الكشف" },
-      "sourceType": { "payment": "دفعة", "expense": "مصروف", "income": "إيراد", "refund": "استرداد", "fiscal_event": "إيصال جبائي", "transfer": "تحويل", "adjustment": "تسوية", "opening_balance": "رصيد افتتاحي", "instrument": "أداة دفع" },
-      "ignore": { "title": "تجاهل السطر", "reason": "السبب", "selectReason": "اختر سببًا", "explanation": "تفسير إلزامي", "submit": "تجاهل السطر", "unignore": "استعادة السطر", "reasons": { "duplicate": "مكرر", "informational": "معلوماتي", "bank_error": "خطأ بنكي", "out_of_scope": "خارج نطاق المطابقة", "other": "أخرى" } },
-      "create": { "expense": "إنشاء مصروف من السطر", "income": "إنشاء إيراد من السطر", "expenseTitle": "إنشاء مصروف وتسويته", "incomeTitle": "إنشاء إيراد وتسجيله", "vendor": "اسم المورد", "source": "مصدر الإيراد", "incomeAccount": "حساب الإيراد", "selectIncomeAccount": "اختر حساب إيراد", "notes": "ملاحظات", "submit": "إنشاء ومطابقة", "required": "هذا الحقل مطلوب." },
-      "complete": { "action": "إكمال الكشف", "title": "إكمال المطابقة", "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.", "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.", "confirm": "إكمال الكشف" },
+      "title": "مطابقة الكشف البنكي",
+      "progress": "الأسطر المحسومة",
+      "remaining": "المبلغ المتبقي",
+      "balanceDelta": "حركة رصيد الكشف",
+      "search": "البحث في الأسطر",
+      "filter": "حالة السطر",
+      "allStatuses": "كل الحالات",
+      "noReference": "لا يوجد مرجع بنكي",
+      "noLines": "لا توجد أسطر مطابقة للمرشحات.",
+      "lineAmount": "مبلغ السطر",
+      "allocations": "التخصيصات",
+      "unallocate": "إزالة",
+      "provenance": "سجل التنفيذ",
+      "openTarget": "فتح السجل المصدر",
+      "movementsProduced_zero": "لم تنتج أي حركة دفتر",
+      "movementsProduced_one": "حركة دفتر واحدة منتجة",
+      "movementsProduced_two": "حركتا دفتر منتجتان",
+      "movementsProduced_few": "{{count}} حركات دفتر منتجة",
+      "movementsProduced_many": "{{count}} حركة دفتر منتجة",
+      "movementsProduced_other": "{{count}} حركة دفتر منتجة",
+      "reconciledBy": "تمت المطابقة بسطر كشف",
+      "reopen": "إعادة فتح الكشف",
+      "cancel": "إلغاء",
+      "status": {
+        "unmatched": "غير مطابق",
+        "partial": "مطابق جزئيًا",
+        "matched": "مطابق",
+        "resolved_by_creation": "تم الإنشاء والمطابقة",
+        "ignored": "متجاهل"
+      },
+      "actions": {
+        "outbound_clear": "تحصيل أداة صادرة",
+        "inbound_clear": "تحصيل أداة واردة",
+        "expense_settle": "تسوية مصروف",
+        "acquirer_fee": "إنشاء دفعة البطاقات والعمولة",
+        "create_expense": "إنشاء مصروف",
+        "create_income": "إنشاء إيراد"
+      },
+      "suggestions": {
+        "title": "الاقتراحات المرتبة",
+        "empty": "لا يوجد اقتراح تلقائي لهذا السطر.",
+        "tier": "المستوى {{tier}}",
+        "reference": "تطابق المرجع",
+        "confirm": "تأكيد المطابقة",
+        "reasons": {
+          "reference_amount_match": "يتطابق المرجع والمبلغ المتبقي.",
+          "unique_amount_window": "هذا هو المبلغ المتبقي الوحيد خلال {{days}} أيام.",
+          "bounced_instrument": "الأداة الصادرة المرتجعة جاهزة لإعادة التقديم.",
+          "pending_instrument": "يتطابق مبلغ الأداة وتاريخ استحقاقها.",
+          "unsettled_expense": "يتطابق المصروف غير المسدد {{label}} بتاريخ {{date}}.",
+          "card_batch_fee": "تتطابق دفعة بطاقة {{method}} بتاريخ {{date}} بعد العمولة المضبوطة.",
+          "generic": "يحتوي هذا السطر على إجراء مطابقة مقترح."
+        }
+      },
+      "manual": {
+        "title": "مطابقة حركة يدويًا",
+        "search": "البحث في حركات الدفتر",
+        "searchPlaceholder": "معرف الحركة أو المصدر",
+        "movement": "الحركة",
+        "none": "لا توجد حركة مؤهلة",
+        "original": "المبلغ الأصلي",
+        "available": "المتاح للتخصيص",
+        "amount": "مبلغ التخصيص الجزئي",
+        "allocate": "تخصيص"
+      },
+      "matchType": {
+        "manual": "مطابقة يدوية",
+        "suggestion_confirmed": "اقتراح مؤكد",
+        "created_from_line": "أُنشئ من سطر الكشف"
+      },
+      "sourceType": {
+        "payment": "دفعة",
+        "expense": "مصروف",
+        "income": "إيراد",
+        "refund": "استرداد",
+        "fiscal_event": "إيصال جبائي",
+        "transfer": "تحويل",
+        "adjustment": "تسوية",
+        "opening_balance": "رصيد افتتاحي",
+        "instrument": "أداة دفع"
+      },
+      "ignore": {
+        "title": "تجاهل السطر",
+        "reason": "السبب",
+        "selectReason": "اختر سببًا",
+        "explanation": "تفسير إلزامي",
+        "submit": "تجاهل السطر",
+        "unignore": "استعادة السطر",
+        "reasons": {
+          "duplicate": "مكرر",
+          "informational": "معلوماتي",
+          "bank_error": "خطأ بنكي",
+          "out_of_scope": "خارج نطاق المطابقة",
+          "other": "أخرى"
+        }
+      },
+      "create": {
+        "expense": "إنشاء مصروف من السطر",
+        "income": "إنشاء إيراد من السطر",
+        "expenseTitle": "إنشاء مصروف وتسويته",
+        "incomeTitle": "إنشاء إيراد وتسجيله",
+        "vendor": "اسم المورد",
+        "source": "مصدر الإيراد",
+        "incomeAccount": "حساب الإيراد",
+        "selectIncomeAccount": "اختر حساب إيراد",
+        "notes": "ملاحظات",
+        "submit": "إنشاء ومطابقة",
+        "required": "هذا الحقل مطلوب."
+      },
+      "complete": {
+        "action": "إكمال الكشف",
+        "title": "إكمال المطابقة",
+        "message": "يؤدي الإكمال إلى قفل الكشف وتثبيت نقطة تحقق الحساب.",
+        "acknowledge": "راجعت الإجمالي المتجاهل الموقّع {{amount}} وأقبله كاستثناء موثق.",
+        "confirm": "إكمال الكشف"
+      },
       "ignoredRequiresAdmin": "يجب على مسؤول إقرار الأسطر المتجاهلة قبل إتمام الكشف."
+    }
+  },
+  "splitPayment": {
+    "title": "دفعة مقسّمة",
+    "totalRequired": "الإجمالي المطلوب",
+    "remaining": "المتبقي",
+    "paymentLine": "دفعة رقم {{number}}",
+    "addPayment": "إضافة دفعة",
+    "amountDoesNotMatch": "لا يتطابق إجمالي المبلغ مع المبلغ المطلوب",
+    "incompleteLines": "يرجى إكمال جميع أسطر الدفع",
+    "success": "تم تسجيل الدفعة المقسّمة بنجاح"
+  },
+  "unifiedPayment": {
+    "balanceDue": "الرصيد المستحق",
+    "totalEntered": "الإجمالي المُدخل",
+    "remaining": "المتبقي",
+    "payFullAmount": "دفع المبلغ كاملًا",
+    "paymentLines": "أسطر الدفع",
+    "confirmed": "مؤكدة",
+    "paymentLine": "دفعة رقم {{number}}",
+    "addPaymentLine": "إضافة سطر دفع",
+    "confirmLine": "تأكيد",
+    "lineConfirmed": "مؤكد",
+    "selectMethod": "يرجى اختيار طريقة دفع",
+    "enterAmount": "يرجى إدخال مبلغ صالح",
+    "confirmAtLeastOne": "يرجى تأكيد سطر دفع واحد على الأقل",
+    "paymentsRecorded": "دفعات مسجّلة",
+    "excessHandled": "تمت معالجة المبلغ الزائد",
+    "keptAsAdvance": "محتفظ به كدفعة مقدمة للعميل",
+    "allocatedToInvoices": "مُخصَّص لفواتير أخرى",
+    "excessPayment": "دفعة زائدة: {{amount}}",
+    "allocateExcess": "كيف تريد تخصيص المبلغ الزائد؟",
+    "keepAsAdvance": "الاحتفاظ به كدفعة مقدمة للعميل",
+    "allocateToOtherInvoices": "تخصيص لفواتير مفتوحة أخرى",
+    "allocationMethod": "طريقة التخصيص",
+    "fifo": "الوارد أولًا صادر أولًا (FIFO)",
+    "fifoDescription": "التخصيص لأقدم الفواتير أولًا",
+    "dueDate": "أولوية تاريخ الاستحقاق",
+    "dueDateDescription": "التخصيص لأكثر الفواتير تأخرًا أولًا",
+    "manual": "اختيار يدوي",
+    "manualDescription": "اختر الفواتير والمبالغ يدويًا",
+    "advance": "دفعة مقدمة للعميل",
+    "advanceDescription": "الاحتفاظ بالمبلغ الزائد كرصيد دائن للعميل",
+    "selectInvoices": "اختر الفواتير لتخصيص المبلغ الزائد",
+    "balance": "الرصيد",
+    "allocate": "تخصيص",
+    "noOpenInvoices": "لا توجد فواتير مفتوحة",
+    "paymentSuccess": "تم تسجيل الدفعة بنجاح",
+    "totalAllocatedExceedsExcess": "إجمالي المخصص يتجاوز المبلغ الزائد"
+  },
+  "smartPayment": {
+    "title": "التخصيص الذكي للدفعات",
+    "allocationMethod": {
+      "title": "طريقة التخصيص",
+      "fifo": "الوارد أولًا صادر أولًا (FIFO)",
+      "fifoDescription": "التخصيص لأقدم الفواتير أولًا",
+      "dueDate": "أولوية تاريخ الاستحقاق",
+      "dueDateDescription": "التخصيص لأكثر الفواتير تأخرًا أولًا",
+      "manual": "اختيار يدوي",
+      "manualDescription": "اختر الفواتير والمبالغ يدويًا"
+    },
+    "tolerance": {
+      "title": "هامش تسامح الدفع",
+      "enabled": "هامش التسامح مُفعَّل",
+      "disabled": "هامش التسامح معطّل",
+      "threshold": "الحد: {{percentage}}٪ / {{maxAmount}} كحد أقصى",
+      "writeoffApplied": "تم تطبيق الشطب ضمن هامش التسامح",
+      "writeoffAmount": "الشطب: {{amount}}",
+      "explanation": "سيتم شطب فروق الدفع البسيطة ضمن هامش التسامح تلقائيًا",
+      "source": {
+        "company": "إعدادات الشركة",
+        "country": "الافتراضي حسب البلد",
+        "system": "الافتراضي للنظام"
+      }
+    },
+    "preview": {
+      "title": "معاينة التخصيص",
+      "previewAllocation": "معاينة التخصيص",
+      "invoiceNumber": "الفاتورة",
+      "originalBalance": "الرصيد",
+      "allocated": "المُخصَّص",
+      "daysOverdue": "متأخرة {{days}} أيام",
+      "noInvoices": "لا توجد فواتير مفتوحة لهذا الشريك",
+      "noAllocations": "لم يتم تخصيص أي فاتورة",
+      "totalToInvoices": "الإجمالي للفواتير",
+      "toleranceWriteoff": "شطب ضمن هامش التسامح",
+      "excessAmount": "المبلغ الزائد",
+      "excessHandling": {
+        "creditBalance": "سيُحتفظ به كرصيد دائن",
+        "toleranceWriteoff": "سيتم شطبه (ضمن هامش التسامح)",
+        "none": "تطابق تام - لا يوجد فائض"
+      }
+    },
+    "allocation": {
+      "title": "تخصيص الدفعة",
+      "description": "يمكنك اختياريًا تخصيص هذه الدفعة للفواتير المفتوحة باستخدام طرق التخصيص الذكية",
+      "method": "طريقة التخصيص",
+      "fifo": "FIFO (الوارد أولًا صادر أولًا)",
+      "dueDate": "أولوية تاريخ الاستحقاق",
+      "manual": "اختيار يدوي",
+      "fifoDescription": "التخصيص لأقدم الفواتير أولًا",
+      "dueDateDescription": "التخصيص للفواتير حسب تاريخ الاستحقاق",
+      "manualDescription": "اختر الفواتير والمبالغ يدويًا",
+      "paymentAmount": "مبلغ الدفعة",
+      "previewButton": "معاينة التخصيص",
+      "applyButton": "تطبيق التخصيص",
+      "allocatePayment": "تخصيص الدفعة",
+      "applyAllocation": "تطبيق التخصيص",
+      "selectedInvoices": "الفواتير المحددة",
+      "invoice": "الفاتورة",
+      "originalBalance": "الرصيد الأصلي",
+      "amountToAllocate": "المبلغ المراد تخصيصه",
+      "daysOverdue": "متأخرة {{days}} أيام",
+      "notDue": "غير مستحقة بعد",
+      "totalSelected": "إجمالي المحدد: {{amount}}",
+      "totalAllocated": "إجمالي المخصص: {{amount}}",
+      "exceedsPayment": "إجمالي التخصيص يتجاوز مبلغ الدفعة",
+      "noInvoicesSelected": "يرجى اختيار فاتورة واحدة على الأقل",
+      "success": "تم تخصيص الدفعة بنجاح"
+    },
+    "openInvoices": {
+      "title": "الفواتير المفتوحة",
+      "noInvoices": "لا توجد فواتير مفتوحة",
+      "sortBy": "ترتيب حسب",
+      "sortByDate": "تاريخ الفاتورة",
+      "sortByDueDate": "تاريخ الاستحقاق",
+      "sortByAmount": "المبلغ",
+      "selectAll": "تحديد الكل",
+      "deselectAll": "إلغاء تحديد الكل",
+      "selectInvoice": "تحديد {{invoiceNumber}}",
+      "allocationAmount": "المبلغ المراد تخصيصه لـ {{invoiceNumber}}",
+      "totalBalance": "إجمالي الرصيد: {{amount}}"
+    },
+    "errors": {
+      "invalidAmount": "مبلغ غير صالح",
+      "amountMustBePositive": "يجب أن يكون المبلغ موجبًا",
+      "amountExceedsBalance": "المبلغ يتجاوز رصيد الفاتورة",
+      "noInvoicesSelected": "يرجى اختيار فاتورة واحدة على الأقل",
+      "allocationFailed": "فشل تخصيص الدفعة",
+      "previewFailed": "فشلت معاينة التخصيص"
+    }
+  },
+  "dashboard": {
+    "recentDocuments": "أحدث المستندات",
+    "recentPayments": "أحدث المدفوعات",
+    "stats": {
+      "revenue": "الإيرادات",
+      "orders": "الطلبات",
+      "customers": "العملاء",
+      "products": "المنتجات"
+    }
+  },
+  "paymentMethods": {
+    "title": "طرق الدفع",
+    "singular": "طريقة دفع",
+    "plural": "طرق الدفع",
+    "new": "إضافة طريقة دفع",
+    "edit": "تعديل طريقة الدفع",
+    "name": "الاسم",
+    "code": "الرمز",
+    "description": "الوصف",
+    "type": "النوع",
+    "feeConfig": "إعداد العمولة",
+    "status": "الحالة",
+    "active": "نشطة",
+    "inactive": "غير نشطة",
+    "capabilities": "الإمكانات",
+    "flags": {
+      "is_physical": "مادية",
+      "has_maturity": "لها استحقاق",
+      "requires_third_party": "طرف ثالث",
+      "is_push": "دفع مبادر",
+      "has_deducted_fees": "عمولات مخصومة",
+      "is_restricted": "مقيّدة"
+    },
+    "feeTypes": {
+      "none": "بدون عمولة",
+      "fixed": "عمولة ثابتة",
+      "percentage": "نسبة مئوية",
+      "mixed": "مختلطة"
+    },
+    "form": {
+      "codeRequired": "الرمز مطلوب",
+      "codeUnique": "يجب أن يكون الرمز فريدًا",
+      "nameRequired": "الاسم مطلوب",
+      "feeAmount": "مبلغ العمولة الثابتة",
+      "feePercentage": "نسبة العمولة",
+      "feeAmountPlaceholder": "0.00",
+      "feePercentagePlaceholder": "0.00",
+      "descriptionPlaceholder": "معلومات إضافية عن طريقة الدفع هذه…",
+      "namePlaceholder": "نقدًا"
+    },
+    "flagDescriptions": {
+      "is_physical": "طرق الدفع المادية (النقد، الشيكات، السندات الإذنية)",
+      "has_maturity": "مدفوعات مؤجلة (الشيكات، السندات الإذنية)",
+      "requires_third_party": "تتطلب معالجًا من طرف ثالث (PayPal، Stripe)",
+      "is_push": "دفع مبادر (يبدأه العميل)",
+      "has_deducted_fees": "عمولات مخصومة من المبلغ المستلم",
+      "is_restricted": "استخدام مقيّد (قسائم الطعام، شروط محددة)"
+    },
+    "table": {
+      "name": "الاسم",
+      "code": "الرمز",
+      "capabilities": "الإمكانات",
+      "fees": "العمولات",
+      "status": "الحالة",
+      "actions": "الإجراءات"
+    },
+    "empty": {
+      "title": "لا توجد طرق دفع بعد",
+      "description": "ابدأ بإضافة أول طريقة دفع."
+    },
+    "messages": {
+      "created": "تم إنشاء طريقة الدفع بنجاح",
+      "updated": "تم تحديث طريقة الدفع بنجاح",
+      "deleted": "تم حذف طريقة الدفع بنجاح",
+      "activated": "تم تفعيل طريقة الدفع",
+      "deactivated": "تم تعطيل طريقة الدفع"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "حذف طريقة الدفع",
+        "message": "هل أنت متأكد أنك تريد حذف طريقة الدفع هذه؟ لا يمكن التراجع عن هذا الإجراء.",
+        "button": "حذف"
+      },
+      "deactivate": {
+        "title": "تعطيل طريقة الدفع",
+        "message": "هل أنت متأكد أنك تريد تعطيل طريقة الدفع هذه؟ لن تكون متاحة للمدفوعات الجديدة.",
+        "button": "تعطيل"
+      }
+    }
+  },
+  "remittances": {
+    "title": "حافظات التحصيل",
+    "listSubtitle": "تحضير أدوات الدفع وإرسالها للتحصيل وتسويتها",
+    "new": "حافظة جديدة",
+    "createTitle": "إنشاء حافظة تحصيل",
+    "createSubtitle": "اختر الأدوات المستلمة للتحصيل",
+    "number": "رقم البوردرو",
+    "bankRepository": "المستودع البنكي",
+    "kind": "نوع الأداة",
+    "status": "الحالة",
+    "count": "العدد",
+    "total": "الإجمالي",
+    "amount": "المبلغ",
+    "instruments": "الأدوات المستلمة",
+    "selectedCount": "{{count}} محددة",
+    "createAndRemit": "إنشاء وإرسال",
+    "createError": "تعذّر إنشاء حافظة التحصيل.",
+    "earlyWarning": "مؤجلة — الإرسال قبل الاستحقاق",
+    "empty": "لا توجد حافظات تحصيل",
+    "remit": "إرسال",
+    "print": "طباعة البوردرو",
+    "bordereau": "بوردرو التحصيل",
+    "depositor": "المودِع",
+    "date": "التاريخ",
+    "drawer": "الساحب",
+    "draweeBank": "بنك المسحوب عليه",
+    "reference": "المرجع",
+    "maturity": "الاستحقاق",
+    "statuses": {
+      "draft": "مسودة",
+      "remitted": "مُرسلة",
+      "closed": "مغلقة"
+    },
+    "lineStatuses": {
+      "pending": "قيد الانتظار",
+      "cleared": "محصّلة",
+      "bounced": "مرفوضة"
     }
   }
 }

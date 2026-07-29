@@ -1,0 +1,207 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Company\Domain\Company;
+use Illuminate\Console\Command;
+use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
+
+/**
+ * Productized replacement for the Phase-2 ad-hoc chart-provisioning tinker step
+ * (docs/handoff/treasury-phase2-deploy-checklist.md §2). Re-runs the locale chart
+ * seeder for every company of the CURRENT tenant by delegating to
+ * {@see ChartOfAccountsService::seedForCompany()} — the single source of truth for
+ * chart provisioning. The seeders are additive/idempotent: they add the
+ * portfolio/fee accounts (cheques-to-collect, effects, discounted effects, bank
+ * fees, recoverable VAT, doubtful receivables) without replacing existing accounts
+ * and without assigning any repository balance, movement, or journal entry.
+ *
+ * ## Fleet invocation
+ *
+ * Runs per tenant via stancl `tenants:run`. The bare `--dry-run` flag is NOT valid
+ * under `tenants:run` (it errors); pass options with the `--option=` form:
+ *
+ *   php artisan tenants:run accounting:seed-charts                     # apply, all tenants
+ *   php artisan tenants:run accounting:seed-charts --option=dry-run=1  # preview, all tenants
+ *   php artisan tenants:run accounting:seed-charts --tenants=<uuid>    # scope to one tenant
+ *
+ * Direct (already inside a bound tenant context): `php artisan accounting:seed-charts [--dry-run]`.
+ *
+ * ## Operational contract
+ *
+ * - **Exit codes:** exit 1 ONLY on unavailable tenant tables or a delegate (service)
+ *   throw; "no companies" is exit 0 by design. `tenants:run` discards child exit codes
+ *   (vendor behavior), so deploy verification greps stdout for the stable markers below.
+ * - **Grep-gate markers (stdout):**
+ *   - success/summary: `Chart provisioning:`
+ *   - dry-run: `[DRY-RUN]`
+ *   - abort/failure: `No further companies were processed.` (paired log literal
+ *     `accounting:seed-charts failed for a company; aborting.`)
+ * - **Honest reporting:** the chart seeders may promote existing accounts to
+ *   system-managed and re-issue parent links, so the summary reports promotions and
+ *   parent rewrites alongside creations (before/after snapshot within the preview
+ *   transaction; cheap column compare). A second apply is command-level idempotent:
+ *   zero creations.
+ *
+ * @cross-tenant-by-design Backfill run per tenant via `tenants:run`; iterates every company of the bound tenant to re-run chart provisioning.
+ */
+final class SeedChartsCommand extends Command
+{
+    protected $signature = 'accounting:seed-charts
+                            {--dry-run : Report the accounts that would be created/promoted/reparented without writing them}';
+
+    protected $description = 'Re-run idempotent chart-of-accounts provisioning for every company in the current tenant.';
+
+    public function __construct(
+        private readonly DatabaseManager $database,
+        private readonly ChartOfAccountsService $charts,
+    ) {
+        parent::__construct();
+    }
+
+    public function handle(): int
+    {
+        if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
+            $this->error(
+                'Tenant tables are unavailable. Run this command inside each tenant context (for example via tenants:run).',
+            );
+
+            return self::FAILURE;
+        }
+
+        $dryRun = (bool) $this->option('dry-run');
+        $companies = Company::query()->orderBy('id')->get();
+
+        $created = 0;
+        $promoted = 0;
+        $reparented = 0;
+        /** @var array{company: Company, exception: Throwable}|null $failure */
+        $failure = null;
+
+        if ($dryRun) {
+            $this->database->beginTransaction();
+        }
+
+        try {
+            foreach ($companies as $company) {
+                $before = $this->snapshot((string) $company->id);
+
+                try {
+                    $this->charts->seedForCompany($company);
+                } catch (Throwable $exception) {
+                    $failure = ['company' => $company, 'exception' => $exception];
+
+                    break;
+                }
+
+                [$companyCreated, $companyPromoted, $companyReparented] = $this->diff($before, $this->snapshot((string) $company->id));
+                $created += $companyCreated;
+                $promoted += $companyPromoted;
+                $reparented += $companyReparented;
+
+                $this->line(sprintf(
+                    '%sCompany %s (%s): %d created, %d promoted, %d reparented.',
+                    $dryRun ? '[DRY-RUN] ' : '',
+                    $company->id,
+                    strtoupper($company->country_code),
+                    $companyCreated,
+                    $companyPromoted,
+                    $companyReparented,
+                ));
+            }
+        } finally {
+            // The snapshot reads and the per-company reporting sit OUTSIDE the delegate
+            // try/catch, so a query failure there would otherwise bypass the rollback and
+            // hand `tenants:run` back a connection with an open (on PostgreSQL, aborted)
+            // transaction that poisons every later tenant in the fleet loop.
+            if ($dryRun) {
+                $this->database->rollBack();
+            }
+        }
+
+        if ($failure !== null) {
+            Log::error('accounting:seed-charts failed for a company; aborting.', [
+                'tenant_id' => $failure['company']->tenant_id,
+                'company_id' => $failure['company']->id,
+                'country_code' => strtoupper($failure['company']->country_code),
+                'exception_class' => $failure['exception']::class,
+                'exception_message' => $failure['exception']->getMessage(),
+            ]);
+            $this->error(sprintf(
+                'Company %s: chart provisioning failed (%s). No further companies were processed.',
+                $failure['company']->id,
+                $failure['exception']->getMessage(),
+            ));
+
+            return self::FAILURE;
+        }
+
+        $this->info(sprintf(
+            '%sChart provisioning: %d created, %d promoted, %d reparented across %d company/companies.',
+            $dryRun ? '[DRY-RUN] ' : '',
+            $created,
+            $promoted,
+            $reparented,
+            $companies->count(),
+        ));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Snapshot the fields chart provisioning may change (system flag + parent link),
+     * keyed by account id, so creations, promotions, and reparents are counted honestly.
+     *
+     * @return array<string, array{is_system: bool, parent_id: string|null}>
+     */
+    private function snapshot(string $companyId): array
+    {
+        /** @var array<string, array{is_system: bool, parent_id: string|null}> $rows */
+        $rows = [];
+        foreach (Account::query()->where('company_id', $companyId)->get(['id', 'is_system', 'parent_id']) as $account) {
+            $rows[(string) $account->id] = [
+                'is_system' => (bool) $account->is_system,
+                'parent_id' => $account->parent_id === null ? null : (string) $account->parent_id,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, array{is_system: bool, parent_id: string|null}>  $before
+     * @param  array<string, array{is_system: bool, parent_id: string|null}>  $after
+     * @return array{int, int, int} [created, promoted, reparented]
+     */
+    private function diff(array $before, array $after): array
+    {
+        $created = 0;
+        $promoted = 0;
+        $reparented = 0;
+
+        foreach ($after as $id => $row) {
+            if (! array_key_exists($id, $before)) {
+                $created++;
+
+                continue;
+            }
+
+            if (! $before[$id]['is_system'] && $row['is_system']) {
+                $promoted++;
+            }
+
+            if ($before[$id]['parent_id'] !== $row['parent_id']) {
+                $reparented++;
+            }
+        }
+
+        return [$created, $promoted, $reparented];
+    }
+}
