@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\Expense\Application\Listeners;
 
 use App\Modules\Expense\Domain\ExpenseMetadata;
-use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Events\InstrumentCancelled;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
-use App\Modules\Treasury\Domain\PaymentInstrument;
+use App\Shared\Contracts\Treasury\DTOs\OutboundInstrumentPaymentLink;
+use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 final readonly class SyncExpenseOnInstrumentLifecycle
 {
+    public function __construct(
+        private OutboundInstrumentPaymentLinkResolver $instrumentLinks,
+    ) {}
+
     public function handle(InstrumentCleared|InstrumentCancelled $event): void
     {
         DB::transaction(function () use ($event): void {
@@ -43,13 +47,12 @@ final readonly class SyncExpenseOnInstrumentLifecycle
                 return;
             }
 
-            $instrument = PaymentInstrument::query()
-                ->where('tenant_id', $event->tenantId)
-                ->where('company_id', $event->companyId)
-                ->whereKey($event->instrumentId)
-                ->first();
-            if (! $instrument instanceof PaymentInstrument
-                || $instrument->direction !== InstrumentDirection::Outbound) {
+            $link = $this->instrumentLinks->resolveOutboundLink(
+                $event->instrumentId,
+                $event->tenantId,
+                $event->companyId,
+            );
+            if (! $link instanceof OutboundInstrumentPaymentLink) {
                 throw new \DomainException('The cleared expense instrument could not be resolved as outbound.');
             }
 
@@ -57,8 +60,8 @@ final readonly class SyncExpenseOnInstrumentLifecycle
             $metadata->update([
                 'is_paid' => true,
                 'paid_at' => $clearedAt,
-                'payment_repository_id' => $instrument->repository_id,
-                'payment_method_id' => $instrument->payment_method_id,
+                'payment_repository_id' => $link->repositoryId,
+                'payment_method_id' => $link->paymentMethodId,
                 'payment_date' => $clearedAt->toDateString(),
             ]);
         });
