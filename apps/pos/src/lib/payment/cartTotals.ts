@@ -17,10 +17,15 @@ interface ExactCartTotals {
  * this so the discount they report and the total they report can never be
  * produced by two different arithmetic paths.
  *
- * All arithmetic at the CURRENCY scale (never the bc* default of 3), and
- * byte-for-byte identical to `cartStore.discountAmountString` /
- * `cartStore.totalString` — the numbers the cashier is looking at when they
- * hit Confirm.
+ * All arithmetic at the CURRENCY scale (never the bc* default of 3).
+ *
+ * `cartStore.discountAmountString` / `cartStore.totalString` — the numbers the
+ * cashier is looking at when they hit Confirm — DELEGATE here rather than
+ * re-deriving. That is the whole point: they are the same code, not two
+ * implementations asserted to agree. Anyone re-inlining this math into the
+ * store puts the screen and the sealed SALE_RECEIPT back in a position to
+ * disagree, and the checkout gate would not catch it (it only rejects
+ * UNDER-tender).
  */
 function computeCartTotals(
   cartItems: CartItem[],
