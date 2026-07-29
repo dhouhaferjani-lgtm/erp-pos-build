@@ -98,48 +98,54 @@ final class BackfillBanksCommand extends Command
             $this->database->beginTransaction();
         }
 
-        foreach ($companies as $company) {
-            $countryCode = strtoupper($company->country_code);
-            $directory = database_path("data/banks/{$countryCode}.json");
+        try {
+            foreach ($companies as $company) {
+                $countryCode = strtoupper($company->country_code);
+                $directory = database_path("data/banks/{$countryCode}.json");
 
-            if (! is_file($directory)) {
-                $this->warn(sprintf(
-                    'Company %s (%s): no bank directory ships for country %s; skipped (no directory).',
+                if (! is_file($directory)) {
+                    $this->warn(sprintf(
+                        'Company %s (%s): no bank directory ships for country %s; skipped (no directory).',
+                        $company->id,
+                        $company->name,
+                        $countryCode,
+                    ));
+                    $skipped++;
+
+                    continue;
+                }
+
+                $before = $this->snapshot((string) $company->tenant_id);
+
+                try {
+                    $this->seeder->run($company);
+                } catch (Throwable $exception) {
+                    $failure = ['company' => $company, 'exception' => $exception];
+
+                    break;
+                }
+
+                [$companyCreated, $companyUpdated] = $this->diff($before, $this->snapshot((string) $company->tenant_id));
+                $created += $companyCreated;
+                $updated += $companyUpdated;
+
+                $this->line(sprintf(
+                    '%sCompany %s (%s): %d created, %d updated.',
+                    $dryRun ? '[DRY-RUN] ' : '',
                     $company->id,
-                    $company->name,
                     $countryCode,
+                    $companyCreated,
+                    $companyUpdated,
                 ));
-                $skipped++;
-
-                continue;
             }
-
-            $before = $this->snapshot((string) $company->tenant_id);
-
-            try {
-                $this->seeder->run($company);
-            } catch (Throwable $exception) {
-                $failure = ['company' => $company, 'exception' => $exception];
-
-                break;
+        } finally {
+            // The snapshot reads and the per-company reporting sit OUTSIDE the delegate
+            // try/catch, so a query failure there would otherwise bypass the rollback and
+            // hand `tenants:run` back a connection with an open (on PostgreSQL, aborted)
+            // transaction that poisons every later tenant in the fleet loop.
+            if ($dryRun) {
+                $this->database->rollBack();
             }
-
-            [$companyCreated, $companyUpdated] = $this->diff($before, $this->snapshot((string) $company->tenant_id));
-            $created += $companyCreated;
-            $updated += $companyUpdated;
-
-            $this->line(sprintf(
-                '%sCompany %s (%s): %d created, %d updated.',
-                $dryRun ? '[DRY-RUN] ' : '',
-                $company->id,
-                $countryCode,
-                $companyCreated,
-                $companyUpdated,
-            ));
-        }
-
-        if ($dryRun) {
-            $this->database->rollBack();
         }
 
         if ($failure !== null) {
@@ -175,22 +181,32 @@ final class BackfillBanksCommand extends Command
      * Snapshot the directory-owned fields BanksSeeder refreshes, keyed by bank id, so
      * creations and bic/position/city updates can be counted honestly.
      *
-     * @return array<string, string>
+     * Values are kept as a TYPED tuple rather than a joined string: `bic` and `city` are
+     * nullable, and flattening them (e.g. `$bank->bic ?? ''`) would make the signature
+     * non-injective — a seeder rewrite from `''` to NULL (or back) mutates the row while
+     * producing an identical signature, so the command would under-report updates in
+     * exactly the honest-counting path this snapshot exists to serve.
+     *
+     * @return array<string, array{bic: string|null, position: int, city: string|null}>
      */
     private function snapshot(string $tenantId): array
     {
-        /** @var array<string, string> $rows */
+        /** @var array<string, array{bic: string|null, position: int, city: string|null}> $rows */
         $rows = [];
         foreach (Bank::query()->where('tenant_id', $tenantId)->get(['id', 'bic', 'position', 'city']) as $bank) {
-            $rows[(string) $bank->id] = sprintf('%s|%s|%s', $bank->bic ?? '', $bank->position, $bank->city ?? '');
+            $rows[(string) $bank->id] = [
+                'bic' => $bank->bic,
+                'position' => $bank->position,
+                'city' => $bank->city,
+            ];
         }
 
         return $rows;
     }
 
     /**
-     * @param  array<string, string>  $before
-     * @param  array<string, string>  $after
+     * @param  array<string, array{bic: string|null, position: int, city: string|null}>  $before
+     * @param  array<string, array{bic: string|null, position: int, city: string|null}>  $after
      * @return array{int, int} [created, updated]
      */
     private function diff(array $before, array $after): array

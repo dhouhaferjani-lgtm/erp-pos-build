@@ -177,3 +177,63 @@ prior statements is fully evaluated instead of only its first page.
 - `pnpm exec eslint e2e/smoke/treasury-phase5b-reconciliation.smoke.ts` → 0 errors.
 - Runtime check: `STATEMENT_DELTA` = `'72.625'`; accepted-CSV-rows signed sum = `'72.625'`
   (matches the delta); primer/DUP amounts coupled.
+
+## LIVE-RUN EVIDENCE — SETTLED 2026-07-29 (closes the owed item above)
+
+Run against the live local db-per-tenant stack per
+`reference_local_db_per_tenant_demo_launch`: API `:8010`, web `:5173`, multi-queue worker,
+tenant `demo-pharmacy-tn` (`owner@pharmabio.tn`). `php artisan tenants:migrate --pretend` →
+`Nothing to migrate` on this branch, so the run exercised branch-current schema.
+
+**Result: 7/7 passed, twice** — once under the default runner locale (50.7s) and once with the
+browser context forced to `fr-FR` (1.0m). Each of the four owed confirmations below is
+answered by observation, not by re-reading the assertions.
+
+### 1. 5a — the locale pin, not luck
+
+Forcing `locale: 'fr-FR'` on the browser context (via a throwaway config; the app genuinely
+ships `src/locales/fr`, and i18next detection is `querystring → localStorage → navigator`)
+still gives **7/7**. A natural control confirms the pin is what does it: in the same fr-FR
+sweep of the whole smoke directory, the files that do **not** seed `autoerp-language` —
+`treasury-spine.smoke.ts` and `treasury-phase5a-outbound.smoke.ts` (0 occurrences each,
+vs 2 in this file) — failed on UI text locators, while this smoke passed.
+
+### 2. 5b — derived `STATEMENT_DELTA`
+
+Steps 3-6 green in both runs. No behavioral change vs the old `'72.625'` literal.
+
+### 3. 5c step 7 — reopen → re-complete leaves the fixture terminal-clean
+
+Step 7 passed in both runs (996ms-1.4s). Confirmed independently against the API afterwards:
+this run's repository ends **checkpointed with zero non-terminal statements**, and an older
+repository still shows the bug this task fixes:
+
+```
+SMOKE-5314991102   bal= 73.875  reconciled_at=2026-07-29   non-terminal stmts= 0/2   <- this run
+SMOKE-5315382359   bal= 73.875  reconciled_at=2026-07-29   non-terminal stmts= 0/2   <- fr-FR run
+SMOKE-5150226542   bal=188.875  reconciled_at=None         non-terminal stmts= 1/2   <- PARKED by an
+                                                                                        older run's
+                                                                                        reopen teardown
+```
+
+`SMOKE-5150226542` is precisely the "parked in `reconciling` forever" state 5c removes; the
+two 2026-07-29 rows are the new terminal-clean end state.
+
+### 4. 5c — the SMOKE reaper
+
+Provisioned a leftover matching the reaper's exact predicate (`SMOKE-*`, zero balance, no
+checkpoint, no statements) and re-ran. It was **skipped silently and left intact**, and the
+smoke provisioned a fresh fixture instead:
+
+```
+SMOKE-0000REAPER   bal=  0.000  reconciled_at=None  stmts=0/0   <- untouched, not selected
+```
+
+This is the discriminating case: the leftover passes the checkpoint-null and
+no-open-statement gates, so absent the reaper it *would* have been selected.
+
+### Caveat
+
+The reaper fixture `SMOKE-0000REAPER` and the several `SMOKE-*` repositories above live in
+the **local demo tenant only** — no staging/production data was touched. They are harmless
+(the smoke self-heals past them) but can be deleted from the local demo DB at will.

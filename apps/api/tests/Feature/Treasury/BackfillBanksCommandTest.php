@@ -41,10 +41,81 @@ final class BackfillBanksCommandTest extends TestCase
         self::assertSame(32, Bank::query()->where('tenant_id', $tenant->id)->count());
 
         // Second apply is command-level idempotent: zero creations reported, count stable.
+        // Assert the FULL summary marker — a bare '0 created' substring also matches
+        // '10 created', so it would not catch dishonest reporting.
         $this->command('treasury:backfill-banks')
-            ->expectsOutputToContain('0 created')
+            ->expectsOutputToContain('Bank directory backfill: 0 created, 0 updated across 1 company/companies')
             ->assertSuccessful();
         self::assertSame(32, Bank::query()->where('tenant_id', $tenant->id)->count());
+    }
+
+    public function test_dry_run_reports_updated_rows_without_persisting(): void
+    {
+        $tenant = Tenant::factory()->create();
+        Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('treasury:backfill-banks')->assertSuccessful();
+
+        $canonical = Bank::query()->where('tenant_id', $tenant->id)->where('is_custom', false)->firstOrFail();
+        $canonical->update(['bic' => 'DRIFTED0']);
+
+        // The honest-count contract covers the PREVIEW path too, not just apply.
+        $this->command('treasury:backfill-banks', ['--dry-run' => true])
+            ->expectsOutputToContain('[DRY-RUN] Bank directory backfill: 0 created, 1 updated across 1 company/companies')
+            ->assertSuccessful();
+
+        self::assertSame(
+            'DRIFTED0',
+            Bank::query()->whereKey($canonical->id)->firstOrFail()->bic,
+            'dry-run must report the update WITHOUT persisting the refresh',
+        );
+    }
+
+    public function test_update_reporting_distinguishes_null_from_empty_string(): void
+    {
+        $tenant = Tenant::factory()->create();
+        Company::factory()->create(['tenant_id' => $tenant->id, 'country_code' => 'ZY']);
+
+        // Every row in the shipping TN.json carries a non-empty bic AND city, so the
+        // NULL-vs-'' collapse is unreachable through it. Use a synthetic directory whose
+        // canonical `bic` is NULL — the one shape that makes an update invisible to a
+        // snapshot that flattens both to ''.
+        $path = database_path('data/banks/ZY.json');
+        self::assertFileDoesNotExist(
+            $path,
+            'ZY.json must not ship — this test owns that path as a throwaway fixture.',
+        );
+
+        try {
+            file_put_contents($path, json_encode([[
+                'name' => 'Null-BIC Test Bank',
+                'short_name' => 'NBTB',
+                'bic' => null,
+                'rib_bank_code' => '999',
+                'city' => 'Testville',
+                'position' => 1,
+            ]], JSON_THROW_ON_ERROR));
+
+            $this->command('treasury:backfill-banks')->assertSuccessful();
+
+            $seeded = Bank::query()->where('tenant_id', $tenant->id)->where('country_code', 'ZY')->firstOrFail();
+            self::assertNull($seeded->bic, 'the synthetic directory must seed a NULL bic');
+
+            // Drift NULL -> ''. Re-applying rewrites it back to NULL: a REAL row mutation
+            // that a `$bank->bic ?? ''` signature reports as zero updates.
+            $seeded->update(['bic' => '']);
+
+            $this->command('treasury:backfill-banks')
+                ->expectsOutputToContain('Bank directory backfill: 0 created, 1 updated across 1 company/companies')
+                ->assertSuccessful();
+
+            self::assertNull(
+                Bank::query()->whereKey($seeded->id)->firstOrFail()->bic,
+                'the emptied bic must be refreshed back to its canonical NULL',
+            );
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_apply_reports_updated_rows_honestly(): void
@@ -144,6 +215,14 @@ final class BackfillBanksCommandTest extends TestCase
         // exercising the real delegate-throw path end to end.
         $path = database_path('data/banks/ZZ.json');
 
+        // Never clobber a real directory: ZZ is a reserved/user-assigned country code that
+        // ships no file today, but if one ever appears this test must fail loudly rather
+        // than overwrite and then delete it.
+        self::assertFileDoesNotExist(
+            $path,
+            'ZZ.json must not ship — this test owns that path as a throwaway fixture.',
+        );
+
         $logSpy = Log::spy();
 
         try {
@@ -159,7 +238,18 @@ final class BackfillBanksCommandTest extends TestCase
         self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
         $logSpy->shouldHaveReceived('error', [
             Mockery::on(static fn (string $message): bool => $message === 'treasury:backfill-banks failed for a company; aborting.'),
-            Mockery::type('array'),
+            // Assert the tenant-aware CONTEXT KEYS, not merely `type('array')` — the
+            // whole point of the fail-loud contract is that an operator can trace the
+            // abort to a tenant/company/country, so dropping a key must fail this test.
+            Mockery::on(static function (array $context): bool {
+                foreach (['tenant_id', 'company_id', 'country_code', 'exception_class', 'exception_message'] as $key) {
+                    if (! array_key_exists($key, $context)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }),
         ]);
 
         self::assertSame(0, Bank::query()->where('tenant_id', $tenant->id)->count());

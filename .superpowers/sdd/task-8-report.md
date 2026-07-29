@@ -60,7 +60,9 @@ duplication):
 | `treasury:backfill-banks {--dry-run}` | `app/Console/Commands/BackfillBanksCommand.php` | `BanksSeeder::run($company)` |
 | `accounting:seed-charts {--dry-run}` | `app/Console/Commands/SeedChartsCommand.php` | `ChartOfAccountsService::seedForCompany($company)` |
 
-Shape (per the pattern command, fleet-driven via `php artisan tenants:run <cmd> [--dry-run]`):
+Shape (per the pattern command, fleet-driven via
+`php artisan tenants:run <cmd> [--option=dry-run=1]` — a bare `--dry-run` ERRORS under
+`tenants:run`; options must be forwarded with `--option=`):
 - **Guarded:** `Schema::hasTable(...)` fail-loud error + `FAILURE` if run outside a tenant context.
 - **Idempotent:** delegate to the idempotent seeder/service; re-run creates 0 net-new rows
   (proven by tests).
@@ -180,3 +182,63 @@ The Log-spy assertion follows the repo's phpstan-clean idiom
 (`$logSpy = Log::spy(); assertInstanceOf(LegacyMockInterface::class, $logSpy);
 $logSpy->shouldHaveReceived('error', [Mockery::on(...), Mockery::type('array')])`) from
 `tests/Unit/Console/TenantScopedCommandForEachTenantTest.php`.
+
+---
+
+## Codex Round-2 REJECT — fix round
+
+Full record incl. Codex's verbatim findings and the controller disposition:
+`docs/superpowers/reviews/2026-07-28-burndown-task8-codex.md`.
+
+Round 2 confirmed findings 3 and 6 FIXED, rated 1/2/4/5 PARTIALLY fixed, and raised two new
+`[Important]` defects introduced by the round-1 fix commit. All six items actioned:
+
+1. **Missing `finally` on the preview rollback (new, Important).** Round 1 moved the
+   snapshot reads outside the delegate `try/catch`, so a query failure there bypassed
+   `rollBack()` and could hand `tenants:run` a connection with an open — on PostgreSQL,
+   *aborted* — transaction, poisoning every later tenant. Both commands now wrap the
+   company loop in `try { … } finally { if ($dryRun) rollBack(); }`. Defense-in-depth with
+   no dedicated test (see the record for why).
+2. **Non-injective bank snapshot (new, Important).** `sprintf(… $bank->bic ?? '' …)`
+   collapsed `NULL` and `''`, so a real `'' → NULL` refresh reported **0 updated**.
+   `snapshot()` now returns a typed tuple, mirroring the chart command. Proven by a genuine
+   RED (see below) — and note the collapse is **unreachable with today's `TN.json`**, where
+   every row has a non-empty `bic`/`city`; the fix guards future directory content.
+3. **Stale fleet form in THIS report (Important).** Line 63 still documented
+   `tenants:run <cmd> [--dry-run]` while §4 claimed it was fixed everywhere. Corrected to
+   `[--option=dry-run=1]`.
+4. **Four test gaps (Important).** Exact summary markers instead of the substring
+   `'0 created'` (which also matches `'10 created'`); log-context KEY assertions instead of
+   `Mockery::type('array')`; a Generic-chart test that actually discriminates (it asserted
+   only `413`/`416`, which TN defines too — now Generic-only `5112/5113/5114/44566` present
+   AND TN-only `5312/5313/5314/6275/43666` absent); plus new dry-run bank-update and
+   chart promotion/reparent reporting coverage.
+5. **`ZZ.json` fixture (Minor).** Both synthetic-directory tests now assert the path is
+   free before writing. SIGKILL residue accepted.
+6. **Eager `get()` snapshots (Minor).** Accepted, not changed — 32 bank rows / a
+   low-hundreds chart over 3-4 narrow columns.
+
+### Self-correction worth recording
+
+My first regression test for item 2 drifted a TN row's `city` to `''` and asserted
+`1 updated` — and **passed against the unfixed code**, because the canonical value is
+non-empty so the refresh was `'' → 'Tunis'` (visible under either encoding). Rewritten to
+seed a synthetic `ZY.json` whose canonical `bic` is `null`:
+
+```
+with fix    → 1 passed (8 assertions)
+without fix → 1 failed at "Bank directory backfill: 0 created, 1 updated" (reported 0 updated)
+```
+
+### Round-2 fix gates
+
+```
+php artisan test tests/Feature/Treasury/BackfillBanksCommandTest.php \
+                 tests/Feature/Accounting/SeedChartsCommandTest.php
+→ Tests: 18 passed (121 assertions)      [round 1: 14 passed / 83 assertions]
+
+pint --test <2 commands + 2 tests>       → {"result":"pass"}
+phpstan analyse <2 commands + 2 tests>   → [OK] No errors
+ConsoleCommandTenantContextTest          → 7 unclassified (unchanged pre-existing red;
+                                            neither new command appears)
+```

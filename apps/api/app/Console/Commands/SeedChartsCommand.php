@@ -89,35 +89,41 @@ final class SeedChartsCommand extends Command
             $this->database->beginTransaction();
         }
 
-        foreach ($companies as $company) {
-            $before = $this->snapshot((string) $company->id);
+        try {
+            foreach ($companies as $company) {
+                $before = $this->snapshot((string) $company->id);
 
-            try {
-                $this->charts->seedForCompany($company);
-            } catch (Throwable $exception) {
-                $failure = ['company' => $company, 'exception' => $exception];
+                try {
+                    $this->charts->seedForCompany($company);
+                } catch (Throwable $exception) {
+                    $failure = ['company' => $company, 'exception' => $exception];
 
-                break;
+                    break;
+                }
+
+                [$companyCreated, $companyPromoted, $companyReparented] = $this->diff($before, $this->snapshot((string) $company->id));
+                $created += $companyCreated;
+                $promoted += $companyPromoted;
+                $reparented += $companyReparented;
+
+                $this->line(sprintf(
+                    '%sCompany %s (%s): %d created, %d promoted, %d reparented.',
+                    $dryRun ? '[DRY-RUN] ' : '',
+                    $company->id,
+                    strtoupper($company->country_code),
+                    $companyCreated,
+                    $companyPromoted,
+                    $companyReparented,
+                ));
             }
-
-            [$companyCreated, $companyPromoted, $companyReparented] = $this->diff($before, $this->snapshot((string) $company->id));
-            $created += $companyCreated;
-            $promoted += $companyPromoted;
-            $reparented += $companyReparented;
-
-            $this->line(sprintf(
-                '%sCompany %s (%s): %d created, %d promoted, %d reparented.',
-                $dryRun ? '[DRY-RUN] ' : '',
-                $company->id,
-                strtoupper($company->country_code),
-                $companyCreated,
-                $companyPromoted,
-                $companyReparented,
-            ));
-        }
-
-        if ($dryRun) {
-            $this->database->rollBack();
+        } finally {
+            // The snapshot reads and the per-company reporting sit OUTSIDE the delegate
+            // try/catch, so a query failure there would otherwise bypass the rollback and
+            // hand `tenants:run` back a connection with an open (on PostgreSQL, aborted)
+            // transaction that poisons every later tenant in the fleet loop.
+            if ($dryRun) {
+                $this->database->rollBack();
+            }
         }
 
         if ($failure !== null) {

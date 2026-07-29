@@ -28,6 +28,21 @@ final class SeedChartsCommandTest extends TestCase
      */
     private const TN_REQUIRED_CODES = ['5312', '413', '5313', '5314', '6275', '43666', '416'];
 
+    /**
+     * Codes only the Tunisia chart defines. `413`/`416`/`627` are shared with the Generic
+     * chart, so asserting those alone cannot tell the two locales apart.
+     *
+     * @var list<string>
+     */
+    private const TN_ONLY_CODES = ['5312', '5313', '5314', '6275', '43666'];
+
+    /**
+     * The Generic chart's counterparts to TN_ONLY_CODES (deploy checklist §2, Generic column).
+     *
+     * @var list<string>
+     */
+    private const GENERIC_ONLY_CODES = ['5112', '5113', '5114', '44566'];
+
     public function test_dry_run_previews_without_writing_accounts(): void
     {
         $tenant = Tenant::factory()->create();
@@ -59,8 +74,10 @@ final class SeedChartsCommandTest extends TestCase
         }
 
         // Second apply is command-level idempotent: zero creations, count stable.
+        // Assert the FULL summary marker — a bare '0 created' substring also matches
+        // '10 created', so it would not catch dishonest reporting.
         $this->command('accounting:seed-charts')
-            ->expectsOutputToContain('0 created')
+            ->expectsOutputToContain('Chart provisioning: 0 created, 0 promoted, 0 reparented across 1 company/companies')
             ->assertSuccessful();
         self::assertSame($firstPass, Account::query()->where('company_id', $company->id)->count());
     }
@@ -76,6 +93,78 @@ final class SeedChartsCommandTest extends TestCase
         // Generic chart still carries the effects-receivable / doubtful-receivable codes.
         self::assertTrue(Account::query()->where('company_id', $company->id)->where('code', '413')->exists());
         self::assertTrue(Account::query()->where('company_id', $company->id)->where('code', '416')->exists());
+
+        // 413/416 are SHARED with the Tunisia chart, so they cannot prove the locale
+        // resolver picked Generic. Discriminate on the codes only one chart defines.
+        foreach (self::GENERIC_ONLY_CODES as $code) {
+            self::assertTrue(
+                Account::query()->where('company_id', $company->id)->where('code', $code)->exists(),
+                "Generic-only chart code {$code} must resolve for a non-TN company.",
+            );
+        }
+
+        foreach (self::TN_ONLY_CODES as $code) {
+            self::assertFalse(
+                Account::query()->where('company_id', $company->id)->where('code', $code)->exists(),
+                "TN-only chart code {$code} must NOT be provisioned for a non-TN company.",
+            );
+        }
+    }
+
+    public function test_apply_reports_promotions_and_reparents_honestly(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('accounting:seed-charts')->assertSuccessful();
+
+        // Drift both directory-owned fields the command claims to report on. The seeder
+        // promotes is_system false->true (never demotes) and re-issues parent links, so a
+        // re-apply must repair BOTH — and say so.
+        $promotable = Account::query()->where('company_id', $company->id)
+            ->where('code', '413')->firstOrFail();
+        $promotable->update(['is_system' => false]);
+
+        $reparentable = Account::query()->where('company_id', $company->id)
+            ->where('code', '416')->firstOrFail();
+        self::assertNotNull($reparentable->parent_id, 'fixture account must start with a parent link');
+        $originalParentId = $reparentable->parent_id;
+        $reparentable->update(['parent_id' => null]);
+
+        $this->command('accounting:seed-charts')
+            ->expectsOutputToContain('Chart provisioning: 0 created, 1 promoted, 1 reparented across 1 company/companies')
+            ->assertSuccessful();
+
+        self::assertTrue(
+            (bool) Account::query()->whereKey($promotable->id)->firstOrFail()->is_system,
+            'the drifted is_system flag must be promoted back',
+        );
+        self::assertSame(
+            $originalParentId,
+            Account::query()->whereKey($reparentable->id)->firstOrFail()->parent_id,
+            'the cleared parent link must be re-issued',
+        );
+    }
+
+    public function test_dry_run_reports_promotions_and_reparents_without_persisting(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('accounting:seed-charts')->assertSuccessful();
+
+        $promotable = Account::query()->where('company_id', $company->id)
+            ->where('code', '413')->firstOrFail();
+        $promotable->update(['is_system' => false]);
+
+        $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning: 0 created, 1 promoted, 0 reparented across 1 company/companies')
+            ->assertSuccessful();
+
+        self::assertFalse(
+            (bool) Account::query()->whereKey($promotable->id)->firstOrFail()->is_system,
+            'dry-run must report the promotion WITHOUT persisting it',
+        );
     }
 
     public function test_dry_run_reports_created_then_real_run_creates(): void
@@ -123,7 +212,18 @@ final class SeedChartsCommandTest extends TestCase
         self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
         $logSpy->shouldHaveReceived('error', [
             Mockery::on(static fn (string $message): bool => $message === 'accounting:seed-charts failed for a company; aborting.'),
-            Mockery::type('array'),
+            // Assert the tenant-aware CONTEXT KEYS, not merely `type('array')` — the
+            // whole point of the fail-loud contract is that an operator can trace the
+            // abort to a tenant/company/country, so dropping a key must fail this test.
+            Mockery::on(static function (array $context): bool {
+                foreach (['tenant_id', 'company_id', 'country_code', 'exception_class', 'exception_message'] as $key) {
+                    if (! array_key_exists($key, $context)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }),
         ]);
 
         self::assertSame(0, Account::query()->count(), 'no accounts written when the delegate throws');
