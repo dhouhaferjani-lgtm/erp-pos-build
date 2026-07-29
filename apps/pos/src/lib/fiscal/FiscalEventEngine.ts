@@ -43,6 +43,8 @@
 
 import type Database from '@tauri-apps/plugin-sql';
 
+import { bcformat } from '@/lib/decimal';
+
 import type { FiscalEventCanonicalEncoder } from './FiscalEventCanonicalEncoder';
 import type { FiscalIntegrityProvider } from './HashChainIntegrityProvider';
 import type {
@@ -421,8 +423,12 @@ export interface SaleReceiptPayloadInput {
   readonly table_id: string | null;
   /** UUID. */
   readonly terminal_id: string;
-  /** Money at `currency_scale`; gross (incl. VAT). */
+  /** Money at `currency_scale`; gross (incl. VAT). At v3 this is the ROUNDED total. */
   readonly total: string;
+  /** v3: signed `rounded_total - exact_total` at `currency_scale`. */
+  readonly cash_rounding_adjustment?: string;
+  /** v3: non-negative rounding step at `currency_scale`. */
+  readonly cash_rounding_denomination?: string;
   /** Must equal `invoice_type_code === 'TRAINING'`. */
   readonly training_flag: boolean;
   /** Money at `currency_scale`; non-negative (no surcharge case). */
@@ -1060,6 +1066,52 @@ export const SALE_RECEIPT_PAYLOAD_KEYS = [
   'vouchers_redeemed',
 ] as const;
 
+/**
+ * SALE_RECEIPT v3 top-level key set (cash rounding, spec §4.4). 30 keys =
+ * the 28 v1/v2 keys plus `cash_rounding_adjustment` +
+ * `cash_rounding_denomination`, which sort between `buyer` and `cashier_id`.
+ *
+ * The PHP authority is
+ * `FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V3`; the
+ * FiscalPayloadKeyDrift gate pins the two lists (and this list's
+ * sortedness) against each other.
+ *
+ * A NAMED constant, never a mutation of `SALE_RECEIPT_PAYLOAD_KEYS` — the
+ * v1/v2 record stays frozen at 28 keys forever.
+ */
+export const SALE_RECEIPT_PAYLOAD_KEYS_V3 = [
+  'approval_references',
+  'business_date',
+  'buyer',
+  'cash_rounding_adjustment',
+  'cash_rounding_denomination',
+  'cashier_id',
+  'cashier_name',
+  'consumption_mode',
+  'currency_code',
+  'currency_scale',
+  'event_time_device',
+  'invoice_type_code',
+  'line_items',
+  'lottery_code',
+  'notes',
+  'original_receipt_reference',
+  'payments',
+  'receipt_uuid',
+  'seller',
+  'shift_id',
+  'subtotal',
+  'table_id',
+  'terminal_id',
+  'total',
+  'training_flag',
+  'transaction_discount_amount',
+  'transaction_discount_reason',
+  'vat_breakdown',
+  'vat_total',
+  'vouchers_redeemed',
+] as const;
+
 export const CHAIN_BREAK_DETECTED_PAYLOAD_KEYS = [
   'last_good_hash',
   'last_good_sequence',
@@ -1365,6 +1417,17 @@ function moneyRegex(scale: number): RegExp {
 }
 
 /**
+ * Signed money at `scale` — the non-negative `moneyRegex` shape plus an
+ * optional leading '-'. `-0` is rejected: canonical zero is unsigned.
+ */
+function signedMoneyRegex(scale: number): RegExp {
+  if (scale === 0) {
+    return /^-?(0|[1-9]\d*)$/;
+  }
+  return new RegExp(`^-?(0|[1-9]\\d*)\\.\\d{${scale}}$`);
+}
+
+/**
  * True when `value` is BCMath-equivalent zero at the given scale — i.e.
  * `"0"`, `"0.00"`, `"0.000"`, etc. Used for the discount-reason
  * consistency invariant (§6.A) where `bcformat()` at scale=2 emits
@@ -1376,8 +1439,9 @@ function isZeroMoney(value: string): boolean {
 }
 
 // -------------------------------------------------------------------
-// SALE_RECEIPT validator — 28-key canonical Candidate C-v3 per
-// synthesis v5 §3. STRUCTURAL conformance only: key set + types +
+// SALE_RECEIPT validator — 30-key canonical set at event_version 3
+// (Candidate C-v3 per synthesis v5 §3, plus the two cash-rounding
+// fields of spec 2026-07-27 §4.4). STRUCTURAL conformance only: key set + types +
 // regex + enums + foreign-currency pairing + training-flag invariant
 // + discount-reason consistency. The VAT partition algorithm +
 // invoice-total arithmetic stay server-side per v5 §6.F (the PHP
@@ -1393,7 +1457,10 @@ function validateSaleReceiptPayload(payload: unknown): void {
   const p = payload as Record<string, unknown>;
 
   // -- 1. key-set: required + extras -- mirrors PHP validatePayloadKeySet.
-  assertExactKeySet(p, SALE_RECEIPT_PAYLOAD_KEYS, 'SALE_RECEIPT');
+  //       Append-time const swap (spec §4.4 F9): the device AUTHORS only
+  //       v3, so there is no version threading here. The ROUNDING feature
+  //       gate lives on `fiscal_schema_version`, not on the payload version.
+  assertExactKeySet(p, SALE_RECEIPT_PAYLOAD_KEYS_V3, 'SALE_RECEIPT');
 
   // -- 2. currency_scale + currency_code first; every subsequent money
   //       check depends on the scale.
@@ -1450,6 +1517,24 @@ function validateSaleReceiptPayload(payload: unknown): void {
   for (const field of ['subtotal', 'vat_total', 'total', 'transaction_discount_amount'] as const) {
     assertMoneyString(p, field, money, scale);
   }
+
+  // -- 4b. v3 cash-rounding fields (spec §4.4) --
+  //        The adjustment is the ONLY signed money in the payload. Canonical
+  //        zero is unsigned: `signedMoneyRegex` pins the scale exactly, so
+  //        `-0`-at-scale is the single negative-zero form still reachable and
+  //        is rejected explicitly (the server's `payload_money_negative_zero`).
+  const signedMoney = signedMoneyRegex(scale);
+  const adjustment = p['cash_rounding_adjustment'];
+  if (
+    typeof adjustment !== 'string'
+    || !signedMoney.test(adjustment)
+    || adjustment === `-${bcformat('0', scale)}`
+  ) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:cash_rounding_adjustment must be signed money at scale ${scale}; got ${jsonOrType(adjustment)}`,
+    );
+  }
+  assertMoneyString(p, 'cash_rounding_denomination', money, scale);
 
   // -- 5. discount-reason consistency (§6.A; BCMath-equivalent zero check) --
   const discountAmount = p['transaction_discount_amount'] as string;

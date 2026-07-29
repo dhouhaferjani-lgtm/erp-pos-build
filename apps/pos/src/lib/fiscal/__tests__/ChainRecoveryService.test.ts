@@ -113,6 +113,8 @@ function validSaleReceiptPayload(): Record<string, unknown> {
     approval_references: [],
     business_date: '2026-05-16',
     buyer: null,
+    cash_rounding_adjustment: '0.000',
+    cash_rounding_denomination: '0.000',
     cashier_id: SR_CASHIER_UUID,
     cashier_name: 'Alice',
     consumption_mode: null,
