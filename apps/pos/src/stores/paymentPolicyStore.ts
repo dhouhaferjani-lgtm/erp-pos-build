@@ -52,12 +52,24 @@ export function getActivePaymentPolicy(): PaymentPolicy | null {
   return usePaymentPolicyStore.getState().policy;
 }
 
+/**
+ * Load the cached policy for `companyId` into the slice.
+ *
+ * A missing row CLEARS the slice rather than leaving whatever was there. The
+ * slice is a global in-memory singleton while the SQLite file is per-company
+ * (`izipos-${companyId}.db`), so a company switch that finds no cached row for
+ * the NEW company would otherwise keep deciding checkouts with the PREVIOUS
+ * company's denomination and tolerance caps — values that then get signed into
+ * the v3 payload. `refreshPaymentPolicy` is the only other writer, so offline
+ * there is nothing else to correct it.
+ */
 export async function hydratePaymentPolicyFromCache(
   db: Database,
   companyId: string,
 ): Promise<void> {
   const row = await getPaymentPolicy(db, companyId);
   if (row === null) {
+    usePaymentPolicyStore.getState().reset();
     return;
   }
   usePaymentPolicyStore.getState().setPolicy({

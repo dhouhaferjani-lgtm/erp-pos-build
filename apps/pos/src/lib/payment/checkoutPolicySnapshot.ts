@@ -12,6 +12,22 @@ import {
 } from '@/lib/payment/cashRounding';
 import type { PaymentPolicy } from '@/stores/paymentPolicyStore';
 
+/**
+ * Mirrors `SaleReceiptPayloadInput.invoice_type_code`
+ * (`lib/fiscal/FiscalEventEngine.ts:406`). Declared here rather than imported
+ * so this module stays free of the fiscal engine's dependency graph.
+ */
+export type CheckoutInvoiceType = 'SALE' | 'REFUND' | 'VOID' | 'TRAINING';
+
+/**
+ * The only invoice types cash rounding applies to (spec §4.1). Refund and void
+ * authoring is out of scope: their totals are derived from the ORIGINAL
+ * receipt, so rounding them again would break the refund's tie to what was
+ * actually signed. The membership check is load-bearing — the caller's type
+ * legally admits REFUND/VOID.
+ */
+export const ROUNDABLE_INVOICE_TYPES: readonly CheckoutInvoiceType[] = ['SALE', 'TRAINING'];
+
 export type ToleranceReason =
   | 'not_applicable'
   | 'disabled'
@@ -58,14 +74,27 @@ export interface BuildCheckoutPolicySnapshotInput {
   /** `terminal.fiscal_schema_version` as cached by terminalStore; null when unknown. */
   readonly fiscalSchemaVersion: number | null;
   /**
-   * True when the terminal is in training mode, i.e. the receipt's
-   * `invoice_type_code` is TRAINING rather than SALE. Both codes are IN scope
-   * for rounding, so this NEVER gates — it is carried so the gate's
-   * "invoice type ∈ {SALE, TRAINING}" arm is explicit at the call site and a
-   * future out-of-scope invoice type has an obvious place to land.
+   * The `invoice_type_code` this checkout will author. SALE and TRAINING round;
+   * REFUND and VOID do not (see {@link ROUNDABLE_INVOICE_TYPES}).
    */
-  readonly isTraining: boolean;
+  readonly invoiceType: CheckoutInvoiceType;
   readonly autoAcceptCountThisShift: number;
+}
+
+/**
+ * True when `policy` was pulled for the currency this checkout is settling in.
+ *
+ * Both sides are trimmed and upper-cased before comparing: `currencyCode` is a
+ * server field and `input.currency` is `company.currency` with an `'EUR'`
+ * fallback (`lib/currency.ts:28-32`), so neither is guaranteed normalized. A
+ * raw `!==` would silently disable BOTH mechanisms on a case or whitespace
+ * disagreement — a feature kill that lint, typecheck and unit tests cannot see.
+ */
+function policyMatchesCurrency(policy: PaymentPolicy, currency: string): boolean {
+  const policyCode = typeof policy.currencyCode === 'string'
+    ? policy.currencyCode.trim().toUpperCase()
+    : '';
+  return policyCode !== '' && policyCode === currency.trim().toUpperCase();
 }
 
 /**
@@ -95,32 +124,39 @@ export function buildCheckoutPolicySnapshot(
   const tenderedAmount = toScaleOrZero(input.tenderedAmount, scale);
   const cashOnly = isCashOnlyTender(input.legs, input.isCashMethodCode);
 
-  // A cached policy is only authoritative for the currency it was pulled for.
-  // Nothing clears a previously-loaded policy on a company switch
-  // (`usePaymentPolicyStore.reset()` has no production caller and
-  // `hydratePaymentPolicyFromCache` treats a null row as a no-op), and both the
-  // denomination and the tolerance max amount are DENOMINATED in that currency.
-  // A mismatch — including the `undefined` a degenerate policy carries — means
-  // the policy is not usable here at all, for either mechanism.
-  const policy = input.policy !== null
-    && input.policy.currencyCode === input.currency
-    ? input.policy
-    : null;
+  // A cached policy is only authoritative for the currency it was pulled for:
+  // both the denomination and the tolerance max amount are DENOMINATED in that
+  // currency, so applying them to another currency's money is never safe. A
+  // mismatch — including the `undefined` a degenerate policy carries — means
+  // the policy is unusable here, for BOTH mechanisms.
+  let policy: PaymentPolicy | null = input.policy;
+  if (policy !== null && !policyMatchesCurrency(policy, input.currency)) {
+    console.warn(
+      '[POS][checkoutPolicySnapshot] cached payment policy currency does not match the '
+      + 'checkout currency — cash rounding AND tender tolerance are disabled for this sale',
+      { policyCurrency: policy.currencyCode ?? null, checkoutCurrency: input.currency },
+    );
+    policy = null;
+  }
 
   // ── Rounding gate (spec §4.1, fail-closed on every unknown) ──────────────
-  // invoice_type_code is SALE or TRAINING for every path that reaches here
-  // (refund/void authoring is out of scope), so `isTraining` only selects
-  // between the two in-scope codes and never disables rounding.
   const denominationCandidate = policy?.cashRoundingDenomination ?? null;
+  // Hoisted so the type predicate narrows here rather than needing a cast below.
+  const validDenomination = isValidDenomination(denominationCandidate, scale)
+    ? bcformat(denominationCandidate, scale)
+    : null;
   const roundingApplied =
     policy !== null
     && policy.cashRoundingEnabled === true
-    && isValidDenomination(denominationCandidate, scale)
+    && validDenomination !== null
     && cashOnly
-    && input.fiscalSchemaVersion === 3;
+    && input.fiscalSchemaVersion === 3
+    && ROUNDABLE_INVOICE_TYPES.includes(input.invoiceType);
 
-  const denomination = roundingApplied
-    ? bcformat(denominationCandidate as string, scale)
+  // `validDenomination !== null` is already an arm of `roundingApplied`;
+  // repeating it is TypeScript narrowing, not a second rule.
+  const denomination = roundingApplied && validDenomination !== null
+    ? validDenomination
     : zero;
   const roundedTotal = roundingApplied
     ? roundCashTotal(exactTotal, denomination, scale)
@@ -147,7 +183,16 @@ export function buildCheckoutPolicySnapshot(
     // still REPORTS a full `D` of headroom. Only this flag stops it from being
     // spent — without it an operator who turns tolerance off would still get D
     // of silent write-off on every cash sale.
-    enabled: policy?.tenderToleranceEnabled === true,
+    //
+    // The `fiscalSchemaVersion === 3` arm is an owner ruling (2026-07-29) that
+    // deliberately DEVIATES from the spec text, which states the tolerance
+    // condition with no schema-version arm. On a v2 terminal an auto-accepted
+    // shortfall has no fiscal trace whatsoever: the v2 payload carries no
+    // `tolerance_shortfall`, the projection's `tolerance_writeoff` write is
+    // v3-gated, and no PosOverrideEvidence is authored because no PIN is taken.
+    // A silent cash-vs-revenue gap is worse than sending the cashier to the
+    // (fully evidenced) manager-PIN path, so v2 gets no headroom at all.
+    enabled: policy?.tenderToleranceEnabled === true && input.fiscalSchemaVersion === 3,
     shortfall,
     effectiveMax,
     autoAcceptCountThisShift: input.autoAcceptCountThisShift,

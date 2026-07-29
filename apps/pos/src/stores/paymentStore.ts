@@ -12,6 +12,10 @@ import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapsho
 import { getActivePaymentPolicy } from '@/stores/paymentPolicyStore';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
+import {
+  getToleranceAutoAcceptCount,
+  recordToleranceAutoAccept as recordToleranceAutoAcceptRow,
+} from '@/lib/db/repositories/toleranceAutoAcceptRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { createAccountPayment, type AccountPaymentResult } from '@/lib/offline/accountPaymentService';
 import { authorAccountCharge } from '@/lib/accountCharge/accountChargeService';
@@ -243,10 +247,14 @@ interface PaymentState {
   selectedCustomer: AttachedCheckoutCustomer | null;
 
   /**
-   * Per-shift tender-tolerance auto-accept guard (spec §8.1). The counter is
-   * scoped to a shift id so closing and reopening a shift resets the budget;
-   * beyond TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT the cashier is escalated to
-   * the unchanged manager-PIN path. Surfaced on the EOD preview.
+   * In-memory MIRROR of the per-shift tender-tolerance auto-accept budget
+   * (spec §8.1). The authority is SQLite `tolerance_auto_accepts` (migration
+   * v64) — this copy exists only so the cash screen can decide its floor
+   * synchronously, and it is deliberately NOT trusted by the gate: `reset()`
+   * (reachable one tap away via teardownPosSessionStores) and every app
+   * restart clear it, either of which would refill the budget on a still-open
+   * shift. Beyond TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT the cashier is
+   * escalated to the unchanged manager-PIN path. Surfaced on the EOD preview.
    */
   toleranceAutoAcceptShiftId: string | null;
   toleranceAutoAcceptCount: number;
@@ -369,12 +377,19 @@ interface PaymentActions {
   detachCustomer: () => void;
 
   /**
-   * Charge one tender-tolerance auto-accept against `shiftId`'s budget.
+   * Charge one tender-tolerance auto-accept against `shiftId`'s durable budget.
    * Called ONLY after the receipt has been authored — a refused or failed
-   * checkout must not spend the shift's budget. A different shift id resets
-   * the counter (a new shift starts with a fresh budget).
+   * checkout must not spend the shift's budget. A new shift id starts a fresh
+   * budget because the SQLite row is keyed by shift.
    */
-  recordToleranceAutoAccept: (shiftId: string) => void;
+  recordToleranceAutoAccept: (shiftId: string) => Promise<void>;
+
+  /**
+   * Load `shiftId`'s spent budget from SQLite into the in-memory mirror so the
+   * cash screen's floor is right BEFORE the first checkout of a session.
+   * Without it, a restart mid-shift would show headroom the gate then refuses.
+   */
+  hydrateToleranceAutoAccept: (shiftId: string) => Promise<void>;
 }
 
 type PaymentStore = PaymentState & PaymentActions;
@@ -467,6 +482,43 @@ export function makeIsCashMethodCode(
     }
   }
   return (code: string) => cashCodes.has(code);
+}
+
+/**
+ * Accepts already spent on `shiftId`, read from SQLite — the AUTHORITY for the
+ * §8.1 per-shift budget (owner ruling 2026-07-29).
+ *
+ * The in-memory `toleranceAutoAccept*` slice is only a mirror for the cash
+ * screen's synchronous display: it is wiped by `teardownPosSessionStores()`
+ * (one tap away in Settings) and by every app restart, either of which would
+ * refill the budget on a still-open shift if the gate trusted it.
+ *
+ * Fail-closed on any read failure: an unreadable budget reports as fully spent,
+ * so the cashier is sent to the evidenced manager-PIN path rather than handed
+ * silent headroom.
+ */
+async function readToleranceAutoAcceptCount(shiftId: string): Promise<number> {
+  try {
+    const db = await getDb();
+    const count = await getToleranceAutoAcceptCount(db, shiftId);
+    usePaymentStore.setState({
+      toleranceAutoAcceptShiftId: shiftId,
+      toleranceAutoAcceptCount: count,
+    });
+    return count;
+  } catch (error) {
+    console.error('[POS][tolerance] auto-accept budget read failed — treating as spent', {
+      ...serializeErrorForLog(error),
+      shiftId,
+    });
+    // Mirror the fail-closed value too, so the cash screen stops advertising a
+    // floor the gate is about to refuse.
+    usePaymentStore.setState({
+      toleranceAutoAcceptShiftId: shiftId,
+      toleranceAutoAcceptCount: TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT,
+    });
+    return TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT;
+  }
 }
 
 /** @internal Exported for unit testing. Delegates to the single-sourced total. */
@@ -905,15 +957,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     const tenderedAtScale = bcadd(tenderedAmount, '0', scale);
     const terminalSnapshot = useTerminalStore.getState();
     const shiftId = terminalSnapshot.shift?.id ?? null;
-    // No open shift = no budget to charge an auto-accept against, so report the
-    // budget as fully spent (such a checkout cannot author a receipt anyway —
-    // see createReceiptLocalFirst's ActiveTerminalRequiredError). A different
-    // shift id means this shift has spent nothing yet.
+    // DELIBERATE INVERSION of the brief, which gives a null shift a FRESH
+    // budget. No open shift means there is nothing to charge an accept
+    // against, so a silent write-off could never be attributed or reported on
+    // EOD — the fail-closed reading is "budget fully spent", sending the
+    // cashier to the evidenced manager-PIN path. Such a checkout cannot author
+    // a receipt anyway (createReceiptLocalFirst throws
+    // ActiveTerminalRequiredError), so this only decides WHICH refusal the
+    // cashier sees. The HomePage display memo makes the same choice, so the
+    // screen and the gate agree.
     const autoAcceptCountThisShift = shiftId === null
       ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
-      : get().toleranceAutoAcceptShiftId === shiftId
-        ? get().toleranceAutoAcceptCount
-        : 0;
+      : await readToleranceAutoAcceptCount(shiftId);
     const snapshot = buildCheckoutPolicySnapshot({
       exactTotal: computeExactCartTotal(cartItems, transactionDiscount, currency),
       currency,
@@ -922,7 +977,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       isCashMethodCode: makeIsCashMethodCode(paymentMethods),
       policy: getActivePaymentPolicy(),
       fiscalSchemaVersion: terminalSnapshot.terminal?.fiscal_schema_version ?? null,
-      isTraining: terminalSnapshot.terminal?.is_training_mode === true,
+      invoiceType: terminalSnapshot.terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
       autoAcceptCountThisShift,
     });
 
@@ -996,7 +1051,11 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           paymentMethodId: cashMethod.id,
           repositoryId: cashRegister.id,
         }],
-        tenderedAmount,
+        // The currency-scale value, not the raw numpad string: the raw one
+        // reaches `bcformat(input.tenderedAmount, decimals)` in receiptService,
+        // which throws on ''. Unreachable today, but the asymmetry with the
+        // leg amount above is gratuitous.
+        tenderedAtScale,
         idempotencyKey,
         transactionDiscount,
         consumptionMode,
@@ -1005,8 +1064,21 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
       // Charge the shift's auto-accept budget only once the receipt exists — a
       // refused or failed checkout must never spend it.
+      //
+      // Budget accounting must NOT be able to fail an already-authored sale:
+      // the receipt is durable and printable by this point, so a SQLite hiccup
+      // here would show the cashier a failure for a completed sale and invite a
+      // retry. Under-counting one accept is the strictly cheaper failure.
       if (snapshot.toleranceDecision.applied && shiftId !== null) {
-        get().recordToleranceAutoAccept(shiftId);
+        try {
+          await get().recordToleranceAutoAccept(shiftId);
+        } catch (budgetError) {
+          console.error('[POS][tolerance] auto-accept budget write failed AFTER the receipt was authored', {
+            ...serializeErrorForLog(budgetError),
+            shiftId,
+            idempotencyKey,
+          });
+        }
       }
 
       set({ changeDue: result.changeDue, isProcessing: false });
@@ -1460,12 +1532,17 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     });
   },
 
-  recordToleranceAutoAccept: (shiftId: string) => {
-    set((state) =>
-      state.toleranceAutoAcceptShiftId === shiftId
-        ? { toleranceAutoAcceptCount: state.toleranceAutoAcceptCount + 1 }
-        : { toleranceAutoAcceptShiftId: shiftId, toleranceAutoAcceptCount: 1 },
-    );
+  recordToleranceAutoAccept: async (shiftId: string) => {
+    // SQLite first — it is the authority and must be durable before the
+    // in-memory mirror claims the accept was charged. The increment happens
+    // inside the upsert, so overlapping checkouts cannot both write N+1.
+    const db = await getDb();
+    const count = await recordToleranceAutoAcceptRow(db, shiftId);
+    set({ toleranceAutoAcceptShiftId: shiftId, toleranceAutoAcceptCount: count });
+  },
+
+  hydrateToleranceAutoAccept: async (shiftId: string) => {
+    await readToleranceAutoAcceptCount(shiftId);
   },
 
   discardPendingSubmission: () => {

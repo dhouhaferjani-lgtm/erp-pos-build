@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { bcsub } from '@/lib/decimal';
 import {
   buildCheckoutPolicySnapshot,
@@ -28,7 +28,7 @@ function build(overrides: Partial<Parameters<typeof buildCheckoutPolicySnapshot>
     isCashMethodCode: isCash,
     policy,
     fiscalSchemaVersion: 3,
-    isTraining: false,
+    invoiceType: 'SALE',
     autoAcceptCountThisShift: 0,
     ...overrides,
   });
@@ -77,7 +77,17 @@ describe('buildCheckoutPolicySnapshot — rounding gate', () => {
   });
 
   it('rounds a TRAINING sale (invoice_type_code TRAINING is in scope)', () => {
-    expect(build({ isTraining: true }).roundingApplied).toBe(true);
+    expect(build({ invoiceType: 'TRAINING' }).roundingApplied).toBe(true);
+  });
+
+  it('does NOT round a REFUND or a VOID (invoice type is a real gate arm)', () => {
+    for (const invoiceType of ['REFUND', 'VOID'] as const) {
+      const s = build({ invoiceType });
+      expect(s.roundingApplied).toBe(false);
+      expect(s.roundedTotal).toBe('9.997');
+      expect(s.adjustment).toBe('0.000');
+      expect(s.denomination).toBe('0.000');
+    }
   });
 });
 
@@ -208,7 +218,6 @@ describe('buildCheckoutPolicySnapshot — the tolerance disable switch is not in
     // pct cap 0.049 / max 0.100 -> 0.049; no floor because rounding is off.
     expect(s.toleranceDecision.effectiveMax).toBe('0.049');
     expect(s.toleranceDecision.applied).toBe(false);
-    expect(s.toleranceDecision.reason).toBe('exceeds_max');
   });
 });
 
@@ -322,7 +331,7 @@ function display(overrides: Partial<Parameters<typeof computeCashScreenDisplay>[
     isCashMethodCode: isCash,
     policy,
     fiscalSchemaVersion: 3,
-    isTraining: false,
+    invoiceType: 'SALE',
     autoAcceptCountThisShift: 0,
     ...overrides,
   });
@@ -356,12 +365,13 @@ describe('computeCashScreenDisplay', () => {
     });
   });
 
-  it('shows the exact total on a non-cutover terminal', () => {
+  it('shows the exact total and NO floor on a non-cutover terminal', () => {
     const d = display({ fiscalSchemaVersion: 2 });
     expect(d.roundedTotal).toBe('9.973');
     expect(d.adjustment).toBe('0.000');
-    // Tolerance is a separate mechanism and still offers its percentage cap.
-    expect(d.minimumAcceptable).toBe('9.924');
+    // Owner ruling 2026-07-29: auto-accept is v3-gated too, so a v2 terminal
+    // offers no headroom at all and the floor is the full due.
+    expect(d.minimumAcceptable).toBe('9.973');
   });
 
   it('clamps the floor at zero rather than going negative', () => {
@@ -376,5 +386,89 @@ describe('computeCashScreenDisplay', () => {
   it('is inert on an empty cart', () => {
     expect(display({ exactTotal: '0.000', legs: [{ methodCode: 'CASH', amount: '0.000' }] }))
       .toEqual({ roundedTotal: '0.000', adjustment: '0.000', minimumAcceptable: '0.000' });
+  });
+});
+
+// ── Owner ruling 2026-07-29: auto-accept is v3-gated too ─────────────────────
+
+describe('buildCheckoutPolicySnapshot — tolerance auto-accept requires v3', () => {
+  /**
+   * Deviates from spec :56, which states the tolerance condition with no
+   * schema-version arm. Owner accepted the deviation: on a v2 terminal the
+   * shortfall has NO fiscal trace — the v2 payload carries no
+   * `tolerance_shortfall`, the projection's `tolerance_writeoff` write is
+   * v3-gated, and no PosOverrideEvidence is authored because no PIN is taken.
+   * That is a pure cash-vs-revenue gap, so v2 gets no silent headroom at all.
+   */
+  const shortfallInput = {
+    exactTotal: '9.973',
+    tenderedAmount: '9.900',
+    legs: [{ methodCode: 'CASH', amount: '9.900' }],
+  } as const;
+
+  it('auto-accepts the shortfall on a v3 terminal', () => {
+    const s = build({ ...shortfallInput, fiscalSchemaVersion: 3 });
+    expect(s.toleranceDecision.applied).toBe(true);
+    expect(s.toleranceDecision.reason).toBe('accepted');
+  });
+
+  it('REFUSES that same shortfall on a v2 terminal', () => {
+    const s = build({ ...shortfallInput, fiscalSchemaVersion: 2 });
+    expect(s.toleranceDecision.applied).toBe(false);
+    expect(s.toleranceDecision.reason).toBe('disabled');
+  });
+
+  it('REFUSES it when the terminal version is unknown', () => {
+    const s = build({ ...shortfallInput, fiscalSchemaVersion: null });
+    expect(s.toleranceDecision.applied).toBe(false);
+    expect(s.toleranceDecision.reason).toBe('disabled');
+  });
+
+  it('refuses even a shortfall well inside the percentage cap on v2', () => {
+    // 0.023 short of 9.973, against a pct cap of 0.049 — accepted pre-ruling.
+    const s = build({
+      exactTotal: '9.973',
+      tenderedAmount: '9.950',
+      legs: [{ methodCode: 'CASH', amount: '9.950' }],
+      fiscalSchemaVersion: 2,
+    });
+    expect(s.toleranceDecision.shortfall).toBe('0.023');
+    expect(s.toleranceDecision.effectiveMax).toBe('0.049');
+    expect(s.toleranceDecision.applied).toBe(false);
+    expect(s.toleranceDecision.reason).toBe('disabled');
+  });
+});
+
+describe('buildCheckoutPolicySnapshot — currency match is normalized and diagnosable', () => {
+  it('matches across case and surrounding whitespace', () => {
+    // policy.currencyCode is a server field; input.currency is company.currency
+    // with an 'EUR' fallback. Neither is guaranteed trimmed or upper-cased, and
+    // a raw !== would silently kill BOTH mechanisms.
+    const s = build({ policy: { ...policy, currencyCode: ' tnd ' } });
+    expect(s.roundingApplied).toBe(true);
+    expect(s.roundedTotal).toBe('10.000');
+  });
+
+  it('warns once on a genuine mismatch so a field report is traceable', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const s = build({ policy: { ...policy, currencyCode: 'EUR' } });
+    expect(s.roundingApplied).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('currency');
+    warn.mockRestore();
+  });
+
+  it('warns when the policy currency is absent entirely (degenerate pull)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    build({ policy: {} as unknown as PaymentPolicy });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('does not warn when there is simply no policy', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    build({ policy: null });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

@@ -1976,4 +1976,33 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // v64: durable per-shift tender-tolerance auto-accept budget (spec §8.1,
+    // owner ruling 2026-07-29).
+    //
+    // The counter was in-memory on PaymentState, which made the §8.1 cap
+    // unenforceable in two ways:
+    //   1. `teardownPosSessionStores()` calls `paymentStore.reset()` and is one
+    //      tap away in Settings — spend all 10, switch operator and back, and
+    //      the budget refilled on the SAME open shift;
+    //   2. any app restart mid-shift refilled it silently.
+    // It also made Task 10's EOD figure understate real write-offs, since an
+    // in-memory counter reports 0 after every restart.
+    //
+    // Keyed by shift id (NOT terminal or operator): closing and reopening a
+    // shift is exactly the event that should reset the budget, and the EOD
+    // preview reads by the shift it is closing.
+    version: 64,
+    name: 'tolerance_auto_accept_shift_budget',
+    sql: '',
+    async run(db) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS tolerance_auto_accepts (
+          shift_id TEXT PRIMARY KEY,
+          accept_count INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+    },
+  },
 ];

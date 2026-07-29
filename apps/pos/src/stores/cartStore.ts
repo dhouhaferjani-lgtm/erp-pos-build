@@ -692,12 +692,18 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   // The cart-level discount and total DELEGATE to the single-sourced money
   // module — the same functions receiptService signs into the SALE_RECEIPT.
-  // These selectors are what the cashier sees (HomePage feeds totalString() to
-  // CashPaymentScreen as the amount due, the quick-tender denominations and the
-  // Exact button), so any re-implementation here means the screen and the
-  // sealed fiscal record can disagree. paymentStore only rejects UNDER-tender,
-  // so such a disagreement would NOT be caught at checkout — it would silently
-  // seal a receipt for an amount the cashier never saw.
+  // Any re-implementation here means the screen and the sealed fiscal record
+  // can disagree. paymentStore only rejects UNDER-tender, so such a
+  // disagreement would NOT be caught at checkout — it would silently seal a
+  // receipt for an amount the cashier never saw.
+  //
+  // Since the cash-rounding work (2026-07-28, T6) the cash screen's AMOUNT DUE
+  // is no longer `totalString()`: HomePage derives `cashScreenSnapshot` from
+  // `computeCashScreenDisplay` and passes the ROUNDED due, which also drives
+  // the quick-tender denominations and the Exact button. `totalString()` is
+  // still THE exact total feeding that snapshot and the discount row, and it is
+  // what Task 9's `policySnapshot.exactTotal` is reconciled against inside
+  // receiptService — so the delegation above remains load-bearing.
   discountAmountString: () => {
     return computeExactDiscountAmount(get().items, get().transactionDiscount, getActiveCurrency());
   },

@@ -164,6 +164,7 @@ export function HomePage() {
   const paymentRepositories = usePaymentStore((s) => s.paymentRepositories);
   const toleranceAutoAcceptShiftId = usePaymentStore((s) => s.toleranceAutoAcceptShiftId);
   const toleranceAutoAcceptCount = usePaymentStore((s) => s.toleranceAutoAcceptCount);
+  const hydrateToleranceAutoAccept = usePaymentStore((s) => s.hydrateToleranceAutoAccept);
   const paymentPolicy = usePaymentPolicyStore((s) => s.policy);
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
@@ -1208,6 +1209,16 @@ export function HomePage() {
     t,
   ]);
 
+  // The §8.1 budget lives in SQLite; pull this shift's spent count into the
+  // in-memory mirror on open so the cash screen's floor is right BEFORE the
+  // first checkout. Without it a restart mid-shift would advertise headroom
+  // the gate (which reads SQLite) then refuses.
+  const openShiftId = shift?.id ?? null;
+  useEffect(() => {
+    if (openShiftId === null) return;
+    void hydrateToleranceAutoAccept(openShiftId);
+  }, [openShiftId, hydrateToleranceAutoAccept]);
+
   /**
    * What the cash screen renders: the rounded due, the rounding line, and the
    * lowest confirmable tender. DISPLAY ONLY — paymentStore seals the
@@ -1230,7 +1241,9 @@ export function HomePage() {
       isCashMethodCode: makeIsCashMethodCode(paymentMethods),
       policy: paymentPolicy,
       fiscalSchemaVersion: terminal?.fiscal_schema_version ?? null,
-      isTraining: terminal?.is_training_mode === true,
+      invoiceType: terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+      // Same deliberate inversion as the gate (paymentStore): no open shift =
+      // no budget to charge, so no headroom. Screen and gate must agree.
       autoAcceptCountThisShift: shift === null
         ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
         : toleranceAutoAcceptShiftId === shift.id ? toleranceAutoAcceptCount : 0,

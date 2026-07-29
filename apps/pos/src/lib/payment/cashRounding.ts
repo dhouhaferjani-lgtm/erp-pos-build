@@ -127,7 +127,7 @@ function normalizeDenomination(
 export function isValidDenomination(
   denomination: string | null | undefined,
   scale: number,
-): boolean {
+): denomination is string {
   return normalizeDenomination(denomination, scale) !== null;
 }
 

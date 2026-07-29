@@ -54,6 +54,29 @@ vi.mock('@/lib/db/repositories/paymentRepository', () => ({
   getAllPaymentRepositories: vi.fn().mockResolvedValue([]),
 }));
 
+/**
+ * In-memory stand-in for the v64 `tolerance_auto_accepts` table. The store must
+ * read the budget THROUGH this on every gate decision — the in-memory slice is
+ * only a display mirror — so seeding the fake here is exactly how a spent
+ * budget looks after an operator switch or a cold start.
+ */
+const persistedAccepts = new Map<string, number>();
+let acceptReadFails = false;
+let acceptWriteFails = false;
+
+vi.mock('@/lib/db/repositories/toleranceAutoAcceptRepository', () => ({
+  getToleranceAutoAcceptCount: vi.fn(async (_db: unknown, shiftId: string) => {
+    if (acceptReadFails) throw new Error('SQLITE_BUSY');
+    return persistedAccepts.get(shiftId) ?? 0;
+  }),
+  recordToleranceAutoAccept: vi.fn(async (_db: unknown, shiftId: string) => {
+    if (acceptWriteFails) throw new Error('SQLITE_BUSY');
+    const next = (persistedAccepts.get(shiftId) ?? 0) + 1;
+    persistedAccepts.set(shiftId, next);
+    return next;
+  }),
+}));
+
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
     getState: vi.fn().mockReturnValue({
@@ -155,6 +178,9 @@ function setCashMethodState(): void {
 describe('processCashCheckout — is_cash_tender selection + rounded gate', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    persistedAccepts.clear();
+    acceptReadFails = false;
+    acceptWriteFails = false;
     const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
     __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
@@ -290,27 +316,21 @@ describe('processCashCheckout — is_cash_tender selection + rounded gate', () =
   it('escalates to the PIN path once the per-shift auto-accept limit is spent', async () => {
     usePaymentPolicyStore.getState().setPolicy(tndRoundingPolicy);
     setCashMethodState();
-    usePaymentStore.setState({
-      toleranceAutoAcceptShiftId: SHIFT_ID,
-      toleranceAutoAcceptCount: 10,
-    });
+    persistedAccepts.set(SHIFT_ID, 10);
 
     await expect(
       usePaymentStore.getState().processCashCheckout(
         'term-1', [makeCartItem({ id: 'i1', line_total: '9.973' })], '9.900',
       ),
     ).rejects.toThrow();
-    expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(10);
+    expect(persistedAccepts.get(SHIFT_ID)).toBe(10);
   });
 
   it('gives a NEW shift a fresh auto-accept budget', async () => {
     usePaymentPolicyStore.getState().setPolicy(tndRoundingPolicy);
     setCashMethodState();
     // Budget spent — but on a DIFFERENT (now closed) shift.
-    usePaymentStore.setState({
-      toleranceAutoAcceptShiftId: '019eb000-0000-7000-8000-0000000000ff',
-      toleranceAutoAcceptCount: 10,
-    });
+    persistedAccepts.set('019eb000-0000-7000-8000-0000000000ff', 10);
 
     await usePaymentStore.getState().processCashCheckout(
       'term-1', [makeCartItem({ id: 'i1', line_total: '9.973' })], '9.900',
@@ -328,5 +348,100 @@ describe('processCashCheckout — is_cash_tender selection + rounded gate', () =
         'term-1', [makeCartItem({ id: 'i1', line_total: '9.973' })], '9.950',
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('the §8.1 auto-accept budget is durable, not in-memory', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    persistedAccepts.clear();
+    acceptReadFails = false;
+    acceptWriteFails = false;
+    const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
+    __resetTerminalLocksForTesting();
+    usePaymentStore.getState().reset();
+    usePaymentPolicyStore.getState().reset();
+    setTndAuthState();
+    useOperatorStore.setState({
+      operator: { id: 'op-1', name: 'Cashier Slim', email: 'slim@example.com', roles: [] },
+    } as never);
+    setTerminalState();
+    usePaymentPolicyStore.getState().setPolicy(tndRoundingPolicy);
+    setCashMethodState();
+  });
+
+  const inTolerance = () => usePaymentStore.getState().processCashCheckout(
+    'term-1', [makeCartItem({ id: 'i1', line_total: '9.973' })], '9.900',
+  );
+
+  it('SURVIVES paymentStore.reset() — the operator-switch bypass', async () => {
+    // The concrete bypass: teardownPosSessionStores() calls reset() and is one
+    // tap away in Settings. Pre-v64 this refilled the budget on the SAME open
+    // shift; the durable row must outlive it.
+    persistedAccepts.set(SHIFT_ID, 10);
+
+    usePaymentStore.getState().reset();
+    expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(0); // slice IS wiped
+    setCashMethodState();
+
+    await expect(inTolerance()).rejects.toThrow();
+  });
+
+  it('SURVIVES a cold start — an empty slice never means a fresh budget', async () => {
+    // Process restart: the slice initialises to 0/null while SQLite still
+    // holds the spent budget for the still-open shift.
+    persistedAccepts.set(SHIFT_ID, 10);
+    expect(usePaymentStore.getState().toleranceAutoAcceptShiftId).toBeNull();
+    expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(0);
+
+    await expect(inTolerance()).rejects.toThrow();
+  });
+
+  it('writes the accept THROUGH to the durable row, not just the slice', async () => {
+    await inTolerance();
+
+    expect(persistedAccepts.get(SHIFT_ID)).toBe(1);
+    expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(1);
+  });
+
+  it('spends exactly the budget and then escalates', async () => {
+    persistedAccepts.set(SHIFT_ID, 9);
+
+    await inTolerance();
+    expect(persistedAccepts.get(SHIFT_ID)).toBe(10);
+
+    // 11th attempt on the same shift is refused.
+    usePaymentStore.getState().clearLastReceipt();
+    await expect(inTolerance()).rejects.toThrow();
+    expect(persistedAccepts.get(SHIFT_ID)).toBe(10);
+  });
+
+  it('fails CLOSED when the durable budget cannot be read', async () => {
+    acceptReadFails = true;
+
+    await expect(inTolerance()).rejects.toThrow();
+    expect(persistedAccepts.get(SHIFT_ID)).toBeUndefined();
+  });
+
+  it('hydrates the display mirror from the durable row', async () => {
+    persistedAccepts.set(SHIFT_ID, 7);
+
+    await usePaymentStore.getState().hydrateToleranceAutoAccept(SHIFT_ID);
+
+    expect(usePaymentStore.getState().toleranceAutoAcceptShiftId).toBe(SHIFT_ID);
+    expect(usePaymentStore.getState().toleranceAutoAcceptCount).toBe(7);
+  });
+
+  it('never fails an ALREADY-AUTHORED sale when the budget write fails', async () => {
+    // The receipt is durable and printable by the time the budget is charged.
+    // A SQLite hiccup there must not surface as a checkout failure and invite a
+    // retry — under-counting one accept is the cheaper failure.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    acceptWriteFails = true;
+
+    await expect(inTolerance()).resolves.toBeUndefined();
+    expect(usePaymentStore.getState().error).toBeNull();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

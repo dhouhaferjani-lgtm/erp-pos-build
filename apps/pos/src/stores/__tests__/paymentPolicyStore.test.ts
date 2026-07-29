@@ -148,3 +148,44 @@ describe('paymentPolicyStore', () => {
     expect(getActivePaymentPolicy()?.cashRoundingEnabled).toBe(true);
   });
 });
+
+describe('paymentPolicyStore — cross-company staleness', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    usePaymentPolicyStore.getState().reset();
+  });
+
+  it('CLEARS a previously-loaded policy when the new company has no cached row', async () => {
+    // The traced path: sign out -> setCompany(companyB) -> terminal activation
+    // hydrates -> companyB has no cached row. Pre-fix this returned early and
+    // companyA's denomination kept deciding companyB's checkouts offline
+    // (refreshPaymentPolicy is the only other writer).
+    getPaymentPolicy.mockResolvedValueOnce(cachedRow);
+    await hydratePaymentPolicyFromCache(db, 'company-tnd');
+    expect(getActivePaymentPolicy()).not.toBeNull();
+
+    getPaymentPolicy.mockResolvedValueOnce(null);
+    await hydratePaymentPolicyFromCache(db, 'company-b');
+
+    expect(getActivePaymentPolicy()).toBeNull();
+  });
+
+  it('replaces, never merges, when the new company HAS a cached row', async () => {
+    getPaymentPolicy.mockResolvedValueOnce(cachedRow);
+    await hydratePaymentPolicyFromCache(db, 'company-tnd');
+
+    getPaymentPolicy.mockResolvedValueOnce({
+      ...cachedRow,
+      company_id: 'company-b',
+      currency_code: 'EUR',
+      currency_scale: 2,
+      cash_rounding_denomination: '0.05',
+    });
+    await hydratePaymentPolicyFromCache(db, 'company-b');
+
+    expect(getActivePaymentPolicy()).toMatchObject({
+      currencyCode: 'EUR',
+      cashRoundingDenomination: '0.05',
+    });
+  });
+});
