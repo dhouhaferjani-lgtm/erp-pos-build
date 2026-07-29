@@ -13,10 +13,11 @@
  */
 
 import { useState } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { AdvancedPaymentLine, VoucherTenderRow } from '@/stores/paymentStore';
+import type { PaymentPolicy } from '@/stores/paymentPolicyStore';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -31,6 +32,10 @@ vi.mock('@/lib/currency', () => ({
       return `${n.toFixed(2)} EUR`;
     },
   }),
+  // buildCheckoutPolicySnapshot resolves the money scale from the CURRENCY
+  // table, never from the policy — the modal's display snapshot goes through
+  // here too.
+  getCurrencyDecimals: () => 2,
 }));
 
 /**
@@ -84,6 +89,12 @@ vi.mock('@/components/molecules/NumPad', () => ({
       >
         Set 25
       </button>
+      {/* Arbitrary-amount entry: the real pad drives the same `onChange`. */}
+      <input
+        data-testid="numpad-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   ),
 }));
@@ -96,16 +107,43 @@ const mockRemoveVoucherPayment = vi.fn<(code: string) => void>();
 // this between cases.
 let mockSelectedCustomer: unknown = null;
 
+// Task 7 fix round 1: the modal derives its own display snapshot, so it reads
+// the payment policy, the terminal (fiscal_schema_version / training) and the
+// shift's spent auto-accept budget. Thin selector shims keep this a component
+// test — the SNAPSHOT BUILDER itself is real, so these cases exercise the same
+// gate logic paymentStore does.
+let mockToleranceAutoAcceptShiftId: string | null = null;
+let mockToleranceAutoAcceptCount = 0;
+let mockPaymentPolicy: PaymentPolicy | null = null;
+let mockTerminal: { fiscal_schema_version?: number; is_training_mode?: boolean } | null = null;
+let mockShift: { id: string } | null = { id: 'shift-1' };
+
 vi.mock('@/stores/paymentStore', () => ({
   usePaymentStore: <T,>(selector: (s: {
     voucherTenders: VoucherTenderRow[];
     removeVoucherPayment: (code: string) => void;
     selectedCustomer: unknown;
+    toleranceAutoAcceptShiftId: string | null;
+    toleranceAutoAcceptCount: number;
   }) => T): T => selector({
     voucherTenders: mockVoucherTenders,
     removeVoucherPayment: mockRemoveVoucherPayment,
     selectedCustomer: mockSelectedCustomer,
+    toleranceAutoAcceptShiftId: mockToleranceAutoAcceptShiftId,
+    toleranceAutoAcceptCount: mockToleranceAutoAcceptCount,
   }),
+}));
+
+vi.mock('@/stores/paymentPolicyStore', () => ({
+  usePaymentPolicyStore: <T,>(selector: (s: { policy: PaymentPolicy | null }) => T): T =>
+    selector({ policy: mockPaymentPolicy }),
+}));
+
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: <T,>(selector: (s: {
+    terminal: unknown;
+    shift: unknown;
+  }) => T): T => selector({ terminal: mockTerminal, shift: mockShift }),
 }));
 
 // On Account mode (Task 5): the modal reads the cashier id from authStore via
@@ -170,6 +208,7 @@ const cashMethod: PaymentMethod = {
   is_push: false,
   has_deducted_fees: false,
   is_restricted: false,
+  is_cash_tender: true,
   fee_type: null,
   fee_fixed: '0.00',
   fee_percent: '0.00',
@@ -184,7 +223,20 @@ const storeVoucherMethod: PaymentMethod = {
   code: 'store_voucher',
   name: 'Store Voucher',
   is_physical: false,
+  is_cash_tender: false,
   position: 2,
+};
+
+/** Non-cash tender, so any sale containing it settles exactly. */
+const cardMethod: PaymentMethod = {
+  ...cashMethod,
+  id: 'pm-card',
+  code: 'CARD',
+  name: 'Card',
+  is_physical: false,
+  requires_third_party: true,
+  is_cash_tender: false,
+  position: 3,
 };
 
 const cashRepo: PaymentRepository = {
@@ -217,7 +269,7 @@ const bankAccountRepo: PaymentRepository = {
 };
 
 function renderModal(overrides: {
-  total?: number;
+  total?: string;
   paymentMethods?: PaymentMethod[];
   paymentRepositories?: PaymentRepository[];
   onComplete?: (payments: AdvancedPaymentLine[]) => Promise<void>;
@@ -236,7 +288,7 @@ function renderModal(overrides: {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={overrides.total ?? 50}
+        total={overrides.total ?? '50.00'}
         paymentMethods={overrides.paymentMethods ?? [cashMethod, storeVoucherMethod]}
         paymentRepositories={overrides.paymentRepositories ?? [cashRepo, virtualRepo]}
         onComplete={onComplete}
@@ -269,7 +321,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
    */
   it('tapping store_voucher method tile does NOT add a free-form payment line', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
     });
 
@@ -292,7 +344,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
     // B4 dead-end message. This guarantees ANY user feedback is shown,
     // which is the contract B4 nailed down.
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       // voucherDb omitted on purpose
     });
@@ -310,7 +362,7 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
 
   it('tapping cash method tile still adds a normal PaymentLineItem (regression guard)', async () => {
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
     });
 
@@ -357,7 +409,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('tapping store_voucher tile WITH a voucherDb opens VoucherTenderModal (no dead-end message)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -377,7 +429,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal receives the remaining due (currency-formatted) and currency code', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -395,7 +447,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal closes after onApplied (cashier sees the tender row appear in this modal)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -415,7 +467,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     mockVoucherTenders = [{ code: 'SV-EXISTING-001', amount: '20.00' }];
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -431,7 +483,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('VoucherTenderModal mock-close reverts the modal-open flag without breaking the modal', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -450,7 +502,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('tapping cash tile with a voucherDb still adds a free-form payment line (regression guard)', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -465,7 +517,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
 
   it('voucherDb prop matches the value forwarded to VoucherTenderModal', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -490,7 +542,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
   // at the tap handler instead.
   it('VoucherTenderModal receives methodCode = "store_voucher" when tapped from the store voucher tile', () => {
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, storeVoucherMethod],
       voucherDb: mockDb,
     });
@@ -516,7 +568,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     };
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, restaurantVoucherMethod],
       voucherDb: mockDb,
     });
@@ -548,7 +600,7 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     };
 
     renderModal({
-      total: 50,
+      total: "50.00",
       paymentMethods: [cashMethod, giftCardMethod],
       voucherDb: mockDb,
     });
@@ -574,7 +626,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 20 });
+    renderModal({ total: "20.00" });
 
     expect(screen.getByTestId('voucher-tender-row-SV-2026-0099')).toBeInTheDocument();
     expect(screen.getByText('SV-2026-0099')).toBeInTheDocument();
@@ -585,7 +637,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '50.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     // Complete button must be enabled because voucher tenders cover the full total.
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
@@ -597,7 +649,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
     expect(completeBtn).toBeDisabled();
@@ -608,7 +660,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
 
   it('under-tender checkout can complete only when a manager PIN is supplied for tender tolerance approval', async () => {
     mockVoucherTenders = [];
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     fireEvent.click(screen.getByText('Cash'));
     fireEvent.click(screen.getByTestId('numpad-set-25'));
@@ -637,7 +689,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '50.00' },
     ];
 
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
     fireEvent.click(completeBtn!);
@@ -664,7 +716,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
 
     // Add a cash payment line for the remaining 30. Mirrors the real cashier
     // flow: select Cash, type 30, click "Add Payment".
@@ -708,7 +760,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
       { code: 'SV-2026-0099', amount: '20.00' },
     ];
 
-    renderModal({ total: 50 });
+    renderModal({ total: "50.00" });
 
     const removeBtn = screen
       .getByTestId('voucher-tender-row-SV-2026-0099')
@@ -725,7 +777,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     ];
 
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       // No store_voucher method configured.
       paymentMethods: [cashMethod],
     });
@@ -755,7 +807,7 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     ];
 
     const { onComplete } = renderModal({
-      total: 50,
+      total: "50.00",
       // Tenant has cash_register + bank_account repos — but NO virtual repo.
       paymentRepositories: [cashRepo, bankAccountRepo],
     });
@@ -806,7 +858,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -826,7 +878,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -846,7 +898,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -866,7 +918,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={0}
+        total="0.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -886,7 +938,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -905,7 +957,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -934,7 +986,9 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        // Deliberately UNSCALED: the prop is a decimal string, but nothing
+        // guarantees a caller pre-formats it. The seam still has to normalize.
+        total="119"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -946,9 +1000,9 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
 
-    // The modal formats the numeric total to the currency scale (EUR, 2dp)
-    // before handing it to AccountChargeConfirmation, so the strict
-    // credit-decision parser sees a canonical `^\d+\.\d{2}$` amount.
+    // The modal formats the total to the currency scale (EUR, 2dp) before
+    // handing it to AccountChargeConfirmation, so the strict credit-decision
+    // parser sees a canonical `^\d+\.\d{2}$` amount.
     expect(screen.getByTestId('acc-total').textContent).toBe('119.00');
     expect(screen.getByTestId('acc-currency').textContent).toBe('EUR');
     expect(screen.getByTestId('acc-cashier').textContent).toBe('cashier-1');
@@ -961,7 +1015,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -984,7 +1038,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        total={119}
+        total="119.00"
         paymentMethods={[cashMethod, storeVoucherMethod]}
         paymentRepositories={[cashRepo, virtualRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1022,7 +1076,7 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
           <AdvancedPaymentsModal
             isOpen={isOpen}
             onClose={() => setIsOpen(false)}
-            total={119}
+            total="119.00"
             paymentMethods={[cashMethod, storeVoucherMethod]}
             paymentRepositories={[cashRepo, virtualRepo]}
             onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1083,7 +1137,7 @@ describe('AdvancedPaymentsModal — focus management (PR #97 follow-up)', () => 
           <AdvancedPaymentsModal
             isOpen={isOpen}
             onClose={() => setIsOpen(false)}
-            total={50}
+            total="50.00"
             paymentMethods={[cashMethod, storeVoucherMethod]}
             paymentRepositories={[cashRepo, virtualRepo]}
             onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -1130,7 +1184,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '10.1' }, { amount: '10.2' }],
       [],
-      20.3,
+      '20.30',
       2,
     );
     // float: 10.1 + 10.2 = 20.299999999999997 < 20.3 → isFullyPaid=false (fiscal blocker)
@@ -1144,7 +1198,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '0.1' }, { amount: '0.2' }],
       [],
-      0.3,
+      '0.30',
       2,
     );
     expect(state.totalPaid).toBe('0.30');
@@ -1157,7 +1211,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [],
       [{ amount: '0.10' }, { amount: '0.20' }],
-      0.3,
+      '0.30',
       2,
     );
     expect(state.totalPaid).toBe('0.30');
@@ -1168,7 +1222,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '10.1' }],
       [{ amount: '10.20' }],
-      20.3,
+      '20.30',
       2,
     );
     expect(state.totalPaid).toBe('20.30');
@@ -1180,7 +1234,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '1.01' }],
       [],
-      1.0,
+      '1.00',
       2,
     );
     expect(state.overpayment).toBe('0.01');
@@ -1192,7 +1246,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '19.99' }],
       [],
-      20.0,
+      '20.00',
       2,
     );
     expect(state.remaining).toBe('0.01');
@@ -1204,7 +1258,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     const state = computeTenderState(
       [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
       [],
-      99.999,
+      '99.999',
       3,
     );
     expect(state.totalPaid).toBe('99.999');
@@ -1247,7 +1301,7 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
       // RED: TS2322 on old { amount: number } signature; clean after S4.
       [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
       [],
-      99.999,
+      '99.999',
       3,
     );
     expect(state.totalPaid).toBe('99.999');
@@ -1261,7 +1315,7 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
    * this test locks the observed wire value.
    */
   it('onComplete wire amount is a decimal string at currency scale ("50.00" for EUR)', async () => {
-    const { onComplete } = renderModal({ total: 50 });
+    const { onComplete } = renderModal({ total: "50.00" });
     fireEvent.click(screen.getByText('Cash'));
     fireEvent.click(screen.getByText(/advancedPayments.payRemaining/i));
     fireEvent.click(screen.getByText('advancedPayments.addPayment'));
@@ -1279,5 +1333,398 @@ describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
     // Wire amount is the currency-scale string '50.00' (EUR, 2dp).
     expect(payments[0]!.amount).toBe('50.00');
     expect(typeof payments[0]!.amount).toBe('string');
+  });
+});
+
+/**
+ * Task 7 fix round 1 (2026-07-29) — the modal and `paymentStore` must gate on
+ * the SAME amount due.
+ *
+ * `processAdvancedCheckout` refuses when `tendered < snapshot.roundedTotal &&
+ * !toleranceDecision.applied`. Task 7 originally left this modal gating on the
+ * EXACT cart total, which diverged from the store in BOTH rounding directions.
+ * These cases pin both and go red the moment the two gates disagree again.
+ *
+ * The snapshot is computed over the LIVE legs — the same rule the store
+ * applies — so nothing rounds until the tender is actually cash-only. That is
+ * deliberate: any pre-leg guess is a guess the gate can contradict.
+ *
+ * EUR scale 2 with D = 0.05 (exactly representable at scale 2, under the
+ * '1.00' cap):
+ *   exact 9.97 -> due 9.95  (DOWN, adj -0.02)
+ *   exact 9.98 -> due 10.00 (UP,   adj +0.02)
+ * Tolerance headroom is the denomination floor, 0.05, in both directions.
+ */
+describe('AdvancedPaymentsModal — the displayed due is the due the store gates on', () => {
+  const roundingPolicy: PaymentPolicy = {
+    cashRoundingEnabled: true,
+    cashRoundingDenomination: '0.05',
+    tenderToleranceEnabled: true,
+    tenderTolerancePercentage: '0.0050',
+    tenderToleranceMaxAmount: '0.10',
+    currencyCode: 'EUR',
+    currencyScale: 2,
+    refreshedAt: '2026-07-27 08:00:00',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+    mockSelectedCustomer = null;
+    mockPaymentPolicy = roundingPolicy;
+    mockTerminal = { fiscal_schema_version: 3, is_training_mode: false };
+    mockShift = { id: 'shift-1' };
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  afterEach(() => {
+    mockPaymentPolicy = null;
+    mockTerminal = null;
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  /** Add one cash line for `amount` via the tile -> numpad -> Add flow. */
+  function addCashLine(amount: string): void {
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: amount } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+  }
+
+  const due = () => screen.getByTestId('advanced-total-due').textContent?.trim();
+  const completeButton = () =>
+    screen.getByText('advancedPayments.completeTransaction').closest('button')!;
+  const pinField = () => screen.queryByText('advancedPayments.tenderTolerancePinLabel');
+
+  it('shows the EXACT total until a leg exists — an empty tender is never cash-only', () => {
+    renderModal({ total: '9.97' });
+
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+
+  it('ROUND DOWN: a tender covering the rounded due completes with NO manager PIN', async () => {
+    const { onComplete } = renderModal({ total: '9.97' });
+
+    addCashLine('9.95');
+
+    // Pre-fix this left 0.02 "remaining" against the exact 9.97, rendered the
+    // PIN field and disabled Complete — for a tender the store accepts
+    // outright and whose PIN it would then never verify.
+    expect(due()).toBe('9.95 EUR');
+    expect(screen.getByText('advancedPayments.rounding')).toBeInTheDocument();
+    expect(screen.getByText('-0.02 EUR')).toBeInTheDocument();
+    expect(pinField()).not.toBeInTheDocument();
+    expect(completeButton()).not.toBeDisabled();
+
+    fireEvent.click(completeButton());
+    await Promise.resolve();
+    expect(onComplete).toHaveBeenCalledOnce();
+    // No tolerance options — the store takes this as a fully-covered tender.
+    expect(vi.mocked(onComplete).mock.calls[0]![1]).toBeUndefined();
+  });
+
+  it('ROUND UP: the shortfall the store auto-accepts is VISIBLE, not silent', () => {
+    renderModal({ total: '9.98' });
+
+    addCashLine('9.98');
+
+    // Pre-fix the due read 9.98, `remaining` was 0 and nothing was shown, while
+    // the store saw a 0.02 shortfall and silently spent a budget unit.
+    expect(due()).toBe('10.00 EUR');
+    expect(screen.getByText('advancedPayments.rounding')).toBeInTheDocument();
+    expect(screen.getByText('advancedPayments.remaining')).toBeInTheDocument();
+    // 0.02 twice: the rounding adjustment and the shortfall it opened up.
+    expect(screen.getAllByText('0.02 EUR')).toHaveLength(2);
+    // Inside the denomination floor, so the store auto-accepts: no PIN demanded
+    // and Complete is live. Agreement, and the cashier can see the gap.
+    expect(pinField()).not.toBeInTheDocument();
+    expect(completeButton()).not.toBeDisabled();
+  });
+
+  it('ROUND UP with tolerance DISABLED: the PIN the store demands has a field to type it in', async () => {
+    // The store throws TenderToleranceApprovalRequiredError here. Pre-fix the
+    // modal showed `remaining = 0` and rendered NO pin field, so the cashier
+    // met a demand for a PIN with nowhere to enter one.
+    mockPaymentPolicy = { ...roundingPolicy, tenderToleranceEnabled: false };
+    const { onComplete } = renderModal({ total: '9.98' });
+
+    addCashLine('9.98');
+
+    expect(due()).toBe('10.00 EUR');
+    expect(pinField()).toBeInTheDocument();
+    expect(completeButton()).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('advancedPayments.tenderTolerancePinLabel'), {
+      target: { value: '1234' },
+    });
+    expect(completeButton()).not.toBeDisabled();
+    fireEvent.click(completeButton());
+    await Promise.resolve();
+    expect(vi.mocked(onComplete).mock.calls[0]![1]).toEqual({ tenderTolerancePin: '1234' });
+  });
+
+  it('ROUND UP once the shift auto-accept budget is spent: PIN, not silence', () => {
+    // Same shape as the disabled case but via the §8.1 per-shift budget. The
+    // mirror is a display value; the store re-reads SQLite, so the worst case
+    // is offering a floor the gate refuses — never the reverse.
+    mockToleranceAutoAcceptShiftId = 'shift-1';
+    mockToleranceAutoAcceptCount = 10;
+    renderModal({ total: '9.98' });
+
+    addCashLine('9.98');
+
+    expect(pinField()).toBeInTheDocument();
+    expect(completeButton()).toBeDisabled();
+  });
+
+  it('a v2 terminal neither rounds nor offers headroom — the due stays exact', () => {
+    mockTerminal = { fiscal_schema_version: 2, is_training_mode: false };
+    renderModal({ total: '9.97' });
+
+    addCashLine('9.97');
+
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+
+  it('a voucher-partial tender is never rounded (union rule)', () => {
+    mockVoucherTenders = [{ code: 'SV-1', amount: '5.00' }];
+    renderModal({ total: '9.97' });
+
+    addCashLine('4.97');
+
+    // A voucher leg is a payment leg and is never cash, so the union is not
+    // cash-only and the sale settles exactly.
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+    expect(completeButton()).not.toBeDisabled();
+  });
+
+  it('a card leg in the mix stops the rounding the same way', () => {
+    renderModal({ total: '9.97', paymentMethods: [cashMethod, cardMethod] });
+
+    fireEvent.click(screen.getByText('Card'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '9.97' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+
+  it('omits the rounding row when no policy has been pulled', () => {
+    mockPaymentPolicy = null;
+    renderModal({ total: '9.97' });
+
+    addCashLine('9.97');
+
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Whole-branch review, Finding 3 (2026-07-29) — the modal must never PREFILL a
+ * tender that cannot be handed over.
+ *
+ * The gate above is right to stay on the LIVE legs: nothing rounds until the
+ * tender is actually cash-only, because a pre-leg guess is a guess the store
+ * can contradict. But the numpad PREFILL answers a different question —
+ * "how much is the cashier about to tender with THIS method?" — and the method
+ * is known at the moment of the tap. Before this round both prefill sites
+ * (`handleSelectMethod`, `handlePayRemaining`) read the gate's `remaining`,
+ * which is denominated in the EXACT total while no leg exists, so a TND 9.973
+ * cash sale offered the cashier 9.973: an amount not tenderable in cash, and
+ * the exact number rounding exists to eliminate. Accepting it sealed
+ * `payments[].amount = 9.973 / change_due = 0.023` into a SIGNED receipt
+ * describing cash never handed over.
+ *
+ * Same EUR scale-2 fixture as the block above (D = 0.05):
+ *   exact 9.97 -> cash due 9.95 (DOWN)   exact 9.98 -> cash due 10.00 (UP)
+ * A card/voucher leg in the candidate set settles EXACTLY, as always.
+ */
+describe('AdvancedPaymentsModal — the prefilled tender is one the cashier can hand over', () => {
+  const roundingPolicy: PaymentPolicy = {
+    cashRoundingEnabled: true,
+    cashRoundingDenomination: '0.05',
+    tenderToleranceEnabled: true,
+    tenderTolerancePercentage: '0.0050',
+    tenderToleranceMaxAmount: '0.10',
+    currencyCode: 'EUR',
+    currencyScale: 2,
+    refreshedAt: '2026-07-27 08:00:00',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+    mockSelectedCustomer = null;
+    mockPaymentPolicy = roundingPolicy;
+    mockTerminal = { fiscal_schema_version: 3, is_training_mode: false };
+    mockShift = { id: 'shift-1' };
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  afterEach(() => {
+    mockPaymentPolicy = null;
+    mockTerminal = null;
+    mockToleranceAutoAcceptShiftId = null;
+    mockToleranceAutoAcceptCount = 0;
+  });
+
+  const prefill = () => screen.getByTestId('numpad-value').textContent;
+  /**
+   * The method TILE in the left column. Once a line has been added, the method
+   * name also appears on the added-payments row, so a bare `getByText` is
+   * ambiguous; the tiles render first, hence index 0.
+   */
+  const methodTile = (name: string) => screen.getAllByText(name)[0]!;
+  const payRemainingPill = () =>
+    screen.getByText(/advancedPayments\.payRemaining/i).closest('button')!;
+  const due = () => screen.getByTestId('advanced-total-due').textContent?.trim();
+  const completeButton = () =>
+    screen.getByText('advancedPayments.completeTransaction').closest('button')!;
+  const pinField = () => screen.queryByText('advancedPayments.tenderTolerancePinLabel');
+
+  it('FIRST prefill on a pure-cash sale offers the ROUNDED due, not the exact total', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // Pre-fix: '9.97' — 0.02 of cash that does not exist in the drawer.
+    expect(prefill()).toBe('9.95');
+  });
+
+  it('the Pay Remaining pill LABELS and SETS the same rounded due before any leg exists', () => {
+    renderModal({ total: '9.97' });
+
+    // The pill is reachable before a method is tapped, so it falls back to the
+    // sole active cash method — the same synthetic-leg model quick cash uses.
+    expect(payRemainingPill().textContent).toContain('9.95');
+    fireEvent.click(payRemainingPill());
+    expect(prefill()).toBe('9.95');
+  });
+
+  it('ROUND UP: the first cash prefill is the rounded-UP due, not the exact total', () => {
+    renderModal({ total: '9.98' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('10.00');
+  });
+
+  it('the prefilled amount is one the STORE then accepts: no PIN, no tolerance options', async () => {
+    const { onComplete } = renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    // The gate now sees a real cash leg and agrees on 9.95 — the same number
+    // the cashier was offered. `tendered == roundedTotal`, so
+    // `processAdvancedCheckout`'s refusal branch is not entered at all and no
+    // auto-accept budget is spent.
+    expect(due()).toBe('9.95 EUR');
+    expect(pinField()).not.toBeInTheDocument();
+    expect(completeButton()).not.toBeDisabled();
+
+    fireEvent.click(completeButton());
+    await Promise.resolve();
+    const payments = vi.mocked(onComplete).mock.calls[0]![0];
+    expect(payments[0]!.amount).toBe('9.95');
+    expect(vi.mocked(onComplete).mock.calls[0]![1]).toBeUndefined();
+  });
+
+  it('CARD-first: the prefill stays EXACT — a card tender never rounds', () => {
+    renderModal({ total: '9.97', paymentMethods: [cashMethod, cardMethod] });
+
+    fireEvent.click(screen.getByText('Card'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('a voucher leg already present: the cash prefill stays EXACT (union rule)', () => {
+    mockVoucherTenders = [{ code: 'SV-1', amount: '5.00' }];
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // The candidate union is voucher + cash, which is not cash-only, so the
+    // sale settles exactly: 9.97 - 5.00.
+    expect(prefill()).toBe('4.97');
+  });
+
+  it('a cash leg already present: a SECOND cash leg is offered the rounded remainder', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '5.00' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(methodTile('Cash'));
+
+    // Already cash-only with the live legs, so the candidate leg changes
+    // nothing: 9.95 - 5.00. Unchanged from before this round.
+    expect(prefill()).toBe('4.95');
+    expect(due()).toBe('9.95 EUR');
+  });
+
+  it('a cash leg already present: a CARD top-up is offered the EXACT remainder', () => {
+    renderModal({ total: '9.97', paymentMethods: [cashMethod, cardMethod] });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '5.00' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(screen.getByText('Card'));
+
+    // Adding a card leg makes the tender non-cash-only, so the due reverts to
+    // the exact 9.97 and the top-up is 4.97 — NOT the 4.95 the cash-only view
+    // shows. Pre-fix this offered 4.95 and left a 0.02 shortfall the store
+    // would then send to the manager-PIN path.
+    expect(prefill()).toBe('4.97');
+  });
+
+  it('a v2 terminal prefills the EXACT total — the fail-closed gate also fails the prefill closed', () => {
+    mockTerminal = { fiscal_schema_version: 2, is_training_mode: false };
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('no policy pulled: the prefill is the EXACT total', () => {
+    mockPaymentPolicy = null;
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    expect(prefill()).toBe('9.97');
+  });
+
+  it('a fully-covered sale prefills nothing (regression guard)', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.change(screen.getByTestId('numpad-input'), { target: { value: '9.95' } });
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    fireEvent.click(methodTile('Cash'));
+
+    expect(prefill()).toBe('');
+  });
+
+  it('the GATE is untouched: the Total Due card still reads EXACT until a leg exists', () => {
+    renderModal({ total: '9.97' });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // The prefill is candidate-aware; the gate deliberately is NOT. Rounding
+    // the displayed due on a guessed leg is what the store could contradict.
+    expect(prefill()).toBe('9.95');
+    expect(due()).toBe('9.97 EUR');
+    expect(screen.queryByText('advancedPayments.rounding')).not.toBeInTheDocument();
   });
 });

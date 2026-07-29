@@ -67,7 +67,11 @@
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment...",
     "pendingSyncCount": "{{count}} sale(s) pending sync",
-    "configNotLoaded": "Payment config not loaded — try Sync Now"
+    "configNotLoaded": "Payment config not loaded — try Sync Now",
+    "tenderBelowDue": "The amount tendered is below the amount due.",
+    "tenderToleranceApprovalRequired": "Tender tolerance requires a manager PIN.",
+    "changeExceedsCashLegs": "Change cannot exceed the cash tendered. Add a cash tender or lower the non-cash amount.",
+    "totalIntegrityError": "The sale total could not be verified. Nothing was recorded — please retry the sale."
   },
   "cashPayment": {
     "back": "Back",
@@ -79,7 +83,8 @@
     "processing": "Processing...",
     "complete": "Complete & Print Receipt",
     "discount": "Discount",
-    "enterAmount": "Enter the amount received"
+    "enterAmount": "Enter the amount received",
+    "rounding": "Rounding"
   },
   "cashTendered": {
     "title": "Cash Payment",
@@ -482,7 +487,11 @@
       "successReused": "This shift already had a Z report — showing the existing one.",
       "printReceipt": "Print Receipt",
       "printError": "Failed to send receipt to printer.",
-      "done": "Done"
+      "done": "Done",
+      "toleranceAutoAcceptsUsed": "Auto-accepts used",
+      "toleranceAutoAcceptsValue": "{{used}} / {{limit}}",
+      "toleranceAutoAcceptsUnknown": "Unknown / {{limit}}",
+      "netCashRounding": "Net cash rounding"
     },
     "zList": {
       "title": "Z Reports",
@@ -769,7 +778,8 @@
     "voucherTenderFlowRequired": "Voucher tenders use a dedicated scan / lookup flow — please use the voucher button or scan the code rather than adding it as a normal payment line.",
     "voucherKindNotSupportedInPhase1": "This tender type is not yet supported. Only store vouchers can be redeemed in this version. Restaurant tickets and gift cards are coming in a future update.",
     "voucherMethodMissing": "Cannot apply voucher tender — store voucher payment method is not configured for this terminal.",
-    "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual payment repository is configured for this terminal. Contact your administrator."
+    "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual payment repository is configured for this terminal. Contact your administrator.",
+    "rounding": "Rounding"
   },
   "consumptionMode": {
     "label": "Consumption Mode",
@@ -832,6 +842,7 @@
     "payments": "Payments:",
     "changeDue": "Change Due:",
     "rounding": "Rounding",
+    "tolerance": "Tolerance",
     "vatRate": "VAT %",
     "taxable": "Taxable",
     "taxCol": "Tax",

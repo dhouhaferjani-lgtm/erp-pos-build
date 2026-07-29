@@ -12,17 +12,29 @@ import { bccomp, bcsub, bcformat } from '@/lib/decimal';
  * Pure helper — no React, safe to unit-test directly.
  * Computes the change-due string and valid-tender gate from decimal strings.
  * Uses bcmath (big.js) — no IEEE-754 float drift.
+ *
+ * `totalStr` is the amount the cashier owes — the ROUNDED due once cash
+ * rounding is in play (the caller supplies it from the checkout snapshot).
+ * `minimumAcceptable` is the optional in-tolerance FLOOR: a tender at or above
+ * it is confirmable even though it is short of `totalStr`, because the shortfall
+ * is auto-accepted as a tolerance write-off. Omitted, the floor IS the total, so
+ * every existing call site keeps its exact meaning.
+ *
+ * Change is always measured against `totalStr`: a tolerance write-off is money
+ * the store forgives, never money handed back.
  */
 export function computeCashTenderState(
   tenderedStr: string,
   totalStr: string,
   decimals: number,
+  minimumAcceptable?: string,
 ): { changeDue: string; isValid: boolean } {
   if (!tenderedStr) {
     return { changeDue: bcformat('0', decimals), isValid: false };
   }
+  const floor = minimumAcceptable ?? totalStr;
+  const isValid = bccomp(tenderedStr, floor) >= 0;
   const cmp = bccomp(tenderedStr, totalStr);
-  const isValid = cmp >= 0;
   const changeDue = cmp > 0
     ? bcsub(tenderedStr, totalStr, decimals)
     : bcformat('0', decimals);
@@ -33,8 +45,24 @@ export interface CashPaymentScreenProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (tenderedAmount: string) => void;
-  total: number;
-  discountAmount?: number;
+  /**
+   * The amount due as a currency-scale decimal string — NEVER a JS number
+   * (money must not cross a float boundary). This is the ROUNDED due from the
+   * caller's checkout snapshot whenever cash rounding is active.
+   */
+  total: string;
+  /** Currency-scale decimal string. */
+  discountAmount?: string;
+  /**
+   * Signed `rounded − exact` from the checkout snapshot, at currency scale.
+   * Shown to the cashier when non-zero; absent when rounding is not in play.
+   */
+  roundingAdjustment?: string;
+  /**
+   * Lowest confirmable tender — `total` minus the auto-accept tolerance
+   * headroom, clamped at zero. Absent = no headroom (the floor is `total`).
+   */
+  minimumAcceptable?: string;
   isProcessing: boolean;
   error?: string | null;
 }
@@ -45,6 +73,8 @@ export function CashPaymentScreen({
   onConfirm,
   total,
   discountAmount,
+  roundingAdjustment,
+  minimumAcceptable,
   isProcessing,
   error,
 }: CashPaymentScreenProps) {
@@ -64,11 +94,16 @@ export function CashPaymentScreen({
     }
   }, [isOpen]);
 
-  const totalStr = bcformat(String(total), decimals);
-  const { changeDue, isValid } = computeCashTenderState(tenderedStr, totalStr, decimals);
+  const totalStr = bcformat(total, decimals);
+  const { changeDue, isValid } = computeCashTenderState(
+    tenderedStr,
+    totalStr,
+    decimals,
+    minimumAcceptable,
+  );
 
   const handleExact = useCallback(() => {
-    setTenderedStr(bcformat(String(total), decimals));
+    setTenderedStr(bcformat(total, decimals));
     setPresetSet(true);
   }, [total, decimals]);
 
@@ -95,7 +130,7 @@ export function CashPaymentScreen({
     if (isValid && !isProcessing) onConfirm(tenderedStr);
   }, [isValid, isProcessing, onConfirm, tenderedStr]);
 
-  const denominations = getDenominations(currency, total);
+  const denominations = getDenominations(currency, totalStr);
 
   if (!isOpen) return null;
 
@@ -135,15 +170,26 @@ export function CashPaymentScreen({
             <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
               {t('cashPayment.amountDue')}
             </p>
-            <p className="mt-2 font-mono text-5xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</p>
+            <p className="mt-2 font-mono text-5xl font-bold tabular-nums text-pay-navy-fg">{format(totalStr)}</p>
           </div>
 
-          {discountAmount != null && discountAmount > 0 && (
+          {discountAmount != null && bccomp(discountAmount, '0') > 0 && (
             <div className="mt-4 text-center">
               <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
                 {t('cashPayment.discount')}
               </p>
               <p className="mt-1 font-mono text-lg font-bold tabular-nums text-pay-navy-fg/90">-{format(discountAmount)}</p>
+            </div>
+          )}
+
+          {roundingAdjustment != null && bccomp(roundingAdjustment, '0') !== 0 && (
+            <div className="mt-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
+                {t('cashPayment.rounding')}
+              </p>
+              <p className="mt-1 font-mono text-lg font-bold tabular-nums text-pay-navy-fg/90">
+                {format(roundingAdjustment)}
+              </p>
             </div>
           )}
 

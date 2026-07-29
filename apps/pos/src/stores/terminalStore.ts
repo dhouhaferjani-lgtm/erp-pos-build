@@ -5,6 +5,10 @@ import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '
 import { getDatabase } from '@/lib/db';
 import { pullTerminalState, pullZChainState, pullLocationStock, pullOperatorPins } from '@/lib/sync/syncService';
 import { refreshFraudSettingsCache } from '@/api/fraudSettingsApi';
+import {
+  hydratePaymentPolicyFromCache,
+  refreshPaymentPolicy,
+} from '@/stores/paymentPolicyStore';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -527,6 +531,20 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
         serializeErrorForLog(err),
       );
     });
+
+    // Cash rounding / tender tolerance (spec 2026-07-27 §4.3): hydrate the
+    // cached policy FIRST so an offline activation has an authoritative policy
+    // immediately, then refresh from the server. Both are fire-and-forget: a
+    // failure leaves the policy null/stale, which is fail-closed (exact
+    // behavior, no rounding, no auto-accept).
+    void hydratePaymentPolicyFromCache(db, companyId)
+      .then(() => refreshPaymentPolicy(db, companyId))
+      .catch((err: unknown) => {
+        console.error(
+          '[POS][terminalStore][preWarm] payment-policy refresh failed',
+          serializeErrorForLog(err),
+        );
+      });
 
     // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
     // header badge reflects the truth from boot. The hydration runs

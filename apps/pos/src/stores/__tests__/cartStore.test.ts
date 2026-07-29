@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useCartStore, computeTaxAmount } from '../cartStore';
+import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import type { POSProduct, POSProductVariant } from '@/types/product';
 
 function makeProduct(overrides: Partial<POSProduct> = {}): POSProduct {
@@ -200,6 +201,31 @@ describe('cartStore', () => {
     expect(items).toHaveLength(2);
     expect(items[0]!.unit_price).toBe('10.00');
     expect(items[1]!.unit_price).toBe('12.00'); // 10 + 2 modifier
+  });
+
+  it('DISPLAYED total equals the SIGNED total for a sub-scale fixed discount', () => {
+    // The cashier sees cartStore.totalString() (HomePage feeds it to
+    // CashPaymentScreen as the amount due, the quick-tender denominations and
+    // the Exact button); receiptService signs computeExactCartTotal(). If those
+    // two ever disagree, the sale still completes — paymentStore only rejects
+    // UNDER-tender, so the extra cent lands in change_due — and the receipt is
+    // sealed for an amount the cashier never saw. On an immutable device-authored
+    // fiscal record that is worse than failing loudly.
+    //
+    // '0.005' on EUR is reachable: DiscountModal exposes the fixed toggle and
+    // appends numpad digits with no decimal-count or scale cap.
+    useCartStore.getState().addItem(makeProduct({ sale_price: '10.00' }));
+    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '0.005' });
+
+    const state = useCartStore.getState();
+    const authoredTotal = computeExactCartTotal(state.items, state.transactionDiscount, 'EUR');
+    const authoredDiscount = computeExactDiscountAmount(state.items, state.transactionDiscount, 'EUR');
+
+    expect(state.totalString()).toBe(authoredTotal);
+    expect(state.discountAmountString()).toBe(authoredDiscount);
+    // …and the concrete values, so the test cannot pass by both sides breaking together.
+    expect(state.totalString()).toBe('9.99');
+    expect(state.discountAmountString()).toBe('0.01');
   });
 
   it('total never goes below 0', () => {

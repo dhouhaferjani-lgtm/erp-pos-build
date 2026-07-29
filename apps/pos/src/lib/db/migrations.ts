@@ -1921,4 +1921,88 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // v63: cash rounding + tender tolerance device surfaces (spec 2026-07-27 §4.3).
+    //
+    // Three parts, all inside `run` because the runner ignores `sql` whenever
+    // `run` is present (src/lib/db.ts:121-133):
+    //   1. payment_policy_cache — the offline-authoritative policy snapshot.
+    //      Money columns are TEXT: NUMERIC/REAL affinity strips the trailing
+    //      zero off '0.050', and the denomination is SIGNED into the fiscal
+    //      payload, so a mutated string means 100% server-side quarantine.
+    //   2. offline_receipts + the signed adjustment/denomination mirror and the
+    //      local tolerance shortfall (EOD/print/Z read these; they never ride
+    //      the wire — the fiscal-event envelope carries the canonical bytes).
+    //   3. payment_methods.is_cash_tender — the ONE cash-ness predicate for
+    //      every device layer. Defaults to 0 so a device that upgrades before
+    //      the payment-method wire refresh classifies nothing as cash
+    //      (fail-closed: rounding off, quick-cash surfaces `errors.noCashMethod`).
+    version: 63,
+    name: 'cash_rounding_policy_cache_and_receipt_columns',
+    sql: '',
+    async run(db) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS payment_policy_cache (
+          company_id TEXT PRIMARY KEY,
+          cash_rounding_enabled INTEGER NOT NULL DEFAULT 0,
+          cash_rounding_denomination TEXT,
+          tender_tolerance_enabled INTEGER NOT NULL DEFAULT 0,
+          tender_tolerance_percentage TEXT NOT NULL DEFAULT '0',
+          tender_tolerance_max_amount TEXT NOT NULL DEFAULT '0',
+          currency_code TEXT NOT NULL DEFAULT '',
+          currency_scale INTEGER NOT NULL DEFAULT 2,
+          refreshed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+
+      for (const col of [
+        'cash_rounding_adjustment',
+        'cash_rounding_denomination',
+        'tolerance_shortfall',
+      ]) {
+        try {
+          await db.execute(`ALTER TABLE offline_receipts ADD COLUMN ${col} TEXT`);
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+      }
+
+      try {
+        await db.execute(
+          'ALTER TABLE payment_methods ADD COLUMN is_cash_tender INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    },
+  },
+  {
+    // v64: durable per-shift tender-tolerance auto-accept budget (spec §8.1,
+    // owner ruling 2026-07-29).
+    //
+    // The counter was in-memory on PaymentState, which made the §8.1 cap
+    // unenforceable in two ways:
+    //   1. `teardownPosSessionStores()` calls `paymentStore.reset()` and is one
+    //      tap away in Settings — spend all 10, switch operator and back, and
+    //      the budget refilled on the SAME open shift;
+    //   2. any app restart mid-shift refilled it silently.
+    // It also made Task 10's EOD figure understate real write-offs, since an
+    // in-memory counter reports 0 after every restart.
+    //
+    // Keyed by shift id (NOT terminal or operator): closing and reopening a
+    // shift is exactly the event that should reset the budget, and the EOD
+    // preview reads by the shift it is closing.
+    version: 64,
+    name: 'tolerance_auto_accept_shift_budget',
+    sql: '',
+    async run(db) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS tolerance_auto_accepts (
+          shift_id TEXT PRIMARY KEY,
+          accept_count INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+    },
+  },
 ];

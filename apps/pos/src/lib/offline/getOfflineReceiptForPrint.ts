@@ -123,7 +123,11 @@ export async function getOfflineReceiptForPrint(
     tax_amount: receipt.tax_amount,
     discount_amount: receipt.discount_amount,
     total: receipt.total,
-    tolerance_writeoff: null,
+    // Both come off the Task 9 receipt columns. `tolerance_writeoff` was
+    // hardcoded null here while the data existed on the row, so an
+    // auto-accepted shortfall never reached the ticket.
+    tolerance_writeoff: receipt.tolerance_shortfall,
+    cash_rounding_adjustment: receipt.cash_rounding_adjustment,
     currency: receipt.currency,
     fiscal_hash: receipt.fiscal_hash,
     customer_name: null,

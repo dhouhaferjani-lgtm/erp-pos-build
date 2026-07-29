@@ -15,10 +15,16 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
             subtotal: '84.740',
             tax_amount: '15.380',
             payments_json: JSON.stringify([
-              { payment_method_id: 'pm-cash', amount: '100.100', method_code: 'CASH', tolerance_writeoff: '0.020' },
+              { payment_method_id: 'pm-cash', amount: '100.100', method_code: 'CASH' },
             ]),
             lines: JSON.stringify([]),
             created_at: '2026-04-24T10:00:00Z',
+            // Task 10: the write-off is a RECEIPT-level column
+            // (offline_receipts.tolerance_shortfall, written by receiptService
+            // from the sealed snapshot). The `tolerance_writeoff` key this
+            // fixture used to carry on the payment row was never written by
+            // any writer, so the preview always read zero from it.
+            tolerance_shortfall: '0.020',
           },
           {
             id: 'r2',

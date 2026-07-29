@@ -33,8 +33,13 @@ import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import { bcadd } from '@/lib/decimal';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { makeCartItem } from '@/test/helpers';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutPolicySnapshot,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 function makeMockDb() {
@@ -72,6 +77,30 @@ const seller = {
   city: 'Tunis',
   postalCode: '1000',
 };
+
+/**
+ * The sealed checkout decision for a sale with NO cash rounding: a null policy
+ * closes the gate, so `roundedTotal == exactTotal` and the adjustment /
+ * denomination are canonical zeros. That is exactly today's behaviour, which is
+ * why every pre-v3 assertion in this suite stays valid verbatim.
+ *
+ * `exactTotal` is stated explicitly per call site rather than re-derived from
+ * the cart: receiptService asserts the two against each other before anything
+ * signs, so a wrong number here fails loudly instead of silently agreeing.
+ */
+function unroundedSnapshot(exactTotal: string, currency = 'EUR'): CheckoutPolicySnapshot {
+  return buildCheckoutPolicySnapshot({
+    exactTotal,
+    currency,
+    legs: [{ methodCode: 'CASH', amount: exactTotal }],
+    tenderedAmount: exactTotal,
+    isCashMethodCode: (code) => code === 'CASH',
+    policy: null,
+    fiscalSchemaVersion: 3,
+    invoiceType: 'SALE',
+    autoAcceptCountThisShift: 0,
+  });
+}
 
 function evidence(overrides: Partial<PosOverrideEvidence> = {}): PosOverrideEvidence {
   return {
@@ -135,6 +164,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     const beginStmt = vi
@@ -169,6 +199,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     })).rejects.toMatch('database is locked');
 
     const statements = vi.mocked(db.execute).mock.calls.map((c) => String(c[0]));
@@ -195,6 +226,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
@@ -276,6 +308,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       },
       tenderToleranceEvidence,
       payments: [{ methodCode: 'CASH', amount: '8.00' }],
+      policySnapshot: unroundedSnapshot('8.00'),
     });
 
     const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
@@ -314,6 +347,105 @@ describe('receiptService — fiscal-event engine wiring', () => {
     }));
   });
 
+  it('computes a percentage transaction discount at the CURRENCY scale, not the bc default of 3', async () => {
+    const db = makeMockDb();
+
+    // 3 x 3.33 EUR = 9.99 subtotal; 7% = 0.6993 exactly -> discount 0.70,
+    // total 9.29 at the currency scale. This pins the concrete strings the
+    // fiscal authoring path must emit; the NEXT test is the one that discriminates
+    // against default-scale math (verified by reverting the fix).
+    const result = await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [
+        makeCartItem({ id: 'i1', tax_rate: '0.00', unit_price: '3.33', line_total: '3.33' }),
+        makeCartItem({ id: 'i2', tax_rate: '0.00', unit_price: '3.33', line_total: '3.33' }),
+        makeCartItem({ id: 'i3', tax_rate: '0.00', unit_price: '3.33', line_total: '3.33' }),
+      ],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: '10.00',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      transactionDiscount: { type: 'percentage', value: '7', reason: 'Loyalty 7%' },
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('9.29'),
+    });
+
+    expect(result.subtotal).toBe('9.99');
+    expect(result.discountAmount).toBe('0.70');
+    expect(result.total).toBe('9.29');
+    expect(result.changeDue).toBe('0.71');
+
+    // Same bytes on the stored row and in the SIGNED canonical payload.
+    const inserted = vi.mocked(insertOfflineReceipt).mock.calls[0]![1];
+    expect(inserted.total).toBe('9.29');
+    expect(inserted.discount_amount).toBe('0.70');
+    expect(inserted.transaction_discount_amount).toBe('0.70');
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload as {
+      total: string;
+      transaction_discount_amount: string;
+    };
+    expect(payload.total).toBe('9.29');
+    expect(payload.transaction_discount_amount).toBe('0.70');
+  });
+
+  it('survives a currency-scale rounding tie that default-scale percentage math cannot author at all', async () => {
+    const db = makeMockDb();
+
+    // 5.00 EUR at 12.5% = 0.625 exactly — a half-cent TIE, the input class the
+    // cash-rounding gate is built around.
+    //   currency scale 2 (correct): discount 0.63 (half-up), total 5.00 - 0.63 = 4.37
+    //                               -> total + discount == 5.00 == subtotal. Authors fine.
+    //   bc* default scale 3 (the pre-fix path): discount 0.625 -> stored as 0.63,
+    //                               total 4.375 -> stored as 4.38
+    //                               -> 4.38 + 0.63 = 5.01 != subtotal 5.00, so
+    //                               assertSaleReceiptAggregates throws and the
+    //                               cashier cannot complete the sale.
+    // Reverting the single-sourced total makes this test fail with
+    // SaleReceiptAggregateInvariantError — it is the real regression guard.
+    const result = await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [makeCartItem({ id: 'i1', tax_rate: '0.00', unit_price: '5.00', line_total: '5.00' })],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: '10.00',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      transactionDiscount: { type: 'percentage', value: '12.5', reason: 'Staff 12.5%' },
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('4.37'),
+    });
+
+    expect(result.subtotal).toBe('5.00');
+    expect(result.discountAmount).toBe('0.63');
+    expect(result.total).toBe('4.37');
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload as {
+      subtotal: string;
+      total: string;
+      transaction_discount_amount: string;
+    };
+    // The signed aggregate closes exactly: total + discount == subtotal.
+    expect(payload.total).toBe('4.37');
+    expect(payload.transaction_discount_amount).toBe('0.63');
+    expect(bcadd(payload.total, payload.transaction_discount_amount, 2)).toBe(payload.subtotal);
+  });
+
   it('persists the variant identity on the stored line without altering fiscal SKU bytes', async () => {
     const db = makeMockDb();
 
@@ -346,6 +478,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     // The stored offline line carries the variant identity.

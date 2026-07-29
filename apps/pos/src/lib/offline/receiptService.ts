@@ -1,6 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
+import i18n from '@/lib/i18n';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
+import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
@@ -9,7 +10,8 @@ import type {
 import {
   type SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
-import { buildSaleReceiptV2Payload } from '@/lib/fiscal/payloads/SaleReceiptV2Payload';
+import { buildSaleReceiptV3Payload } from '@/lib/fiscal/payloads/SaleReceiptV3Payload';
+import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import type { CartTransactionDiscount } from '@/stores/cartStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
@@ -26,6 +28,7 @@ import {
   type VoucherStatus,
 } from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
+import type { CheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSyncStore } from '@/stores/syncStore';
 import { withWriteTransaction } from '@/lib/db/writeGate';
@@ -91,6 +94,39 @@ interface OfflineReceiptInput {
    * Default false preserves the production path byte-for-byte.
    */
   isTraining?: boolean;
+  /**
+   * The sealed checkout decision (spec §4.3) taken at tender time by
+   * `buildCheckoutPolicySnapshot`: the rounded due, the signed rounding
+   * adjustment, the denomination and the tolerance outcome.
+   *
+   * REQUIRED. What signs is THIS snapshot, so a policy tick between the gate
+   * and the signature can never move the total. An absent snapshot must be a
+   * compile error, never a silently unrounded receipt — which is why the field
+   * is not optional and there is no default.
+   */
+  policySnapshot: CheckoutPolicySnapshot;
+}
+
+/**
+ * The cart re-totalled at authoring time does not match the total the checkout
+ * gate sealed. Defense-in-depth (spec §4.3 r2 F4): Task 5 made ONE function the
+ * only cart-total math on both sides, so this is unreachable by construction —
+ * this is the belt.
+ *
+ * The MESSAGE is already translated, because `paymentStore.formatCheckoutError`
+ * puts `error.message` straight on the cashier's banner. The two totals that
+ * caused the refusal are carried as FIELDS (and logged at the throw site) so the
+ * diagnostic survives without leaking into the UI.
+ *
+ * A named class so callers and tests can assert the IDENTITY of the refusal.
+ * Nothing is signed and nothing is persisted when it throws: the checkout is
+ * blocked and the cashier retries.
+ */
+export class CartTotalIntegrityError extends Error {
+  constructor(readonly lineDerivedTotal: string, readonly snapshotExactTotal: string) {
+    super(i18n.t('payment.totalIntegrityError', { ns: 'pos' }));
+    this.name = 'CartTotalIntegrityError';
+  }
 }
 
 export interface OfflineReceiptResult {
@@ -99,7 +135,8 @@ export interface OfflineReceiptResult {
   subtotal: string;
   taxAmount: string;
   discountAmount: string;
-  changeDue: number;
+  /** Currency-scale decimal string — money never crosses a float boundary. */
+  changeDue: string;
   fiscalHash: string;
   idempotencyKey: string;
   localId: string;
@@ -249,7 +286,7 @@ export async function createOfflineReceipt(
         subtotal: existing.subtotal,
         taxAmount: existing.tax_amount,
         discountAmount: existing.discount_amount,
-        changeDue: parseFloat(existing.change_due ?? '0'),
+        changeDue: existing.change_due ?? bcformat('0', getCurrencyDecimals(existing.currency)),
         fiscalHash: existing.fiscal_hash,
         idempotencyKey: existing.idempotency_key,
         localId: existing.id,
@@ -267,21 +304,33 @@ export async function createOfflineReceipt(
 
   // 2. Compute line totals
   const { subtotal, taxAmount } = computeLineTotals(input.cartItems);
-  let transactionDiscountAmount = '0';
-  if (input.transactionDiscount) {
-    if (input.transactionDiscount.type === 'percentage') {
-      // percentage is not a monetary value — safe to use for rate arithmetic
-      transactionDiscountAmount = bcdiv(
-        bcmul(subtotal, input.transactionDiscount.value),
-        '100',
-      );
-    } else {
-      // fixed-amount currency discount — keep as string, no parseFloat
-      transactionDiscountAmount = input.transactionDiscount.value;
-    }
+  // Single-sourced (spec §4.3 r2 F4): the discount + total come from the SAME
+  // function the checkout gate used, at the CURRENCY scale.
+  const transactionDiscountAmount = computeExactDiscountAmount(
+    input.cartItems,
+    input.transactionDiscount,
+    input.currency,
+  );
+  const total = computeExactCartTotal(
+    input.cartItems,
+    input.transactionDiscount,
+    input.currency,
+  );
+
+  // Defense-in-depth (spec §4.3 r2 F4): Task 5 made this unreachable by making
+  // one function the only cart-total math. If it EVER fires, nothing is signed
+  // — we are still ahead of the engine append and the SQLite insert.
+  if (bccomp(total, input.policySnapshot.exactTotal) !== 0) {
+    console.error('[POS][offline][receipt] cart total disagrees with the sealed checkout snapshot — nothing signed', {
+      lineDerivedTotal: total,
+      snapshotExactTotal: input.policySnapshot.exactTotal,
+      snapshotRoundedTotal: input.policySnapshot.roundedTotal,
+      currency: input.currency,
+      terminalId: input.terminalId,
+      idempotencyKey: input.idempotencyKey ?? null,
+    });
+    throw new CartTotalIntegrityError(total, input.policySnapshot.exactTotal);
   }
-  const rawTotal = bcsub(subtotal, transactionDiscountAmount);
-  const total = bccomp(rawTotal, '0') >= 0 ? rawTotal : '0';
 
   const isTraining = input.isTraining === true;
   if (!input.tenantId || !input.companyId || !input.shiftId || !input.seller) {
@@ -291,38 +340,63 @@ export async function createOfflineReceipt(
   const postedAtDate = new Date();
   const postedAt = postedAtDate.toISOString();
   const businessDate = postedAt.slice(0, 10);
-  const totalFormatted = bcformat(total, decimals);
+  // What the cashier owes, and what the receipt says: the ROUNDED total from
+  // the sealed snapshot. Equal to the exact total whenever the rounding gate is
+  // closed, so an un-rounded fleet keeps today's bytes exactly.
+  const exactTotalFormatted = bcformat(input.policySnapshot.exactTotal, decimals);
+  const totalFormatted = bcformat(input.policySnapshot.roundedTotal, decimals);
   const approvalReferences = collectApprovalReferences(input);
-  // M4 — SaleReceiptV2 (event_version=2): the signed canonical line items
-  // carry the variant identity (variant_id/variant_name/variant_sku, null
-  // for non-variant lines) so the sealed record matches the printed ticket.
-  const canonicalPayload = buildSaleReceiptV2Payload({
-    receiptId,
-    terminalId: input.terminalId,
-    operatorId: input.operatorId,
-    operatorName: input.operatorName,
-    shiftId: input.shiftId,
-    currency: input.currency,
-    eventTimeDevice: postedAtDate,
-    businessDate,
-    cartItems: input.cartItems,
-    subtotalGross: subtotal,
-    taxAmount,
-    total: totalFormatted,
-    transactionDiscountAmount,
-    transactionDiscountReason: input.transactionDiscount?.reason ?? null,
-    payments: input.payments.map((payment) => ({
-      methodCode: payment.methodCode,
-      amount: payment.amount,
-      instrumentType: payment.instrumentType ?? null,
-      instrumentSerial: payment.instrumentSerial ?? null,
-    })),
-    consumptionMode: input.consumptionMode ?? null,
-    tableId: input.tableId ?? null,
-    isTraining,
-    seller: input.seller,
-    approvalReferences,
-  });
+  // SaleReceiptV3 (event_version=3): `total` is the ROUNDED total, with the
+  // signed `cash_rounding_adjustment` + `cash_rounding_denomination` alongside,
+  // so the receipt is verifiable against its OWN authoring policy forever.
+  // The V2 delegate underneath is handed the EXACT total (that is what its
+  // aggregate assert reconciles against subtotal/vat/discount); the builder
+  // then swaps in the rounded total and runs the v3 binds. Since M4 the signed
+  // canonical line items also carry the variant identity, so the sealed record
+  // matches the printed ticket.
+  const canonicalPayload = buildSaleReceiptV3Payload(
+    {
+      receiptId,
+      terminalId: input.terminalId,
+      operatorId: input.operatorId,
+      operatorName: input.operatorName,
+      shiftId: input.shiftId,
+      currency: input.currency,
+      eventTimeDevice: postedAtDate,
+      businessDate,
+      cartItems: input.cartItems,
+      subtotalGross: subtotal,
+      taxAmount,
+      total: exactTotalFormatted,
+      transactionDiscountAmount,
+      transactionDiscountReason: input.transactionDiscount?.reason ?? null,
+      payments: input.payments.map((payment) => ({
+        methodCode: payment.methodCode,
+        amount: payment.amount,
+        instrumentType: payment.instrumentType ?? null,
+        instrumentSerial: payment.instrumentSerial ?? null,
+      })),
+      consumptionMode: input.consumptionMode ?? null,
+      tableId: input.tableId ?? null,
+      // NOT the snapshot's `invoiceType`: this is the payload builder's own
+      // training discriminator (it drives `training_flag` and the TRAINING
+      // invoice_type_code). The snapshot's invoiceType only decides whether
+      // the sale is ROUNDABLE.
+      isTraining,
+      seller: input.seller,
+      approvalReferences,
+    },
+    {
+      exactTotal: exactTotalFormatted,
+      roundedTotal: totalFormatted,
+      // Handed over raw. The builder's `canonicalMoney` is the ONE place that
+      // formats these and collapses big.js's '-0.000' onto the unsigned
+      // canonical zero the server demands (`payload_money_negative_zero`);
+      // formatting here first would only add a second, unpinned rounding step.
+      adjustment: input.policySnapshot.adjustment,
+      denomination: input.policySnapshot.denomination,
+    },
+  );
   const primaryApprovalReferenceEventId =
     approvalReferences[0]?.override_event_id ?? null;
 
@@ -331,8 +405,13 @@ export async function createOfflineReceipt(
   // submission attempt and reuses on retry); fall back to a fresh UUID for
   // legacy callers (e.g. test fixtures) that don't supply one.
   const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
-  // tenderedAmount is a decimal string — subtract directly with bcmath, no String() wrap needed
-  const changeDueRaw = bcsub(input.tenderedAmount, total, decimals);
+  // tenderedAmount is a decimal string — subtract directly with bcmath, no
+  // String() wrap needed. Netted against the ROUNDED due (`totalFormatted`),
+  // never the exact total: change is what the cashier hands back against the
+  // amount that was actually signed, and the cash screen already quotes the
+  // rounded due. A tolerance write-off is money the store forgives, so a short
+  // tender still yields zero change via the clamp below.
+  const changeDueRaw = bcsub(input.tenderedAmount, totalFormatted, decimals);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
 
   // Codex review B3 (2026-04-30): persist methodCode, instrumentType, and
@@ -485,6 +564,23 @@ export async function createOfflineReceipt(
         payments_json: paymentsJson,
         consumption_mode: input.consumptionMode ?? null,
         table_id: input.tableId ?? null,
+        // The v3 signed rounding, mirrored LOCALLY inside the same write-gate
+        // transaction as the fiscal event — read from the snapshot, never
+        // re-derived. The sync wire is the fiscal-event envelope, so the
+        // canonical bytes already carry these values to the server; these
+        // columns exist for device-side reporting (Z / EOD).
+        // Null, not a canonical zero, on an unrounded receipt: "no rounding
+        // happened here" and "rounding happened and came to zero" must stay
+        // distinguishable in a local report.
+        cash_rounding_adjustment: input.policySnapshot.roundingApplied
+          ? bcformat(input.policySnapshot.adjustment, decimals)
+          : null,
+        cash_rounding_denomination: input.policySnapshot.roundingApplied
+          ? bcformat(input.policySnapshot.denomination, decimals)
+          : null,
+        tolerance_shortfall: input.policySnapshot.toleranceDecision.applied
+          ? bcformat(input.policySnapshot.toleranceDecision.shortfall, decimals)
+          : null,
         fiscal_schema_version: fiscalSchemaVersion,
         is_training: isTraining ? 1 : 0,
         canonical_bytes: appended.canonical_bytes,
@@ -572,7 +668,7 @@ export async function createOfflineReceipt(
     subtotal: bcformat(subtotal, decimals),
     taxAmount: bcformat(taxAmount, decimals),
     discountAmount: bcformat(transactionDiscountAmount, decimals),
-    changeDue: parseFloat(changeDueFormatted),
+    changeDue: changeDueFormatted,
     fiscalHash: fiscalEventResult.current_hash,
     idempotencyKey,
     localId: receiptId,

@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`zReportHashService — additive normalization is legacy-safe > a report_data WITHOUT cash_rounding_summary hashes to the frozen value 1`] = `"4471b55530729153dc59a8bde2cbee42cafdcec56f02405b08de31e850bf112d"`;

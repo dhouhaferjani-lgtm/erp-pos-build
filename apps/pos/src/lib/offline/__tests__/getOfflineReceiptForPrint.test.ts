@@ -115,4 +115,37 @@ describe('getOfflineReceiptForPrint', () => {
     expect(result.lines[0]!.composite_item_id).toBeNull();
     expect(result.lines[0]!.menu_category_id).toBe('cat-drinks');
   });
+
+  it('carries the Task 9 rounding + tolerance columns onto the print payload', async () => {
+    // tolerance_writeoff was hardcoded null here while the data sat on the row,
+    // and cash_rounding_adjustment is what lets the ticket reconcile.
+    vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(
+      makeOfflineReceipt({
+        idempotency_key: 'idem-rounded',
+        total: '11.880',
+        subtotal: '10.000',
+        tax_amount: '1.900',
+        cash_rounding_adjustment: '-0.020',
+        cash_rounding_denomination: '0.050',
+        tolerance_shortfall: '0.050',
+        payments_json: JSON.stringify([]),
+      }),
+    );
+
+    const result = await getOfflineReceiptForPrint('idem-rounded');
+
+    expect(result.cash_rounding_adjustment).toBe('-0.020');
+    expect(result.tolerance_writeoff).toBe('0.050');
+  });
+
+  it('leaves both null on an unrounded receipt', async () => {
+    vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(
+      makeOfflineReceipt({ idempotency_key: 'idem-plain', payments_json: JSON.stringify([]) }),
+    );
+
+    const result = await getOfflineReceiptForPrint('idem-plain');
+
+    expect(result.cash_rounding_adjustment).toBeNull();
+    expect(result.tolerance_writeoff).toBeNull();
+  });
 });

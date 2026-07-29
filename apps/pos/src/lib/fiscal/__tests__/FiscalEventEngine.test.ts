@@ -111,6 +111,8 @@ function validSaleReceiptPayload(): Record<string, unknown> {
     approval_references: [],
     business_date: '2026-05-16',
     buyer: null,
+    cash_rounding_adjustment: '0.000',
+    cash_rounding_denomination: '0.000',
     cashier_id: SR_CASHIER_UUID,
     cashier_name: 'Alice',
     consumption_mode: null,
@@ -410,7 +412,7 @@ d('FiscalEventEngine.append', () => {
     expect(event.sequence_number).toBe(1);
     expect(event.previous_hash).toBe(GENESIS_SEED);
     expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(event.event_version).toBe(2); // SaleReceiptV2 (M4)
+    expect(event.event_version).toBe(3); // SaleReceiptV3 (cash rounding)
     expect(event.signature_version).toBe('hash-chain-integrity-v1');
     expect(event.sync_status).toBe('pending');
     expect(event.signature_status).toBe('not_required');
@@ -607,7 +609,7 @@ d('FiscalEventEngine.append', () => {
     expect(parsed.chain_context).toBe('operational');
     expect(parsed.previous_hash).toBe(GENESIS_SEED);
     expect(parsed.event_type).toBe('SALE_RECEIPT');
-    expect(parsed.event_version).toBe(2); // SaleReceiptV2 (M4)
+    expect(parsed.event_version).toBe(3); // SaleReceiptV3 (cash rounding)
     expect(parsed.signature_version).toBe('hash-chain-integrity-v1');
     expect(parsed.reference_event_id).toBeNull();
     expect(parsed.reference_document_id).toBeNull();
@@ -795,6 +797,97 @@ d('FiscalEventEngine.append', () => {
       const head = await selectChainHead(adapter, TERMINAL_ID);
       expect(head.fiscal_event_sequence).toBe(0);
     }
+  });
+
+  // -------------------------------------------------------------------
+  // v3 cash-rounding fields (spec 2026-07-27 §4.4). The adjustment is the
+  // ONLY signed money in the canonical payload; the denomination is a
+  // non-negative step. Canonical zero is UNSIGNED — the server rejects
+  // `-0.000` as `payload_money_negative_zero`, and a signed chain cannot
+  // be repaired in place.
+  // -------------------------------------------------------------------
+
+  it('v3 — accepts a signed NEGATIVE cash_rounding_adjustment', async () => {
+    const event = await engine.append(
+      adapter,
+      saleReceiptRequest({
+        payload: {
+          ...validSaleReceiptPayload(),
+          cash_rounding_adjustment: '-0.003',
+          cash_rounding_denomination: '0.050',
+        },
+      }),
+    );
+
+    expect(event.event_version).toBe(3);
+    expect(event.sequence_number).toBe(1);
+  });
+
+  it('v3 — rejects a negative-zero cash_rounding_adjustment', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          payload: { ...validSaleReceiptPayload(), cash_rounding_adjustment: '-0.000' },
+        }),
+      ),
+    ).rejects.toThrow(/payload_field_invalid:cash_rounding_adjustment/);
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('v3 — rejects malformed / mis-scaled / non-string cash_rounding_adjustment', async () => {
+    const cases: unknown[] = ['-0.03', '0.0030', '', '-', 0.003, null, '+0.003'];
+
+    for (const adjustment of cases) {
+      await expect(
+        engine.append(
+          adapter,
+          saleReceiptRequest({
+            payload: { ...validSaleReceiptPayload(), cash_rounding_adjustment: adjustment },
+          }),
+        ),
+      ).rejects.toThrow(FiscalEventPayloadValidationError);
+    }
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('v3 — rejects a NEGATIVE cash_rounding_denomination (the step is unsigned)', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          payload: {
+            ...validSaleReceiptPayload(),
+            cash_rounding_adjustment: '-0.003',
+            cash_rounding_denomination: '-0.050',
+          },
+        }),
+      ),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('v3 — rejects a SALE_RECEIPT payload missing the cash-rounding keys (append-time const swap)', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          payload: omitKey(validSaleReceiptPayload(), 'cash_rounding_adjustment'),
+        }),
+      ),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          payload: omitKey(validSaleReceiptPayload(), 'cash_rounding_denomination'),
+        }),
+      ),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
   });
 
   it('round-2 BLOCKER — rejects missing currency_code / non-int currency_scale / non-array line_items', async () => {

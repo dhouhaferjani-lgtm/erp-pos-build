@@ -25,7 +25,7 @@ const result: CheckoutResult = {
   discountAmount: '0.00',
   total: '20.00',
   currency: 'TND',
-  changeDue: 5,
+  changeDue: '5.000',
   fiscalHash: null,
 } as unknown as CheckoutResult;
 

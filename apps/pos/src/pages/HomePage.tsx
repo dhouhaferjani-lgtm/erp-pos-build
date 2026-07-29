@@ -7,6 +7,12 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { makeIsCashMethodCode } from '@/lib/payment/cashMethods';
+import { usePaymentPolicyStore } from '@/stores/paymentPolicyStore';
+import { getActiveCurrency } from '@/lib/currency';
+import { computeExactCartTotal } from '@/lib/payment/cartTotals';
+import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
+import { computeCashScreenDisplay } from '@/lib/payment/checkoutPolicySnapshot';
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
@@ -131,6 +137,15 @@ export function HomePage() {
   const taxAmount = useCartStore((s) => s.taxAmount);
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
+  // Decimal-string selectors — money crossing into a payment-authoring surface
+  // must stay a string (precision contract). The `number` selectors above are
+  // now display-only (the cart panel). The cash screen's amount due comes from
+  // `cashScreenSnapshot` (the ROUNDED due) rather than the cart's exact
+  // `totalString`; AdvancedPaymentsModal takes `totalString()` — the exact
+  // total, because a multi-tender due can only be rounded once the tender
+  // composition is known, which happens inside `processAdvancedCheckout`.
+  const totalString = useCartStore((s) => s.totalString);
+  const discountAmountString = useCartStore((s) => s.discountAmountString);
   const itemCount = useCartStore((s) => s.itemCount);
 
   // Smart Prompts
@@ -150,6 +165,10 @@ export function HomePage() {
   const processAdvancedCheckout = usePaymentStore((s) => s.processAdvancedCheckout);
   const processAccountCharge = usePaymentStore((s) => s.processAccountCharge);
   const paymentRepositories = usePaymentStore((s) => s.paymentRepositories);
+  const toleranceAutoAcceptShiftId = usePaymentStore((s) => s.toleranceAutoAcceptShiftId);
+  const toleranceAutoAcceptCount = usePaymentStore((s) => s.toleranceAutoAcceptCount);
+  const hydrateToleranceAutoAccept = usePaymentStore((s) => s.hydrateToleranceAutoAccept);
+  const paymentPolicy = usePaymentPolicyStore((s) => s.policy);
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
@@ -1193,6 +1212,56 @@ export function HomePage() {
     t,
   ]);
 
+  // The §8.1 budget lives in SQLite; pull this shift's spent count into the
+  // in-memory mirror on open so the cash screen's floor is right BEFORE the
+  // first checkout. Without it a restart mid-shift would advertise headroom
+  // the gate (which reads SQLite) then refuses.
+  const openShiftId = shift?.id ?? null;
+  useEffect(() => {
+    if (openShiftId === null) return;
+    void hydrateToleranceAutoAccept(openShiftId);
+  }, [openShiftId, hydrateToleranceAutoAccept]);
+
+  /**
+   * What the cash screen renders: the rounded due, the rounding line, and the
+   * lowest confirmable tender. DISPLAY ONLY — paymentStore seals the
+   * authoritative snapshot from the same builder when Confirm is pressed, so a
+   * policy tick between opening the screen and confirming cannot move what
+   * gets signed.
+   */
+  const cashScreenSnapshot = useMemo(() => {
+    const currency = getActiveCurrency();
+    const cashMethod = paymentMethods.find((m) => m.is_cash_tender && m.is_active);
+    const exactTotal = computeExactCartTotal(cartItems, transactionDiscount, currency);
+    return computeCashScreenDisplay({
+      exactTotal,
+      currency,
+      // Quick cash is a single cash leg for the whole due. With no cash method
+      // there is no leg at all — exactly the fail-closed "not cash-only" the
+      // gate wants during migration v63's DEFAULT 0 upgrade window; confirming
+      // then surfaces errors.noCashMethod.
+      legs: cashMethod ? [{ methodCode: cashMethod.code, amount: exactTotal }] : [],
+      isCashMethodCode: makeIsCashMethodCode(paymentMethods),
+      policy: paymentPolicy,
+      fiscalSchemaVersion: terminal?.fiscal_schema_version ?? null,
+      invoiceType: terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+      // Same deliberate inversion as the gate (paymentStore): no open shift =
+      // no budget to charge, so no headroom. Screen and gate must agree.
+      autoAcceptCountThisShift: shift === null
+        ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
+        : toleranceAutoAcceptShiftId === shift.id ? toleranceAutoAcceptCount : 0,
+    });
+  }, [
+    cartItems,
+    transactionDiscount,
+    paymentMethods,
+    paymentPolicy,
+    terminal,
+    shift,
+    toleranceAutoAcceptShiftId,
+    toleranceAutoAcceptCount,
+  ]);
+
   const handlePayCash = useCallback(() => {
     switch (decidePayInterception(cartItems)) {
       case 'ignore':
@@ -1617,8 +1686,10 @@ export function HomePage() {
         isOpen={showCashModal}
         onClose={() => setShowCashModal(false)}
         onConfirm={(amount) => void handleCashConfirm(amount)}
-        total={total()}
-        discountAmount={discountAmount()}
+        total={cashScreenSnapshot.roundedTotal}
+        discountAmount={discountAmountString()}
+        roundingAdjustment={cashScreenSnapshot.adjustment}
+        minimumAcceptable={cashScreenSnapshot.minimumAcceptable}
         isProcessing={isProcessing}
         error={paymentError}
       />
@@ -1639,7 +1710,7 @@ export function HomePage() {
       <AdvancedPaymentsModal
         isOpen={showAdvancedModal}
         onClose={() => setShowAdvancedModal(false)}
-        total={total()}
+        total={totalString()}
         paymentMethods={paymentMethods}
         paymentRepositories={paymentRepositories}
         onComplete={handleAdvancedComplete}

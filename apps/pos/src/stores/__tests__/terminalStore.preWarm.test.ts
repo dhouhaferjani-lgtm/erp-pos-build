@@ -89,6 +89,19 @@ vi.mock('@/api/fraudSettingsApi', () => ({
   refreshFraudSettingsCache: refreshFraudSettingsCacheSpy,
 }));
 
+// Cash rounding / tender tolerance (spec 2026-07-27 §4.3): activation hydrates
+// the cached policy from SQLite, then refreshes it from the server. Hoisted for
+// the same reason as the Phase 5 spies — terminalStore imports both statically.
+const { hydratePaymentPolicyFromCacheSpy, refreshPaymentPolicySpy } = vi.hoisted(() => ({
+  hydratePaymentPolicyFromCacheSpy: vi.fn().mockResolvedValue(undefined),
+  refreshPaymentPolicySpy: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/stores/paymentPolicyStore', () => ({
+  hydratePaymentPolicyFromCache: hydratePaymentPolicyFromCacheSpy,
+  refreshPaymentPolicy: refreshPaymentPolicySpy,
+}));
+
 vi.mock('@/lib/sync/syncScheduler', () => ({
   SyncScheduler: vi.fn().mockImplementation(() => ({
     start: startSpy,
@@ -169,6 +182,10 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     pullOperatorPinsSpy.mockResolvedValue(0);
     refreshFraudSettingsCacheSpy.mockClear();
     refreshFraudSettingsCacheSpy.mockResolvedValue(undefined);
+    hydratePaymentPolicyFromCacheSpy.mockClear();
+    hydratePaymentPolicyFromCacheSpy.mockResolvedValue(undefined);
+    refreshPaymentPolicySpy.mockClear();
+    refreshPaymentPolicySpy.mockResolvedValue(undefined);
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -209,6 +226,56 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     await Promise.resolve();
 
     expect(startSpy).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Cash rounding / tender tolerance (spec 2026-07-27 §4.3) — activation
+  // hydrates the SQLite-cached policy FIRST (so an offline activation is
+  // authoritative immediately) and only then refreshes it from the server.
+  // -------------------------------------------------------------------------
+
+  it('cash rounding §4.3: hydrates the cached payment policy, THEN refreshes it', async () => {
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(hydratePaymentPolicyFromCacheSpy).toHaveBeenCalledTimes(1);
+    expect(hydratePaymentPolicyFromCacheSpy).toHaveBeenCalledWith(expect.anything(), 'company-1');
+    expect(refreshPaymentPolicySpy).toHaveBeenCalledTimes(1);
+    expect(refreshPaymentPolicySpy).toHaveBeenCalledWith(expect.anything(), 'company-1');
+
+    const startOrder = startSpy.mock.invocationCallOrder[0]!;
+    const hydrateOrder = hydratePaymentPolicyFromCacheSpy.mock.invocationCallOrder[0]!;
+    const refreshOrder = refreshPaymentPolicySpy.mock.invocationCallOrder[0]!;
+    expect(hydrateOrder).toBeGreaterThan(startOrder);
+    expect(refreshOrder).toBeGreaterThan(hydrateOrder);
+  });
+
+  it('cash rounding §4.3: an offline policy refresh does NOT propagate (fail-closed, stale policy kept)', async () => {
+    refreshPaymentPolicySpy.mockRejectedValueOnce(new Error('offline'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The cached policy was still hydrated — only the server refresh failed.
+    expect(hydratePaymentPolicyFromCacheSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    const policyErrorLog = consoleError.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('payment-policy'),
+    );
+    expect(policyErrorLog).toBeDefined();
+    if (policyErrorLog) {
+      const payload = policyErrorLog[1] as Record<string, unknown>;
+      expect(payload).toHaveProperty('errorName');
+      expect(payload).toHaveProperty('message');
+    }
+
     consoleError.mockRestore();
   });
 

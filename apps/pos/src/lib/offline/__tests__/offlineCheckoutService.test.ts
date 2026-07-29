@@ -31,6 +31,7 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
 }));
 
 import { executeCheckout, type CheckoutInput } from '../offlineCheckoutService';
+import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
@@ -66,6 +67,21 @@ function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
     paymentRepositoryId: 'repo-1',
     tenderedAmount: '100.00',
     receiptData: { terminal_id: 'terminal-1', lines: [] },
+    // The sealed checkout decision is an INPUT to this wrapper, not something
+    // it derives: it has no payment policy, terminal or shift context of its
+    // own. A null policy closes the rounding gate, so this fixture is today's
+    // exact behaviour.
+    policySnapshot: buildCheckoutPolicySnapshot({
+      exactTotal: '50.00',
+      currency: 'EUR',
+      legs: [{ methodCode: 'CASH', amount: '100.00' }],
+      tenderedAmount: '100.00',
+      isCashMethodCode: (code) => code === 'CASH',
+      policy: null,
+      fiscalSchemaVersion: 3,
+      invoiceType: 'SALE',
+      autoAcceptCountThisShift: 0,
+    }),
     ...overrides,
   };
 }
@@ -79,7 +95,7 @@ function makeOfflineResult(
     subtotal: '50.00',
     taxAmount: '5.00',
     discountAmount: '0.00',
-    changeDue: 50,
+    changeDue: '50.00',
     fiscalHash: 'offline-hash-123',
     idempotencyKey: 'idem-001',
     localId: 'local-id-001',
@@ -186,7 +202,7 @@ describe('offlineCheckoutService - executeCheckout (Phase 1 Task 27 Pass 1)', ()
         subtotal: '50.00',
         taxAmount: '5.00',
         discountAmount: '5.00',
-        changeDue: 55,
+        changeDue: '55.00',
         fiscalHash: 'hash-abc',
       }),
     );
@@ -198,7 +214,7 @@ describe('offlineCheckoutService - executeCheckout (Phase 1 Task 27 Pass 1)', ()
     expect(result.subtotal).toBe('50.00');
     expect(result.taxAmount).toBe('5.00');
     expect(result.discountAmount).toBe('5.00');
-    expect(result.changeDue).toBe(55);
+    expect(result.changeDue).toBe('55.00');
     expect(result.fiscalHash).toBe('hash-abc');
   });
 

@@ -6,7 +6,7 @@ vi.mock('@/stores/authStore', () => ({
   useAuthStore: vi.fn(),
 }));
 
-import { bcadd, bcsub, bcmul, bcdiv, bccomp, bcsum, bcabs } from '../decimal';
+import { bcadd, bcsub, bcmul, bcdiv, bcmod, bccomp, bcsum, bcabs } from '../decimal';
 
 describe('decimal', () => {
   it('bcadd adds two decimals', () => {
@@ -27,6 +27,21 @@ describe('decimal', () => {
 
   it('bcdiv throws on division by zero', () => {
     expect(() => bcdiv('10', '0')).toThrow('Division by zero');
+  });
+
+  it('bcmod returns the remainder at scale', () => {
+    // The cash-rounding bind: a rounded total is an exact multiple of D.
+    expect(bcmod('9.950', '0.050', 3)).toBe('0.000');
+    expect(bcmod('9.973', '0.050', 3)).toBe('0.023');
+    expect(bcmod('0.000', '0.050', 3)).toBe('0.000');
+    expect(bcmod('1240', '10', 0)).toBe('0');
+    expect(bcmod('1234', '10', 0)).toBe('4');
+  });
+
+  it('bcmod throws on modulo by zero', () => {
+    expect(() => bcmod('10', '0')).toThrow('Modulo by zero');
+    expect(() => bcmod('10', '0.000')).toThrow('Modulo by zero');
+    expect(() => bcmod('10', '')).toThrow('Modulo by zero');
   });
 
   it('bccomp compares two decimals', () => {

@@ -94,6 +94,25 @@ export function normalizeForHash(reportData: Record<string, unknown>): Record<st
     }
   }
 
+  // Additive (spec §4.3): mirrored EXACTLY by the `cash_rounding_summary` block
+  // in ZReportHashService.php::normalizeForHash(). Per-key isset-style
+  // normalization keeps a legacy report_data (no such key) byte-identical, so
+  // v2-shape Zs re-hash unchanged forever — pinned by
+  // zReportHashService.legacyStability.test.ts. Deliberately NOT tied to a
+  // schema_version bump: bumping would re-normalize refunds_amount through the
+  // server's schema≥3 key list and break parity.
+  const cashRoundingSummary = result['cash_rounding_summary'];
+  if (
+    cashRoundingSummary !== null &&
+    typeof cashRoundingSummary === 'object' &&
+    !Array.isArray(cashRoundingSummary)
+  ) {
+    const crs = cashRoundingSummary as Record<string, unknown>;
+    if (typeof crs['total_adjustment'] === 'string') {
+      crs['total_adjustment'] = bcformat(crs['total_adjustment'], 3);
+    }
+  }
+
   if (Array.isArray(result['payment_methods'])) {
     result['payment_methods'] = (result['payment_methods'] as Array<Record<string, unknown>>).map(
       (row) =>

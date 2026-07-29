@@ -144,6 +144,14 @@ vi.mock('@/lib/db/repositories/menuRepository', () => ({
   getActiveMenu: vi.fn().mockResolvedValue({ categories: [] }),
 }));
 
+// Cash rounding / tender tolerance (spec 2026-07-27 §4.3) — runFullSync now
+// pulls the payment policy. Mock the SQLite cache so the pull exercises only
+// the sync-layer contract (the repository has its own test).
+vi.mock('@/lib/db/repositories/paymentPolicyCacheRepository', () => ({
+  upsertPaymentPolicy: vi.fn().mockResolvedValue(undefined),
+  getPaymentPolicy: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
     getState: vi.fn().mockReturnValue({
@@ -225,12 +233,14 @@ import {
   pushZReports,
   pullProducts,
   pullPaymentConfig,
+  pullPaymentPolicy,
   pullOperatorPins,
   pullTerminalState,
   runFullSync,
 } from '../syncService';
 import { apiGet, apiPost, apiPostRaw, ApiRequestError } from '@/lib/api';
 import { pruneOperatorsExcept } from '@/lib/db/repositories/operatorPinRepository';
+import { upsertPaymentPolicy } from '@/lib/db/repositories/paymentPolicyCacheRepository';
 import { getUnsyncedZReports, markZReportSynced } from '@/lib/db/repositories/zReportRepository';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -690,6 +700,49 @@ describe('syncService', () => {
       const allCalls = vi.mocked(apiGet).mock.calls.flat();
       expect(allCalls).not.toContain('/treasury/payment-methods');
       expect(allCalls).not.toContain('/treasury/payment-repositories');
+    });
+  });
+
+  describe('pullPaymentPolicy', () => {
+    const policyResponse = {
+      companyId: 'company-1',
+      currencyCode: 'TND',
+      currencyScale: 3,
+      cashRoundingEnabled: true,
+      cashRoundingDenomination: '0.050',
+      tenderToleranceEnabled: true,
+      tenderTolerancePercentage: '0.0050',
+      tenderToleranceMaxAmount: '0.100',
+      refreshedAt: '2026-07-27T08:00:00Z',
+    };
+
+    it('caches the server policy for the active company and returns true', async () => {
+      vi.mocked(apiGet).mockResolvedValueOnce(policyResponse);
+
+      const ok = await pullPaymentPolicy(db);
+
+      expect(ok).toBe(true);
+      expect(apiGet).toHaveBeenCalledWith('/pos/payment-policy');
+      expect(upsertPaymentPolicy).toHaveBeenCalledWith(db, expect.objectContaining({
+        company_id: 'company-1',
+        cash_rounding_denomination: '0.050',
+        currency_scale: 3,
+      }));
+    });
+
+    it('returns false and NEVER throws when the endpoint is unreachable (offline contract)', async () => {
+      vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
+
+      await expect(pullPaymentPolicy(db)).resolves.toBe(false);
+      expect(upsertPaymentPolicy).not.toHaveBeenCalled();
+    });
+
+    it('returns false without calling the API when no company is selected', async () => {
+      const { useAuthStore } = await import('@/stores/authStore');
+      vi.mocked(useAuthStore.getState).mockReturnValueOnce({ companyId: null } as never);
+
+      await expect(pullPaymentPolicy(db)).resolves.toBe(false);
+      expect(apiGet).not.toHaveBeenCalled();
     });
   });
 
@@ -1205,6 +1258,17 @@ describe('syncService', () => {
         .mockResolvedValueOnce([]) // products
         .mockResolvedValueOnce([]) // payment methods
         .mockResolvedValueOnce([]) // payment repos
+        .mockResolvedValueOnce({ // payment policy (cash rounding + tender tolerance)
+          companyId: 'company-1',
+          currencyCode: 'TND',
+          currencyScale: 3,
+          cashRoundingEnabled: false,
+          cashRoundingDenomination: '0.000',
+          tenderToleranceEnabled: false,
+          tenderTolerancePercentage: '0.0000',
+          tenderToleranceMaxAmount: '0.000',
+          refreshedAt: '2026-07-27T08:00:00Z',
+        })
         .mockResolvedValueOnce([]) // operator pins
         .mockResolvedValueOnce({ id: 't-1', code: 'T001', genesis_seed: 'seed', last_hash: 'h', hash_sequence: 0 }) // terminal state
         .mockResolvedValueOnce({ z_last_hash: null, z_hash_sequence: 0, z_number: 0, grand_totals: null }) // z-chain state

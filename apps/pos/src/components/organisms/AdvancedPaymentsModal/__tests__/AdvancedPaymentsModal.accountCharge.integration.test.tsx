@@ -4,7 +4,8 @@
  * Regression lock for a CRITICAL seam bug found in final review: the modal
  * handed AccountChargeConfirmation a numeric `total` via `String(total)`, so a
  * whole-number EUR total (e.g. 119) reached the strict credit-decision parser
- * as `"119"`. That parser requires an exact `^\d+\.\d{2}$` match for a scale-2
+ * as `"119"`. `total` is a decimal string since Task 7, but an unscaled one
+ * reaches the seam the same way, so the lock still bites. That parser requires an exact `^\d+\.\d{2}$` match for a scale-2
  * currency, so it rejected with `money_scale_invalid` and the real "Charge to
  * account" Confirm button stayed disabled — EUR charges were un-confirmable.
  *
@@ -15,7 +16,7 @@
  * scopedManagerPin, the two stores, useCurrency); bcformat, formatCurrency,
  * getCurrencyDecimals and the credit-rules engine all run for real.
  *
- * WITHOUT the modal-boundary fix (`total={bcformat(String(total), decimals)}`)
+ * WITHOUT the modal-boundary fix (`total={bcformat(total, decimals)}`)
  * AND the defensive normalization inside the confirmation, this test fails: the
  * `money_scale_invalid` rejection renders and Confirm is disabled.
  */
@@ -111,6 +112,7 @@ const cashMethod: PaymentMethod = {
   is_push: false,
   has_deducted_fees: false,
   is_restricted: false,
+  is_cash_tender: true,
   fee_type: null,
   fee_fixed: '0.00',
   fee_percent: '0.00',
@@ -171,9 +173,9 @@ describe('AdvancedPaymentsModal — On Account integration (real confirmation + 
       <AdvancedPaymentsModal
         isOpen
         onClose={vi.fn()}
-        // Numeric whole-number total — String(119) === '119', which the strict
-        // scale-2 parser rejects unless normalized at the seam.
-        total={119}
+        // Whole-number total with no fractional part — '119' is exactly what
+        // the strict scale-2 parser rejects unless normalized at the seam.
+        total="119"
         paymentMethods={[cashMethod]}
         paymentRepositories={[cashRepo]}
         onComplete={vi.fn().mockResolvedValue(undefined)}

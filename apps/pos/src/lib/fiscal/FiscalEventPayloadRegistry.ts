@@ -163,12 +163,13 @@ export class FiscalEventPayloadRegistry {
     if (!this.implemented.has(type as ImplementedEventType)) {
       throw new FiscalEventTypeNotImplementedError(type);
     }
-    // SaleReceiptV2 (M4): SALE_RECEIPT canonical line items carry the
-    // variant identity (variant_id/variant_name/variant_sku) since
-    // event_version 2. Mirrors the server registry's PHASE_1_MAP entry —
-    // the server accepts {1, 2} for parse, the device AUTHORS only 2.
+    // SaleReceiptV3 (cash rounding, 2026-07-27): SALE_RECEIPT carries the
+    // signed rounding adjustment + denomination since event_version 3. The
+    // server accepts {1, 2, 3} for parse; the device AUTHORS only 3.
+    // (V2 added the variant identity to each line item; V3 is a strict
+    // superset of V2 and the device never authors either 1 or 2 again.)
     if (type === 'SALE_RECEIPT') {
-      return 2;
+      return 3;
     }
     return 1;
   }

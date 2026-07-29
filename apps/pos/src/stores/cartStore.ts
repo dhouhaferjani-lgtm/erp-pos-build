@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 export type { CartItem } from '@/types/cart';
 import type { POSProduct, POSProductVariant } from '@/types/product';
-import { getCurrencyDecimals } from '@/lib/currency';
+import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
+import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import { bcadd, bcdiv, bcformat, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
@@ -689,18 +690,22 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     return Number(rawTax);
   },
 
+  // The cart-level discount and total DELEGATE to the single-sourced money
+  // module — the same functions receiptService signs into the SALE_RECEIPT.
+  // Any re-implementation here means the screen and the sealed fiscal record
+  // can disagree. paymentStore only rejects UNDER-tender, so such a
+  // disagreement would NOT be caught at checkout — it would silently seal a
+  // receipt for an amount the cashier never saw.
+  //
+  // Since the cash-rounding work (2026-07-28, T6) the cash screen's AMOUNT DUE
+  // is no longer `totalString()`: HomePage derives `cashScreenSnapshot` from
+  // `computeCashScreenDisplay` and passes the ROUNDED due, which also drives
+  // the quick-tender denominations and the Exact button. `totalString()` is
+  // still THE exact total feeding that snapshot and the discount row, and it is
+  // what Task 9's `policySnapshot.exactTotal` is reconciled against inside
+  // receiptService — so the delegation above remains load-bearing.
   discountAmountString: () => {
-    const decimals = getDecimals();
-    const discount = get().transactionDiscount;
-    if (!discount) return (0).toFixed(decimals);
-    const subtotal = get().subtotalString();
-    const value = discount.value && discount.value.trim() !== '' ? discount.value : '0';
-    const raw =
-      discount.type === 'percentage'
-        ? bcdiv(bcmul(subtotal, value, decimals), '100', decimals)
-        : value;
-    // Never discount more than the subtotal.
-    return bccomp(raw, subtotal) > 0 ? subtotal : raw;
+    return computeExactDiscountAmount(get().items, get().transactionDiscount, getActiveCurrency());
   },
 
   discountAmount: () => {
@@ -708,9 +713,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   totalString: () => {
-    const decimals = getDecimals();
-    const total = bcsub(get().subtotalString(), get().discountAmountString(), decimals);
-    return bccomp(total, '0') < 0 ? bcformat('0', decimals) : total;
+    return computeExactCartTotal(get().items, get().transactionDiscount, getActiveCurrency());
   },
   total: () => {
     return Number(get().totalString());

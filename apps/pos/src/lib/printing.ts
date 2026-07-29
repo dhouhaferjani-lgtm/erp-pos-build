@@ -77,7 +77,10 @@ export interface ReceiptLabels {
   total?: string;
   payments?: string;
   change_due?: string;
+  /** Label for the SIGNED cash-rounding line in the totals block. */
   rounding?: string;
+  /** Label for the tolerance write-off line (distinct from the rounding line). */
+  tolerance?: string;
   vat_rate?: string;
   taxable?: string;
   tax_col?: string;
@@ -161,6 +164,17 @@ export interface ReceiptData {
    * arbitrary-precision decimal so the Rust side never parses monetary strings.
    */
   has_tolerance?: boolean;
+  /**
+   * Signed cash-rounding adjustment in customer-facing currency. Null when the
+   * sale was not rounded.
+   */
+  cash_rounding_adjustment?: string | null;
+  /**
+   * Precomputed flag for the Rust formatter: true when cash_rounding_adjustment
+   * is a non-zero amount. Computed on the TS boundary with arbitrary-precision
+   * decimal so Rust never parses a monetary string.
+   */
+  has_cash_rounding?: boolean;
   fiscal_hash: string | null;
   fiscal_signature: string | null;
   customer_name: string | null;

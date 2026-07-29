@@ -333,6 +333,7 @@ describe('CustomerAttachPanel', () => {
         is_push: false,
         has_deducted_fees: false,
         is_restricted: false,
+        is_cash_tender: true,
         fee_type: null,
         fee_fixed: '0.000',
         fee_percent: '0.000',

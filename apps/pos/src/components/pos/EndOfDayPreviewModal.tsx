@@ -13,6 +13,10 @@ import {
 import type { Shift } from '@/stores/terminalStore';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { ToleranceDrillDown } from '@/components/pos/molecules/ToleranceDrillDown';
+// The §8.1 cap, imported rather than written as `10`: paymentStore's gate and
+// two test suites already bind to this constant, so a literal here would fork
+// the displayed limit from the enforced one on the next tuning change.
+import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
 
 export interface EndOfDayConfirmResult {
   formattedZNumber: string;
@@ -327,6 +331,57 @@ export function EndOfDayPreviewModal({
                 currencyCode={preview.tolerance_summary.currencyCode}
               />
             )}
+
+          {/* Auto-accept budget (spec §8.1) — spent against the per-shift
+              limit. Always rendered: "0 / 10" is the useful reading, and
+              hiding it would make the unknown case invisible too.
+
+              A NULL count means the preview was built without a shift id, so
+              there is no budget row to read. It is rendered as unknown, never
+              as headroom: the gate treats a null shift as FULLY SPENT
+              (paymentStore's fail-closed inversion), so a "0 / 10" here would
+              promise budget the very next short tender is refused. */}
+          <div
+            className="flex items-center justify-between rounded-sm border border-border-subtle bg-surface-sunken p-3 text-sm"
+            data-testid="tolerance-auto-accept-budget"
+          >
+            <span className="text-ink-muted">
+              {t('reports.endOfDay.toleranceAutoAcceptsUsed')}
+            </span>
+            <span className="font-semibold text-ink">
+              {preview.tolerance_auto_accept_count === null
+                ? t('reports.endOfDay.toleranceAutoAcceptsUnknown', {
+                    limit: TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT,
+                  })
+                : t('reports.endOfDay.toleranceAutoAcceptsValue', {
+                    used: preview.tolerance_auto_accept_count,
+                    limit: TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT,
+                  })}
+            </span>
+          </div>
+
+          {/* Net cash rounding (spec §4.3) — LOCAL observability. Absent, not
+              zero, on a shift where nothing rounded: the builder returns null
+              precisely so this row does not appear. */}
+          {preview.cash_rounding_summary !== null && (
+            <div
+              className="flex items-center justify-between rounded-sm border border-border-subtle bg-surface-sunken p-3 text-sm"
+              data-testid="cash-rounding-summary"
+            >
+              <span className="text-ink-muted">
+                {t('reports.endOfDay.netCashRounding')}
+              </span>
+              <span className="font-semibold text-ink">
+                {/* format() keeps the sign — the adjustment is signed and a
+                    round-down must not read as a round-up. */}
+                {format(preview.cash_rounding_summary.totalAdjustment)}
+                {' '}
+                <span className="text-ink-muted">
+                  ({preview.cash_rounding_summary.receiptCount})
+                </span>
+              </span>
+            </div>
+          )}
 
           {/* Bottom bar */}
           <div className="flex gap-3 pt-2">

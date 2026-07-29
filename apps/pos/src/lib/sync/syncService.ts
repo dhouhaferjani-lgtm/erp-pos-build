@@ -1184,6 +1184,33 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
 }
 
 /**
+ * Pull the POS payment policy (cash rounding + tender tolerance) for the
+ * active company. Swallow-and-log like every other pull: a failure leaves the
+ * previously cached policy in place, which is exactly the offline contract —
+ * a device that never reaches the server keeps signing against the policy it
+ * last saw, and the projection's policy-reconciliation alert flags the drift.
+ */
+export async function pullPaymentPolicy(db: Database): Promise<boolean> {
+  try {
+    const { useAuthStore } = await import('@/stores/authStore');
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) {
+      await logSyncOperation(db, 'pull', 'payment_policy', null, 'error', 'no company selected');
+      return false;
+    }
+    const { refreshPaymentPolicy } = await import('@/stores/paymentPolicyStore');
+    await refreshPaymentPolicy(db, companyId);
+    await setSyncMetadata(db, 'payment_policy_last_sync', new Date().toISOString());
+    await logSyncOperation(db, 'pull', 'payment_policy', null, 'success');
+    return true;
+  } catch (error) {
+    const message = coerceSyncError(error);
+    await logSyncOperation(db, 'pull', 'payment_policy', null, 'error', message);
+    return false;
+  }
+}
+
+/**
  * Pull operator PIN hashes for offline verification.
  */
 export async function pullOperatorPins(db: Database, terminalId: string): Promise<number> {
@@ -2088,6 +2115,7 @@ export async function runFullSync(
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
+  await pullPaymentPolicy(db);
   const operatorsPulled = await pullOperatorPins(db, terminalId);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);

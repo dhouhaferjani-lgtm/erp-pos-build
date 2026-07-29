@@ -30,6 +30,10 @@ import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { migrations } from '@/lib/db/migrations';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutPolicySnapshot,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import { makeCartItem } from '@/test/helpers';
 
 vi.mock('@/lib/fiscal/hashService', () => ({
@@ -55,6 +59,26 @@ const fiscalReceiptContext = {
     postalCode: '75001',
   },
 } as const;
+
+/**
+ * The sealed checkout decision (spec §4.3) for a sale with NO cash rounding.
+ * A null policy closes the rounding gate, so `roundedTotal == exactTotal` and
+ * the adjustment / denomination are canonical zeros — byte-for-byte today's
+ * behaviour, which is what keeps every pre-v3 assertion in this suite valid.
+ */
+function unroundedSnapshot(exactTotal: string, currency = 'EUR'): CheckoutPolicySnapshot {
+  return buildCheckoutPolicySnapshot({
+    exactTotal,
+    currency,
+    legs: [{ methodCode: 'CASH', amount: exactTotal }],
+    tenderedAmount: exactTotal,
+    isCashMethodCode: (code) => code === 'CASH',
+    policy: null,
+    fiscalSchemaVersion: 3,
+    invoiceType: 'SALE',
+    autoAcceptCountThisShift: 0,
+  });
+}
 
 const nodeSqliteAvailable = (() => {
   try {
@@ -129,6 +153,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
       tenderedAmount: '50.00',
+      policySnapshot: unroundedSnapshot('50.00'),
       idempotencyKey: sharedKey,
       payments: [
         {
@@ -158,6 +183,10 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
       tenderedAmount: '100.00',
+      // The SECOND attempt's own cart total (99.00) — the dedup short-circuit
+      // returns R1 before the snapshot is ever read, but a fixture that lied
+      // about this cart would be the wrong thing to pin.
+      policySnapshot: unroundedSnapshot('99.00'),
       idempotencyKey: sharedKey,
       payments: [
         {
@@ -207,6 +236,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
       tenderedAmount: '10.00',
+      policySnapshot: unroundedSnapshot('10.00'),
       idempotencyKey: 'distinct-key-A',
       payments: [
         { methodCode: 'CASH', amount: '10.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },
@@ -223,6 +253,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
       tenderedAmount: '20.00',
+      policySnapshot: unroundedSnapshot('20.00'),
       idempotencyKey: 'distinct-key-B',
       payments: [
         { methodCode: 'CASH', amount: '20.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },

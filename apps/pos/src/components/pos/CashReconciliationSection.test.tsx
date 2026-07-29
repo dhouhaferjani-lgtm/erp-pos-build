@@ -57,6 +57,8 @@ function makePreview(
     vat_breakdown: [],
     payment_methods: methods as EndOfDayPreview['payment_methods'],
     tolerance_summary: null,
+    cash_rounding_summary: null,
+    tolerance_auto_accept_count: 0,
   };
 }
 

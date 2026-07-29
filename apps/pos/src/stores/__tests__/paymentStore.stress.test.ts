@@ -27,7 +27,7 @@ vi.mock('@/lib/offline/receiptService', () => ({
       subtotal: '10.00',
       taxAmount: '0.00',
       discountAmount: '0.00',
-      changeDue: 0,
+      changeDue: '0.00',
       fiscalHash: 'h',
       idempotencyKey: crypto.randomUUID(),
       localId: crypto.randomUUID(),

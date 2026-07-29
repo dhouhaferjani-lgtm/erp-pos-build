@@ -67,7 +67,11 @@
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
-    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant"
+    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant",
+    "tenderBelowDue": "Le montant remis est inférieur au montant dû.",
+    "tenderToleranceApprovalRequired": "L'écart de règlement nécessite un code responsable.",
+    "changeExceedsCashLegs": "La monnaie ne peut pas dépasser les espèces remises. Ajoutez un règlement espèces ou réduisez le montant non-espèces.",
+    "totalIntegrityError": "Le total de la vente n'a pas pu être vérifié. Rien n'a été enregistré — veuillez recommencer la vente."
   },
   "cashPayment": {
     "back": "Retour",
@@ -79,7 +83,8 @@
     "processing": "Traitement...",
     "complete": "Terminer et imprimer",
     "discount": "Remise",
-    "enterAmount": "Saisir le montant reçu"
+    "enterAmount": "Saisir le montant reçu",
+    "rounding": "Arrondi"
   },
   "cashTendered": {
     "title": "Paiement en espèces",
@@ -482,7 +487,11 @@
       "successReused": "Ce service avait déjà un rapport Z — affichage de l'existant.",
       "printReceipt": "Imprimer le ticket",
       "printError": "Échec de l'envoi du ticket à l'imprimante.",
-      "done": "Terminer"
+      "done": "Terminer",
+      "toleranceAutoAcceptsUsed": "Écarts acceptés automatiquement",
+      "toleranceAutoAcceptsValue": "{{used}} / {{limit}}",
+      "toleranceAutoAcceptsUnknown": "Inconnu / {{limit}}",
+      "netCashRounding": "Arrondi espèces net"
     },
     "zList": {
       "title": "Rapports Z",
@@ -769,7 +778,8 @@
     "voucherTenderFlowRequired": "Les bons d'achat utilisent un flux de scan / recherche dédié — utilisez le bouton « bon d'achat » ou scannez le code plutôt que de l'ajouter comme paiement normal.",
     "voucherKindNotSupportedInPhase1": "Ce mode de paiement n'est pas encore disponible. Seuls les bons d'achat peuvent être utilisés dans cette version. Les tickets restaurant et les cartes cadeaux arriveront dans une prochaine mise à jour.",
     "voucherMethodMissing": "Impossible d'appliquer le bon d'achat — le mode de paiement « bon d'achat » n'est pas configuré pour ce terminal.",
-    "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte de paiement virtuel n'est configuré pour ce terminal. Contactez votre administrateur."
+    "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte de paiement virtuel n'est configuré pour ce terminal. Contactez votre administrateur.",
+    "rounding": "Arrondi"
   },
   "consumptionMode": {
     "label": "Mode de consommation",
@@ -832,6 +842,7 @@
     "payments": "Paiements :",
     "changeDue": "Monnaie Rendue :",
     "rounding": "Arrondi",
+    "tolerance": "Écart accepté",
     "vatRate": "TVA %",
     "taxable": "Base HT",
     "taxCol": "TVA",

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CashPaymentScreen, type CashPaymentScreenProps, computeCashTenderState } from '../CashPaymentScreen';
+import { bccomp } from '@/lib/decimal';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -38,9 +39,9 @@ vi.mock('@/components/molecules/NumPad', () => ({
 }));
 
 vi.mock('@/lib/denominations', () => ({
-  getDenominations: (_currency: string, total: number) => {
+  getDenominations: (_currency: string, total: string) => {
     const all = [5, 10, 20, 50, 100];
-    return all.filter((d) => d >= total);
+    return all.filter((d) => bccomp(String(d), total) >= 0);
   },
 }));
 
@@ -49,7 +50,7 @@ function renderScreen(overrides: Partial<CashPaymentScreenProps> = {}) {
     isOpen: true,
     onClose: vi.fn(),
     onConfirm: vi.fn(),
-    total: 25,
+    total: '25.00',
     isProcessing: false,
   };
   return render(<CashPaymentScreen {...defaults} {...overrides} />);
@@ -67,21 +68,21 @@ describe('CashPaymentScreen', () => {
   });
 
   it('shows amount due when open', () => {
-    renderScreen({ total: 42.5 });
+    renderScreen({ total: '42.50' });
     expect(screen.getByText('42.50 EUR')).toBeInTheDocument();
     expect(screen.getByText('cashPayment.amountDue')).toBeInTheDocument();
   });
 
   it('shows denomination buttons', () => {
     // total=3, denominations >= 3 are: 5, 10, 20, 50, 100
-    renderScreen({ total: 3 });
+    renderScreen({ total: '3.00' });
     expect(screen.getByText('5 EUR')).toBeInTheDocument();
     expect(screen.getByText('10 EUR')).toBeInTheDocument();
     expect(screen.getByText('50 EUR')).toBeInTheDocument();
   });
 
   it('"Exact" button enables the confirm button', () => {
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     // Before clicking exact, confirm is disabled
     expect(screen.getByText('cashPayment.complete').closest('button')).toBeDisabled();
     fireEvent.click(screen.getByText('cashPayment.exact'));
@@ -90,14 +91,14 @@ describe('CashPaymentScreen', () => {
   });
 
   it('confirm button is disabled when tendered is less than total', () => {
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     // No amount tendered yet, confirm should be disabled
     const confirmBtn = screen.getByText('cashPayment.complete').closest('button');
     expect(confirmBtn).toBeDisabled();
   });
 
   it('confirm button is disabled when processing', () => {
-    renderScreen({ total: 25, isProcessing: true });
+    renderScreen({ total: '25.00', isProcessing: true });
     // When processing and no tendered, button is disabled
     const confirmBtn = screen.getByText('cashPayment.processing').closest('button');
     expect(confirmBtn).toBeDisabled();
@@ -105,7 +106,7 @@ describe('CashPaymentScreen', () => {
 
   it('calls onConfirm with tendered amount STRING (not float) when confirm clicked', () => {
     const onConfirm = vi.fn();
-    renderScreen({ total: 3, onConfirm });
+    renderScreen({ total: '3.00', onConfirm });
     // Click a denomination — 50 EUR → tenderedStr should be '50.00' (bcformat string)
     fireEvent.click(screen.getByText('50 EUR'));
     fireEvent.click(screen.getByText('cashPayment.complete'));
@@ -123,20 +124,20 @@ describe('CashPaymentScreen', () => {
   });
 
   it('hides the change-due box until change is positive', () => {
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     // No over-tender yet → change is 0 → box not rendered.
     expect(screen.queryByText('cashPayment.changeDue')).not.toBeInTheDocument();
   });
 
   it('shows change due box once tendered exceeds total', () => {
     // total=3, tender 50 via denomination → change 47 → box shown.
-    renderScreen({ total: 3 });
+    renderScreen({ total: '3.00' });
     fireEvent.click(screen.getByText('50 EUR'));
     expect(screen.getByText('cashPayment.changeDue')).toBeInTheDocument();
   });
 
   it('shows the disabled reason when no valid amount is tendered', () => {
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     expect(screen.getByText('cashPayment.enterAmount')).toBeInTheDocument();
   });
 
@@ -145,7 +146,7 @@ describe('CashPaymentScreen', () => {
     // Old behavior: digit was appended (e.g. 25 + 5 = "255"), but format() rounded
     // back to 25 EUR so the display looked unchanged and the cashier was stuck.
     // New behavior: the digit overwrites the preset like industry-standard POS.
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     fireEvent.click(screen.getByText('cashPayment.exact'));
     expect(screen.getByTestId('numpad-value').textContent).toBe('25.00');
     fireEvent.click(screen.getByTestId('numpad-press-5'));
@@ -154,7 +155,7 @@ describe('CashPaymentScreen', () => {
   });
 
   it('digit press after a denomination button overwrites the preset', () => {
-    renderScreen({ total: 3 });
+    renderScreen({ total: '3.00' });
     fireEvent.click(screen.getByText('50 EUR'));
     expect(screen.getByTestId('numpad-value').textContent).toBe('50.00');
     fireEvent.click(screen.getByTestId('numpad-press-5'));
@@ -162,7 +163,7 @@ describe('CashPaymentScreen', () => {
   });
 
   it('backspace after Exact behaves normally and does not trigger overwrite', () => {
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     fireEvent.click(screen.getByText('cashPayment.exact'));
     expect(screen.getByTestId('numpad-value').textContent).toBe('25.00');
     fireEvent.click(screen.getByTestId('numpad-backspace'));
@@ -172,13 +173,46 @@ describe('CashPaymentScreen', () => {
 
   it('typing further digits after preset+overwrite appends normally', () => {
     // Preset → digit (overwrite) → next digit (append, since preset flag cleared)
-    renderScreen({ total: 25 });
+    renderScreen({ total: '25.00' });
     fireEvent.click(screen.getByText('cashPayment.exact'));
     fireEvent.click(screen.getByTestId('numpad-press-5'));
     expect(screen.getByTestId('numpad-value').textContent).toBe('5');
     fireEvent.click(screen.getByTestId('numpad-press-5'));
     // Preset flag was cleared after the first overwrite, so this appends
     expect(screen.getByTestId('numpad-value').textContent).toBe('55');
+  });
+
+  // ── Cash rounding (spec 2026-07-27 §4.1) ───────────────────────────────────
+
+  it('shows the rounding line when the snapshot carries a non-zero adjustment', () => {
+    renderScreen({ total: '25.00', roundingAdjustment: '-0.02' });
+    expect(screen.getByText('cashPayment.rounding')).toBeInTheDocument();
+    expect(screen.getByText('-0.02 EUR')).toBeInTheDocument();
+  });
+
+  it('hides the rounding line when there is no adjustment', () => {
+    renderScreen({ total: '25.00', roundingAdjustment: '0.00' });
+    expect(screen.queryByText('cashPayment.rounding')).not.toBeInTheDocument();
+  });
+
+  it('hides the rounding line when rounding is not in play at all', () => {
+    renderScreen({ total: '25.00' });
+    expect(screen.queryByText('cashPayment.rounding')).not.toBeInTheDocument();
+  });
+
+  it('enables Confirm at an in-tolerance floor below the amount due', () => {
+    // The caller passes the ROUNDED due plus the auto-accept floor; a tender
+    // that lands between the two must be confirmable without a manager PIN.
+    renderScreen({ total: '25.00', minimumAcceptable: '5.00' });
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('5');
+    expect(screen.getByText('cashPayment.complete').closest('button')).not.toBeDisabled();
+  });
+
+  it('still refuses a tender below the in-tolerance floor', () => {
+    renderScreen({ total: '25.00', minimumAcceptable: '20.00' });
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByText('cashPayment.complete').closest('button')).toBeDisabled();
   });
 });
 
@@ -216,5 +250,31 @@ describe('computeCashTenderState', () => {
     const { changeDue, isValid } = computeCashTenderState('10.100', '9.800', 3);
     expect(changeDue).toBe('0.300');
     expect(isValid).toBe(true);
+  });
+
+  it('an in-tolerance floor accepts an under-tender without inventing change', () => {
+    // TND: rounded due 9.950, auto-accept floor 9.900. 9.900 is short of the
+    // due but inside the floor → valid, and the change stays zero (the 0.050
+    // is a tolerance write-off, never money handed back).
+    const { changeDue, isValid } = computeCashTenderState('9.900', '9.950', 3, '9.900');
+    expect(isValid).toBe(true);
+    expect(changeDue).toBe('0.000');
+  });
+
+  it('an in-tolerance floor still refuses a tender below the floor', () => {
+    const { isValid } = computeCashTenderState('9.800', '9.950', 3, '9.900');
+    expect(isValid).toBe(false);
+  });
+
+  it('an in-tolerance floor does not change the over-tender change due', () => {
+    const { changeDue, isValid } = computeCashTenderState('10.000', '9.950', 3, '9.900');
+    expect(isValid).toBe(true);
+    expect(changeDue).toBe('0.050');
+  });
+
+  it('a blank tender is invalid even when the floor is zero', () => {
+    const { changeDue, isValid } = computeCashTenderState('', '0.000', 3, '0.000');
+    expect(isValid).toBe(false);
+    expect(changeDue).toBe('0.000');
   });
 });

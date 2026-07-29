@@ -240,6 +240,44 @@ describe('paymentStore.refreshFromSQLite', () => {
     expect(afterMethods[0]!.name).toBe('Cash (renamed)');
   });
 
+  it('T2: refreshFromSQLite triggers a snapshot change when is_cash_tender flips on an existing id', async () => {
+    const seedMethod = makePaymentMethod({
+      id: 'pm-cash',
+      code: 'CASH',
+      is_cash_tender: true,
+    });
+    const seedRepo = makePaymentRepository({
+      id: 'repo-cash',
+      type: 'cash_register',
+    });
+    usePaymentStore.setState({
+      paymentMethods: [seedMethod],
+      paymentRepositories: [seedRepo],
+    });
+
+    const { getAllPaymentMethods, getAllPaymentRepositories } = await import(
+      '@/lib/db/repositories/paymentRepository'
+    );
+    // Same id, same everything EXCEPT the cash flag. If the shallow-equality
+    // guard omits is_cash_tender, an admin turning cash tendering off (or on)
+    // is invisible to every 60 s SQLite refresh tick and the cashier keeps
+    // classifying tenders against the stale flag until an unrelated field
+    // changes.
+    vi.mocked(getAllPaymentMethods).mockResolvedValueOnce([
+      makePaymentMethod({ id: 'pm-cash', code: 'CASH', is_cash_tender: false }),
+    ]);
+    vi.mocked(getAllPaymentRepositories).mockResolvedValueOnce([
+      makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+    ]);
+
+    const beforeMethods = usePaymentStore.getState().paymentMethods;
+    await usePaymentStore.getState().refreshFromSQLite();
+    const afterMethods = usePaymentStore.getState().paymentMethods;
+
+    expect(afterMethods).not.toBe(beforeMethods);
+    expect(afterMethods[0]!.is_cash_tender).toBe(false);
+  });
+
   it('T0.5: paymentStore.refreshFromSQLite leaves in-memory state unchanged when SQLite returns zero methods', async () => {
     // Pre-seed in-memory state with the cashier's currently-loaded config.
     // The empty-SQLite branch must NOT clobber this — that would leave the

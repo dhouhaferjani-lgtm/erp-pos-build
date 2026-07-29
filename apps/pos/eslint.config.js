@@ -355,6 +355,10 @@ export default tseslint.config(
       'src/stores/refundDraftStore.ts',
       'src/stores/paymentStore.ts',
       'src/lib/offline/receiptService.ts',
+      // Canonical money modules (2026-07-28 cash-rounding T5): the single-sourced
+      // cart total and the quick-tender denominations both take decimal strings.
+      'src/lib/payment/cartTotals.ts',
+      'src/lib/denominations.ts',
     ],
     plugins: { precision: precisionPlugin },
     rules: {

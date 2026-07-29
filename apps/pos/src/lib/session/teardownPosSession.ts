@@ -2,6 +2,7 @@ import { useCartStore } from '@/stores/cartStore';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { usePaymentPolicyStore } from '@/stores/paymentPolicyStore';
 import { useProductStore } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 
@@ -16,6 +17,13 @@ export function teardownPosSessionStores(): void {
   useRefundDraftStore.getState().clearDraftState();
   usePaymentStore.getState().clearVoucherTenders();
   usePaymentStore.getState().reset();
+  // The policy slice is a global singleton while the SQLite cache is
+  // per-company. Signing out is the entry point to a company switch
+  // (LoginPage -> setCompany), so the previous company's cash-rounding
+  // denomination and tolerance caps must not survive it — offline, terminal
+  // activation's `hydratePaymentPolicyFromCache` is the only thing that would
+  // reload them, and it can only clear what it finds.
+  usePaymentPolicyStore.getState().reset();
   useProductStore.getState().reset();
   useOperatorStore.getState().clearOperator();
 }
