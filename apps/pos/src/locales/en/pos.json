@@ -69,7 +69,8 @@
     "pendingSyncCount": "{{count}} sale(s) pending sync",
     "configNotLoaded": "Payment config not loaded — try Sync Now",
     "tenderBelowDue": "The amount tendered is below the amount due.",
-    "changeExceedsCashLegs": "Change cannot exceed the cash tendered. Add a cash tender or lower the non-cash amount."
+    "changeExceedsCashLegs": "Change cannot exceed the cash tendered. Add a cash tender or lower the non-cash amount.",
+    "totalIntegrityError": "The sale total could not be verified. Nothing was recorded — please retry the sale."
   },
   "cashPayment": {
     "back": "Back",

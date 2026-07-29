@@ -594,13 +594,12 @@ interface CreateReceiptLocalFirstOptions {
   tableId?: string | null;
   tenderToleranceEvidence?: PosOverrideEvidence;
   /**
-   * The sealed checkout decision (spec §4.3) for this sale. Optional ONLY
-   * until Task 9 makes `OfflineReceiptInput.policySnapshot` required and the
-   * v3 payload starts signing the rounded total, the adjustment and the
-   * denomination out of it. EVERY caller already passes one, so that flip is a
-   * one-character change with no new call-site work.
+   * The sealed checkout decision (spec §4.3) for this sale — REQUIRED. The v3
+   * payload signs the rounded total, the adjustment and the denomination out
+   * of it, so a call site that cannot produce one has not decided what it is
+   * charging: that must be a compile error, not a silently unrounded receipt.
    */
-  policySnapshot?: CheckoutPolicySnapshot;
+  policySnapshot: CheckoutPolicySnapshot;
 }
 
 /**
@@ -645,7 +644,7 @@ async function createReceiptLocalFirst(
    * `pendingIdempotencyKey` on PaymentState for the lifecycle.
    */
   idempotencyKey: string,
-  options: CreateReceiptLocalFirstOptions = {},
+  options: CreateReceiptLocalFirstOptions,
 ): Promise<OfflineReceiptResult> {
   const {
     transactionDiscount,
@@ -1217,6 +1216,41 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const decimals = getCurrencyDecimals(currency);
       const totalEstimate = bcsum(cartItems.map((i) => i.line_total), decimals);
 
+      // ── The sealed checkout decision (spec §4.3) ─────────────────────────
+      // A REAL snapshot from the same builder the cash paths use, not a
+      // hand-made "no rounding" object: the exact total is the single-sourced
+      // line-derived total (the same function receiptService re-derives and
+      // asserts against), and the tender is the card leg. Because a card leg
+      // is not cash, `isCashOnlyTender` is false, so the gate closes on its
+      // own and the snapshot carries `roundedTotal == exactTotal` with the
+      // canonical-zero adjustment and denomination. The card path is therefore
+      // byte-identical to today WITHOUT any special-casing downstream.
+      //
+      // NOTE (pre-existing, deliberately NOT fixed here — separately
+      // ticketed): the card LEG amount above is `bcsum(line_total)`, which
+      // ignores `transactionDiscount`. That is wrong on a discounted sale, but
+      // it is a payment-leg bug on a path with no production caller (HomePage
+      // wires only processCashCheckout and processAdvancedCheckout) and
+      // nothing asserts `Σ payments == total`. Fixing it is a behavior change
+      // outside this task; the snapshot deliberately does NOT inherit it.
+      const terminalSnapshot = useTerminalStore.getState();
+      const snapshot = buildCheckoutPolicySnapshot({
+        exactTotal: computeExactCartTotal(cartItems, transactionDiscount, currency),
+        currency,
+        legs: [{ methodCode: cardMethod.code, amount: totalEstimate }],
+        // No cash in hand on a card sale — same '0' passed as tenderedAmount
+        // below, so the gate and the receipt agree on what was tendered.
+        tenderedAmount: '0',
+        isCashMethodCode: makeIsCashMethodCode(paymentMethods),
+        policy: getActivePaymentPolicy(),
+        fiscalSchemaVersion: terminalSnapshot.terminal?.fiscal_schema_version ?? null,
+        invoiceType: terminalSnapshot.terminal?.is_training_mode === true ? 'TRAINING' : 'SALE',
+        // No auto-accept headroom is spendable on a non-cash tender anyway
+        // (the decision short-circuits on `cashOnly`); the fail-closed value
+        // keeps that true even if the predicate ever changes.
+        autoAcceptCountThisShift: TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT,
+      });
+
       await createReceiptLocalFirst(
         set,
         terminalId,
@@ -1231,15 +1265,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }],
         '0', // tenderedAmount = '0' for card (no cash in hand)
         idempotencyKey,
-        // Deliberately NO policySnapshot. Quick cash and the advanced path both
-        // pass one, so Task 9 only has to drop the `?`; this call site will
-        // then fail to compile, ON PURPOSE. `totalEstimate` above is a bare sum
-        // of `line_total` that ignores `transactionDiscount` (pre-existing), so
-        // a snapshot built from it would violate Task 9's
-        // `total == policySnapshot.exactTotal` bind on every discounted card
-        // sale. Manufacturing a half-right snapshot here would hide that;
-        // Task 9 must reconcile the card path's total first.
-        { transactionDiscount, consumptionMode, tableId },
+        { transactionDiscount, consumptionMode, tableId, policySnapshot: snapshot },
       );
 
       set({ changeDue: '0', isProcessing: false });

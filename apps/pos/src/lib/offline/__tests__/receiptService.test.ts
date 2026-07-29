@@ -36,6 +36,10 @@ import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import { bcadd } from '@/lib/decimal';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { makeCartItem } from '@/test/helpers';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutPolicySnapshot,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 function makeMockDb() {
@@ -73,6 +77,30 @@ const seller = {
   city: 'Tunis',
   postalCode: '1000',
 };
+
+/**
+ * The sealed checkout decision for a sale with NO cash rounding: a null policy
+ * closes the gate, so `roundedTotal == exactTotal` and the adjustment /
+ * denomination are canonical zeros. That is exactly today's behaviour, which is
+ * why every pre-v3 assertion in this suite stays valid verbatim.
+ *
+ * `exactTotal` is stated explicitly per call site rather than re-derived from
+ * the cart: receiptService asserts the two against each other before anything
+ * signs, so a wrong number here fails loudly instead of silently agreeing.
+ */
+function unroundedSnapshot(exactTotal: string, currency = 'EUR'): CheckoutPolicySnapshot {
+  return buildCheckoutPolicySnapshot({
+    exactTotal,
+    currency,
+    legs: [{ methodCode: 'CASH', amount: exactTotal }],
+    tenderedAmount: exactTotal,
+    isCashMethodCode: (code) => code === 'CASH',
+    policy: null,
+    fiscalSchemaVersion: 3,
+    invoiceType: 'SALE',
+    autoAcceptCountThisShift: 0,
+  });
+}
 
 function evidence(overrides: Partial<PosOverrideEvidence> = {}): PosOverrideEvidence {
   return {
@@ -136,6 +164,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     const beginStmt = vi
@@ -170,6 +199,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     })).rejects.toMatch('database is locked');
 
     const statements = vi.mocked(db.execute).mock.calls.map((c) => String(c[0]));
@@ -196,6 +226,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
@@ -277,6 +308,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       },
       tenderToleranceEvidence,
       payments: [{ methodCode: 'CASH', amount: '8.00' }],
+      policySnapshot: unroundedSnapshot('8.00'),
     });
 
     const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
@@ -342,6 +374,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       transactionDiscount: { type: 'percentage', value: '7', reason: 'Loyalty 7%' },
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('9.29'),
     });
 
     expect(result.subtotal).toBe('9.99');
@@ -394,6 +427,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       transactionDiscount: { type: 'percentage', value: '12.5', reason: 'Staff 12.5%' },
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('4.37'),
     });
 
     expect(result.subtotal).toBe('5.00');
@@ -444,6 +478,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      policySnapshot: unroundedSnapshot('10.00'),
     });
 
     // The stored offline line carries the variant identity.

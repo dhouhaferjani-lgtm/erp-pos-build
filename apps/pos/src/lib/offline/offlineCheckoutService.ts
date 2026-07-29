@@ -6,6 +6,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { bcsum } from '@/lib/decimal';
 import type { CartItem } from '@/types/cart';
 import type { SaleReceiptSellerInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
+import type { CheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
 
 export interface CheckoutInput {
   tenantId: string;
@@ -48,6 +49,18 @@ export interface CheckoutInput {
   }>;
   consumptionMode?: string;
   tableId?: string;
+  /**
+   * The sealed checkout decision (spec §4.3) — REQUIRED, and deliberately an
+   * INPUT rather than something this wrapper derives.
+   *
+   * `executeCheckout` has no access to the payment-policy slice, the terminal's
+   * fiscal schema version or the per-shift auto-accept budget, so it cannot
+   * decide whether this sale rounds. The layer that took the tender already
+   * did (`buildCheckoutPolicySnapshot`); inventing a second, less-informed
+   * decision here is exactly the drift the seal-once discipline exists to
+   * prevent.
+   */
+  policySnapshot: CheckoutPolicySnapshot;
 }
 
 export interface CheckoutResult {
@@ -122,6 +135,7 @@ export async function executeCheckout(
     payments: input.payments ?? defaultPayments,
     consumptionMode: input.consumptionMode,
     tableId: input.tableId,
+    policySnapshot: input.policySnapshot,
   });
 
   // Pass 1: connectivity-aware sync flush. Online → kick an immediate flush

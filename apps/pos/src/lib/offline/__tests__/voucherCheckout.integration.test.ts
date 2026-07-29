@@ -49,6 +49,10 @@ import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { migrations } from '@/lib/db/migrations';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
+import {
+  buildCheckoutPolicySnapshot,
+  type CheckoutPolicySnapshot,
+} from '@/lib/payment/checkoutPolicySnapshot';
 import { findByCode } from '@/lib/offline/voucherRepository';
 import { makeCartItem } from '@/test/helpers';
 
@@ -80,6 +84,26 @@ const fiscalReceiptContext = {
     postalCode: '75001',
   },
 } as const;
+
+/**
+ * The sealed checkout decision (spec §4.3) for a sale with NO cash rounding.
+ * A null policy closes the rounding gate, so `roundedTotal == exactTotal` and
+ * the adjustment / denomination are canonical zeros — byte-for-byte today's
+ * behaviour, which is what keeps every pre-v3 assertion in this suite valid.
+ */
+function unroundedSnapshot(exactTotal: string, currency = 'EUR'): CheckoutPolicySnapshot {
+  return buildCheckoutPolicySnapshot({
+    exactTotal,
+    currency,
+    legs: [{ methodCode: 'CASH', amount: exactTotal }],
+    tenderedAmount: exactTotal,
+    isCashMethodCode: (code) => code === 'CASH',
+    policy: null,
+    fiscalSchemaVersion: 3,
+    invoiceType: 'SALE',
+    autoAcceptCountThisShift: 0,
+  });
+}
 
 const nodeSqliteAvailable = (() => {
   try {
@@ -197,6 +221,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
       tenderedAmount: '50.00',
+      policySnapshot: unroundedSnapshot('50.00'),
       payments: [
         {
           methodCode: 'store_voucher',
@@ -261,6 +286,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
       tenderedAmount: '20.00',
+      policySnapshot: unroundedSnapshot('20.00'),
       payments: [
         {
           methodCode: 'store_voucher',
@@ -291,6 +317,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
         paymentMethodId: 'pm-store-voucher',
         paymentRepositoryId: 'repo-virtual',
         tenderedAmount: '50.00',
+        policySnapshot: unroundedSnapshot('50.00'),
         payments: [
           {
             methodCode: 'store_voucher',
@@ -336,6 +363,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
       tenderedAmount: '50.00',
+      policySnapshot: unroundedSnapshot('50.00'),
       payments: [
         {
           methodCode: 'CASH',

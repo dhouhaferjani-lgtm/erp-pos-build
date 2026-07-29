@@ -238,7 +238,11 @@ function seedCommonStores() {
       location: { id: 'loc1', name: 'Main', code: 'MAIN' },
     },
     shift: {
-      id: 'shift-1',
+      // A real UUID: `fiscalShiftIdForReceipt` (one-id model, Phase 1) refuses
+      // a non-UUID shift id, so a 'shift-1' fixture kills this flow before any
+      // payload is built — which is exactly how the v3 payload regression this
+      // suite exists to catch went unnoticed.
+      id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
       terminal_id: 'terminal-1',
       shift_number: 1,
       status: 'OPEN',

@@ -55,6 +55,15 @@ export interface OfflineReceipt {
   payments_json: string;
   consumption_mode: string | null;
   table_id: string | null;
+  /**
+   * v3 signed rounding mirror (spec §4.3), at currency scale. Null — not a
+   * canonical zero — on an unrounded receipt, so "rounding did not apply" and
+   * "rounding applied and netted to zero" stay distinguishable locally.
+   */
+  cash_rounding_adjustment: string | null;
+  cash_rounding_denomination: string | null;
+  /** Local auto-accepted tender shortfall. Null when no tolerance was applied. */
+  tolerance_shortfall: string | null;
   canonical_bytes?: string | null;
   /** Set after first successful sync; null until then. */
   server_receipt_id: string | null;
@@ -90,8 +99,9 @@ export async function insertOfflineReceipt(
       total, currency, fiscal_hash, previous_hash, hash_sequence,
       transaction_discount_amount, transaction_discount_reason,
       tendered_amount, change_due, payment_method_id, payment_repository_id, status,
-      payments_json, consumption_mode, table_id, fiscal_schema_version, is_training, canonical_bytes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
+      payments_json, consumption_mode, table_id, fiscal_schema_version, is_training, canonical_bytes,
+      cash_rounding_adjustment, cash_rounding_denomination, tolerance_shortfall
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -104,6 +114,9 @@ export async function insertOfflineReceipt(
       receipt.status,
       receipt.payments_json, receipt.consumption_mode, receipt.table_id,
       receipt.fiscal_schema_version, receipt.is_training, receipt.canonical_bytes ?? null,
+      receipt.cash_rounding_adjustment ?? null,
+      receipt.cash_rounding_denomination ?? null,
+      receipt.tolerance_shortfall ?? null,
     ]
   );
   // T2.2 Step 5.1: this function is now transactionally pure. The

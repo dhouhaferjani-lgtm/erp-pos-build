@@ -31,6 +31,7 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
 }));
 
 import { executeCheckout, type CheckoutInput } from '../offlineCheckoutService';
+import { buildCheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapshot';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
@@ -66,6 +67,21 @@ function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
     paymentRepositoryId: 'repo-1',
     tenderedAmount: '100.00',
     receiptData: { terminal_id: 'terminal-1', lines: [] },
+    // The sealed checkout decision is an INPUT to this wrapper, not something
+    // it derives: it has no payment policy, terminal or shift context of its
+    // own. A null policy closes the rounding gate, so this fixture is today's
+    // exact behaviour.
+    policySnapshot: buildCheckoutPolicySnapshot({
+      exactTotal: '50.00',
+      currency: 'EUR',
+      legs: [{ methodCode: 'CASH', amount: '100.00' }],
+      tenderedAmount: '100.00',
+      isCashMethodCode: (code) => code === 'CASH',
+      policy: null,
+      fiscalSchemaVersion: 3,
+      invoiceType: 'SALE',
+      autoAcceptCountThisShift: 0,
+    }),
     ...overrides,
   };
 }

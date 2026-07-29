@@ -73,6 +73,9 @@ function baseReceipt(): Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_
     payments_json: '[]',
     consumption_mode: null,
     table_id: null,
+    cash_rounding_adjustment: null,
+    cash_rounding_denomination: null,
+    tolerance_shortfall: null,
     fiscal_schema_version: 2,
     is_training: 0,
   };
