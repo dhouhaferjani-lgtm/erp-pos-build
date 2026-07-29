@@ -150,12 +150,24 @@ export function formatQuantity(
  * Tunisia & France: DD/MM/YYYY
  * US: MM/DD/YYYY
  */
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
 export function formatDate(
   date: string | Date,
   format: 'DD/MM/YYYY' | 'MM/DD/YYYY' = 'DD/MM/YYYY',
   locale?: string
 ): string {
-  const d = typeof date === 'string' ? new Date(date) : date
+  // A date-ONLY string (`YYYY-MM-DD`) carries no time or zone. `new Date(str)`
+  // would parse it as UTC midnight, which then shifts back a calendar day when
+  // formatted in a timezone behind UTC. Build a LOCAL date from its parts so the
+  // rendered calendar date matches the input in every timezone. Datetime strings
+  // (with a time or offset) keep their instant-based, zone-converting behavior.
+  const dateOnlyMatch = typeof date === 'string' ? DATE_ONLY_PATTERN.exec(date) : null
+  const d = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : typeof date === 'string'
+      ? new Date(date)
+      : date
 
   if (isNaN(d.getTime())) {
     return ''
