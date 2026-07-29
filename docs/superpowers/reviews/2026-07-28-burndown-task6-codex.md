@@ -14,3 +14,11 @@ Diff: 83efaa89f..2145b240a · Reviewer: Codex CLI (via codex-rescue agent) · 20
 - **[Nit/clean]** Staleness = full-content equality post newline-normalization (robust,
   not hash-only); JS-side guard checks CI wiring strings, PHP side executes the
   exporter — enforcement-purpose overlap but no contradiction.
+
+---
+
+# Round 2 outcome (fix 88d0079aa, 2026-07-29): CLOSED — controller-verified
+try/finally protects the temp file on all paths; REGENERATE_HINT names the command on
+the missing-map path; RED evidence captured with restore proof (git diff --quiet exit 0).
+Reviewer-prescribed mechanical fixes verified by diff inspection; whole-branch review is
+the remaining net. Task 6 closed at 2145b240a + 88d0079aa.
