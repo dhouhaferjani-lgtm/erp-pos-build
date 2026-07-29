@@ -20,3 +20,15 @@ Diff: c3caeee91..323cef01a · Reviewer: Codex CLI (via codex-rescue agent) · 20
 - **[Minor/clean]** 2b deletion verified clean by full-tree grep; no live references.
 - **ReconciliationStatus enum left in place:** adjudicated acceptable scope discipline,
   not a defect (brief scoped deletion to models + exclusive factories/seeders).
+
+---
+
+# Round 2 outcome (2026-07-29): CLOSED — code unchanged, both Importants resolved
+
+- Regex: controller adjudication recorded (unsigned correct; plan amended in-repo).
+- 2c honesty: mutation check executed — guard neutered → test FAILS at the
+  `$this->fail()` sentinel (pin bites); guard restored → green, `git diff` empty vs
+  HEAD. Report rewritten to state the guard pre-existed (821bf9d9f) and the test is a
+  regression pin, with the mutation evidence as validity proof. 2a chronology corrected.
+- No code delta since round 1; round 1 already judged the test/code functionally sound.
+  Task 2 closed at commits 091efd459 / d0169c741 / 323cef01a.
