@@ -84,3 +84,38 @@ Identified and backfilled the instrument bank-info block that Phase ② left owe
 
 None. Change is a locale-JSON-only, additive backfill; no code, types, or
 placeholders altered.
+
+---
+
+## Codex review fixes (APPROVE-WITH-FIXES → applied)
+
+Codex verdict was APPROVE-WITH-FIXES — all mechanical checks passed (parity
+741→0 missing, additivity byte-clean, no dupes, ICU exact, plurals complete),
+with two terminology corrections. Both applied in a follow-up commit; all keys
+touched were ones this task itself added (still additive vs the pre-task ar).
+
+1. **[Important] "Write-off" → شطب (was إعدام).** Confirmed the established
+   term via `grep شطب apps/web/src/locales/ar/` → `documents.json` uses شطب /
+   "سيتم شطب {{amount}}" for tolerance write-offs. Updated all 7 keys:
+   - `payments.toleranceWriteoff`: شطب ضمن هامش التسامح
+   - `payments.toleranceWriteoffExplanation`: فرق بسيط تم شطبه (ضمن هامش التسامح)
+   - `smartPayment.tolerance.writeoffApplied`: تم تطبيق الشطب ضمن هامش التسامح
+   - `smartPayment.tolerance.writeoffAmount`: الشطب: {{amount}}
+   - `smartPayment.tolerance.explanation`: سيتم شطب فروق الدفع البسيطة ضمن هامش التسامح تلقائيًا
+   - `smartPayment.preview.toleranceWriteoff`: شطب ضمن هامش التسامح
+   - `smartPayment.preview.excessHandling.toleranceWriteoff`: سيتم شطبه (ضمن هامش التسامح)
+
+   `grep -c إعدام` → 0 remaining.
+
+2. **[Minor] `instruments.markAsBounced`** تعليم كمرفوضة → **وضع علامة مرفوضة**,
+   consistent with the "mark as" phrasing used elsewhere in the ar locales
+   (`income.json` "وضع علامة كمستلم").
+
+### Re-verification after fixes
+
+- JSON valid; duplicate-key check at every nesting level: PASS (all locales).
+- Parity `ar ⊇ en`: **0 missing** (ar 762 / en 741 leaves) — unchanged.
+- Existing pre-task ar values still 240/240 untouched (the 8 edited keys were
+  all added by this task).
+- Focused vitest (same 3 files): 3 files / 8 tests PASS.
+- ICU placeholders on edited keys intact (`{{amount}}` preserved).
