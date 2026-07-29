@@ -6,7 +6,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
-import { usePaymentStore } from '@/stores/paymentStore';
+import { makeIsCashMethodCode, usePaymentStore } from '@/stores/paymentStore';
+import { usePaymentPolicyStore } from '@/stores/paymentPolicyStore';
+import { getActiveCurrency } from '@/lib/currency';
+import { computeExactCartTotal } from '@/lib/payment/cartTotals';
+import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
+import { computeCashScreenDisplay } from '@/lib/payment/checkoutPolicySnapshot';
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
@@ -135,7 +140,8 @@ export function HomePage() {
   // string (precision contract). The `number` selectors above remain for the
   // display-only cart panel AND for AdvancedPaymentsModal below, which is
   // still a numeric payment-authoring surface pending its own conversion.
-  const totalString = useCartStore((s) => s.totalString);
+  // The cash screen's amount due now comes from `cashScreenSnapshot` (the
+  // ROUNDED due), not from the cart's exact `totalString`.
   const discountAmountString = useCartStore((s) => s.discountAmountString);
   const itemCount = useCartStore((s) => s.itemCount);
 
@@ -156,6 +162,9 @@ export function HomePage() {
   const processAdvancedCheckout = usePaymentStore((s) => s.processAdvancedCheckout);
   const processAccountCharge = usePaymentStore((s) => s.processAccountCharge);
   const paymentRepositories = usePaymentStore((s) => s.paymentRepositories);
+  const toleranceAutoAcceptShiftId = usePaymentStore((s) => s.toleranceAutoAcceptShiftId);
+  const toleranceAutoAcceptCount = usePaymentStore((s) => s.toleranceAutoAcceptCount);
+  const paymentPolicy = usePaymentPolicyStore((s) => s.policy);
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
@@ -1199,6 +1208,44 @@ export function HomePage() {
     t,
   ]);
 
+  /**
+   * What the cash screen renders: the rounded due, the rounding line, and the
+   * lowest confirmable tender. DISPLAY ONLY — paymentStore seals the
+   * authoritative snapshot from the same builder when Confirm is pressed, so a
+   * policy tick between opening the screen and confirming cannot move what
+   * gets signed.
+   */
+  const cashScreenSnapshot = useMemo(() => {
+    const currency = getActiveCurrency();
+    const cashMethod = paymentMethods.find((m) => m.is_cash_tender && m.is_active);
+    const exactTotal = computeExactCartTotal(cartItems, transactionDiscount, currency);
+    return computeCashScreenDisplay({
+      exactTotal,
+      currency,
+      // Quick cash is a single cash leg for the whole due. With no cash method
+      // there is no leg at all — exactly the fail-closed "not cash-only" the
+      // gate wants during migration v63's DEFAULT 0 upgrade window; confirming
+      // then surfaces errors.noCashMethod.
+      legs: cashMethod ? [{ methodCode: cashMethod.code, amount: exactTotal }] : [],
+      isCashMethodCode: makeIsCashMethodCode(paymentMethods),
+      policy: paymentPolicy,
+      fiscalSchemaVersion: terminal?.fiscal_schema_version ?? null,
+      isTraining: terminal?.is_training_mode === true,
+      autoAcceptCountThisShift: shift === null
+        ? TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT
+        : toleranceAutoAcceptShiftId === shift.id ? toleranceAutoAcceptCount : 0,
+    });
+  }, [
+    cartItems,
+    transactionDiscount,
+    paymentMethods,
+    paymentPolicy,
+    terminal,
+    shift,
+    toleranceAutoAcceptShiftId,
+    toleranceAutoAcceptCount,
+  ]);
+
   const handlePayCash = useCallback(() => {
     switch (decidePayInterception(cartItems)) {
       case 'ignore':
@@ -1623,8 +1670,10 @@ export function HomePage() {
         isOpen={showCashModal}
         onClose={() => setShowCashModal(false)}
         onConfirm={(amount) => void handleCashConfirm(amount)}
-        total={totalString()}
+        total={cashScreenSnapshot.roundedTotal}
         discountAmount={discountAmountString()}
+        roundingAdjustment={cashScreenSnapshot.adjustment}
+        minimumAcceptable={cashScreenSnapshot.minimumAcceptable}
         isProcessing={isProcessing}
         error={paymentError}
       />

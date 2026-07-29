@@ -181,6 +181,39 @@ describe('CashPaymentScreen', () => {
     // Preset flag was cleared after the first overwrite, so this appends
     expect(screen.getByTestId('numpad-value').textContent).toBe('55');
   });
+
+  // ── Cash rounding (spec 2026-07-27 §4.1) ───────────────────────────────────
+
+  it('shows the rounding line when the snapshot carries a non-zero adjustment', () => {
+    renderScreen({ total: '25.00', roundingAdjustment: '-0.02' });
+    expect(screen.getByText('cashPayment.rounding')).toBeInTheDocument();
+    expect(screen.getByText('-0.02 EUR')).toBeInTheDocument();
+  });
+
+  it('hides the rounding line when there is no adjustment', () => {
+    renderScreen({ total: '25.00', roundingAdjustment: '0.00' });
+    expect(screen.queryByText('cashPayment.rounding')).not.toBeInTheDocument();
+  });
+
+  it('hides the rounding line when rounding is not in play at all', () => {
+    renderScreen({ total: '25.00' });
+    expect(screen.queryByText('cashPayment.rounding')).not.toBeInTheDocument();
+  });
+
+  it('enables Confirm at an in-tolerance floor below the amount due', () => {
+    // The caller passes the ROUNDED due plus the auto-accept floor; a tender
+    // that lands between the two must be confirmable without a manager PIN.
+    renderScreen({ total: '25.00', minimumAcceptable: '5.00' });
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('5');
+    expect(screen.getByText('cashPayment.complete').closest('button')).not.toBeDisabled();
+  });
+
+  it('still refuses a tender below the in-tolerance floor', () => {
+    renderScreen({ total: '25.00', minimumAcceptable: '20.00' });
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByText('cashPayment.complete').closest('button')).toBeDisabled();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -217,5 +250,31 @@ describe('computeCashTenderState', () => {
     const { changeDue, isValid } = computeCashTenderState('10.100', '9.800', 3);
     expect(changeDue).toBe('0.300');
     expect(isValid).toBe(true);
+  });
+
+  it('an in-tolerance floor accepts an under-tender without inventing change', () => {
+    // TND: rounded due 9.950, auto-accept floor 9.900. 9.900 is short of the
+    // due but inside the floor → valid, and the change stays zero (the 0.050
+    // is a tolerance write-off, never money handed back).
+    const { changeDue, isValid } = computeCashTenderState('9.900', '9.950', 3, '9.900');
+    expect(isValid).toBe(true);
+    expect(changeDue).toBe('0.000');
+  });
+
+  it('an in-tolerance floor still refuses a tender below the floor', () => {
+    const { isValid } = computeCashTenderState('9.800', '9.950', 3, '9.900');
+    expect(isValid).toBe(false);
+  });
+
+  it('an in-tolerance floor does not change the over-tender change due', () => {
+    const { changeDue, isValid } = computeCashTenderState('10.000', '9.950', 3, '9.900');
+    expect(isValid).toBe(true);
+    expect(changeDue).toBe('0.050');
+  });
+
+  it('a blank tender is invalid even when the floor is zero', () => {
+    const { changeDue, isValid } = computeCashTenderState('', '0.000', 3, '0.000');
+    expect(isValid).toBe(false);
+    expect(changeDue).toBe('0.000');
   });
 });

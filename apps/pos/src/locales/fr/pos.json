@@ -67,7 +67,8 @@
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
-    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant"
+    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant",
+    "tenderBelowDue": "Le montant remis est inférieur au montant dû."
   },
   "cashPayment": {
     "back": "Retour",
@@ -79,7 +80,8 @@
     "processing": "Traitement...",
     "complete": "Terminer et imprimer",
     "discount": "Remise",
-    "enterAmount": "Saisir le montant reçu"
+    "enterAmount": "Saisir le montant reçu",
+    "rounding": "Arrondi"
   },
   "cashTendered": {
     "title": "Paiement en espèces",

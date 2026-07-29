@@ -215,6 +215,9 @@ describe('D0-4: processCashCheckout tender gate — bccomp exact, no epsilon', (
     ];
     await expect(
       usePaymentStore.getState().processCashCheckout('term-1', items, '9.998'),
-    ).rejects.toThrow('Cash tender tolerance requires a manager-authored');
+      // The banner is now the i18n `payment.tenderBelowDue`; quick cash still
+      // offers no tolerance path of its own (the terminal fixture here carries
+      // no fiscal_schema_version, so nothing rounds and nothing auto-accepts).
+    ).rejects.toThrow('below the amount due');
   });
 });

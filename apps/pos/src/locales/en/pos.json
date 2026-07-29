@@ -67,7 +67,8 @@
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment...",
     "pendingSyncCount": "{{count}} sale(s) pending sync",
-    "configNotLoaded": "Payment config not loaded — try Sync Now"
+    "configNotLoaded": "Payment config not loaded — try Sync Now",
+    "tenderBelowDue": "The amount tendered is below the amount due."
   },
   "cashPayment": {
     "back": "Back",
@@ -79,7 +80,8 @@
     "processing": "Processing...",
     "complete": "Complete & Print Receipt",
     "discount": "Discount",
-    "enterAmount": "Enter the amount received"
+    "enterAmount": "Enter the amount received",
+    "rounding": "Rounding"
   },
   "cashTendered": {
     "title": "Cash Payment",
