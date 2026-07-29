@@ -246,6 +246,21 @@ describe('assertSaleReceiptAggregatesV3 — binds in normative order', () => {
       3,
     )).toThrow(SaleReceiptAggregateInvariantError);
   });
+
+  it('rejects an over-cap denomination even when the adjustment is canonical zero (fail-closed-at-signing regression)', () => {
+    // The server (FiscalPayloadConstraintValidator.php:2839) runs
+    // CashRoundingCaps::isWithinCap() UNCONDITIONALLY — outside the
+    // `adjustment != 0` block — so a payload carrying `adjustment '0.000'`
+    // with an over-cap denomination must never leave the device signed.
+    // (The canonical-zero/zero pair itself is already pinned by "carries
+    // canonical zeros when rounding did not apply" above, which builds AND
+    // asserts NO_ROUNDING — denomination '0.000' must keep building cleanly.)
+    expect(() => assertSaleReceiptAggregatesV3(
+      payloadWith({ total: '10.000', subtotal: '10.000', vat_total: '0.000',
+        cash_rounding_adjustment: '0.000', cash_rounding_denomination: '2.000' }),
+      3,
+    )).toThrow(SaleReceiptAggregateInvariantError);
+  });
 });
 
 describe('round trip: cashRounding output always satisfies the V3 binds', () => {

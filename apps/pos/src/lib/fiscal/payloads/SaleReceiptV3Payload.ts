@@ -102,9 +102,13 @@ export function buildSaleReceiptV3Payload(
 
 /**
  * V3 aggregate identity + rounding binds. Evaluation ORDER is normative
- * (spec §4.1): the denomination-positivity check runs BEFORE any modulo so a
- * zero divisor is unreachable — a raw division error would escape the
- * quarantine path server-side and kill the worker.
+ * (spec §4.1): the static denomination cap is checked UNCONDITIONALLY —
+ * before the zero-adjustment early return, exactly like the server
+ * (`FiscalPayloadConstraintValidator.php:2839`) — so this, the device's LAST
+ * gate before signing, can never be weaker than the server's. Within the
+ * `adjustment != 0` branch, the denomination-positivity check runs BEFORE
+ * any modulo so a zero divisor is unreachable — a raw division error would
+ * escape the quarantine path server-side and kill the worker.
  */
 export function assertSaleReceiptAggregatesV3(
   payload: SaleReceiptV3PayloadInput,
@@ -142,6 +146,25 @@ export function assertSaleReceiptAggregatesV3(
     );
   }
 
+  // 3. Static history-stable cap on the denomination — UNCONDITIONAL, checked
+  //    even when adjustment == 0. Mirrors the server: `isWithinCap()` runs
+  //    OUTSIDE the `adjustment != 0` block
+  //    (FiscalPayloadConstraintValidator.php:2839,
+  //    validateCashRoundingBinds()), and an unlisted scale is fail-closed
+  //    (CashRoundingCaps.php:66-73 — "absence of a cap is never permission").
+  //    A payload with `adjustment '0.000'` and an over-cap denomination must
+  //    never leave the device signed; only a listed scale with denomination
+  //    <= cap (including the canonical zero denomination, which is always
+  //    <= any positive cap) may pass. Checked BEFORE the zero-adjustment
+  //    early return so this gate is never skippable.
+  const cap = V3_DENOMINATION_CAP_BY_SCALE[scale];
+  if (cap === undefined || bccomp(denomination, cap) > 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `V3 rounding bind violated: cash_rounding_denomination ${denomination} exceeds `
+      + `the scale-${String(scale)} cap ${cap ?? '(unsupported scale)'}.`,
+    );
+  }
+
   if (bccomp(adjustment, bcformat('0', scale)) === 0) {
     return;
   }
@@ -169,15 +192,6 @@ export function assertSaleReceiptAggregatesV3(
     throw new SaleReceiptAggregateInvariantError(
       `V3 rounding bind violated: total ${payload.total} is not a multiple of `
       + `cash_rounding_denomination ${denomination} (remainder ${remainder}).`,
-    );
-  }
-
-  // 3. Static history-stable cap on the denomination.
-  const cap = V3_DENOMINATION_CAP_BY_SCALE[scale];
-  if (cap === undefined || bccomp(denomination, cap) > 0) {
-    throw new SaleReceiptAggregateInvariantError(
-      `V3 rounding bind violated: cash_rounding_denomination ${denomination} exceeds `
-      + `the scale-${String(scale)} cap ${cap ?? '(unsupported scale)'}.`,
     );
   }
 }
