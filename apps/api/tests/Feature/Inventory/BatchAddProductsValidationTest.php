@@ -30,6 +30,8 @@ final class BatchAddProductsValidationTest extends TestCase
 
     private const PRODUCT_BARCODE = '619400001001';
 
+    private const UNKNOWN_BARCODE = '619400009999';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -101,7 +103,7 @@ final class BatchAddProductsValidationTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.success', [])
             ->assertJsonPath('data.errors.0.data.productId', self::PRODUCT_BARCODE)
-            ->assertJsonPath('data.errors.0.code', 'invalid_product_id')
+            ->assertJsonPath('data.errors.0.code', 'PRODUCT_NOT_FOUND')
             ->assertJsonPath('data.errors.0.error', 'Invalid product ID; expected a UUID')
             ->assertJsonPath('data.total_products', 0);
 
@@ -117,7 +119,7 @@ final class BatchAddProductsValidationTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.success', [])
             ->assertJsonPath('data.errors.0.data.productId', (string) $this->otherCompanyProduct->id)
-            ->assertJsonPath('data.errors.0.code', 'product_not_found')
+            ->assertJsonPath('data.errors.0.code', 'PRODUCT_NOT_FOUND')
             ->assertJsonPath('data.errors.0.error', 'Product not found for current company')
             ->assertJsonPath('data.total_products', 0);
 
@@ -180,6 +182,44 @@ final class BatchAddProductsValidationTest extends TestCase
         $this->assertSame([(string) $this->product->id], $this->persistedProductIds());
     }
 
+    public function test_barcode_lookup_miss_returns_typed_code_and_unchanged_message(): void
+    {
+        $response = $this->postBatch([
+            ['barcode' => self::UNKNOWN_BARCODE],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.success', [])
+            ->assertJsonPath('data.errors.0.code', 'PRODUCT_NOT_FOUND')
+            ->assertJsonPath(
+                'data.errors.0.error',
+                'Product not found with barcode: '.self::UNKNOWN_BARCODE,
+            )
+            ->assertJsonPath('data.total_products', 0);
+
+        $this->assertSame([], $this->persistedProductIds());
+    }
+
+    public function test_duplicate_product_returns_typed_code_and_unchanged_message(): void
+    {
+        $this->counting->scope_filters = [
+            'product_ids' => [(string) $this->product->id],
+        ];
+        $this->counting->save();
+
+        $response = $this->postBatch([
+            ['productId' => (string) $this->product->id],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.success', [])
+            ->assertJsonPath('data.errors.0.code', 'PRODUCT_ALREADY_IN_COUNT')
+            ->assertJsonPath('data.errors.0.error', 'Product already added to this count')
+            ->assertJsonPath('data.total_products', 1);
+
+        $this->assertSame([(string) $this->product->id], $this->persistedProductIds());
+    }
+
     public function test_mixed_batch_persists_valid_products_and_reports_invalid_items(): void
     {
         $response = $this->postBatch([
@@ -193,11 +233,11 @@ final class BatchAddProductsValidationTest extends TestCase
             ->assertJsonCount(1, 'data.success')
             ->assertJsonCount(3, 'data.errors')
             ->assertJsonPath('data.success.0.productId', (string) $this->product->id)
-            ->assertJsonPath('data.errors.0.code', 'invalid_product_id')
+            ->assertJsonPath('data.errors.0.code', 'PRODUCT_NOT_FOUND')
             ->assertJsonPath('data.errors.0.error', 'Invalid product ID; expected a UUID')
             ->assertJsonPath('data.errors.1.data.productId', 619400009998)
-            ->assertJsonPath('data.errors.1.code', 'invalid_product_id')
-            ->assertJsonPath('data.errors.2.code', 'product_not_found')
+            ->assertJsonPath('data.errors.1.code', 'PRODUCT_NOT_FOUND')
+            ->assertJsonPath('data.errors.2.code', 'PRODUCT_NOT_FOUND')
             ->assertJsonPath('data.errors.2.error', 'Product not found for current company')
             ->assertJsonPath('data.total_products', 1);
 
