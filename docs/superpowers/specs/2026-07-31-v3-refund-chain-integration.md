@@ -1,23 +1,32 @@
-# v3 Refund/Void Chain Integration — Design Spec (REVISION 4.1 — ERRATA ROUND, TENANT-#1 LAUNCH SLICE)
+# v3 Refund/Void Chain Integration — Design Spec (REVISION 4.2 — FINAL, TENANT-#1 LAUNCH SLICE)
 
 **Lane:** C (first-tenant launch program). **Phase:** SPEC ONLY — zero code changes.
 **Round-4 verdicts on Revision 4 (`b99b7beb3`):** fiscal-pos-reviewer **APPROVE** (code phase may
-be planned, subject to this errata), treasury-reviewer **APPROVE-WITH-FIXES** (one hard blocker —
-T1 below — plus bounded boundary contracts), Codex 6/7 items **LANDED**, item 7 **PARTIAL**
-(3 mechanical citation fixes). Reviews:
+be planned, subject to errata), treasury-reviewer **APPROVE-WITH-FIXES** (one hard blocker —
+T1 — plus bounded boundary contracts), Codex 6/7 items **LANDED**, item 7 **PARTIAL** (3
+mechanical citation fixes). Reviews:
 `docs/superpowers/reviews/2026-07-31-lane-c-spec-r4-verify-consolidated.md`,
 `docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-r4-verify.md`.
+**Treasury micro-verify on the 4.1 errata (T1–T3):** T1 PASS, T2 PASS, **T3 MISS** — the
+`endOfDayPreview.ts` fix in 4.1 added `receipt_kind` and branched the tolerance/rounding/change-due
+sums, but left `cashTenderedSum`/`perMethod`'s per-payment loop unbranched; deleting the separate
+`cashRefundImpact` subtraction (as 4.1 correctly did for the now-redundant path) without also
+branching that loop would have reintroduced a +2× expected-cash error via a different code path
+in the same file. **Revision 4.2 (this revision) closes that miss** — see the errata-4.2 markers
+in §7.3a, §5.3, and §7.2a below. No further review round is planned.
 
-**This is the errata round — the final spec edit, not a fifth design round.** Revision 4's design
-was verified sound; this revision (4.1) applies the round-4 verification's exact, single-fold
-correction list (T1–T7, F1–F7, X1, X3) on top of it, with no further full review planned. The
-substantive corrections are: **T1** (hard blocker) — `SalesReturn` was falsely claimed seeded in
-all three chart seeders; only Generic actually has it, so the `valid_unbooked` write-off class
-was a 500 for tenant #1 until now (§5.3). **T2** — the `offline_receipts` refund row's status
-never flipped off `'pending'` (its fiscal event's `source_event_class` doesn't match the existing
-sync-completion-flip condition) and several NOT-NULL columns, most critically
-`hash_sequence` (the Z query's own windowing column), were unspecified — the exact class of
-silent-Z-drop bug this lane exists to close (§7.2a). **T3** — `endOfDayPreview.ts` runs its own,
+**This is the final spec edit, not a fifth design round.** Revision 4's design was verified
+sound; revision 4.1 applied the round-4 verification's exact single-fold correction list
+(T1–T7, F1–F7, X1, X3); revision 4.2 closes the one item (T3) that fold left incomplete. The
+substantive corrections across 4.1–4.2 are: **T1** (hard blocker) — `SalesReturn` was falsely
+claimed seeded in all three chart seeders; only Generic actually has it, so the `valid_unbooked`
+write-off class was a 500 for tenant #1 until now (§5.3), plus a resolved revenue-vs-expense
+account-type divergence on the FR/TN fix itself (errata 4.2, same section). **T2** — the
+`offline_receipts` refund row's status never flipped off `'pending'` (its fiscal event's
+`source_event_class` doesn't match the existing sync-completion-flip condition) and several
+NOT-NULL columns, most critically `hash_sequence` (the Z query's own windowing column), were
+unspecified — the exact class of silent-Z-drop bug this lane exists to close (§7.2a). **T3**
+(closed in 4.2) — `endOfDayPreview.ts` runs its own,
 separate query/loop that §7.3's `zReportService.ts` fix never touched (§7.3a). Every remaining
 item (T4–T7, F1–F7, X1, X3) is a bounded citation, naming, or wording correction, applied exactly
 as specified in the consolidated verification record — each is tagged inline at its edit site so
@@ -536,6 +545,21 @@ change.
   SystemAccountPurpose::SalesReturn->value` key — the account row already exists in both
   seeders; only the purpose mapping was absent. `GenericChartOfAccountsSeeder.php:196` is
   unchanged (already correct).
+- **Errata 4.2 (T1 minor — account-type divergence, resolved by alignment, not exception):**
+  both FR/TN 709 rows are currently typed `'type' => 'revenue'` (`FranceChartOfAccountsSeeder.php:282`,
+  `TunisiaChartOfAccountsSeeder.php:277`), but `SystemAccountPurpose::expectedAccountType()`
+  groups `SalesReturn` in its **Expense**-returning match arm (`SystemAccountPurpose.php:168-169`,
+  alongside `PaymentToleranceExpense`/`SalesReturnsClearing`/`RealizedFxLoss` — same arm) —
+  simply adding the purpose key without changing `'type'` would fail §17's seeder exhaustive-type
+  test the moment it runs. **Resolved by aligning to the existing precedent already present in
+  these same two files**, not by carving out an exception: each file's neighboring `7091`
+  account (`'Remboursements clients — Virements bons d'achat'`, `SystemAccountPurpose::SalesReturnsClearing`)
+  is **already** typed `'type' => 'expense'` (`FranceChartOfAccountsSeeder.php:287-288`,
+  `TunisiaChartOfAccountsSeeder.php:282-283`) for the identical reason — a contra-revenue,
+  class-7-numbered account that this codebase's `expectedAccountType()` model classifies as
+  Expense. The 709 row's `'type'` is changed from `'revenue'` to `'expense'` in both files, in
+  the same edit that adds the `system_purpose` key — consistent with the convention `7091`
+  already established two lines away, not a new one-off.
 - The backfill command (`BackfillRefundWriteOffAccountCommand`, §17) is **renamed**
   `BackfillRefundCompensationAccountsCommand` and covers **both** purposes —
   `RefundWriteOff` and `SalesReturn` — idempotently provisioning whichever of the two is missing
@@ -724,9 +748,13 @@ if (event.source_event_class === 'offline_receipts' && event.source_event_id !==
 ```
 
 New function `updateReceiptStatusByIdempotencyKey(db, idempotencyKey, status)` —
-`UPDATE offline_receipts SET status = $1, synced_at = datetime('now') WHERE idempotency_key =
-$2` (mirroring `updateReceiptStatus`'s existing column-set shape exactly, keyed by
-`idempotency_key` instead of `id`) — new file location `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`
+`UPDATE offline_receipts SET status = $1, synced_at = datetime('now'), sync_error = NULL WHERE
+idempotency_key = $2` (**errata 4.2 — the `sync_error = NULL` clause added**, mirroring
+`updateReceiptStatus`'s existing `'synced'`-branch column-set exactly, including that clause,
+`offlineReceiptRepository.ts:200` — not merely its `status`/`synced_at` columns; a prior sync
+attempt could otherwise leave a stale `sync_error` string on a row that has since synced
+successfully) — keyed by `idempotency_key` instead of `id` — new file location
+`apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`
 (the existing home of `updateReceiptStatus`, extended, not a new repository file).
 
 **Full column sign/source contract for the refund's `offline_receipts` insert**, every column
@@ -813,16 +841,56 @@ depending on the deletion's exact shape) the moment §7 lands.
 **Fix, mirroring §7.3's contract exactly, in this file's own query and loop:**
 - The query at `:172-173` adds `receipt_kind` to its `SELECT` list (no other column changes —
   every column §7.2a names is already either selected here or not needed by this preview).
-- The loop at `:216-280` branches per row on `receipt_kind`: `'sale'` rows keep today's exact
-  behavior (add to `toleranceTotal`/`roundingTotal`/`cashChangeDueSum`); `'refund'` rows
-  **subtract** from the same three running totals — `roundingTotal`/`toleranceTotal` via the
-  row's own (signed, per §7.2a) `cash_rounding_adjustment`/`tolerance_shortfall` columns (the
-  latter is always `NULL` per §7.2a, so a refund row never contributes to `toleranceTotal` at
-  all — stated explicitly so this isn't mistaken for an oversight), and `cashChangeDueSum` is
-  **not** touched by a refund row either (`change_due` is `NULL` per §7.2a — a refund has no
-  change concept, §7.2a's table).
-- The separate `getRefundRecordsForShift` call at `:354-355` is **deleted** — refund magnitude
-  now arrives through the same unified per-row loop above, not a second pass.
+- `toleranceTotal`/`roundingTotal`/`cashChangeDueSum` (`:216-280`): `'sale'` rows keep today's
+  exact behavior; `'refund'` rows **subtract** from `roundingTotal` via the row's own (signed,
+  §7.2a) `cash_rounding_adjustment` — `tolerance_shortfall` is always `NULL` on a refund row
+  (§7.2a's table), so a refund row never contributes to `toleranceTotal` at all, and
+  `cashChangeDueSum` is **not** touched by a refund row either (`change_due` is `NULL` per
+  §7.2a — a refund has no change concept).
+- The separate `getRefundRecordsForShift` call at `:354-357` and its `cashRefundImpact`
+  accumulator are **deleted** — refund magnitude now arrives entirely through the per-row loop's
+  new branches (below), not a second pass.
+
+**Errata 4.2 (treasury micro-verify MISS — closing the +2× expected-cash error the deletion
+above would otherwise reintroduce, mirroring §7.3's payment-method routing exactly):**
+
+- **`grossSales`/`netSales`/`taxAmount` (`:212-214`) are sale-only**, matching §7.3's already-
+  established sale-only semantics for the signed Z: the accumulation only runs for `'sale'` rows;
+  a `'refund'` row is skipped entirely for these three totals (never added, never subtracted —
+  refunds are their own tracked figure, not folded into gross/net sales, on either file).
+- **`perMethod`/`cashTenderedSum` (`:246-273`) get an explicit `receipt_kind` branch.**
+  `payments_json` is a **positive magnitude on every row, sale or refund** (§7.2a's table —
+  stated once there, binding here too). Left un-branched, deleting `cashRefundImpact` (above)
+  would mean a refund's positive `payments_json` amount is simply **added** to `perMethod`/
+  `cashTenderedSum` exactly like a sale's, and the separate `expected_cash` subtraction that used
+  to compensate for it (`cashRefundImpact`, now deleted) is gone — a refund payout would inflate
+  expected cash by its own magnitude instead of reducing it, a **+2× error** against the true
+  drawer position (the same class of bug §7.3 closed in `zReportService.ts`, now reappearing here
+  because this file's loop was never touched). Fix, per row inside the existing `for (const p of
+  payments)` loop (`:253-273`): for `receipt_kind === 'sale'`, unchanged (`existing.total_amount
+  = bcadd(...)`, `cashTenderedSum = bcadd(...)`); for `receipt_kind === 'refund'`,
+  **`existing.total_amount = bcsub(existing.total_amount, p.amount)`** and, when `key === 'CASH'`,
+  **`cashTenderedSum = bcsub(cashTenderedSum, p.amount)`** — subtracting the positive magnitude
+  instead of adding it, mirroring §7.3's `paymentByType` subtraction branch exactly. The
+  no-`payments_json` legacy-fallback branch (`:282-304`) is unreachable for a refund row (§7.2a's
+  contract always populates `payments_json` on a refund insert), so it needs no `receipt_kind`
+  branch of its own — stated explicitly so this isn't mistaken for an oversight.
+- **`expectedCash`'s formula (`:359-362`)** now needs no `cashRefundImpact` term at all (it is
+  deleted, above) — `cashTenderedSum` is already net of refunds by construction of the branch
+  just described, exactly mirroring §7.3's `expected_cash` simplification in `zReportService.ts`.
+
+**VAT-breakdown convention — two files, two conventions, one stated equivalence (per this
+errata's requirement that the two files not carry an unstated divergence):** `zReportService.ts`'s
+§7.3 fix recovers each refund line's magnitude via `bcabs()` and **subtracts** it from the
+running per-rate VAT totals ("bcabs-then-subtract"). `endOfDayPreview.ts`'s own VAT loop
+(`:231-244`) is left **unchanged** by this fix — it keeps unconditionally `bcadd`-ing each line's
+`line_total`/`tax_amount` straight from the row's `lines` JSON, with no `receipt_kind` branch and
+no `bcabs()`. This is deliberate, not an inconsistency: because a refund row's `lines` JSON is
+**negative**-signed (§7.2), plain addition of a negative value already produces the identical net
+result as `zReportService.ts`'s abs-then-subtract — "additive-over-negative-lines" and
+"bcabs-then-subtract" are two different implementations of the same arithmetic outcome, one
+relying on the stored sign, the other normalizing it explicitly. Both are correct; neither needs
+to change to match the other, and no `receipt_kind` branch is needed in this specific loop.
 
 ### 7.3b `productSalesAggregateRepository.ts` — net-units ruling (errata T7, minor)
 
@@ -1204,8 +1272,10 @@ not attempted here.
   `SalesReturn`, `:196`); add the `RefundWriteOff` account row.
 - `apps/api/database/seeders/FranceChartOfAccountsSeeder.php`,
   `apps/api/database/seeders/TunisiaChartOfAccountsSeeder.php` — add `'system_purpose' =>
-  SystemAccountPurpose::SalesReturn->value` to the existing 709 row (`:282`/`:277` respectively,
-  currently missing the purpose key — T1 errata); add the `RefundWriteOff` account row.
+  SystemAccountPurpose::SalesReturn->value` **and** change `'type'` from `'revenue'` to
+  `'expense'` on the existing 709 row (`:282`/`:277` respectively — errata T1/4.2, aligning to
+  the same file's own `7091`/`SalesReturnsClearing` expense-typed precedent, `:287-288`/`:282-283`);
+  add the `RefundWriteOff` account row.
 - New Artisan command: `apps/api/app/Modules/Accounting/Infrastructure/Commands/BackfillRefundCompensationAccountsCommand.php`
   (renamed from `BackfillRefundWriteOffAccountCommand`, T1 errata — idempotent per-tenant
   provisioning covering **both** `RefundWriteOff` and `SalesReturn`).
