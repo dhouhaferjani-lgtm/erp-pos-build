@@ -81,7 +81,7 @@ Each step records: command/click path, expected outcome, Gate class, actual outc
 | # | Action | Expected | Gate | Status | Actual Outcome | Evidence |
 |---|---|---|---|---|---|---|
 | B.1 | Tauri POS app: fresh install, paste activation code | Terminal activates; cashier list loads | P0 | | | |
-| B.2 | Restart POS app | Auto-resumes activated state; no re-prompt | non-P0 — re-prompting for activation is an operational inconvenience; it does not corrupt or lose any already-fiscalized receipt | | | |
+| B.2 | Restart POS app | Auto-resumes activated state; no re-prompt | P0 — a failed auto-resume implies an activation re-prompt adjacent to terminal re-claim/genesis-seed state, which touches fiscal durability (promoted from non-P0, orchestrator ruling 2026-07-31) | | | |
 | B.3 | POS app offline → online transition | Backlog (if any) drains; receipts sync | P0 | | | |
 
 ### C. Receipt + Z-Report

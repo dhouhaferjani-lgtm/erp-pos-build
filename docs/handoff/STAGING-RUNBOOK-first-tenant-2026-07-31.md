@@ -52,10 +52,12 @@ Lane D2-a verified every command below against its command class. One correction
   NOT a fleet-wide command.** `BackfillLocationAttributionCommand.php:20` declares
   `protected $signature = 'treasury:backfill-location-attribution {--company= : Company id (required)}'`
   and `handle()` returns `self::FAILURE` immediately if `--company` is missing or the company is not found.
-  Both `multiloc-deploy-checklist.md` §Wave 3 and the predecessor `STAGING-DEPLOY-RUNBOOK-2026-07-28.md`
-  §2c invoke it as `php artisan tenants:run treasury:backfill-location-attribution` with no `--company=` —
-  this would fail closed (exit `FAILURE`, "The --company option is required.") on every tenant. Step 6.3
-  below corrects this to the required per-company invocation.
+  `multiloc-deploy-checklist.md:23` names the bare command with no flags at all (`` `treasury:backfill-location-attribution` ``,
+  no `--company=`, no `tenants:run` wrapper); the predecessor `STAGING-DEPLOY-RUNBOOK-2026-07-28.md` §2c
+  adds the `tenants:run` wrapper but still omits `--company=`
+  (`php artisan tenants:run treasury:backfill-location-attribution`). Either form would fail closed (exit
+  `FAILURE`, "The --company option is required.") on every tenant/company. Step 6.3 below corrects this to
+  the required per-company invocation.
 
 ---
 
@@ -255,7 +257,7 @@ Source: `docs/handoff/multiloc-deploy-checklist.md` §Wave 1.
   ```bash
   php artisan tenants:run users:backfill-memberships --tenants=<uuid> --option='company=<companyId>' --option='user=<userId>'
   ```
-  (`BackfillMembershipsCommand.php:17-21` — `--company=` and `--user=` are both required for this
+  (`BackfillMembershipsCommand.php:18-22` — `--company=` and `--user=` are both required for this
   auditable per-user path; a bulk `--all-memberless` path exists but is explicitly NOT used here per the
   source checklist's "never bulk-grant every skipped user into one company" rule.)
 - **Expected:** the named user is mapped into the named company; command exits successfully.
