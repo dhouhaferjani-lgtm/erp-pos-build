@@ -19,11 +19,23 @@ use Tests\TestCase;
  *
  * Seeds two legacy (`fiscal_event_id IS NULL`) receipts sealed via the REAL
  * `ReceiptFinalizationService` (one v2/legacy_pipe_v1, one v3/canonical_json_v3),
- * then simulates the pre-migration state (`sealed_hash_algorithm = NULL`,
- * bypassing the immutability trigger via a raw UPDATE since the model layer
- * would otherwise refuse to null out an already-fiscalized row's other
- * columns) and asserts the command correctly re-derives each row's actual
- * algorithm and stamps the terminal's backfill-completion timestamp.
+ * then simulates the pre-migration state (`sealed_hash_algorithm = NULL`)
+ * via a raw UPDATE and asserts the command correctly re-derives each row's
+ * actual algorithm and stamps the terminal's backfill-completion timestamp.
+ *
+ * **Default (SQLite) config ONLY — do not run under phpunit-pgsql.xml.**
+ * The value->NULL raw UPDATE this fixture uses to simulate "predates the
+ * column" is itself only possible because SQLite has no
+ * `prevent_receipt_modification()` trigger. Under real PG, §6.2's trigger
+ * permits ONLY the one-time NULL->value direction (by design — a genuine
+ * pre-migration row is NULL from its very first INSERT, never transitions
+ * FROM a value), so this fixture's artificial reset is correctly REJECTED
+ * by PG and would need row-level trigger bypass to construct. That
+ * constraint is a property of the fixture, not of the production code
+ * path: the backfill command's own NULL->value write is the
+ * trigger-permitted direction and needs no special-casing here. The
+ * command's DB-driver-agnostic discrimination logic (bcmath/hash
+ * comparison) is fully exercised under SQLite.
  */
 final class BackfillSealedHashAlgorithmCommandTest extends TestCase
 {
