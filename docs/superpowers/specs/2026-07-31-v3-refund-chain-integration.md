@@ -1,18 +1,27 @@
-# v3 Refund/Void Chain Integration — Design Spec (REVISION 4 — FOLD ROUND, TENANT-#1 LAUNCH SLICE)
+# v3 Refund/Void Chain Integration — Design Spec (REVISION 4.1 — ERRATA ROUND, TENANT-#1 LAUNCH SLICE)
 
 **Lane:** C (first-tenant launch program). **Phase:** SPEC ONLY — zero code changes.
-**Round-3 verdicts:** fiscal-pos-reviewer **APPROVE-WITH-FIXES** ("no round-4 full review needed
-if C-1..C-4 + I-1..I-9 land verbatim"), treasury-reviewer **APPROVE-WITH-FIXES** (three bounded
-money rulings), Codex **REJECT** (7 items, same underlying issues, 4 requiring genuine boundary
-choices). Reviews: `docs/superpowers/reviews/2026-07-31-lane-c-spec-r3-fiscal-treasury-reviews.md`,
-`docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-r3-review.md`.
+**Round-4 verdicts on Revision 4 (`b99b7beb3`):** fiscal-pos-reviewer **APPROVE** (code phase may
+be planned, subject to this errata), treasury-reviewer **APPROVE-WITH-FIXES** (one hard blocker —
+T1 below — plus bounded boundary contracts), Codex 6/7 items **LANDED**, item 7 **PARTIAL**
+(3 mechanical citation fixes). Reviews:
+`docs/superpowers/reviews/2026-07-31-lane-c-spec-r4-verify-consolidated.md`,
+`docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-r4-verify.md`.
 
-**This is the fold round, not a fourth design round.** Per the fiscal-pos reviewer's explicit
-condition and three rounds of convergence, verification from here is **scoped** (fiscal-pos
-verifies its C-1..C-4/I-1..I-9 landed verbatim; Codex confirms its 7 items), not a full re-read.
-Every item below is tagged with its source finding(s) so the fold can be checked mechanically
-against the converged fold list. Where two reviews touched the same issue, both formulations are
-satisfied explicitly (called out inline).
+**This is the errata round — the final spec edit, not a fifth design round.** Revision 4's design
+was verified sound; this revision (4.1) applies the round-4 verification's exact, single-fold
+correction list (T1–T7, F1–F7, X1, X3) on top of it, with no further full review planned. The
+substantive corrections are: **T1** (hard blocker) — `SalesReturn` was falsely claimed seeded in
+all three chart seeders; only Generic actually has it, so the `valid_unbooked` write-off class
+was a 500 for tenant #1 until now (§5.3). **T2** — the `offline_receipts` refund row's status
+never flipped off `'pending'` (its fiscal event's `source_event_class` doesn't match the existing
+sync-completion-flip condition) and several NOT-NULL columns, most critically
+`hash_sequence` (the Z query's own windowing column), were unspecified — the exact class of
+silent-Z-drop bug this lane exists to close (§7.2a). **T3** — `endOfDayPreview.ts` runs its own,
+separate query/loop that §7.3's `zReportService.ts` fix never touched (§7.3a). Every remaining
+item (T4–T7, F1–F7, X1, X3) is a bounded citation, naming, or wording correction, applied exactly
+as specified in the consolidated verification record — each is tagged inline at its edit site so
+the fold can be checked mechanically, item by item, against that record.
 
 ---
 
@@ -76,6 +85,24 @@ behavior is the green baseline this file's tests pin. §2's manifest entry is **
 unmodified (the payload-less overload — a `SALE_RECEIPT` call with no second argument — must
 still resolve to `3`, matching `SALE`/`TRAINING`'s default, so none of today's 192 lines needs to
 change), and new cases are appended for the `payload`-aware REFUND→4/VOID→throw behavior.
+
+**Exact version-resolution rule, stated precisely (errata F7):**
+
+| `eventVersionFor('SALE_RECEIPT', payload?)` call shape | Resolution |
+|---|---|
+| Second argument **absent** entirely | `3` — back-compatible with every existing call site (the 192-line registry test's payload-less assertions, §2 above, and every other `SALE_RECEIPT`-authoring path this feature does not touch) |
+| Second argument **present**, `payload.invoice_type_code` is `'SALE'` or `'TRAINING'` | `3` |
+| Second argument **present**, `payload.invoice_type_code` is `'REFUND'` | `4` |
+| Second argument **present**, `payload.invoice_type_code` is `'VOID'` | throws `VoidAuthoringProhibitedError` |
+| Second argument **present**, `invoice_type_code` missing, non-string, or an unrecognized value | throws `FiscalEventTypeNotImplementedError` — fail-closed, never silently defaults to `3` |
+
+**M-6 error-type overload, noted:** the last row's failure and the "reserved-but-unimplemented
+event type" failure elsewhere in this registry both surface as
+`FiscalEventTypeNotImplementedError` — the same exception class covering two conceptually
+different conditions (an unrecognized `SALE_RECEIPT` discriminator vs. an entirely unimplemented
+`FISCAL_EVENT_TYPES` member). This is an accepted, pre-existing overload of that error type, not
+introduced by this feature — noted here so a caller catching it for one reason does not
+mis-attribute the other, but not changed as part of this manifest.
 
 **VOID server-side rejection lives in the validator, not a new registry branch (fold item 10):**
 the server `FiscalEventPayloadRegistry.php` change is limited to adding `4` to its
@@ -208,6 +235,19 @@ refund (unconditionally — since a non-zero-original-discount refund never reac
 construction at all, this is not a separate runtime branch, it is a structural consequence of the
 refusal above).
 
+**Test placement and server-side defense-in-depth (errata T7, minor):** the refusal's primary
+test lives at the **lookup level**, not only inside `RefundReceiptV4Payload.test.ts`'s
+builder-level proof — a new test asserts the refusal fires at
+`resolveOriginalFiscalEventLocally()`'s own call site (the refund flow's original-resolution
+step, §4.1), before any payload construction is attempted, since that is where a real cashier's
+attempt is actually stopped. **Server-side flag, mirroring §3.6's accept-and-flag mechanism:**
+in case a future or compromised client build bypasses the device-side refusal, the projector adds
+a `refund_policy_alerts` entry (§3.6, unchanged mechanism) whenever it observes a resolved
+original with a non-zero `transaction_discount_amount` on an incoming v4 REFUND event — this is
+detection/flagging only, not a projection-time reject (Model 1, §4.1: an already-signed event is
+never silently dropped), giving the finance team visibility into a launch-invariant violation
+that should be structurally impossible from a correctly-behaving device.
+
 ### 3.6 Policy evidence — narrowed to server-advisory for launch (fold item 9, Codex item 7)
 
 Revision 3 claimed the device is "the sole real-time gatekeeper" for return-window/daily-cap/
@@ -221,9 +261,19 @@ window / daily cap / manager-threshold / disposition-vs-regulated-stock policy a
 **server-advisory only** — there is no device-side real-time enforcement claim. The projector's
 `refund_policy_alerts` accept-and-flag mechanism (kept from Revision 3, modeled on the existing
 `PosCoreReceiptProjection.php:1051-1071` late-sale-flag precedent) is **the entire mechanism** —
-it computes whatever policy questions it can from data it already has (the original receipt's own
-timestamp, the resolved cashier's own permission set) **after** the event is signed, and flags
-discrepancies for manual review; it never claims this was device-proven in advance. A **signed**
+it computes whatever policy questions it can from data it already has **after** the event is
+signed, and flags discrepancies for manual review; it never claims this was device-proven in
+advance. **Timestamp-only, not permission-based (errata F1):** the alert source is limited to
+what the projector can compute purely from the original receipt's own timestamp (return-window
+questions) — **not** the cashier's permission set. `ApplyFiscalEventProjectionJob` runs on a
+Horizon worker with **no bound Spatie permissions team** (no `CompanyContext`, per rule 20's
+established worker-context gap, already relied on elsewhere in this spec) — a permission-set
+check inside the projector would silently evaluate against an unbound/wrong team and produce
+meaningless results, not a real policy signal. Any manager-threshold/daily-cap advisory that
+would require a permission check is deferred to §16.5's signed-snapshot mechanism (where the
+device signs the fact it checked, rather than the server attempting to re-check permissions it
+cannot correctly resolve) — dropped from launch's `refund_policy_alerts` scope entirely, not
+silently left half-working. A **signed**
 device-side policy snapshot (the device asserting, in the payload itself, "I checked the window
 and it was N days") is deferred to §16.5 — a real future capability, not attempted here. This is
 a narrowing of the claim, not new code: it removes the false "device proves it" prose and states
@@ -233,8 +283,27 @@ plainly what already existed (the accept-and-flag advisory mechanism), satisfyin
 ### 3.7 `payments[]`, training refusal, and the corrected ticket citation (unchanged mechanism,
 citation fixed)
 
-`payments[]` is exactly one cash leg (unchanged from Revision 3). Training-original refusal
-(device-side, unchanged). **Citation fix (mechanical note (b) from the orchestrator):** the
+`payments[]` is exactly one cash leg (unchanged from Revision 3). **Training-original refusal —
+enforcement site named exactly (errata T4):** the check runs inside `RefundReceiptV4Payload.ts`'s
+normalization step (§3.2), immediately after `resolveOriginalFiscalEventLocally()` resolves the
+original — before step 1 of §3.2's ordered procedure (i.e., before the `kind === 'return'`
+defense-in-depth assertion even runs, since a training-original refusal is a harder gate than a
+programmer-error check). The refusal reads `training_flag` from the **resolved original fiscal
+event's own signed `payload.training_flag`** — never from the refunding session's *current*
+training-mode context (`PosOverrideContext.isTraining`, an unrelated concept: whether *this*
+register is presently in training mode, not whether the *original sale being refunded* was a
+training transaction). **Attribution fix:** `resolveOriginalFiscalEventLocally()`'s returned
+`training_flag` must be read from the original event's `payload.training_flag` field specifically
+(the same field §3.5's `transaction_discount_amount` check already reads from), not from any
+column on the local `fiscal_events` mirror row that might be conflated with the *current*
+session's training state — the function's return type names this field explicitly as
+`original.training_flag` to make the source unambiguous at the call site. **New device test**
+(§17): `RefundReceiptV4Payload.trainingRefusal.test.ts` asserts a refund attempt against a
+locally-resolved original whose `payload.training_flag === true` is refused before any approval
+authoring, and that a refund against a non-training original in a training-mode *session* is
+**not** incorrectly refused (proving the two concepts are not conflated).
+
+**Citation fix (mechanical note (b) from the orchestrator):** the
 training-gate-leak ticket is `docs/superpowers/tickets/2026-07-31-treasury-bridge-training-money-legs.md`
 (confirmed existing at this exact path) — Revision 3's placeholder path is replaced with this
 real one. The unrelated `CashDrawerService` v3 expected-cash ticket, also referenced in §7.5, is
@@ -337,11 +406,20 @@ subtraction (§7.3's sign convention) — the signed event is immutable chain tr
 local reconciliation uncertainty, so the Z math reflects fiscal reality, not dispute state. What
 the dispute changes is purely a **server-side evidence signal**: setting
 `payout_disputed_at` triggers a new, small synced record — an `OPERATOR_APPROVAL_GRANTED`-adjacent
-audit event (reusing the existing operator-evidence authoring pattern, §4.2, with
-`approval_scope` extended by one new literal value for this specific audit purpose) carrying the
+audit event (reusing the existing operator-evidence authoring pattern, §4.2) carrying the
 refund's `refund_fiscal_event_id` and the disputing operator's identity — giving the finance team
 a signed, server-side record that "the local device could not confirm this cash left the drawer"
 for their own investigation, entirely separate from and non-blocking of the Z's own arithmetic.
+**New `approval_scope` literal, `'payout_dispute_evidence'`, and its exact assertion-site scope
+(errata T6):** four sites enumerate/assert the `approval_scope` value set today and all four gain
+the new literal, in the manifest (§17): the TS `PosOverrideApprovalScope` union type
+(`posOverrideAuthoring.ts:8-10`); the TS `assertApprovalScope()` runtime guard
+(`posOverrideAuthoring.ts:60-68`); the PHP `OPERATOR_APPROVAL_GRANTED` payload's
+`assertEnum($payload, 'approval_scope', [...])` (`FiscalPayloadConstraintValidator.php:580`); and
+the PHP `OVERRIDE_VOID_OR_RETURN`-sibling payload's equivalent assertion
+(`FiscalPayloadConstraintValidator.php:613`) — the new dispute-evidence event reuses
+`OPERATOR_APPROVAL_GRANTED`'s existing shape rather than authoring a sixth `OVERRIDE_*` event
+type, so only the approval-side (not override-side) enums need the new literal.
 
 ---
 
@@ -394,9 +472,17 @@ always has a stable `fiscal_events.id` even when it has no projection row at all
 the journal post** — never a raw `CashDrawerOperation` write outside that port. Concretely:
 `GeneralLedgerService::postEntryNow()` posts the compensating journal entry (§5.3's shape) inside
 a `DB::transaction()`; **inside the same transaction**, `TreasuryMovementServiceInterface::record()`
-is called with a `MovementIntent` keyed on `idempotencyKey = "refund-writeoff:{fiscal_event_id}"`
-(the port's own idempotency mechanism, `record()`'s documented contract, backstops the table-level
-unique index above rather than duplicating its logic) to move the cash repository's balance —
+is called with a `MovementIntent` (**errata T5 — corrected**: `idempotencyKey()` is a **derived**
+value, `"{sourceType}:{sourceId}:{idempotencyLeg}"` (`MovementIntent.php`'s own method), not a
+caller-settable string as Revision 4 wrongly described — the intent is constructed with
+`sourceType: MovementSourceType::FiscalEvent` (existing enum case, `'fiscal_event'`), `sourceId:
+$fiscalEventId`, `idempotencyLeg: 'refund_writeoff'`, yielding the derived key
+`fiscal_event:{fiscal_event_id}:refund_writeoff`. **Non-collision, stated explicitly:** this is
+structurally distinct from `TreasuryReceiptBridge`'s own per-payment-leg movement keys,
+`fiscal_event:{id}:payment:{i}` (same `sourceType`/`sourceId` shape, different `idempotencyLeg` —
+`'refund_writeoff'` can never equal `'payment:{i}'` for any integer `i`), so a write-off movement
+for a given fiscal event can never collide with that same event's own payment-leg movement, even
+though both key off the identical `fiscal_event_id`) to move the cash repository's balance —
 this is the "exact cash-drawer adjustment operation" Codex asked to be named: it is **not**
 `CashDrawerService::recordPayout()`/`recordRefund()` (both are shift-scoped `CashDrawerOperation`
 rows tied to the legacy per-shift cash-count model, and `recordPayout()` additionally requires
@@ -423,22 +509,43 @@ atomicity" findings).
   purpose-account misconfiguration, ingress quarantine later resolved as non-tamper — prevented
   it from booking before the operator chose to write it off rather than wait for a
   `fiscal:retry-projections` fix): `Dr Revenue / Cr Cash` **using the existing `SalesReturn`
-  purpose** (`SystemAccountPurpose::SalesReturn`, `'sales_return'`, GL account 709 — already
-  seeded in all three chart seeders for credit notes) — the **same reversal shape** a
-  successfully-booked refund would have received via the normal path, because this class *is* a
-  normal refund; only its booking was delayed by infrastructure, not its validity.
+  purpose** (`SystemAccountPurpose::SalesReturn`, `'sales_return'`, GL account 709) — the **same
+  reversal shape** a successfully-booked refund would have received via the normal path, because
+  this class *is* a normal refund; only its booking was delayed by infrastructure, not its
+  validity.
 
-**Seeding and provisioning (§17, fold item 5's remaining sub-findings):** `RefundWriteOff` is
-added to all three chart seeders (`GenericChartOfAccountsSeeder.php`,
-`FranceChartOfAccountsSeeder.php`, `TunisiaChartOfAccountsSeeder.php`), each following the
-existing `PaymentToleranceIncome`/`PaymentToleranceExpense` seeding line shape exactly (e.g.
-`GenericChartOfAccountsSeeder.php:199-200`'s `['code' => ..., 'system_purpose' =>
-SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true]` pattern). A new
-idempotent backfill command provisions the account for any **already-existing** tenant chart
-(including tenant #1's, if provisioned before this seeder change lands) rather than requiring a
-fresh migration run — named in §17. The rollout preflight (§9) checks the account exists for
-tenant #1 before the capability can be enabled, closing the "rollout does not preflight that
-account" finding.
+**Errata (revision 4.1, T1 — hard blocker, corrects a false premise carried since Revision 3):**
+Revision 4 claimed `SalesReturn` was "already seeded in all three chart seeders for credit
+notes." This is false, verified directly against the seeders: only
+`GenericChartOfAccountsSeeder.php:196` seeds a 709 row with `system_purpose =>
+SystemAccountPurpose::SalesReturn->value`. `TunisiaChartOfAccountsSeeder.php:277` and
+`FranceChartOfAccountsSeeder.php:282` both create a 709 account row, but **neither sets
+`system_purpose`** — for tenant #1 (a France or Tunisia tenant), `hasAccountForPurpose(SalesReturn)`
+resolves to false, and the `valid_unbooked` class has **no usable account** at launch. This is
+corrected, not merely noted: **both `SalesReturn` and `RefundWriteOff` are seeded** in this same
+change.
+
+**Seeding and provisioning (§17, fold item 5's remaining sub-findings, corrected for T1):**
+- `RefundWriteOff` is added to all three chart seeders (`GenericChartOfAccountsSeeder.php`,
+  `FranceChartOfAccountsSeeder.php`, `TunisiaChartOfAccountsSeeder.php`), each following the
+  existing `PaymentToleranceIncome`/`PaymentToleranceExpense` seeding line shape exactly (e.g.
+  `GenericChartOfAccountsSeeder.php:199-200`'s `['code' => ..., 'system_purpose' =>
+  SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true]` pattern).
+- `SalesReturn`'s existing 709 row in `TunisiaChartOfAccountsSeeder.php:277` and
+  `FranceChartOfAccountsSeeder.php:282` gains the missing `'system_purpose' =>
+  SystemAccountPurpose::SalesReturn->value` key — the account row already exists in both
+  seeders; only the purpose mapping was absent. `GenericChartOfAccountsSeeder.php:196` is
+  unchanged (already correct).
+- The backfill command (`BackfillRefundWriteOffAccountCommand`, §17) is **renamed**
+  `BackfillRefundCompensationAccountsCommand` and covers **both** purposes —
+  `RefundWriteOff` and `SalesReturn` — idempotently provisioning whichever of the two is missing
+  for any already-existing tenant chart (including tenant #1's, if provisioned before this
+  seeder change lands).
+- **Both** the rollout preflight (§9's `EnableV4RefundAuthoringCommand`) and the write-off
+  action's own precheck (`RefundCompensationController`, §5.2) call `hasAccountForPurpose()` for
+  **both** `RefundWriteOff` and `SalesReturn` before proceeding — an account missing for either
+  purpose blocks enablement (preflight) or that specific compensation class (precheck), never a
+  silent partial capability.
 
 **Permission.** New permission `fiscal.refunds.manage_dead_letters` is added to
 `apps/api/database/seeders/RolesAndPermissionsSeeder.php`'s flat permission list (mirroring the
@@ -581,6 +688,75 @@ representation, exactly mirroring how the legacy server-side `pos_receipts.total
 while the v3+ canonical fiscal payload is positive-magnitude — two coexisting sign conventions
 for two different layers, already an established pattern in this codebase, not a new one.
 
+### 7.2a `offline_receipts` refund row — complete contract (errata T2, treated with the weight
+this lane exists to close: this is the exact silent-drop class §7 was written to close)
+
+Revision 4 specified the insert's sign convention (above) but not its full column contract or
+its sync-completion lifecycle. Both are load-bearing — an unspecified `hash_sequence` silently
+excludes the row from every Z report ever run for that shift, which is precisely the class of
+bug this lane exists to close, not a lesser wording gap.
+
+**Status lifecycle — the bug and its fix.** `offline_receipts.status` starts `'pending'` for
+every row, sale or refund (`receiptService.ts:563`'s convention, reused unchanged). For a
+**sale**, the sync-completion flip is
+`syncService.ts:382-390`: once the fiscal event's push succeeds, `updateReceiptStatus(db,
+event.source_event_id, 'synced')` fires **only when `event.source_event_class ===
+'offline_receipts'`** (`:388`, exact condition, confirmed) — and a sale's fiscal event is
+authored with exactly that `source_event_class`, `source_event_id` equal to the
+`offline_receipts` row's own primary key. **A refund's fiscal event is authored with
+`source_event_class: 'refund_intents'`** (§4.3, unchanged — this is what makes the *append*
+idempotent on the intent's own stable ID) — so today's condition at `:388` **never matches a
+refund's sync**, and the refund's `offline_receipts` row would stay `'pending'` forever: the
+device's sync-status badge counts it as perpetually outstanding, and any purge/retention routine
+that only collects `'synced'`/`'error'` rows never reclaims it.
+
+**Fix:** a second, parallel flip branch in the same `syncService.ts` success block (`:382-390`),
+keyed on the refund's `source_event_class` and resolving the **linked** `offline_receipts` row
+via the idempotency-key relationship §7.2 establishes (`offline_receipts.idempotency_key =
+refund_intents.id = event.source_event_id`), not the row's own primary key:
+
+```ts
+if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
+  await updateReceiptStatus(db, event.source_event_id, 'synced'); // unchanged, sales
+} else if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
+  await updateReceiptStatusByIdempotencyKey(db, event.source_event_id, 'synced'); // new, refunds
+}
+```
+
+New function `updateReceiptStatusByIdempotencyKey(db, idempotencyKey, status)` —
+`UPDATE offline_receipts SET status = $1, synced_at = datetime('now') WHERE idempotency_key =
+$2` (mirroring `updateReceiptStatus`'s existing column-set shape exactly, keyed by
+`idempotency_key` instead of `id`) — new file location `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`
+(the existing home of `updateReceiptStatus`, extended, not a new repository file).
+
+**Full column sign/source contract for the refund's `offline_receipts` insert**, every column
+named:
+
+| Column | Value / source |
+|---|---|
+| `id` | Fresh UUID, generated at insert time — **distinct** from `idempotency_key` (which is `refund_intents.id`) |
+| `idempotency_key` | `refund_intents.id` (§7.2, print-lookup key) |
+| `receipt_number` | The refund's own printed receipt number (device-generated, same numbering convention a sale uses — NOT NULL, required for print/display; never borrows the original sale's number) |
+| `terminal_id`, `terminal_code` | The refunding terminal's own identity (same-device only, §0/§13) |
+| `operator_id`, `operator_name` | The cashier who authored the refund (NOT NULL — sourced from `PosOverrideContext.cashierUserId`/session identity, same as a sale's) |
+| `lines` | Negative-signed `OfflineReceiptLine[]` JSON (§7.2, unchanged) |
+| `subtotal`, `tax_amount`, `total` | Negative magnitude (§7.2's sign convention) |
+| `discount_amount` | Negative-signed line-level discount total (mirrors the negative `lines` convention — §3.5 already refuses any refund whose *original* carried a non-zero `transaction_discount_amount`, so this column reflects only the sum of the refunded lines' own per-line discounts, never a transaction-level figure) |
+| `currency` | The original's currency, unchanged |
+| `fiscal_hash`, `previous_hash` | NOT NULL — populated from the just-appended v4 fiscal event's own `current_hash`/`previous_hash` (`engine.append()`'s return value, available at this point in the write-gate transaction per §4.3's append-first ordering) — the same values a sale's `offline_receipts` row already stores from its own append result |
+| **`hash_sequence`** | **NOT NULL — the just-appended v4 fiscal event's own `sequence_number`** (same append-result source as `fiscal_hash` above). This is the column the Z query windows on (`zReportService.ts:176-183`'s `hash_sequence > anchor.opening_hash_sequence` predicate) — an unset or wrongly-derived value here silently drops the refund from every Z report for the shift, which is the exact failure class this section exists to close. Because the refund event and a sale event share the **same** `'operational'` chain context and its single monotonic `sequence_number` counter (§1, kept), a refund's `hash_sequence` sorts and windows correctly alongside sale rows using the identical predicate — no separate windowing logic is needed. |
+| `transaction_discount_amount`, `transaction_discount_reason` | `NULL` / `NULL` — §3.5 guarantees this is always the case (a non-zero-original-discount refund never reaches this insert) |
+| `tendered_amount`, `change_due` | `NULL` / `NULL` — a refund has no tender/change concept (the payout is the entire `total`, not a tendered-minus-change computation); explicitly `NULL`, not `'0'`, so §7.3/§7.2b's per-row branching can distinguish "not applicable" from "zero" |
+| `payment_method_id`, `payment_repository_id` | NOT NULL — the tenant's cash method/repository (§3.5's single-cash-leg contract), resolved the same way a cash sale resolves them |
+| `payments_json` | **Positive-magnitude** `[{ method_code: 'CASH', amount: <positive total>, ... }]` — stated explicitly: unlike `lines`/`total`/`subtotal` (negative, §7.2), `payments_json` mirrors the **signed fiscal payload's** `payments[]` convention (§3.1, always non-negative) because `payments_json` is consumed by `aggregateReportData`'s payment-method breakdown (§7.3) as a **magnitude** to be added or subtracted depending on `receipt_kind`, not as a pre-signed delta — storing it negative would double-negate against §7.3's subtraction branch |
+| `cash_rounding_adjustment` | Signed, mirrors the fiscal payload's `cash_rounding_adjustment` (§5's E1 rounding, cash-only-gated) — canonical zero when unrounded, never `NULL` (matches the mandatory-not-optional rounding-key contract this spec already establishes for the fiscal payload) |
+| `tolerance_shortfall` | `NULL` — no tender-tolerance concept applies to a refund payout (tolerance is a sale-side over/under-tender concept only) |
+| `status` | `'pending'` (this section's fix, above) |
+| `synced_at`, `sync_error` | `NULL` at insert, set by the sync-completion flip (this section's fix) |
+| `fiscal_schema_version` | `4` (the refund's own event version, not the terminal's schema version — mirrors how a sale row stores its own authored version) |
+| `is_training` | `0` — §3.7's training-original refusal (§3.7, T4 below) guarantees a refund is never authored against a training original, so this is unconditionally `0`, never inherited from the original |
+| `canonical_bytes` | The just-appended event's own `canonical_bytes` (same append-result source as `fiscal_hash`/`hash_sequence` above) |
+
 ### 7.3 `aggregateReportData` filter contract — exact routing
 
 `zReportService.ts`'s existing receipt query (`:176-193`, unchanged — it already selects
@@ -620,6 +796,50 @@ simplification, not merely a rename: one code path computes cash correctly inste
 `getRefundRecordsForShift`/`local_refund_records`/`localRefundRecordRepository.ts` are deleted
 entirely (kept from Revision 3's retirement decision, now with a concrete replacement mechanism
 rather than an under-specified one).
+
+### 7.3a `endOfDayPreview.ts` needs its own explicit refund branch (errata T3)
+
+`endOfDayPreview.ts` is **not** a consumer of `aggregateReportData()` — it runs its **own**,
+structurally separate SQL query (`endOfDayPreview.ts:172-173`, selecting `id, total, subtotal,
+tax_amount, payments_json, lines, created_at, change_due, payment_method_id,
+cash_rounding_adjustment, tolerance_shortfall` from `offline_receipts`) and its **own** per-row
+loop (`:216-280`) computing `toleranceTotal`/`roundingTotal`/`cashChangeDueSum`, then
+**separately** calls `getRefundRecordsForShift(db, shiftId)` (`:354-355`) to fold refund
+magnitude in afterward. §7.3's `aggregateReportData()` fix does **not** touch any of this — it is
+a different function in a different file. Left as-is, this file would keep reading the
+now-deleted `local_refund_records` table and throw (or silently return stale/empty data,
+depending on the deletion's exact shape) the moment §7 lands.
+
+**Fix, mirroring §7.3's contract exactly, in this file's own query and loop:**
+- The query at `:172-173` adds `receipt_kind` to its `SELECT` list (no other column changes —
+  every column §7.2a names is already either selected here or not needed by this preview).
+- The loop at `:216-280` branches per row on `receipt_kind`: `'sale'` rows keep today's exact
+  behavior (add to `toleranceTotal`/`roundingTotal`/`cashChangeDueSum`); `'refund'` rows
+  **subtract** from the same three running totals — `roundingTotal`/`toleranceTotal` via the
+  row's own (signed, per §7.2a) `cash_rounding_adjustment`/`tolerance_shortfall` columns (the
+  latter is always `NULL` per §7.2a, so a refund row never contributes to `toleranceTotal` at
+  all — stated explicitly so this isn't mistaken for an oversight), and `cashChangeDueSum` is
+  **not** touched by a refund row either (`change_due` is `NULL` per §7.2a — a refund has no
+  change concept, §7.2a's table).
+- The separate `getRefundRecordsForShift` call at `:354-355` is **deleted** — refund magnitude
+  now arrives through the same unified per-row loop above, not a second pass.
+
+### 7.3b `productSalesAggregateRepository.ts` — net-units ruling (errata T7, minor)
+
+`aggregateProductSales()` (`productSalesAggregateRepository.ts:34-73`) sums **raw** (not
+absolute-valued) `quantity` from every non-training, non-voided `offline_receipts.lines` row
+within its window (`:38-44`, `:65-69` — `counts.set(rawId, (counts.get(rawId) ?? 0) + qty)`, no
+`ABS()`/`Math.abs()` anywhere in the accumulation) — and its query has **no `receipt_kind`
+filter today**, so it already includes every row in the table by default. **Ruling: this
+requires zero code change.** Once §7.2's refund rows exist with negative-signed `lines` quantities,
+this function **automatically and correctly** nets refunded units against sold units — a
+refunded unit's negative quantity subtracts from the running count exactly as intended for a
+"most sold" projection. This is stated as an **explicit, intentional ruling**, not left to be
+silently correct by accident: a future maintainer must not "fix" this by adding a
+`receipt_kind = 'sale'` filter or an `ABS()` wrap, either of which would **break** net-units
+correctness by counting refunded units as still-sold. **New test** (§17):
+`productSalesAggregateRepository.test.ts` — extended with a case seeding one sale row (qty 5) and
+one refund row (qty −2) for the same product, asserting the aggregate returns net 3, not gross 5.
 
 ### 7.4 Sign convention statement (kept from Revision 3, restated against the new mechanism)
 
@@ -760,16 +980,35 @@ existing kept wording elsewhere), never a "try the other path" instruction.
    §9.1, is not to be weakened or bypassed for those columns — only the new, unrelated capability
    flag gets its own guard-independent setter).
 
-### 9.6 v2-original limitation, tenant-fact honesty (fold item 10)
+### 9.6 v2-original limitation, tenant-fact honesty (fold item 10; errata F4, X3)
 
 §9's legacy-endpoint guard blast radius for v2 originals on any cutover terminal (kept from
 Revision 3) is restated with the "tenant #1 originals are always cash" claim **removed** — the
 merged D1 launch-contract test proves an active CASH tender **exists** for a fresh tenant, not
-that every eligible original a cashier might attempt to refund actually used cash. The accurate
-statement: tenant #1's originals are v3-from-birth (D1's provisioning guarantee) and the
-cash-only launch payload (§3) simply cannot represent a refund of an original that wasn't
-cash-tendered — such an attempt is refused by the same typed mechanism as any other unsupported
-destination, not a scenario this spec claims cannot occur.
+that every eligible original a cashier might attempt to refund actually used cash. The cash-only
+launch payload (§3) simply cannot represent a refund of an original that wasn't cash-tendered —
+such an attempt is refused by the same typed mechanism as any other unsupported destination, not
+a scenario this spec claims cannot occur.
+
+**D1 blast radius (errata F4):** every terminal created **after** D1's merge defaults to
+`fiscal_schema_version = 3` at creation (D1's provisioning-time guarantee, unconditional across
+its terminal-creation paths — the three `TerminalController.php` sites named in §15) — so this
+launch's legacy-guard blast radius (§9.4) is **not** limited to explicitly-cutover terminals: **any**
+terminal provisioned post-D1, tenant #1's or otherwise, is v3 from birth and therefore in scope
+for the guard the moment it processes its first return, whether or not it was ever run through
+`FiscalSchemaCutoverService`. The v2-original limitation (§9's blast radius) is broader than "cutover
+terminals only" — it is every terminal, cutover or born-v3, that has any v2-sealed original in
+its history; a born-v3 terminal simply has zero such originals by construction, which is a
+narrower, D1-provisioning-time fact, not a v4-launch-time one.
+
+**X3 — v3-from-birth is a deployment check, not a repository-provable fact:** whether tenant #1's
+*specific* terminal was actually provisioned through the post-D1 path (and therefore genuinely
+has no v2 history) is not something this specification can establish by reading code — it is a
+fact about how tenant #1 was actually deployed, which the rollout preflight (§9.5's
+`EnableV4RefundAuthoringCommand`) must **verify at enablement time** (confirm the target
+terminal's `fiscal_schema_version` was never `2`, or equivalently that it has zero
+`fiscal_event_id IS NULL` fiscalized receipts) rather than this document asserting it as an
+established repository fact.
 
 ---
 
@@ -833,8 +1072,9 @@ normalization closes the gap, not merely asserting it.
 ## 15. Wording and citation fixes (fold item 10, full sweep)
 
 - **D1-moved line citations corrected**: `TerminalController.php`'s three `current_sequence`
-  assignments are at `:120`, `:395`, `:458` (re-verified in this checkout — not `:400`/`:465` as
-  an earlier pass claimed).
+  assignments are at `:120`, `:400`, `:465` against current `dev` (the round-3 fold list's
+  `:120`/`:395`/`:458` citation was itself stale — propagated from the pre-merge worktree
+  numbering rather than re-checked against the merged D1 commit; corrected here).
 - `apps/pos/src/lib/db/__tests__/migrations.v65.test.ts` — pinned exactly (current max migration
   version confirmed at `64`; no "or next free" hedge).
 - `apps/pos/src/lib/operatorApproval/__tests__/posOverrideAuthoring.test.ts` — marked **new**
@@ -898,7 +1138,9 @@ not attempted here.
 - `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php` —
   `SALE_RECEIPT_PAYLOAD_KEYS_V4`; §3.3's exact `original_line_references[]` shape/enum; §3.4's
   `refund_destination`/`settlement_allocation`; §3.5's single-cash-leg `payments[]`; §3.5's
-  transaction-discount-zero-iff-refused invariant; VOID rejection at v4 parse.
+  transaction-discount-zero-iff-refused invariant; VOID rejection at v4 parse; §4.5 errata T6's
+  `'payout_dispute_evidence'` literal added to the two `approval_scope` `assertEnum()` call sites
+  at `:580` and `:613`.
 - `apps/api/app/Modules/Fiscal/Application/Services/CanonicalPayloadReader.php` (`:62-116`).
 - New DTO: `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/OriginalLineReferenceDTO.php`.
 - `apps/api/app/Modules/Fiscal/Domain/DTOs/SaleReceiptPayload.php`,
@@ -919,10 +1161,14 @@ not attempted here.
   §12's `FOR UPDATE` lock + `ABS()`-normalized quantity-cap query +
   `RefundQuantityExceededException`; disposition-aware stock restore; training-original defense
   check.
-- New migration: add `pos_receipts.refund_policy_alerts` (JSONB, nullable).
-- New migration: add `pos_receipts.sealed_hash_algorithm` (nullable string enum).
-- New migration: `2026_07_31_940000_allow_sealed_hash_algorithm_backfill_transition.php` (§6.2's
-  exact trigger amendment).
+- New migration (errata X1, exact filename): `apps/api/database/migrations/tenant/2026_07_31_910000_add_sealed_hash_algorithm_to_pos_receipts.php`
+  — adds `pos_receipts.sealed_hash_algorithm` (nullable string enum). Must precede the trigger
+  migration below (the trigger references this column).
+- New migration (errata X1): `apps/api/database/migrations/tenant/2026_07_31_920000_add_refund_policy_alerts_to_pos_receipts.php`
+  — adds `pos_receipts.refund_policy_alerts` (JSONB, nullable).
+- New migration: `apps/api/database/migrations/tenant/2026_07_31_940000_allow_sealed_hash_algorithm_backfill_transition.php`
+  (§6.2's exact trigger amendment — filename unchanged from Revision 4, now given its full
+  directory path per errata X1).
 - New exception files: `apps/api/app/Modules/Fiscal/Domain/Exceptions/RefundQuantityExceededException.php`
   (implements `NonRetryableProjectionException`),
   `apps/api/app/Modules/Fiscal/Domain/Exceptions/ApprovalEvidenceUnresolvedException.php`
@@ -942,7 +1188,9 @@ not attempted here.
 - New Artisan command: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/EnableV4RefundAuthoringCommand.php`
   (§9.4's single-device-terminal preflight + §9.3 Phase 1 trigger + §5.3's account-provisioning
   check).
-- New migration: `fiscal_refund_compensations` table (§5.2).
+- New migration (errata X1, exact filename): `apps/api/database/migrations/tenant/2026_07_31_950000_create_fiscal_refund_compensations_table.php`
+  — creates the `fiscal_refund_compensations` table (§5.2), including the
+  `fiscal_refund_compensations_event_unique` partial unique index.
 - New file: `apps/api/app/Modules/Fiscal/Presentation/Controllers/RefundCompensationController.php`
   (`POST /fiscal/refund-compensations`, §5.2), route added to
   `apps/api/app/Modules/Fiscal/routes.php` (existing file, existing middleware stack
@@ -952,12 +1200,15 @@ not attempted here.
   (list + detail, read-only — §5.1's operator visibility, unchanged from Revision 3).
 - `apps/api/app/Modules/Accounting/Domain/Enums/SystemAccountPurpose.php` — **existing, modified**
   (not new): add `RefundWriteOff` case + exhaustive `label()`/`expectedAccountType()` arms.
-- `apps/api/database/seeders/GenericChartOfAccountsSeeder.php`,
-  `apps/api/database/seeders/FranceChartOfAccountsSeeder.php`,
-  `apps/api/database/seeders/TunisiaChartOfAccountsSeeder.php` — add the `RefundWriteOff` account
-  row, mirroring the existing `PaymentToleranceIncome` line shape in each.
-- New Artisan command: `apps/api/app/Modules/Accounting/Infrastructure/Commands/BackfillRefundWriteOffAccountCommand.php`
-  (idempotent per-tenant provisioning for already-existing charts).
+- `apps/api/database/seeders/GenericChartOfAccountsSeeder.php` — unchanged (already seeds
+  `SalesReturn`, `:196`); add the `RefundWriteOff` account row.
+- `apps/api/database/seeders/FranceChartOfAccountsSeeder.php`,
+  `apps/api/database/seeders/TunisiaChartOfAccountsSeeder.php` — add `'system_purpose' =>
+  SystemAccountPurpose::SalesReturn->value` to the existing 709 row (`:282`/`:277` respectively,
+  currently missing the purpose key — T1 errata); add the `RefundWriteOff` account row.
+- New Artisan command: `apps/api/app/Modules/Accounting/Infrastructure/Commands/BackfillRefundCompensationAccountsCommand.php`
+  (renamed from `BackfillRefundWriteOffAccountCommand`, T1 errata — idempotent per-tenant
+  provisioning covering **both** `RefundWriteOff` and `SalesReturn`).
 - `apps/api/database/seeders/RolesAndPermissionsSeeder.php` — add
   `'fiscal.refunds.manage_dead_letters'` to the permission list (mirroring `:327`'s
   `'pos.process_returns'`) and grant it to the same role already holding `pos.process_returns`
@@ -970,7 +1221,8 @@ not attempted here.
 - New exception: `apps/api/app/Modules/POS/Domain/Exceptions/LegacyCorrectionRetiredException.php`.
 - `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php` — map to HTTP 409,
   `LEGACY_CORRECTION_RETIRED` (§9.4's corrected copy).
-- New migration: add `pos_terminals.v4_refund_authoring_enabled` (boolean, default false),
+- New migration (errata X1, exact filename): `apps/api/database/migrations/tenant/2026_07_31_930000_add_v4_refund_authoring_capability_to_pos_terminals.php`
+  — adds `pos_terminals.v4_refund_authoring_enabled` (boolean, default false),
   `pos_terminals.v4_refund_authoring_acknowledged_at` (nullable timestamp).
 - `apps/api/app/Modules/POS/Presentation/Resources/TerminalResource.php` — expose both fields.
 - Tests: `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php`;
@@ -994,8 +1246,10 @@ not attempted here.
   idempotency-replay, posting/atomicity, permission gate);
   `apps/api/tests/Feature/Fiscal/DeadLetteredProjectionsControllerTest.php`;
   `apps/api/tests/Feature/POS/LegacyCorrectionGuardTest.php` (409 + acknowledgement-conditioning);
-  `apps/api/database/seeders/__tests__` equivalent — a seeder test asserting `RefundWriteOff` is
-  provisioned by all three chart seeders and the backfill command is idempotent.
+  `apps/api/database/seeders/__tests__` equivalent — a seeder test asserting **both**
+  `RefundWriteOff` and `SalesReturn` (T1 errata — including the FR/TN purpose-key fix) are
+  provisioned by all three chart seeders and `BackfillRefundCompensationAccountsCommand` is
+  idempotent for both purposes.
 - Every new bcmath comparison carries a `// precision-ok: scale-4` (quantity) or currency-scale
   marker per rule 19; every new projection test calls `app(CompanyContext::class)->clear()`
   before `apply()` per rule 20.
@@ -1031,7 +1285,8 @@ not attempted here.
 - New file: `apps/pos/src/lib/offline/refundReceiptService.ts` — §4.3's append-first transaction,
   now including §7.2's `offline_receipts` insert as the third write.
 - `apps/pos/src/lib/operatorApproval/posOverrideAuthoring.ts` — §4.2's optional `sourceEventIds`
-  parameter.
+  parameter; §4.5 errata T6's `'payout_dispute_evidence'` literal added to
+  `PosOverrideApprovalScope` (`:8-10`) and `assertApprovalScope()` (`:60-68`).
 - New file: `apps/pos/src/lib/operatorApproval/__tests__/posOverrideAuthoring.test.ts`
   (**new**, confirmed does not exist today).
 - New file: `apps/pos/src/lib/refundFlow/refundApprovalV3.ts` —
@@ -1042,15 +1297,35 @@ not attempted here.
   payout-confirmation **and** reprint-recovery screens.
 - `apps/pos/src/lib/refundFlow/refundZAccounting.ts`,
   `apps/pos/src/lib/db/repositories/localRefundRecordRepository.ts` — **deleted**.
-- `apps/pos/src/lib/refundFlow/refundZAccounting.test.ts`,
-  `apps/pos/src/lib/db/repositories/__tests__/localRefundRecordRepository.test.ts` — **deleted**
-  alongside their source files (§15, orphaned-test-file fix).
+- `apps/pos/src/lib/refundFlow/__tests__/refundZAccounting.test.ts` — **deleted** alongside its
+  source file (errata F2 — corrected path: this test lives under `__tests__/`, not flat in
+  `refundFlow/`; `localRefundRecordRepository.ts` has no corresponding test file today, so there
+  is no test to delete for it — Revision 4's manifest entry for that non-existent test file is
+  dropped).
+- `apps/pos/src/lib/offline/__tests__/zReportService.test.ts`,
+  `apps/pos/src/lib/offline/__tests__/endOfDayPreview.test.ts` — **extended** (errata F2, both
+  currently reference `local_refund_records`/`getRefundRecordsForShift` and must be updated for
+  §7.3/§7.3a's `receipt_kind`-branched replacement rather than left referencing a deleted table).
 - `apps/pos/src/lib/offline/zReportService.ts` — §7.3's exact `aggregateReportData` re-signature
   and per-row `receipt_kind` branching; §7.3's `expected_cash` formula simplification.
-- `apps/pos/src/lib/offline/endOfDayPreview.ts` — same rewiring.
+- `apps/pos/src/lib/offline/endOfDayPreview.ts` — its **own** `receipt_kind`-branched refund
+  handling (§7.3a errata T3 — not shared code with `zReportService.ts`); deletes its own
+  `getRefundRecordsForShift` call.
+- `apps/pos/src/lib/db/repositories/productSalesAggregateRepository.ts` — **no production
+  change** (§7.3b errata T7 — net-units behavior is already correct by construction).
+- `apps/pos/src/lib/db/repositories/__tests__/productSalesAggregateRepository.test.ts` —
+  extended with the net-units case (§7.3b).
 - `apps/pos/src/lib/sync/syncService.ts` — `pullTerminalState` calls
   `setV4RefundAuthoringEnabled()` in both branches (§9.1); sends the Phase-2 acknowledgement
-  (§9.3).
+  (§9.3); new `source_event_class === 'refund_intents'` sync-completion-flip branch alongside the
+  existing `'offline_receipts'` branch at `:382-390` (§7.2a errata T2 — closes the
+  stuck-`'pending'`-forever bug).
+- `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts` — new
+  `updateReceiptStatusByIdempotencyKey()` (§7.2a, extends the existing `updateReceiptStatus()`
+  file, not a new repository).
+- `apps/pos/src/lib/sync/__tests__/syncService.refundStatusFlip.test.ts` — new, proving a
+  refund's `offline_receipts` row reaches `'synced'` (not stuck `'pending'`) after its fiscal
+  event syncs (§7.2a).
 - `apps/pos/src/lib/buildReceiptData.ts` — unconditional AVOIR rounding line (kept from
   Revision 2/3, unaffected by this round).
 - `apps/pos/src/pages/HomePage.tsx` — §9.2's real capability-check dispatch seam, at the
@@ -1063,6 +1338,8 @@ not attempted here.
   **and** reprint-recovery modal copy (§4.5).
 - Tests: `apps/pos/src/lib/fiscal/payloads/__tests__/RefundReceiptV4Payload.test.ts` (§3.2's
   normalization proof, §3.3's parallel-array assertions, §3.5's discount-refusal cases);
+  `apps/pos/src/lib/fiscal/payloads/__tests__/RefundReceiptV4Payload.trainingRefusal.test.ts`
+  (§3.7 errata T4 — training-original refusal site + non-conflation with session training mode);
   `apps/pos/src/lib/refundFlow/__tests__/hydrateFromReceipt.discount.test.ts`;
   `apps/pos/src/lib/db/repositories/__tests__/refundIntentRepository.test.ts` (§4.4's corrected
   active-index exclusion of `synced`);
@@ -1073,6 +1350,13 @@ not attempted here.
   and reprint-recovery flows);
   `apps/pos/src/lib/offline/__tests__/zReportService.cashRounding.test.ts` — extended (Lane B's
   file, never forked) with §7.3's refund-row-in-`offline_receipts` cases.
+- **Errata T7, minor, device-side precision rule:** every new `bcabs`/`bcadd`/`bcsub`/`bcmul`
+  call this manifest introduces (§3.2's normalization steps, §7.3/§7.3a's per-row branching,
+  §7.3b unaffected — no new calls there) passes its scale argument **explicitly** — the
+  device `lib/decimal.ts` helpers default to scale 3 when no scale is supplied, which silently
+  truncates a scale-2 currency or a scale-4 quantity if a call site omits it (rule 19's
+  device-side equivalent of the API manifest's `precision-ok` marker note, above). No new call
+  site in this manifest may rely on the scale-3 default.
 
 **Explicitly NOT touched:** `apps/pos/src/lib/payment/cashRounding.ts`;
 `apps/api/app/Modules/Voucher/Application/Services/VoucherIssuanceService.php`;
