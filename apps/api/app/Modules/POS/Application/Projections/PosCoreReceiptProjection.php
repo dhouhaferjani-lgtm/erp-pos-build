@@ -13,6 +13,7 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
+use App\Modules\Fiscal\Domain\Exceptions\RefundQuantityExceededException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\CountingBlockService;
@@ -306,6 +307,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // axis stored in pos_receipts.invoice_type_code.
             $receiptTypeEnum = $this->resolveReceiptType($payload->invoiceTypeCode, $originalReceiptId);
 
+            // v3-refund-chain-integration spec §3.7/§12 — v4-only server-
+            // side defense, reached only when the original resolved above
+            // (a v4 REFUND with no legitimate producer other than REFUND,
+            // per FiscalPayloadConstraintValidator's v4 gate). Training-
+            // original refusal is the device's PRIMARY gate (§3.7); this is
+            // defense-in-depth for an event that somehow bypassed it.
+            if ($event->event_version >= 4 && $originalReceiptId !== null) {
+                $this->assertOriginalNotTraining($event, $originalReceiptId);
+                $this->assertRefundQuantityWithinCap($event, $view, $originalReceiptId);
+            }
+
             // Buyer block snapshot — D16 invariant: read ONLY from the
             // parsed payload. NO live customer/contact/B2B lookup.
             $buyer = $view->buyer;
@@ -399,10 +411,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 return;
             }
 
-            $this->writeLines($receiptId, $event, $view);
+            $this->writeLines($receiptId, $event, $view, $originalReceiptId);
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
-            $this->redeemVouchers($receiptId, $event, $view);
+            $this->redeemVouchers($receiptId, $event, $view, $receiptTypeEnum);
             // Spec §4.5 consumer matrix: loyalty earns on the SALE VALUE
             // (total − adj), never on the rounded amount collected. On v1/v2
             // there is no adjustment, so the base stays the projected total.
@@ -637,6 +649,116 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * v3-refund-chain-integration spec §3.7 (T4) — server-side defense-in-
+     * depth mirroring the device's primary training-original refusal.
+     * Reads `training_flag` from the RESOLVED ORIGINAL's own signed
+     * fiscal-event payload — never from the CURRENT event's
+     * `payload->trainingFlag` (an unrelated concept: whether the refund
+     * itself is training, not whether the original sale being refunded
+     * was). A training original refunded outside training mode (or a
+     * non-training original refunded from a training session) is a
+     * separate, orthogonal question this check does not answer — see
+     * §10's `redeemVouchers`/`earnLoyaltyPoints` gates for the CURRENT
+     * event's own training exclusion.
+     */
+    private function assertOriginalNotTraining(FiscalEvent $event, string $originalReceiptId): void
+    {
+        /** @var Receipt|null $original */
+        $original = Receipt::query()->find($originalReceiptId);
+        if ($original === null || $original->fiscal_event_id === null) {
+            // Legacy-sealed (pre-fiscal-events) or otherwise unresolvable
+            // original — no signed training_flag to read; nothing to
+            // enforce here (the projector-level dependency-missing guard
+            // already required a resolvable original before this point).
+            return;
+        }
+
+        $originalEvent = FiscalEvent::query()->find($original->fiscal_event_id);
+        if ($originalEvent === null || ! is_array($originalEvent->payload)) {
+            return;
+        }
+
+        if (($originalEvent->payload['training_flag'] ?? null) === true) {
+            throw new RuntimeException(sprintf(
+                'PosCoreReceiptProjection: refund fiscal_event=%s targets a TRAINING original '.
+                '(original fiscal_event=%s) — the device-side refusal (spec §3.7) should have '.
+                'blocked this before authoring; refusing server-side as defense-in-depth.',
+                $event->id,
+                $original->fiscal_event_id,
+            ));
+        }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §12 — per-original quantity cap.
+     *
+     * Locks the ORIGINAL receipt's `pos_receipt_lines` rows
+     * (`FOR UPDATE`) so two concurrent refund projections against the SAME
+     * original serialize rather than both reading a stale
+     * already-refunded sum. For each `original_line_references[]` entry,
+     * sums `ABS(quantity)` across every EXISTING `pos_receipt_lines` row
+     * referencing that original line (`original_line_id`) — the `ABS()`
+     * normalizes both the legacy negative convention
+     * (`ReceiptReturnService.php:955-975`) and the v4 positive-magnitude
+     * convention (§3.1) to their true magnitude, so a mixed-legacy
+     * population (some prior refunds via the legacy path, some via v4)
+     * is counted correctly. Throws
+     * {@see RefundQuantityExceededException} — a
+     * `NonRetryableProjectionException` (§4.2) — when the cumulative
+     * total, INCLUDING the quantity this event is requesting, would
+     * exceed the original line's own quantity.
+     */
+    private function assertRefundQuantityWithinCap(FiscalEvent $event, SaleReceiptCanonicalView $view, string $originalReceiptId): void
+    {
+        $originalLineReferences = $view->originalLineReferences();
+        if ($originalLineReferences === null || $originalLineReferences === []) {
+            return;
+        }
+
+        $originalLines = DB::table('pos_receipt_lines')
+            ->where('receipt_id', $originalReceiptId)
+            ->orderBy('line_number')
+            ->lockForUpdate()
+            ->get(['id', 'line_number', 'quantity']);
+
+        foreach ($originalLineReferences as $ref) {
+            $originalLine = $originalLines->firstWhere('line_number', $ref->originalLineIndex + 1);
+            if ($originalLine === null) {
+                // Defensive — the validator's product_id/quantity equality
+                // check against line_items[] already makes this
+                // unreachable for a well-formed v4 payload against a
+                // correctly-projected original.
+                continue;
+            }
+
+            $originalLineId = (string) $originalLine->id;
+            /** @var numeric-string $originalQuantity */
+            $originalQuantity = (string) $originalLine->quantity;
+
+            /** @var numeric-string $alreadyRefunded */
+            $alreadyRefunded = (string) (DB::table('pos_receipt_lines')
+                ->where('original_line_id', $originalLineId)
+                ->selectRaw('COALESCE(SUM(ABS(quantity)), 0) as total')
+                ->value('total') ?? '0');
+
+            /** @var numeric-string $requested */
+            $requested = $ref->quantity;
+
+            $projected = bcadd($alreadyRefunded, $requested, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($projected, $originalQuantity, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+                throw new RefundQuantityExceededException(
+                    fiscalEventId: $event->id,
+                    originalLineId: $originalLineId,
+                    originalQuantity: $originalQuantity,
+                    alreadyRefundedQuantity: $alreadyRefunded,
+                    requestedQuantity: $requested,
+                );
+            }
+        }
+    }
+
+    /**
      * Insert the `pos_receipt_lines` rows from the canonical view.
      *
      * Canonical line fields written to columns:
@@ -660,11 +782,36 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * product FK, honouring the table CHECK
      * `variant_id IS NULL OR product_id IS NOT NULL`. The sealed canonical
      * payload remains authoritative when the FK does not resolve.
+     *
+     * **v4 REFUND `original_line_id` write (spec §3.3/§17).** When the
+     * canonical view carries `original_line_references[]` (v4 REFUND
+     * only), each written line's `original_line_id` is resolved from the
+     * ORIGINAL receipt's own `pos_receipt_lines` via the SAME
+     * `original_line_index + 1 == line_number` mapping
+     * {@see assertRefundQuantityWithinCap()} uses — this is what makes a
+     * v4-authored refund line participate in §12's `SUM(ABS(quantity))`
+     * cap query and in the legacy `ReceiptReturnService::
+     * calculateAlreadyReturnedQuantities()` `original_line_id`-keyed
+     * lookup, exactly like a legacy-authored return line already does.
      */
-    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
+    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ?string $originalReceiptId = null): void
     {
+        $originalLineReferences = $view->originalLineReferences();
+        $originalLineIdByIndex = [];
+        if ($originalLineReferences !== null && $originalReceiptId !== null) {
+            $originalLines = DB::table('pos_receipt_lines')
+                ->where('receipt_id', $originalReceiptId)
+                ->get(['id', 'line_number']);
+            foreach ($originalLineReferences as $index => $ref) {
+                $matchingLine = $originalLines->firstWhere('line_number', $ref->originalLineIndex + 1);
+                if ($matchingLine !== null) {
+                    $originalLineIdByIndex[$index] = (string) $matchingLine->id;
+                }
+            }
+        }
+
         $lineNumber = 1;
-        foreach ($view->lineItems as $line) {
+        foreach ($view->lineItems as $index => $line) {
             // pos_receipt_lines.product_id is a foreign key to `products`
             // with `nullable()->restrictOnDelete()`. The canonical
             // `line_items[].product_id` is the audit-stable identifier
@@ -708,6 +855,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'tax_amount' => $line->lineVat,
                 'discount_amount' => $line->lineDiscountAmount,
                 'discount_reason' => $line->lineDiscountReason,
+                'original_line_id' => $originalLineIdByIndex[$index] ?? null,
             ]);
         }
     }
@@ -937,9 +1085,28 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * Reads from the canonical view; the redemption call inherits the
      * wrapping DB transaction.
+     *
+     * **§10 defense-in-depth gate (v3-refund-chain-integration spec, fold
+     * item 10).** `store_voucher` is excluded from the v4 launch enum
+     * (§3.4's single `refund_destination: 'cash'` literal) and a v4
+     * REFUND's `payments[]` is a single CASH leg by construction (§3.5) —
+     * so this branch is structurally unreachable for a well-formed v4
+     * event. Gated on `ReceiptType::Sale`, matching the EXACT conditional
+     * shape of the sibling `earnLoyaltyPoints()` gate
+     * (`$receiptType !== ReceiptType::Sale`, mirrored per §10's wording
+     * fix) rather than a differently-shaped `invoice_type_code !==
+     * 'REFUND'` check — both are logically equivalent for this launch (a
+     * REFUND event always resolves to `ReceiptType::Return`, never
+     * `Sale`), but keying on the same enum + comparison form as the
+     * sibling gate keeps the two defense-in-depth checks structurally
+     * consistent.
      */
-    private function redeemVouchers(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
+    private function redeemVouchers(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ReceiptType $receiptType): void
     {
+        if ($receiptType !== ReceiptType::Sale) {
+            return;
+        }
+
         $currency = $view->payload->currencyCode;
 
         foreach ($view->payments as $payment) {
