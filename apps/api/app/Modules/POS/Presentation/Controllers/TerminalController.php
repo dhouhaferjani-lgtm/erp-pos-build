@@ -119,6 +119,11 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // Provision-at-v3 (first-tenant launch, Lane D1): every terminal
+            // created through this endpoint is fiscal schema 3 from creation.
+            // Explicit here (not just relying on the column DEFAULT) so the
+            // API contract is visible in code.
+            'fiscal_schema_version' => 3,
             'is_active' => true,
             'activated_at' => now(),
         ]);
@@ -394,6 +399,8 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
+            'fiscal_schema_version' => 3,
             'is_active' => false,
             'hardware_identifier' => $data['hardware_identifier'],
         ]);
@@ -457,6 +464,18 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // NOT v3 (first-tenant launch, Lane D1 round-2 fiscal-pos review
+            // fix): web terminals are server-authoritative by construction —
+            // there is no device to author SESSION_OPEN/SESSION_CLOSE locally,
+            // so a v3 web terminal would hit ShiftController's device-authority
+            // guard (ShiftController.php:60-70,124-134 — `fiscal_schema_version
+            // >= 3` => 409 SHIFT_DEVICE_AUTHORITY_REQUIRED) and permanently
+            // dead-end the web shifts dashboard for the first new tenant. The
+            // `pos_terminals.fiscal_schema_version` column DEFAULT is now 3
+            // (migration 2026_07_31_000001), so this explicit 2 is
+            // LOAD-BEARING — omitting it would silently flip web terminals to
+            // v3 via the column default.
+            'fiscal_schema_version' => 2,
             'is_active' => true,
             'activated_at' => now(),
             'allow_line_discounts' => true,

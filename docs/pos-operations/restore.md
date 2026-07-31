@@ -4,6 +4,11 @@ The restore drill is the acceptance evidence for the backup process. Execute it 
 
 ## Inputs
 
+> The restore drill is a real-device event that has not run yet — none of these values are derivable from
+> the repository and they are NOT fabricated here. They close via gate **E-2** (P0 real-device smoke,
+> section G "Backup + Restore Drill" of the repaired `docs/qa/2026-05-12-first-tenant-smoke.md`) — see
+> `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md`.
+
 - Company ID: `TBD`
 - Backup zip path: `TBD`
 - Restore drill operator: `TBD`

@@ -27,6 +27,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Seeders\DemoPharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -281,7 +282,19 @@ final class DemoPharmacySeederTest extends TestCase
         // Snapshot counts after run 1 — all idempotency checks below compare against these.
         $productCountRun1 = $tenantAfterRun1->run(fn () => Product::count());
 
-        // ---- RUN 2 ----
+        // First-tenant launch, Lane D1 task 1 — delete the country_payment_settings
+        // row RUN 1 left behind before RUN 2. Without this, an assertion after RUN
+        // 2 that the row exists would pass even if the RE-RUN branch's own
+        // CountryPaymentSettingsSeeder call were removed (the row would just be
+        // the one RUN 1's parent::run()/ParapharmacySeeder left in place) — this
+        // isolates the RE-RUN branch's OWN coverage, which is the actual gap this
+        // lane closed (RE-RUN skips parent::run() and therefore ParapharmacySeeder's
+        // own call, at DemoPharmacySeeder.php's run()'s else branch).
+        $tenantAfterRun1->run(function (): void {
+            DB::table('country_payment_settings')->where('country_code', 'TN')->delete();
+        });
+
+        // ---- RUN 2 (the RE-RUN branch: tenant slug already exists) ----
         $this->seed(DemoPharmacySeeder::class);
 
         // ---- Assertions ----
@@ -291,6 +304,17 @@ final class DemoPharmacySeederTest extends TestCase
         $this->assertSame($tenantIdAfterRun1, $tenantAfterRun2->id, 'tenant must NOT be deleted+recreated on re-run');
 
         $tenantAfterRun2->run(function () use ($productCountRun1): void {
+            // (A2) First-tenant launch, Lane D1 task 1 — the RE-RUN path (which
+            // skips parent::run()/ParapharmacySeeder's own
+            // CountryPaymentSettingsSeeder call) must ITSELF recreate the
+            // country_payment_settings row deleted above: DemoPharmacySeeder
+            // calls the seeder unconditionally inside the shared tenant->run()
+            // block that both the first-run and re-run branches execute.
+            $this->assertDatabaseHas('country_payment_settings', [
+                'country_code' => 'TN',
+                'cash_rounding_enabled' => false,
+            ]);
+
             // (B) Exactly 5 locations (1 warehouse + 4 shops) — no duplicates.
             $this->assertSame(5, Location::count(), 'exactly 5 locations after double run');
 

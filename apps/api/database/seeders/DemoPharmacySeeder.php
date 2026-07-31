@@ -393,6 +393,14 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         // re-run they all no-op without error.
         $tenant = Tenant::where('slug', $slug)->firstOrFail();
         $tenant->run(function (): void {
+            // Guarantee a country_payment_settings row even on RE-RUN, which
+            // skips parent::run() (and therefore ParapharmacySeeder's own
+            // CountryPaymentSettingsSeeder call at step 2). Self-healing/
+            // idempotent by construction (INSERT-if-missing, backfill-only on
+            // an existing row) so it is safe to call unconditionally on both
+            // the first-run and re-run paths — first-tenant launch, Lane D1.
+            $this->call(CountryPaymentSettingsSeeder::class);
+
             // Ensure Tunisia tax configs (VAT 19/13/7 + stamp duties) are seeded.
             // TunisiaTaxConfigurationSeeder uses updateOrCreate so it is idempotent.
             $this->call(TunisiaTaxConfigurationSeeder::class);

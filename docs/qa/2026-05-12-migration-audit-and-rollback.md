@@ -33,7 +33,17 @@ The policy applies to **every production migration run** for the first-tenant pi
 1. Put the application into maintenance mode if any migration is non-trivially backward-incompatible (e.g., dropping a column read by the previous app version).
 2. Run `php artisan migrate --force` (the `--force` is required in production to bypass the interactive guard).
 3. Verify with `php artisan migrate:status` that every migration row is now `Ran`.
-4. Run the fiscal-chain verifier (`php artisan fiscal:verify-chain` per vertical) to confirm no chain link broke.
+4. Run the real chain verifiers, target-scoped to the tenant/company/terminal under migration — **not** a
+   bare/per-vertical invocation (`php artisan fiscal:verify-chain` does not exist):
+   ```bash
+   php artisan fiscal:verify-chains --company=<COMPANY_UUID>
+   php artisan pos:verify-chains --company=<COMPANY_UUID> --terminal=<TERMINAL_UUID> --type=all
+   php artisan fiscal:verify-event-chain --tenant=<TENANT_UUID> --terminal=<TERMINAL_UUID> \
+     --chain-context=operational --actor-id=<SYSTEM_USER_UUID>
+   ```
+   All three must exit 0. `--actor-id` is **mandatory** on the third command — it fails without it
+   (`VerifyEventChainCommand.php:70-103`). Repeat the third command once per active terminal on the tenant.
+   See `docs/runbooks/fiscal-verify-all-chains.md` for the full per-tenant wrapper recipe.
 5. Smoke-test the first-tenant happy path (login, take a sale, sync receipt, close Z-report) before exiting maintenance.
 
 ### Rollback decision
@@ -81,7 +91,9 @@ This is the procedure that closes M1.9 from a release-engineering perspective. T
    php artisan migrate --force > /tmp/migrate.log 2>&1
    ```
 6. Capture timing (start/end timestamps per migration) so the production-run estimate can be computed.
-7. Run the fiscal-chain verifier and the smoke from `docs/qa/2026-05-12-first-tenant-smoke.md` against the staging DB.
+7. Run the real chain verifiers (the same three target-scoped commands as step 4 above, incl. mandatory
+   `--actor-id` on `fiscal:verify-event-chain`) and the smoke from `docs/qa/2026-05-12-first-tenant-smoke.md`
+   against the staging DB.
 
 If all of the above pass, the production deploy is unblocked. If any step fails, file the issue against the offending migration before scheduling production.
 

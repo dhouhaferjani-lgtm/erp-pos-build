@@ -57,6 +57,14 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Seeding countries...');
         $this->call(CountriesSeeder::class);
 
+        // MUST run after CountriesSeeder — country_payment_settings.country_code
+        // FKs into countries (spec §4.2 greenfield self-healing). Without this a
+        // fresh demo tenant has no settings row, no PosPaymentPolicyResolver
+        // fallback source, and pos:configure-cash-rounding cannot create one for
+        // the tenant.
+        $this->command->info('Seeding country payment settings...');
+        $this->call(CountryPaymentSettingsSeeder::class);
+
         $this->command->info('Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);
 

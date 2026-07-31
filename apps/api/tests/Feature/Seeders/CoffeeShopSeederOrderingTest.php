@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Seeders;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CoffeeShopSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,6 +58,22 @@ final class CoffeeShopSeederOrderingTest extends TestCase
 
         // Tenant must be present.
         $this->assertDatabaseHas('tenants', ['slug' => 'cafe-tunis']);
+
+        // First-tenant launch, Lane D1 task 1 — CountryPaymentSettingsSeeder
+        // must have run (after CountriesSeeder) so a fresh coffee-shop tenant
+        // has a settings row with rounding DISABLED, not silently absent.
+        $this->assertDatabaseHas('country_payment_settings', [
+            'country_code' => 'TN',
+            'cash_rounding_enabled' => false,
+        ]);
+
+        // First-tenant launch, Lane D1 task 2 — CoffeeShopSeeder's seeded
+        // terminal (seedTerminal(), Terminal::create() with no explicit
+        // fiscal_schema_version) is the FOURTH creation site that relies on
+        // the migration's column DEFAULT rather than an explicit value; pin
+        // that it actually lands at 3.
+        $terminal = Terminal::forCompany($company->id)->firstOrFail();
+        $this->assertSame(3, $terminal->fiscal_schema_version, 'CoffeeShopSeeder terminal must default to fiscal schema 3.');
     }
 
     /**

@@ -234,11 +234,20 @@ php artisan tinker --execute='\Sentry\captureMessage("Rotation smoke 2026-05");'
 
 ## First-Tenant Readiness Gate
 
+> **Rule normalized 2026-07-31 — intentional program override.** This document previously stated two
+> conflicting closure rules: "every row below requires `status = revoked`" (above, per-row inventory intro)
+> vs. the High/Medium owner-signed acceptance statuses in the checklist that used to follow. Per
+> `docs/handoff/DISPATCH-PLAN-v5-first-tenant-2026-07-31.md` (Lane D2-a task 5 / gate **E-1**), the
+> **stricter rule governs for the first-tenant gate**: every credential row — Critical, High, and Medium
+> alike — must reach `revoked`. The `accepted-non-prod-with-owner-signoff` and
+> `accepted-with-owner-signoff` acceptance statuses are **retired for this gate**; no acceptance path
+> exists for ANY row regardless of severity. This is a text-only rule normalization — it does not change
+> any status cell in the Secret Inventory table above, the Verification Evidence ledger, or the Final
+> Sign-Off table below.
+
 This file satisfies the gate when:
 
-- [ ] All "Critical" rows are status `revoked`.
-- [ ] All "High" rows are status `revoked` or `accepted-non-prod-with-owner-signoff`.
-- [ ] All "Medium" rows are status `revoked` or `accepted-with-owner-signoff`.
+- [ ] Every row in the Secret Inventory (all severities — Critical, High, Medium) is status `revoked`.
 - [ ] Connection-target review row (above) is checked off by the release owner.
 - [ ] Sign-off by security owner: TBD (record name + date below).
 
