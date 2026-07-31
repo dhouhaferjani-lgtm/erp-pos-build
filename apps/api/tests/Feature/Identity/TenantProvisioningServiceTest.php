@@ -115,6 +115,36 @@ class TenantProvisioningServiceTest extends TestCase
         $this->assertFalse(Schema::connection('tenant')->hasTable('tenants'));
         $this->assertFalse(Schema::connection('tenant')->hasTable('plans'));
 
+        // First-tenant launch, Lane D1 task 1/4 — a freshly REGISTERED tenant
+        // (this real orchestration path, not a demo seeder) must already carry a
+        // country_payment_settings row with both rounding switches DISABLED.
+        // TenantInitializationService::seedReferenceData() has called
+        // CountryPaymentSettingsSeeder unconditionally since before this lane —
+        // this pins that the registration path was never the gap; only the four
+        // demo seeders were (Lane D1 task 1 wired those separately).
+        $settingsRow = DB::table('country_payment_settings')->where('country_code', 'TN')->first();
+        $this->assertNotNull($settingsRow, 'A freshly registered tenant must have a country_payment_settings row for its country.');
+        $this->assertFalse((bool) $settingsRow->cash_rounding_enabled);
+        $this->assertFalse((bool) $settingsRow->pos_tolerance_enabled);
+
+        // First-tenant launch, Lane D1 task 4 — REPORT (do not flip) finding:
+        // the auto-created "Main Location" is provisioned with pos_enabled =
+        // false. Confirmed via `git log -S pos_enabled` on this file: the value
+        // has been `false` since the line was introduced in the original T6
+        // deliverable-8 commit (7912e264d, 2026-05-28) and has never been touched since —
+        // and AuthController.php's shared-DB-compat registration path sets the
+        // exact same `pos_enabled => false` for its own auto-created Main
+        // Location. Both registration paths agree, so this reads as an
+        // intentional default (an auto-provisioned "head office" placeholder
+        // location is not, by default, a POS shop floor) rather than a bug —
+        // this test pins the CURRENT behavior as a regression guard without
+        // asserting it is the *correct* business decision, which is an owner
+        // call (see E-8 in the gate sheet: the real tenant's terminal-creation
+        // location must be decided/recorded before its first live transaction).
+        $mainLocation = DB::table('locations')->where('code', 'MAIN')->first();
+        $this->assertNotNull($mainLocation);
+        $this->assertFalse((bool) $mainLocation->pos_enabled);
+
         tenancy()->end();
     }
 }

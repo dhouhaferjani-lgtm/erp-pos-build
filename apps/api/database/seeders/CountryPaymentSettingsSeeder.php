@@ -40,6 +40,23 @@ class CountryPaymentSettingsSeeder extends Seeder
 
         foreach (CountryPaymentDefaults::all() as $countryCode => $definition) {
             if (! DB::table('countries')->where('code', $countryCode)->exists()) {
+                // Silent degrade-to-no-op today (round-2 tenancy-authz review):
+                // if `countries` is empty or missing this code (e.g. this
+                // seeder ran before CountriesSeeder, or a country in
+                // CountryPaymentDefaults isn't in the countries lookup yet),
+                // this country is skipped with NO operator signal — the "every
+                // fresh tenant gets a settings row" guarantee this class's
+                // docblock promises quietly does not hold. `$this->command` is
+                // null when instantiated directly (`new
+                // CountryPaymentSettingsSeeder`, as TenantInitializationService
+                // and this class's own tests do) rather than via `$this->call()`,
+                // hence the nullsafe call.
+                $this->command?->warn(sprintf(
+                    'CountryPaymentSettingsSeeder: skipping %s — no matching row in countries. '
+                    .'A tenant without this country seeded will have no country_payment_settings row.',
+                    $countryCode,
+                ));
+
                 continue;
             }
 
