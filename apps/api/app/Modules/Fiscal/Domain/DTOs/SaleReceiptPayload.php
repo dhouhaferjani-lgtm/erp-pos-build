@@ -88,6 +88,23 @@ final readonly class SaleReceiptPayload
          * NULL on v1/v2 payloads.
          */
         public ?string $cashRoundingDenomination = null,
+        /**
+         * v4 refund/void chain integration (spec §3.3/§17): strict parallel
+         * array to `lineItems`, one entry per line, ONLY present on a v4
+         * REFUND payload. NULL on v1/v2/v3 payloads — this is the v4
+         * discriminator this DTO surface uses (mirrors the `cashRoundingAdjustment
+         * !== null` v3 discriminator above): `refundDestination` and the
+         * "settlement_allocation key present" fact are only ever emitted
+         * alongside a non-null value here.
+         *
+         * @var list<array<string, mixed>>|null
+         */
+        public ?array $originalLineReferences = null,
+        /**
+         * v4 refund destination literal (`'cash'` for launch, spec §3.4).
+         * NULL on v1/v2/v3 payloads.
+         */
+        public ?string $refundDestination = null,
     ) {}
 
     /**
@@ -160,6 +177,15 @@ final readonly class SaleReceiptPayload
             cashRoundingDenomination: array_key_exists('cash_rounding_denomination', $data)
                 ? FiscalPayloadArrayGuards::optionalString($data, 'cash_rounding_denomination')
                 : null,
+            // v4 (refund/void chain, spec §3.3/§17): present-and-nullable —
+            // same array_key_exists discriminator pattern as the v3 fields
+            // above. The constraint validator forbids these keys on v1/v2/v3
+            // and requires them (non-null) on v4.
+            // @phpstan-ignore-next-line argument.type (validator asserts list<object> shape; DTO surface stores raw)
+            originalLineReferences: array_key_exists('original_line_references', $data)
+                ? FiscalPayloadArrayGuards::requireArray($data, 'original_line_references')
+                : null,
+            refundDestination: FiscalPayloadArrayGuards::optionalString($data, 'refund_destination'),
         );
     }
 
@@ -192,10 +218,13 @@ final readonly class SaleReceiptPayload
             'line_items' => $this->lineItems,
             'lottery_code' => $this->lotteryCode,
             'notes' => $this->notes,
+            'original_line_references' => $this->originalLineReferences,
             'original_receipt_reference' => $this->originalReceiptReference,
             'payments' => $this->payments,
             'receipt_uuid' => $this->receiptUuid,
+            'refund_destination' => $this->refundDestination,
             'seller' => $this->seller,
+            'settlement_allocation' => null,
             'shift_id' => $this->shiftId,
             'subtotal' => $this->subtotal,
             'table_id' => $this->tableId,
@@ -211,6 +240,14 @@ final readonly class SaleReceiptPayload
 
         if ($this->cashRoundingAdjustment === null && $this->cashRoundingDenomination === null) {
             unset($array['cash_rounding_adjustment'], $array['cash_rounding_denomination']);
+        }
+
+        // v4 (refund/void chain, spec §3.3/§3.4): the three keys travel
+        // together — `original_line_references` is this DTO's v4 marker
+        // (never non-null without `refund_destination`/`settlement_allocation`
+        // also being present on a correctly-constructed v4 payload).
+        if ($this->originalLineReferences === null) {
+            unset($array['original_line_references'], $array['refund_destination'], $array['settlement_allocation']);
         }
 
         return $array;

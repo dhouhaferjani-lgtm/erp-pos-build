@@ -1715,21 +1715,234 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     // All golden fixtures F-1..F-14 are accepted (round-trip guard)
     // =================================================================
 
-    public function test_all_golden_fixtures_f1_to_f14_pass_validator(): void
+    public function test_all_golden_fixtures_f1_to_f16_pass_validator(): void
     {
         $fixtures = GoldenFixtureBuilder::all();
-        self::assertCount(14, $fixtures, 'Builder must produce exactly F-1 through F-14.');
+        self::assertCount(15, $fixtures, 'Builder must produce exactly F-1 through F-14 plus F-16 (F-15 is generated separately by LargeReceiptFixtureGenerator).');
 
         foreach ($fixtures as $slug => $payload) {
+            // F-16 is the only event_version=4 fixture in this builder;
+            // every other fixture is validated at the default v1 key set,
+            // matching this test's pre-existing behavior for F-1..F-14.
+            $eventVersion = str_starts_with($slug, 'F-16') ? 4 : 1;
             try {
-                $keysetError = $this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload);
+                $keysetError = $this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: $eventVersion);
                 self::assertNull($keysetError, "Fixture {$slug} key-set rejected: {$keysetError}");
-                $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+                $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: $eventVersion);
             } catch (RuntimeException $e) {
                 self::fail("Fixture {$slug} rejected by validator: {$e->getMessage()}");
             }
         }
         $this->addToAssertionCount(1);
+    }
+
+    // =================================================================
+    // v4 refund/void chain integration — spec
+    // 2026-07-31-v3-refund-chain-integration.md §3, §17
+    // =================================================================
+
+    public function test_f16_v4_refund_key_set_is_exactly_32_keys(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4));
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v4_key_set_rejects_v3_payload_as_missing_required(): void
+    {
+        // A v3-shaped payload (no original_line_references/refund_destination/
+        // settlement_allocation) validated AS v4 must fail missing-required,
+        // not silently pass — the v4 key set is a strict superset.
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['cash_rounding_adjustment'] = '0.00';
+        $payload['cash_rounding_denomination'] = '0.00';
+
+        $error = $this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+        self::assertNotNull($error);
+        self::assertStringStartsWith('payload_missing_required:', $error);
+        self::assertStringContainsString('original_line_references', $error);
+        self::assertStringContainsString('refund_destination', $error);
+        self::assertStringContainsString('settlement_allocation', $error);
+    }
+
+    public function test_v4_key_set_rejects_v4_extra_field_on_v3_payload(): void
+    {
+        // The v4-only keys must be REJECTED as extras when validated against
+        // the v3 key set — v1/v2/v3 events must keep rejecting them forever.
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+
+        $error = $this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 3);
+        self::assertNotNull($error);
+        self::assertStringStartsWith('payload_extra_field:', $error);
+    }
+
+    public function test_v4_void_invoice_type_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['invoice_type_code'] = 'VOID';
+
+        $this->expectExceptionMessage('payload_void_authoring_prohibited');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_sale_invoice_type_is_rejected(): void
+    {
+        // event_version=4 never legitimately resolves for anything but
+        // REFUND (spec §2's resolution table) — a SALE at v4 is a
+        // structural anomaly, not merely an unauthored combination.
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['invoice_type_code'] = 'SALE';
+
+        $this->expectExceptionMessage('payload_invoice_type_invalid');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_refund_transaction_discount_must_be_zero(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['transaction_discount_amount'] = '1.00';
+        $payload['transaction_discount_reason'] = 'whole-receipt discount on the original';
+        // Keep the total-arithmetic identity satisfied so the discount-zero
+        // check (not an unrelated arithmetic failure) is what actually fires.
+        $payload['total'] = '11.00';
+
+        $this->expectExceptionMessage('payload_v4_refund_transaction_discount_must_be_zero');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_refund_destination_rejects_non_cash_literal(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['refund_destination'] = 'store_voucher';
+
+        $this->expectExceptionMessage('payload_field_invalid:refund_destination');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_settlement_allocation_must_be_null(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['settlement_allocation'] = ['some' => 'value'];
+
+        $this->expectExceptionMessage('payload_settlement_allocation_not_null');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_original_line_references_length_must_match_line_items(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['original_line_references'] = [];
+
+        $this->expectExceptionMessage('payload_original_line_references_length_mismatch');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_original_line_reference_product_id_must_match_line_item(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['original_line_references'][0]['product_id'] = 'some-other-product';
+
+        $this->expectExceptionMessage('payload_original_line_reference_product_id_mismatch');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_original_line_reference_quantity_must_match_line_item(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['original_line_references'][0]['quantity'] = '2.000';
+
+        $this->expectExceptionMessage('payload_original_line_reference_quantity_mismatch');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_original_line_reference_disposition_must_be_valid_enum(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['original_line_references'][0]['disposition'] = 'destroyed';
+
+        $this->expectExceptionMessage('payload_field_invalid:original_line_references[0].disposition');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_payments_must_be_exactly_one_row(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['payments'][] = $payload['payments'][0];
+        // Keep the arithmetic identity satisfied for the second leg so the
+        // single-cash-leg check (not an unrelated aggregate mismatch) fires.
+        $payload['payments'][0]['amount'] = '6.00';
+        $payload['payments'][1]['amount'] = '6.00';
+
+        $this->expectExceptionMessage('payload_v4_refund_payments_not_single_leg');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_payments_must_be_cash(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['payments'][0]['method_code'] = 'CARD';
+        $payload['payments'][0]['instrument_type'] = 'visa';
+        $payload['payments'][0]['instrument_serial'] = '4242';
+
+        $this->expectExceptionMessage('payload_v4_refund_payment_not_cash');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_payments_instrument_type_must_be_null(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['payments'][0]['instrument_type'] = 'cash_drawer';
+
+        $this->expectExceptionMessage('payload_v4_refund_payment_instrument_type_must_be_null');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
+    }
+
+    public function test_v4_canonical_payload_reader_parses_original_line_references(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+
+        $event = new FiscalEvent;
+        $event->id = '44444444-4444-4444-8444-444444444444';
+        $event->event_type = FiscalEventType::SALE_RECEIPT;
+        $event->payload = $payload;
+
+        $reader = new CanonicalPayloadReader;
+        $view = $reader->forSaleReceipt($event);
+
+        self::assertNotNull($view->originalLineReferences());
+        self::assertCount(1, $view->originalLineReferences());
+        self::assertSame('restock', $view->originalLineReferences()[0]->disposition);
+        self::assertSame(0, $view->originalLineReferences()[0]->originalLineIndex);
+        self::assertSame('prod-default', $view->originalLineReferences()[0]->productId);
+        self::assertSame('1.000', $view->originalLineReferences()[0]->quantity);
+    }
+
+    public function test_v1_v2_v3_canonical_payload_reader_original_line_references_is_null(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+
+        $event = new FiscalEvent;
+        $event->id = '55555555-5555-4555-8555-555555555555';
+        $event->event_type = FiscalEventType::SALE_RECEIPT;
+        $event->payload = $payload;
+
+        $reader = new CanonicalPayloadReader;
+        $view = $reader->forSaleReceipt($event);
+
+        self::assertNull($view->originalLineReferences());
+    }
+
+    public function test_f16_matches_committed_fixture_bytes(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $generatedBytes = GoldenFixtureBuilder::jcsCanonicalEncode($payload);
+        $committedPath = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-golden/v4/F-16-refund-v4-cash-eur/payload.json';
+
+        self::assertFileExists($committedPath);
+        $committedBytes = file_get_contents($committedPath);
+        self::assertSame($committedBytes, $generatedBytes, 'Committed F-16 payload.json must match generator output byte-for-byte.');
     }
 
     /**
