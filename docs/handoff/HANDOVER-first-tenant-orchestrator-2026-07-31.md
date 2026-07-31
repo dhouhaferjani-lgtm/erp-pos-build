@@ -139,6 +139,27 @@ Enable gate (unchanged): rounding stays OFF until Lane C lands or owner signs th
   `project_live_counting_completion_lane` (rulings incl. deferred `idempotency_key` lane),
   `reference_erp_staging_db_access`, `feedback_dev_local_remote_sync_discipline`.
 
+## 5b. ADDENDUM 2026-07-31 (prior orchestrator, standing down) — READ BEFORE RE-ASKING §4
+
+The prior session already obtained owner rulings on most of §4 and progressed step 3. Do not re-ask
+what is settled here; reconcile only if the owner told you something different directly.
+
+- **RULED — Lane C scope:** full v3 refund-chain integration + E1 rounding as ONE lane, spec-first.
+- **RULED — Lane E:** all owner/team-manual items (secret rotation, P0 real-device smoke, TN legal
+  sign-off, runbook values only the owner knows) are sequenced LAST; everything dispatchable
+  proceeds now. D2 compiles the manual items into ONE checklist for the owner.
+- **DONE — design material committed** (`bf07bbe71`): `docs/design/` + `docs/design-experiment/`
+  (node_modules gitignored). Input for the post-launch design track, which the owner has ALREADY
+  started as its own session — not yours to run.
+- **STILL OPEN from §4:** deptrac re-baseline (recommendation on file, no ruling) and B5 (no ruling).
+- **v2 DISPATCH PLAN EXISTS:** `docs/handoff/DISPATCH-PLAN-v2-first-tenant-2026-07-31.md` — five
+  lanes with disjoint write manifests. **Codex round-2 adversarial review was launched on it; the
+  verdict record will be committed as `docs/superpowers/reviews/2026-07-31-codex-v2-dispatch-review.md`
+  when it lands.** Do not dispatch before reading that verdict. If it is present, proceed per its
+  verdict (APPROVE → dispatch; fixes → fold, then dispatch; REJECT → round 3).
+- **Single-orchestrator rule:** the prior session stands down after committing that verdict. From
+  then on, YOU are the only orchestrator. Any other session claiming launch-program ownership is stale.
+
 ## 6. First moves (suggested)
 
 1. Read the Codex review + this file's citations; spot-check any you rely on.
