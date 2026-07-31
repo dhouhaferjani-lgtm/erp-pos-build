@@ -3574,6 +3574,84 @@ final class GeneralLedgerService
     }
 
     /**
+     * v3-refund-chain-integration spec §5.3 — class-dependent compensation
+     * entry for a rejected refund fiscal event.
+     *
+     *   - `invalid_refund` (the refund was genuinely wrong): Dr RefundWriteOff
+     *     (expense) / Cr Cash — a genuine loss booking.
+     *   - `valid_unbooked` (a genuine refund whose booking was merely
+     *     delayed by infrastructure): Dr SalesReturn / Cr Cash — the SAME
+     *     reversal shape a successfully-booked refund would have received
+     *     via the normal path.
+     *
+     * Caller (`RefundCompensationService`) wraps this + the movement-port
+     * call + the `fiscal_refund_compensations` row insert in ONE
+     * `DB::transaction()` (§5.2) — this method does NOT open its own
+     * transaction (unlike {@see createPosCashRoundingEntry}) so it can
+     * participate in that outer one.
+     *
+     * @param  numeric-string  $amount  positive magnitude at $scale
+     */
+    public function createRefundCompensationEntry(
+        string $tenantId,
+        string $companyId,
+        string $fiscalEventId,
+        string $compensationClass,
+        string $amount,
+        int $scale,
+        \DateTimeInterface $entryDate,
+    ): JournalEntry {
+        $debitPurpose = match ($compensationClass) {
+            'invalid_refund' => SystemAccountPurpose::RefundWriteOff,
+            'valid_unbooked' => SystemAccountPurpose::SalesReturn,
+            default => throw new \InvalidArgumentException(
+                'Unknown compensation_class '.$compensationClass.'; expected invalid_refund or valid_unbooked.'
+            ),
+        };
+
+        $debitAccount = $this->getAccountByPurpose($companyId, $debitPurpose);
+        $cashAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash);
+
+        $sourceType = 'fiscal_refund_compensation';
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_date' => $entryDate,
+            'description' => "Refund compensation ({$compensationClass}) for fiscal_event {$fiscalEventId}",
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => $sourceType,
+            'journal_code' => JournalCode::fromSourceType($sourceType)->value,
+            'source_id' => $fiscalEventId,
+        ]);
+
+        $normalizedAmount = CurrencyScale::bcformatStrict($amount, $scale);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $debitAccount->id,
+            'partner_id' => null,
+            'debit' => $normalizedAmount,
+            'credit' => '0',
+            'description' => "Refund compensation ({$compensationClass})",
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cashAccount->id,
+            'partner_id' => null,
+            'debit' => '0',
+            'credit' => $normalizedAmount,
+            'description' => "Refund compensation ({$compensationClass})",
+            'line_order' => 1,
+        ]);
+
+        return $entry->load('lines');
+    }
+
+    /**
      * POS tender-tolerance write-off (cash-rounding spec §4.6 entry 2).
      *
      *   Dr PaymentToleranceExpense (6580) S / Cr ProductRevenue S

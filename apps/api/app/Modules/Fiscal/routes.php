@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Fiscal\Presentation\Controllers\FiscalEventIngestionController;
 use App\Modules\Fiscal\Presentation\Controllers\ParseFailureResolutionController;
 use App\Modules\Fiscal\Presentation\Controllers\QuarantineBestEffortParseController;
+use App\Modules\Fiscal\Presentation\Controllers\RefundCompensationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -31,4 +32,8 @@ Route::prefix('api/v1')
             ->middleware('can:fiscal.events.resolve_quarantine');
         Route::post('/fiscal/events/{id}/resolve-parse-failure', [ParseFailureResolutionController::class, 'store'])
             ->middleware('can:fiscal.events.resolve_quarantine');
+        // v3-refund-chain-integration spec §5.2/§17.
+        Route::post('/fiscal/refund-compensations', [RefundCompensationController::class, 'store'])
+            ->name('fiscal.refund-compensations.store')
+            ->middleware('can:fiscal.refunds.manage_dead_letters');
     });
