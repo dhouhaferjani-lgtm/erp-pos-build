@@ -131,7 +131,7 @@ class TenantProvisioningServiceTest extends TestCase
         // the auto-created "Main Location" is provisioned with pos_enabled =
         // false. Confirmed via `git log -S pos_enabled` on this file: the value
         // has been `false` since the line was introduced in the original T6
-        // deliverable-8 commit (2026-05-26) and has never been touched since —
+        // deliverable-8 commit (7912e264d, 2026-05-28) and has never been touched since —
         // and AuthController.php's shared-DB-compat registration path sets the
         // exact same `pos_enabled => false` for its own auto-created Main
         // Location. Both registration paths agree, so this reads as an

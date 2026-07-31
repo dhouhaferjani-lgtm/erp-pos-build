@@ -44,6 +44,19 @@ use Tests\TestCase;
  *       BOTH the resolver (used elsewhere in the app) AND the HTTP policy
  *       endpoint the device actually polls (PosPaymentPolicyController),
  *       proving the command's write is what the device would receive.
+ *
+ * SQLITE LIMITATION (round-2 tenancy-authz review): like
+ * CoffeeShopSeederOrderingTest, this class's default (non-PG) run executes on
+ * a single SQLite connection SHARED by every table — there is no physical
+ * per-tenant database and no connection swap. What THIS harness actually
+ * proves: the command mutates the one row the resolver and the HTTP endpoint
+ * both read, on the SAME connection — i.e. the resolver/endpoint/command
+ * agree with each other. It does NOT exercise cross-tenant-DATABASE scoping
+ * (that `pos:configure-cash-rounding`, run via `tenants:run` against ONE
+ * physical tenant database, cannot leak into another tenant's database). This
+ * class is also registered in the `backend-test-pgsql` CI job's `--filter`
+ * list alongside `PosPaymentPolicyEndpointTest`, so the real per-tenant-DB
+ * claim runs against actual PostgreSQL connections in CI, not just here.
  */
 final class TenantLaunchContractTest extends TestCase
 {
@@ -160,9 +173,14 @@ final class TenantLaunchContractTest extends TestCase
             'location_id' => $this->location->id,
         ])->assertStatus(201);
 
-        // The REUSED, EXISTING operator command — scoped to this tenant's
-        // (single-connection test) database, exactly as tenants:run would scope
-        // it to one tenant database in production.
+        // The REUSED, EXISTING operator command. Under this (default, SQLite)
+        // harness there is only ONE shared connection, so "scoped to this
+        // tenant" means only that the command, the resolver, and the HTTP
+        // endpoint below all read/write the same in-test database — it does
+        // NOT exercise `tenants:run`'s real per-tenant-DATABASE isolation (see
+        // the class docblock's SQLITE LIMITATION note). That production
+        // guarantee is what registering this class in the `backend-test-pgsql`
+        // CI job now covers, against real per-connection PostgreSQL databases.
         $this->artisan('pos:configure-cash-rounding', [
             '--country' => 'TN',
             '--denomination' => '0.050',
