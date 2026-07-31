@@ -4,6 +4,14 @@ This runbook is for deploy-phase-1 installation on the customer Windows 11 termi
 
 ## Inputs To Fill Before Install
 
+> The still-open values below are not derivable from the repository as of 2026-07-31: the Tauri app
+> version is a static, not-yet-release-managed `0.1.0` (`apps/pos/src-tauri/tauri.conf.json`,
+> `apps/pos/package.json`) rather than a meaningful release identifier, and no signed/checksummed release
+> artifact or real tenant-#1 company exists yet. They are NOT fabricated here. They close via gate **E-8**
+> (target-device rollout — real terminal + release build for the actual tenant #1) — see
+> `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md`. `E-9`/`E-10` also require this same
+> version/checksum evidence for the promoted release candidate.
+
 - Expected release version: `TBD`
 - Release notes URL: `TBD`
 - Installer file name: `IziPOS-<version>-setup.exe`
