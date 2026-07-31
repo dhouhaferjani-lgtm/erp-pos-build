@@ -13,6 +13,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Domain\Enums\ReturnReason;
@@ -93,6 +94,7 @@ class ReceiptReturnServiceTest extends TestCase
             $this->app->make(PaymentRefundService::class),
             $this->app->make(ReceiptHashService::class),
             $this->app->make(RestockPolicyResolver::class),
+            $this->app->make(LegacyCorrectionGuard::class),
         );
     }
 

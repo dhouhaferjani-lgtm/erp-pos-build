@@ -83,6 +83,7 @@ final class ReceiptReturnService
         private readonly PaymentRefundService $paymentRefundService,
         private readonly ReceiptHashService $receiptHashService,
         private readonly RestockPolicyResolver $restockPolicyResolver,
+        private readonly LegacyCorrectionGuard $legacyCorrectionGuard,
     ) {}
 
     private function scale(): int
@@ -246,6 +247,11 @@ final class ReceiptReturnService
                 ->where('id', $terminalId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // v3-refund-chain-integration spec §9.1/§9.3 — retires this
+            // legacy authoring path for any terminal that has acknowledged
+            // v4 refund authoring.
+            $this->legacyCorrectionGuard->assertLegacyCorrectionAllowed($terminal);
 
             if (! $terminal->isActive()) {
                 throw new \RuntimeException('Terminal is not active');

@@ -3,8 +3,8 @@
 use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\CrossTenantContext;
 use App\Http\Middleware\EnsureSuperAdmin;
-use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\RequireAnyPermission;
+use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
@@ -12,6 +12,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
 use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
+use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
@@ -262,6 +263,22 @@ return Application::configure(basePath: dirname(__DIR__))
                         'message' => $e->getMessage(),
                     ],
                 ], 422);
+            }
+        });
+
+        // v3-refund-chain-integration spec §9.1/§9.4 — the typed refusal
+        // copy MUST NOT say "use the legacy path" (per §9.4's correction:
+        // once acknowledgement completes, the legacy path IS the one being
+        // 409-blocked, so pointing a cashier at it would describe a dead
+        // end). Exact copy per §9.4.
+        $exceptions->render(function (LegacyCorrectionRetiredException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'LEGACY_CORRECTION_RETIRED',
+                        'message' => 'Refunds are temporarily unavailable on this terminal — contact support',
+                    ],
+                ], 409);
             }
         });
 
