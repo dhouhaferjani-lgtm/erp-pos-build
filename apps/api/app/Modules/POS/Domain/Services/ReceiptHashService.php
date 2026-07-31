@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Compliance\Services\FiscalHashService;
+use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
+use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
@@ -53,6 +55,7 @@ final class ReceiptHashService
         private readonly FiscalHashService $fiscalHashService,
         private readonly FiscalIntegrityProvider $integrityProvider,
         private readonly ConnectionInterface $db,
+        private readonly V3ReceiptHashComputer $v3Computer,
     ) {}
 
     /**
@@ -309,6 +312,19 @@ final class ReceiptHashService
      * Legacy arm — verifies pos_receipts rows that pre-date the
      * fiscal-events rebuild. Pinned by Task 21 R2: `fiscal_event_id IS
      * NULL` partitions pre-Phase-1 rows from projection rows.
+     *
+     * **v3-refund-chain-integration spec §6 — per-row algorithm dispatch.**
+     * `ReceiptFinalizationService::finalize()` seals BOTH schema_version=2
+     * (legacy pipe-separated `calculateHash()`) AND schema_version=3
+     * (`V3ReceiptHashComputer`'s canonical-JSON hash) receipts WITHOUT
+     * setting `fiscal_event_id` — so this "legacy" partition is not
+     * uniformly pipe-format; it needs the per-row `sealed_hash_algorithm`
+     * discriminator to pick the matching re-verification arm. §6.3's
+     * NULL-handling: before a terminal's backfill completes, a NULL
+     * discriminator means `legacy_pipe_v1` (every row that predates the
+     * column is, by construction, legacy-pipe-sealed — this IS today's
+     * unconditional behavior, preserved exactly); after backfill
+     * completion, a remaining NULL is a genuine anomaly and fails closed.
      */
     private function verifyLegacyArm(Terminal $terminal): bool
     {
@@ -330,7 +346,14 @@ final class ReceiptHashService
                 return false;
             }
 
-            $expectedHash = $this->calculateHash($receipt, $previousHash);
+            $algorithm = $this->resolveSealedHashAlgorithm($receipt, $terminal);
+            if ($algorithm === null) {
+                // §6.3: post-backfill-completion NULL is a genuine anomaly —
+                // fail closed rather than guess a format.
+                return false;
+            }
+
+            $expectedHash = $this->computeHashForAlgorithm($receipt, $algorithm, $previousHash);
 
             if ($expectedHash !== $receipt->fiscal_hash) {
                 return false;
@@ -350,6 +373,43 @@ final class ReceiptHashService
         }
 
         return true;
+    }
+
+    /**
+     * §6.3's NULL-handling gate. NULL discriminator resolves to
+     * `legacy_pipe_v1` before the terminal's backfill completion is
+     * recorded (every pre-migration row is, by construction, legacy-pipe-
+     * sealed); resolves to `null` (genuine anomaly, caller fails closed)
+     * once backfill completion is recorded and a row is still unset.
+     *
+     * Public: shared with `Nf525DataProvider::verifyReceiptChain()`'s
+     * identical per-row algorithm dispatch (spec §6/§17) so the §6.3 gate
+     * has exactly one implementation, not two copies that could drift.
+     */
+    public function resolveSealedHashAlgorithm(Receipt $receipt, Terminal $terminal): ?SealedHashAlgorithm
+    {
+        if ($receipt->sealed_hash_algorithm !== null) {
+            return SealedHashAlgorithm::from($receipt->sealed_hash_algorithm);
+        }
+
+        return $terminal->sealed_hash_algorithm_backfill_completed_at === null
+            ? SealedHashAlgorithm::LegacyPipeV1
+            : null;
+    }
+
+    /**
+     * Recompute the expected `fiscal_hash` for the given algorithm — the
+     * single dispatch point both {@see verifyLegacyArm()} and
+     * `Nf525DataProvider::verifyReceiptChain()`'s identical repair share
+     * (spec §6/§17), so a third arm added in the future has exactly one
+     * place to extend.
+     */
+    public function computeHashForAlgorithm(Receipt $receipt, SealedHashAlgorithm $algorithm, ?string $previousHash): string
+    {
+        return match ($algorithm) {
+            SealedHashAlgorithm::LegacyPipeV1 => $this->calculateHash($receipt, $previousHash),
+            SealedHashAlgorithm::CanonicalJsonV3 => $this->v3Computer->compute($receipt),
+        };
     }
 
     /**

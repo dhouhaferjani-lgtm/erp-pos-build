@@ -129,6 +129,12 @@ class Terminal extends Model
             'max_discount_percent' => 'decimal:2',
             'allow_line_discounts' => 'boolean',
             'allow_transaction_discounts' => 'boolean',
+            // v3-refund-chain-integration spec §6.4/§9.1: two-phase
+            // enable/acknowledge capability flags.
+            'v4_refund_authoring_enabled' => 'boolean',
+            'v4_refund_authoring_acknowledged_at' => 'datetime',
+            // §6.3's per-terminal backfill-completion signal.
+            'sealed_hash_algorithm_backfill_completed_at' => 'datetime',
         ];
     }
 

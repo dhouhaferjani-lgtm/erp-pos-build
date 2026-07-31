@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -94,9 +95,19 @@ final class ReceiptFinalizationService
             $receipt->previous_hash = $terminal->last_hash;
             $receipt->chain_sequence = $terminal->current_sequence;
 
-            $hash = match ($terminal->fiscal_schema_version) {
-                2 => $this->legacyHashService->calculateHash($receipt, $terminal->last_hash),
-                3 => $this->v3Computer->compute($receipt),
+            // v3-refund-chain-integration spec §6 — the seal discriminator
+            // is written alongside the hash itself (same match, same
+            // schema-version dispatch) so the verifier never has to infer
+            // which pipeline sealed this row from fiscal_schema_version alone.
+            [$hash, $sealedHashAlgorithm] = match ($terminal->fiscal_schema_version) {
+                2 => [
+                    $this->legacyHashService->calculateHash($receipt, $terminal->last_hash),
+                    SealedHashAlgorithm::LegacyPipeV1->value,
+                ],
+                3 => [
+                    $this->v3Computer->compute($receipt),
+                    SealedHashAlgorithm::CanonicalJsonV3->value,
+                ],
                 default => throw new \LogicException(
                     "Unsupported fiscal_schema_version: {$terminal->fiscal_schema_version}"
                 ),
@@ -104,6 +115,7 @@ final class ReceiptFinalizationService
 
             $receipt->fiscal_hash = $hash;
             $receipt->fiscal_status = FiscalStatus::Fiscalized;
+            $receipt->sealed_hash_algorithm = $sealedHashAlgorithm;
             $receipt->save();
 
             $terminal->last_hash = $hash;

@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\DefaultModuleActivationResolver;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\HashChainIntegrityProvider;
+use App\Modules\Fiscal\Infrastructure\Commands\BackfillSealedHashAlgorithmCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\PreflightFiscalGateCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\RetryFiscalProjectionsCommand;
@@ -56,6 +57,10 @@ final class FiscalServiceProvider extends ServiceProvider
                 // the Task 24 convention.
                 VerifyEventChainCommand::class,
                 RetryFiscalProjectionsCommand::class,
+                // v3-refund-chain-integration spec §6 — one-time
+                // sealed_hash_algorithm backfill + per-terminal
+                // backfill-completion stamp (§6.3's verifier gate).
+                BackfillSealedHashAlgorithmCommand::class,
             ]);
         }
 
