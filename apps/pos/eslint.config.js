@@ -321,16 +321,31 @@ export default tseslint.config(
     // "database is locked" checkout failure. Exempt: writeGate.ts (owns the
     // statements), migrations.ts (runs on the writer during the boot gate
     // job), and tests (adapters/harnesses).
+    //
+    // B4 (Lane B, 2026-07-31): re-includes `...cartMutatorSelectors` — flat
+    // config REPLACES `no-restricted-syntax` for every file matched by a
+    // later block in this array rather than merging it with an earlier
+    // block's options. This block's glob (`src/**/*.{ts,tsx}`) overlaps the
+    // FU-2 cart-mutator block above, and omitting the spread here silently
+    // dropped the FU-2 guard app-wide for every file this block also
+    // matches (`cartMutatorGuard.eslint.test.ts` pinned the regression).
+    // `ignores` also gained the FU-2 block's own two exemptions
+    // (`src/lib/stock/**`, `src/stores/cartStore.ts`) for the same reason —
+    // re-including the selectors without them would re-flag the gated
+    // funnel itself and the store that composes the raw actions.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/lib/db/writeGate.ts',
       'src/lib/db/migrations.ts',
+      'src/lib/stock/**',
+      'src/stores/cartStore.ts',
       '**/*.test.{ts,tsx}',
       'src/**/__tests__/**',
     ],
     rules: {
       'no-restricted-syntax': [
         'error',
+        ...cartMutatorSelectors,
         {
           selector:
             "CallExpression[callee.property.name='execute'] > Literal[value=/^\\s*(BEGIN|COMMIT|ROLLBACK)/i]",

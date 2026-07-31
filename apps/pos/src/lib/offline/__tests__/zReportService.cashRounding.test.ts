@@ -11,7 +11,7 @@
  * (TND, denomination 0.050).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
@@ -23,6 +23,22 @@ const fiscalMocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({
   queryAll: vi.fn(),
+  // B3 (Lane B, 2026-07-31): real pass-throughs, NOT stubs. The
+  // "signed Z bytes" describe block below un-mocks the real
+  // `zSessionAuthoring` module via `vi.importActual`, and its real
+  // `appendZSessionCloseAndZReport` calls `closeLocalShift`
+  // (`localShiftRepository.ts`), which imports `execute`/`queryOne`
+  // from THIS module. Mirrors `@/lib/db.ts`'s actual implementation
+  // (`database.execute(sql, params)` / `database.select(...)`) exactly,
+  // so it is correct for a REAL `SqliteTestAdapter` while remaining a
+  // no-op for the OTHER describe blocks in this file, none of which
+  // exercise `execute`/`queryOne` from this module (they mock `queryAll`
+  // directly and drive their own `db.execute` stub).
+  queryOne: vi.fn(async (database: { select: (sql: string, params?: unknown[]) => Promise<unknown[]> }, sql: string, params: unknown[] = []) => {
+    const rows = await database.select(sql, params);
+    return rows[0] ?? null;
+  }),
+  execute: vi.fn((database: { execute: (sql: string, params?: unknown[]) => Promise<unknown> }, sql: string, params: unknown[] = []) => database.execute(sql, params)),
 }));
 
 vi.mock('@/lib/currency', () => ({
@@ -92,6 +108,19 @@ import { generateZReport } from '../zReportService';
 import { queryAll } from '@/lib/db';
 
 import type Database from '@tauri-apps/plugin-sql';
+
+// B3 additions (Lane B, 2026-07-31) — real-signing coverage for the
+// `appendZSessionCloseAndZReport` handoff. None of these modules are
+// mocked anywhere in this file (only `@/lib/fiscal/zSessionAuthoring`
+// itself, `@/lib/fiscal/instance`, and the repositories mocked above
+// are), so these are plain, real static imports.
+import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
+import { FiscalEventEngine } from '@/lib/fiscal/FiscalEventEngine';
+import { FiscalEventCanonicalEncoder } from '@/lib/fiscal/FiscalEventCanonicalEncoder';
+import { HashChainIntegrityProvider } from '@/lib/fiscal/HashChainIntegrityProvider';
+import { FiscalEventPayloadRegistry } from '@/lib/fiscal/FiscalEventPayloadRegistry';
+import type { AuthorZSessionCloseInput } from '@/lib/fiscal/zSessionAuthoring';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -276,5 +305,202 @@ describe('generateZReport — real tolerance + local cash rounding summary', () 
     const z = await generateZReport(db, 'term-1', 'shift-1', SHIFT_OPENED_AT, '0.000');
 
     expect(z.report_data.gross_sales).toBe('10.000');
+  });
+});
+
+// ─── B3 (Lane B, 2026-07-31) — appendZSessionCloseAndZReport handoff ────────
+//
+// Every test above runs against the file-level `vi.mock('@/lib/fiscal/
+// zSessionAuthoring', ...)` (line ~49), which replaces
+// `appendZSessionCloseAndZReport` with a `vi.fn()` that returns a fixed fake
+// shape and never inspects what `closeInput` it was called with. A
+// regression that drops `toleranceSummary` from `buildZReportPayload`
+// (zSessionAuthoring.ts) or breaks `buildFiscalCloseInput`'s
+// `zReport.tolerance_summary` → `closeInput.toleranceSummary` mapping
+// (zReportService.ts) would pass every test above unnoticed.
+//
+// This block bypasses that mock with `vi.importActual` and drives the REAL
+// `appendZSessionCloseAndZReport` against a REAL `FiscalEventEngine` +
+// `SqliteTestAdapter`, then reads back the ACTUAL bytes the engine signed —
+// `FiscalEventAppendResult.canonical_bytes`, the exact JSON that is
+// SHA-256-hashed into `current_hash` (mirrors the read-back technique in
+// `zSessionAuthoring.test.ts:545-554`) — and asserts `tolerance_summary`
+// landed there with real, non-zero values.
+const B3_TENANT_ID = 'b3-tenant-1';
+const B3_COMPANY_ID = 'b3-company-1';
+const B3_TERMINAL_ID = 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3';
+const B3_OPERATOR_ID = 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b4';
+const B3_SHIFT_ID = 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b5';
+const B3_SESSION_ID = 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b6';
+const B3_GENESIS_SEED = 'f'.repeat(64);
+
+async function b3SeedTerminalState(adapter: SqliteTestAdapter): Promise<void> {
+  await adapter.execute(
+    `INSERT INTO terminal_state (
+       terminal_id, terminal_code, genesis_seed, last_hash,
+       fiscal_event_genesis_seed, z_chain_genesis_seed
+     ) VALUES ($1, 'T01', 'legacy-seed', 'legacy-hash', $2, $2)`,
+    [B3_TERMINAL_ID, B3_GENESIS_SEED],
+  );
+}
+
+function b3CloseInput(
+  toleranceSummary: Record<string, unknown> | null,
+): AuthorZSessionCloseInput {
+  return {
+    tenantId: B3_TENANT_ID,
+    companyId: B3_COMPANY_ID,
+    terminalId: B3_TERMINAL_ID,
+    terminalLabel: 'T01',
+    shiftId: B3_SHIFT_ID,
+    sessionId: B3_SESSION_ID,
+    businessDate: '2026-07-31',
+    operatorId: B3_OPERATOR_ID,
+    operatorName: 'Alice',
+    currencyCode: 'TND',
+    currencyScale: 3,
+    periodStart: '2026-07-31T08:00:00.000Z',
+    periodEnd: '2026-07-31T18:00:00.000Z',
+    zReportUuid: 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b7',
+    zNumber: 1,
+    formattedZNumber: 'Z0001',
+    expectedCash: '150.000',
+    countedCash: '150.000',
+    varianceAmount: '0.000',
+    varianceDirection: 'balanced',
+    varianceSeverity: 'balanced',
+    varianceReason: null,
+    reportTotals: {
+      sales_count: 2,
+      gross_sales: '19.950',
+      net_sales: '19.950',
+      tax_amount: '0.000',
+      refunds_count: 0,
+      refunds_amount: '0.000',
+      voided_count: 0,
+    },
+    vatBreakdown: [],
+    paymentMethodTotals: [],
+    cashCountLines: [],
+    cashDrawerTotals: {},
+    grandTotalsBefore: {},
+    grandTotalsAfter: {},
+    toleranceSummary,
+    legacyReportReference: null,
+    companySnapshot: { company_id: B3_COMPANY_ID },
+    seller: null,
+    operationalEventRange: { first_sequence: 1, last_sequence: 1 },
+    isTraining: false,
+    closedAtDevice: new Date('2026-07-31T18:00:00.000Z'),
+    sessionCloseUuid: 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b8',
+  };
+}
+
+describe('appendZSessionCloseAndZReport — SIGNED Z bytes carry real tolerance_summary (B3)', () => {
+  let adapter: SqliteTestAdapter;
+  let engine: FiscalEventEngine;
+
+  beforeEach(async () => {
+    adapter = new SqliteTestAdapter();
+    await applyAllMigrations(adapter);
+    await b3SeedTerminalState(adapter);
+    engine = new FiscalEventEngine(
+      adapter,
+      new FiscalEventCanonicalEncoder(),
+      new HashChainIntegrityProvider(),
+      new FiscalEventPayloadRegistry(),
+    );
+
+    // Seed the SESSION_OPEN anchor `appendZSessionCloseAndZReport` requires
+    // (`requireSessionOpenEvent`), authored directly through the real engine
+    // — mirrors what `authorZSessionOpenWithOpeningFloatOnDb` writes, without
+    // pulling in the shift-numbering / `local_shifts` machinery this test
+    // does not exercise.
+    await engine.append(adapter, {
+      event_type: 'SESSION_OPEN',
+      tenant_id: B3_TENANT_ID,
+      company_id: B3_COMPANY_ID,
+      terminal_id: B3_TERMINAL_ID,
+      operator_id: B3_OPERATOR_ID,
+      event_time_device: '2026-07-31T08:00:00Z',
+      business_date: '2026-07-31',
+      chain_context: 'z_session',
+      payload: {
+        business_date: '2026-07-31',
+        currency_code: 'TND',
+        currency_scale: 3,
+        opened_at_device: '2026-07-31T08:00:00.000Z',
+        opening_float_amount: '100.000',
+        operator_id: B3_OPERATOR_ID,
+        operator_name: 'Alice',
+        session_id: B3_SESSION_ID,
+        shift_id: B3_SHIFT_ID,
+        shift_number: 1,
+        terminal_id: B3_TERMINAL_ID,
+        terminal_label: 'T01',
+        training_flag: false,
+      },
+      source_event_class: 'pos_session',
+      source_event_id: B3_SESSION_ID,
+    });
+  });
+
+  afterEach(() => {
+    adapter.close();
+  });
+
+  it('signs a non-null tolerance_summary with real values into the Z_REPORT canonical bytes', async () => {
+    // Bypasses the file-level `vi.mock('@/lib/fiscal/zSessionAuthoring', ...)`
+    // for THIS call only — every other describe block in this file keeps
+    // using the mocked version.
+    const { appendZSessionCloseAndZReport } = await vi.importActual<
+      typeof import('@/lib/fiscal/zSessionAuthoring')
+    >('@/lib/fiscal/zSessionAuthoring');
+
+    const realToleranceSummary = {
+      currencyCode: 'TND',
+      totalAmount: '0.075',
+      writeoffCount: 2,
+    };
+
+    const result = await appendZSessionCloseAndZReport(
+      adapter as unknown as Database,
+      engine,
+      b3CloseInput(realToleranceSummary),
+    );
+
+    expect(result.zReportEvent.event_type).toBe('Z_REPORT');
+
+    // The exact bytes the engine hashed into `current_hash` — not a
+    // re-serialization. If a regression drops `toleranceSummary` from
+    // `buildZReportPayload` (zSessionAuthoring.ts) or breaks
+    // `buildFiscalCloseInput`'s mapping (zReportService.ts), this is what
+    // goes dark first.
+    const envelope = JSON.parse(result.zReportEvent.canonical_bytes) as {
+      payload: { tolerance_summary: unknown };
+    };
+    expect(envelope.payload.tolerance_summary).toEqual(realToleranceSummary);
+    // Three distinct non-null values, none of them a canonical/zero shape —
+    // proof this is real data, not a zero-shape that happened to round-trip.
+    expect(realToleranceSummary.currencyCode).not.toBe('0');
+    expect(realToleranceSummary.totalAmount).not.toBe('0.000');
+    expect(realToleranceSummary.writeoffCount).not.toBe(0);
+  });
+
+  it('signs a null tolerance_summary when the shift closed without cash counts (legacy shape preserved)', async () => {
+    const { appendZSessionCloseAndZReport } = await vi.importActual<
+      typeof import('@/lib/fiscal/zSessionAuthoring')
+    >('@/lib/fiscal/zSessionAuthoring');
+
+    const result = await appendZSessionCloseAndZReport(
+      adapter as unknown as Database,
+      engine,
+      b3CloseInput(null),
+    );
+
+    const envelope = JSON.parse(result.zReportEvent.canonical_bytes) as {
+      payload: { tolerance_summary: unknown };
+    };
+    expect(envelope.payload.tolerance_summary).toBeNull();
   });
 });
