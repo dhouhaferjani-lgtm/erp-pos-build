@@ -2,6 +2,11 @@
 
 Acceptance requires another teammate to read each runbook and explain back the procedure step by step.
 
+> This file IS the evidence sink for gate **E-6** (walkthrough rehearsal) — see
+> `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md`. None of the still-open values below are
+> derivable from the repository (they are the outcome of an actual rehearsal event that has not happened
+> yet) and are NOT fabricated here.
+
 ## Rehearsal Record
 
 - Date/time: `TBD`

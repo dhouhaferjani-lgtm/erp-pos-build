@@ -4,6 +4,11 @@ This runbook defines deploy-phase-1 support. It intentionally avoids unattended 
 
 ## Placeholder Decision Record
 
+> The still-open fields below are not derivable from the repository (they are owner/operational
+> decisions, not code or config facts) and are NOT fabricated here. They close via gate **E-6** (walkthrough
+> rehearsal) — see `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md` — whose explain-back prompt 5 is
+> literally "what the remote support placeholder decision still needs before go-live."
+
 Fill before go-live:
 
 - Approved remote tool: `TBD` (recommended: AnyDesk or TeamViewer)
@@ -11,7 +16,8 @@ Fill before go-live:
 - Consent: explicit verbal consent plus on-screen prompt
 - Unattended access: not permitted in deploy-phase-1
 - Maximum session duration: `30 minutes` unless customer explicitly extends
-- Support address: `support@otospex.com` or `TBD`
+- Support address: `support@otospex.com` — resolved (matches the definitive address already used in
+  `chain-break-recovery.md:120`; no longer an open decision).
 - Support phone/WhatsApp escalation: `TBD`
 - Session logging location: `TBD`
 

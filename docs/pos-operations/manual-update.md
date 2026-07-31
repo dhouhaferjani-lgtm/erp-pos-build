@@ -4,6 +4,13 @@ Deploy-phase-1 uses a manual installer or binary swap. There is no in-app update
 
 ## Pre-Update Release Record
 
+> This is a per-update-event form, not a one-time value — it is re-filled for every future update and is
+> expected to show an open marker again after each cycle. None of the values below are derivable from the
+> repository (they depend on which release is being installed and by whom) and are NOT fabricated here.
+> The FIRST fill of this record happens as part of gate **E-8** (target-device rollout, the initial
+> install); every subsequent update repeats the record outside the launch-gate scope. See
+> `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md`.
+
 Fill this before touching the terminal:
 
 - Current installed version: `TBD`

@@ -91,6 +91,12 @@ Do not omit `.db-wal` or `.db-shm`. WAL mode is enabled by the POS and those fil
 
 ## Storage Destination
 
+> The destinations below are an owner/customer decision, not derivable from the repository, and are NOT
+> fabricated here. They close via gate **E-8** (target-device rollout — "every item evidenced ... before
+> its first live customer transaction" covers an operational backup destination) and are reviewed at gate
+> **E-6** (walkthrough rehearsal — `backup.md` is one of the documents explicitly walked). See
+> `docs/handoff/OWNER-manual-launch-gates-2026-07-31.md`.
+
 Use the customer-approved destination, filled before go-live:
 
 - Primary destination: `TBD`
