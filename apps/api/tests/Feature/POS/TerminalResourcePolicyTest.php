@@ -99,4 +99,48 @@ final class TerminalResourcePolicyTest extends TestCase
         self::assertNull($payload['location']['address_postal_code']);
         self::assertNull($payload['location']['address_country']);
     }
+
+    /**
+     * v3-refund-chain-integration spec §6.4/§9.1/§9.3 — the two-phase
+     * enable/acknowledge capability flags are exposed on the terminal
+     * resource.
+     */
+    public function test_terminal_resource_exposes_v4_refund_authoring_capability_flags(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $location = Location::factory()->for($company)->create();
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'v4_refund_authoring_enabled' => true,
+            'v4_refund_authoring_acknowledged_at' => now(),
+        ]);
+
+        $payload = TerminalResource::make($terminal->load(['location', 'company']))->resolve();
+
+        self::assertTrue($payload['v4_refund_authoring_enabled']);
+        self::assertSame($terminal->v4_refund_authoring_acknowledged_at?->toISOString(), $payload['v4_refund_authoring_acknowledged_at']);
+        self::assertNotNull($payload['v4_refund_authoring_acknowledged_at']);
+    }
+
+    public function test_terminal_resource_exposes_unacknowledged_capability_state(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $location = Location::factory()->for($company)->create();
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'v4_refund_authoring_enabled' => false,
+            'v4_refund_authoring_acknowledged_at' => null,
+        ]);
+
+        $payload = TerminalResource::make($terminal->load(['location', 'company']))->resolve();
+
+        self::assertFalse($payload['v4_refund_authoring_enabled']);
+        self::assertNull($payload['v4_refund_authoring_acknowledged_at']);
+    }
 }
