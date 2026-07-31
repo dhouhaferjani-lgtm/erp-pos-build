@@ -180,11 +180,102 @@ final class SalesReportService
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('pos_receipt_payments.payment_type', 'payment_methods.name')
             ->selectRaw('pos_receipt_payments.payment_type')
+            // Raw (un-coalesced) group key column, kept alongside the display
+            // name below, so the change-netting lookup can be joined on the
+            // BYTE-IDENTICAL (payment_type, payment_methods.name) pair this
+            // query groups on. See the netting comment below for why this
+            // must not drift from the GROUP BY.
+            ->selectRaw('payment_methods.name as raw_method_name')
             ->selectRaw('COALESCE(payment_methods.name, pos_receipt_payments.payment_type) as payment_method_name')
             ->selectRaw('COALESCE(SUM(pos_receipt_payments.amount), 0) as amount')
-            ->selectRaw('COUNT(*) as transaction_count')
-            ->orderByDesc('amount')
+            // COUNT DISTINCT receipts, not payment rows — a split-tender receipt
+            // (e.g. two cash legs) is ONE transaction, not two. (Lane A defect 2,
+            // first-tenant launch audit.)
+            ->selectRaw('COUNT(DISTINCT pos_receipts.id) as transaction_count')
             ->get();
+
+        // `pos_receipt_payments.amount` on a cash leg is the TENDERED amount;
+        // `pos_receipts.change_due` is the cash handed back and must be netted
+        // out of the cash group exactly ONCE per receipt — never once per cash
+        // payment row (a receipt can carry several cash legs in a split
+        // payment) and never leaked into a non-cash group OR a same-code cash
+        // group belonging to a DIFFERENT payment method. We pre-aggregate
+        // per-receipt change_due in a subquery BEFORE summing, mirroring
+        // ReportGenerationService::buildExpectedPerMethod (POS/Application/
+        // Services/ReportGenerationService.php:504-532), which faces the
+        // identical row-fan-out hazard for the cash-count reconciliation
+        // report and resolves it the same way: MAX(change_due) grouped by
+        // receipt first, summed second. Subtracting `pos_receipts.change_due`
+        // directly in the outer SUM after the payment-row join would multiply
+        // the change by the number of cash rows on the receipt (double- or
+        // triple-counting it for split cash tenders) — pre-aggregating per
+        // receipt avoids that fan-out entirely. (Lane A defect 1, first-tenant
+        // launch audit.)
+        //
+        // "Cash" is identified the same way as ReportGenerationService: the
+        // immutable `payment_method_code` snapshot on the payment row, not
+        // the display name — a tenant may rename a payment method without
+        // changing what report group its historical rows land in.
+        //
+        // CRITICAL (treasury-reviewer round 1): the outer query above groups
+        // on the PAIR (payment_type, payment_methods.name) — `payment_type`
+        // alone is the payment-method CODE (e.g. "CASH", see
+        // PosCoreReceiptProjection::resolvePaymentTypeDisplayName), which is
+        // NOT unique across companies. The default owner report scope is the
+        // root company plus every child (OwnerReportScope::companyIds), and
+        // sibling companies can each hold their own CASH-coded method under a
+        // DIFFERENT display name ("Cash" vs "Espèces") — two distinct outer
+        // groups sharing `payment_type = 'CASH'`. Keying the change lookup on
+        // `payment_type` alone would collapse both companies' change into one
+        // bucket and subtract the FULL combined total from EVERY row sharing
+        // that code. This subquery therefore joins `payment_methods` and
+        // groups on the SAME (payment_type, payment_methods.name) pair as the
+        // outer query, so the lookup below can never cross a group boundary
+        // the outer query itself draws.
+        $cashChangeRows = DB::query()
+            ->fromSub(
+                DB::table('pos_receipt_payments')
+                    ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_payments.receipt_id')
+                    ->leftJoin('payment_methods', 'payment_methods.id', '=', 'pos_receipt_payments.payment_method_id')
+                    ->whereIn('pos_receipts.company_id', $companyIds)
+                    ->whereIn('pos_receipts.location_id', $locationIds)
+                    ->where('pos_receipts.is_voided', false)
+                    ->where('pos_receipts.training_flag', false)
+                    ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
+                    ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
+                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+                    ->selectRaw('pos_receipt_payments.payment_type as payment_type, payment_methods.name as raw_method_name, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
+                    ->groupBy('pos_receipt_payments.payment_type', 'payment_methods.name', 'pos_receipts.id'),
+                'cash_receipt_changes',
+            )
+            ->selectRaw('payment_type, raw_method_name, SUM(change_due) as total_change_due')
+            ->groupBy('payment_type', 'raw_method_name')
+            ->get();
+
+        /** @var array<string, string> $cashChangeByGroup composite (payment_type, raw_method_name) key -> numeric-string total change_due */
+        $cashChangeByGroup = [];
+        foreach ($cashChangeRows as $changeRow) {
+            $rawName = $changeRow->raw_method_name;
+            $key = $this->paymentGroupKey((string) $changeRow->payment_type, $rawName === null ? null : (string) $rawName);
+            $cashChangeByGroup[$key] = (string) $changeRow->total_change_due;
+        }
+
+        $rows = $rows->map(function (object $row) use ($cashChangeByGroup): object {
+            $rawName = $row->raw_method_name;
+            $key = $this->paymentGroupKey((string) $row->payment_type, $rawName === null ? null : (string) $rawName);
+
+            if (array_key_exists($key, $cashChangeByGroup)) {
+                $row->amount = bcsub($this->normaliseNumericString($row->amount), $this->normaliseNumericString($cashChangeByGroup[$key]), 3); // precision-ok: pos_receipt_payments.amount and pos_receipts.change_due are both decimal(12,3) at rest
+            }
+
+            return $row;
+        });
+
+        // (Minor, treasury-reviewer round 1) Re-sort AFTER netting: the SQL
+        // query no longer orders by amount (it can't — netting happens in
+        // PHP), and array order is part of the response contract, so the
+        // descending sort must run on the NET amount, not the gross sum.
+        $rows = $rows->sortByDesc(fn (object $row): float => (float) $row->amount)->values();
 
         $total = $rows->sum(fn (object $row): float => (float) $row->amount);
 
@@ -195,6 +286,31 @@ final class SalesReportService
             percentage: number_format($total > 0 ? (((float) $row->amount / $total) * 100) : 0, 2, '.', ''),
             transaction_count: (int) $row->transaction_count,
         ))->all());
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function normaliseNumericString(string|int|float|null $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0';
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * Composite key mirroring the outer query's `GROUP BY (payment_type,
+     * payment_methods.name)`. Must stay byte-identical to that GROUP BY so
+     * the cash change-netting lookup can never cross a report-group boundary
+     * (see the CRITICAL comment above `$cashChangeRows`). Uses a NUL
+     * separator plus a null-name sentinel so no combination of real
+     * payment_type/name values can collide with a different pair.
+     */
+    private function paymentGroupKey(string $paymentType, ?string $rawMethodName): string
+    {
+        return $paymentType."\0".($rawMethodName ?? "\0__NULL__\0");
     }
 
     private function periodExpression(string $granularity, string $column): string
