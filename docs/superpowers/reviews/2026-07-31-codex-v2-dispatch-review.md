@@ -1,7 +1,12 @@
-# Codex adversarial review — dispatch plan v2 (round 2)
+# Codex round-2 adversarial review — DISPATCH-PLAN-v2-first-tenant-2026-07-31
 
-Target: docs/handoff/DISPATCH-PLAN-v2-first-tenant-2026-07-31.md · Reviewer: Codex CLI · 2026-07-31
-(Transcribed by the standing-down orchestrator; v3 plan + adjudication belong to the successor session.)
+**Review target:** `docs/handoff/DISPATCH-PLAN-v2-first-tenant-2026-07-31.md` @ `ffd8ca20c`
+**Run:** Codex session `019fb8f7-7387-7293-a049-f8ce8806feb2`, completed 2026-07-31T16:24:49Z.
+Transcribed and committed by the standing-down orchestrator (`14fe970f0`); per HANDOVER §5b the
+successor session owns everything from that verdict onward.
+**Adjudication 2026-07-31 (successor orchestrator):** all 8 findings spot-checked against code —
+ALL CONFIRMED. Verdict accepted in full; folded into
+`docs/handoff/DISPATCH-PLAN-v3-first-tenant-2026-07-31.md`.
 
 # Verdict: REJECT
 
