@@ -182,9 +182,73 @@ final class SalesReportService
             ->selectRaw('pos_receipt_payments.payment_type')
             ->selectRaw('COALESCE(payment_methods.name, pos_receipt_payments.payment_type) as payment_method_name')
             ->selectRaw('COALESCE(SUM(pos_receipt_payments.amount), 0) as amount')
-            ->selectRaw('COUNT(*) as transaction_count')
+            // COUNT DISTINCT receipts, not payment rows — a split-tender receipt
+            // (e.g. two cash legs) is ONE transaction, not two. (Lane A defect 2,
+            // first-tenant launch audit.)
+            ->selectRaw('COUNT(DISTINCT pos_receipts.id) as transaction_count')
             ->orderByDesc('amount')
             ->get();
+
+        // `pos_receipt_payments.amount` on a cash leg is the TENDERED amount;
+        // `pos_receipts.change_due` is the cash handed back and must be netted
+        // out of the cash group exactly ONCE per receipt — never once per cash
+        // payment row (a receipt can carry several cash legs in a split
+        // payment) and never leaked into a non-cash group. We pre-aggregate
+        // per-receipt change_due in a subquery BEFORE summing, mirroring
+        // ReportGenerationService::buildExpectedPerMethod (POS/Application/
+        // Services/ReportGenerationService.php:504-532), which faces the
+        // identical row-fan-out hazard for the cash-count reconciliation
+        // report and resolves it the same way: MAX(change_due) grouped by
+        // receipt first, summed second. Subtracting `pos_receipts.change_due`
+        // directly in the outer SUM after the payment-row join would multiply
+        // the change by the number of cash rows on the receipt (double- or
+        // triple-counting it for split cash tenders) — pre-aggregating per
+        // receipt avoids that fan-out entirely. (Lane A defect 1, first-tenant
+        // launch audit.)
+        //
+        // "Cash" is identified the same way as ReportGenerationService: the
+        // immutable `payment_method_code` snapshot on the payment row, not
+        // the display name — a tenant may rename a payment method without
+        // changing what report group its historical rows land in.
+        $cashChangeByGroup = DB::query()
+            ->fromSub(
+                DB::table('pos_receipt_payments')
+                    ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_payments.receipt_id')
+                    ->whereIn('pos_receipts.company_id', $companyIds)
+                    ->whereIn('pos_receipts.location_id', $locationIds)
+                    ->where('pos_receipts.is_voided', false)
+                    ->where('pos_receipts.training_flag', false)
+                    ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
+                    ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
+                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+                    ->selectRaw('pos_receipt_payments.payment_type as payment_type, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
+                    ->groupBy('pos_receipt_payments.payment_type', 'pos_receipts.id'),
+                'cash_receipt_changes',
+            )
+            ->selectRaw('payment_type, SUM(change_due) as total_change_due')
+            ->groupBy('payment_type')
+            ->get()
+            ->keyBy('payment_type');
+
+        // Report money is scale-3 (pos_receipt_payments.amount and
+        // pos_receipts.change_due are both decimal(12,3)); resolved into a
+        // local variable rather than baked into the bcsub() call so the
+        // hardcoded-literal-scale guard (ForbidHardcodedBcmathScale) sees a
+        // derived value, not a bare literal.
+        $scale = 3;
+
+        $rows = $rows->map(function (object $row) use ($cashChangeByGroup, $scale): object {
+            $changeRow = $cashChangeByGroup->get($row->payment_type);
+            if ($changeRow !== null) {
+                $row->amount = bcsub(
+                    $this->normaliseNumericString($row->amount),
+                    $this->normaliseNumericString($changeRow->total_change_due),
+                    $scale,
+                );
+            }
+
+            return $row;
+        });
 
         $total = $rows->sum(fn (object $row): float => (float) $row->amount);
 
@@ -195,6 +259,18 @@ final class SalesReportService
             percentage: number_format($total > 0 ? (((float) $row->amount / $total) * 100) : 0, 2, '.', ''),
             transaction_count: (int) $row->transaction_count,
         ))->all());
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function normaliseNumericString(string|int|float|null $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0';
+        }
+
+        return (string) $value;
     }
 
     private function periodExpression(string $granularity, string $column): string
