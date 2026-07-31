@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>IziPOS — Concept épuré</title>
+    <link rel="stylesheet" href="./pos-clean-concept.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-cluster">
+          <span class="wordmark">IziPOS</span>
+          <span class="store-name">PharmaBio Sousse · Médina · POS01</span>
+        </div>
+
+        <div class="status-cluster" aria-label="État de la caisse">
+          <span class="status-pill status-pill--offline"><span class="status-dot"></span>Hors ligne</span>
+          <span class="status-pill">Stock à 26 h</span>
+          <span class="status-pill status-pill--service"><span class="status-dot"></span>Service #1</span>
+        </div>
+
+        <div class="operator-cluster">
+          <span class="avatar">CT</span>
+          <span class="operator-name">Caissier Tunis Lac</span>
+          <button class="icon-button button" type="button" aria-label="Verrouiller la caisse">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          </button>
+          <button class="icon-button button" type="button" aria-label="Plus d’options">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="cart-panel" aria-label="Panier">
+          <div class="cart-head">
+            <div class="section-title">
+              <div class="inline">
+                <h1>Panier</h1>
+                <span class="count-badge">1</span>
+              </div>
+              <button class="icon-button button" type="button" aria-label="Vider le panier">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6"/></svg>
+              </button>
+            </div>
+            <button class="customer-button button" type="button">
+              <span><strong>Client</strong><span class="customer-empty"> · Aucun client sélectionné</span></span>
+              <span>Ajouter</span>
+            </button>
+          </div>
+
+          <div class="cart-list">
+            <article class="cart-line">
+              <div class="line-thumb thumb--violet">AS</div>
+              <div class="line-content">
+                <div class="line-brand">Klorane</div>
+                <div class="line-name">Anti-Aging Serum Hyaluronic Acid 30 ml</div>
+                <div class="line-bottom">
+                  <div class="qty-stepper" aria-label="Quantité">
+                    <button class="qty-button button" type="button" aria-label="Diminuer la quantité">−</button>
+                    <span class="qty-value">1</span>
+                    <button class="qty-button button" type="button" aria-label="Augmenter la quantité">+</button>
+                  </div>
+                  <span class="line-price">49,890 DT</span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <footer class="cart-footer">
+            <div class="summary-row"><span>Sous-total</span><span>49,890 DT</span></div>
+            <div class="summary-row"><span>TVA incluse</span><span>7,966 DT</span></div>
+            <div class="summary-row summary-row--total"><span>Total</span><span>49,890 DT</span></div>
+            <button class="pay-button button" type="button">
+              <span>Encaisser</span>
+              <span>49,890 DT</span>
+            </button>
+          </footer>
+        </aside>
+
+        <section class="catalog" aria-label="Catalogue produits">
+          <header class="catalog-head">
+            <div class="toolbar">
+              <label class="search">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                <input type="search" placeholder="Rechercher ou scanner un produit…" aria-label="Rechercher un produit" />
+              </label>
+              <button class="filter-button button" type="button">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+                Filtres
+              </button>
+              <button class="filter-button filter-button--sort button" type="button">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 17l6-6 4 4 6-8"/></svg>
+                Plus vendus
+              </button>
+              <div class="view-buttons" aria-label="Mode d’affichage">
+                <button class="view-button button" type="button" aria-label="Vue grille" aria-pressed="true">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg>
+                </button>
+                <button class="view-button button" type="button" aria-label="Vue liste" aria-pressed="false">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="category-row" aria-label="Catégories">
+              <button class="category-chip button" type="button" aria-pressed="true">Tout</button>
+              <button class="category-chip button" type="button" aria-pressed="false">Visage</button>
+              <button class="category-chip button" type="button" aria-pressed="false">Corps</button>
+              <button class="category-chip button" type="button" aria-pressed="false">Cheveux</button>
+              <button class="category-chip button" type="button" aria-pressed="false">Compléments</button>
+            </div>
+          </header>
+
+          <div class="product-grid">
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--violet">AS</span>
+              <span class="product-info"><span class="product-brand">A-Derma</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">57,844 DT</span><span class="stock-line">Stock 10</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--violet">AS</span>
+              <span class="product-info"><span class="product-brand">Nuxe</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">58,653 DT</span><span class="stock-line">Stock 14</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--green">AS</span>
+              <span class="product-info"><span class="product-brand">Embryolisse</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">48,870 DT</span><span class="stock-line">Stock 12</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--blue">AS</span>
+              <span class="product-info"><span class="product-brand">Avène</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">48,350 DT</span><span class="stock-line">Stock 10</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="true">
+              <span class="product-thumb thumb--violet">AS</span>
+              <span class="product-info"><span class="product-brand">Klorane</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">49,890 DT</span><span class="stock-line stock-line--low"><span class="stock-mark"></span>Plus qu’un</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--blue">AS</span>
+              <span class="product-info"><span class="product-brand">Uriage</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">58,540 DT</span><span class="stock-line stock-line--low"><span class="stock-mark"></span>Stock 2</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--green">AS</span>
+              <span class="product-info"><span class="product-brand">CeraVe</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">69,520 DT</span><span class="stock-line">Stock 14</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--violet">AS</span>
+              <span class="product-info"><span class="product-brand">Bioderma</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">64,840 DT</span><span class="stock-line">Stock 4</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--amber">AS</span>
+              <span class="product-info"><span class="product-brand">Avène</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">31,770 DT</span><span class="stock-line">Stock 6</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--violet">AS</span>
+              <span class="product-info"><span class="product-brand">Uriage</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">65,430 DT</span><span class="stock-line">Stock 15</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--blue">AS</span>
+              <span class="product-info"><span class="product-brand">La Roche-Posay</span><span class="product-name">Anti-Aging Serum Hyaluronic Acid 30 ml</span><span class="product-price">73,690 DT</span><span class="stock-line stock-line--low"><span class="stock-mark"></span>Stock 3</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+            <button class="product-card button" type="button" aria-pressed="false">
+              <span class="product-thumb thumb--amber">A6</span>
+              <span class="product-info"><span class="product-brand">Weleda</span><span class="product-name">Ashwagandha 600 mg · 60 capsules</span><span class="product-price">21,510 DT</span><span class="stock-line stock-line--low"><span class="stock-mark"></span>Stock 2</span></span>
+              <span class="selected-check">✓</span>
+            </button>
+          </div>
+        </section>
+
+        <nav class="nav-rail" aria-label="Navigation principale">
+          <button class="rail-button button" type="button" aria-current="page">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2 11h12l2-8H6"/></svg>
+            <span>Caisse</span>
+          </button>
+          <button class="rail-button button" type="button">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M18 14a6 6 0 0 1 4 7"/></svg>
+            <span>Clients</span>
+          </button>
+          <button class="rail-button button" type="button">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+            <span>Rapports</span>
+          </button>
+          <button class="rail-button button" type="button">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16v12H4zM7 7V4h10v3M16 13h4"/></svg>
+            <span>Session</span>
+          </button>
+          <span class="rail-spacer"></span>
+          <button class="rail-button button" type="button">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+            <span>Réglages</span>
+          </button>
+        </nav>
+      </div>
+    </main>
+  </body>
+</html>

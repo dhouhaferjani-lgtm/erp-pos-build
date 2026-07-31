@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 36% 95%;
+    --foreground: 34 12% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 34 12% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 34 12% 12%;
+    --primary: 156 68% 28%;
+    --primary-foreground: 40 40% 97%;
+    --secondary: 40 28% 91%;
+    --secondary-foreground: 34 12% 16%;
+    --muted: 40 26% 92%;
+    --muted-foreground: 37 9% 40%;
+    --accent: 146 32% 91%;
+    --accent-foreground: 156 68% 22%;
+    --destructive: 6 48% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 39 30% 87%;
+    --input: 39 30% 87%;
+    --ring: 156 68% 28%;
+    --radius: 0.875rem;
+    --sidebar-background: 42 38% 96.5%;
+    --sidebar-foreground: 34 12% 18%;
+    --sidebar-primary: 156 68% 28%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 40 28% 91%;
+    --sidebar-accent-foreground: 34 12% 14%;
+    --sidebar-border: 39 28% 88%;
+    --sidebar-ring: 156 68% 28%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: #177a52;
+    color: #fbf9f4;
+  }
+}
+
+/* Display numerals get the Fraunces treatment */
+.font-display {
+  font-optical-sizing: auto;
+}
+
+/* Thin warm scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #ddd3c1;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c9bda6;
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Typing indicator for Pim */
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #177a52;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Soft pulse for live status dots */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  opacity: 0.5;
+  animation: pulse-ring 2.4s infinite ease-out;
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* Paper texture for the canvas */
+.paper-grain {
+  background-image: radial-gradient(#e7dfd0 0.65px, transparent 0.65px);
+  background-size: 22px 22px;
+}

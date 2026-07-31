@@ -1,0 +1,60 @@
+/* ==========================================================================
+   Pim — design tokens (framework-agnostic)
+   Map these onto your design system's primitives. Never hardcode hex values
+   in components; always reference the semantic token.
+   ========================================================================== */
+
+:root {
+  /* --- Type --------------------------------------------------------------- */
+  --pim-font-display: 'Fraunces', Georgia, serif;        /* headings, big numbers */
+  --pim-font-sans: 'Instrument Sans', system-ui, sans-serif; /* UI text */
+  /* Google Fonts:
+     https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap */
+
+  /* --- Canvas & ink ------------------------------------------------------- */
+  --pim-paper: #f7f4ee;       /* app background */
+  --pim-parchment: #fbf9f4;   /* sidebar / inset panels */
+  --pim-card: #ffffff;        /* cards */
+  --pim-ink: #211e1a;         /* primary text */
+  --pim-warmgrey: #6b6459;    /* secondary text */
+  --pim-line: #e7dfd0;        /* borders, dividers */
+
+  /* --- Accent (per vertical — pharmacy shown) ----------------------------- */
+  --pim-accent: #177a52;        /* brand actions, active nav, "healthy" */
+  --pim-accent-deep: #0c5739;   /* accent text on soft backgrounds, hover */
+  --pim-accent-soft: #e3f0e8;   /* chips, selected rows */
+  --pim-accent-faint: #eff6f1;  /* panel tints */
+
+  /* Other verticals (swap the four tokens above per business) */
+  --pim-accent-auto: #c77414;    /* automobile */
+  --pim-accent-repair: #3d6bb3;  /* repair */
+  --pim-accent-retail: #7a4fbf;  /* retail */
+
+  /* --- Status tones (semantic, never decorative) --------------------------- */
+  --pim-honey: #b8781b;        /* warning — running low, expiring soon */
+  --pim-honey-soft: #f7ecd8;
+  --pim-clay: #bc4b41;         /* urgent — will run out, expiring, mismatch */
+  --pim-clay-soft: #f8e9e5;
+  --pim-sky: #3d6bb3;          /* informational — Rx badges, references */
+  --pim-sky-soft: #e7eef8;
+  --pim-iris: #7a4fbf;         /* reserved */
+  --pim-iris-soft: #efe8f9;
+
+  /* --- Shape & elevation --------------------------------------------------- */
+  --pim-radius: 14px;
+  --pim-radius-lg: 22px;       /* panels */
+  --pim-radius-full: 9999px;   /* pills, chips, buttons */
+  --pim-shadow-xs: 0 1px 2px rgb(33 30 26 / 0.05);
+  --pim-shadow-card: 0 1px 2px rgb(33 30 26 / 0.04), 0 8px 24px -12px rgb(33 30 26 / 0.1);
+  --pim-shadow-lift: 0 2px 4px rgb(33 30 26 / 0.05), 0 16px 40px -16px rgb(33 30 26 / 0.16);
+
+  /* --- Motion -------------------------------------------------------------- */
+  --pim-ease: cubic-bezier(0.22, 1, 0.36, 1); /* ease-out, no bounce */
+  --pim-duration: 250ms;
+}
+
+/* Optional paper grain for the app background */
+.pim-paper-grain {
+  background-image: radial-gradient(#e7dfd0 0.65px, transparent 0.65px);
+  background-size: 22px 22px;
+}
