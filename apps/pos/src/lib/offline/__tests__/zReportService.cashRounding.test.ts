@@ -313,19 +313,30 @@ describe('generateZReport — real tolerance + local cash rounding summary', () 
 // Every test above runs against the file-level `vi.mock('@/lib/fiscal/
 // zSessionAuthoring', ...)` (line ~49), which replaces
 // `appendZSessionCloseAndZReport` with a `vi.fn()` that returns a fixed fake
-// shape and never inspects what `closeInput` it was called with. A
-// regression that drops `toleranceSummary` from `buildZReportPayload`
-// (zSessionAuthoring.ts) or breaks `buildFiscalCloseInput`'s
-// `zReport.tolerance_summary` → `closeInput.toleranceSummary` mapping
-// (zReportService.ts) would pass every test above unnoticed.
-//
-// This block bypasses that mock with `vi.importActual` and drives the REAL
+// shape and never inspects what `closeInput` it was called with. This block
+// bypasses that mock with `vi.importActual` and drives the REAL
 // `appendZSessionCloseAndZReport` against a REAL `FiscalEventEngine` +
 // `SqliteTestAdapter`, then reads back the ACTUAL bytes the engine signed —
 // `FiscalEventAppendResult.canonical_bytes`, the exact JSON that is
 // SHA-256-hashed into `current_hash` (mirrors the read-back technique in
 // `zSessionAuthoring.test.ts:545-554`) — and asserts `tolerance_summary`
 // landed there with real, non-zero values.
+//
+// Scope, precisely: `b3CloseInput()` below HAND-BUILDS an
+// `AuthorZSessionCloseInput` directly — it does not call `generateZReport`
+// and never drives `zReportService.ts`'s private `buildFiscalCloseInput`
+// (the `zReport.tolerance_summary` → `closeInput.toleranceSummary` mapping
+// on the OTHER side of this handoff). What this block proves is the
+// authoring→signed-bytes leg alone: GIVEN a `toleranceSummary` on
+// `AuthorZSessionCloseInput`, `appendZSessionCloseAndZReport` /
+// `buildZReportPayload` (zSessionAuthoring.ts) correctly carries it,
+// unmutated, into the signed `Z_REPORT` canonical bytes. A regression in
+// `buildFiscalCloseInput`'s mapping itself would NOT be caught here — that
+// half is covered by the "generateZReport" describe block above (via the
+// MOCKED `appendZSessionCloseAndZReport`, which cannot see the signed bytes
+// but DOES see the `closeInput` shape `generateZReport` passes it — no
+// assertion on that call currently exists, so that half is not directly
+// pinned by any test in this file today).
 const B3_TENANT_ID = 'b3-tenant-1';
 const B3_COMPANY_ID = 'b3-company-1';
 const B3_TERMINAL_ID = 'b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3';
@@ -473,9 +484,12 @@ describe('appendZSessionCloseAndZReport — SIGNED Z bytes carry real tolerance_
 
     // The exact bytes the engine hashed into `current_hash` — not a
     // re-serialization. If a regression drops `toleranceSummary` from
-    // `buildZReportPayload` (zSessionAuthoring.ts) or breaks
-    // `buildFiscalCloseInput`'s mapping (zReportService.ts), this is what
-    // goes dark first.
+    // `buildZReportPayload` (zSessionAuthoring.ts), or breaks the
+    // authoring→signing handoff some other way, this is what goes dark
+    // first. (A regression in `buildFiscalCloseInput`'s OWN mapping —
+    // zReportService.ts — is out of this test's reach: `b3CloseInput()`
+    // hand-builds `AuthorZSessionCloseInput` directly and never calls that
+    // private function.)
     const envelope = JSON.parse(result.zReportEvent.canonical_bytes) as {
       payload: { tolerance_summary: unknown };
     };

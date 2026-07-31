@@ -48,6 +48,13 @@ import { DENOMINATION_CAP_BY_SCALE } from '@/lib/payment/cashRounding';
  * shape. Anything else in the array body is ignored rather than
  * mis-parsed, so a future non-numeric entry would show up as a MISSING key
  * here (test failure) rather than a silently wrong one.
+ *
+ * That narrowness is safe in the TS-STRICTER direction only: an entry this
+ * regex fails to match (e.g. a non-numeric value, a non-integer key) drops
+ * out of `phpCaps` entirely, which can only make the `toEqual` comparisons
+ * below FAIL LOUD (missing key vs. the TS tables) — never pass falsely on a
+ * PHP value the parser misread. It can never silently accept a wrong value
+ * as if it were correct.
  */
 function readPhpIntKeyedStringConst(constName: string): Record<number, string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -80,8 +87,20 @@ function readPhpIntKeyedStringConst(constName: string): Record<number, string> {
 describe('Cash-rounding denomination caps — PHP/TS drift gate (B1)', () => {
   it('CashRoundingCaps::CAPS is read as the expected shape (sanity on the parser itself)', () => {
     const phpCaps = readPhpIntKeyedStringConst('CAPS');
-    // If this drifts, EVERY assertion below drifts with it — pinned first,
-    // on its own, so a parser bug and a real cap change are distinguishable.
+    // This literal is a DELIBERATE HUMAN TRIPWIRE, not a derived value — it
+    // exists so a parser bug and a real, legitimate cap change are
+    // distinguishable at a glance instead of both showing up as "the
+    // byte-mirror test failed". If EITHER assertion below fails, check this
+    // one FIRST: if it ALSO fails, the parser mis-read PHP (fix the parser,
+    // not the caps); if it PASSES while a mirror test fails, a TS table
+    // drifted from the PHP source (fix the TS table, per the read-only rule
+    // above — never `CashRoundingCaps.php`).
+    //
+    // When a NEW currency scale is legitimately added to `CashRoundingCaps
+    // ::CAPS` (the only sanctioned kind of edit — see the file docblock),
+    // THIS LITERAL MUST BE UPDATED IN THE SAME PR, deliberately, by a human
+    // who has confirmed the new entry against the PHP source. It will not
+    // update itself, and it is not meant to.
     expect(phpCaps).toEqual({ 0: '10', 2: '1.00', 3: '1.000' });
   });
 

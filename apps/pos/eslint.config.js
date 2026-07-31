@@ -64,6 +64,27 @@ const cartMutatorSelectors = [
 ];
 
 /**
+ * Single-writer transaction selector (2026-06-12 design spec): a
+ * BEGIN/COMMIT/ROLLBACK issued through the pooled tauri-plugin-sql handle
+ * splits a transaction across physical connections (self-deadlock + tx
+ * poisoning) — the root cause of the "database is locked" checkout
+ * failure. Extracted to a shared const (2026-07-31 review fix, B4
+ * follow-up) for the same reason as `cartMutatorSelectors` above: flat
+ * config REPLACES `no-restricted-syntax` per matched file rather than
+ * merging, so any block re-declaring the rule for an overlapping glob must
+ * re-include this to keep the guard alive — including the dedicated
+ * `src/lib/stock/**` / `cartStore.ts` block below, which needs THIS
+ * selector but must NOT carry the FU-2 cart-mutator selectors (those files
+ * legitimately call the raw cart actions).
+ */
+const transactionSelector = {
+  selector:
+    "CallExpression[callee.property.name='execute'] > Literal[value=/^\\s*(BEGIN|COMMIT|ROLLBACK)/i]",
+  message:
+    'Never issue BEGIN/COMMIT/ROLLBACK through a pooled DB handle — the tauri-plugin-sql pool splits a transaction across physical connections (self-deadlock + tx poisoning). Use withWriteTransaction() from @/lib/db/writeGate.',
+};
+
+/**
  * Hardcoded-color guard (design-language remediation, 2026-06-13). Flags raw
  * Tailwind palette classes; code must use the semantic tokens defined in
  * src/index.css @theme (bg-surface-*, text-ink*, bg-action, bg-success/
@@ -329,30 +350,40 @@ export default tseslint.config(
     // FU-2 cart-mutator block above, and omitting the spread here silently
     // dropped the FU-2 guard app-wide for every file this block also
     // matches (`cartMutatorGuard.eslint.test.ts` pinned the regression).
-    // `ignores` also gained the FU-2 block's own two exemptions
-    // (`src/lib/stock/**`, `src/stores/cartStore.ts`) for the same reason —
-    // re-including the selectors without them would re-flag the gated
-    // funnel itself and the store that composes the raw actions.
+    //
+    // `ignores` stays the ORIGINAL two exemptions (writeGate.ts,
+    // migrations.ts) plus tests — adding `src/lib/stock/**` /
+    // `src/stores/cartStore.ts` here (2026-07-31 review fix) would drop
+    // them from THIS ENTIRE block, silently deleting the ERROR-level
+    // transaction guard those files had before B4 (cartIngress.ts,
+    // stockGate.ts and cartStore.ts all import SQLite and are exactly the
+    // files this guard exists for). Those two paths legitimately need the
+    // FU-2 selectors OFF but the transaction selector ON, which a single
+    // ignore/rules pair cannot express — see the dedicated block below.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/lib/db/writeGate.ts',
       'src/lib/db/migrations.ts',
-      'src/lib/stock/**',
-      'src/stores/cartStore.ts',
       '**/*.test.{ts,tsx}',
       'src/**/__tests__/**',
     ],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        ...cartMutatorSelectors,
-        {
-          selector:
-            "CallExpression[callee.property.name='execute'] > Literal[value=/^\\s*(BEGIN|COMMIT|ROLLBACK)/i]",
-          message:
-            'Never issue BEGIN/COMMIT/ROLLBACK through a pooled DB handle — the tauri-plugin-sql pool splits a transaction across physical connections (self-deadlock + tx poisoning). Use withWriteTransaction() from @/lib/db/writeGate.',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...cartMutatorSelectors, transactionSelector],
+    },
+  },
+  {
+    // 2026-07-31 review fix: `src/lib/stock/**` and `src/stores/cartStore.ts`
+    // are exempt from the FU-2 cart-mutator selectors above (they compose /
+    // call the raw cartStore actions legitimately) but are NOT exempt from
+    // the single-writer transaction guard — both import SQLite and must
+    // never issue BEGIN/COMMIT/ROLLBACK through a pooled handle. A shared
+    // `ignores` entry on the block above cannot express "off for selector
+    // set A, on for selector set B" for the same files, so this dedicated
+    // block carries the transaction selector alone for exactly those paths.
+    files: ['src/lib/stock/**/*.{ts,tsx}', 'src/stores/cartStore.ts'],
+    ignores: ['**/*.test.{ts,tsx}', 'src/**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': ['error', transactionSelector],
     },
   },
   {

@@ -22,10 +22,14 @@ import { insertOfflineReceipt, type OfflineReceipt } from '@/lib/db/repositories
  * REAL migrations (no mocks on the insert path — matches the write
  * manifest), reads the row back with a raw `SELECT *`, and asserts the
  * THREE rounding columns hold three DISTINCT, recognizable non-null values
- * in exactly the right places. Every other column is also given a unique,
- * recognizable value, so a placeholder shifted by even one position
- * corrupts an adjacent, independently-asserted column and fails loud here
- * — not just the three columns this task names.
+ * in exactly the right places. Every other column is also given a
+ * recognizable value, chosen so that no two ADJACENT bind positions in the
+ * 32-placeholder `INSERT` share a value — every value need not be globally
+ * unique (e.g. `total` and `tendered_amount` both use `'10.000'`, which is
+ * fine — they are not neighbors), only distinct from its immediate
+ * neighbors. That is sufficient to catch a placeholder shifted by ±1
+ * position: it corrupts an adjacent, independently-asserted column and
+ * fails loud here — not just the three columns this task names.
  */
 
 const RECEIPT_ID = 'b2-receipt-1';
