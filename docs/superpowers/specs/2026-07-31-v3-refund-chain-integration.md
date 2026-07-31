@@ -565,6 +565,28 @@ change.
   `RefundWriteOff` and `SalesReturn` — idempotently provisioning whichever of the two is missing
   for any already-existing tenant chart (including tenant #1's, if provisioned before this
   seeder change lands).
+- **Errata 4.3 (treasury's closing fix — documentation-only): the backfill command writes ONLY
+  the missing `system_purpose` key and must NEVER rewrite `type` on an existing account.** This
+  mirrors the seeders' own established never-rewrite rule — `TunisiaChartOfAccountsSeeder.php:47-52`'s
+  existing-row branch already documents the precedent exactly: *"the seeder never rewrites
+  existing rows... Promote ONLY the `is_system` flag (never name/type/purpose — user edits stay
+  untouched)."* The backfill command must follow the identical discipline for the same reason it
+  applies to the seeder: an account's `type` directly drives
+  `ProfitLossService::queryAccountBalances()`'s balance formula (`:149,218` — Revenue accounts
+  aggregate `credit − debit`, Expense accounts aggregate `debit − credit`), so **retroactively**
+  flipping a live account's `type` on an already-provisioned tenant would re-sign every
+  historical journal line ever posted to that account the next time a P&L for a past period is
+  (re-)run — silently rewriting a previously-published report's numbers, not merely fixing a
+  chart-setup gap. **Consequence, stated explicitly and accepted, not hidden:** the §17 seeder
+  fix (above) aligns `type` to `'expense'` only in the **seeder source** — a **fresh** FR/TN chart
+  seeded from this point forward gets the correct, aligned type. An **already-provisioned** FR/TN
+  tenant whose 709 account predates this change retains its **existing `'revenue'` type
+  permanently** — the backfill command adds that tenant's missing `system_purpose` key (closing
+  the `hasAccountForPurpose(SalesReturn)` gap so `valid_unbooked` compensation becomes bookable)
+  but leaves `type` exactly as it already was on that installed account. This is a deliberate,
+  accepted divergence between the installed base (purpose-provisioned, type-as-found) and fresh
+  charts (purpose-and-type-aligned from creation) — not an inconsistency the backfill command is
+  expected to close.
 - **Both** the rollout preflight (§9's `EnableV4RefundAuthoringCommand`) and the write-off
   action's own precheck (`RefundCompensationController`, §5.2) call `hasAccountForPurpose()` for
   **both** `RefundWriteOff` and `SalesReturn` before proceeding — an account missing for either
@@ -1316,10 +1338,17 @@ not attempted here.
   idempotency-replay, posting/atomicity, permission gate);
   `apps/api/tests/Feature/Fiscal/DeadLetteredProjectionsControllerTest.php`;
   `apps/api/tests/Feature/POS/LegacyCorrectionGuardTest.php` (409 + acknowledgement-conditioning);
-  `apps/api/database/seeders/__tests__` equivalent — a seeder test asserting **both**
-  `RefundWriteOff` and `SalesReturn` (T1 errata — including the FR/TN purpose-key fix) are
-  provisioned by all three chart seeders and `BackfillRefundCompensationAccountsCommand` is
-  idempotent for both purposes.
+  `apps/api/database/seeders/__tests__` equivalent — **scope corrected, errata 4.3**: this test
+  asserts `system_purpose` **provisioning** only — that a fresh chart seeds both `RefundWriteOff`
+  and `SalesReturn` with their purposes resolvable via `hasAccountForPurpose()`, and that
+  `BackfillRefundCompensationAccountsCommand` idempotently provisions whichever purpose is
+  missing on an already-existing chart. It must **not** assert purpose↔`type` consistency (e.g.
+  "every account with `system_purpose = SalesReturn` has `type = expense`") as a general
+  invariant — such an assertion would pass against a fresh seed but **fail** against any
+  backfilled (pre-existing) FR/TN tenant, whose 709 account intentionally keeps its original
+  `'revenue'` type per this section's accepted-divergence ruling (§5.3, above). Any `type`
+  assertion in this test is scoped narrowly to the **seeder source** (a fresh chart), never to a
+  backfilled tenant's already-provisioned row.
 - Every new bcmath comparison carries a `// precision-ok: scale-4` (quantity) or currency-scale
   marker per rule 19; every new projection test calls `app(CompanyContext::class)->clear()`
   before `apply()` per rule 20.
