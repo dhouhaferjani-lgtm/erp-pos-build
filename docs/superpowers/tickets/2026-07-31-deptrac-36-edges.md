@@ -37,19 +37,17 @@ Regeneration with `--update-baseline` flag locks in the current counts so future
 | ModuleInfrastructure on ModulePresentation | 1 | 1 | — | Held |
 | SharedInfrastructure on ModuleDomain | 2 | 2 | — | Held |
 
-## Delta Attribution: Recently-Merged Launch Lanes
+## Delta Attribution: PRE-EXISTING, no lane added edges
 
-Per the launch plan:
-- **Lane A (Accounting / Reports):** touched `Accounting/*` module tree (likely source of Accounting domain-leakage violations in GeneralLedgerService, PartnerBalanceService dependencies)
-- **Lane D1 (POS Cash Rounding Phase 1):** touched POS TerminalController, Tenant seeders, fiscal projections (cross-module contract dependencies)
-- **Other lanes (D, E, F):** treasury, multi-location, deptrac re-baseline (this lane — read-only changes)
+**Orchestrator correction (2026-07-31):** the 36 excess edges PRE-DATE the first-tenant launch
+program entirely. The 97 count was measured and recorded as pre-existing (identical on origin/dev)
+BEFORE lanes A/B/D1/D2-a merged — see the owner ruling in
+`DISPATCH-PLAN-v3-first-tenant-2026-07-31.md` §Owner rulings ("97 vs baseline 61, pre-existing").
+The post-merge regeneration landing on EXACTLY 97 proves the merged lanes introduced ZERO new
+boundary edges. No lane is a source of any excess edge; the growth 61→97 accumulated across earlier
+(pre-program) work. The category table above describes WHERE the pre-existing edges sit, not who
+added them.
 
-The 36-edge bump across all categories suggests that lanes A and D1 introduced:
-1. Domain→Application dependencies (12 edges) — mostly Accounting domain reaching into application services
-2. Shared contracts reaching down into Application (4 edges) — likely from POS or new shared DTOs
-3. Shared contracts reaching down into Domain (20 edges) — likely from refactored PosCoreReceiptProjection or fiscal event registration
-
-No regressions in other categories (ModuleApplication↔ModuleInfrastructure, ModuleInfrastructure→ModulePresentation held).
 
 ## Post-Launch Cleanup Ticket (DEFERRED)
 
