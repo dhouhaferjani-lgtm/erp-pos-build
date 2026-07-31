@@ -1,1025 +1,1158 @@
-# v3 Refund/Void Chain Integration — Design Spec (REVISION 2)
+# v3 Refund/Void Chain Integration — Design Spec (REVISION 3 — TENANT-#1 LAUNCH SLICE)
 
-**Lane:** C (first-tenant launch program, `docs/handoff/DISPATCH-PLAN-v4-first-tenant-2026-07-31.md`
-§Lane C). **Phase:** SPEC ONLY — zero code changes in this commit.
-**Revision 1** (`e294a2df6`) was **REJECTED ×3** (fiscal-pos-reviewer, treasury-reviewer, Codex
-adversarial pass) — `docs/superpowers/reviews/2026-07-31-lane-c-spec-fiscal-treasury-reviews.md`,
-`docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-review.md`. The chain-design
-*direction* (device-authored `SALE_RECEIPT` + `invoice_type_code` correction, not a parallel
-chain) was endorsed by all three. The failure-mode narrative, the money layer, and payload
-feasibility were not. This revision closes every one of the 12 required re-work items and the
-treasury reviewer's 6 money Criticals. Every citation was re-verified in this worktree; ~25
-Revision-1 citations that had drifted or were simply wrong are corrected in place rather than
-listed separately, per Codex's own recommendation that stale citations be fixed, not
-catalogued twice.
+**Lane:** C (first-tenant launch program). **Phase:** SPEC ONLY — zero code changes.
+**Revisions 1 and 2 were REJECTED** (1: ×3; 2: ×3, but converged — E1/rounding, the failure-mode
+trace, and the verifier-partition determination were all confirmed CLOSED in round 2; the
+residue was executability and the money paths). Reviews:
+`docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-r2-review.md` (11 re-work items),
+`docs/superpowers/reviews/2026-07-31-lane-c-spec-r2-fiscal-treasury-reviews.md` (fiscal C-1..C-4,
+treasury scorecard).
+
+**Orchestrator scope directive for this revision (§0 below):** stop iterating the full design.
+Re-scope the launch slice to tenant #1's actual shape — greenfield, provisioned at v3 day 1,
+single terminal, no v2 originals will ever exist for it — and move the full multi-terminal /
+multi-destination design to a clearly non-normative post-launch roadmap appendix (§16). This is
+not a retreat from rigor: every item the r2 reviews required to be closed for the **narrow
+slice** is closed below, with the same citation discipline as revisions 1–2.
 
 **Review gate:** fiscal-pos-reviewer + treasury-reviewer (Opus) + Codex adversarial pass, again.
 
 ---
 
-## 0. What changed from Revision 1 (map to the 12 required items)
+## 0. Scope decision
 
-| # | Required item | Closed in |
+**Launch slice, ruled exactly:**
+
+| Axis | Launch scope | Rationale / what moves to §16 |
 |---|---|---|
-| 1 | Rewrite failure mode as state-dependent trace; resolve the verifier conflict empirically | §1 |
-| 2 | Anchor on `buildSaleReceiptV3Payload`; mandatory rounding keys; sign-normalization boundary | §2.1–§2.3 |
-| 3 | Cash-only-payout rounding gate (bind 2c) | §5.1 |
-| 4 | New immutable payload version OR synchronous preauth — choose one | §2.4 (chose: new version, under Model 1) |
-| 5 | One settlement authority model + durable intent + full state machine | §3 |
-| 6 | Money layer — all six treasury Criticals | §6 |
-| 7 | VOID — one ruling | §4.3 |
-| 8 | Cross-terminal lookup — full contract | §4.4 |
-| 9 | Device Z production path | §5.4 |
-| 10 | Staged rollout for existing v3 terminals/receipts | §7 |
-| 11 | Genuinely exact manifest | §9 |
-| 12 | Citation corrections + acceptance-command flags | inline throughout + §1.3 |
+| Refund destination | **`cash` only** — the v4 payload's `refund_destination` field is typed as the single literal `'cash'`, not a union (§3.2) | Deletes the `original_payment` criticals entirely: the dead `treasury_payment_id` backlink, the proration-algorithm mismatch (opposite operand order, wrong residual-assignment leg, no ordinal→Payment mapping), and the double-booking `PaymentRefundService` vs. bridge conflict the treasury r2 review found. Moved to §16.1 with the r2 findings attached. |
+| Original terminal | **Same-device only** — tenant #1 is provisioned with one terminal at v3 from day one | Deletes the cross-terminal lookup endpoint, its authz/anti-enumeration/capability contract, and the "three indistinguishable local-miss causes" problem — there is structurally only one cause (genuinely not on this device, i.e., not this tenant's data) for tenant #1. Moved to §16.2. |
+| v2 originals | **Impossible for tenant #1** (never provisioned below v3) | §9's guard still ships (protects staging/demo terminals that *do* have v2 history) with an explicit blast-radius statement and operator workaround (§9.4), not a silent gap. |
+| VOID | **Prohibited, fail-closed at both boundaries** (§8) | Device authoring rejects `invoice_type_code = 'VOID'`; server validator/version-resolution rejects a v4 VOID payload. No dual-option fallback, no contradictory positive VOID vector. |
+| `store_voucher` destination | **Not in the launch enum**, plus a defense-in-depth projector gate (§10) | The chicken-and-egg unminted-serial problem from Revision 2 stands; moved to §16.3. The gate closes the treasury r2 Critical that an original part-paid by voucher would get the voucher **redeemed again** on refund even though the enum excludes it — cash-only `payments[]` should make the burn path unreachable, and §10 proves that, not merely asserts it. |
 
-Kept from Revision 1 because reviewers endorsed them: the two-counter chain diagnosis (now
-corrected for the actual initial values and chain contexts, §1), the two-tier offline policy
-(now with the approval-flow contradiction actually fixed, §4.1), the §3e-equivalent
-quantity-cap finding (now with the locking design it was missing, §4.5), and the
-next-sale-chains-off-refund test assertion (§1.3).
+This scope, combined with Model 1 (kept from Revision 2, §4), makes the Model-1 rejection matrix
+(§5) dramatically smaller than Codex's r2 audit found it — most of the classes Codex enumerated
+were `original_payment`/proration-specific and no longer exist in the launch payload at all.
 
 ---
 
-## 1. Today's failure mode, precisely (state-dependent, corrected)
+## Item-closure map (all three r2 reviews)
 
-### 1.1 What Revision 1 got wrong, and why
-
-Revision 1 claimed the legacy correction counter runs `0, 1, 2, …`, that every first return
-starts an orphan chain, that a later unique collision is a structural certainty, that the
-operator sees a bare 500, and that VOID shares this failure mode. Codex's review (§2.2–2.3)
-traced the actual code and found all five claims wrong. The corrected facts:
-
-- **`current_sequence` is `1` at creation, not `0`, on every live creation path.** All three
-  `TerminalController` paths (`store()` physical terminal `:111`, `requestTerminal()` pending
-  terminal `:387`, web-terminal `store()` `:450`) explicitly set `'current_sequence' => 1`; none
-  of the three sets `fiscal_schema_version` (it falls to the model/DB default, currently `2`
-  per the `pos_terminals` migration). `VirtualAdminTerminalResolver.php:47-49` also sets `1`,
-  and explicitly `'fiscal_schema_version' => 3`. `TerminalFactory.php:29-32` defaults to `1`
-  and `fiscal_schema_version => 2` (with a `v3Schema()` trait state for `3`). The migration
-  default of `0` (`2026_01_08_190429_create_pos_terminals_table.php:40`) is real but is
-  overridden by every runtime creation path — it is **not** the effective creation behavior.
-  **One important, staging-relevant exception:** `DemoPharmacySeeder.php:767-769` explicitly
-  writes `'current_sequence' => 0, 'fiscal_schema_version' => 3` for its Tunisia terminals —
-  this is the topology actually present on staging today.
-- **PostgreSQL forbids `chain_sequence = 0` outright.** `pos_receipts` carries `CHECK
-  (chain_sequence IS NULL OR chain_sequence > 0)`
-  (`2026_05_01_000001_prepare_pos_receipts_for_pending_seal.php:30-33`, exact statement text
-  `ALTER TABLE pos_receipts ADD CONSTRAINT pos_receipts_sequence CHECK (chain_sequence IS NULL
-  OR chain_sequence > 0)`). Violating it raises SQLSTATE `23514` (check_violation) — a
-  **different** SQLSTATE from the `23505` (unique_violation) Revision 1 described, and this
-  particular check is PostgreSQL-only: SQLite (used by the default Feature test driver) does
-  not enforce it, so a test asserting this failure mode must run in PG mode to be meaningful
-  (see §1.3).
-- **Chain contexts are split, not shared.** `SESSION_OPEN`, `OPENING_FLOAT`, `SESSION_CLOSE`,
-  `X_REPORT`, `Z_REPORT` use `chain_context = 'z_session'`; `SALE_RECEIPT` and the
-  approval/override events use `'operational'` (`FiscalEventEngine.ts:209-246`). So a normal
-  shift-open does **not** consume operational sequence `1` — a device's first sale on a fresh
-  terminal is typically at `fiscal_events.sequence_number = 1` in the `operational` context
-  (drift note: the previous-hash/sequence calculation itself is at `FiscalEventEngine.ts:608-612`,
-  not `:606-611`).
-- **VOID never touches Chain B at all.** `ReceiptVoidService` never calls
-  `ReceiptFinalizationService` — it mutates the original receipt in place, reverses
-  stock/batches, records a drawer refund, and emits `ReceiptVoided`
-  (`ReceiptVoidService.php:53-135`). No caller in the repository routes VOID through
-  finalization (`ReceiptReturnService.php:472`, `ReceiptPaymentService.php:436`,
-  `ExchangeService.php:299-302` all confirmed void-free). VOID is therefore a **separate
-  failure class**, addressed on its own in §4.3/§6.4, not a Chain-B collision risk.
-
-### 1.2 The corrected, state-dependent trace
-
-The legacy `/return` pipeline is: prepare server line IDs → author + force-sync two
-`operational`-chain approval events (no `pos_receipts` row) → lock original + terminal,
-validate, write draft/lines/side-effects → `ReceiptFinalizationService::finalize()` sets
-`chain_sequence = terminal->current_sequence` (read, not yet incremented) and computes the hash
-via `V3ReceiptHashComputer::compute()` when `terminal->fiscal_schema_version === 3`
-(`ReceiptFinalizationService.php:97-99`) → saves the receipt → **only then** advances
-`terminal->current_sequence++` (`:109-111`) — all inside one outer `DB::transaction()`
-(`ReceiptReturnService.php:188-265,278-395,397-482`). `pos_receipts` enforces
-`UNIQUE(terminal_id, receipt_year, chain_sequence)`
-(`2026_01_08_190637_create_pos_receipts_table.php:93,97`), with no carve-out for
-`fiscal_event_id` nullness.
-
-| Terminal state | First-return outcome |
-|---|---|
-| **Staging/demo topology** (`current_sequence = 0`, e.g. `DemoPharmacySeeder`) | Finalization attempts `chain_sequence = 0` and fails the PG `pos_receipts_sequence` CHECK **immediately** (SQLSTATE `23514`). No orphan is ever created. |
-| **Normal topology** (`current_sequence = 1`, the terminal's first v3 sale is at `operational` sequence `1` in the same receipt year — the common case, since a return needs a prior sale and nothing usually precedes it in `operational`) | Finalization attempts `chain_sequence = 1` and **immediately** collides with the already-projected sale row on `pos_receipts_terminal_sequence` (SQLSTATE `23505`). No orphan is ever created. |
-| **Conditional sequence-gap case** (something else occupies `operational` sequence `1` before the first sale — e.g. an approval/override event fired without a subsequent sale in the same session, or the original sale is cross-terminal/previous-year, so the legacy counter's low integers are momentarily free) | The return **can** commit, with `previous_hash = NULL` (since `pos_terminals.last_hash` is never written by the v3 sale path) — producing the disconnected legacy side-chain. A **later** collision can occur if the legacy counter's climb (`0/1, 1/2, 2/3, …` per correction) reaches an integer a projected sale already occupies that year. This is possible, not certain, and not bounded to "the terminal's lifetime" as Revision 1 claimed — it depends on the terminal's actual event mix. |
-
-**On either standard (immediate-failure) path, nothing commits.** The outer transaction rolls
-back atomically — no draft, stock, voucher, payment, GL, or drawer effect lands.
-`ReceiptReturnService::processReturn()` rethrows the `QueryException`; `ReceiptController`'s
-`processReturn()` action catches `RuntimeException` (`QueryException` extends `PDOException`
-extends `RuntimeException`) and returns a `RETURN_FAILED` 422 carrying the raw DB error message
-(`ReceiptController.php:246-356`). This is **not** an uncaught bare 500 — it is a loud,
-transactionally-safe, but domain-uninformative 422 that leaks a low-level SQL error string to
-the client. **§2.4 replaces this entirely** with a typed, translated 409/422 before the
-terminal ever reaches `ReceiptFinalizationService`.
-
-### 1.3 Resolving the reviewer conflict empirically: what `pos:verify-chains` and the NF525
-endpoint actually report for a committed orphan
-
-Codex framed this as "the orphan is invisible to `pos:verify-chains`" (excluded rows); the
-fiscal-pos reviewer framed it as "the verifier goes permanently RED." **Both are correct — they
-describe two different verifiers, and I traced the actual hashing code
-(`ReceiptHashService.php`) to settle exactly what each one does.**
-
-`ReceiptHashService::verifyTerminalChain()` (`:180-187`) runs **two independent arms**:
-`verifyTerminalChainFiscalArm()` (`:208-282` — walks `fiscal_events`, re-hashes
-`canonical_bytes`) and `verifyLegacyArm()` (`:313-353`). `VerifyPosChainCommand::verifyReceiptChain()`
-first counts `fiscal_event_id IS NULL, fiscalized, not voided, not training` rows for the
-terminal (`:179-184`); **if that count is zero it skips verification entirely and reports
-`✓ valid` trivially** — this is the "excluded/invisible" behavior Codex described, and it holds
-*before* any legacy return exists. But the instant one committed orphan return exists on that
-terminal, the count is `≥ 1`, so the command proceeds to call the **full**
-`verifyTerminalChain()` (`VerifyPosChainCommand.php:194`) — both arms.
-
-`verifyLegacyArm()` recomputes each `fiscal_event_id IS NULL` row's hash via
-`$this->calculateHash($receipt, $previousHash)` — the **legacy pipe-separated format**
-(`serializeForHashing()`, `ReceiptHashService.php:84-94`) — and compares it against
-`$receipt->fiscal_hash` (`:333-337`). But `ReceiptFinalizationService.php:97-99` computed that
-stored `fiscal_hash` via `V3ReceiptHashComputer::compute()` (canonical JSON SHA-256) precisely
-**because** the terminal is schema 3. These are two structurally different hash algorithms over
-different serializations of the same data — the recomputed legacy hash can **never** equal the
-stored v3 hash. `verifyLegacyArm()` therefore returns `false` for that row **every time it is
-evaluated**, `verifyTerminalChain()` returns `false`, and `VerifyPosChainCommand` reports `✗
-FAILED` for that terminal's Receipts row — **permanently**, for as long as that row exists
-(receipts are immutable, never deleted).
-
-The same defect exists independently in the **live NF525 endpoint**:
-`Nf525DataProvider::verifyReceiptChain()` (routed from `Nf525ExportController::verifyChains`)
-walks its own `$legacyReceipts` set and calls the identical
-`$this->receiptHashService->calculateHash($receipt, $previousHash)` recomputation
-(`Nf525DataProvider.php:414,425-434`), comparing against the same v3-computed `fiscal_hash` —
-returning `isValid: false, error: 'Fiscal hash mismatch: receipt data may have been tampered
-with'`. **This is a false-positive tamper alarm on the live compliance audit surface**, not a
-silent blind spot — worse than Revision 1's "silent gap" framing.
-
-**Root cause, and why this is a pre-existing bug, not something Lane C introduces:**
-`verifyLegacyArm()`/`Nf525DataProvider::verifyReceiptChain()`'s partition assumption —
-`fiscal_event_id IS NULL` ⟹ "hashed via the legacy pipe format" — was true only before
-`ReceiptFinalizationService` gained its schema-version dispatch (v2 → legacy hash, v3 →
-`V3ReceiptHashComputer`, `:97-99`) for receipts that are `fiscal_event_id IS NULL` by
-construction (returns/voids never originate from a fiscal event). Once a v3 terminal can
-produce a `fiscal_event_id IS NULL` row hashed by a *different* algorithm than the one this
-verifier recomputes, the partition is broken — independent of whether Lane C ships anything.
-
-**Compliance-symptom statement (replaces Revision 1's §1.2(a)):** every v3 terminal that has
-ever had one legacy-sealed return/void produces a **permanent, loud false-positive tamper
-alert** on both `pos:verify-chains` and the live NF525 verify-chains endpoint — not a silent
-blind spot. `fiscal:verify-event-chain` (which walks `fiscal_events` only,
-`VerifyEventChainCommand.php:19-42`) never sees the refund at all — that part of Codex's
-framing is also correct, for a *different* verifier.
-
-**Remediation ruling for existing/future orphan rows (new deliverable — not present in
-Revision 1):** the correct fix is not to leave `verifyLegacyArm()`/
-`Nf525DataProvider::verifyReceiptChain()` broken and hope §2.4's guard prevents new occurrences
-— it must repair the verifier partition itself, branching on the **owning terminal's
-`fiscal_schema_version` at verification time** (not merely `fiscal_event_id` nullness): rows on
-a v3 terminal with `fiscal_event_id IS NULL` must be re-verified via `V3ReceiptHashComputer`
-directly against the `Receipt` model (mirroring what `ReceiptFinalizationService` did to
-produce the hash), not the legacy pipe recomputation. This closes both the compliance-symptom
-described above **and** the eight existing staging receipts (§7's preflight step must determine
-whether any of them are v3-sealed legacy returns and, if so, this fix is what makes their
-existing state verifiable rather than requiring any rewrite of the rows themselves — §7's "never
-rewrite existing fiscal rows" prohibition still holds; only the *verifier* changes).
-
-### 1.4 Corrected shape of the missing integration test
-
-New file `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php` — never edits
-`ReceiptReturnRefactorTest.php` (whose `:494` v2 pin, corrected from Revision 1's `:490`
-citation, remains permanently valid and untouched):
-
-1. Create terminals at **both** `current_sequence = 0` (demo/staging topology) and
-   `current_sequence = 1` (standard topology) and a `fiscal_schema_version = 3`, and prove the
-   §1.2 table's first two rows — the `23514` CHECK failure and the `23505` unique failure
-   respectively — occur **in Postgres test mode** (the SQLite default test driver cannot
-   reproduce either SQLSTATE; this test MUST run against the Postgres connection, and the test
-   file's docblock must say so explicitly, with a companion assertion that this exact scenario
-   is **not** provable under SQLite, so a future maintainer does not "fix" the test by relaxing
-   the driver).
-2. Through the **real** ingest/job/projection lifecycle (queued `ApplyFiscalEventProjectionJob`,
-   not a direct `PosCoreReceiptProjection::apply()` call) author a genuine v3 `SALE_RECEIPT`
-   (event_version 4, §2.4) sale, then a REFUND against it via the new device-authored path
-   (§2–§4), then a second sale, then close the session.
-3. Assert: `PosCoreReceiptProjection` projects the refund to `ReceiptType::Return` with the
-   correct disposition/voucher/proration effects (§6); the second sale's `previous_hash` equals
-   the refund event's `current_hash` (chain unbroken, refund is *in* it); the Z close's
-   `cash_rounding_summary` includes the refund's adjustment when applicable (§5.4); **Z totals
-   for the session cover both the sale and the refund** (not just one).
-4. Run `fiscal:verify-event-chain --tenant=<id> --terminal=<id> --actor-id=<system-actor-uuid>`
-   (all three flags are required — `VerifyEventChainCommand.php:69-75,88-145`; Revision 1's
-   citation omitted `--tenant`/`--actor-id` and is corrected here) and assert exit `0`, and
-   assert `pos:verify-chains --terminal=<id>` also reports `✓` — per §1.3's determination, this
-   is the FIRST test in the repository that can make this claim meaningfully, because it is the
-   first test that authors a v3 refund through the **new** device-authored path rather than the
-   legacy one that permanently reds the legacy arm.
-5. Negative companion: attempt the **legacy** `/return` endpoint against the same v3 terminal
-   post-guard (§2.4) and assert the typed rejection, not a raw SQL error.
-6. **v2-non-regression companion** (explicit new requirement): run the identical scenario
-   against a `fiscal_schema_version = 2` terminal and assert the legacy `/return`/`/void`
-   endpoints behave exactly as `ReceiptReturnRefactorTest.php` already proves — the §2.4 guard
-   must never fire for v2.
+| Source | Item | Closed in |
+|---|---|---|
+| Codex r2 | 1. v4 authoring executability (`FiscalEventEngine.ts` in manifest) | §2 |
+| Codex r2 | 2. One exact v4 schema (line↔reference mapping, discount, payments[], policy evidence) | §3 |
+| Codex r2 | 3. Approval protocol (deterministic UUID source IDs, recovery, projector verification) | §4.2 |
+| Codex r2 | 4. Intent transaction/state model (append-first, payout/print states, uniqueness, sync-stop) | §4.3–§4.5 |
+| Codex r2 | 5. Model-1 rejection matrix, every class | §5 |
+| Codex r2 | 6. Store-voucher / VOID contradictions | §8, §10 |
+| Codex r2 | 7. Server policy semantics (window/cap/manager/disposition classification) | §3.4 |
+| Codex r2 | 8. Verifier repair (per-row discriminator, not terminal-version) | §6 |
+| Codex r2 | 9. Rollout capability enactability | §9 |
+| Codex r2 | 10. Exact §9 manifest | §17 |
+| Codex r2 | 11. Citation/wording defects | inline + §15 |
+| fiscal-pos r2 | C-1 `FiscalEventEngine.ts` absent | §2 |
+| fiscal-pos r2 | C-2 verifier unsound (terminal-version branch) | §6 |
+| fiscal-pos r2 | C-3 discount contract unspecified | §3.3 |
+| fiscal-pos r2 | C-4 `original_payment` silent no-op | §16.1 (deleted from launch scope) |
+| fiscal-pos r2 | 8 Importants (guard/reverse-lookup/PG test/dead-letter/enum/Z-sign/rollout outage) | §7, §8, §9, §7.4, §9.4 |
+| treasury r2 | `pos_cash_rounding_refund` reuse | kept CLOSED, unchanged (§7.3 note) |
+| treasury r2 | `original_payment` backlink dead / double-booking | §16.1 (deleted from launch scope) |
+| treasury r2 | Voucher-guard-unreachability contradiction | §8.4, §10 |
+| treasury r2 | v3-guard-removes-all-legacy-paths (v2 originals, ex-VOID) | §9.4 |
+| treasury r2 | Expected-cash targets dead code | §7.1 |
+| treasury r2 | Rounding-adjustment sign convention unstated | §7.2 |
+| treasury r2 | `CashDrawerService` still wrong on v3 shift close | §7.5 (ticketed) |
+| treasury r2 | VOID no fail-closed server rejection | §8 |
+| treasury r2 | Retiring `refundZAccounting` orphans legacy device Z | §9.4 |
+| treasury r2 | S4 write-off artifact missing | §5.2 |
+| treasury r2 | Training-gate leak not ticketed | §3.5 (ticket path named) |
 
 ---
 
-## 2. The integration design (anchored on the real chokepoint)
+## 1. Today's failure mode (kept from Revision 2, two wording defects fixed)
 
-### 2.1 The actual authoring chokepoint is `buildSaleReceiptV3Payload`, not `SaleReceiptPayload.ts`
+Revision 2's state-dependent trace (`current_sequence = 0` → PG CHECK `23514`; `current_sequence
+= 1` colliding with the first projected sale → PG unique `23505`; a sequence gap → conditional
+orphan commit; full rollback; controller 422) was **verified correct** by Codex r2 §12.1 against
+`TerminalController.php:120,395,458` (confirmed exact by re-check, not `:111-124` etc. as
+paraphrased loosely before), `DemoPharmacySeeder.php:752-771`,
+`ReceiptFinalizationService.php:83-111`,
+`2026_05_01_000001_prepare_pos_receipts_for_pending_seal.php:25-33`, and
+`ReceiptController.php:246-356`. The verifier-partition determination (§6 below) was also
+verified correct in its diagnosis, though its *remedy* changes in this revision. **Kept
+unchanged**, with two fixes:
 
-Revision 1's fatal anchoring error: it treated `SaleReceiptPayload.ts` (the V1 builder) as "the
-only `SALE_RECEIPT` builder" and proposed a sibling to it. Production sales are authored through
-`buildSaleReceiptV3Payload()` (`receiptService.ts:357-399`), which **composes** through a
-delegation chain that must never be forked:
+1. **VOID removed from the orphan-verifier symptom sentence.** Revision 2 still said a
+   legacy-sealed "return/void" produces the permanent-red state, while its own §1.1 (kept, §1
+   above) correctly established that `ReceiptVoidService.php:53-135` creates no correction row
+   and never calls `ReceiptFinalizationService` at all — VOID cannot poison the legacy-arm
+   verifier, because it never writes into the legacy chain in the first place. The symptom is
+   **return-only**. This sentence is corrected wherever it appears.
+2. **Acceptance-scenario version fixed.** The integration test (§1.1 below) authors the initial
+   sale at `event_version = 3` and the refund at `event_version = 4` — never a "`SALE_RECEIPT`
+   event_version 4 sale," which contradicted the ruling that SALE/TRAINING remain version 3
+   forever (§2.1).
 
-```
-buildSaleReceiptV3Payload(input, rounding)      SaleReceiptV3Payload.ts:76-101
-  → buildSaleReceiptV2Payload({...input, total: exactTotal})   (V1's aggregate assert runs unchanged)
-    → buildSaleReceiptPayload(...)               SaleReceiptPayload.ts:106-179  (V1, immutable forever)
-  → swap in the ROUNDED total; add cash_rounding_adjustment/denomination
-  → assertSaleReceiptAggregatesV3(...)            SaleReceiptV3Payload.ts:113-197
+### 1.1 Acceptance test (corrected)
+
+`apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php`, run in **Postgres test mode**
+(SQLite cannot reproduce either SQLSTATE, §1's table):
+
+1. Terminal at `fiscal_schema_version = 3`, `v4_refund_authoring_enabled = true` (§9), both
+   `current_sequence` topologies (0 and 1) as separate cases.
+2. Author a genuine device **v3** `SALE_RECEIPT` sale (`event_version = 3`) through the real
+   ingest/job/projection lifecycle.
+3. Author a genuine device **v4** `SALE_RECEIPT` refund (`event_version = 4`,
+   `invoice_type_code = 'REFUND'`) against it via §2–§5's new path.
+4. Author a second v3 sale — assert its `previous_hash` equals the refund event's `current_hash`
+   (chain unbroken, refund is *in* it).
+5. Close the session; assert the Z close's `cash_rounding_summary` and totals cover **both** the
+   sale and the refund.
+6. Run `fiscal:verify-event-chain --tenant=<id> --terminal=<id> --actor-id=<system-actor-uuid>`
+   and assert exit `0`; assert `pos:verify-chains --terminal=<id>` also reports `✓`.
+7. Negative companion: the legacy `/return` endpoint against the same terminal, post-guard —
+   typed 409 (§9.1), not a raw SQL error.
+8. **v2-non-regression companion**: identical scenario on a `fiscal_schema_version = 2` terminal
+   — legacy `/return`/`/void` behave exactly as `ReceiptReturnRefactorTest.php` already proves;
+   the guard never fires for v2.
+
+---
+
+## 2. v4 authoring executability (Codex r2 item 1 / fiscal C-1)
+
+Revision 2's fatal gap: it edited `FiscalEventPayloadRegistry.ts` but never touched
+`FiscalEventEngine.ts`, which is where `SALE_RECEIPT_PAYLOAD_KEYS_V3` lives, where
+`validateSaleReceiptPayload()` unconditionally checks against that fixed key set
+(`FiscalEventEngine.ts:1451-1463`, `assertExactKeySet(p, SALE_RECEIPT_PAYLOAD_KEYS_V3,
+'SALE_RECEIPT')`), and where `append()` calls `this.registry.eventVersionFor(request.event_type)`
+(`:567-569`) with **no payload argument at all** — a type-only, payload-blind call. A v4 refund
+payload is rejected by the device's own validator today, independent of anything the server does.
+
+### 2.1 Exact API change
+
+**`FiscalEventPayloadRegistry.ts`** — `eventVersionFor()` gains an optional payload parameter,
+inspected **only** for `SALE_RECEIPT`; every other event type's behavior is byte-identical to
+today:
+
+```ts
+eventVersionFor(type: FiscalEventTypeValue, payload?: unknown): number {
+  if (type === 'SALE_RECEIPT') {
+    const invoiceTypeCode = isRecord(payload) ? payload['invoice_type_code'] : undefined;
+    if (invoiceTypeCode === 'SALE' || invoiceTypeCode === 'TRAINING') return 3;
+    if (invoiceTypeCode === 'REFUND') return 4;
+    if (invoiceTypeCode === 'VOID') throw new VoidAuthoringProhibitedError();
+    throw new FiscalEventTypeNotImplementedError('SALE_RECEIPT'); // malformed/missing — fail closed
+  }
+  // unchanged for every other type
+  ...
+}
 ```
 
-**Rule for the new REFUND/VOID builder: compose through the same chain, never fork it.** A new
-`buildRefundReceiptV4Payload()` (§2.4 names the version) must delegate to
-`buildSaleReceiptV3Payload()` (or, once the version-4 fields are added, an equivalent V4-aware
-composition) exactly as V3 delegates to V2/V1 — never re-implement the aggregate/VAT/line
-arithmetic independently. This is not stylistic: `assertSaleReceiptAggregatesV3`'s bind 2c
-(§5.1) and the V1/V2 aggregate identities are exactly the invariants a refund payload must also
-satisfy, and reusing the composition is the only way to guarantee that without duplicating (and
-inevitably drifting from) them.
+New error class `VoidAuthoringProhibitedError` (same file) — this is the device-side fail-closed
+boundary §8 requires: **calling `engine.append()` with `invoice_type_code = 'VOID'` throws before
+any state read or mutation**, symmetric with the existing `ServerAuthoredEventTypeError` boundary
+check that already runs one step earlier in `append()` (`FiscalEventEngine.ts` Step -1).
 
-### 2.2 The sign-normalization boundary is `cartClassification.ts`, and it already exists
+**`FiscalEventEngine.append()`** (`:567-571`) — thread the payload into the version call, and
+thread the resolved version into payload validation:
 
-`classifyCartForCheckout()` (`cartClassification.ts:21-39`) already routes an all-return cart
-(negative `quantity`/`line_total` `CartItem`s, `kind: 'return'`) to `'refund'` →
-`decidePayInterception()` → `'start-refund'` → the refund settlement flow, **specifically
-because** "negative lines fail the FiscalEventEngine money invariant inside
-`buildSaleReceiptPayload`" (`cartClassification.ts:4-5`, quoted verbatim). This is the existing,
-correct boundary — a mixed or pure-sale cart can never reach the refund authoring path, and a
-refund cart can never reach the sale builder. The new work is entirely on the *other* side of
-that boundary: the refund payload builder must accept the negative-quantity, negative-line-total
-`CartItem[]` the refund cart already produces (via `hydrateFromReceipt.ts`, unchanged, §7) and
-**sign-normalize** them to the non-negative canonical magnitudes the payload contract requires
-(`FiscalPayloadConstraintValidator.php:2724-2742`) — `bcabs()` on `quantity`, `line_total`,
-`tax_amount`; `unit_price` is already positive on a return line (only the derived totals carry
-the sign). The builder must assert, as a defense-in-depth invariant (mirroring
-`LineArithmeticInvariantError`'s existing fail-loud pattern), that every item it receives has
-`kind === 'return'` — a violation is a programmer error (the classification boundary was
-bypassed), not a recoverable input error, and must throw rather than silently coerce.
+```ts
+const eventVersion = this.registry.eventVersionFor(request.event_type, request.payload);
+this.validateChainContext(request, chainContext);
+this.validateRequestPayload(request, chainContext, eventVersion); // new 3rd arg
+```
 
-### 2.3 Why the "server side already exists" claim was wrong
+**`validateRequestPayload()`** (`:855-862`) — thread `eventVersion` to the `SALE_RECEIPT` case
+only:
 
-Revision 1 said the gap was "entirely device-side." It is not. The current v3 `line_items[]`
-key set (`FiscalPayloadConstraintValidator.php:1838-1849`; device mirror
-`FiscalEventEngine.ts` line-item keys) has no field for an original-line reference or
-disposition. `OriginalReceiptReferenceInput` is receipt-level only
-(`FiscalEventEngine.ts:367-376`). `PosCoreReceiptProjection` writes return lines with no
-`original_line_id`/disposition and **unconditionally restocks every REFUND/VOID line**
-(confirmed: the projector's stock-movement path for `ReceiptType::Return` has no disposition
-branch) — it cannot reproduce the legacy path's `RESTOCK`/`SCRAP`/`NOT_RECEIVED` behavior or the
-regulated `RestockPolicy::Never` guard `ReceiptReturnService.php:1122-1123` enforces today. The
-quantity-cap logic (`ReceiptReturnService.php:1058-1089,1148-1182`) operates on **negative**
-stored quantities keyed by `original_line_id` — it cannot be reused unmodified against
-canonical rows, which store **positive** magnitudes with no `original_line_id` at all. Store
-voucher legs are interpreted as **redemption** (burning an existing voucher — confirmed,
-`PosCoreReceiptProjection.php:941-966`, `redeemVouchers()` called unconditionally at `:405` for
-every payment leg with `instrument_type = store_voucher`, no `invoice_type_code` gate), whereas
-the live legacy path calls `VoucherIssuanceService::issueFromRefund()` — the opposite operation
-(`ReceiptReturnService.php:791-830`). The `original_payment` destination is a structural no-op
-on v3 today (§6.3). None of this is achievable by "reusing" the current payload with a device-side
-change alone.
+```ts
+private validateRequestPayload(request, chainContext, eventVersion: number): void {
+  switch (request.event_type) {
+    case 'SALE_RECEIPT':
+      validateSaleReceiptPayload(request.payload, eventVersion);
+      return;
+    // every other case unchanged, ignores eventVersion
+  }
+}
+```
 
-### 2.4 Ruling: a new immutable payload version, not a synchronous preauth contract
+**New `SALE_RECEIPT_PAYLOAD_KEYS_V4`** (own const, V3's 30 keys plus `original_line_references`,
+`refund_destination`, `settlement_allocation` — inserted at the PHP authority's sorted position,
+pinned by the drift test, §2.3) — **never mutates `SALE_RECEIPT_PAYLOAD_KEYS_V3`**, matching the
+existing "a NAMED constant, never a mutation" convention already documented on that const.
 
-Codex's §12 item 4 requires choosing exactly one of (a) a new payload version carrying the
-missing facts, or (b) formally narrowing launch scope with a synchronous server preauthorization
-contract before every payout. **Ruling: (a) — a new `SALE_RECEIPT` payload `event_version = 4`.**
-This choice is forced by §3's settlement-authority ruling (Model 1, immutable-device-authoritative,
-chosen precisely because it is the only model compatible with genuine offline refund authoring —
-a synchronous preauth contract requires connectivity at the moment of authoring, which would
-silently revoke the offline capability both reviewers explicitly told me to keep). V4 is a strict
-superset of V3, built by the same "delegate, then extend" composition as V3 over V2 (§2.1), never
-mutating V1/V2/V3 (Events are Immutable Forever — CLAUDE.md rule 8). New fields, precisely:
+**`validateSaleReceiptPayload()`** (`:1451-1463`) gains the version parameter and branches the
+key-set assertion:
 
-- **`original_line_references: { original_line_index: integer, product_id: string,
-  disposition: 'restock' | 'scrap' | 'not_received', quantity: string }[]`** — one entry per
-  refunded line. `original_line_index` is the **0-based array position** of the referenced line
-  within the *original* SALE_RECEIPT's own `line_items[]` array. This is the stable identifier:
-  canonical bytes are immutable, so the original's line ordering never changes, and the index is
-  resolvable **offline** (the device already has the original event's `payload.line_items[]`
-  locally, per §2.2's local-lookup design — no server-assigned `line_id` dependency, unlike
-  today's server-ID-bound approval target, §4.1). `product_id` is carried redundantly for a
-  defense-in-depth server-side cross-check (the referenced original line's `product_id` must
-  match). `disposition` is the cashier's *declared intent*; §4.5/§6.4 rule on server-side
-  enforcement against `RestockPolicy::Never`.
-- **`refund_destination: 'cash' | 'original_payment' | 'store_voucher'`** — first-class, not
-  inferred from `payments[]` (today's payload has no such field at all — confirmed absent by
-  search in both `FiscalEventEngine.ts` and `FiscalPayloadConstraintValidator.php`).
-- **`settlement_allocation: { original_payment_leg_ordinal: integer, amount: string }[] | null`**
-  — present iff `refund_destination = 'original_payment'`; null otherwise. `amount` values are
-  non-negative canonical magnitudes summing to the refund total. `original_payment_leg_ordinal`
-  is the 0-based position of the referenced leg in the *original* sale's `payments[]` array
-  (same stable-by-position principle as line references). §6.3 defines the deterministic
-  proration algorithm that computes this array — it must be byte-identical between device
-  (signing) and server (verification).
-- **Approval evidence needs no new field** — `approval_references[]`
-  (`FiscalEventEngine.ts:444-452`) already carries all seven `PosOverrideEvidence` fields
-  (`approval_event_id`, `approval_id`, `approval_scope`, `override_event_id`, `policy_version`,
-  `supervisor_user_id`, `target_reference_id`). The defect is that today's *authoring* helper
-  (`authorRefundReturnApproval`) drops two of them and renames the rest when building
-  `RefundApprovalEvidence` (§4.1) — the fix is in the authoring code, not the schema.
+```ts
+function validateSaleReceiptPayload(payload: unknown, eventVersion: number): void {
+  ...
+  const keys = eventVersion >= 4 ? SALE_RECEIPT_PAYLOAD_KEYS_V4 : SALE_RECEIPT_PAYLOAD_KEYS_V3;
+  assertExactKeySet(p, keys, 'SALE_RECEIPT');
+  // v4-only field validation (original_line_references, refund_destination,
+  // settlement_allocation — settlement_allocation is unreachable in this launch's
+  // cash-only enum, §3.2, but the type accepts null and the validator still asserts
+  // "must be null" for defense-in-depth) runs only when eventVersion >= 4.
+  ...
+}
+```
 
-This necessarily touches Lane B's currently-open surface: device
-`FiscalEventPayloadRegistry.ts` (author version 4 for `SALE_RECEIPT` when `invoice_type_code ∈
-{REFUND, VOID}`, keep version 3 for `SALE`/`TRAINING`), server `FiscalEventPayloadRegistry.php`
-(accept `{1,2,3,4}` on parse), `FiscalPayloadConstraintValidator.php` (version-4 exact key set +
-the new invariants), the canonical DTO/reader, and drift + golden-fixture tests (a genuine v4
-REFUND vector and a v4 VOID vector — the existing `F-09-refund-eur` fixture is a pre-v3, 27-key
-fixture with no V2 variant keys and no mandatory V3 rounding keys; it proves nothing about the
-current, let alone a v4, shape). **Per v4 dispatch plan §Lane C: "may not begin while Lane B is
-unmerged."** §9's manifest is therefore explicitly POST-LANE-B and version-bumps the payload
-contract rather than silently avoiding Lane B's files — silence would not be compliance with the
-fence, it would be a correctness hole (Codex §9.4).
+### 2.2 Tests (mandatory manifest entries — Revision 2 omitted all of them)
+
+- `apps/pos/src/lib/fiscal/__tests__/FiscalEventEngine.test.ts` — **extended**, not forked:
+  (a) V1/V2/V3 non-regression — every existing assertion in this file must still pass unmodified
+  (a version-aware registry that defaults wrong would silently break every existing sale test);
+  (b) a `SALE_RECEIPT` + `invoice_type_code: 'VOID'` append attempt throws
+  `VoidAuthoringProhibitedError` **before** any `fiscal_events` row is written (assert the table
+  is empty after the throw) — this is the negative test item 6 of the orchestrator directive
+  requires; (c) a v4 REFUND payload with the exact new key set appends successfully and is
+  persisted with `event_version = 4`.
+- `apps/pos/src/lib/fiscal/__tests__/FiscalEventPayloadRegistry.test.ts` — new file (this
+  registry currently has no dedicated test file) — pins the SALE/TRAINING→3, REFUND→4, VOID→throw,
+  malformed→throw matrix directly, independent of the engine.
+- `apps/pos/src/lib/fiscal/__tests__/FiscalPayloadKeyDrift.test.ts` — **extended**: preserves the
+  existing V1/V2/V3 PHP↔TS parity and strict-superset assertions verbatim, adds V4-as-strict-
+  superset-of-V3 parity against the new PHP `SALE_RECEIPT_PAYLOAD_KEYS_V4` const (§17).
 
 ---
 
-## 3. Settlement authority model, durable intent, and the complete state machine
+## 3. The exact v4 schema (Codex r2 item 2 / fiscal C-3)
 
-### 3.1 The chosen model
+### 3.1 `original_line_references[]` ↔ `line_items[]` — strict parallel arrays, not a loose
+second array
 
-**Ruling: Model 1 — the immutable device-authored correction event is authoritative.** Once
-signed and durably committed on the device, the server must project it deterministically and
-must never erase its money/inventory effects; any later-discovered problem is handled by a
-compensating fiscal event or an operator-recorded write-off, never by silently dropping or
-mutating the original. This is chosen over server reservation/preauthorization because
-preauthorization requires connectivity at the moment of authoring, which is incompatible with
-the offline same-device refund capability both reviewers told me to preserve (§4.1) — and
-because it is **the same risk shape the codebase already accepts for every offline sale**: a
-cashier hands over goods against a locally-signed, not-yet-synced `SALE_RECEIPT` today, and the
-server can in principle later find that sale invalid (e.g. a since-revoked price override); this
-design applies the identical acceptance to refunds rather than inventing a new risk category.
+**Ruling, closing Codex's "insufficient for a strict parallel-array contract" finding:**
+`original_line_references[]` is **positionally aligned with `line_items[]`, same length, same
+order** — index `i` of one describes index `i` of the other. Validator invariants (both TS and
+PHP, symmetric):
 
-**The payout moment is defined explicitly (this was undefined in Revision 1 and is Codex's
-§4.2 Critical):** physical cash or voucher handover to the customer happens **only after** the
-refund `SALE_RECEIPT` event is signed and durably committed to the device's local SQLite (inside
-the write-gate transaction, §3.3) — never before, and never contingent on sync. This mirrors
-exactly how a sale's payout (handing over goods) already happens today, after the sale event
-commits locally and before any server round trip.
+- `len(original_line_references) === len(line_items)` — no extras, no omissions.
+- `original_line_references[i].product_id === line_items[i].product_id` (exact string equality).
+- `original_line_references[i].quantity === line_items[i].quantity` (exact bcmath equality at
+  quantity scale — the reference's declared "how much of the original I am claiming to refund"
+  must equal the actual signed refund quantity on that line; this is what makes the reference
+  authoritative rather than decorative).
+- `original_line_references[i].original_line_index` must be a valid 0-based index into the
+  **original** sale's own `line_items[]` array (bounds-checked server-side against the resolved
+  original fiscal event, §7.4's reverse-lookup machinery).
 
-### 3.2 Durable refund intent (new, replacing Zustand-only state)
+### 3.2 `refund_destination` — single literal, launch scope
 
-Today's `refund_request_id` and approval evidence live only in `refundCheckoutStore.ts`'s
-Zustand state (`:222-234,331-377`) — reset, cancellation, process death, or restart loses them,
-and a retry can then author a second approval pair or a second refund event. **New SQLite table
-`refund_intents`** (new device migration), one row per refund attempt, created **before** the
-manager PIN is entered:
+`refund_destination: 'cash'` — a single-member literal type for this launch (§0), not a union.
+Every prior draft's "3 vs 2" enum contradiction is resolved by having only one value exist at
+all. The field is still present (not omitted) so the wire shape doesn't change shape again when
+`original_payment`/`store_voucher` land post-launch (§16) — extension discipline: new values are
+**added**, never retrofitted onto already-signed v4 data, matching the "Events are Immutable
+Forever" rule applied to payload *versions*, not just event types.
+
+`settlement_allocation: null` is **required** on every launch v4 payload (not omitted) — the key
+exists in `SALE_RECEIPT_PAYLOAD_KEYS_V4` and the validator asserts it is exactly `null` for this
+launch's cash-only enum. This is deliberate: a future `original_payment`-destination payload adds
+meaning to an *existing* key rather than introducing a new one, so a v4 parser written today
+already knows the key exists and null-checks correctly against tomorrow's populated form.
+
+### 3.3 Discount contract (fiscal C-3, the concrete bug)
+
+Confirmed: `hydrateFromReceipt.ts`'s `OfflineReceiptLine` interface (`:15-35`) carries
+`discount_amount?: string | null` from the stored JSON, but the function's returned `CartItem`
+(`:67-84`) **does not include `discount_amount` or `discount_reason` at all**. The stored
+`offline_receipts.lines` JSON (written by `receiptService.ts` at sale time) *does* carry
+`discount_type`, `discount_percent`, `discount_amount`, and `discount_reason` per line — the data
+exists, it is simply dropped on the way into the refund cart. The consequence is concrete and
+already provable from the inherited invariant: `SaleReceiptPayload.ts:264` computes
+`discountAmount = bcformat(item.discount_amount ?? '0', scale)` — defaulting to `'0'` when the
+field is absent — then `:281-294`'s `LineArithmeticInvariantError` check asserts `line_total ===
+unit_price × quantity − discountAmount`. For any refund line whose **original** sale carried a
+non-zero line discount, the hydrated cart item's `line_total` reflects the discounted amount but
+`discount_amount` silently defaults to `'0'`, so `expectedGross ≠ actualGross` and the refund
+builder throws `LineArithmeticInvariantError` on every discounted-line refund — a hard crash, not
+an edge case, the instant a real tenant refunds any line that had a discount.
+
+**Fix (in §17's manifest): `hydrateFromReceipt.ts`** — extend `OfflineReceiptLine` with
+`discount_reason?: string | null` (currently missing from the interface even though the stored
+JSON carries it) and map both `discount_amount`/`discount_reason` straight through onto the
+returned `CartItem` (both fields already exist on `CartItem`, `types/cart.ts:43-44` — no sign
+flip needed, a discount is a magnitude reduction regardless of sale/return direction).
+
+**`transaction_discount_amount` ruling (unaddressed in Revisions 1–2):** a receipt-level discount
+does not decompose cleanly across a *partial* line-subset refund without an allocation
+algorithm this launch does not need to build. **Ruling: a v4 refund's
+`transaction_discount_amount` is always canonical zero.** If the original sale carried a non-zero
+`transaction_discount_amount`, a **partial** refund (a strict subset of its lines) is refused
+device-side with a typed error ("this receipt has a whole-receipt discount; refund all lines, or
+use the legacy path") before any approval authoring; a **full-receipt** refund (every line) is
+permitted with `transaction_discount_amount = 0` on the refund payload — no re-representation is
+needed because the per-line discounts (now correctly carried through per the fix above) already
+account for the discounted amounts, and refunding every line naturally reverses the whole
+discounted transaction.
+
+### 3.4 Policy evidence — Model 1 classification (Codex r2 item 7)
+
+The legacy path enforces return window, daily cashier cap, manager-override threshold, and
+disposition/regulated-stock rules synchronously, before commit
+(`ReceiptReturnService.php:278-319,366-467,536-645,1058-1137`). Under Model 1 (§4), the device
+signs first — these checks cannot be synchronous gatekeepers at the server anymore, because the
+event is already immutable evidence by the time the server sees it. Ruling, precisely: **every
+one of these is device-enforced-with-signed-evidence, server-advisory** — the device is the
+sole real-time gatekeeper (it already has the local shift/cap/window state needed to enforce
+these, being the source of truth for the sale it's refunding), and the server's role is to
+**verify the device's evidence is internally consistent and, when it is not, accept the event
+and flag it** — never silently reject an already-signed, cryptographically valid correction.
+
+**The in-repo precedent for this exact pattern already exists and is reused verbatim, not
+invented:** `PosCoreReceiptProjection.php:1051-1071`'s late-sale flag. A signed sale can never be
+rejected server-side (device is source of truth); if it lands against an active sales-blocking
+inventory count, the projector **accepts it (stock already moved above), appends an advisory
+flag** to the count's `late_sales_flags` JSON for manual reconciliation, and wraps the flag-append
+in `try/catch` so a flagging failure can **never** fail or retry the fiscal projection itself.
+
+**New, symmetric mechanism for refund policy evidence:** `PosCoreReceiptProjection` gains a
+`refund_policy_alerts` JSON column on `pos_receipts` (return rows only), written when the
+`approval_references[]` evidence resolved against the actual approval/override fiscal events
+(§4.2) is internally *valid* (the events exist, are the right type/scope, and reference the
+correct target) but the **business facts** it attests to are questionable given what the
+projector can independently observe — e.g., the refund's `posted_at` falls after a return-window
+policy period the projector can compute from the original's own timestamp, or the destination's
+implied cashier lacks (per the projector's own permission read) the daily-cap-extension
+permission the legacy controller would have required. Each alert is `{code, detail}`; the
+append, like the late-sale flag, is wrapped in `try/catch` and **never** fails or dead-letters the
+refund — booking always proceeds once the evidence itself (§4.2) is structurally valid. This is
+the accept+flag disposition §5's rejection matrix formalizes.
+
+### 3.5 `payments[]` — single cash leg, and the training-gate leak
+
+`payments[]` on a launch v4 refund is exactly **one** entry: `method_code` resolving to the
+tenant's cash payment method, `amount` equal to the (possibly rounded, §7.3) refund total,
+`instrument_type: null`. No second leg, no card/voucher leg — enforced by the same key-set/enum
+mechanism as every other exact-shape assertion in this contract; a second leg or a non-cash
+`method_code` is a validation failure, not a silent truncation.
+
+**Training-gate leak (treasury r2 Important, not previously ticketed):**
+`TreasuryReceiptBridge`'s core Payment-row/GL-posting loop has no training gate at all — only
+the supplementary rounding/tolerance entries are training-gated
+(`TreasuryReceiptBridge.php:402`). §3's own §6.6 rule (kept from Revision 2: the device refuses
+to author a refund against a training original) makes this unreachable for the v4 path
+specifically, but the underlying bridge defect is real and broader than this feature. **Ticketed,
+not fixed here**, per the orchestrator's instruction that the orchestrator will create it:
+`docs/superpowers/tickets/2026-07-31-treasury-bridge-training-gate-leak.md`.
+
+---
+
+## 4. Settlement authority, durable intent, approval protocol (Codex r2 items 3–4)
+
+### 4.1 Model 1, kept; payout moment, kept
+
+Model 1 (immutable device-authored correction is authoritative; payout happens only after local
+commit) is unchanged from Revision 2 — endorsed, not re-litigated. What changes here is making
+the transaction order and the approval protocol actually executable, and adding the payout/print
+durability Codex r2 found missing.
+
+### 4.2 Approval protocol — deterministic source IDs, IN the manifest
+
+Confirmed: `authorPosOverride()` generates `approvalId = crypto.randomUUID()` **internally**
+(`posOverrideAuthoring.ts:70`) — the caller cannot know it in advance for a recovery lookup — and
+the override event's `source_event_id` is `` `${input.targetReferenceId}:${input.approvalScope}` ``
+(`:143-145`) — a composite string, **not a UUID**, while the server's ingestion envelope requires
+every non-null `source_event_id` to be a UUID (`FiscalEventEnvelope.php:201-228`) stored in a
+UUID column. Both approval events, as currently authored, cannot reliably sync or be recovered
+by a stable, pre-known identifier.
+
+**Fix: `posOverrideAuthoring.ts` is modified** (not "no changes," Revision 2's error) — 
+`authorPosOverride()` gains an optional parameter:
+
+```ts
+export interface AuthorPosOverrideInput {
+  ...
+  /** When provided, both events use these caller-supplied UUIDs as source_event_id instead
+   *  of generating one internally. Existing callers (discount/tender-tolerance overrides)
+   *  omit this and keep today's exact behavior — byte-identical, zero regression risk. */
+  sourceEventIds?: { approval: string; override: string };
+}
+```
+
+Inside the function: `const approvalId = ...` (still the **payload's** `approval_id` field,
+unchanged) but `source_event_id: input.sourceEventIds?.approval ?? approvalId` for the approval
+append, and `source_event_id: input.sourceEventIds?.override ?? \`${input.targetReferenceId}:${input.approvalScope}\``
+for the override append.
+
+**The refund flow's new caller** (`authorRefundReturnApprovalV3()`, §17) pre-generates both UUIDs
+at `refund_intents` row creation (§4.3, **before** the manager PIN is even entered) and stores
+them as `refund_intents.approval_source_event_id` / `refund_intents.override_source_event_id` —
+durable, known in advance, unaffected by restart.
+
+**Exact recovery query**, closing Codex's "recovery is not implementable" finding:
+
+```sql
+SELECT * FROM fiscal_events
+WHERE source_event_class = 'operator_approval' AND source_event_id = :approval_source_event_id;
+SELECT * FROM fiscal_events
+WHERE source_event_class = 'pos_override' AND source_event_id = :override_source_event_id;
+```
+
+Both against the device's local `fiscal_events` mirror — no network call, resolvable at any point
+after `refund_intents` row creation regardless of what crashed and when.
+
+**Projector-side verification** (closing Codex's "no linkage check" finding): `PosCoreReceiptProjection`,
+when projecting a v4 REFUND event, resolves each entry in `approval_references[]` by
+`approval_event_id`/`override_event_id` against the **actual** `fiscal_events` rows (not merely
+syntactic shape validation, which is all `FiscalPayloadConstraintValidator.php:1046-1081` does
+today) and asserts: the referenced events exist, are `OPERATOR_APPROVAL_GRANTED` /
+`OVERRIDE_VOID_OR_RETURN` respectively, carry `approval_scope = 'void_or_return_override'`, and
+their `payload.target.original_local_receipt_id` matches this refund's own
+`original_receipt_reference`. A mismatch or missing reference is a **structural** authoring
+defect (not a late business-policy question, §3.4) — it throws a new, non-retryable
+`ApprovalEvidenceUnresolvedException` (§5's rejection matrix), because retrying cannot fix
+evidence that was wrong at signing time.
+
+### 4.3 Durable intent — append-first, correct transaction order
+
+Revision 2's fatal bug: it stored `refund_fiscal_event_id` **before** calling `engine.append()`,
+but the event's `id` does not exist until `engine.append()` generates it internally
+(`FiscalEventEngine.ts:637`, `const id = generateUuidV4();`, well after validation/version
+resolution/idempotency lookup/hash construction). **Corrected order, inside the same
+`withWriteTransaction('fiscal', …)` call** (both statements execute against the same `tx`
+parameter, so they commit or roll back together):
+
+```ts
+await withWriteTransaction('fiscal', async (tx) => {
+  const appended = await engine.append(tx, {
+    event_type: 'SALE_RECEIPT',
+    payload: v4Payload,
+    source_event_class: 'refund_intents',
+    source_event_id: refundIntentId, // the INTENT's own stable UUID — known in advance
+    ...
+  });
+  await updateRefundIntent(tx, refundIntentId, {
+    refund_fiscal_event_id: appended.id, // only known NOW
+    state: 'refund_event_appended',
+  });
+});
+```
+
+`source_event_id: refundIntentId` (the intent row's own PK, generated at `begin()`, §4.4) is what
+makes the **append itself** idempotent on retry — `engine.append()`'s own
+`(tenant_id, terminal_id, source_event_class, source_event_id)` dedup (`:576-588`) returns the
+already-appended event on a retried call with the same intent ID, before ever reaching a second
+`INSERT`. The `refund_fiscal_event_id` column is a **read-back convenience**, not the
+idempotency mechanism.
+
+### 4.4 `refund_intents` schema — payout/print durability, active-intent uniqueness
+
+New SQLite table (device migration, §17), replacing Revision 2's under-specified version:
 
 | Column | Purpose |
 |---|---|
-| `id` (UUID, PK) | Stable identifier for this attempt — the durable idempotency key, generated at `begin()`, survives restart |
-| `original_local_receipt_id`, `original_fiscal_event_id` (nullable until resolved) | Device-stable original identity (§4.1) |
-| `line_snapshot_json` | The exact `original_line_references[]` this attempt is settling — frozen at `begin()` so a later cart mutation cannot silently redirect an in-flight attempt (mirrors today's `returnLinesFingerprint` stale-cart guard, kept) |
-| `destination`, `settlement_allocation_json` (nullable) | §2.4 fields, computed once and frozen |
-| `state` | enum: `drafted → approval_authored → refund_event_appended → synced → applied` (terminal success) or `→ dead_lettered` (terminal failure) or `→ abandoned` (cashier cancelled before append — safe to discard) |
-| `approval_id`, `approval_fiscal_event_id`, `approval_override_event_id` | Populated when `state` reaches `approval_authored` |
-| `refund_fiscal_event_id` | Populated when `state` reaches `refund_event_appended` — this is the moment payout is authorized (§3.1) |
+| `id` (UUID, PK) | Stable — this **is** the `source_event_id` for the refund's own `engine.append()` call |
+| `original_local_receipt_id`, `original_fiscal_event_id` | Device-stable original identity |
+| `line_snapshot_json`, `line_snapshot_fingerprint` (indexed) | The frozen `original_line_references[]`/`line_items[]` pair (§3.1) and a stable hash of it, used by the uniqueness rule below |
+| `approval_source_event_id`, `override_source_event_id` | Pre-generated at row creation, §4.2 |
+| `refund_fiscal_event_id` | Populated **after** `engine.append()` returns (§4.3), not before |
+| `state` | `drafted → approval_authored → refund_event_appended → synced` (terminal for local purposes, §4.5), or `→ dead_lettered_local` (append itself permanently failed, no event exists — distinct from server-side dead-lettering, §5) or `→ abandoned` |
+| `payout_confirmed_at` (nullable) | Set only by an explicit cashier action **after** `refund_event_appended` (§4.5) |
+| `printed_at` (nullable) | Set when the AVOIR actually printed |
 | `created_at`, `updated_at` | Recovery bookkeeping |
 
-**Recovery rules:** on app restart, any row in `drafted` or `approval_authored` state is safe to
-resume (re-show the approval step) or abandon (nothing irreversible has happened — no cash moved,
-no fiscal event signed) — abandoning sets `state = abandoned`. Any row at
-`refund_event_appended` or later **must never be re-authored** — the UI resumes by showing the
-already-signed refund's outcome (pending sync / synced / applied / dead-lettered), reusing the
-existing `refund_fiscal_event_id`, exactly as `FiscalEventEngine`'s own
-`(tenant_id, terminal_id, source_event_class, source_event_id)` idempotency already guarantees
-for the append call itself (a retry of `engine.append()` with the same `source_event_id` — the
-`refund_intents.id` — returns the existing event, `FiscalEventEngine.ts:576-588`).
+**Active-intent uniqueness** (closing Codex's "nothing prevents a second active intent"
+finding): a partial unique index on `(original_local_receipt_id, line_snapshot_fingerprint)
+WHERE state NOT IN ('applied', 'dead_lettered_local', 'abandoned')` — SQLite supports partial
+unique indexes. A cashier retry, double-click, or reopened cart for the **same** original+line
+selection reuses the existing active row (looked up by this same key before drafting a new one)
+rather than creating a second one; a genuinely different line selection against the same original
+is a different fingerprint and is allowed to proceed independently (a legitimate second partial
+refund).
 
-**This table also becomes the single local source of truth for refund Z accounting**, replacing
-`local_refund_records` (§5.4) — closing Codex's §4.3 "idempotency and durable intent are
-missing" finding and Codex's §8.4 "device Z production writes are missing" finding with one
-mechanism.
+### 4.5 Payout/print reconciliation — the crash-around-handover window, named and closed
 
-### 3.3 What the local write-gate transaction actually contains (correcting Revision 1's S3)
+Codex r2's correct finding: `refund_event_appended` alone cannot distinguish "commit → crash →
+no cash handed over" from "commit → cash handed over → crash." **New, explicit cashier
+reconciliation screen**, shown on app start whenever any `refund_intents` row has
+`refund_fiscal_event_id IS NOT NULL AND payout_confirmed_at IS NULL`: *"A refund for
+[receipt/amount] was recorded but this device restarted before confirming the cash handover — did
+you give the customer their cash?"* — **Yes** sets `payout_confirmed_at = now()` and proceeds
+(the row's fiscal effect was already correct; this only closes the local bookkeeping gap);
+**No / Not sure** sets a `payout_disputed_at` timestamp (new nullable column, same table) and
+surfaces the row on the manager's shift-close checklist for manual reconciliation against the
+physical drawer count — the fiscal event itself is never touched (it is immutable, §4.1), only
+the *local* payout-confirmation bookkeeping is affected. This is the concrete state/screen the
+orchestrator's item 4 requires; it is not deferred.
 
-Revision 1 asserted the refund transaction "atomically includes local receipt, voucher and Z
-bookkeeping" without specifying any such writes — Codex correctly flagged this as unsupported.
-The transaction, inside the existing `withWriteTransaction('fiscal', …)` single-writer gate
-(mirroring `receiptService.ts:479-505`'s pattern exactly), explicitly contains, in order:
-(1) update `refund_intents.state = 'refund_event_appended'` and `refund_fiscal_event_id`;
-(2) `engine.append('SALE_RECEIPT', v4Payload, { source_event_class: 'refund_intents',
-source_event_id: refundIntentId })`; (3) update the local voucher-mirror balance **only** for a
-`store_voucher` **redemption** leg pre-resolved before the transaction (same pattern
-`receiptService.ts`'s 5b comment already documents for sales); no local voucher balance write for
-a **store_voucher issuance** destination (§6.2 rules that the v4 payload does not issue new
-vouchers device-side at all — issuance stays server/legacy-only for launch). Local receipt
-printable data and cart cleanup happen **after** this transaction commits, reading back the
-committed `refund_intents`/`fiscal_events` rows — a crash between commit and print/cleanup loses
-UI convenience state only, never fiscal or payout state, and is recoverable via §3.2's resume
-rules.
+### 4.6 Local state stops at `synced` (the orchestrator's recommended launch choice, adopted)
 
-### 3.4 Complete state machine
-
-| State | Meaning | Recovery / next transition |
-|---|---|---|
-| **drafted** | `refund_intents` row created, cart frozen, no approval yet | Resumable; abandonable with no side effects |
-| **approval-orphan** *(new — Codex §5 missing-state)* | Approval fiscal events committed locally, but `refund_intents.state` update to `approval_authored` failed/crashed before recording their IDs | The approval events themselves are chain-immutable and harmless (they are evidence, not payout) — on resume, the device re-reads its own just-appended `OPERATOR_APPROVAL_GRANTED`/`OVERRIDE_VOID_OR_RETURN` events by `source_event_id` (idempotent lookup) and repairs the `refund_intents` row rather than re-authoring |
-| **approval_authored** | Both approval events committed, evidence cached in `refund_intents` | Sync of these two events is **no longer force-synced before proceeding** (§4.1) — they ride the ordinary outbox alongside the refund event itself |
-| **append-before-crash** *(new)* | Crash between building the v4 payload and `engine.append()` returning | No event was appended (the write-gate transaction is all-or-nothing); `refund_intents` stays at `approval_authored`; resume re-attempts the append with the same frozen line snapshot |
-| **refund_event_appended** | The refund `SALE_RECEIPT` v4 event is signed and locally committed | **This is the payout-authorized moment (§3.1).** Sync-pending; local Z (§5.4) already reflects it, because §5.4 reads directly from this state, not from a settlement response |
-| **sync-pending / transport-retryable** | Standard outbox retry, `getPendingFiscalEventsForSync` | Retries automatically; no operator action |
-| **ingress-rejected/quarantined** *(new)* | Server-side signature/canonical-bytes verification fails (corruption, not business logic) | `IntegrityStatus::Quarantined` — existing mechanism, unrelated to business-rule rejection; surfaced to the existing fiscal-integrity operator workflow, out of this spec's new scope |
-| **POS-applied / Treasury-dead-lettered** *(new — Codex §5 sibling-projector gap)* | `PosCoreReceiptProjection` succeeds (receipt/lines/stock exist) but the sibling `TreasuryReceiptBridge` projection dead-letters (e.g. a purpose-account misconfiguration) | Money/GL effects are missing while the receipt exists — this is a genuinely inconsistent intermediate state; §6's operator dead-letter surface must show it distinctly from "nothing applied at all," because customer-facing receipt/inventory state has already changed |
-| **dead_lettered** | Either projector permanently failed after Horizon's 5 retries (`ApplyFiscalEventProjectionJob.php` — every `Throwable` retries, `catch (Throwable)` at `:394`, no non-retryable branch exists today; `failed()` flips to `ProjectionStatus::DeadLettered` only after `$tries` exhaust, `:428-458`) | **Manual only** — `fiscal:retry-projections` (`RetryFiscalProjectionsCommand.php`) resets and retries; there is no automatic recovery when a dependency later becomes available, contrary to Revision 1's claim. §6's new operator-facing report (§9 manifest) is required so a dead-lettered refund is discoverable, not merely loggable |
-| **cross-device double-refund (S5)** | Two terminals author refunds against the same original before either syncs | **Not preventable in real time when both are genuinely offline** — named as an accepted residual risk, not solved away. §4.5 defines the server-side per-original lock that guarantees only one of the two ever *books*; the loser dead-letters. **Cash may already have been paid out on the losing terminal before the lock resolves** — this is a real, bounded operational risk, mitigated by (a) device pre-flight duplicate detection for the common same-device case, (b) an operational recommendation to keep sync cadence short, and (c) manual dead-letter reconciliation that surfaces the double-payout for a loss write-off, not a reversal |
-| **VOID-of-a-refund** *(new — explicitly out of scope)* | Correcting a refund itself | The current UI has no VOID surface at all post-Phase-6 (`refundApproval.ts:4-9`'s docblock: refund is the only correction surface). This design does not add one. A refund, once appended, is corrected only by the same class of new compensating event a dead-letter reconciliation would use — not a new "void the refund" feature. Explicitly out of Lane C's launch scope |
-| **applied** | Both projectors succeeded | Terminal success state |
+Confirmed: `FiscalEventSyncResultItem` (`fiscalEventRepository.ts:62-71`) reports only
+`stored`/`fiscal_event_id`/`sequence_conflict`/`exception_class` — ingestion acceptance, not
+projection outcome — and `pushOfflineReceipts()` marks an event `synced` the moment ingest
+accepts the envelope (`syncService.ts:382-399`). Projection status (`applied`/`dead_lettered`)
+lives exclusively in server `fiscal_event_projections`, with no device-facing poll/push contract
+today. **Ruling: the local `refund_intents.state` machine stops at `synced` for this launch.**
+The device UI shows "refund submitted" once synced, and **never claims** local knowledge of
+server-side booking success or failure — that is exclusively the server operator dead-letter
+surface's job (§5.3, §17). Building a device projection-status pull contract is explicitly
+deferred, not silently assumed.
 
 ---
 
-## 4. The (five) mandatory decision areas
+## 5. Model-1 rejection matrix (Codex r2 item 5) — narrowed by §0's cash-only scope
 
-### 4.1 Offline / unsynced refunds — approval redesign closes the real contradiction
+With `original_payment`/`store_voucher` deleted from the launch payload (§0), the matrix Codex
+audited collapses from eleven rows to five real classes. Every remaining class gets one of two
+dispositions, both already grounded in an existing repository pattern:
 
-Revision 1 kept "phase 1" (approval authoring) unchanged while claiming full offline capability
-— a direct contradiction Codex caught: `authorRefundReturnApproval()`'s `target` binds the
-**server** `pos_receipts.id` and mapped **server** `line_ids` (`refundApproval.ts:11-30,68-96`),
-which only exist after `prepareRefundSettlement()`'s online resolution
-(`refundSettlementService.ts:264-288`) — and then **force-syncs** both approval events before
-proceeding (`refundApproval.ts:108-121`, `approvalFiscalSync.ts:24-78`). Neither dependency
-disappears just because the original is resolvable locally.
+| Class | Current repository behavior | Disposition | Mechanism |
+|---|---|---|---|
+| Local validation fails before SQLite commit | `FiscalEventEngine.ts:559-571` validates before insert | **Safe — no payout yet** | Retry authoring; nothing signed, nothing to compensate |
+| Return window / daily cap / manager-threshold / disposition policy questionable | Legacy: synchronous reject. v4: no synchronous check exists | **Accept + flag** | §3.4's `refund_policy_alerts` — the late-sale-flag pattern, `PosCoreReceiptProjection.php:1051-1071` |
+| Approval evidence structurally unresolved (non-UUID/missing/mismatched — §4.2's residual risk if the fix above is ever bypassed by a code defect) | Not enumerated before this revision | **Reject, permanent — compensate+write-off** | New `ApprovalEvidenceUnresolvedException`, non-retryable → §5.2 |
+| Quantity cap exceeded / concurrent double-refund (S5, kept from Revision 2) | New permanent exception (§7.4) | **Reject, permanent — compensate+write-off** | §7.4's lock + §5.2 |
+| Payment-method/repository/purpose-account config failure (POS or Treasury) | POS throws on unresolved method (`PosCoreReceiptProjection.php:846-880`); Treasury has multiple fail-closed dependencies | **Reject, permanent (after retry exhausts) — compensate+write-off** | Existing `catch (Throwable)` → dead-letter lifecycle → §5.2 |
+| Ingress/quarantine (corrupted signature/canonical bytes) | Existing integrity workflow, unrelated to business logic | **Existing workflow, escalated to §5.2 if payout already confirmed** | A refund specifically (unlike a sale) may already have paid out cash before quarantine resolves — §5.2's write-off applies here too, not only to booking rejections |
+| POS applies, Treasury dead-letters (sibling-projector partial success) | Independent jobs (`ApplyFiscalEventProjectionJob.php:324-410`; `TreasuryReceiptBridge.php:224-273`) | **Distinct operator-visible state; narrower write-off** — only the missing money/GL leg needs compensation, receipt/stock already correctly applied | §5.1's operator API distinguishes this state explicitly; §5.2's write-off, scoped to the money leg only |
+| Original-receipt dependency temporarily missing (cross-device sync race — cannot occur for tenant #1's single terminal, kept for completeness since the guard/exception machinery is shared code) | `OriginalReceiptUnresolvableException extends ProjectionDependencyMissingException` | **Retry** | Existing Horizon retry-then-dead-letter; resolves automatically once the original syncs |
 
-**The fix is the redesign itself.** New `authorRefundReturnApprovalV2()`:
-- **Target binds device-stable identity, not server IDs**: `target_reference_id =
-  refund_intents.id` (§3.2); `target = { original_local_receipt_id, original_fiscal_event_id
-  (nullable — see below), original_line_references (§2.4's frozen snapshot), reason }` —
-  entirely resolvable from `refund_intents` and the local `fiscal_events` mirror, no server
-  round trip.
-- **Preserves all seven `PosOverrideEvidence` fields verbatim** into
-  `approval_references[]` — no renaming, no dropping `policy_version`/`target_reference_id`
-  (Revision 1's `RefundApprovalEvidence` type is retired).
-- **No force-sync before append.** The approval events and the refund event are authored in the
-  same local session and ride the ordinary outbox together, in sequence order
-  (`getPendingFiscalEventsForSync`'s existing `ORDER BY chain_context ASC, sequence_number ASC`,
-  `fiscalEventRepository.ts:76-88`, already guarantees they sync in the order they were
-  appended). The server verifies the evidence against the synced chain at projection time, not
-  at submission time — there is no "submission" anymore in the HTTP sense.
+### 5.1 Operator dead-letter API (kept, extended for the partial-POS-applied state)
 
-**Two-tier resolution policy, restated precisely (kept, endorsed by both reviewers):**
-- **Same-device original** — resolved via the local `fiscal_events` lookup by
-  `(source_event_class = 'offline_receipts', source_event_id = original_local_receipt_id)`
-  (`fiscalEventRepository.ts`, existing columns). Fully offline: no network call at any point
-  in the refund flow.
-- **Not resolvable locally** — collapses into exactly one of three indistinguishable local
-  causes (§4.4 fixes this ambiguity): a v2 receipt, a v3/v4 receipt authored on another
-  terminal, or a same-device receipt whose local event is genuinely unavailable. The device
-  cannot tell these apart without either parsing trusted receipt metadata (the printed/scanned
-  receipt does not carry `fiscal_event_id`) or performing the online lookup (§4.4). **A v2
-  original is always refunded through the legacy `/return` endpoint** (never gated off for v2,
-  §2.4) — the v4 payload's `original_receipt_reference` can only ever point at a
-  `fiscal_event_id`-backed original, by the same fail-closed resolution
-  `PosCoreReceiptProjection::resolveOriginalReceiptId()` already enforces
-  (`:617-637`) — so a v2 original genuinely cannot be represented, correctly.
+`GET /fiscal/dead-lettered-projections` / `{id}` (§17) now reports, per row, whether the
+**sibling** POS projection already applied (distinguishing "nothing happened" from "receipt and
+stock exist, money doesn't") — read from `fiscal_event_projections`, joined by `fiscal_event_id`
+across both `POS` and `Treasury` projector rows.
 
-### 4.2 Atomicity / failure ordering — superseded by §3
+### 5.2 S4 write-off — named purpose, entry shape, drawer adjustment, operator procedure (all IN
+the manifest, treasury r2 I-6)
 
-§3's state machine is the complete answer to this decision area; it is not repeated here.
+A dead-lettered refund whose `refund_intents.payout_confirmed_at IS NOT NULL` (§4.5) means cash
+genuinely left the drawer with no corresponding books. This is **never automatic** — Model 1's
+own philosophy (never silently alter signed intent's effective meaning) requires a human
+decision. New operator action on the dead-letter API: `POST
+/fiscal/dead-lettered-projections/{id}/write-off`, permission-gated, requiring the operator to
+confirm they have reconciled the physical drawer:
 
-### 4.3 VOID — one ruling, no fallback
+- **New `SystemAccountPurpose` case: `RefundWriteOff`** — resolved via the same
+  `GeneralLedgerService::hasAccountForPurpose()` company chart-of-accounts mechanism the existing
+  `PaymentToleranceIncome`/`PaymentToleranceExpense` purposes already use (§7.3) — precheck before
+  posting, same fail-closed pattern (missing account → the write-off action itself is refused
+  with a clear "configure this account first" error, never a silent skip).
+- **Compensating entry shape:** `Dr RefundWriteOff (expense) / Cr Cash` at the refund's signed
+  amount — a genuine loss booking, not a reversal of the refund (the refund itself, and its
+  original stock/receipt effects if the POS side already applied, stay exactly as signed; only
+  the missing money leg is compensated).
+- **Drawer adjustment:** a manual `CashDrawerService` operation recorded for the shift the
+  payout actually happened in (read from `refund_intents`/the resolved event's `business_date`),
+  so the physical drawer reconciliation isn't permanently orphaned by an entry the automated path
+  never wrote.
+- **Operator procedure**, named in the manifest as the exact sequence the dead-letter UI walks
+  the operator through: (1) attempt `fiscal:retry-projections` first (the failure may be
+  transient config, e.g. a missing purpose account that gets configured and retried
+  successfully — no write-off needed); (2) only if retry is confirmed futile (a structural
+  defect like `ApprovalEvidenceUnresolvedException` or a permanently-exceeded quantity cap),
+  invoke the write-off action.
 
-**Ruling: VOID is prohibited from this launch's device-authored scope. The legacy in-place
-mutation path remains the only VOID mechanism, gated by a single explicit guard, with a named
-operator workflow — no dual option, no code-phase choice.**
+### 5.3 Server-side only — no device consumer needed (per §4.6's ruling)
 
-This reverses Revision 1's "integrate VOID too" stance, for reasons the reviews established
-precisely: a canonical VOID would not even be *reported* correctly by the current server, and
-fixing that is materially more work than the refund path alone, disproportionate to launch
-scope. Specifically: `PosCoreReceiptProjection` maps both `REFUND` and `VOID` to
-`ReceiptType::Return` and **always writes `is_voided = false`**
-(`resolveReceiptType()` `:537-544`, insert row `:347`). `Nf525DataProvider` buckets strictly by
-`is_voided = true` for its void/ANNULATION query (`:160-166`) versus `receipt_type = Return AND
-is_voided = false` for its returns query (`:179-187`) — a canonical VOID, carrying
-`is_voided = false` by construction, lands in the **returns** bucket, not the NF525 void bucket.
-`ReportGenerationService`'s receipt-classification code increments `voidedCount` only on
-`is_voided` and otherwise counts any `ReceiptType::Return` as a refund (`:936-953`) — same
-misclassification. Building a v4-correct VOID would require: a `SALE_VOID`-shaped projection
-outcome that sets `is_voided = true` on **both** the projected VOID row and a link back to the
-original (the original itself remains immutable — untouched — per the "the fiscal chain never
-rewrites" principle, so "voided" must be a *derived* status computed from the existence of a
-linked VOID correction, not a mutated column on the original at all), a new NF525 mapping
-branch, a new report-counting branch, and an entire POS VOID authoring surface/UI/print/Z path
-that **does not exist today** — the refund flow is the only correction surface post-Phase-6
-(`refundApproval.ts:4-9`). None of this is in §9's manifest; it is explicitly out of scope.
-
-**The compensating control (single, not a fallback among options):** `ReceiptVoidService`'s
-existing in-place-mutation path is **gated off for `fiscal_schema_version >= 3` terminals**,
-identically to §2.4's return guard — a v3/v4 terminal cannot void at all through the API for
-this launch. The operator workflow for a v3-terminal correction that would previously have been
-a VOID is: **process it as a REFUND** (full-line refund to the original tender, which the
-refund path already handles completely) — this is not a workaround invented for this spec, it
-is the documented existing convention (`refund model = SALE_RECEIPT + invoice_type_code=REFUND`,
-`SALE_VOID`/`REFUND_RECEIPT` are vestigial reserved-unimplemented `FiscalEventType`s). This
-closes the ruling with zero dual-option fallback and zero new manifest surface for VOID beyond
-the one guard (shared with the return guard in the same PR).
-
-### 4.4 Cross-terminal and legacy-original lookup — full contract
-
-The projector resolves an original strictly by `pos_receipts.fiscal_event_id`
-(`PosCoreReceiptProjection.php:617-637`) and fail-closes when absent — a v2 original can never
-be validly referenced by a v4 correction; prohibiting that bridge is sound and kept. But (per
-§4.1) the device cannot locally distinguish "v2 original," "v3/v4 original on another terminal,"
-and "same-device original whose local event is unavailable" — all three look identical: a
-local-lookup miss.
-
-**New endpoint: `GET /pos/receipts/lookup-for-refund`**, query params `receipt_number` (required)
-and `qr_token` (optional, preferred when present — mirrors the existing scan-first pattern in
-`refundSettlementService.ts`). Contract, closing every gap Codex's §7 named:
-
-- **Scope/authorization**: company-scoped via `CompanyContext` (exactly like the existing
-  `GET /pos/receipts/{id}`, `ReceiptController.php:537-576`, which is company-scoped and
-  permission-gated but **not** terminal-scoped — that precedent is the right shape here too,
-  since a cross-terminal lookup is the entire point). Gated by `pos.process_returns` (the
-  existing return permission). **Not** the same as `ReceiptLookupService`, which is deliberately
-  single-terminal (`ReceiptLookupService.php:25-29,53-63,92`) — this is a **new, separate**
-  service, not a scope change to the existing one.
-- **Anti-enumeration**: rate-limited per cashier/terminal (standard Laravel throttle
-  middleware, count TBD by the code phase against existing POS rate-limit conventions); returns
-  a uniform "not found or not eligible" response for both a genuinely missing receipt number and
-  one that exists but fails an eligibility check below — never distinguishes the two in the
-  response body (only in server logs), so the endpoint cannot be used to enumerate valid
-  receipt numbers.
-- **Eligibility proof**: the resolved original must be `fiscal_event_id IS NOT NULL` (v3/v4-authored),
-  `receipt_type = Sale` (or training-excluded, §6.6), `is_voided = false`,
-  `fiscal_status = Fiscalized`. A v2 original, or one failing any of these, returns the uniform
-  not-eligible response — the cashier is told "settle this original at a v2-capable terminal via
-  the legacy flow" only when the miss is specifically because `fiscal_event_id IS NULL`
-  (distinguishable server-side even though the response is uniform on enumeration grounds — the
-  UI copy can safely differ because the *cashier* already knows which receipt they scanned; the
-  anti-enumeration concern is about a stranger probing arbitrary numbers, not the cashier's own
-  workflow).
-- **Response payload** — everything the v4 signing step needs, sourced from the **authoritative
-  fiscal event**, not mutable server state: `original_fiscal_event_id`, `original_business_date`,
-  `original_line_references` (index/product_id/max-returnable-quantity per line, computed
-  server-side using the §4.5 lock+cap logic so the device never under- or over-estimates),
-  `allowed_dispositions` per line (regulated products pre-flagged `never` via
-  `RestockPolicyResolver`), `allowed_destinations` (server-computed from the original's tender
-  mix; per §6.2, `store_voucher` is never advertised for launch), `original_payments` (leg
-  ordinals + amounts, for the §6.3 proration algorithm to run identically device-side), and a
-  **capability/version field** (`min_client_payload_version: 4`) so an old device build can
-  detect it cannot safely complete this refund and fail closed with an upgrade prompt, rather
-  than silently authoring an incomplete/rejected event.
-- **Race handling**: once this lookup has returned a row, that original is by definition already
-  projected — the "original still mid-sync" race Revision 1 worried about does not describe the
-  lookup-success path at all. If a *dependency* later dead-letters for some other reason, §3.4
-  applies — recovery is manual (`fiscal:retry-projections`), never automatic.
-
-### 4.5 Quantity-cap enforcement and per-original serialization (hardened from Revision 1's §3e)
-
-Kept core finding: no already-returned-quantity check exists anywhere in
-`PosCoreReceiptProjection` today (confirmed absent by search), so an authoritative cap requires
-both a device pre-flight (best-effort, same-device history only) and a server-side backstop.
-**What Revision 1 was missing, per Codex's §3: the backstop must be an actual lock, not a
-racy read-then-check.** Design: before inserting the projected refund's lines, the server-side
-check runs `SELECT ... FROM pos_receipts WHERE fiscal_event_id = :originalFiscalEventId FOR
-UPDATE` (a real row lock on the **original** receipt, serializing all concurrent refund
-projections against the same original within the wrapping `DB::transaction()`), then computes
-already-refunded quantity per `original_line_index` from **all** prior REFUND projections
-against that original (both this v4 path and, for the transition window, any surviving legacy
-v2-original refunds), then either proceeds or throws a new, permanent `RefundQuantityExceededException`
-(does not extend `ProjectionDependencyMissingException` — retrying five times changes nothing
-about an over-quantity refund) that reaches the existing `catch (Throwable)` →
-`ProjectionStatus::DeadLettered` lifecycle with no new job infrastructure required. This lock is
-also what makes S5 (§3.4) resolve deterministically at the booking layer: whichever refund event
-reaches this transaction first wins; the second dead-letters. It does **not** prevent a double
-physical payout when both terminals were offline at authoring time — that residual risk is named,
-not solved, in §3.4.
+The dead-letter surface and write-off action are pure operator/API surfaces; nothing in this
+launch's device manifest consumes them, consistent with §4.6.
 
 ---
 
-## 5. E1 refund rounding — corrected against the real binds and the real GL implementation
+## 6. Verifier repair — per-row sealed-algorithm discriminator, not terminal-version branching
+(fiscal C-2 / Codex r2 item 8)
 
-### 5.1 Cash-only-payout gate (replaces the "proportional mixed-tender" idea, which is
-mathematically impossible under the current bind)
+**Revision 2's remedy was unsound, confirmed by direct verification of
+`FiscalSchemaCutoverService.php`:** it upgrades a terminal's `fiscal_schema_version` from 2 to 3
+**in place**, on an already-active terminal that may already carry prior, validly-v2-sealed
+receipts — Gate 2 (`:73-97`) explicitly *permits* cutover with prior fiscalized receipts (only
+requiring they're already Z-reported), and the mutation itself
+(`$locked->fiscal_schema_version = 3; $locked->save();`, `:119-121`) is a live, in-place update
+of the existing row. Branching the verifier on the terminal's **current** `fiscal_schema_version`
+would therefore run `V3ReceiptHashComputer` over every pre-cutover v2-sealed row the instant that
+terminal cuts over — breaking valid v2 history that was never touched by this feature at all.
 
-`assertSaleReceiptAggregatesV3`'s bind 2c (`SaleReceiptV3Payload.ts:189-196`) requires: whenever
-`cash_rounding_adjustment ≠ 0`, `payload.total` (the **whole** receipt total) must be an exact
-multiple of `cash_rounding_denomination`. This makes Revision 1's "round only the proportional
-cash leg of a mixed-tender refund" idea unimplementable — if only part of the total is cash and
-gets rounded while a card leg stays exact, the whole `total` generally will not be a denomination
-multiple, and bind 2c rejects the payload outright.
+**Correct fix: a per-row, immutable, sealed-algorithm discriminator, written once at seal time
+and never re-derived from mutable state.**
 
-**Ruling: refund rounding applies only when the entire refund payout is cash — mirror
-`isCashOnlyTender()` (`cashRounding.ts:180-186`) applied to the refund's own tender/destination
-legs, exactly as it already gates the sale side.** Any refund whose destination mixes cash with
-`original_payment`/`store_voucher`, or whose destination is `original_payment`/`store_voucher`
-outright, gets **`cash_rounding_adjustment = canonical zero` and `cash_rounding_denomination =
-canonical zero`** — no rounding at all, full stop, stated as an explicit consequence (Codex's
-§8.1, closed). Full refunds naturally reproduce the original sale's rounded amount (same base,
-same rounding) when the destination is cash; partial cash refunds round independently on their
-own computed amount, per the adopted research pattern — unchanged.
+- **New nullable column `pos_receipts.sealed_hash_algorithm`** (`'legacy_pipe_v1' |
+  'canonical_v3'`), written by `ReceiptFinalizationService::finalize()` (`:97-103`) **at the same
+  point** it already branches on `$terminal->fiscal_schema_version` to choose which hash function
+  to call — the discriminator simply records which branch fired, permanently, on that row. Every
+  future write through this path is self-describing from day one; only existing rows need
+  backfill.
+- **New migration** — adds the column only (fast, no data movement).
+- **New Artisan command** (dual-recomputation backfill, `Fiscal/Infrastructure/Commands/`, §17):
+  for every existing `fiscal_event_id IS NULL, sealed_hash_algorithm IS NULL` row, compute
+  **both** the legacy pipe hash and the v3 canonical hash, compare each to the row's stored
+  `fiscal_hash`; set the column to whichever matches. If **neither** or **both** match, the row
+  is logged and skipped, never guessed — a genuine anomaly requiring manual fiscal-officer
+  review, not an automated decision. Batched and idempotent (re-running only touches
+  still-`NULL` rows), run as part of §9's rollout preflight, before the guard ships.
+- **`ReceiptHashService::verifyLegacyArm()` and `Nf525DataProvider::verifyReceiptChain()`** both
+  branch per-row on `$receipt->sealed_hash_algorithm` (a `NULL` value post-backfill is a hard
+  verification **failure**, never a silent pass — fail-closed) to select the recomputation
+  function, while **preserving the single ordered `$previousHash` walk exactly as it exists
+  today** (`ReceiptHashService.php:315-350`; `Nf525DataProvider.php:380-446`) — only the per-row
+  hash *computation* changes; the link-walk structure, which correctly spans a mixed-algorithm
+  chain because chain linkage is algorithm-independent (each row's `previous_hash` just has to
+  equal the prior row's `fiscal_hash`, regardless of which function produced either), is
+  untouched.
 
-### 5.2 Rounding keys are mandatory, never optional, on every v3/v4 payload
-
-Revision 1 stated the two rounding fields "may be omitted" on the TypeScript interface's optional
-markers. In practice: `FiscalPayloadConstraintValidator.php:844-853` throws
-`payload_missing_required` if either key is absent on any `event_version >= 3` payload, and
-production authoring (`buildSaleReceiptV3Payload`) **always** sets both, using `canonicalMoney()`
-(`SaleReceiptV3Payload.ts:70-74`) to collapse an unrounded state to the canonical zero string, not
-omission. The v4 refund builder must do exactly the same — always both keys present, canonical
-zero when §5.1's gate disables rounding.
-
-### 5.3 GL: reuse the landed `pos_cash_rounding_refund` contract; do not invent
-`pos_refund_rounding`
-
-Revision 1 claimed no refund-rounding GL work existed and proposed a new `pos_refund_rounding`
-source type. Both are wrong. `TreasuryReceiptBridge::postCashRoundingEntry()`
-(`:419-470`) already runs for **both** sale and refund receipts — `$isRefund` selects
-`$sourceType = $isRefund ? 'pos_cash_rounding_refund' : 'pos_cash_rounding'` (`:431`), already
-posts through `PaymentToleranceIncome`/`PaymentToleranceExpense` purpose accounts (`:442-459`),
-already has a probe-before-create idempotency guard backed by a DB partial unique index
-(`:433-439`; migration `2026_07_28_100200_add_cash_rounding_to_pos_receipts.php:126-129`), and
-already has a passing symmetric-refund test
-(`TreasuryReceiptBridgeRoundingGlTest.php:233-269`). `GeneralLedgerService` enforces the enum of
-valid source types and throws on an unrecognized one (`:3471,3509-3512`) — introducing
-`pos_refund_rounding` would either throw on every rounded refund or require a parallel,
-unreviewed migration to add it, for zero benefit over the type that already works. **Ruling: no
-new GL source type; the v4 refund builder need only compute `cash_rounding_adjustment`
-correctly (§5.1) and the already-shipped bridge code handles the rest.** State purposes by
-enum (`PaymentToleranceIncome`/`PaymentToleranceExpense`), never by raw chart-of-accounts
-number, matching the existing pattern.
-
-### 5.4 Device Z production path (new — entirely absent from Revision 1's manifest)
-
-`zReportService.ts`'s cash-rounding summary loop (`:283-291`) iterates **only** `offline_receipts`
-— `local_refund_records` never enters it; that table only feeds `cashRefundImpact` for
-`expected_cash` (`:230-232`) and refund *counts* in `aggregateReportData` (confirmed: 3 real
-readers, not 4 as guessed in the dispatch brief — `zReportService.ts:205`,
-`endOfDayPreview.ts:354` [which **is** the cash-impact expected-cash feed, invoked from
-`EndOfDayPreviewModal.tsx` — not a separate fourth reader], and the repository query itself;
-`HomePage.tsx:1158` only contains an explanatory comment, it performs no query).
-`local_refund_records`'s schema (`localRefundRecordRepository.ts:19-40`) has no rounding columns
-at all and is keyed to a server return-receipt id/number that no longer exists in this design (no
-HTTP settlement response to mirror).
-
-**Ruling: `local_refund_records` is retired and replaced by `refund_intents` (§3.2) as the single
-local source of truth.** `zReportService.ts`, `endOfDayPreview.ts`, and the `cash_impact`
-expected-cash computation are all rewired to read `refund_intents` joined with the local
-`fiscal_events` row for each `refund_fiscal_event_id` (present once a refund reaches the
-`refund_event_appended` state, §3.4) instead of `insertLocalRefundRecord`'s post-settlement
-write. This requires a device SQLite migration (new `refund_intents` table, §3.2) and production
-changes to all three files — explicitly in §9's manifest, not deferred.
-
-Server-side, `ZReportProjection::cashRoundingSummary()` (`:204-233`) already sums **all**
-projected non-void v3+ receipts including canonical returns, receipt-type-agnostically — this
-requires no server change; it already produces the correct aggregate the instant refund events
-start carrying correct `cash_rounding_adjustment` values. **Explicit ruling on the Z-summary
-question: yes, refund rounding adjustments enter the Z `cash_rounding_summary`, unconditionally**
-— this inherits Lane B's `zReportService.cashRounding.test.ts` and can only land once Lane B
-merges (dispatch plan's explicit sequencing), at which point the code phase **extends** that
-file, never forks it.
-
-**AVOIR rounding line: unconditional in-scope for this launch**, correcting Revision 1's
-conditional-on-E1-being-in-the-same-batch framing, which the fiscal-pos reviewer flagged as
-violating the owner's "correction-chain integration plus E1 is one Lane C scope" ruling.
-`buildReceiptData.ts`'s current hardcoded `cash_rounding_adjustment: null, has_cash_rounding:
-false` (confirmed at `:713-714`, not `:712-713` as Revision 1 cited) is corrected in the same PR
-that ships the refund path, not deferred.
+**Tests** (all named, §17): pure-v2 legacy history (regression — must still pass unmodified);
+pure-v3-hashed orphan (this feature's new case); a real v2→v3 cutover terminal with **both**
+algorithms present in one ordered legacy chain (the case Revision 2's remedy would have broken);
+tamper detection under each algorithm independently (2 tests); and an NF525-parity test asserting
+`pos:verify-chains` and the NF525 verify-chains endpoint agree on the same terminal — this test
+must also account for the one confirmed **asymmetry** between the two: `VerifyPosChainCommand`
+filters `is_voided = false` (`:181-183`) while `Nf525DataProvider`'s legacy query does not filter
+`is_voided` at all (treasury r2 M-3) — the parity test pins whether this is intentional (NF525
+must see voided rows for audit completeness; the operational command need not) or is itself a
+pre-existing bug, and states the answer explicitly rather than silently asserting equality on a
+fixture that happens to have no voided rows.
 
 ---
 
-## 6. Money layer (new section — closes all six treasury Criticals)
+## 7. Expected-cash and Z-report semantics (treasury r2 Critical + Importants)
 
-### 6.1 GL contract — see §5.3 (reuse `pos_cash_rounding_refund`; no new source type; purpose
-enums, not PCG account numbers)
+### 7.1 The real bug was targeting dead code — corrected
 
-### 6.2 Store-voucher refunds — launch scope choice, ruled
+Revision 2's fix targeted `ReportGenerationService::buildExpectedPerMethod()`. Confirmed by
+direct verification: `generateXReport()`/`generateZReport()` (`ReportGenerationService.php`) both
+call `assertServerReportAuthoringAllowed()` (`:69-73`), which throws
+`ServerFiscalAuthoringRetiredException::zSessionDeviceAuthority(...)` whenever
+`fiscal_schema_version >= 3` (`:94-108,159-169`) — **before** either entry point can ever reach
+`buildExpectedPerMethod()` (`:219,486`, its only callers). This function is **entirely dead code
+for v3/v4 terminals** — the exact "rule-20 trap" the orchestrator named. **This entry is removed
+from the manifest entirely; fixing it would be fixing an unreachable path.**
 
-Confirmed: `PosCoreReceiptProjection::redeemVouchers()` unconditionally **redeems** (burns) any
-`store_voucher` payment leg for both SALE and REFUND payloads — there is no `invoice_type_code`
-gate at the call site (`:405`) or inside the method (`:941-966`), unlike `earnLoyaltyPoints`,
-which explicitly gates on `$receiptType !== ReceiptType::Sale` (`:987`). A v4 REFUND destined
-for `store_voucher` would need to **issue** a brand-new voucher — but `writePayment()`'s
-`InstrumentRequiredException` (`PosCoreReceiptProjection.php:856-859`, unconditional for any
-`instrument_type` requiring an instrument, `PaymentInstrumentKind::requiresInstrumentForMethodCode()`)
-would throw, because a freshly-issued voucher has no serial to sign at authoring time — the
-device cannot mint the voucher code before the server projects the event, and the server cannot
-verify a signed serial that didn't exist yet. This is a genuine chicken-and-egg the payload
-format cannot resolve without a materially different design (e.g., a device-generated
-voucher-code UUID plus a two-phase issuance protocol) that is out of proportion to launch scope.
+### 7.2 The real path is 100% device-side
 
-**Ruling: store-voucher refunds are OUT OF LAUNCH SCOPE for the device-authored path.**
-`refund_destination = 'store_voucher'` is **not** a legal value in the v4 payload for this
-launch (§2.4's field is defined as `'cash' | 'original_payment'` only for now — voucher listed
-in §2.4 as the eventual third value, deliberately not enabled). The cashier flow for a
-voucher-destination refund on a v3/v4 terminal falls back to the legacy `/return` endpoint
-(same fallback carve-out as VOID, §4.3) — the existing, tested `VoucherIssuanceService::issueFromRefund()`
-path continues to serve this case until a follow-on spec designs the two-phase issuance
-protocol. §2.4's lookup endpoint's `allowed_destinations` must never advertise `store_voucher`
-for the v4 path.
+Confirmed: `ZReportProjection::legacyReportData()` (`:140-158`) reads `expected_cash` /
+`actual_cash` / `variance` **directly from the device-authored `Z_REPORT` payload's own
+`cash_count` block** (`$payload['cash_count']['expected_cash']` etc.) — for v3/v4, expected-cash
+is computed **on the device**, signed into the Z_REPORT event, and the server projection is a
+pure pass-through. There is no server-side computation to fix at all. The fix is entirely in
+`apps/pos/src/lib/offline/zReportService.ts`, which is what actually computes the value passed
+as `expectedCash` into the Z_REPORT payload builder (`zSessionAuthoring.ts:412,457` — `expected_cash:
+input.expectedCash`, a parameter, confirming the computation lives in its caller).
 
-### 6.3 `original_payment` destination — proration design (currently a silent no-op on v3)
+**Fix (§17): `refund_intents` gains `shift_id`, `refund_total`, and `cash_impact` columns** —
+`cash_impact` is the **rounded payout amount** (§7.3's sign note), computed once at
+`refund_event_appended` time and frozen (never recomputed from a live join, matching the
+already-frozen `line_snapshot_json` pattern, §4.4). `zReportService.ts`'s expected-cash
+computation (replacing `local_refund_records`/`cashRefundImpact` entirely, per Revision 2's §5.4,
+kept) sums `refund_intents.cash_impact` for the shift and **subtracts** it from the cash-in side.
 
-Confirmed: `TreasuryReceiptBridge`'s v3 refund leg insert always sets `payment_type =>
-PaymentType::POS` (never `PaymentType::Refund`) and has **no `original_payment_id` key at all**
-in the insert (`:1316-1339`) — the backlink is structurally absent, not merely unpopulated. The
-real proration engine, `PaymentRefundService::refundReceiptPayments()`
-(`PaymentRefundService.php:628-828`), is **live today, but only reachable from the legacy
-`/return` endpoint** (`ReceiptReturnService.php:853` is its sole caller in the entire codebase) —
-it loads originals via `pos_receipt_payments.treasury_payment_id`, caps the refund total against
-the sum of original payments (`:677-681`, throws `"totalToRefund exceeds receipt total"`), writes
-negative `PaymentType::Refund` rows with `original_payment_id` preserved (`:762-786`), and
-enforces cumulative-exhaustion via a partial unique index on
-`(company_id, original_payment_id, refund_request_id) WHERE payment_type = 'refund' AND
-original_payment_id IS NOT NULL` (`2026_05_03_000004_add_refund_audit_columns_and_unique_index_to_payments.php:64-66`).
+### 7.3 Sign convention (treasury r2 Important, previously unstated)
 
-**Ruling: the v4 refund projection path, for `refund_destination = 'original_payment'`, calls
-this same `PaymentRefundService::refundReceiptPayments()` engine — not a parallel
-`TreasuryReceiptBridge`-native reimplementation — using the §2.4 `settlement_allocation[]` the
-device signed as the proration input, converted to the leg-amount map the service already
-expects.** The **deterministic algorithm** the device must compute (and the server must
-reproduce byte-identically to verify the signed allocation, before ever calling
-`refundReceiptPayments()`): proportional-to-original-leg-amount, `legRefund_i = floor(refundTotal
-× originalLegAmount_i / originalTotal, scale)`, remainder assigned to the leg with the largest
-original amount (ties broken by ordinal) — the standard largest-remainder method, chosen because
-it is simple, symmetric, and reproducible without floating point on both sides. The amount cap
-(`totalToRefund <= receiptTotal` today) becomes, per leg, `Σ prior refunds against leg_i +
-legRefund_i <= originalLegAmount_i`, enforced server-side before booking (mirrors the existing
-cumulative-exhaustion check). `original_payment_id` linkage and the partial unique idempotency
-index are preserved exactly as they exist today — nothing about `PaymentRefundService`'s own
-contract changes; only its **caller** gains a new, v4-event-driven entry point alongside the
-existing legacy-return entry point.
+**One rule, stated once:** the refund's `cash_impact` is computed and signed **in the same frame
+as a sale's cash total** — a sale's cash tender is a positive contribution to expected cash; a
+refund's cash payout is booked as a **negative** contribution (i.e., `cash_impact` is stored as a
+positive magnitude, and the aggregation subtracts it, exactly mirroring how
+`TreasuryReceiptBridge::postCashRoundingEntry()`'s `$isRefund` flag already selects the opposite
+GL direction for the same underlying `cash_rounding_adjustment` value, `:395-470`, kept unchanged
+from Revision 2, §7.4 below) — one sentence, one convention, applied consistently at both the
+device Z aggregation and the (unchanged, already-correct) GL bridge.
 
-### 6.4 VOID double-count fix — folded into §4.3's prohibition
+### 7.4 GL — unchanged, still correct (kept from Revision 2)
 
-Since VOID is launch-prohibited on v3/v4 terminals (§4.3), the projector's `is_voided = false`
-default and `buildExpectedPerMethod`'s missing receipt-type filter (§6.5) cannot be exercised by
-a canonical VOID event at all for this launch — there is no live VOID-double-count path to fix,
-because there is no live canonical VOID. The existing legacy VOID path (still serving v2 and, per
-§4.3, the v3 fallback-workaround-via-refund case doesn't apply here since v3 VOID is prohibited
-outright, not routed to REFUND) is unaffected by this design.
+`TreasuryReceiptBridge::postCashRoundingEntry()` already runs for both sale and refund receipts,
+already selects `pos_cash_rounding_refund` via `$isRefund` (`:431`), already has a
+probe-before-create idempotency guard backed by a DB partial unique index, and already has a
+passing symmetric-refund test (`TreasuryReceiptBridgeRoundingGlTest.php:233-269`) — **no change,
+no new source type**, confirmed correct by treasury r2's own scorecard ("CLOSED").
 
-### 6.5 Expected-cash semantics — the real, currently-live bug this design's refunds would
-trigger
+### 7.5 `CashDrawerService` — ticketed, not fixed here (treasury r2 Important)
 
-Confirmed: `ReportGenerationService::buildExpectedPerMethod()`
-(`:493-502`) sums `pos_receipt_payments.amount` grouped by `payment_method_id` for **every**
-fiscalized, non-voided, non-training receipt in the shift window, with **no `receipt_type`
-filter**. `pos_receipt_payments.amount` carries a DB `CHECK (amount > 0)`
-(`2026_01_08_190640_create_pos_receipt_payments_table.php:62`) and `PosCoreReceiptProjection::writePayment()`
-writes the same positive canonical magnitude for both SALE and REFUND legs identically (no
-`$isRefund` branch in that method at all) — direction is signaled only by the parent receipt's
-`receipt_type`, which this query never joins against. **A refund's cash leg is therefore summed
-as if it were incoming, not outgoing** — expected cash goes up by the refund amount instead of
-down, producing a variance spread of **2× the refund amount** once a v3/v4 refund's cash leg
-lands (confirmed independently: `CashDrawerService::calculateExpectedCash()`, the OTHER expected-
-cash mechanism, is unconditionally called for every shift regardless of schema version
+Confirmed (kept from Revision 2's finding, restated precisely): `CashDrawerService::calculateExpectedCash()`
+is called unconditionally for every shift regardless of schema version
 (`ReportGenerationService.php:204`, `ShiftManagementService.php:170`,
-`CashDrawerController.php:222`) but sums `CashDrawerOperation` rows, and **neither
-`PosCoreReceiptProjection` nor `TreasuryReceiptBridge` ever creates a `CashDrawerOperation` row
-for any v3 event, sale or refund** — confirmed by exhaustive search, zero references in either
-file. `calculateExpectedCash()` is therefore already silently blind to *all* v3 activity today,
-independent of this design; `buildExpectedPerMethod` is the mechanism that actually reflects v3
-data, and is the one this design's refunds would newly and visibly break).
+`CashDrawerController.php:222`), but neither `PosCoreReceiptProjection` nor
+`TreasuryReceiptBridge` ever creates a `CashDrawerOperation` row for any v3/v4 event — this
+function is silently blind to *all* v3 activity today, sale or refund, independent of this
+feature. **This is a pre-existing, broader defect this spec does not introduce and does not fix**
+— ticketed for a follow-on, not silently left unaddressed:
+`docs/superpowers/tickets/2026-07-31-cashdrawerservice-v3-expected-cash-blind.md` (path named per
+the orchestrator's instruction that the orchestrator creates it).
 
-**Ruling: `buildExpectedPerMethod` must be fixed as part of this launch's manifest** — it is the
-one live, v3-relevant expected-cash computation, and shipping the refund-chain feature without
-fixing it actively regresses cash reconciliation reporting the moment the first v3 refund lands
-(today it is merely *untested* for v3 because no v3 refund has ever existed; after this launch
-it would be *actively wrong* on every shift with a refund). Fix: join `pos_receipts.receipt_type`
-into the query and subtract `Return`-type payment amounts instead of adding them, applied
-per-payment-method exactly as sales are added. `calculateExpectedCash()`/`CashDrawerOperation`'s
-broader pre-existing v3 blindness (missing *all* v3 sales, not just refunds) is a **separate,
-pre-existing defect this spec does not introduce and is out of Lane C's scope to fully close** —
-named explicitly here so it is not mistaken for something this design silently fixed or silently
-worsened; it is unchanged by this design either way.
+### 7.6 v2/v3 Z sign divergence — documented non-meeting (treasury r2 Minor)
 
-### 6.6 Training-original refunds — refused device-side
-
-Confirmed: the schema structurally cannot represent "a REFUND whose original was a training
-sale" — `invoice_type_code` and `training_flag` must agree
-(`FiscalPayloadConstraintValidator.php:807-820`, and `INVOICE_TYPE_CODES` treats `TRAINING` as a
-sibling of `REFUND`/`VOID`/`SALE`, not a modifier of them) — a payload cannot carry
-`invoice_type_code = 'REFUND'` and `training_flag = true` simultaneously. Confirmed separately:
-`TreasuryReceiptBridge`'s core Payment-row/GL-posting loop has **no training gate at all** — only
-the supplementary rounding/tolerance entries are training-gated (`:402`); a REFUND event that
-somehow referenced a training original would post real money/GL effects for a rehearsal sale,
-which must never happen. **Ruling: the device refuses to author a refund against a training
-original, at the point of local resolution (§4.1) — if the local `fiscal_events` lookup resolves
-an original whose own `payload.training_flag = true`, the refund flow shows a typed "cannot
-refund a training receipt" error and stops before any approval authoring.** This is a pure
-device-side guard (no server change required, since the schema already makes the combination
-unrepresentable — the guard exists purely to give the cashier a clear message instead of a
-downstream `SaleReceiptAggregateInvariantError`-style crash at payload-build time).
+The v2 legacy Z-report and the v3/v4 device-authored Z-report compute/sign expected cash and
+refund totals through **entirely separate code paths** (`ReportGenerationService`'s legacy
+arithmetic vs. the device's own `cash_count` block) with no shared convention beyond §7.3's
+one-sentence rule applying only within the v3/v4 side. **This is stated explicitly as a known,
+accepted non-meeting between the two report generations — not a bug this feature must reconcile
+—** since v2 and v3/v4 terminals never share a shift or a report.
 
 ---
 
-## 7. Staged rollout for existing v3 terminals/receipts (new section)
+## 8. VOID — fail-closed at both authoring boundaries (Codex r2 item 6, orchestrator item 3)
 
-Staging today is greenfield in the sense that matters most: **zero real tenants**; the existing
-footprint is 5 demo tenants / 6 companies / **8 receipts total**
-(`docs/handoff/HANDOVER-first-tenant-orchestrator-2026-07-31.md:27`), and nothing in that
-handoff document flags any of the eight as already carrying a v3-sealed legacy correction — the
-document's own framing is that "the v3 refund fiscal path is unproven" (`:74`), i.e. untested,
-not "already corrupted." That said, the demo v3 terminal writer (`DemoPharmacySeeder.php:767-769`)
-sets `current_sequence = 0`, which is exactly the topology in §1.2's first row — if any manual
-staging testing has exercised a return against that terminal outside of automated test
-fixtures, it may already be in the permanently-red state §1.3 describes. This must be checked,
-not assumed.
+**One ruling, restated with the contradiction actually fixed:** VOID is prohibited from
+device-authored v4 scope, at **both** boundaries, with no positive VOID vector anywhere in the
+contract:
 
-**Required rollout sequence, none of it optional:**
+1. **Device boundary** (new, §2.1): `FiscalEventPayloadRegistry.eventVersionFor('SALE_RECEIPT',
+   payload)` throws `VoidAuthoringProhibitedError` for `invoice_type_code = 'VOID'` — before
+   validation, before any state mutation. Negative test in `FiscalEventEngine.test.ts` (§2.2)
+   proves no `fiscal_events` row is ever written for an attempted VOID append.
+2. **Server boundary** (new): the server-side `FiscalEventPayloadRegistry.php`/
+   `FiscalPayloadConstraintValidator.php` version-resolution for `event_version = 4` **explicitly
+   rejects** `invoice_type_code = 'VOID'` at parse time (a defense-in-depth backstop for any
+   client that bypasses the device guard — e.g. a compromised or pre-fix build) — new negative
+   golden vector (§17) proving a `VOID`-discriminated v4 payload is rejected, replacing
+   Revision 2's contradictory positive VOID-vector prose entirely. **There is no v4 VOID golden
+   fixture** — only a rejection test.
 
-1. **Server-first, capability-gated.** Ship the schema/validator/projector/report support
-   (§2.4's version bump, §6's money-layer fixes, §1.3's verifier repair) **disabled** behind a
-   capability flag the device cannot yet trigger (no device build authors v4 REFUND/VOID
-   payloads until this step is live and verified in staging).
-2. **Preflight and inventory existing legacy-correction artifacts** — a new command (§9
-   manifest) that scans, per tenant, for: v3/v4 terminals with `fiscal_event_id IS NULL`
-   fiscalized, non-training receipts (§1.3's exact orphan signature), any legacy void markers on
-   v3 terminals, and any `fiscal_event_projections` rows in `dead_lettered`/stuck `running`
-   state. Run this against staging's eight receipts and every demo tenant before touching
-   anything else. `PreflightFiscalGateCommand` (`fiscal:preflight-gate`) already exists as a
-   related but different tool (counts receipts/Z-reports/terminals-with-chain-state; explicitly
-   punts on device-SQLite inventory) — this is a new, narrower command, not an extension of it,
-   because its job (orphan/dead-letter detection) is a different question than
-   `fiscal:preflight-gate`'s launch-readiness counts.
-3. **§1.3's verifier fix ships regardless of whether the preflight finds any existing orphan
-   rows** — it is correct independent of current state and removes the false-positive tamper
-   alarm as a standing risk for the future, not only for whatever exists today.
-4. **Disabled device rollout.** Deploy the new device build (with `refund_intents`, the v4
-   builder, the redesigned approval flow) to terminals with the server capability still off —
-   the device build is inert for refunds (falls back to whatever the pre-migration behavior was)
-   until the server advertises the capability via §4.4's `min_client_payload_version` field or
-   an equivalent flag.
-5. **§2.4's legacy guard ships in the same wave as step 1**, not before it and not after — it
-   must not create a window where v3 terminals can neither use the new path (not yet enabled)
-   nor the old path (already guarded off). Sequencing: guard + new-path-enablement are one
-   atomic deploy per terminal cohort, never split.
-6. **Per-terminal, not fleet-wide, enablement** — coordinated with confirmed minimum client
-   version on that specific terminal (a terminal running an old POS build must not have its
-   server-side guard flip before its device build updates, or it loses refund capability
-   entirely until it updates).
-7. **Cloned-staging tests before any production rollout**, covering **both** the
-   `current_sequence = 0` (demo) and `current_sequence = 1` (standard) topologies from §1.2's
-   table, run against a clone of the actual staging data, not synthetic fixtures alone.
-8. **Absolute prohibitions, stated explicitly:** never rewrite, backfill, or re-derive any
-   existing `fiscal_events` or `pos_receipts` row as part of this rollout; never reset or
-   copy server counters into a device's `terminal_state` chain head. On this last point: today's
-   `pullTerminalState` (`syncService.ts:1257-1338`) **does** overwrite the local
-   `terminal_state.hash_sequence`/`last_hash` columns unconditionally from
-   `pos_terminals.current_sequence`/`last_hash` on every pull (`TerminalResource.php:119,121`;
-   `terminalStateRepository.ts` upsert, no preserve-guard on these two columns) — but these are
-   confirmed **separate** columns from `fiscal_event_sequence`/`fiscal_event_last_hash`/
-   `fiscal_event_genesis_seed`, which is what `FiscalEventEngine.append()`'s `readChainHead()`
-   actually reads, and which **are** preserve-guarded (`CASE WHEN terminal_state.fiscal_event_genesis_seed
-   = '' THEN excluded... ELSE terminal_state...`, only ever seeded once on a genuinely fresh
-   row). So today's sync mechanism, as built, does not let a v3 terminal's legacy-counter
-   activity corrupt the device's authoritative operational chain head — this rollout must not
-   introduce any new code path that would change that, and the preflight (step 2) should confirm
-   no `fiscal_event_genesis_seed`/`fiscal_event_sequence` values were ever populated from a
-   server-side counter rather than genuine local chain progress.
+**§4.3-vs-old-§6.4 contradiction, fixed:** the guard that gates the legacy `/return`/`/void`
+endpoints off for `fiscal_schema_version >= 3` terminals (§9.1's single shared helper) applies
+identically to both endpoints; the operator workflow for what would previously have been a VOID
+on a v3/v4 terminal is "process it as a full-line REFUND to cash" (§0/§3's launch scope; for
+tenant #1 the original tender is always cash, so this workflow has no destination mismatch to
+resolve — the broader "what if the original wasn't cash" case moves to §16.4 with the fallback
+contradiction the r2 reviews found attached).
 
 ---
 
-## 8. Constraints honored (kept, corrections applied)
+## 9. Rollout — capability state, exact files, atomicity, Lane B baseline (Codex r2 items 9;
+fiscal I-8; treasury "v3-guard-removes-all-legacy-paths")
 
-- **`hydrateFromReceipt.ts:49-86` never reads `receipt.total`** — confirmed unchanged; the v4
-  refund builder sources its aggregates from the frozen `refund_intents` line snapshot (§3.2/
-  §2.2), never from a settlement response (there is no settlement response in this design).
-- **Quantity capping** — preserved via §4.5's server-side lock + per-`original_line_index`
-  accounting (not the legacy negative-quantity calculation, which cannot apply to canonical
-  positive-magnitude rows, §2.3).
-- **The avoir carries a rounding line — now unconditionally, not conditionally** (§5.4
-  corrects Revision 1's deferral). Current `buildReceiptData.ts:713-714` (drift-corrected from
-  Revision 1's `:712-713`) hardcodes no rounding; this PR changes that.
+### 9.1 Guard — one shared helper, one status code, one error code
+
+**New shared file** `apps/api/app/Modules/POS/Application/Services/LegacyCorrectionGuard.php` —
+a single method `assertLegacyCorrectionAllowed(Terminal $terminal): void`, called at the top of
+both `ReceiptReturnService::processReturn()` and `ReceiptVoidService::voidReceipt()`, throwing a
+new `LegacyCorrectionRetiredException` when `(int) ($terminal->fiscal_schema_version ?? 2) >= 3`
+— mirroring the existing `ShiftController.php:60,124` / `SyncController.php:53` /
+`ZReportSyncController.php:75` branch pattern exactly. **HTTP status: `409`** — chosen to match
+the existing device-authority-retirement convention already in the repository
+(`ServerFiscalAuthoringRetiredException` in `ReportGenerationService`, §7.1, is the same class of
+"this authority moved to the device" condition and is the direct precedent for the status code
+choice). **Error code:** `LEGACY_CORRECTION_RETIRED`, carrying `{ terminal_id,
+fiscal_schema_version }` in the response body for client-side typed handling.
+
+### 9.2 Capability state — the exact files that make a disabled rollout enactable
+
+Revision 2's fatal gap here: the only capability field was on an endpoint (§0 deletes the
+cross-terminal lookup entirely) the fully-offline same-device path never calls, so a disabled
+device build had no way to learn it was disabled. **Fix, named exactly:**
+
+- **New column `pos_terminals.v4_refund_authoring_enabled`** (boolean, default `false`) —
+  server-side per-terminal flag, flipped by an operator action (part of §9.3's rollout sequence)
+  after §6's verifier repair and §2's payload-contract deploy are both live and preflighted.
+- **`TerminalResource.php`** — add `v4_refund_authoring_enabled` to the JSON already returned by
+  the existing terminal-state endpoint `pullTerminalState` already calls
+  (`syncService.ts:1257-1338`) — no new endpoint, no new network call in the offline path; the
+  field rides the sync the device already performs routinely.
+- **Device `terminal_state` table** gains a matching `v4_refund_authoring_enabled` column
+  (new migration, alongside §4.4's `refund_intents` migration) — read by `pullTerminalState`
+  (`syncService.ts`, extended) into the existing upsert.
+- **The refund flow's entry point** (`classifyCartForCheckout`'s `'refund'` → `'start-refund'`
+  dispatch, unchanged routing logic, §0 of Revision 1) checks this local cached field **before**
+  drafting a `refund_intents` row — if disabled, the cashier sees the same typed guard experience
+  §9.1 defines server-side, entirely client-side, with zero wasted local commits or network
+  calls.
+
+### 9.3 Sequencing — the step-5/atomicity contradiction fixed
+
+Revision 2's rollout step 5 said the guard (§9.1) and the capability enablement (§9.2) "must not
+create a window" but described them as separately sequenced steps, which Codex correctly read as
+self-contradictory. **Fixed: the guard and the capability-enablement flip for a given terminal
+cohort are the SAME deploy action, applied in the SAME migration/operator-script run** — the
+`v4_refund_authoring_enabled` flip and the `LegacyCorrectionRetiredException` guard's effective
+scope (which is unconditional on `fiscal_schema_version`, not on the new flag — the guard is
+always-on for v3+ once deployed, §9.1) are deployed as one server release; there is no
+per-terminal "guard on, capability still off" gap, because the guard's condition never depends on
+the capability flag at all — it depends only on `fiscal_schema_version`, which was already true
+before this feature existed. The only thing the capability flag gates is whether the **device**
+attempts the *new* path; it never re-opens or narrows the *legacy* guard's scope.
+
+### 9.4 Legacy-path blast radius — v2 originals, ex-VOID, on a v3+ terminal (treasury r2
+Critical)
+
+**Stated plainly, not silently absorbed:** once §9.1's guard ships, **there is no refund path at
+all on a v3/v4 terminal for a v2-sealed original** — the entire pre-cutover receipt population on
+any terminal that has ever run `FiscalSchemaCutoverService` (§6). For **tenant #1 this is
+structurally impossible** (provisioned at v3 day one, never has v2 history, §0) — but staging and
+any future demo/cutover terminal **do** carry this exposure. **Explicit caveat and operator
+workaround, not deferred:** on a cutover terminal, a refund against a pre-cutover (v2) original is
+**out of scope until the post-launch roadmap (§16.2/§16.5) lands** — the documented operator
+workaround is to process such a refund through the legacy endpoint's inverse: since the guard
+blocks `ReceiptReturnService`/`ReceiptVoidService` unconditionally for `fiscal_schema_version >=
+3`, and there is no destination-specific carve-out (§0 deliberately removes the store-voucher
+carve-out contradiction Revision 2 had), the only correct workaround for a genuinely pre-cutover
+original on a cutover terminal for now is a **manual, off-system correction** (documented
+accounting adjustment + physical cash handling outside the POS, logged by the operator) —
+stated here as an explicit, acknowledged launch-time limitation for non-tenant-#1 terminals, not
+silently absorbed into "the guard handles it."
+
+**Retiring `refundZAccounting.ts`/`local_refund_records`** (kept from Revision 2) similarly
+leaves any *surviving* legacy-path refund (i.e., the manual-workaround case above, if it is ever
+routed back through the legacy endpoint on a non-guarded, pre-launch-guard window) with no device
+Z record — acceptable only because §9.1's guard is unconditional the moment this feature ships;
+there is no window where the legacy endpoint runs on a v3+ terminal without `refundZAccounting.ts`
+already having a live device path — but this is named explicitly as a sequencing dependency the
+rollout (§17's manifest) must not violate: the `refundZAccounting.ts` retirement and the §9.1
+guard ship in the **same** release.
+
+### 9.5 Rollout sequence (kept from Revision 2, restated with the fixes above folded in; Lane B
+baseline corrected)
+
+**Baseline correction:** Lane B is **already merged** at `4bb87b483` on this checkout (confirmed:
+`git show --stat --oneline 4bb87b483` touches only `apps/pos/eslint.config.js` and three test
+files — it never touched the registry, server validator, canonical DTO/reader,
+`FiscalPayloadKeyDrift.test.ts`, or the golden-fixture corpus). §17's manifest lists the **exact
+current file paths**, not a post-merge-location placeholder.
+
+1. Server-first: §2's payload contract, §6's verifier repair (including the backfill command run
+   against the actual eight staging receipts and every demo tenant), §3's projector policy/
+   evidence logic — all shipped with `v4_refund_authoring_enabled = false` everywhere.
+2. Disabled device rollout — new build ships; §9.2's local capability check keeps it inert.
+3. §9.1's guard and §9.3's capability flip ship together, per terminal cohort, coordinated with
+   confirmed minimum client version on that cohort.
+4. Cloned-staging tests (§1.1's scenario) before any production terminal's cohort flip, covering
+   both `current_sequence` topologies.
+5. Absolute prohibitions (kept, unchanged): never rewrite/backfill any existing `fiscal_events`/
+   `pos_receipts` row; never reset or copy server counters into a device's `terminal_state` chain
+   head. On the latter: confirmed precisely (not "unconditional" as Revision 2 overclaimed) —
+   `pullTerminalState`'s `upsertTerminalState` call is guarded by `FiscalRegressionError`
+   (`terminalStateRepository.ts:231-245`): when the local `hash_sequence` is already ahead of the
+   server's, the **entire** upsert is rejected and skipped (not partially applied) — `hash_sequence`/
+   `last_hash` are only overwritten when the server's value is not behind the device's own. This
+   rollout must not introduce any code path that weakens or bypasses that guard.
 
 ---
 
-## 9. Frozen code-phase write manifest (exact, post-Lane-B)
+## 10. `store_voucher` — excluded from the enum, plus a proven-unreachable defense-in-depth gate
+(treasury r2 Critical, Codex r2 item 6)
 
-**Precondition, restated:** this manifest cannot be dispatched until Lane B merges to local dev.
-No entry below is conditional, alternative, "e.g.", or already-complete. Every file is named.
+§0 removes `store_voucher` from the launch `refund_destination` type entirely — a v4 refund
+payload cannot express it. But the treasury r2 review found a **separate, real** bug this
+exclusion alone does not close: `PosCoreReceiptProjection`'s `redeemVouchers()` is called
+**unconditionally** for every `store_voucher`-instrument payment leg, for both SALE and REFUND
+payloads (`:405`, `:941-966`) — if an original sale was **part-paid** by a store voucher, and a
+refund is later authored against it, any code path that (incorrectly) echoed the original's
+voucher leg into the refund's `payments[]` would cause `redeemVouchers()` to burn that voucher a
+**second** time.
 
-**`apps/api` — payload contract (Lane-B-adjacent, version bump):**
+**Proof this is unreachable under this launch's exact schema, not merely an assertion:** §3.5
+requires `payments[]` to be **exactly one cash leg** — the v4 validator (both TS and PHP) rejects
+any payload with a second leg or a non-cash `method_code` outright, at the same
+`assertExactKeySet`-adjacent validation layer that already exists. A `store_voucher`-instrument
+leg is therefore structurally impossible to construct in a way that reaches
+`PosCoreReceiptProjection::writePayments()` at all for a v4 REFUND — the loop that calls
+`redeemVouchers()` never receives a voucher-typed leg from this payload shape.
+
+**Defense-in-depth gate added anyway** (the orchestrator's explicit instruction — "prove that,"
+not "assert that, so skip the code"): `PosCoreReceiptProjection::redeemVouchers()` gains an
+`invoice_type_code !== 'REFUND'` guard at its own call site (mirroring the existing
+`earnLoyaltyPoints` gate, which already checks `$receiptType !== ReceiptType::Sale` at `:987`) —
+so that even a **future** schema change that widened `payments[]` (§16.3's post-launch voucher
+work) cannot silently reintroduce the double-burn without an explicit, reviewed removal of this
+gate. New test (`PosCoreReceiptProjectionVoucherRefundNoRedemptionTest.php`, §17) constructs a
+malformed/hand-built fiscal event (bypassing the payload validator entirely, simulating "what if
+the gate is the last line of defense") with a REFUND `invoice_type_code` and a `store_voucher`
+leg, and asserts `redeemVouchers()` is never called — proving the gate independently of whether
+the schema-level exclusion holds.
+
+---
+
+## 11. Constraints honored (kept, unchanged from Revision 2)
+
+- `hydrateFromReceipt.ts` never reads `receipt.total` — confirmed unchanged; **now also carries
+  `discount_amount`/`discount_reason` through** (§3.3's fix — an addition, not a violation of
+  this constraint, since it still never reads a receipt-level total).
+- Quantity capping preserved via §12's server-side lock + per-`original_line_index` accounting.
+- The AVOIR carries a rounding line unconditionally (kept from Revision 2, §7 unaffected).
+
+---
+
+## 12. Quantity cap — reverse lookup on existing schema (orchestrator item 8, fiscal I-4)
+
+**Confirmed: no new index or column is needed for the reverse lookup itself** — both already
+exist. `pos_receipts` already has a partial index `idx_pos_receipts_original_receipt ON
+pos_receipts (original_receipt_id) WHERE original_receipt_id IS NOT NULL`
+(`2026_03_09_200000_add_return_fields_to_pos_receipts.php:84`), and
+`PosCoreReceiptProjection.php:353` already writes `'original_receipt_id' => $originalReceiptId`
+(the resolved original's `pos_receipts.id`) on every projected return row today. Separately,
+`pos_receipt_lines.original_line_id` already exists as an FK column
+(`2026_03_11_300000_add_original_line_id_to_pos_receipt_lines.php`), currently populated only by
+the legacy return path — **the v4 projector writes it too**, resolving
+`original_line_references[i].original_line_index` (§3.1) to the actual `pos_receipt_lines.id` of
+the corresponding original line, reusing the existing column rather than inventing a new one.
+
+**Lock + query, exactly:**
+
+```sql
+-- 1. Serialize all concurrent refund projections against the same original.
+SELECT * FROM pos_receipts WHERE id = :originalReceiptId FOR UPDATE;
+
+-- 2. Already-refunded quantity per original line, now that the lock is held.
+SELECT prl.original_line_id, SUM(prl.quantity) AS already_refunded
+FROM pos_receipt_lines prl
+JOIN pos_receipts pr ON prl.receipt_id = pr.id
+WHERE pr.original_receipt_id = :originalReceiptId
+  AND pr.receipt_type = 'return'
+  AND pr.is_voided = false
+GROUP BY prl.original_line_id;
+```
+
+Both run inside the wrapping `DB::transaction()` the projection already opens; the `FOR UPDATE`
+on step 1 is what makes step 2's read authoritative against any concurrent projection job for the
+same original — the second-arriving transaction blocks on step 1 until the first commits or
+rolls back, then re-reads step 2's now-updated aggregate. **PG-mode test required** (fiscal I-4):
+this lock's actual serialization behavior cannot be proven under SQLite's connection model —
+`PosCoreReceiptProjectionRefundQuantityCapTest.php` (§17) runs two concurrent projection jobs
+against the same original in Postgres test mode and asserts exactly one succeeds while the other
+observes the updated aggregate and is correctly capped or rejected, not merely that the
+SQL text is well-formed.
+
+---
+
+## 13. Cross-terminal lookup — deferred (orchestrator item, §0)
+
+Not built for this launch. Tenant #1 has exactly one terminal (§0); there is no cross-terminal
+case to resolve. A local-miss on the original-lookup (§4's local `fiscal_events` query,
+unchanged from Revision 2) is a **typed device-side refusal** with operator guidance ("original
+receipt not found on this terminal — for tenant #1 this should not happen; contact support") —
+no online lookup endpoint, no capability/version negotiation, no anti-enumeration contract. The
+full contract Codex r2 §7 required for the general case is preserved verbatim in §16.2 for the
+post-launch roadmap, since it will be needed the moment a second terminal is provisioned for any
+tenant.
+
+---
+
+## 14. v2 originals — impossible for tenant #1 (§0, §9.4)
+
+Restated for completeness: tenant #1's terminal is provisioned at `fiscal_schema_version = 3`
+from creation (Lane D1's provisioning work, referenced not owned by this spec) and will never
+have a v2-sealed original, by construction. §9.4 states the blast radius and workaround for
+terminals where this is *not* true (staging/demo/any future cutover terminal).
+
+---
+
+## 15. Wording and citation fixes (orchestrator item 11, Codex r2 items 11–12)
+
+- VOID removed from the orphan-verifier symptom sentence (§1).
+- `TerminalController.php` counter cites confirmed exact at `:120`, `:395`, `:458` (re-verified
+  in this worktree, not paraphrased ranges).
+- `pullTerminalState`'s `hash_sequence`/`last_hash` guard restated precisely as conditional, not
+  unconditional (§9.5).
+- §9.1's guard is now the single cross-referenced section from every place that needs it (§8's
+  VOID ruling, §9.4's blast-radius note, §1.1's acceptance test) — no dangling `§2.4` references
+  remain (that section number does not exist in this revision's structure).
+- `refund_destination` is the single literal `'cash'` everywhere in this document — no remaining
+  2-vs-3-value contradiction.
+- Training-original refusal (kept from Revision 2, device-side, unchanged) and the bridge
+  training-gate leak are two different things, now stated as such (§3.5) with the leak ticketed
+  separately rather than conflated with the refusal rule.
+
+---
+
+## 16. Post-launch roadmap (NON-NORMATIVE — nothing here is dispatchable; every item carries the
+r2 review findings so follow-on work starts informed, not from scratch)
+
+### 16.1 `original_payment` destination
+
+Deleted from launch scope (§0). r2 findings to resume from: `treasury_payment_id` is never
+written by the bridge (only writer, `ReceiptPaymentService`, is retired/unreachable) — a true
+silent no-op, not merely incomplete; `PaymentRefundService`'s real proration order/residual-leg
+rule is the **opposite** of what Revision 2 proposed (opposite operand order, `scale+10`
+intermediates, residual to the **smallest** leg not the largest, device `decimal.ts` defaults to
+scale 3 — a rule-19 precision trap); no canonical-ordinal-to-Treasury-Payment-ID mapping exists;
+and calling `PaymentRefundService` **and** letting the bridge write its own legacy leg would
+double-book (`+X` POS row and `-X` Refund row, one physical repository movement) — any future
+design must pick exactly one writer, not both.
+
+### 16.2 Cross-terminal lookup
+
+Full contract as drafted in Revision 2 §4.4 (endpoint, authz, anti-enumeration, eligibility
+proof, response payload, capability/version field, race handling) is a reasonable starting point
+but was found under-specified by Codex r2 §8 on the "uniform response but UI distinguishes a
+cause" contradiction and the "GET cannot hold a row lock through offline authoring" advisory-only
+correction — both must be resolved before this ships, not merely inherited.
+
+### 16.3 `store_voucher` destination (issuance)
+
+The chicken-and-egg unminted-serial problem (§0) needs a genuinely different protocol — most
+likely a two-phase issuance (device pre-generates a voucher-code UUID, signs it into the refund
+event, server activates it on projection) — not attempted here.
+
+### 16.4 VOID full integration
+
+If ever undertaken: `PosCoreReceiptProjection` maps both REFUND and VOID to `ReceiptType::Return`
+and always writes `is_voided = false`; `Nf525DataProvider` buckets strictly by `is_voided = true`
+for its ANNULATION query; `ReportGenerationService` counts `voidedCount` only on `is_voided` —
+none of these are VOID-correct today and all three need new branches, plus an entire POS VOID
+authoring surface that does not exist post-Phase-6.
+
+### 16.5 v2-original refunds on a cutover terminal
+
+The blast radius named in §9.4 needs an actual designed path (most likely: allow the legacy
+endpoint to remain live specifically for `fiscal_event_id IS NULL` originals even on a v3+
+terminal, via a destination/origin-specific carve-out in §9.1's guard, rather than the
+terminal-wide unconditional block this launch ships with) — deferred because tenant #1 does not
+need it, not because it is unimportant for future cutover tenants.
+
+---
+
+## 17. Frozen code-phase write manifest (exact — no alternatives, no "e.g.", no TBD, no
+already-complete or no-change entries)
+
+**`apps/api` — payload contract:**
 - `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventPayloadRegistry.php` — accept
-  `event_version ∈ {1,2,3,4}` for `SALE_RECEIPT`.
+  `event_version ∈ {1,2,3,4}` for `SALE_RECEIPT`; reject `invoice_type_code = 'VOID'` at v4
+  resolution (§8).
 - `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php` —
-  version-4 exact key set (`original_line_references`, `refund_destination`,
-  `settlement_allocation`) and their invariants (§2.4).
-- Canonical DTO/reader: `apps/api/app/Modules/Fiscal/Domain/DTOs/SaleReceiptPayload.php` and
-  `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/SaleReceiptCanonicalView.php` (or the
-  correct canonical-view class per Lane B's post-merge location) — extend for the new fields.
-- `apps/api/tests/Feature/Fiscal/FiscalPayloadConstraintValidatorTest.php` — version-4 cases.
-- New golden fixture: `apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-10-refund-v4/payload.json`.
-  (No VOID vector — VOID is launch-prohibited, §4.3.)
-- `apps/pos/src/lib/fiscal/__tests__/FiscalPayloadKeyDrift.test.ts` — extend for v4 keys.
+  `SALE_RECEIPT_PAYLOAD_KEYS_V4` exact key set; §3.1's parallel-array invariants; §3.2's
+  single-literal `refund_destination` + mandatory-null `settlement_allocation`; §3.5's
+  single-cash-leg `payments[]` assertion; VOID rejection at v4.
+- `apps/api/app/Modules/Fiscal/Application/Services/CanonicalPayloadReader.php` (`:62-116`) —
+  construct the new typed nested values (`original_line_references[]`, `refund_destination`).
+- New DTO files: `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/OriginalLineReferenceDTO.php`.
+- `apps/api/app/Modules/Fiscal/Domain/DTOs/SaleReceiptPayload.php`,
+  `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/SaleReceiptCanonicalView.php` — extend for
+  the v4 fields (exact current paths, no "post-merge location" hedge — Lane B never touched
+  these, §9.5).
+- `apps/api/tests/Feature/Fiscal/FiscalPayloadConstraintValidatorTest.php` — v4 cases; VOID
+  rejection case; preserve the existing `assertCount(14, ...)` corpus assertion, extended to
+  `assertCount(15, ...)` for the new fixture below.
+- New golden fixture: `apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-16-refund-v4-cash-eur/`
+  with **both** `payload.json` and `expected.json` (F-10 is taken by `F-10-void-eur`; F-15 is
+  occupied on disk by `F-15-large`, not yet in the builder — F-16 is the confirmed next-free
+  number). `GoldenFixtureBuilder.php` — add the `F-16` case.
+- New PHP/TS parity test: `apps/api/tests/Feature/Fiscal/CanonicalByteHashV4ParityTest.php` (PHP
+  side) and `apps/pos/src/lib/fiscal/payloads/__tests__/RefundReceiptV4Payload.parity.test.ts`
+  (TS side) — both assert identical canonical bytes/hash for the F-16 fixture.
 
-**`apps/api` — projection/business logic:**
-- `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php` —
-  disposition-aware stock restore (replacing unconditional restock), `original_line_index`
-  resolution, §4.5's per-original lock + quantity-cap check + `RefundQuantityExceededException`,
-  §6.6's training-original defense-in-depth check, company/tenant-scoping fix on
-  `resolveOriginalReceiptId()` (currently global, §2.3).
-- New file: `apps/api/app/Modules/Fiscal/Domain/Exceptions/RefundQuantityExceededException.php`.
-- `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php` — call
-  `PaymentRefundService::refundReceiptPayments()` for `refund_destination = 'original_payment'`
-  legs (§6.3), keeping the existing `pos_cash_rounding_refund` entry (§5.3) unchanged.
-- `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php` — new entry point
-  callable from the v4 projection path (alongside its existing legacy caller), accepting the
-  device-signed `settlement_allocation[]`.
-- `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php` — fix
-  `buildExpectedPerMethod()`'s missing `receipt_type` filter (§6.5).
-- New endpoint: `apps/api/app/Modules/POS/routes.php` — `GET /pos/receipts/lookup-for-refund`;
-  `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php` — new action; new
-  file `apps/api/app/Modules/POS/Presentation/Resources/ReceiptRefundLookupResource.php`; new
-  file `apps/api/app/Modules/POS/Application/Services/CrossTerminalReceiptLookupService.php`
-  (§4.4 — deliberately separate from `ReceiptLookupService`).
-- `apps/api/app/Modules/POS/Application/Services/ReceiptReturnService.php` and
-  `apps/api/app/Modules/POS/Application/Services/ReceiptVoidService.php` — add the
-  `fiscal_schema_version >= 3` guard (§2.4/§4.3), one shared guard helper.
-- New Console command: `apps/api/app/Console/Commands/InventoryV3LegacyCorrectionsCommand.php`
-  (§7 step 2 preflight/inventory).
-- `apps/api/app/Modules/POS/Domain/Services/ReceiptHashService.php` — repair
-  `verifyLegacyArm()` to branch on the owning terminal's `fiscal_schema_version` (§1.3).
+**`apps/api` — engine/registry-adjacent projector/business logic:**
+- `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php` — §3.1's
+  original-line resolution + `pos_receipt_lines.original_line_id` write (§12); §3.4's
+  `refund_policy_alerts` write; §4.2's approval-evidence resolution/verification +
+  `ApprovalEvidenceUnresolvedException`; §10's `redeemVouchers()` `invoice_type_code !== 'REFUND'`
+  guard; §12's `FOR UPDATE` lock + quantity-cap check + `RefundQuantityExceededException`;
+  disposition-aware stock restore (replacing unconditional restock); training-original defense
+  check.
+- New migration: add `pos_receipts.refund_policy_alerts` (JSONB, nullable).
+- New exception files: `apps/api/app/Modules/Fiscal/Domain/Exceptions/RefundQuantityExceededException.php`,
+  `apps/api/app/Modules/Fiscal/Domain/Exceptions/ApprovalEvidenceUnresolvedException.php`.
+- `apps/api/app/Modules/POS/Application/Services/ReceiptReturnService.php`,
+  `apps/api/app/Modules/POS/Application/Services/ReceiptVoidService.php` — call
+  `LegacyCorrectionGuard::assertLegacyCorrectionAllowed()` (§9.1, new file below).
+- New file: `apps/api/app/Modules/POS/Application/Services/LegacyCorrectionGuard.php` (§9.1).
+- New exception: `apps/api/app/Modules/POS/Domain/Exceptions/LegacyCorrectionRetiredException.php`.
+- `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php` — map
+  `LegacyCorrectionRetiredException` to HTTP 409, `LEGACY_CORRECTION_RETIRED` (§9.1).
+- New migration: add `pos_terminals.v4_refund_authoring_enabled` (boolean, default false).
+- `apps/api/app/Modules/POS/Presentation/Resources/TerminalResource.php` — expose
+  `v4_refund_authoring_enabled` (§9.2).
+- New migration: add `pos_receipts.sealed_hash_algorithm` (nullable string enum, §6).
+- `apps/api/app/Modules/POS/Application/Services/ReceiptFinalizationService.php` — write
+  `sealed_hash_algorithm` at seal time (§6).
+- `apps/api/app/Modules/POS/Domain/Services/ReceiptHashService.php` — `verifyLegacyArm()`
+  branches on `sealed_hash_algorithm`, fail-closed on `NULL` (§6).
 - `apps/api/app/Modules/POS/Application/Services/Nf525DataProvider.php` — identical repair in
-  `verifyReceiptChain()`'s legacy-row loop (§1.3).
-- New operator-facing dead-letter surface: `apps/api/app/Modules/Fiscal/Presentation/Controllers/DeadLetteredProjectionsController.php`
-  (list + detail, read-only) and its route; a corresponding `apps/web` admin page is **out of
-  this manifest** — API surface only for launch, consumed manually via the existing
-  `fiscal:retry-projections` operator workflow until a UI is separately scoped.
-- Tests: `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php` (§1.4, PG-mode);
-  `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3VoidGuardTest.php` (v2-non-regression, §1.4
-  item 6); `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionRefundQuantityCapTest.php`;
+  `verifyReceiptChain()`'s legacy-row loop (§6).
+- New Artisan command: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/BackfillSealedHashAlgorithmCommand.php`
+  (§6's dual-recomputation backfill).
+- New Artisan command: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/InventoryV3LegacyCorrectionsCommand.php`
+  (§9.5 step 1 preflight/inventory of existing orphan rows, dead-lettered projections, cutover
+  history).
+- New operator API: `apps/api/app/Modules/Fiscal/Presentation/Controllers/DeadLetteredProjectionsController.php`
+  (list + detail + `write-off` action, §5.1/§5.2), route entries added to
+  `apps/api/app/Modules/Fiscal/routes.php` (existing file, existing middleware stack `['api',
+  'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]` + per-route
+  `->middleware('can:fiscal.refunds.manage_dead_letters')`, matching the module's existing
+  `can:` per-route pattern).
+- New file: `apps/api/app/Modules/Accounting/Domain/Enums/SystemAccountPurpose.php` — add
+  `RefundWriteOff` case (existing enum file, one new case, §5.2).
+- `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php` — add the
+  `RefundWriteOff` compensating-entry builder (mirrors `createPosCashRoundingEntry()`'s shape).
+- Tests: `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php` (§1.1, PG-mode);
+  `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3VoidGuardTest.php` (v2-non-regression);
+  `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionRefundQuantityCapTest.php` (PG-mode
+  concurrency, §12); `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionRefundPolicyAlertTest.php`
+  (§3.4); `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionApprovalEvidenceTest.php` (§4.2);
+  `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionVoucherRefundNoRedemptionTest.php` (§10);
   `apps/api/tests/Feature/Fiscal/PosCoreReceiptProjectionTrainingRefundRefusedTest.php`;
-  `apps/api/tests/Feature/Treasury/PaymentRefundServiceV4EntryPointTest.php`;
-  `apps/api/tests/Feature/Accounting/ReportGenerationServiceExpectedCashRefundTest.php`;
-  `apps/api/tests/Feature/POS/CrossTerminalReceiptLookupTest.php`;
-  `apps/api/tests/Feature/POS/ReceiptHashServiceVerifyLegacyArmV3Test.php`.
-- Projection-check precision: every new bcmath comparison in
-  `PosCoreReceiptProjection.php`/`TreasuryReceiptBridge.php` added by this manifest carries a
-  `// precision-ok: scale-4` (quantity) or currency-scale marker per rule 19, and every new
-  projection test calls `app(CompanyContext::class)->clear()` before `apply()` (rule 20/Codex
-  Important finding), passing entity currency explicitly to any scale resolution.
+  `apps/api/tests/Feature/POS/ReceiptHashServiceVerifyLegacyArmV4Test.php` (pure-v2, pure-v3-orphan,
+  mixed-cutover, tamper×2, §6); `apps/api/tests/Feature/Fiscal/Nf525VerifyChainParityTest.php`
+  (§6's NF525-parity + `is_voided` asymmetry test); `apps/api/tests/Feature/Fiscal/BackfillSealedHashAlgorithmCommandTest.php`;
+  `apps/api/tests/Feature/Fiscal/InventoryV3LegacyCorrectionsCommandTest.php`;
+  `apps/api/tests/Feature/Fiscal/DeadLetteredProjectionsControllerTest.php` (list/detail/write-off,
+  including the fiscal `can:` middleware assertion); `apps/api/tests/Feature/POS/LegacyCorrectionGuardTest.php`
+  (409 + `LEGACY_CORRECTION_RETIRED` on both endpoints).
+- Every new bcmath comparison carries a `// precision-ok: scale-4` (quantity) or currency-scale
+  marker per rule 19; every new projection test calls `app(CompanyContext::class)->clear()`
+  before `apply()` per rule 20, passing entity currency explicitly.
 
 **`apps/pos`:**
+- `apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts` — §2.1's exact `eventVersionFor(type,
+  payload)` change; new `VoidAuthoringProhibitedError`.
+- `apps/pos/src/lib/fiscal/FiscalEventEngine.ts` — §2.1's threaded `eventVersion` through
+  `append()` → `validateRequestPayload()` → `validateSaleReceiptPayload()`; new
+  `SALE_RECEIPT_PAYLOAD_KEYS_V4` const.
+- `apps/pos/src/lib/fiscal/__tests__/FiscalEventEngine.test.ts` — extended (§2.2).
+- New file: `apps/pos/src/lib/fiscal/__tests__/FiscalEventPayloadRegistry.test.ts` (§2.2).
+- `apps/pos/src/lib/fiscal/__tests__/FiscalPayloadKeyDrift.test.ts` — extended for V4 parity
+  (§2.2), existing V1/V2/V3 assertions preserved verbatim.
 - New payload builder: `apps/pos/src/lib/fiscal/payloads/RefundReceiptV4Payload.ts` — composes
-  through `buildSaleReceiptV3Payload` (§2.1), never forks it.
-- `apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts` — author version 4 for `SALE_RECEIPT`
-  when `invoice_type_code ∈ {REFUND, VOID}` (VOID authoring stays unreachable per §4.3, but the
-  version resolution itself is uniform); version 3 unchanged for SALE/TRAINING.
+  through `buildSaleReceiptV3Payload` (kept from Revision 2's §2.1 chokepoint ruling), never
+  forks it; implements §3.1–§3.5's exact field contract.
+- `apps/pos/src/lib/refundFlow/hydrateFromReceipt.ts` — §3.3's discount fix (new
+  `discount_reason` on `OfflineReceiptLine`; both fields mapped onto the returned `CartItem`).
 - `apps/pos/src/lib/db/repositories/fiscalEventRepository.ts` — add
-  `resolveOriginalFiscalEventLocally()` (original + its `line_items[]`/`payments[]` for
-  index-based reference resolution, §2.4) and a training-flag read.
-- New SQLite migration + repository: `apps/pos/src/lib/db/migrations.ts` (new `refund_intents`
-  table, §3.2) and `apps/pos/src/lib/db/repositories/refundIntentRepository.ts`.
-- New file: `apps/pos/src/lib/offline/refundReceiptService.ts` — the write-gate transaction
-  (§3.3).
-- `apps/pos/src/lib/refundFlow/refundApproval.ts` — replaced by
-  `authorRefundReturnApprovalV2()` binding device-stable targets (§4.1); force-sync call
-  removed.
-- `apps/pos/src/lib/operatorApproval/posOverrideAuthoring.ts` — no field changes (already
-  correct, §2.4); only its caller changes.
-- `apps/pos/src/lib/refundFlow/refundSettlementService.ts` — retained for the legacy-fallback
-  cases only (v2 originals, store-voucher destination §6.2, VOID §4.3); its online-only
-  `prepareRefundSettlement()` path is no longer the default for same-device v3/v4 refunds.
-- New file: `apps/pos/src/lib/refundFlow/crossTerminalRefundLookup.ts` — calls §4.4's new
-  endpoint.
+  `resolveOriginalFiscalEventLocally()` (original + its `line_items[]`/`payments[]`/
+  `training_flag` for index-based reference resolution).
+- New SQLite migration (single migration, both tables): `apps/pos/src/lib/db/migrations.ts` —
+  new `refund_intents` table (§4.4, including `payout_confirmed_at`/`payout_disputed_at`/
+  `printed_at`/`shift_id`/`refund_total`/`cash_impact` columns and the partial unique index,
+  §4.4/§7.2), new `terminal_state.v4_refund_authoring_enabled` column (§9.2).
+- New test: `apps/pos/src/lib/db/__tests__/migrations.v65.test.ts` (or the next free version
+  number at implementation time — the repository's confirmed `migrations.vNN.test.ts` pattern,
+  §9.2/§4.4's migration).
+- New file: `apps/pos/src/lib/db/repositories/refundIntentRepository.ts`.
+- New file: `apps/pos/src/lib/offline/refundReceiptService.ts` — §4.3's corrected append-first
+  write-gate transaction.
+- `apps/pos/src/lib/operatorApproval/posOverrideAuthoring.ts` — §4.2's optional
+  `sourceEventIds` parameter (backward-compatible; existing callers unaffected).
+- `apps/pos/src/lib/operatorApproval/__tests__/posOverrideAuthoring.test.ts` — extended: existing
+  callers' behavior unchanged (regression); new deterministic-source-ID path asserted.
+- New file: `apps/pos/src/lib/refundFlow/refundApprovalV3.ts` — `authorRefundReturnApprovalV3()`
+  (§4.2), replacing `refundApproval.ts`'s server-ID-bound helper for the v4 path.
+- `apps/pos/src/lib/refundFlow/refundSettlementService.ts` — retained **only** as the legacy-path
+  caller for the §9.4 manual-workaround/off-system-correction case's UI, not the default path for
+  any tenant-#1 refund; its online-only `prepareRefundSettlement()` is not invoked by the new
+  same-device flow.
 - `apps/pos/src/stores/refundCheckoutStore.ts` — rewritten around `refund_intents` state
-  transitions (§3.4) replacing the current Zustand-only `approveAndSubmit()`.
-- `apps/pos/src/lib/refundFlow/refundZAccounting.ts` and
-  `apps/pos/src/lib/db/repositories/localRefundRecordRepository.ts` — both retired (deleted),
-  replaced by `refundIntentRepository.ts` reads.
-- `apps/pos/src/lib/offline/zReportService.ts`, `apps/pos/src/lib/offline/endOfDayPreview.ts` —
-  rewired to read `refund_intents` (§5.4).
-- `apps/pos/src/lib/buildReceiptData.ts` — unconditional AVOIR rounding line (§5.4/§8).
-- `apps/pos/src/components/pos/RefundDestinationPicker.tsx` and
-  `apps/pos/src/components/pos/RefundCheckoutFlow.tsx` — wire `allowedDestinations` and the new
-  proration display from §4.4's lookup response (currently unwired, confirmed).
-- `apps/pos/src/lib/i18n/` — new translation keys for: the §2.4/§4.3 typed 409/422 legacy-guard
-  message, the §6.2 store-voucher-destination fallback message, the §6.6 training-refusal
-  message, the §4.4 old-client-version upgrade prompt. Exact namespace file per existing i18n
-  convention (`.claude/context/i18n.md`), added by the code phase under the existing
-  `refundFlow` namespace.
-- Tests: `apps/pos/src/lib/fiscal/payloads/__tests__/RefundReceiptV4Payload.test.ts` (mirrors
-  `SaleReceiptV3Payload.test.ts`'s invariant/bind coverage, including a dedicated cash-only-gate
-  case, §5.1); `apps/pos/src/lib/db/repositories/__tests__/refundIntentRepository.test.ts`;
-  `apps/pos/src/lib/offline/__tests__/refundReceiptService.test.ts`; `apps/pos/src/stores/__tests__/refundCheckoutStore.test.ts`
-  (rewritten for the new state machine); `apps/pos/src/lib/offline/__tests__/zReportService.cashRounding.test.ts`
-  — **extended** (never forked) once Lane B merges, adding refund-rounding line items (§5.4).
+  transitions (§4.3–§4.6), including §4.5's crash-recovery reconciliation screen trigger.
+- New component: `apps/pos/src/components/pos/RefundPayoutReconciliationModal.tsx` (§4.5's
+  named cashier reconciliation screen).
+- `apps/pos/src/lib/refundFlow/refundZAccounting.ts`,
+  `apps/pos/src/lib/db/repositories/localRefundRecordRepository.ts` — both deleted, replaced by
+  `refundIntentRepository.ts` reads.
+- `apps/pos/src/lib/offline/zReportService.ts` — §7.2's `refund_intents.cash_impact`-based
+  expected-cash computation (replacing `local_refund_records`), §7.3's sign convention.
+- `apps/pos/src/lib/offline/endOfDayPreview.ts` — same rewiring (§7.2).
+- `apps/pos/src/lib/sync/syncService.ts` — `pullTerminalState` extended to sync
+  `v4_refund_authoring_enabled` (§9.2).
+- `apps/pos/src/lib/buildReceiptData.ts` — unconditional AVOIR rounding line (kept from
+  Revision 2).
+- `apps/pos/src/locales/en/pos.json`, `apps/pos/src/locales/fr/pos.json` — new keys inside the
+  **existing** `"refundFlow": { ... }` object (both files already contain this namespace at
+  `:120` — no new file, no new directory) for: the §9.1 409 legacy-guard message, the §3.3
+  whole-receipt-discount partial-refund refusal, the §6.6 training-refusal message (kept), the
+  §4.5 payout-reconciliation modal's copy.
+- Tests: `apps/pos/src/lib/fiscal/payloads/__tests__/RefundReceiptV4Payload.test.ts` (invariant/
+  bind coverage including §3.1's parallel-array assertions and §3.3's discount cases);
+  `apps/pos/src/lib/refundFlow/__tests__/hydrateFromReceipt.discount.test.ts`;
+  `apps/pos/src/lib/db/repositories/__tests__/refundIntentRepository.test.ts` (including the
+  active-intent uniqueness index, §4.4); `apps/pos/src/lib/offline/__tests__/refundReceiptService.test.ts`
+  (§4.3's append-first ordering, asserted directly); `apps/pos/src/stores/__tests__/refundCheckoutStore.test.ts`
+  (rewritten for the new state machine, including §4.6's stop-at-`synced` assertion);
+  `apps/pos/src/components/pos/__tests__/RefundPayoutReconciliationModal.test.tsx`;
+  `apps/pos/src/lib/offline/__tests__/zReportService.cashRounding.test.ts` — extended (Lane B's
+  file, never forked) with refund cash-impact line items (§7.2).
 
-**Explicitly NOT touched:** `apps/pos/src/lib/payment/cashRounding.ts` (read-only dependency,
-§5.1 — reused, not modified); `apps/api/app/Modules/Voucher/Application/Services/VoucherIssuanceService.php`
-(unchanged — store-voucher refunds stay on the legacy path, §6.2); the VOID authoring surface
-(does not exist and is not created, §4.3).
-
----
-
-## 10. Note on citation corrections
-
-Every specific correction (stale line ranges, wrong SQLSTATEs, wrong initial values, wrong
-"only builder"/"no GL exists"/"force-sync unchanged"/"non-retryable exists today" claims, and
-the internal `§3.3a`/`§3.3b`/`§3.3d` references that did not correspond to any heading) is fixed
-in place in the relevant section above rather than repeated in a separate ledger — Revision 1's
-own separate ledger was flagged as adding indirection without adding correctness. Every citation
-in this revision was re-read in this worktree at write time.
+**Explicitly NOT touched:** `apps/pos/src/lib/payment/cashRounding.ts` (read-only dependency);
+`apps/api/app/Modules/Voucher/Application/Services/VoucherIssuanceService.php` (unchanged —
+voucher refunds are §16.3, not launch scope); `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php`
+(confirmed dead code for v3/v4, §7.1 — no write); `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php`
+(unchanged — §16.1, not launch scope); the VOID authoring surface (does not exist, is not
+created, §8).
