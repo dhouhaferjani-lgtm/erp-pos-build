@@ -119,6 +119,11 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // Provision-at-v3 (first-tenant launch, Lane D1): every terminal
+            // created through this endpoint is fiscal schema 3 from creation.
+            // Explicit here (not just relying on the column DEFAULT) so the
+            // API contract is visible in code.
+            'fiscal_schema_version' => 3,
             'is_active' => true,
             'activated_at' => now(),
         ]);
@@ -394,6 +399,8 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
+            'fiscal_schema_version' => 3,
             'is_active' => false,
             'hardware_identifier' => $data['hardware_identifier'],
         ]);
@@ -457,6 +464,8 @@ final class TerminalController extends Controller
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
+            // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
+            'fiscal_schema_version' => 3,
             'is_active' => true,
             'activated_at' => now(),
             'allow_line_discounts' => true,

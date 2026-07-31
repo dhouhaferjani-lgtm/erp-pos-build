@@ -327,6 +327,13 @@ class ParapharmacySeeder extends Seeder
         if (DB::table('countries')->count() === 0) {
             $this->call(CountriesSeeder::class);
         }
+        // MUST run after CountriesSeeder — country_payment_settings.country_code
+        // FKs into countries (spec §4.2 greenfield self-healing). Unconditional
+        // (not count()-guarded like CountriesSeeder above): it is self-healing/
+        // idempotent by construction (INSERT-if-missing, backfill-only on an
+        // existing row) so it is safe to call on every run, including when
+        // countries already existed and the `if` above was skipped.
+        $this->call(CountryPaymentSettingsSeeder::class);
         if (Ingredient::count() === 0) {
             $this->call(IngredientsSeeder::class);
         }
