@@ -26,6 +26,7 @@ use App\Modules\POS\Application\Services\PosPaymentPolicyResolver;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Receipt;
@@ -34,6 +35,8 @@ use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Application\Services\RestockPolicyResolver;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -161,6 +164,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
         private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
+        private readonly RestockPolicyResolver $restockPolicyResolver,
     ) {}
 
     public function name(): string
@@ -313,9 +317,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // per FiscalPayloadConstraintValidator's v4 gate). Training-
             // original refusal is the device's PRIMARY gate (§3.7); this is
             // defense-in-depth for an event that somehow bypassed it.
+            $refundPolicyAlerts = null;
             if ($event->event_version >= 4 && $originalReceiptId !== null) {
                 $this->assertOriginalNotTraining($event, $originalReceiptId);
                 $this->assertRefundQuantityWithinCap($event, $view, $originalReceiptId);
+                $refundPolicyAlerts = $this->computeRefundPolicyAlerts($originalReceiptId);
             }
 
             // Buyer block snapshot — D16 invariant: read ONLY from the
@@ -369,6 +375,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // from the 27-key canonical payload.
                 'invoice_type_code' => $payload->invoiceTypeCode,
                 'training_flag' => $payload->trainingFlag,
+                // v3-refund-chain-integration spec §3.5/§3.6 — server-
+                // advisory accept-and-flag column. NULL means "no alerts
+                // raised" (the common case, including every non-v4-refund
+                // row); never written for a receipt this projector didn't
+                // just evaluate as a v4 refund.
+                'refund_policy_alerts' => $refundPolicyAlerts !== null ? json_encode($refundPolicyAlerts, JSON_THROW_ON_ERROR) : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -663,17 +675,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      */
     private function assertOriginalNotTraining(FiscalEvent $event, string $originalReceiptId): void
     {
-        /** @var Receipt|null $original */
-        $original = Receipt::query()->find($originalReceiptId);
-        if ($original === null || $original->fiscal_event_id === null) {
-            // Legacy-sealed (pre-fiscal-events) or otherwise unresolvable
-            // original — no signed training_flag to read; nothing to
-            // enforce here (the projector-level dependency-missing guard
-            // already required a resolvable original before this point).
-            return;
-        }
-
-        $originalEvent = FiscalEvent::query()->find($original->fiscal_event_id);
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
         if ($originalEvent === null || ! is_array($originalEvent->payload)) {
             return;
         }
@@ -684,9 +686,88 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 '(original fiscal_event=%s) — the device-side refusal (spec §3.7) should have '.
                 'blocked this before authoring; refusing server-side as defense-in-depth.',
                 $event->id,
-                $original->fiscal_event_id,
+                $originalEvent->id,
             ));
         }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §3.5/§3.6 — server-advisory accept-
+     * and-flag alerts, computed purely from data already available AFTER
+     * the refund event is signed (Model 1, §4.1: an already-signed event
+     * is never silently dropped on account of a policy flag).
+     *
+     * **Errata F1 — timestamp-only, not permission-based.** The projector
+     * runs on a Horizon worker with no bound Spatie permissions team (rule
+     * 20); a permission-set check here would silently evaluate against an
+     * unbound/wrong team and produce a meaningless result, not a real
+     * policy signal. Any manager-threshold/daily-cap advisory that would
+     * require a permission check is out of `refund_policy_alerts`'
+     * launch scope entirely (deferred to §16.5's signed-snapshot
+     * mechanism) — not silently half-implemented here.
+     *
+     * **Return-window advisory — N/A for launch, stated explicitly, not
+     * silently omitted.** §3.6 authorizes "whatever policy questions [the
+     * projector] can compute purely from the original receipt's own
+     * timestamp" — but no return-window DURATION exists anywhere as a
+     * source of truth (no company/tenant policy field, no config
+     * constant; `RefundWindowClosedException` is a reserved-but-never-
+     * thrown type with no caller supplying `expiryDays` anywhere in this
+     * codebase). Computing a window advisory would require inventing an
+     * un-authorized business rule, which this launch does not do. Only
+     * the §3.5 alert below — fully specified, no missing input — is
+     * implemented.
+     *
+     * **§3.5 alert — non-zero original transaction_discount_amount.** A
+     * structural impossibility for a device-authored v4 refund (§3.5's
+     * refusal makes this unreachable from a correctly-behaving device),
+     * so its presence here signals a bypassed or compromised client.
+     *
+     * @return list<array<string, mixed>>|null null when no alert fired
+     */
+    private function computeRefundPolicyAlerts(string $originalReceiptId): ?array
+    {
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
+        if ($originalEvent === null || ! is_array($originalEvent->payload)) {
+            return null;
+        }
+
+        $alerts = [];
+
+        $originalDiscount = $originalEvent->payload['transaction_discount_amount'] ?? null;
+        if (is_string($originalDiscount) && is_numeric($originalDiscount)) {
+            $scale = (int) ($originalEvent->payload['currency_scale'] ?? 2);
+            if (bccomp($originalDiscount, '0', $scale) !== 0) { // precision-ok: scale read from the original's own signed payload
+                $alerts[] = [
+                    'type' => 'non_zero_original_transaction_discount',
+                    'detected_at' => now('UTC')->toIso8601String(),
+                    'original_fiscal_event_id' => $originalEvent->id,
+                    'original_transaction_discount_amount' => $originalDiscount,
+                ];
+            }
+        }
+
+        return $alerts === [] ? null : $alerts;
+    }
+
+    /**
+     * Resolve the RESOLVED ORIGINAL's own signed `fiscal_events` row for a
+     * refund, via the local `pos_receipts.fiscal_event_id` link. Shared by
+     * {@see assertOriginalNotTraining()} and
+     * {@see computeRefundPolicyAlerts()} — both read exclusively from the
+     * original's OWN payload, never the current refund event's.
+     */
+    private function resolveOriginalFiscalEvent(string $originalReceiptId): ?FiscalEvent
+    {
+        /** @var Receipt|null $original */
+        $original = Receipt::query()->find($originalReceiptId);
+        if ($original === null || $original->fiscal_event_id === null) {
+            // Legacy-sealed (pre-fiscal-events) or otherwise unresolvable
+            // original — no signed payload to read.
+            return null;
+        }
+
+        return FiscalEvent::query()->find($original->fiscal_event_id);
     }
 
     /**
@@ -1473,16 +1554,67 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * path (the canonical snapshot stays authoritative; stock is a best-effort
      * downstream projection).
      */
+    /**
+     * v3-refund-chain-integration spec §10 — disposition-aware stock
+     * restore.
+     *
+     * A v4 REFUND carries `original_line_references[i].disposition`
+     * (strict parallel to `line_items[i]`, validated by
+     * `FiscalPayloadConstraintValidator`); a legacy VOID or a pre-v4
+     * REFUND has no disposition data on the canonical view at all
+     * (`$view->originalLineReferences()` is null) — that path keeps its
+     * EXISTING unconditional-restock behavior UNCHANGED (v2/v3/void
+     * non-regression).
+     *
+     *   - `restock` — restores stock, UNLESS the product's own
+     *     `RestockPolicyResolver` resolves `RestockPolicy::Never`
+     *     ("regulated never-restock honored" — a projector can never
+     *     REJECT an already-signed event (Model 1, §4.1), so a
+     *     regulated/controlled item's disposition=restock is silently
+     *     NOT applied rather than corrupting sellable stock; logged for
+     *     operator visibility).
+     *   - `scrap` / `not_received` — no stock movement at all (net stock
+     *     effect zero either way; unlike the legacy interactive
+     *     `ReceiptReturnService::restoreStock()`+`writeOffReturnedStock()`
+     *     pair, this does not additionally write a paired audit-trail
+     *     movement — a deliberate simplification for this launch, not an
+     *     attempt to reproduce the legacy write-off ledger entries here).
+     */
     private function restockForLines(
         string $receiptId,
         FiscalEvent $event,
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
     ): void {
-        foreach ($view->lineItems as $line) {
+        $originalLineReferences = $view->originalLineReferences();
+
+        foreach ($view->lineItems as $index => $line) {
             $productId = $line->productId;
             if ($productId === '' || ! Str::isUuid($productId)) {
                 continue;
+            }
+
+            if ($originalLineReferences !== null) {
+                $reference = $originalLineReferences[$index] ?? null;
+                if ($reference !== null) {
+                    $disposition = ReturnLineDisposition::tryFrom($reference->disposition);
+
+                    if ($disposition === ReturnLineDisposition::NotReceived
+                        || $disposition === ReturnLineDisposition::Scrap) {
+                        continue;
+                    }
+
+                    if ($disposition === ReturnLineDisposition::Restock
+                        && $this->restockPolicyResolver->resolve($productId)->policy === RestockPolicy::Never) {
+                        Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
+                            'fiscal_event_id' => $event->id,
+                            'receipt_id' => $receiptId,
+                            'product_id' => $productId,
+                        ]);
+
+                        continue;
+                    }
+                }
             }
 
             $this->restockStock(
