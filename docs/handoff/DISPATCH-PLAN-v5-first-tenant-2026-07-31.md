@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-31. **Supersedes:** `DISPATCH-PLAN-v4-first-tenant-2026-07-31.md` (REJECTED round 4 —
 `docs/superpowers/reviews/2026-07-31-codex-v4-dispatch-review.md`).
-**Status:** AWAITING ROUND-5 ADVERSARIAL REVIEW. Nothing dispatches until APPROVE.
+**Status:** **v5.1 — DISPATCH AUTHORIZED.** Codex round-5 verdict = **APPROVE-WITH-FIXES**
+(`docs/superpowers/reviews/2026-07-31-codex-v5-dispatch-review.md`): fold fixes 1–5, dispatch
+without round 6. All five fixes are folded below, marked ◆FIX-n.
 
 Round-4 state: R1/R4/R5/R6 incorporated; **Lanes A, B, C(spec), D1, F ruled dispatch-safe /
 manifest-sufficient / pairwise-disjoint — they are FROZEN as written in v4 §Lane A/B/C/D1/F and are
@@ -23,8 +25,12 @@ Worktree `../erp.launch-ops`, branch `docs/launch-ops-runbook` off `origin/dev`.
 1. **Staging runbook** — consolidate the 7 open checklists (treasury ③/④/⑤a/⑤b, multiloc,
    `RolesAndPermissionsSeeder` + `permission:cache-reset` [Spatie cache TENANT-BLIND], Horizon
    restart, `DemoPharmacySeeder --force`), Task-8 artisan commands only, mark what staging evidence
-   shows done, EXECUTE NOTHING. Each step gets an evidence cell (command + expected output) so the
-   runbook is executable as gate **E-9**. File: `docs/handoff/STAGING-RUNBOOK-first-tenant-2026-07-31.md`.
+   shows done, EXECUTE NOTHING. Each step gets an evidence cell (command + EXPECTED output) so the
+   runbook is executable as gate **E-9**. ◆FIX-2: a step may be marked already-done ONLY with
+   immutable historical evidence carrying environment, exact revision/artifact, command + output,
+   and timestamp; otherwise it stays open. Release-sensitive checks are flagged
+   `RERUN-ON-FINAL-CANDIDATE` regardless of history.
+   File: `docs/handoff/STAGING-RUNBOOK-first-tenant-2026-07-31.md`.
 2. **Runbook placeholder burn-down** — fill every repo-derivable placeholder in
    `docs/pos-operations/*.md`; remaining hits map 1:1 to gate-sheet rows (preflight EXPECTED
    non-zero after D2-a; zero is gate E-5).
@@ -41,10 +47,15 @@ Worktree `../erp.launch-ops`, branch `docs/launch-ops-runbook` off `origin/dev`.
    - Offline segment ≥10 minutes with 5+ receipts.
    - Add an **Actual Outcome** column to every step table (Status alone cannot record
      expected-vs-actual; `2026-05-12-first-tenant-smoke.md:23-34`).
-   - Reconcile risk acceptance EXPLICITLY: any failed **P0** step is an unconditional NO-GO; a
-     failed non-P0 step may close ONLY via the source's owner risk-acceptance route
-     (`2026-05-12-first-tenant-smoke.md:105-114`, `2026-05-13-first-tenant-handoff.md:82-84`),
-     recorded with reason + revisit milestone.
+   - ◆FIX-1: add a **Gate class column (P0 / non-P0) to EVERY step in every A–H table**. Default
+     class is P0; non-P0 is permitted only for steps whose failure cannot affect fiscal integrity,
+     money movement, or data durability (e.g., cosmetic print layout) — the doc-review gate verifies
+     every fiscal/money/data step is P0. E-2 then operates on these enumerated step IDs.
+   - Reconcile risk acceptance EXPLICITLY: any failed **P0** step is an unconditional NO-GO —
+     **declared as an intentional program override** of the sources' general owner-acceptance
+     language (`2026-05-12-first-tenant-smoke.md:105-114`, `2026-05-13-first-tenant-handoff.md:82-84`);
+     a failed non-P0 step may close ONLY via the recorded owner risk-acceptance route (reason +
+     revisit milestone).
    - Owner field filled; EVERY named signatory required before PASS; remove DRAFT once repaired.
 4. **Migration-procedure repair (round-4 fix 2)** — `docs/qa/2026-05-12-migration-audit-and-rollback.md`:
    replace its nonexistent singular `fiscal:verify-chain` invocations (`:35-37`, `:83-86`) with the
@@ -70,8 +81,11 @@ Worktree `../erp.launch-ops`, branch `docs/launch-ops-runbook` off `origin/dev`.
 `docs/qa/2026-05-12-migration-audit-and-rollback.md` (command/structure repair only),
 `docs/security/secret-rotation-2026-05-12.md` (gate-rule text only).
 Nothing outside `docs/`. Review gate: one Opus doc-accuracy pass — MUST verify the three verifier
-signatures against the command classes (incl. `--actor-id`), the P0/non-P0 no-go split against the
-handoff, and that no evidence/status cell was pre-filled. Merge to LOCAL dev, stop.
+signatures against the command classes (incl. `--actor-id`), the per-step P0/non-P0 classification
+(every fiscal/money/data step P0), and — ◆FIX-2 — that no **prospective** smoke/migration/secret/
+gate-sheet/new-run status or evidence cell was pre-filled; historical already-done markings are
+acceptable ONLY with full provenance (environment, revision/artifact, command+output, timestamp).
+Merge to LOCAL dev, stop.
 
 ### Phase E — execution by named humans (sequenced LAST; ownership transfer)
 
@@ -88,15 +102,15 @@ before that row can begin.
 | # | Gate | Evidence → location | Pass / NO-GO |
 |---|---|---|---|
 | E-1 | Secret rotation | Every credential row in the inventory (`:53-67` — 9 rows / 12 variables; enumerate, don't count) flipped to `revoked`; connection-target decision (`:69-80`); one Verification-Evidence ledger entry per rotation (`:245+`); Final Sign-Off filled (`:260+`) | PASS only when every inventory row is `revoked` + ledger + sign-off. **Intentional program override of the source's High/Medium acceptance statuses** (normalized by D2-a task 5): no acceptance path for ANY row. |
-| E-2 | P0 real-device smoke | The REPAIRED `2026-05-12-first-tenant-smoke.md` executed on the real Windows terminal: every step's Status + Actual Outcome + Evidence cell filled; all three chain verifiers (incl. `--actor-id`) exit 0 target-scoped; release checksum + clock/timezone checks pass; offline ≥10 min / 5+ receipts; printer sleep/reprint/disconnect; every named signatory signed | Any failed **P0** step = NO-GO, no acceptance. Failed non-P0 steps close only via the recorded owner risk-acceptance route (reason + revisit milestone). |
-| E-3 | Production migration rehearsal | The FULL repaired source procedure recorded in `2026-05-12-migration-audit-and-rollback.md`: live backup + checksum + five fiscal-table row counts (`:20-30`); pretend-run output + irreversible-operation review + schema diff; ACTUAL staging-clone migration with timing/downtime estimate; `migrate:status`; all applicable chain verifiers (real commands, `--actor-id`); staging happy-path smoke (`:31-37`, `:67-86`) | NO-GO on ANY of: failed dry-run step, unverifiable/mismatched backup checksum, fiscal row-count mismatch, unreviewed irreversible operation, failed verifier, failed staging smoke, exceeded downtime budget |
+| E-2 | P0 real-device smoke | The REPAIRED `2026-05-12-first-tenant-smoke.md` executed on the real Windows terminal: every step's Status + Actual Outcome + Evidence cell filled; all three chain verifiers (incl. `--actor-id`) exit 0 target-scoped; release checksum + clock/timezone checks pass; offline ≥10 min / 5+ receipts; printer sleep/reprint/disconnect; every named signatory signed | ◆FIX-1: gate classes are the ENUMERATED per-step P0/non-P0 labels D2-a added to the protocol tables. Any failed **P0** step = NO-GO, no acceptance — intentional program override of the sources' general acceptance language. Failed non-P0 steps close only via the recorded owner risk-acceptance route (reason + revisit milestone). |
+| E-3 | Production migration rehearsal | The FULL repaired source procedure recorded in `2026-05-12-migration-audit-and-rollback.md`: live backup + checksum + five fiscal-table row counts (`:20-30`); pretend-run output + irreversible-operation review + schema diff; ACTUAL staging-clone migration with timing/downtime estimate; `migrate:status`; all applicable chain verifiers (real commands, `--actor-id`); staging happy-path smoke (`:31-37`, `:67-86`) | NO-GO on ANY of: failed dry-run step, unverifiable/mismatched backup checksum, fiscal row-count mismatch, unreviewed irreversible operation, ◆FIX-3 unexpected schema diff (drops/renames not accounted for), any migration not reported `Ran` in `migrate:status`, failed verifier, failed staging smoke, exceeded downtime budget |
 | E-4 | TN accountant/legal sign-off | Review evidence for ALL FIVE subjects — VAT rates, receipt legal fields, certification scope, Z format, retention — plus reviewer name, date, reviewed-item list, and explicit approved / approved-with-caveats flag, appended to `walkthrough-rehearsal.md` per `2026-05-13-first-tenant-handoff.md:88-108` | Approved (or approved-with-caveats, caveats itemized) — OR a dated owner risk acceptance with reason + revisit milestone |
 | E-5 | Runbook preflight ZERO | `preflight-runbooks.sh` exit 0; full output pasted into the gate sheet | Script green, output persisted |
 | E-6 | Walkthrough rehearsal | `walkthrough-rehearsal.md` record complete on the release build; second human named in the gate sheet | EVERY explain-back row = YES, `Approved for go-live docs? = YES`, every gap closed or explicitly accepted (`:15,:35`) |
 | E-7 | **v3 correction-chain closure (NON-WAIVABLE)** | Lane C spec APPROVED + code phase landed through its review gates; green integration evidence: device v3 sale → online return → next device sale → Z at schema 3 (test path named in gate sheet); chosen VOID implementation or compensating control landed | The `D/2` acceptance waives ONLY refund-rounding delta. NOTHING waives E-7. |
 | E-8 | **Target-device rollout (EXPANDED per round-4 fix 6 — full deploy-checklist §`:224-263`)** | For the real tenant #1, recorded in the gate sheet: main-location POS disposition; real terminal created/claimed at schema 3 (`TerminalResource` policy pull); **target-scoped `pos:configure-cash-rounding` DRY-RUN then real enable with explicit `--tenants=<uuid>`** (after E-7 or the authorized rounding exception); device/API policy pull enabled + `0.050`; **manager briefing held (non-optional)**; v64/v3 release build installed; device SQLite migration 64 verified by query; device policy-cache and CASH-method (`is_cash_tender`) checks; a REAL rounded cash sale with correct screen/ticket amounts + tender edge cases; EOD/Z succeeds; server projection populated; expected GL source rows present; NO policy-mismatch or change-exceeds-cash audit events | Every item evidenced for the actual tenant/device before its first live customer transaction |
-| E-9 | **Staging-runbook execution (NEW, round-4 fix 5)** | Owner executes `STAGING-RUNBOOK-first-tenant-2026-07-31.md` top to bottom; every still-applicable step's evidence cell filled with command output in the runbook file itself | Every applicable step closed or explicitly marked already-done-with-evidence; no step skipped silently |
-| E-10 | **Production release/cutover (NEW, round-4 fix 5)** | Recorded in the gate sheet: (1) the OWNER'S ENVIRONMENT DECISION — does tenant #1 run on the staging deployment or a separate production deployment? (this is an open owner decision; the gate cannot close without it); (2) the exact release revision/artifact promoted to that environment; (3) the ACTUAL migration run + verification per the repaired migration doc (`:31-37`) on that environment; (4) `RolesAndPermissionsSeeder` + `permission:cache-reset` (tenant-blind cache) + required backfills/config per the staging runbook's production-applicable rows; (5) Horizon/process restarts; (6) final release evidence (versions, checksums, verifier outputs). **A push to `origin/dev` deploys STAGING and is NOT production clearance** (`HANDOVER…:8-11`). | All six items evidenced for the environment tenant #1 actually runs on |
+| E-9 | **Staging-runbook execution (NEW, round-4 fix 5)** | Owner executes `STAGING-RUNBOOK-first-tenant-2026-07-31.md` top to bottom ON THE FINAL RELEASE CANDIDATE; every still-applicable step's evidence cell filled with command output in the runbook file itself | ◆FIX-4: PASS only when every applicable command exits as expected AND Actual Outcome matches the authored Expected Outcome; any failed or missing result = NO-GO. N/A / already-done requires owner, reason, revision/environment, and evidence — never a silent skip. `RERUN-ON-FINAL-CANDIDATE` steps must be re-run regardless of history. |
+| E-10 | **Production release/cutover (NEW, round-4 fix 5)** | Recorded in the gate sheet: (1) the OWNER'S ENVIRONMENT DECISION — does tenant #1 run on the staging deployment or a separate production deployment? (this is an open owner decision; the gate cannot close without it); (2) the exact release revision/artifact promoted to that environment; (3) the ACTUAL migration run + verification per the repaired migration doc (`:31-37`) on that environment; (4) `RolesAndPermissionsSeeder` + `permission:cache-reset` (tenant-blind cache) + required backfills/config per the staging runbook's production-applicable rows; (5) Horizon/process restarts; (6) final release evidence (versions, checksums, verifier outputs); ◆FIX-3 (7) a FRESH backup on the owner-selected ACTUAL environment immediately before its migration — checksum + five fiscal-table pre-counts + post-run verification and rollback-point record (`2026-05-12-migration-audit-and-rollback.md:18-30`); E-3's earlier rehearsal backup can NEVER satisfy this. **A push to `origin/dev` deploys STAGING and is NOT production clearance** (`HANDOVER…:8-11`). | ◆FIX-4: PASS only when the environment decision is recorded AND every migration / verifier / reseed / backfill / config / restart / version / checksum result SUCCEEDS (expected = actual); any failed, mismatched, or missing result = NO-GO |
 
 ## Lanes A, B, C(spec), D1, F — FROZEN per v4 (round 4: dispatch-safe, sufficient, disjoint)
 
@@ -118,8 +132,20 @@ merges; never concurrent.
 A, B, C(spec), D1, D2-a dispatch in parallel on round-5 APPROVE. Merges to LOCAL dev per review
 gates; F after A + D1; ONE batched ff promotion of A+B+D1+D2-a+F (D1's migration self-guarding;
 push auto-runs STAGING `tenants:migrate` — staging only, per E-10). C's code phase = its own later
-batch behind its spec gate. Phase E rows execute LAST; E-7/E-8/E-9/E-10 immediately before
-onboarding.
+batch behind its spec gate.
+
+◆FIX-5 **Phase-E dependency chain (evidence must be collected against the FINAL release candidate
+in the owner-selected environment — earlier-revision evidence cannot close later gates):**
+1. E-1 / E-4 / E-5 / E-6 may run any time (E-6 on the release build).
+2. E-3 (rehearsal) PRECEDES cutover.
+3. E-7 must be IN the exact release candidate.
+4. E-9 executes on that final candidate in STAGING.
+5. E-10 then records the environment decision and prepares the actual tenant environment
+   (incl. its fresh just-in-time backup).
+6. E-8 / E-2 execute on that same promoted artifact — E-8's manager briefing BEFORE device
+   install; E-2 (smoke) AFTER install/migration/restore, BEFORE the first real transaction.
+Writes to `walkthrough-rehearsal.md` (E-4 + E-6) are SERIALIZED through the orchestrator (single
+committer); Phase-E rows sharing a file never edit concurrently.
 
 ## What round 5 must answer
 
