@@ -9,13 +9,16 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalLineReferenceDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ApprovalEvidenceUnresolvedException;
+use App\Modules\Fiscal\Domain\Exceptions\OriginalLineUnresolvableException;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Exceptions\RefundQuantityExceededException;
+use App\Modules\Fiscal\Domain\Exceptions\TrainingOriginalRefundRefusedException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\CountingBlockService;
@@ -47,6 +50,7 @@ use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use App\Shared\Domain\CashRoundingCutover;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -684,13 +688,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         if (($originalEvent->payload['training_flag'] ?? null) === true) {
-            throw new RuntimeException(sprintf(
-                'PosCoreReceiptProjection: refund fiscal_event=%s targets a TRAINING original '.
-                '(original fiscal_event=%s) — the device-side refusal (spec §3.7) should have '.
-                'blocked this before authoring; refusing server-side as defense-in-depth.',
-                $event->id,
-                $originalEvent->id,
-            ));
+            throw new TrainingOriginalRefundRefusedException(
+                fiscalEventId: $event->id,
+                originalFiscalEventId: $originalEvent->id,
+            );
         }
     }
 
@@ -803,26 +804,39 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             ->where('receipt_id', $originalReceiptId)
             ->orderBy('line_number')
             ->lockForUpdate()
-            ->get(['id', 'line_number', 'quantity']);
+            ->get(['id', 'line_number', 'quantity', 'product_id']);
 
         foreach ($originalLineReferences as $ref) {
-            $originalLine = $originalLines->firstWhere('line_number', $ref->originalLineIndex + 1);
-            if ($originalLine === null) {
-                // Defensive — the validator's product_id/quantity equality
-                // check against line_items[] already makes this
-                // unreachable for a well-formed v4 payload against a
-                // correctly-projected original.
-                continue;
-            }
+            $originalLine = $this->resolveOriginalLineForReference($event, $originalReceiptId, $ref, $originalLines);
 
             $originalLineId = (string) $originalLine->id;
             /** @var numeric-string $originalQuantity */
             $originalQuantity = (string) $originalLine->quantity;
 
+            // review round-2 IMPORTANT 12 — concurrent-redelivery exclusion.
+            // Two racing projector dispatches for the SAME fiscal_event_id
+            // can both pass the top-of-apply() idempotency fast-path before
+            // either commits; the loser then blocks on this method's
+            // `lockForUpdate()` until the winner commits, unblocks, and
+            // re-sums — at which point the SUM would otherwise include the
+            // WINNER'S own just-committed lines for this SAME event,
+            // double-counting them against the loser's identical request
+            // and throwing a false RefundQuantityExceededException. Exclude
+            // rows whose `pos_receipts.fiscal_event_id` equals the CURRENT
+            // event's own id (a prior successful application of THIS event,
+            // not a genuinely separate refund) from the "already refunded"
+            // sum. `whereNull` keeps legacy-authored return lines
+            // (`fiscal_event_id IS NULL`) counted — `<>` alone would drop
+            // them (SQL NULL comparison), so both branches are required.
             /** @var numeric-string $alreadyRefunded */
             $alreadyRefunded = (string) (DB::table('pos_receipt_lines')
-                ->where('original_line_id', $originalLineId)
-                ->selectRaw('COALESCE(SUM(ABS(quantity)), 0) as total')
+                ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
+                ->where('pos_receipt_lines.original_line_id', $originalLineId)
+                ->where(function ($query) use ($event): void {
+                    $query->whereNull('pos_receipts.fiscal_event_id')
+                        ->orWhere('pos_receipts.fiscal_event_id', '<>', $event->id);
+                })
+                ->selectRaw('COALESCE(SUM(ABS(pos_receipt_lines.quantity)), 0) as total')
                 ->value('total') ?? '0');
 
             /** @var numeric-string $requested */
@@ -840,6 +854,60 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 );
             }
         }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §3.3/§12 review round-2 CRITICAL 1
+     * — the SHARED resolution both {@see assertRefundQuantityWithinCap()}
+     * and {@see writeLines()} use for every `original_line_references[]`
+     * row, so the two can never drift into disagreeing about which
+     * original line a reference resolves to.
+     *
+     * `FiscalPayloadConstraintValidator::validateOriginalLineReferences()`
+     * only checks the refund's OWN payload for internal consistency
+     * (`original_line_references[i]` matches `line_items[i]` at signing
+     * time) — it has no access to the ORIGINAL receipt's actual projected
+     * `pos_receipt_lines` rows, so it cannot catch a reference whose
+     * `original_line_index` doesn't exist on the original, or whose
+     * `product_id` doesn't match what is actually at that position. Both
+     * are only detectable here, against the real rows.
+     *
+     * @param  Collection<int, \stdClass>  $originalLines  each row carrying at least `id`, `line_number`, `product_id` (raw `DB::table('pos_receipt_lines')->get()` rows)
+     */
+    private function resolveOriginalLineForReference(
+        FiscalEvent $event,
+        string $originalReceiptId,
+        OriginalLineReferenceDTO $ref,
+        Collection $originalLines,
+    ): \stdClass {
+        $originalLine = $originalLines->first(
+            fn (\stdClass $row): bool => (int) $row->line_number === $ref->originalLineIndex + 1
+        );
+        if ($originalLine === null) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: 'no pos_receipt_lines row exists at that line_number on the resolved original receipt',
+            );
+        }
+
+        $originalProductId = $originalLine->product_id === null ? null : (string) $originalLine->product_id;
+        if ($originalProductId !== $ref->productId) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: sprintf(
+                    'product_id mismatch: reference claims %s, original line_number=%d resolved to %s',
+                    $ref->productId,
+                    (int) $originalLine->line_number,
+                    $originalProductId ?? 'NULL',
+                ),
+            );
+        }
+
+        return $originalLine;
     }
 
     /**
@@ -1003,17 +1071,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      */
     private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ?string $originalReceiptId = null): void
     {
+        // review round-2 CRITICAL 1(c) — SHARED resolution with
+        // assertRefundQuantityWithinCap() via resolveOriginalLineForReference()
+        // so original_line_id is NEVER silently null on a v4 refund: every
+        // reference either resolves to a real, product_id-matching original
+        // line or throws OriginalLineUnresolvableException (both this
+        // method and the cap check throw the SAME way, so a refund whose
+        // cap check already passed can never subsequently write a null
+        // original_line_id here).
         $originalLineReferences = $view->originalLineReferences();
         $originalLineIdByIndex = [];
         if ($originalLineReferences !== null && $originalReceiptId !== null) {
             $originalLines = DB::table('pos_receipt_lines')
                 ->where('receipt_id', $originalReceiptId)
-                ->get(['id', 'line_number']);
+                ->get(['id', 'line_number', 'quantity', 'product_id']);
             foreach ($originalLineReferences as $index => $ref) {
-                $matchingLine = $originalLines->firstWhere('line_number', $ref->originalLineIndex + 1);
-                if ($matchingLine !== null) {
-                    $originalLineIdByIndex[$index] = (string) $matchingLine->id;
-                }
+                $matchingLine = $this->resolveOriginalLineForReference($event, $originalReceiptId, $ref, $originalLines);
+                $originalLineIdByIndex[$index] = (string) $matchingLine->id;
             }
         }
 

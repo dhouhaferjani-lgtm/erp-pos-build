@@ -11,8 +11,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
-use App\Modules\Fiscal\Domain\Exceptions\NonRetryableProjectionException;
-use App\Modules\Fiscal\Domain\Exceptions\TrainingOriginalRefundRefusedException;
+use App\Modules\Fiscal\Domain\Exceptions\OriginalLineUnresolvableException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
@@ -22,22 +21,35 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Tests\TestCase;
 
 /**
- * v3-refund-chain-integration spec §3.7 (T4) — server-side training-
- * original defense-in-depth.
+ * v3-refund-chain-integration spec §3.3/§12 — review round-2 CRITICAL 1:
+ * the `original_line_index`/`product_id` TRUST HOLE closure.
  *
- * Reads `training_flag` from the RESOLVED ORIGINAL's own signed payload —
- * never the CURRENT refund event's `training_flag` — so a refund of a
- * training original is refused even when the refunding session itself is
- * NOT in training mode, and a refund of a NON-training original from a
- * training session is NOT incorrectly refused (the two concepts are not
- * conflated).
+ * `FiscalPayloadConstraintValidator::validateOriginalLineReferences()`
+ * only checks the refund's OWN payload for internal parallel-array
+ * consistency (`original_line_references[i]` matches `line_items[i]` at
+ * signing time) — it has NO visibility into the ORIGINAL receipt's real
+ * projected `pos_receipt_lines` rows. A malformed or bypassed device could
+ * still sign a structurally-valid-looking reference that points at the
+ * WRONG position or the WRONG product on the original. This file proves
+ * `PosCoreReceiptProjection::resolveOriginalLineForReference()` catches
+ * both shapes server-side and throws
+ * {@see OriginalLineUnresolvableException} (non-retryable) rather than
+ * silently `continue`-ing past the bad reference (the pre-fix behavior,
+ * which left `original_line_id` silently NULL and let a bogus reference
+ * skip the §12 quantity cap entirely).
+ *
+ * PG-mode: mirrors `PosCoreReceiptProjectionRefundQuantityCapTest`'s own
+ * PG-only stance — the cap check's `FOR UPDATE` lock is meaningless under
+ * SQLite's whole-database serialization.
+ *
+ *   php artisan test -c phpunit-pgsql.xml --filter=PosCoreReceiptProjectionOriginalLineTrustTest
  */
-final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
+final class PosCoreReceiptProjectionOriginalLineTrustTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -54,6 +66,10 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('§12 per-original FOR UPDATE lock is PG-only; run via phpunit-pgsql.xml.');
+        }
 
         $tenant = Tenant::factory()->create();
         $this->tenantId = $tenant->id;
@@ -86,164 +102,76 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
         ]);
     }
 
-    /**
-     * Review round-2 IMPORTANT 16 — the training-original refusal must be
-     * a NonRetryableProjectionException. A training original's
-     * training_flag is permanently fixed at signing time, so retrying
-     * this exact refund event on a later Horizon attempt can never
-     * resolve it; without this classification the job would burn all 5
-     * retry attempts (with backoff, roughly 21 minutes) before
-     * dead-lettering a condition that was never going to change.
-     */
-    public function test_training_original_refusal_is_non_retryable(): void
+    public function test_out_of_range_original_line_index_throws_and_is_non_retryable(): void
     {
         $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
 
-        $sale = $this->buildEvent(
-            invoiceTypeCode: 'TRAINING',
-            eventVersion: 3,
-            productId: $product->id,
-            quantity: '5.000',
-            sequenceNumber: 1,
-            receiptUuid: '00000000-0000-4000-8000-000000000001',
-            originalLineReferences: null,
-            originalReceiptReference: null,
-            trainingFlag: true,
-        );
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
         $this->project($sale);
 
-        $refund = $this->buildEvent(
-            invoiceTypeCode: 'REFUND',
-            eventVersion: 4,
+        // The original has exactly ONE line (line_number=1, index 0). The
+        // reference claims index 5 -- no line_number=6 exists.
+        $refund = $this->v4RefundEvent(
+            $sale,
             productId: $product->id,
-            quantity: '5.000',
+            quantity: '2.000',
             sequenceNumber: 2,
-            receiptUuid: '00000000-0000-4000-8000-000000000002',
-            originalLineReferences: [[
-                'disposition' => 'restock',
-                'original_line_index' => 0,
-                'product_id' => $product->id,
-                'quantity' => '5.000',
-            ]],
-            originalReceiptReference: [
-                'fiscal_event_id' => $sale->id,
-                'original_business_date' => $sale->business_date->toDateString(),
-                'original_receipt_uuid' => '00000000-0000-4000-8000-000000000001',
-                'refund_reason' => 'customer return',
-            ],
-            trainingFlag: false,
+            originalLineIndexOverride: 5,
         );
 
-        try {
-            $this->project($refund);
-            self::fail('Expected TrainingOriginalRefundRefusedException to be thrown.');
-        } catch (TrainingOriginalRefundRefusedException $e) {
-            self::assertInstanceOf(NonRetryableProjectionException::class, $e);
-            self::assertSame($refund->id, $e->fiscalEventId);
-            self::assertSame($sale->id, $e->originalFiscalEventId);
-        }
-    }
-
-    public function test_refund_of_a_training_original_is_refused_even_outside_training_session(): void
-    {
-        $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
-
-        // Original sale is a TRAINING transaction.
-        $sale = $this->buildEvent(
-            invoiceTypeCode: 'TRAINING',
-            eventVersion: 3,
-            productId: $product->id,
-            quantity: '5.000',
-            sequenceNumber: 1,
-            receiptUuid: '00000000-0000-4000-8000-000000000001',
-            originalLineReferences: null,
-            originalReceiptReference: null,
-            trainingFlag: true,
-        );
-        $this->project($sale);
-
-        // The refund's OWN session is NOT training -- proving the concepts
-        // are not conflated (the refund's own training_flag=false is
-        // irrelevant to this check).
-        $refund = $this->buildEvent(
-            invoiceTypeCode: 'REFUND',
-            eventVersion: 4,
-            productId: $product->id,
-            quantity: '5.000',
-            sequenceNumber: 2,
-            receiptUuid: '00000000-0000-4000-8000-000000000002',
-            originalLineReferences: [[
-                'disposition' => 'restock',
-                'original_line_index' => 0,
-                'product_id' => $product->id,
-                'quantity' => '5.000',
-            ]],
-            originalReceiptReference: [
-                'fiscal_event_id' => $sale->id,
-                'original_business_date' => $sale->business_date->toDateString(),
-                'original_receipt_uuid' => '00000000-0000-4000-8000-000000000001',
-                'refund_reason' => 'customer return',
-            ],
-            trainingFlag: false,
-        );
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/TRAINING original/');
+        $this->expectException(OriginalLineUnresolvableException::class);
+        $this->expectExceptionMessageMatches('/no pos_receipt_lines row exists at that line_number/');
         $this->project($refund);
+
+        // Nothing persisted -- the whole projection rolled back atomically.
+        self::assertDatabaseMissing('pos_receipts', ['fiscal_event_id' => $refund->id]);
     }
 
-    public function test_refund_of_a_non_training_original_from_a_training_session_is_not_refused(): void
+    public function test_product_id_mismatch_on_a_valid_index_throws_and_is_non_retryable(): void
     {
-        $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
+        $originalProduct = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
+        $unrelatedProduct = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
 
-        // Original sale is NOT training.
-        $sale = $this->buildEvent(
-            invoiceTypeCode: 'SALE',
-            eventVersion: 3,
-            productId: $product->id,
-            quantity: '5.000',
-            sequenceNumber: 1,
-            receiptUuid: '00000000-0000-4000-8000-000000000001',
-            originalLineReferences: null,
-            originalReceiptReference: null,
-            trainingFlag: false,
-        );
+        $sale = $this->v4SaleEvent($originalProduct->id, '5.000', sequenceNumber: 1);
         $this->project($sale);
 
-        // The CURRENT refund is authored inside a training SESSION
-        // (PosOverrideContext.isTraining-equivalent) -- an unrelated
-        // concept the check must not conflate with the ORIGINAL's own
-        // training_flag. Note: a REFUND event's training_flag must match
-        // invoice_type_code=REFUND (not TRAINING) per the payload's own
-        // training-flag coupling invariant, so this scenario is modeled as
-        // a non-training-original refund proceeding normally -- proving
-        // the negative (no false-positive refusal).
-        $refund = $this->buildEvent(
-            invoiceTypeCode: 'REFUND',
-            eventVersion: 4,
-            productId: $product->id,
-            quantity: '5.000',
+        // Valid index (0 -- the original's only line), but the reference
+        // row claims a DIFFERENT, unrelated product than what is actually
+        // at that position on the original.
+        $refund = $this->v4RefundEvent(
+            $sale,
+            productId: $originalProduct->id,
+            quantity: '2.000',
             sequenceNumber: 2,
-            receiptUuid: '00000000-0000-4000-8000-000000000002',
-            originalLineReferences: [[
-                'disposition' => 'restock',
-                'original_line_index' => 0,
-                'product_id' => $product->id,
-                'quantity' => '5.000',
-            ]],
-            originalReceiptReference: [
-                'fiscal_event_id' => $sale->id,
-                'original_business_date' => $sale->business_date->toDateString(),
-                'original_receipt_uuid' => '00000000-0000-4000-8000-000000000001',
-                'refund_reason' => 'customer return',
-            ],
-            trainingFlag: false,
+            referenceProductIdOverride: $unrelatedProduct->id,
         );
 
+        $this->expectException(OriginalLineUnresolvableException::class);
+        $this->expectExceptionMessageMatches('/product_id mismatch/');
+        $this->project($refund);
+
+        self::assertDatabaseMissing('pos_receipts', ['fiscal_event_id' => $refund->id]);
+    }
+
+    public function test_a_well_formed_reference_still_resolves_and_writes_original_line_id(): void
+    {
+        // Non-regression: the trust-hole closure must not break the
+        // legitimate, well-formed case it sits alongside.
+        $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $refund = $this->v4RefundEvent($sale, productId: $product->id, quantity: '2.000', sequenceNumber: 2);
         $this->project($refund);
 
         $refundReceipt = Receipt::where('fiscal_event_id', $refund->id)->sole();
-        self::assertSame($refund->id, $refundReceipt->fiscal_event_id);
+        $refundLine = DB::table('pos_receipt_lines')->where('receipt_id', $refundReceipt->id)->sole();
+        self::assertNotNull($refundLine->original_line_id, 'original_line_id must never be silently null on a v4 refund');
+
+        $originalReceipt = Receipt::where('fiscal_event_id', $sale->id)->sole();
+        $originalLine = DB::table('pos_receipt_lines')->where('receipt_id', $originalReceipt->id)->sole();
+        self::assertSame((string) $originalLine->id, (string) $refundLine->original_line_id);
     }
 
     // =================================================================
@@ -254,6 +182,57 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
     {
         app(CompanyContext::class)->clear();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+    }
+
+    /**
+     * @param  numeric-string  $quantity
+     */
+    private function v4SaleEvent(string $productId, string $quantity, int $sequenceNumber): FiscalEvent
+    {
+        return $this->buildEvent(
+            invoiceTypeCode: 'SALE',
+            eventVersion: 3,
+            productId: $productId,
+            quantity: $quantity,
+            sequenceNumber: $sequenceNumber,
+            receiptUuid: '00000000-0000-4000-8000-000000000001',
+            originalLineReferences: null,
+            originalReceiptReference: null,
+        );
+    }
+
+    /**
+     * @param  numeric-string  $quantity
+     */
+    private function v4RefundEvent(
+        FiscalEvent $original,
+        string $productId,
+        string $quantity,
+        int $sequenceNumber,
+        string $receiptUuid = '00000000-0000-4000-8000-000000000002',
+        ?int $originalLineIndexOverride = null,
+        ?string $referenceProductIdOverride = null,
+    ): FiscalEvent {
+        return $this->buildEvent(
+            invoiceTypeCode: 'REFUND',
+            eventVersion: 4,
+            productId: $productId,
+            quantity: $quantity,
+            sequenceNumber: $sequenceNumber,
+            receiptUuid: $receiptUuid,
+            originalLineReferences: [[
+                'disposition' => 'restock',
+                'original_line_index' => $originalLineIndexOverride ?? 0,
+                'product_id' => $referenceProductIdOverride ?? $productId,
+                'quantity' => $quantity,
+            ]],
+            originalReceiptReference: [
+                'fiscal_event_id' => $original->id,
+                'original_business_date' => $original->business_date->toDateString(),
+                'original_receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+                'refund_reason' => 'customer return',
+            ],
+        );
     }
 
     /**
@@ -270,7 +249,6 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
         string $receiptUuid,
         ?array $originalLineReferences,
         ?array $originalReceiptReference,
-        bool $trainingFlag,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -284,11 +262,11 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
             'line_discount_reason' => null,
             'line_subtotal' => $lineTotal,
             'line_vat' => '0.00',
-            'name' => 'Training Refusal Test Item',
+            'name' => 'Trust Hole Test Item',
             'non_collected_subtype' => null,
             'product_id' => $productId,
             'quantity' => $quantity,
-            'sku' => 'SKU-TRAIN',
+            'sku' => 'SKU-TRUST',
             'tax_category_code' => 'Z',
             'unit_price' => $unitPrice,
             'variant_id' => null,
@@ -332,7 +310,7 @@ final class PosCoreReceiptProjectionTrainingRefundRefusedTest extends TestCase
             'table_id' => null,
             'terminal_id' => $this->terminalId,
             'total' => $lineTotal,
-            'training_flag' => $trainingFlag,
+            'training_flag' => false,
             'transaction_discount_amount' => '0.00',
             'transaction_discount_reason' => null,
             'vat_breakdown' => [[

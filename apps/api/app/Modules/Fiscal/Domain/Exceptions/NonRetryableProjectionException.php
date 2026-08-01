@@ -18,7 +18,10 @@ namespace App\Modules\Fiscal\Domain\Exceptions;
  * dead-letters immediately via `$this->fail($e)` rather than exhausting
  * all 5 retry attempts first.
  *
- * Implemented by {@see RefundQuantityExceededException} (§12) and
- * {@see ApprovalEvidenceUnresolvedException} (§4.2).
+ * Implemented by {@see RefundQuantityExceededException} (§12),
+ * {@see ApprovalEvidenceUnresolvedException} (§4.2),
+ * {@see OriginalLineUnresolvableException} (§3.3/§12 review round-2
+ * CRITICAL 1), and {@see TrainingOriginalRefundRefusedException} (§3.7
+ * review round-2 IMPORTANT 16).
  */
 interface NonRetryableProjectionException {}
