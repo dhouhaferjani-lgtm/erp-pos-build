@@ -9,6 +9,7 @@ use App\Modules\POS\Application\DTOs\CustomerAnalyticsData;
 use App\Modules\POS\Application\DTOs\DiscountAnalysisData;
 use App\Modules\POS\Application\DTOs\FnbMetricsData;
 use App\Modules\POS\Application\DTOs\SalesSummaryData;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Query\Builder;
@@ -201,7 +202,7 @@ final class PosAnalyticsService
             'cashier_name' => $row->cashier_name,
             'receipt_count' => (int) $row->receipt_count,
             'total_sales' => (string) $row->total_sales,
-            'average_ticket' => (string) round((float) $row->average_ticket, 2),
+            'average_ticket' => $this->roundedMoneyString($row->average_ticket, 2),
         ])->all();
     }
 
@@ -430,6 +431,31 @@ final class PosAnalyticsService
     private function netOfReturns(string $column): string
     {
         return "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+    }
+
+    /**
+     * Round a DB-returned monetary aggregate to a display scale as a DECIMAL
+     * STRING — never through a float (precision contract rule 19).
+     *
+     * `AVG()` returns a high-precision decimal (PG) or a float-ish string
+     * (SQLite); the old `(string) round((float) $v, 2)` round-tripped money
+     * through an IEEE-754 double AND emitted a variable-width string ('6', not
+     * '6.00'). `CurrencyScale::bcround()` is the bcmath boundary helper —
+     * half-away-from-zero, symmetric for negatives (a cashier whose refunds
+     * exceed their sales has a negative average), fixed width at $scale.
+     *
+     * @param  int<0, max>  $scale
+     * @return numeric-string
+     */
+    private function roundedMoneyString(mixed $value, int $scale): string
+    {
+        $string = is_scalar($value) ? (string) $value : '0';
+
+        if (! is_numeric($string)) {
+            $string = '0';
+        }
+
+        return CurrencyScale::bcround($string, $scale);
     }
 
     private function pgsqlDateTrunc(string $granularity): string

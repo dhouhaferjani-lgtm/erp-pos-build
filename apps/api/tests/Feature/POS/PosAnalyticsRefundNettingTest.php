@@ -135,16 +135,44 @@ final class PosAnalyticsRefundNettingTest extends TestCase
 
     public function test_cashier_performance_nets_positive_v4_and_negative_legacy_refunds(): void
     {
+        // Second cashier with a NON-TERMINATING average (10.000 / 3), so the
+        // rounding boundary is exercised rather than an exact integer.
+        $otherCashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        foreach (['3.000', '3.000', '4.000'] as $index => $amount) {
+            $this->createReceipt([
+                'receipt_type' => ReceiptType::Sale,
+                'cashier_id' => $otherCashier->id,
+                'cashier_name' => 'Rounding Cashier',
+                'posted_at' => '2026-03-18 1'.$index.':00:00',
+                'subtotal' => $amount,
+                'tax_amount' => '0.000',
+                'total' => $amount,
+            ]);
+        }
+
         $rows = $this->getJson('/api/v1/pos/analytics/cashiers?from=2026-03-01&to=2026-03-31')
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(1, $rows);
+        $this->assertCount(2, $rows);
+        $this->assertSame('Test Cashier', $rows[0]['cashier_name']);
         $this->assertSame(3, $rows[0]['receipt_count']);
         // 36 − 12 − 6 = 18 (blended SUM would report 42).
         $this->assertSame(0, bccomp($this->money($rows[0]['total_sales']), '18.000', 3), 'total_sales must net both refund sign eras');
         // average stays total_sales / receipt_count = 18 / 3.
         $this->assertSame(0, bccomp($this->money($rows[0]['average_ticket']), '6.00', 2), 'average_ticket must average the netted contribution');
+
+        // Money leaves the service as a fixed-scale DECIMAL STRING — never a
+        // float round-trip, never a variable-width '6' (precision rule 19).
+        $this->assertIsString($rows[0]['average_ticket']);
+        $this->assertSame('6.00', $rows[0]['average_ticket']);
+
+        // 10.000 / 3 = 3.3333… → half-away-from-zero at the display boundary.
+        $this->assertSame('Rounding Cashier', $rows[1]['cashier_name']);
+        $this->assertSame(3, $rows[1]['receipt_count']);
+        $this->assertSame(0, bccomp($this->money($rows[1]['total_sales']), '10.000', 3));
+        $this->assertIsString($rows[1]['average_ticket']);
+        $this->assertSame('3.33', $rows[1]['average_ticket']);
     }
 
     public function test_customer_analytics_nets_positive_v4_and_negative_legacy_refunds(): void
