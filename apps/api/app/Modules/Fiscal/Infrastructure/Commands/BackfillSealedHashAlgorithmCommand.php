@@ -6,6 +6,7 @@ namespace App\Modules\Fiscal\Infrastructure\Commands;
 
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
 use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -31,10 +32,39 @@ use Illuminate\Support\Facades\Log;
  * §6's stated failure discipline: a row where NEITHER algorithm matches, or
  * — a genuine tamper/corruption signal — BOTH match (impossible for a
  * well-formed row, logged as a distinct anomaly), is logged and skipped,
- * never guessed. Once every legacy row for a terminal has been visited
- * (regardless of skips), the terminal's
+ * never guessed. Once every legacy row for a terminal has been visited AND
+ * NONE were skipped, the terminal's
  * `sealed_hash_algorithm_backfill_completed_at` is stamped — §6.3's gate
  * for the verifier's NULL-handling.
+ *
+ * **review round-2 IMPORTANT 13 (a) — chain off each row's OWN STORED
+ * `previous_hash`.** `ReceiptHashService::verifyLegacyArm()` walks a
+ * `is_voided=false, is_training=false`-FILTERED query, so its own running
+ * `$previousHash` variable only ever advances across NON-voided,
+ * NON-training rows. This command's walk previously tracked a running
+ * `$previousHash` across an UNFILTERED query — every legacy row for the
+ * terminal, voided/training included — which can diverge from the
+ * filtered chain the verifier (and, historically, whatever process
+ * originally sealed these `legacy_pipe_v1` rows) actually used, causing a
+ * false skip (or worse, a false match) whenever a voided/training row sits
+ * between two rows being backfilled. Reading each row's OWN
+ * `previous_hash` column directly — the value from when it was originally
+ * sealed — sidesteps reconstructing any filtered walk at all; it is
+ * correct by construction for whatever chaining rule actually applied at
+ * signing time. `SealedHashAlgorithm::CanonicalJsonV3`'s own candidate
+ * computation already read the stored column internally
+ * ({@see V3ReceiptHashComputer::buildInput()})
+ * — only the `LegacyPipeV1` arm was exposed to this mismatch.
+ *
+ * **review round-2 IMPORTANT 13 (b) — withhold the completion stamp when
+ * any row was skipped.** Stamping `sealed_hash_algorithm_backfill_completed_at`
+ * flips `resolveSealedHashAlgorithm()`'s NULL-handling from "assume
+ * legacy_pipe_v1" (pre-completion, §6.3) to "genuine anomaly, fail
+ * closed" (post-completion) for any row STILL null. Stamping completion
+ * while a row remains unresolved would immediately start failing
+ * verification for it with no operator warning. `--force` opts in
+ * explicitly once an operator has reviewed the `sealed_hash_algorithm_backfill_skipped`
+ * log entries and is satisfied treating any remaining nulls as anomalies.
  *
  * Idempotent: re-running only touches rows still `sealed_hash_algorithm IS
  * NULL`; the one-time NULL->value trigger transition
@@ -47,7 +77,8 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
     protected $signature = 'fiscal:backfill-sealed-hash-algorithm
         {--tenant= : restrict tenant iteration to one tenant id}
         {--terminal= : restrict to one pos_terminals.id}
-        {--dry-run : report matching rows without writing anything}';
+        {--dry-run : report matching rows without writing anything}
+        {--force : stamp backfill-complete even when rows were skipped (review round-2 IMPORTANT 13b)}';
 
     /** @var string */
     protected $description = 'Backfill pos_receipts.sealed_hash_algorithm for legacy (fiscal_event_id IS NULL) rows and stamp per-terminal backfill completion.';
@@ -64,18 +95,22 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
         $tenantFilter = $this->stringOption('tenant');
         $terminalFilter = $this->stringOption('terminal');
         $dryRun = $this->option('dry-run') === true;
+        $force = $this->option('force') === true;
 
         $totalWritten = 0;
         $totalSkipped = 0;
         $totalTerminalsCompleted = 0;
+        $totalTerminalsWithheld = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (
             $tenantFilter,
             $terminalFilter,
             $dryRun,
+            $force,
             &$totalWritten,
             &$totalSkipped,
             &$totalTerminalsCompleted,
+            &$totalTerminalsWithheld,
         ): int {
             if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
                 return self::SUCCESS;
@@ -88,12 +123,16 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
                     continue;
                 }
 
-                [$written, $skipped] = $this->backfillTerminal($terminal, $dryRun);
+                [$written, $skipped, $stamped] = $this->backfillTerminal($terminal, $dryRun, $force);
                 $totalWritten += $written;
                 $totalSkipped += $skipped;
 
                 if (! $dryRun) {
-                    $totalTerminalsCompleted++;
+                    if ($stamped) {
+                        $totalTerminalsCompleted++;
+                    } else {
+                        $totalTerminalsWithheld++;
+                    }
                 }
             }
 
@@ -111,19 +150,20 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
         }
 
         $this->info(sprintf(
-            'Backfilled %d legacy pos_receipts row(s); %d logged-and-skipped; %d terminal(s) marked backfill-complete.',
+            'Backfilled %d legacy pos_receipts row(s); %d logged-and-skipped; %d terminal(s) marked backfill-complete; %d terminal(s) withheld (skips present, re-run with --force to stamp anyway).',
             $totalWritten,
             $totalSkipped,
             $totalTerminalsCompleted,
+            $totalTerminalsWithheld,
         ));
 
         return $exit;
     }
 
     /**
-     * @return array{int, int} [writtenCount, skippedCount]
+     * @return array{int, int, bool} [writtenCount, skippedCount, wasStamped]
      */
-    private function backfillTerminal(Terminal $terminal, bool $dryRun): array
+    private function backfillTerminal(Terminal $terminal, bool $dryRun, bool $force): array
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->whereNull('fiscal_event_id')
@@ -132,18 +172,25 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
 
         $written = 0;
         $skipped = 0;
-        $previousHash = null;
 
         foreach ($receipts as $receipt) {
             $receipt->setRelation('terminal', $terminal);
 
             if ($receipt->sealed_hash_algorithm !== null) {
-                // Already backfilled (or freshly sealed post-feature) —
-                // keep the chain-continuity walk moving without rewriting.
-                $previousHash = (string) $receipt->fiscal_hash;
-
+                // Already backfilled (or freshly sealed post-feature) — no
+                // rewrite needed.
                 continue;
             }
+
+            // review round-2 IMPORTANT 13(a) — the row's OWN stored
+            // previous_hash, not a running variable reconstructed across
+            // an is_voided/is_training-UNFILTERED walk (see class docblock).
+            // NULL (the first receipt in the chain) must stay NULL, never
+            // cast to an empty string — calculateHash()/computeHashForAlgorithm()
+            // fall back to the terminal's genesis_seed only when this is a
+            // genuine null, not an empty-string previous hash.
+            /** @var string|null $previousHash */
+            $previousHash = $receipt->previous_hash;
 
             $legacyCandidate = $this->receiptHashService->computeHashForAlgorithm(
                 $receipt,
@@ -168,7 +215,6 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
                     'reason' => $legacyMatches ? 'both_algorithms_matched' : 'neither_algorithm_matched',
                 ]);
                 $skipped++;
-                $previousHash = (string) $receipt->fiscal_hash;
 
                 continue;
             }
@@ -181,16 +227,26 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
             }
 
             $written++;
-            $previousHash = (string) $receipt->fiscal_hash;
         }
 
-        if (! $dryRun) {
+        // review round-2 IMPORTANT 13(b) — withhold the completion stamp
+        // when any row was skipped, unless --force. See class docblock.
+        $shouldStamp = $skipped === 0 || $force;
+
+        if (! $dryRun && $shouldStamp) {
             DB::table('pos_terminals')
                 ->where('id', $terminal->id)
                 ->update(['sealed_hash_algorithm_backfill_completed_at' => now()]);
         }
 
-        return [$written, $skipped];
+        if (! $dryRun && ! $shouldStamp) {
+            Log::warning('sealed_hash_algorithm_backfill_completion_withheld', [
+                'terminal_id' => $terminal->id,
+                'skipped_count' => $skipped,
+            ]);
+        }
+
+        return [$written, $skipped, $dryRun ? false : $shouldStamp];
     }
 
     private function stringOption(string $name): ?string
