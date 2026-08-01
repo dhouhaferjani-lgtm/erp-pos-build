@@ -34,7 +34,7 @@ Revision 4.2 FINAL, on that branch):
 |---|---|
 | §3.1 | **v4 refunds carry POSITIVE magnitudes everywhere**; direction lives in `invoice_type_code` (`REFUND`/`VOID`) and `receipt_type='return'`. **Legacy** returns are stored NEGATIVE. Both populations can coexist in one reporting window. |
 | §3.4 | `refund_destination` is the single literal **`cash`** for launch; `settlement_allocation` is present-and-null. |
-| §3.5 | **Refusal:** any refund — partial *or* full — of an original whose `transaction_discount_amount` is non-zero is REFUSED (whole-receipt discount). **Per-line discounts are refundable** and carry through as a negative-signed `discount_amount` on the refund row. *(Note: this is a WHOLE-RECEIPT discount refusal, not a per-line-discount refusal — the two are frequently confused.)* |
+| §3.5 | **Refusal:** any refund — partial *or* full — of an original whose `transaction_discount_amount` is non-zero is REFUSED (whole-receipt discount). **Per-line discounts:** a **FULL** refund of a per-line-discounted line is refundable (quantity unedited, discount carries through as a negative-signed `discount_amount` on the refund row); a **PARTIAL** refund (quantity edited) of a per-line-discounted line is **REFUSED pre-PIN** — launch does not prorate discounts (typed refusal `refundFlow.discountedPartialRefundRefused`, `refundCheckoutStore.ts`, wave-2 finding 10). *(This is in addition to, and distinct from, the WHOLE-RECEIPT discount refusal above — the two are frequently confused.)* |
 | §3.7 | **Refusal:** refund against a TRAINING original. Distinct from "session is in training mode". |
 | §9.6 | **Refusal:** refund of an original that was not cash-tendered (e.g. card-original) — the cash-only launch payload cannot represent it, so it is refused by the same typed mechanism as any unsupported destination. |
 | §4.4 erratum | Device-side **cumulative-quantity backstop** per `original_line_index`, and a **receipt-level VALUE bound**: Σ\|refunded\| + this attempt ≤ original's **exact** total (`total − cash_rounding_adjustment`). Fails **closed** on unreadable data. |
@@ -42,19 +42,44 @@ Revision 4.2 FINAL, on that branch):
 | §9.3/§9.4 | Two-phase **enable/acknowledge** capability rollout; **>1 device terminal ⇒ refusal** (single-terminal preflight). |
 | §7.3 | Device Z aggregation: refunds do **not** touch gross/net/tax; `refunds_amount` is its own field; VAT breakdown and payment-method breakdown are **subtracted**; `expected_cash` no longer subtracts a separate `cashRefundImpact` term. |
 
-**M2 / M3 tenant settings (in-flight at authoring time).** The **M2 refund velocity ceiling**
-(count and/or value per cashier per window) and the **M3 offline refund threshold** are being
-implemented concurrently and are **not yet present in `dev`** — they were not found in the repo
-during derivation. Their cases below are written with parameterized values:
+**M2 / M3 tenant settings — LANDED on `feat/v3-refund-chain` (about to merge, see §0.1 branch
+premise above).** `CompanyFraudSettings` (`apps/api/app/Modules/Compliance/Domain/CompanyFraudSettings.php`)
+gains three seeded columns, shipped over the **existing** fraud-settings sync channel
+(`/api/v1/pos/fraud-settings` → device `company_fraud_settings_cache`) — no new sync channel. Both
+policies are enforced **pre-PIN, pre-intent** in `beginV4()` (`refundCheckoutStore.ts`), i.e. before
+anything is signed, and **fail closed** on an unreadable row/window/prior-total. Precedence for a
+genuinely absent cached row is the seeded default (byte-identical device fallback constants), never
+zero/blocked — a never-synced terminal must not be bricked by the rollout of this control.
 
-- `{M2_COUNT}` — max refunds per cashier per window before refusal
-- `{M2_VALUE}` — max cumulative refund value per cashier per window before refusal
-- `{M3_THRESHOLD}` — refund value above which an offline (unsynced) refund is refused
-- `{M2_WINDOW}` — the velocity window (day / shift / rolling hours)
+- `{M2_COUNT}` = **5** — `offline_refund_count_ceiling`: max v4 refunds this **terminal** may
+  author in the **current shift** while it holds unsynced fiscal events.
+- `{M2_VALUE}` = **300.000 TND** — `offline_refund_value_ceiling` (stored `300.0000`, displays/
+  compares at the tenant currency scale, 3 for TND): max cumulative v4 refund payout for that same
+  terminal/shift/unsynced window.
+- `{M2_WINDOW}` = **current shift while the device holds unsynced fiscal events** — mirrors
+  `zReportService`'s shift-boundary anchor (`hash_sequence`, wall-clock only for pre-anchor legacy
+  shifts) so a clock rollback cannot shrink the window and raise the ceiling. A drained sync queue
+  stands the ceiling down entirely (§12's server cap is blind only while the queue is non-empty).
+  **Not** a per-cashier ceiling — it is per terminal.
+- `{M3_THRESHOLD}` = **100.000 TND** — `online_required_refund_threshold`: a single v4 refund above
+  this value started while the device is **offline** is refused at `begin()`. A refund **equal** to
+  the threshold is allowed. The same refund is permitted once the terminal is online (proves the
+  refusal is offline-specific, not a blanket cap).
+- **M3 is also a PIN-verification requirement, not only a start-time gate.** Above the threshold,
+  the manager PIN must be **server-verified** (B7's primary path), never approved from the local PIN
+  cache — this closes a TOCTOU gap found in the same wave: connectivity was read once at `begin()`,
+  but the PIN is verified later, so a link drop **during PIN entry** could downgrade to the offline
+  cache for an above-threshold payout. Fixed via a `requireServerVerifiedPin` flag computed from the
+  amount alone at `begin()` (independent of the connectivity reading), threaded to
+  `verifyScopedManagerPin()`, which throws `ServerVerifiedPinRequiredError` instead of falling back —
+  refusal happens **before** the approval/override events are authored, so nothing is signed on the
+  refused path. See the new edge case in §Z (POSC-25a).
 
-**Executor action before running MTP-RFP-* / MTP-RFD-*:** locate the real setting keys, defaults,
-units and typed error codes, record them in §1.5, and substitute. If the settings did not land,
-mark those cases `BLOCKED — feature not deployed`, never `PASS`.
+Numbers are tenant settings, not fixed constants — no citable industry-standard figures exist for
+this exact mechanism (justification: `docs/sessions/LANE-C-m2-m3-report.md`, analogous to Oracle
+NetSuite/Shopify/Lightspeed/Square offline-refund controls, magnitudes anchored on the 2026 Tunisian
+SMIG). Confirm the deployed values still match the defaults above before running MTP-RFD-24..27 —
+if a tenant-specific override was set on the target company, record the actual value in §1.5 instead.
 
 Note the **already-shipped** refund-policy settings which are NOT M2/M3 and which DO exist today
 (`ReservationSettings`, exercised via Settings → POS Refund Policies): `daily_refund_cap_per_cashier`
@@ -188,10 +213,10 @@ everyone. Consequences for this campaign:
 
 | Parameter | Resolved value | Source |
 |---|---|---|
-| `{M2_COUNT}` | | |
-| `{M2_VALUE}` | | |
-| `{M2_WINDOW}` | | |
-| `{M3_THRESHOLD}` | | |
+| `{M2_COUNT}` | `5` (seeded default — confirm not overridden on the target tenant) | `company_fraud_settings.offline_refund_count_ceiling` |
+| `{M2_VALUE}` | `300.000` TND (seeded default `300.0000`) | `company_fraud_settings.offline_refund_value_ceiling` |
+| `{M2_WINDOW}` | current shift, only while the terminal holds unsynced fiscal events (per-terminal, not per-cashier) | `beginV4()` shift-boundary logic, mirrors `zReportService` |
+| `{M3_THRESHOLD}` | `100.000` TND (seeded default `100.0000`) | `company_fraud_settings.online_required_refund_threshold` |
 | Cash rounding denomination | | PF-7 |
 | Standard VAT rate(s) in use | | Settings → Tax |
 | Company currency scale | | `getDecimals({{CURRENCY_A}})` |
@@ -338,7 +363,7 @@ refund (if any exists), and 1 cash-rounded receipt.
 | §H | `LOY` | 16 | 3 | 13 | 1 | 12 | 3 |
 | §I | `MLC` `ISO` `I18N` `PERM` `CONC` `EMPTY` | 51 | 4 | 47 | 23 | 25 | 3 |
 | **TOTAL (web / Playwright)** | | **427** | **69** | **358** | **192** | **214** | **21** |
-| §Z | POS desktop (computer-use) | **62 items** | — | — | — | — | — |
+| §Z | POS desktop (computer-use) | **64 items** | — | — | — | — | — |
 
 **On the size.** This came out larger than a feature-list estimate would suggest, because coverage
 was derived from the code: treasury instruments, bank reconciliation, and the receipt_type-aware
@@ -1109,10 +1134,10 @@ every line `disposition = 'restock'`. Legacy returns are **negative**. Drawer le
 | MTP-RFD-21 | EDGE | P0 | chart of accounts missing `RefundWriteOff` or `SalesReturn` | Same command | **Refused** — preflight 3; nothing mutates |
 | MTP-RFD-22 | HAPPY | P0 | all three preflights satisfiable | Run with `--dry-run`, then for real | Dry run reports the plan and mutates nothing; the real run enables authoring (phase 1 "offer"); phase 2 acknowledgement is written by the **device's own sync round-trip**, not by this command |
 | MTP-RFD-23 | EDGE | P0 | v4 authoring NOT yet acknowledged on the terminal | §Z: attempt a v4 refund | Typed refusal whose copy **must not** say "use the legacy path" (spec §9.4 corrected copy) |
-| MTP-RFD-24 | EDGE | P1 | `{M2_COUNT}` / `{M2_VALUE}` / `{M2_WINDOW}` settings deployed | Author `{M2_COUNT}` refunds by one cashier inside `{M2_WINDOW}`, then one more | The `{M2_COUNT}+1`-th is **refused** with the M2 typed error. **If the setting is not deployed (its state at authoring time), mark `BLOCKED — feature not deployed`.** Record the real key/error code in §1.5. |
-| MTP-RFD-25 | EDGE | P1 | as 24 | Author refunds summing to exactly `{M2_VALUE}`, then one more millime | Value ceiling is **inclusive** at `{M2_VALUE}` and refuses above it — confirm which side the boundary falls on and record it |
-| MTP-RFD-26 | EDGE | P1 | `{M3_THRESHOLD}` deployed; terminal **offline** | Attempt an offline refund of exactly `{M3_THRESHOLD}`, then of `{M3_THRESHOLD}` + one millime | At/below threshold allowed offline; above it **refused** while offline and permitted once online. `BLOCKED` if not deployed. |
-| MTP-RFD-27 | EDGE | P1 | `{M3_THRESHOLD}` deployed | Same above-threshold refund with the terminal **online** | Allowed — proves the refusal is offline-specific, not a blanket cap |
+| MTP-RFD-24 | EDGE | P1 | `{M2_COUNT} = 5` (confirm not overridden — §1.5); terminal holds unsynced fiscal events | §Z: author `5` v4 refunds on the same terminal inside the current shift, then attempt a `6`th | The `6`th is **refused** pre-PIN with `refundFlow.offlineRefundCountCeilingReached`; the drafted intent for the first 5 is unaffected. If the deployed default has been overridden on the target tenant, substitute the real value and record it in §1.5 — do not mark `BLOCKED`, the feature is live on `feat/v3-refund-chain` at merge. |
+| MTP-RFD-25 | EDGE | P1 | as 24, fresh shift; `{M2_VALUE} = 300.000` TND | §Z: author v4 refunds summing to exactly `300.000` TND, then attempt one more refund of `0.001` TND | The ceiling is **inclusive**: cumulative payout `= 300.000` succeeds (the check is `already + this > ceiling`, strict); the next refund of any positive value is **refused** with `refundFlow.offlineRefundValueCeilingReached`. |
+| MTP-RFD-26 | EDGE | P1 | `{M3_THRESHOLD} = 100.000` TND; terminal **offline** | §Z: attempt an offline refund of exactly `100.000` TND, then of `100.001` TND | `100.000` is allowed offline (threshold is inclusive — refusal fires only above it); `100.001` is **refused** at `begin()` with `refundFlow.largeRefundRequiresOnline`, before any PIN is spent. |
+| MTP-RFD-27 | EDGE | P1 | as 26, terminal **online** | §Z: attempt the same `100.001` TND refund with connectivity restored | Allowed to start, but its manager PIN must be **server-verified** (`requireServerVerifiedPin`) — a genuinely offline server response at PIN-entry time throws `ServerVerifiedPinRequiredError` instead of falling back to the local PIN cache; the refusal happens before `authorPosOverride()`, so nothing is signed. See the link-drop-during-PIN-entry edge case in §Z (POSC-25a). |
 
 ### F.6 `AGG` — receipt_type-aware aggregates (the v4-positive-refund consumer gate)
 
@@ -1504,6 +1529,7 @@ parallel with W5–W7. Z.10 runs immediately before §Y.
 | POSC-11 | **Happy v4 refund**: full refund of a cash-tendered original, manager PIN approval (`verifyScopedManagerPin`, scope `void_or_return_override`) — PIN is **unconditional** on the v4 path, not threshold-gated. Verify the paired approval + override fiscal events are authored. |
 | POSC-12 | **Partial refund** by line/quantity; verify the refund's positive magnitudes and that the residual quantity remains refundable. |
 | POSC-13 | **Refusal — whole-receipt discount** (R6): `WholeReceiptDiscountRefundRefusedError`, i18n `refundFlow.wholeDiscountReceiptRefused`, fired at `resolveOriginalFiscalEventLocally()` **before** any PIN is spent. Verify for **both** partial and full line selections. |
+| POSC-13a | **Refusal — PARTIAL refund of a per-line-discounted line** (R4, wave-2 finding 10, fiscal I-1): edit the return quantity down on a per-line-discounted line and attempt to refund it → refused pre-PIN with `refundFlow.discountedPartialRefundRefused` (`refundCheckoutStore.ts`, before `createOrReuseActiveRefundIntent`), nothing signed. Then verify a **FULL**-quantity refund of the SAME line (R4 unedited) **is** refundable — confirms the refusal is proration-scoped, not a blanket per-line-discount ban. |
 | POSC-14 | **Refusal — non-cash original** (R7): `NonCashOriginalRefundRefusedError`, i18n `refundFlow.nonCashOriginalRefused`. Verify it also fires for a **mixed** cash+card original, an empty payments array, and a malformed payments array (**fail closed**). Payment-method match is case-insensitive `'CASH'` and must be exactly **one** leg. |
 | POSC-15 | **Refusal — training original** (R11): `TrainingOriginalRefundRefusedError`, read from the **original's own signed** `training_flag`. Then verify a **non**-training original **is** refundable while the session is in training mode (non-conflation). |
 | POSC-16 | **Per-line cumulative backstop**: refund 1 of 2 units, then attempt 2 more → refused. Verify it sums across every `refund_intents` row in a state proving a fiscal event was appended (`refund_event_appended` / `synced`). |
@@ -1515,7 +1541,8 @@ parallel with W5–W7. Z.10 runs immediately before §Y.
 | POSC-22 | **Refund while offline**, then sync: the refund's fiscal event chains correctly and the server projection produces a POSITIVE-total `receipt_type='return'` row. |
 | POSC-23 | **Restock disposition**: every launch refund line defaults to `restock`; a **regulated / never-restock** product is **not** restocked (`RestockPolicyResolver` `Never` overrides the payload). Damaged goods **will** restock — known limitation. |
 | POSC-24 | **Capability rollout**: with authoring **not yet acknowledged**, a v4 refund attempt shows the typed refusal whose copy must **not** say "use the legacy path". Then run the two-phase enable → device sync acknowledgement → refund succeeds. |
-| POSC-25 | **`{M2_COUNT}` / `{M2_VALUE}` velocity ceiling** and **`{M3_THRESHOLD}` offline threshold** refusals — if and only if those settings are deployed. Cover: at-limit accepted, over-limit refused, and (for M3) the same refund permitted once **online**. If not deployed, record `BLOCKED — feature not deployed`. |
+| POSC-25 | **M2 velocity ceiling** (`{M2_COUNT}=5` refunds / `{M2_VALUE}=300.000` TND per shift while unsynced) and **M3 offline threshold** (`{M3_THRESHOLD}=100.000` TND) refusals — LANDED, `company_fraud_settings`. Cover: at-limit accepted (5th refund / cumulative `300.000` succeed), over-limit refused (`refundFlow.offlineRefundCountCeilingReached` / `refundFlow.offlineRefundValueCeilingReached`), M3 at-threshold (`100.000`) allowed offline, above-threshold (`100.001`) refused offline (`refundFlow.largeRefundRequiresOnline`) and the same refund permitted once **online**. Confirm the deployed defaults on the target tenant match before asserting exact numbers — substitute if overridden, do not mark `BLOCKED`. |
+| POSC-25a | **M3 TOCTOU refusal — link drop DURING PIN entry** (I-1 fix, `f6a418720`): start an above-`{M3_THRESHOLD}` refund while online (so `requireServerVerifiedPin=true` is set at `begin()`), then drop connectivity **after** `begin()` but **during** manager-PIN entry, before the server round trip resolves. Expected: `verifyScopedManagerPin()` throws `ServerVerifiedPinRequiredError` (`refundFlow.largeRefundRequiresOnline` copy) rather than silently falling back to the device-local PIN cache; the refusal fires **before** `authorPosOverride()`, so **no approval or override fiscal event is ever signed** — verify nothing is appended to the local chain and the intent stays resumable (retry once back online costs no second PIN entry beyond the one already refused). |
 
 ### Z.4 — Z close offline (and the X/EOD path)
 
@@ -1589,7 +1616,9 @@ parallel with W5–W7. Z.10 runs immediately before §Y.
 | POSC-61 | Force a full sync; confirm zero pending items in the device outbox and zero dead-lettered projections attributable to the campaign (other than those deliberately created by POSC-19). |
 | POSC-62 | Record the terminal's final sequence number, last hash, and Z-number so §Y can verify the exact expected chain length. |
 
-**§Z totals: 62 coverage items across 10 groups.**
+**§Z totals: 64 coverage items across 10 groups** (62 original + POSC-13a discount-partial-refusal +
+POSC-25a M3 TOCTOU link-drop, both added 2026-08-01 once M2/M3 and the discount-refund correction
+landed).
 
 <!-- SECTION-Z-END -->
 
