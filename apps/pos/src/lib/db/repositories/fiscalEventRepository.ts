@@ -133,6 +133,20 @@ export async function updateFiscalEventSyncStatus(
 }
 
 /**
+ * Round-2 fix (finding 11 residual) — the refund's OWN appended fiscal
+ * event, by primary key. Used to VERIFY a reused, already-appended
+ * intent's linkage before routing it to payout/print recovery: a
+ * non-empty id column is not proof the event exists, nor that it belongs
+ * to this intent.
+ */
+export async function getFiscalEventById(
+  db: Database,
+  id: string,
+): Promise<LocalFiscalEvent | null> {
+  return queryOne<LocalFiscalEvent>(db, 'SELECT * FROM fiscal_events WHERE id = $1', [id]);
+}
+
+/**
  * v3-refund-chain-integration spec §3.5/§3.7/§4.1 — the ORIGINAL sale's own
  * signed fields the device-side refund flow refuses against BEFORE any
  * approval authoring or payload construction: `line_items[]`/`payments[]`

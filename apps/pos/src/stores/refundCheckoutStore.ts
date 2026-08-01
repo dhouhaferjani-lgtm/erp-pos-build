@@ -97,12 +97,15 @@ import { useRefundReconciliationStore } from '@/stores/refundReconciliationStore
 import { resolveSellerIdentity } from '@/lib/fiscal/sellerIdentity';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import {
+  getFiscalEventById,
   resolveOriginalFiscalEventLocally,
   type OriginalFiscalEventLocalView,
 } from '@/lib/db/repositories/fiscalEventRepository';
 import {
+  computeLineSnapshotFingerprint,
   createOrReuseActiveRefundIntent,
   ensureApprovalAuthored,
+  findActiveRefundIntent,
   getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
@@ -845,6 +848,53 @@ async function beginV4(
     return;
   }
 
+  // ── Round-2 fix (finding 11 residual, both re-review arms converged) —
+  //    resolve and BRANCH ON the reused intent's state BEFORE computing
+  //    any cap refusal.
+  //
+  //    The cumulative-quantity cap counts every intent that has reached a
+  //    state proving an append, INCLUDING the one about to be reused. So
+  //    for a FULL-quantity refund that was already appended, the cap saw
+  //    `alreadyRefunded (full) + thisAttempt (full) > originalQuantity`
+  //    and refused with `refundQuantityExceeded` — a message naming a
+  //    cause that does not exist — before reuse was ever discovered, so
+  //    the intended `refundAlreadyAppended` route and its
+  //    `useRefundReconciliationStore.refresh()` never ran. The operator
+  //    was told they were over-refunding when in fact the refund was
+  //    already done and merely needed payout/print reconciliation.
+  //
+  //    The lookup here is READ-ONLY and uses the SAME key
+  //    `createOrReuseActiveRefundIntent()` scopes below, so the row found
+  //    now is the row reused later.
+  const lineSnapshotFingerprint = await computeLineSnapshotFingerprint(lineSnapshot);
+  const existingIntent = await findActiveRefundIntent(
+    input.db,
+    originalLocalReceiptId,
+    lineSnapshotFingerprint,
+  );
+  if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
+
+  let recoveredApproval: PosOverrideEvidence | null = null;
+  if (existingIntent !== null) {
+    const resumed = await resumeReusedIntent(input.db, companyIdForResume(), existingIntent);
+    if (get().epoch !== epoch) return;
+    if (resumed.outcome === 'refuse') {
+      set({
+        step: 'idle',
+        error: { key: resumed.errorKey, serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      if (resumed.showReconciliation) {
+        // The refund IS done — surface the payout/reprint prompt the
+        // reconciliation modal owns instead of pretending the flow can
+        // start over.
+        useRefundReconciliationStore.getState().refresh();
+      }
+      return;
+    }
+    recoveredApproval = resumed.approval;
+  }
+
   // Orchestrator-ruled (required) — device-local cumulative-quantity
   // BACKSTOP (§12's server-side FOR UPDATE lock stays the sole
   // cross-terminal authority; this is a single-device belt). Sums the
@@ -973,7 +1023,7 @@ async function beginV4(
     }
   }
 
-  const { intent, reused } = await createOrReuseActiveRefundIntent(input.db, {
+  const { intent } = await createOrReuseActiveRefundIntent(input.db, {
     id: crypto.randomUUID(),
     terminalId: terminal.id,
     operatorId: operator.id,
@@ -984,30 +1034,6 @@ async function beginV4(
     overrideSourceEventId: crypto.randomUUID(),
   });
   if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
-
-  // ── Wave-2 fix-wave finding 11 (fiscal I-2 + codex M-3) — a REUSED
-  //    intent is resumed from the state it is actually in, never replayed
-  //    from the top.
-  let recoveredApproval: PosOverrideEvidence | null = null;
-  if (reused) {
-    const resumed = await resumeReusedIntent(input.db, companyIdForResume(), intent);
-    if (get().epoch !== epoch) return;
-    if (resumed.outcome === 'refuse') {
-      set({
-        step: 'idle',
-        error: { key: resumed.errorKey, serverMessage: null },
-        refundItemsSnapshot: null,
-      });
-      if (resumed.showReconciliation) {
-        // The refund IS done — surface the payout/reprint prompt the
-        // reconciliation modal owns instead of pretending the flow can
-        // start over.
-        useRefundReconciliationStore.getState().refresh();
-      }
-      return;
-    }
-    recoveredApproval = resumed.approval;
-  }
 
   // v4 is cash-only at launch (§3.4) — the destination step is skipped
   // entirely; 'cash' is stamped programmatically, never chosen in a picker.
@@ -1121,13 +1147,40 @@ async function resumeReusedIntent(
       });
       return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
     }
-    // Verify the linked local receipt exists (§7.2: keyed by
-    // `offline_receipts.idempotency_key = refund_intents.id`) — that row
-    // is what the AVOIR reprint reads.
-    const linkedReceipt = await getOfflineReceiptByIdempotencyKey(db, intent.id);
-    if (linkedReceipt === null) {
-      console.error('[refundCheckout] reused intent has an appended fiscal event but no linked offline_receipts row', {
+    // Round-2 (finding 11 residual): verify the linkage for real, not just
+    // that an id column is non-empty. The fiscal event must EXIST and must
+    // be sourced from THIS intent (§4.3: `source_event_class =
+    // 'refund_intents'`, `source_event_id = refund_intents.id`), and the
+    // local receipt must exist (§7.2: keyed by
+    // `offline_receipts.idempotency_key = refund_intents.id`) AND carry
+    // the SAME canonical bytes the writer took from that append result.
+    // Anything less can route a corrupt row into payout/print recovery,
+    // where the AVOIR reprint would read a receipt that does not
+    // correspond to the signed event.
+    const linkedEvent = await getFiscalEventById(db, intent.refund_fiscal_event_id);
+    if (
+      linkedEvent === null
+      || linkedEvent.source_event_class !== 'refund_intents'
+      || linkedEvent.source_event_id !== intent.id
+    ) {
+      console.error('[refundCheckout] reused intent references a fiscal event that is missing or not sourced from it', {
         intentId: intent.id,
+        refundFiscalEventId: intent.refund_fiscal_event_id,
+        found: linkedEvent !== null,
+      });
+      return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
+    }
+
+    const linkedReceipt = await getOfflineReceiptByIdempotencyKey(db, intent.id);
+    if (
+      linkedReceipt === null
+      || linkedReceipt.idempotency_key !== intent.id
+      || linkedReceipt.canonical_bytes !== linkedEvent.canonical_bytes
+    ) {
+      console.error('[refundCheckout] reused intent has an appended fiscal event but no matching offline_receipts row', {
+        intentId: intent.id,
+        found: linkedReceipt !== null,
+        bytesMatch: linkedReceipt?.canonical_bytes === linkedEvent.canonical_bytes,
       });
       return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
     }

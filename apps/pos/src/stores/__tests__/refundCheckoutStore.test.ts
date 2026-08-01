@@ -62,11 +62,20 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
   resolveOriginalFiscalEventLocally: vi.fn(),
+  // Round-2 (finding 11 residual): the appended-intent linkage check now
+  // verifies the fiscal event EXISTS and is sourced from this intent.
+  getFiscalEventById: vi.fn(),
 }));
 vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
   createOrReuseActiveRefundIntent: vi.fn(),
   ensureApprovalAuthored: vi.fn().mockResolvedValue(undefined),
   getCumulativeRefundedQuantityByOriginalLine: vi.fn().mockResolvedValue(new Map()),
+  // Round-2 (finding 11 residual): reuse is now resolved BEFORE the caps,
+  // via a read-only lookup on the same key. The REAL interleaving is
+  // exercised in refundCheckoutStore.reuseOrdering.test.ts (real SQLite,
+  // real cap) — this suite stays an orchestration test.
+  computeLineSnapshotFingerprint: vi.fn().mockResolvedValue('fp-1'),
+  findActiveRefundIntent: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   getTerminalState: vi.fn().mockResolvedValue(null),
@@ -94,10 +103,14 @@ vi.mock('@/lib/db/repositories/localRefundRecordRepository', () => ({
 }));
 
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
-import { resolveOriginalFiscalEventLocally } from '@/lib/db/repositories/fiscalEventRepository';
+import {
+  getFiscalEventById,
+  resolveOriginalFiscalEventLocally,
+} from '@/lib/db/repositories/fiscalEventRepository';
 import {
   createOrReuseActiveRefundIntent,
   ensureApprovalAuthored,
+  findActiveRefundIntent,
   getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
@@ -873,6 +886,13 @@ describe('refundCheckoutStore — v4 flow', () => {
     vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
     vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
     vi.mocked(ensureApprovalAuthored).mockResolvedValue(undefined);
+    vi.mocked(findActiveRefundIntent).mockResolvedValue(null);
+    vi.mocked(getFiscalEventById).mockResolvedValue({
+      id: 'fe-v4-refund-1',
+      source_event_class: 'refund_intents',
+      source_event_id: 'refund-intent-1',
+      canonical_bytes: '{"payload":{}}',
+    } as never);
     vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
       intent: v4RefundIntent(),
       reused: false,
@@ -1002,14 +1022,15 @@ describe('refundCheckoutStore — v4 flow', () => {
      */
     describe('finding 11 — reused-intent resume', () => {
       it('an already-APPENDED intent routes to reconciliation instead of replaying the flow', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({
             state: 'refund_event_appended',
             refund_fiscal_event_id: 'fe-v4-refund-1',
-          }),
-          reused: true,
-        });
-        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue({ id: 'offline-receipt-1' } as never);
+          }));
+        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue({
+          id: 'offline-receipt-1',
+          idempotency_key: 'refund-intent-1',
+          canonical_bytes: '{"payload":{}}',
+        } as never);
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
 
@@ -1025,13 +1046,10 @@ describe('refundCheckoutStore — v4 flow', () => {
       });
 
       it('an APPENDED intent with NO linked offline_receipts row fails closed (corrupt linkage)', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({
             state: 'refund_event_appended',
             refund_fiscal_event_id: 'fe-v4-refund-1',
-          }),
-          reused: true,
-        });
+          }));
         vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
@@ -1042,10 +1060,7 @@ describe('refundCheckoutStore — v4 flow', () => {
       });
 
       it('an APPENDED intent with no fiscal event id fails closed (never retries the append)', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({ state: 'refund_event_appended', refund_fiscal_event_id: null }),
-          reused: true,
-        });
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'refund_event_appended', refund_fiscal_event_id: null }));
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
 
@@ -1054,10 +1069,7 @@ describe('refundCheckoutStore — v4 flow', () => {
       });
 
       it('an APPROVAL_AUTHORED intent resumes with the RECOVERED approval — no second manager PIN', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({ state: 'approval_authored' }),
-          reused: true,
-        });
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'approval_authored' }));
         vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(v4ApprovalEvidence);
         const items = [v4ReturnItem()];
         useCartStore.setState({ items });
@@ -1078,10 +1090,7 @@ describe('refundCheckoutStore — v4 flow', () => {
       });
 
       it('an APPROVAL_AUTHORED intent whose approval is NOT locally recoverable fails closed', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({ state: 'approval_authored' }),
-          reused: true,
-        });
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'approval_authored' }));
         vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
@@ -1093,10 +1102,7 @@ describe('refundCheckoutStore — v4 flow', () => {
       });
 
       it('a reused DRAFTED intent takes the ordinary path, unchanged', async () => {
-        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
-          intent: v4RefundIntent({ state: 'drafted' }),
-          reused: true,
-        });
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'drafted' }));
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
 
