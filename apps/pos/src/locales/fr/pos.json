@@ -177,6 +177,17 @@
       "subtitle": "Un responsable doit autoriser ce remboursement.",
       "confirm": "Autoriser le remboursement",
       "submitting": "Traitement…"
+    },
+    "reconciliation": {
+      "confirmTitle": "Confirmer le versement du remboursement",
+      "confirmBody": "{{amount}} en espèces ont-ils bien été remis pour ce remboursement ?",
+      "confirmBodyNoAmount": "L'argent liquide a-t-il bien été remis pour ce remboursement ?",
+      "yes": "Oui",
+      "notSure": "Non / Pas sûr",
+      "reprintTitle": "Réimprimer le ticket de remboursement",
+      "reprintBody": "Ce remboursement a été confirmé mais le ticket n'a jamais été imprimé — l'imprimer maintenant ?",
+      "print": "Imprimer",
+      "skip": "Ignorer"
     }
   },
   "receiptLocator": {

@@ -409,7 +409,7 @@ import { HomePage } from '../HomePage';
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('HomePage — v3-refund-chain-integration §9.2 dispatch-seam capability gate', () => {
+describe('HomePage — v3-refund-chain-integration §9.2/§9.3 dispatch-seam capability routing', () => {
   beforeEach(() => {
     seedStores();
     decidePayInterceptionMock.mockReturnValue('start-refund');
@@ -417,7 +417,12 @@ describe('HomePage — v3-refund-chain-integration §9.2 dispatch-seam capabilit
     beginMock.mockClear();
   });
 
-  it('refuses with the §9.4 typed copy and never drafts a refund when the capability is disabled', async () => {
+  // ⚖️ orchestrator ruling (settle-seam extension): the capability gate
+  // ROUTES between the legacy and v4 flows, it does NOT refuse — the two
+  // flows coexist behind the flag exactly as §9.3's two-phase rollout
+  // intends. A non-acknowledged terminal keeps using the legacy `/return`
+  // path (v4CapabilityEnabled: false), unchanged.
+  it('§9.3: routes to the LEGACY flow (v4CapabilityEnabled: false) when the capability is disabled', async () => {
     getV4RefundAuthoringEnabledMock.mockResolvedValue(false);
     render(<HomePage />);
 
@@ -434,12 +439,17 @@ describe('HomePage — v3-refund-chain-integration §9.2 dispatch-seam capabilit
     });
 
     await waitFor(() => {
-      expect(screen.getByText('pos:refundFlow.capabilityUnavailable')).toBeInTheDocument();
+      expect(beginMock).toHaveBeenCalledOnce();
     });
-    expect(beginMock).not.toHaveBeenCalled();
+    expect(beginMock).toHaveBeenCalledWith(
+      expect.objectContaining({ v4CapabilityEnabled: false }),
+    );
+    // The refusal copy is NOT shown — a disabled capability is a routing
+    // decision, not a refusal.
+    expect(screen.queryByText('pos:refundFlow.capabilityUnavailable')).not.toBeInTheDocument();
   });
 
-  it('proceeds to begin() when the capability is enabled', async () => {
+  it('§9.2: routes to the v4 flow (v4CapabilityEnabled: true) with the original receipt id when enabled', async () => {
     getV4RefundAuthoringEnabledMock.mockResolvedValue(true);
     render(<HomePage />);
 
@@ -456,6 +466,12 @@ describe('HomePage — v3-refund-chain-integration §9.2 dispatch-seam capabilit
     await waitFor(() => {
       expect(beginMock).toHaveBeenCalledOnce();
     });
+    expect(beginMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        v4CapabilityEnabled: true,
+        originalLocalReceiptId: activeDraft.receiptUuid,
+      }),
+    );
     expect(screen.queryByText('pos:refundFlow.capabilityUnavailable')).not.toBeInTheDocument();
   });
 

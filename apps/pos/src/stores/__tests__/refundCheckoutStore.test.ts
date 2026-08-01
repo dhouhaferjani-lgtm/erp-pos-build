@@ -21,6 +21,11 @@ import {
 } from '@/lib/refundFlow/refundApproval';
 import type { CartItem } from '@/types/cart';
 import { useCartStore } from '@/stores/cartStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useTerminalStore } from '@/stores/terminalStore';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { usePaymentStore } from '@/stores/paymentStore';
+import { useRefundReconciliationStore } from '@/stores/refundReconciliationStore';
 import { useRefundCheckoutStore } from '../refundCheckoutStore';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
 
@@ -48,7 +53,39 @@ vi.mock('@/lib/refundFlow/refundZAccounting', () => ({
   recordRefundSettlementForZ: vi.fn(),
 }));
 
+// v3-refund-chain-integration spec §9.2/§9.3 — the v4 branch's own
+// dependencies, mocked so this file stays a pure orchestration test (the
+// individual pieces have their own unit tests: refundApprovalV3.test.ts,
+// refundReceiptService.test.ts, refundIntentRepository.test.ts).
+vi.mock('@/lib/db', () => ({
+  getDatabase: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
+  resolveOriginalFiscalEventLocally: vi.fn(),
+}));
+vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
+  createOrReuseActiveRefundIntent: vi.fn(),
+  markApprovalAuthored: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
+  getTerminalState: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/offline/refundReceiptService', () => ({
+  createRefundReceipt: vi.fn(),
+}));
+vi.mock('@/lib/refundFlow/refundApprovalV3', () => ({
+  authorRefundReturnApprovalV3: vi.fn(),
+}));
+
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
+import { resolveOriginalFiscalEventLocally } from '@/lib/db/repositories/fiscalEventRepository';
+import {
+  createOrReuseActiveRefundIntent,
+  markApprovalAuthored,
+  type RefundIntentRow,
+} from '@/lib/db/repositories/refundIntentRepository';
+import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
+import { authorRefundReturnApprovalV3 } from '@/lib/refundFlow/refundApprovalV3';
 
 const fakeDb = {} as Database;
 const NO_RETRY = { maxRetries: 0, backoffMs: 0 };
@@ -147,6 +184,11 @@ function beginInput(items: CartItem[] = [returnItem()]) {
     receiptNumber: RECEIPT_NUMBER,
     refundItems: items,
     retry: NO_RETRY,
+    // v3-refund-chain-integration spec §9.2/§9.3 — this ENTIRE file tests
+    // the LEGACY path, which must stay byte-intact. false routes begin()
+    // to the unchanged legacy branch; the v4 branch has its own test
+    // block further down.
+    v4CapabilityEnabled: false,
   };
 }
 
@@ -662,5 +704,313 @@ describe('refundCheckoutStore — abort & failure paths', () => {
     expect(consoleError).toHaveBeenCalled();
     expect(apiPost).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+// ─── v4 flow (v3-refund-chain-integration §9.2/§9.3) ────────────────────────
+//
+// The legacy suite above stays byte-intact (v4CapabilityEnabled: false in
+// every fixture). These tests exercise the NEW branch, discriminated by
+// v4CapabilityEnabled: true — purely local original resolution (no server
+// round trip), the §3.5/§3.7 lookup-level refusals, refund_intents
+// drafting, and settling via createRefundReceipt's atomic append-first
+// write instead of an HTTP POST.
+describe('refundCheckoutStore — v4 flow', () => {
+  const V4_ORIGINAL_LOCAL_RECEIPT_ID = 'orig-receipt-uuid-1';
+  const V4_ORIGINAL_FISCAL_EVENT_ID = 'fe-original-1';
+  const V4_TERMINAL_ID = 'terminal-1';
+  const V4_OPERATOR_ID = 'operator-1';
+
+  function v4ReturnItem(overrides: Partial<CartItem> = {}): CartItem {
+    return {
+      id: `return-${V4_ORIGINAL_LOCAL_RECEIPT_ID}-0`,
+      product: { id: 'prod-1', name: 'Widget A', sku: 'PROD-001', price: '10.0000' },
+      quantity: -2,
+      unit_price: '10.0000',
+      line_total: '-20.0000',
+      tax_rate: '19.00',
+      tax_amount: '-3.8000',
+      kind: 'return',
+      ...overrides,
+    };
+  }
+
+  function v4OriginalView(overrides: Record<string, unknown> = {}) {
+    return {
+      fiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+      lineItems: [{ product_id: 'prod-1', quantity: '2.000', line_total: '20.000' }],
+      payments: [{ method_code: 'CASH', amount: '20.000' }],
+      trainingFlag: false,
+      transactionDiscountAmount: '0',
+      ...overrides,
+    };
+  }
+
+  function v4RefundIntent(overrides: Partial<RefundIntentRow> = {}): RefundIntentRow {
+    return {
+      id: 'refund-intent-1',
+      terminal_id: V4_TERMINAL_ID,
+      operator_id: V4_OPERATOR_ID,
+      original_local_receipt_id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+      original_fiscal_event_id: V4_ORIGINAL_FISCAL_EVENT_ID,
+      line_snapshot_json: JSON.stringify([{ originalLineIndex: 0 }]),
+      line_snapshot_fingerprint: 'fp-1',
+      approval_source_event_id: 'approval-src-1',
+      override_source_event_id: 'override-src-1',
+      refund_fiscal_event_id: null,
+      state: 'drafted',
+      payout_confirmed_at: null,
+      payout_disputed_at: null,
+      printed_at: null,
+      created_at: '2026-07-31T10:00:00Z',
+      updated_at: '2026-07-31T10:00:00Z',
+      ...overrides,
+    };
+  }
+
+  const v4ApprovalEvidence = {
+    approval_id: 'v4-approval-uuid',
+    approval_event_id: 'fe-v4-approval-1',
+    approval_scope: 'void_or_return_override' as const,
+    override_event_id: 'fe-v4-override-1',
+    policy_version: 'pos-refund-v4-void-return-policy-v1',
+    supervisor_user_id: 'manager-9',
+    target_reference_id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+  };
+
+  const v4CreateReceiptResult = {
+    fiscalEvent: { id: 'fe-v4-refund-1' } as never,
+    offlineReceiptId: 'offline-receipt-1',
+    receiptNumber: 'MAIN-T01-2026-00000007',
+  };
+
+  function v4BeginInput(items: CartItem[] = [v4ReturnItem()]) {
+    return {
+      db: fakeDb,
+      receiptToken: null,
+      receiptNumber: RECEIPT_NUMBER,
+      refundItems: items,
+      v4CapabilityEnabled: true,
+      originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+    };
+  }
+
+  async function v4WalkToApproval(items: CartItem[] = [v4ReturnItem()]) {
+    useCartStore.setState({ items });
+    await useRefundCheckoutStore.getState().begin(v4BeginInput(items));
+    useRefundCheckoutStore.getState().confirmAccepted();
+    expect(useRefundCheckoutStore.getState().step).toBe('approval');
+  }
+
+  beforeEach(() => {
+    useAuthStore.setState({
+      companyId: 'company-1',
+      user: {
+        id: 'user-1',
+        tenantId: 'tenant-1',
+        name: 'Cashier',
+        email: 'cashier@test.com',
+        roles: [],
+        permissions: [],
+      } as never,
+      companies: [{ id: 'company-1', currency: 'EUR', name: 'Test Co' } as never],
+    } as never);
+    useTerminalStore.setState({
+      terminal: { id: V4_TERMINAL_ID, location: null } as never,
+      shift: { id: '11111111-1111-4111-8111-111111111111' } as never,
+    } as never);
+    useOperatorStore.setState({
+      operator: { id: V4_OPERATOR_ID, name: 'Cashier One' } as never,
+    } as never);
+    usePaymentStore.setState({
+      paymentMethods: [{ id: 'pm-cash', code: 'CASH', is_cash_tender: true, is_active: true } as never],
+      paymentRepositories: [{ id: 'pr-cash', type: 'cash_register', is_active: true } as never],
+    } as never);
+    useRefundReconciliationStore.setState({ epoch: 0 });
+
+    vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(v4OriginalView() as never);
+    vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+      intent: v4RefundIntent(),
+      reused: false,
+    });
+    vi.mocked(authorRefundReturnApprovalV3).mockResolvedValue(v4ApprovalEvidence);
+    vi.mocked(createRefundReceipt).mockResolvedValue(v4CreateReceiptResult);
+  });
+
+  describe('begin()', () => {
+    it('resolves the original PURELY LOCALLY (no server round trip) and skips the destination step (cash-only, §3.4)', async () => {
+      useCartStore.setState({ items: [v4ReturnItem()] });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('confirm'); // never 'destination'
+      expect(state.destination).toBe('cash');
+      expect(state.isV4).toBe(true);
+      expect(apiGet).not.toHaveBeenCalled();
+      expect(resolveOriginalFiscalEventLocally).toHaveBeenCalledWith(fakeDb, V4_ORIGINAL_LOCAL_RECEIPT_ID);
+    });
+
+    it('§3.7 — refuses a training original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ trainingFlag: true }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.trainingOriginalRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('§3.5 — refuses a whole-discount original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ transactionDiscountAmount: '5.000' }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.wholeDiscountReceiptRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('errorInternal when the original cannot be resolved locally (defensive — should not happen)', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(null);
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+    });
+
+    it('drafts/reuses the refund_intents row with the pre-generated sourceEventIds', async () => {
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      expect(createOrReuseActiveRefundIntent).toHaveBeenCalledWith(
+        fakeDb,
+        expect.objectContaining({
+          terminalId: V4_TERMINAL_ID,
+          operatorId: V4_OPERATOR_ID,
+          originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+          originalFiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+          approvalSourceEventId: expect.any(String),
+          overrideSourceEventId: expect.any(String),
+        }),
+      );
+    });
+  });
+
+  describe('approveAndSubmit()', () => {
+    it('walks confirm → approval → settles via createRefundReceipt, calling onV4Settled (never onSettled)', async () => {
+      const onSettled = vi.fn();
+      const onV4Settled = vi.fn();
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore
+        .getState()
+        .approveAndSubmit(submitInput({ onSettled, onV4Settled }));
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('settled');
+      expect(state.error).toBeNull();
+      expect(state.v4SettledResult).toEqual({
+        fiscalEventId: 'fe-v4-refund-1',
+        offlineReceiptId: 'offline-receipt-1',
+        receiptNumber: 'MAIN-T01-2026-00000007',
+        refundIntentId: 'refund-intent-1',
+      });
+      // Discriminated from the legacy path — always null on a v4 settle.
+      expect(state.settledResponse).toBeNull();
+      // Atomic write => no separate mirror that can fail independently.
+      expect(state.settledZAccountingRecorded).toBe(true);
+      expect(onV4Settled).toHaveBeenCalledTimes(1);
+      expect(onV4Settled).toHaveBeenCalledWith(state.v4SettledResult);
+      expect(onSettled).not.toHaveBeenCalled();
+      expect(useCartStore.getState().items).toEqual([]);
+      // §4.5 — the reconciliation modal's refresh signal bumped.
+      expect(useRefundReconciliationStore.getState().epoch).toBe(1);
+    });
+
+    it('authors via authorRefundReturnApprovalV3 with the intent-supplied sourceEventIds, then settles createRefundReceipt with the same approval as approvalReferences', async () => {
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+          originalFiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+          approvalSourceEventId: 'approval-src-1',
+          overrideSourceEventId: 'override-src-1',
+        }),
+      );
+      expect(createRefundReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          refundIntentId: 'refund-intent-1',
+          paymentMethodId: 'pm-cash',
+          paymentRepositoryId: 'pr-cash',
+          approvalReferences: [v4ApprovalEvidence],
+        }),
+      );
+      expect(markApprovalAuthored).toHaveBeenCalledWith(expect.anything(), 'refund-intent-1');
+    });
+
+    it('caches the authored evidence immediately — a settle failure does NOT re-author on retry (no second PIN, no double fiscal append)', async () => {
+      vi.mocked(createRefundReceipt).mockRejectedValueOnce(new Error('write-gate failure'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      let state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+      expect(state.approval).toEqual(v4ApprovalEvidence);
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('settled');
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledTimes(1);
+      expect(createRefundReceipt).toHaveBeenCalledTimes(2);
+    });
+
+    it('a markApprovalAuthored failure is non-fatal — the settle still proceeds with the already-cached approval', async () => {
+      vi.mocked(markApprovalAuthored).mockRejectedValueOnce(new Error('transition guard rejected'));
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      expect(useRefundCheckoutStore.getState().step).toBe('settled');
+      expect(createRefundReceipt).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
+    it('a PIN/authoring failure returns to approval with errorApproval — no settle attempted', async () => {
+      vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(new Error('manager_pin_scope_mismatch'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+      expect(state.approval).toBeNull();
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+    });
+
+    it('the stale-cart fingerprint guard applies identically to the v4 path', async () => {
+      await v4WalkToApproval();
+      useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorCartChanged');
+      expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+    });
   });
 });

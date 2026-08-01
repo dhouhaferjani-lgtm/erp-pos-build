@@ -130,6 +130,12 @@ interface SeedReceiptInput {
   total: string;
   tolerance_shortfall?: string | null;
   cash_rounding_adjustment?: string | null;
+  /** v3-refund-chain-integration spec §7.3 — 'sale' (default) or 'refund'.
+   *  A refund row's `total`/`cash_rounding_adjustment` are still passed as
+   *  the caller supplies them (this fixture does not auto-negate) — tests
+   *  that seed a refund row pass an already-negative-signed `total`
+   *  themselves, matching §7.2's own negative-signed convention. */
+  receipt_kind?: 'sale' | 'refund';
 }
 
 let seq = 0;
@@ -186,6 +192,7 @@ function makeReceipt(input: SeedReceiptInput): Record<string, unknown> {
     cash_rounding_denomination:
       input.cash_rounding_adjustment == null ? null : '0.050',
     tolerance_shortfall: input.tolerance_shortfall ?? null,
+    receipt_kind: input.receipt_kind ?? 'sale',
   };
 }
 
@@ -305,6 +312,60 @@ describe('generateZReport — real tolerance + local cash rounding summary', () 
     const z = await generateZReport(db, 'term-1', 'shift-1', SHIFT_OPENED_AT, '0.000');
 
     expect(z.report_data.gross_sales).toBe('10.000');
+  });
+
+  // ─── §7.3 refund-row routing AT TND (3-decimal) SCALE, combined with the
+  // Task 9 cash-rounding/tolerance columns — the exact interaction
+  // zReportService.test.ts (EUR/2-decimal, no rounding) never exercises. ───
+
+  it('§7.3: a refund row SUBTRACTS its own cash_rounding_adjustment from the shift total (mirrors a sale row adding)', async () => {
+    install([
+      makeReceipt({ total: '10.000', cash_rounding_adjustment: '0.003' }),
+      // A refund's own rounding reverses the sale's — canonical-zero on
+      // every launch v4 refund in practice, but the aggregation must stay
+      // forward-correct regardless (zReportService.ts's own §7.3 comment).
+      makeReceipt({ total: '-9.950', cash_rounding_adjustment: '0.020', receipt_kind: 'refund' }),
+    ]);
+
+    const z = await generateZReport(db, 'term-1', 'shift-1', SHIFT_OPENED_AT, '0.000');
+
+    expect(z.report_data.cash_rounding_summary).toEqual({
+      total_adjustment: '-0.017', // 0.003 (sale, added) − 0.020 (refund, subtracted)
+      receipt_count: 2,
+    });
+  });
+
+  it('§7.3: a refund row is excluded from gross_sales/net_sales even at TND scale', async () => {
+    install([
+      makeReceipt({ total: '10.000' }),
+      makeReceipt({ total: '-9.950', receipt_kind: 'refund' }),
+    ]);
+
+    const z = await generateZReport(db, 'term-1', 'shift-1', SHIFT_OPENED_AT, '0.000', CASH_COUNT('0.050'));
+
+    // Refund is tracked on its own — never folded into gross/net sales.
+    expect(z.report_data.gross_sales).toBe('10.000');
+    expect(z.report_data.net_sales).toBe('10.000');
+  });
+
+  it('§7.2a: tolerance_shortfall is always null on a refund row by construction — a mixed shift reflects only the sale-side shortfall', async () => {
+    install([
+      makeReceipt({ total: '9.950', tolerance_shortfall: '0.050' }),
+      // A refund row NEVER carries a tolerance_shortfall (§7.2a — no
+      // tender-tolerance concept applies to a refund payout); this
+      // fixture omits it (defaults null) to mirror real data exactly.
+      makeReceipt({ total: '-5.000', receipt_kind: 'refund' }),
+    ]);
+
+    const z = await generateZReport(
+      db, 'term-1', 'shift-1', SHIFT_OPENED_AT, '0.000', CASH_COUNT('14.900'),
+    );
+
+    expect(z.report_data.tolerance_summary).toEqual({
+      totalAmount: '0.050',
+      currencyCode: 'TND',
+      writeoffCount: 1,
+    });
   });
 });
 

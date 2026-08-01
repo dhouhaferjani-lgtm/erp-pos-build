@@ -42,6 +42,20 @@ import type { CartItem } from '@/types/cart';
  * exact frozen key set. `disposition`'s three literal values are the
  * exact, verbatim values of the existing PHP `ReturnLineDisposition`
  * enum (`restock`, `scrap`, `not_received`) — no new enum, no renaming.
+ *
+ * **Launch default, stated visibly (⚖️ coordinator ruling, wave-2 item 6):**
+ * there is no disposition-picker UI at launch — `refundCheckoutStore.ts`'s
+ * `begin()` stamps EVERY v4 refund line's `disposition` as `'restock'`
+ * unconditionally. This is safe against the launch's single known hazard
+ * (a regulated item wrongly restocked) because `PosCoreReceiptProjection`'s
+ * `RestockPolicyResolver` (wave 1) already overrides regulated
+ * never-restock items REGARDLESS of what the payload's own `disposition`
+ * says — a `'restock'` default on the payload cannot actually restock a
+ * regulated item. The accepted gap is narrower: a genuinely DAMAGED
+ * (non-regulated) returned item will be restocked at launch and needs a
+ * manual stock adjustment afterward — acceptable for tenant #1's single
+ * terminal. A disposition-picker UI is ticketed as a post-launch follow-up
+ * (§16), not attempted here.
  */
 export const RETURN_LINE_DISPOSITIONS = ['restock', 'scrap', 'not_received'] as const;
 export type ReturnLineDisposition = (typeof RETURN_LINE_DISPOSITIONS)[number];
@@ -169,26 +183,47 @@ export class RefundPaymentNotSingleCashLegError extends Error {
   }
 }
 
+/**
+ * §3.5 errata T7 — the refusal's PRIMARY enforcement point: the spec
+ * requires this check to run at the LOOKUP level (immediately after
+ * `resolveOriginalFiscalEventLocally()`, in the refund flow's own
+ * original-resolution step, §4.1) — BEFORE any approval authoring is
+ * attempted, not merely inside this builder (which only runs much later,
+ * after a manager PIN has already been spent). Extracted so
+ * `refundCheckoutStore.ts`'s `begin()` and this builder's own Step 0/0.5
+ * below share the EXACT same two checks and the exact same typed errors —
+ * never two independent implementations that could drift.
+ */
+export function assertOriginalRefundable(
+  original: OriginalFiscalEventLocalView,
+  originalReceiptUuid: string,
+): void {
+  // -- §3.7 — training-original refusal. Read from the ORIGINAL's OWN
+  //    signed payload.training_flag, never the current session's
+  //    training-mode context (an unrelated concept).
+  if (original.trainingFlag) {
+    throw new TrainingOriginalRefundRefusedError(originalReceiptUuid);
+  }
+
+  // -- §3.5 — whole-receipt-discount refusal. The orchestrator ruling
+  //    refuses BOTH partial and full refunds of a discounted original, no
+  //    carve-out.
+  if (bcformatIsNonZero(original.transactionDiscountAmount)) {
+    throw new WholeReceiptDiscountRefundRefusedError(
+      originalReceiptUuid,
+      original.transactionDiscountAmount,
+    );
+  }
+}
+
 export function buildRefundReceiptV4Payload(
   input: BuildRefundReceiptV4PayloadInput,
 ): RefundReceiptV4Payload {
-  // -- Step 0 (spec §3.7) — training-original refusal. Runs BEFORE step 1
-  //    below (a harder gate than the programmer-error check) and before
-  //    any normalization or payload construction. Read from the
-  //    ORIGINAL's OWN signed payload.training_flag.
-  if (input.original.trainingFlag) {
-    throw new TrainingOriginalRefundRefusedError(input.originalReceiptUuid);
-  }
-
-  // -- Step 0.5 (spec §3.5) — whole-receipt-discount refusal. Also runs
-  //    before any normalization; the orchestrator ruling refuses BOTH
-  //    partial and full refunds of a discounted original, no carve-out.
-  if (bcformatIsNonZero(input.original.transactionDiscountAmount)) {
-    throw new WholeReceiptDiscountRefundRefusedError(
-      input.originalReceiptUuid,
-      input.original.transactionDiscountAmount,
-    );
-  }
+  // -- Step 0/0.5 (spec §3.5/§3.7) — re-asserted here as defense-in-depth
+  //    (the store's begin() is the PRIMARY enforcement point, see
+  //    assertOriginalRefundable's own docblock) — before any normalization
+  //    or payload construction.
+  assertOriginalRefundable(input.original, input.originalReceiptUuid);
 
   const scale = getCurrencyDecimals(input.currency);
 

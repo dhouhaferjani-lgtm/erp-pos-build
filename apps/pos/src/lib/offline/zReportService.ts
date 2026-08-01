@@ -276,14 +276,32 @@ export async function generateZReport(
   let roundingTotal = bcformat('0', SUMMARY_SCALE);
   let roundingCount = 0;
   for (const receipt of receipts) {
+    // `tolerance_shortfall` is ALWAYS NULL on a refund row (§7.2a — no
+    // tender-tolerance concept applies to a refund payout), so this is
+    // already sale-only by construction — no receipt_kind branch needed,
+    // matching endOfDayPreview.ts's own identical reasoning.
     const shortfall = receipt.tolerance_shortfall;
     if (shortfall !== null && shortfall !== undefined && shortfall !== '' && bccomp(shortfall, '0') !== 0) {
       toleranceTotal = bcadd(toleranceTotal, shortfall, SUMMARY_SCALE);
       toleranceCount += 1;
     }
+    // v3-refund-chain-integration spec §7.2a/§7.3 — `cash_rounding_adjustment`
+    // is signed and mirrors the fiscal payload's own value on EVERY row,
+    // sale or refund. A sale's rounding ADDS to (or subtracts from) the
+    // drawer the same way its total does; a refund's own rounding
+    // reverses the sale's, because a refund PAYS OUT of the drawer where
+    // a sale pays IN — so the same-signed adjustment has the OPPOSITE
+    // net effect on cash and must be SUBTRACTED here, exactly mirroring
+    // `endOfDayPreview.ts`'s own `isRefund`-branched rounding total
+    // (this signed Z's own rounding aggregation had never been updated
+    // for receipt_kind until now — a gap surfaced while extending this
+    // file's test coverage, not a deliberate design difference from
+    // endOfDayPreview.ts).
     const adjustment = receipt.cash_rounding_adjustment;
     if (adjustment !== null && adjustment !== undefined && adjustment !== '' && bccomp(adjustment, '0') !== 0) {
-      roundingTotal = bcadd(roundingTotal, adjustment, SUMMARY_SCALE);
+      roundingTotal = receipt.receipt_kind === 'refund'
+        ? bcsub(roundingTotal, adjustment, SUMMARY_SCALE)
+        : bcadd(roundingTotal, adjustment, SUMMARY_SCALE);
       roundingCount += 1;
     }
   }

@@ -177,6 +177,17 @@
       "subtitle": "A manager must authorize this refund.",
       "confirm": "Authorize refund",
       "submitting": "Processing…"
+    },
+    "reconciliation": {
+      "confirmTitle": "Confirm refund payout",
+      "confirmBody": "Did {{amount}} in cash leave the drawer for this refund?",
+      "confirmBodyNoAmount": "Did the cash leave the drawer for this refund?",
+      "yes": "Yes",
+      "notSure": "No / Not sure",
+      "reprintTitle": "Reprint refund receipt",
+      "reprintBody": "This refund was confirmed but the receipt was never printed — print it now?",
+      "print": "Print",
+      "skip": "Skip"
     }
   },
   "receiptLocator": {

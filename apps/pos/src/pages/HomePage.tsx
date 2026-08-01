@@ -35,8 +35,9 @@ import {
   decidePayInterception,
   mustBlockMidModalSettlement,
 } from '@/lib/refundFlow/cartClassification';
-import { useRefundCheckoutStore } from '@/stores/refundCheckoutStore';
+import { useRefundCheckoutStore, type V4RefundSettledResult } from '@/stores/refundCheckoutStore';
 import { RefundCheckoutFlow } from '@/components/pos/RefundCheckoutFlow';
+import { RefundPayoutReconciliationModal } from '@/components/pos/RefundPayoutReconciliationModal';
 import type { ReturnSettlementResponse } from '@/lib/refundFlow/refundSettlementService';
 import { printRefundSettlementArtifacts } from '@/lib/refundFlow/refundReceiptPrinting';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
@@ -1103,28 +1104,31 @@ export function HomePage() {
     try {
       const db = await getDatabase(companyId);
 
-      // v3-refund-chain-integration spec §9.2 — the real dispatch seam: the
-      // capability check happens HERE, reading the local
-      // `terminal_state.v4_refund_authoring_enabled` flag, BEFORE the refund
-      // flow proceeds to draft a refund_intents row. Local-only (no network
-      // call), so the check is instant and works offline. A missing terminal
-      // id is treated the same as "not enabled" — fail-closed, never assume
-      // capability without positive local evidence (§9.4's exact typed
-      // refusal copy, never "use the legacy path" — that path is itself
-      // 409-blocked once the server-side guard activates).
+      // v3-refund-chain-integration spec §9.2/§9.3 (⚖️ orchestrator ruling,
+      // routing corrected) — the real dispatch seam: reads the local
+      // `terminal_state.v4_refund_authoring_enabled` flag, BEFORE the
+      // refund flow proceeds to draft a refund_intents row. Local-only (no
+      // network call), so the check is instant and works offline.
+      //
+      // This ROUTES, it does NOT refuse: the legacy `/return` flow and the
+      // new v4 flow coexist behind this flag exactly as §9.3's two-phase
+      // rollout intends — a terminal that has not yet completed Phase 1
+      // (server offer) + Phase 2 (device acknowledgement) keeps using the
+      // legacy path, unchanged, for as long as the server's own
+      // `LegacyCorrectionGuard` keeps accepting it (only activated
+      // server-side once acknowledged). A missing terminal id is treated
+      // the same as "not enabled" — fail-closed, never assume capability
+      // without positive local evidence.
       const terminalId = useTerminalStore.getState().terminal?.id ?? null;
       const capabilityEnabled =
         terminalId !== null && (await getV4RefundAuthoringEnabled(db, terminalId));
-      if (!capabilityEnabled) {
-        setScanMessage({ text: t('pos:refundFlow.capabilityUnavailable'), type: 'error' });
-        setTimeout(() => setScanMessage(null), 4000);
-        return;
-      }
 
       await useRefundCheckoutStore.getState().begin({
         db,
         receiptToken: activeRefundReceiptToken,
         receiptNumber,
+        v4CapabilityEnabled: capabilityEnabled,
+        originalLocalReceiptId: activeRefundReceiptUuid ?? undefined,
         // The cart's edited return quantities pass through AS-IS — partial
         // refunds are mapped onto the server lines by the settlement service.
         refundItems: useCartStore.getState().returnItems(),
@@ -1134,7 +1138,7 @@ export function HomePage() {
       setScanMessage({ text: t('pos:refundFlow.confirm.errorGeneric'), type: 'error' });
       setTimeout(() => setScanMessage(null), 3000);
     }
-  }, [activeRefundReceiptNumber, activeRefundReceiptToken, t]);
+  }, [activeRefundReceiptNumber, activeRefundReceiptToken, activeRefundReceiptUuid, t]);
 
   /**
    * Settled seam. The checkout store already cleared the cart's return
@@ -1231,6 +1235,52 @@ export function HomePage() {
     clearDraftState,
     t,
   ]);
+
+  /**
+   * v3-refund-chain-integration spec §4.5 (⚖️ orchestrator-ruled settle-seam
+   * extension) — the v4 settled seam. Mirrors `handleRefundSettled`'s
+   * session teardown exactly (active-refund state, SQLite draft cleanup),
+   * but deliberately does NOT call `printRefundSettlementArtifacts` — a v4
+   * settlement has no `ReturnSettlementResponse` for that pipeline to print
+   * from. Printing AND payout confirmation for a v4 refund flow through
+   * `RefundPayoutReconciliationModal` instead, driven by `refund_intents`/
+   * `getOfflineReceiptForPrint` — the store already bumped
+   * `useRefundReconciliationStore` before this callback fires, so that
+   * modal shows the confirmation prompt immediately.
+   */
+  const handleV4RefundSettled = useCallback((result: V4RefundSettledResult) => {
+    const companyId = useAuthStore.getState().companyId;
+    const draftId = activeRefundDraftId;
+
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundReceiptToken(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setDetailsNotLocalWarning(false);
+    clearDraftState();
+
+    if (companyId && draftId) {
+      void (async () => {
+        try {
+          const db = await getDatabase(companyId);
+          await deleteRefundDraft(db, draftId);
+        } catch (cleanupError) {
+          console.error('[refundFlow] v4 settled-draft cleanup failed:', serializeErrorForLog(cleanupError));
+        }
+      })();
+    }
+
+    // §4.3/§7.2's atomic write means there is no separate best-effort
+    // mirror that can fail independently the way the legacy path's can —
+    // always the success toast, never the zAccountingWarning branch.
+    setScanMessage({
+      text: t('pos:refundFlow.checkout.success', { number: result.receiptNumber }),
+      type: 'success',
+    });
+    setTimeout(() => setScanMessage(null), 4000);
+    useRefundCheckoutStore.getState().acknowledgeSettled();
+  }, [activeRefundDraftId, clearDraftState, t]);
 
   // The §8.1 budget lives in SQLite; pull this shift's spent count into the
   // in-memory mirror on open so the cash screen's floor is right BEFORE the
@@ -1889,8 +1939,16 @@ export function HomePage() {
           terminalId={terminal?.id ?? null}
           cashierUserId={refundCashierUserId}
           onRefundSettled={handleRefundSettled}
+          onV4RefundSettled={handleV4RefundSettled}
         />
       )}
+
+      {/* v3-refund-chain-integration spec §4.5 — payout-confirmation +
+          reprint-recovery for a v4 refund. Always mounted (like the other
+          app-level modals above): it owns its own app-start query and its
+          own refresh trigger (useRefundReconciliationStore), independent of
+          any cart/checkout state. */}
+      <RefundPayoutReconciliationModal />
       </div>
     </div>
   );
