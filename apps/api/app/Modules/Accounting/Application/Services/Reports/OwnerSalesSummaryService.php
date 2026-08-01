@@ -103,7 +103,13 @@ final class OwnerSalesSummaryService
             ->where('training_flag', false)
             ->whereBetween('posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->selectRaw('COALESCE(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END), 0) as gross', [$sale])
-            ->selectRaw('COALESCE(ABS(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END)), 0) as returns', [$return])
+            // ABS goes INSIDE the SUM, per row. Legacy returns stored a NEGATIVE
+            // total and v4 refunds store a POSITIVE one (v3-refund-chain
+            // spec §7.7), so an outer ABS(SUM(...)) lets the two eras CANCEL
+            // inside the sum — a window spanning the cutover would report zero
+            // returns and net nothing out of sales. Ticket
+            // 2026-08-01-positive-refund-total-consumers.
+            ->selectRaw('COALESCE(SUM(CASE WHEN receipt_type = ? THEN ABS(total) ELSE 0 END), 0) as returns', [$return])
             ->selectRaw('COUNT(CASE WHEN receipt_type = ? THEN 1 END) as sale_count', [$sale])
             ->selectRaw('COUNT(CASE WHEN receipt_type = ? THEN 1 END) as return_count', [$return])
             ->first();

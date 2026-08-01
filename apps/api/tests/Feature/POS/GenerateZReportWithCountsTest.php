@@ -571,6 +571,75 @@ final class GenerateZReportWithCountsTest extends TestCase
     }
 
     /**
+     * The Z's printed CASH figure and the cash-count expected figure are two
+     * views of the same drawer and MUST agree once refunds exist.
+     *
+     * `calculateShiftTotals` used to `continue` past return receipts before the
+     * payment loop, so the printed Z showed CASH gross-of-refunds (100.00) while
+     * `buildExpectedPerMethod` reported the net (88.00) — two numbers on one Z
+     * that disagree by the refund. The device contract is unambiguous: the
+     * payment-method breakdown is NET of the refund payout
+     * (spec §7.3, pinned by ReceiptReturnRefactorV3Test — "Z cash must be net of
+     * the refund payout, not gross"), while refunds stay a SEPARATE
+     * POSITIVE-MAGNITUDE block (spec §3.1/§7.3) never folded into gross/net
+     * sales. The server aggregation now matches that contract.
+     */
+    public function test_z_cash_breakdown_agrees_with_net_expected_cash_and_refunds_are_positive_magnitude(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        // v4-era refund: POSITIVE total, POSITIVE cash payout leg.
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+        // Legacy-era return: NEGATIVE total, no payment rows (legacy refunds
+        // routed through PaymentRefundService / the cash drawer).
+        $this->seedRefundReceipt($sale, total: '-5.0000', cashPayoutLeg: null);
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000',
+        )];
+
+        $z = $this->service->generateZReport($this->terminal, $this->cashier, $inputs, null, null, false);
+
+        $reportData = $z->report_data;
+
+        // Sales stay sale-only: the refunds are NOT folded into gross/net.
+        $this->assertSame(1, $reportData['sales_count']);
+        $this->assertSame('100.0000', $reportData['gross_sales']);
+
+        // Refunds: their own block, POSITIVE magnitude in BOTH eras (12 + 5).
+        $this->assertSame(2, $reportData['refunds_count']);
+        $this->assertSame('17.0000', $reportData['refunds_amount']);
+
+        // Printed Z cash is net of the payout leg.
+        /** @var list<array<string, mixed>> $paymentMethods */
+        $paymentMethods = $reportData['payment_methods'];
+        $this->assertCount(1, $paymentMethods);
+        $this->assertSame('Cash', $paymentMethods[0]['payment_type']);
+        $this->assertSame('88.0000', $paymentMethods[0]['total_amount'], 'Z cash must be net of the refund payout, not gross');
+
+        // THE AGREEMENT: printed Z cash === cash-count expected cash.
+        $count = ZReportCount::where('z_report_id', $z->id)->first();
+        $this->assertNotNull($count);
+        $expectedAmount = $count->expected_amount;
+        $this->assertTrue(is_numeric($expectedAmount));
+        $this->assertSame(
+            0,
+            bccomp((string) $paymentMethods[0]['total_amount'], $expectedAmount, 4),
+            'the Z CASH figure and the expected-cash figure must be the same number',
+        );
+        $this->assertSame('balanced', $count->variance_direction);
+
+        // perpetual_grand_total = gross − refunds = 100 − 17 (a signed
+        // refunds_amount would have ADDED the legacy 5.00 back here).
+        /** @var array<string, mixed> $grandTotals */
+        $grandTotals = $z->grand_totals;
+        $this->assertSame('83.0000', $grandTotals['perpetual_grand_total']);
+    }
+
+    /**
      * Persist a refund/return receipt inside the shift window.
      *
      * @param  string  $total  Signed receipt total ('+' = v4 era, '-' = legacy era)

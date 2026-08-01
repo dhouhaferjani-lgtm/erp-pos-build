@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
@@ -32,6 +33,21 @@ final class GrandtotalService
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Absolute value of a decimal string, bcmath only — no float ever touches
+     * money (rule 19). Used to normalise return-receipt amounts across the two
+     * refund sign eras (legacy negative, v4 positive).
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function magnitude(string $value): string
+    {
+        return bccomp($value, '0', $this->scale()) < 0
+            ? bcsub('0', $value, $this->scale())
+            : $value;
     }
 
     /**
@@ -109,7 +125,19 @@ final class GrandtotalService
     /**
      * Calculate period totals (reset at each closing)
      *
-     * Totals for receipts within the period only.
+     * Totals for receipts within the period only. The returned array is
+     * json_encoded into the grand-total event's fiscal hash, so every figure
+     * here lands in signed, chained bytes.
+     *
+     * Scope, precisely:
+     * - `gross_sales`/`tax_amount` are NET of return receipts (subtracted by
+     *   magnitude, both sign eras — see calculatePerpetualTotals for the full
+     *   rationale; before this, a non-voided `receipt_type='return'` row fell
+     *   into the SALE branch, so a v4 POSITIVE refund total was ADDED);
+     * - `sales_count` counts every NON-VOIDED receipt, returns included;
+     * - `refunds_count`/`refunds_amount` count VOIDS, not returns. That is a
+     *   pre-existing MISLABEL. The keys are part of the signed payload, so they
+     *   are deliberately NOT renamed or re-pointed here; ticketed separately.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @param  Carbon  $periodStart  Period start timestamp
@@ -137,11 +165,21 @@ final class GrandtotalService
             if ($receipt->is_voided) {
                 $refundsCount++;
                 $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
-            } else {
-                $salesCount++;
-                $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
-                $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
+
+                continue;
             }
+
+            $salesCount++;
+
+            if ($receipt->receipt_type === ReceiptType::Return) {
+                $grossSales = bcsub($grossSales, $this->magnitude($receipt->total), $this->scale());
+                $taxAmount = bcsub($taxAmount, $this->magnitude($receipt->tax_amount), $this->scale());
+
+                continue;
+            }
+
+            $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
+            $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
         }
 
         $netSales = bcsub($grossSales, $taxAmount, $this->scale());

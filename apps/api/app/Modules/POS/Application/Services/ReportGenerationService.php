@@ -66,6 +66,21 @@ final class ReportGenerationService
         return $this->scaleResolver->getScale();
     }
 
+    /**
+     * Absolute value of a decimal string, bcmath only — no float ever touches
+     * money (rule 19). Normalises return-receipt amounts across the two refund
+     * sign eras (legacy negative, v4 positive).
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function magnitude(string $value): string
+    {
+        return bccomp($value, '0', $this->scale()) < 0
+            ? bcsub('0', $value, $this->scale())
+            : $value;
+    }
+
     private function assertServerReportAuthoringAllowed(Terminal $terminal, string $operation): void
     {
         if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
@@ -919,6 +934,23 @@ final class ReportGenerationService
      * Return receipts (type=return) contribute to refunds_count / refunds_amount.
      * Voided receipts are counted but excluded from monetary totals.
      *
+     * Two sign-era rules, both taken from the device Z contract that this
+     * server-side aggregation must reproduce byte-for-byte in meaning:
+     * - `refunds_amount` is a POSITIVE MAGNITUDE block, never sign-bearing and
+     *   never folded into gross/net sales (spec §3.1/§7.3). It was summing
+     *   `$receipt->total` raw, which is right for a v4 refund (positive) and
+     *   wrong for a legacy return (negative) — and it feeds
+     *   computeGrandTotals() as `gross − refunds`, so a legacy return used to
+     *   ADD itself to `perpetual_grand_total`.
+     * - `payment_methods` is NET of refund payout legs (spec §7.3, pinned by
+     *   ReceiptReturnRefactorV3Test: "Z cash must be net of the refund payout,
+     *   not gross"). Return receipts used to be skipped entirely here, so the
+     *   printed Z showed CASH gross-of-refunds while the cash-count expected
+     *   figure (buildExpectedPerMethod) showed the net — two numbers on the
+     *   same Z that disagreed by the refund.
+     *
+     * VAT breakdown stays SALE-ONLY, unchanged: refunds are their own block.
+     *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
@@ -960,9 +992,25 @@ final class ReportGenerationService
             }
 
             if ($receipt->receipt_type === ReceiptType::Return) {
-                // Return receipts: accumulate refund counters only.
+                // Return receipts: their own POSITIVE-MAGNITUDE block (both
+                // sign eras), never folded into gross/net sales or VAT.
                 $refundsCount++;
-                $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
+                $refundsAmount = bcadd($refundsAmount, $this->magnitude($receipt->total), $this->scale());
+
+                // ... but their payout legs DO move the drawer, so the payment
+                // breakdown is net of them.
+                foreach ($receipt->payments as $payment) {
+                    $method = $payment->payment_type;
+                    if (! isset($paymentMethods[$method])) {
+                        $paymentMethods[$method] = [
+                            'payment_type' => $payment->payment_type,
+                            'total_amount' => '0.00',
+                            'transaction_count' => 0,
+                        ];
+                    }
+                    $paymentMethods[$method]['total_amount'] = bcsub($paymentMethods[$method]['total_amount'], $this->magnitude($payment->amount), $this->scale());
+                    $paymentMethods[$method]['transaction_count']++;
+                }
 
                 continue;
             }

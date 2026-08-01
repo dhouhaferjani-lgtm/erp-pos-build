@@ -109,6 +109,70 @@ class GrandtotalServiceTest extends TestCase
     }
 
     /**
+     * Period totals feed `pos_grandtotal_events.period_totals`, which is
+     * json_encoded INTO the fiscal hash — so an inflated figure is chained.
+     *
+     * The loop branched only on `is_voided`, which put a non-voided
+     * `receipt_type = 'return'` row in the SALE branch. Legacy returns carried a
+     * NEGATIVE total, so that still netted; a v4 refund carries a POSITIVE total
+     * (spec §7.7) and would be ADDED to gross_sales — 2x wrong, permanently, in
+     * signed bytes.
+     *
+     * Counts are deliberately unchanged: they never depended on the sign
+     * (`sales_count` = non-voided receipt count, `refunds_count`/`refunds_amount`
+     * = VOIDS, an existing mislabel documented in the wave-4 report, whose keys
+     * live in signed payload bytes and are therefore not renamed here).
+     */
+    public function test_period_totals_net_both_refund_sign_eras(): void
+    {
+        $terminal = $this->createPersistedTerminal();
+
+        $sale = $this->createReceipt($terminal, [
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '119.00',
+        ]);
+
+        // v4-era refund: POSITIVE total under receipt_type='return'.
+        $this->createReceipt($terminal, [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Other,
+            'subtotal' => '50.00',
+            'tax_amount' => '9.50',
+            'total' => '59.50',
+        ]);
+
+        // Legacy-era return: NEGATIVE total.
+        $this->createReceipt($terminal, [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Other,
+            'subtotal' => '-20.00',
+            'tax_amount' => '-3.80',
+            'total' => '-23.80',
+        ]);
+
+        $result = $this->service->calculatePeriodTotals(
+            $terminal,
+            now()->subHour(),
+            now()->addHour()
+        );
+
+        // 119.00 − 59.50 − 23.80 = 35.70 (the sale-branch blend reports 154.70).
+        $this->assertEquals('35.700', $result['gross_sales']);
+        // 19.00 − 9.50 − 3.80 = 5.70.
+        $this->assertEquals('5.700', $result['tax_amount']);
+        // net = gross − tax.
+        $this->assertEquals('30.000', $result['net_sales']);
+        // Unchanged semantics: every non-voided receipt, returns included.
+        $this->assertEquals(3, $result['sales_count']);
+        // Unchanged semantics: these two count VOIDS, not returns (ticketed).
+        $this->assertEquals(0, $result['refunds_count']);
+        $this->assertEquals('0.00', $result['refunds_amount']);
+    }
+
+    /**
      * Test calculatePerpetualTotals uses correct column in raw SQL
      */
     public function test_perpetual_totals_uses_correct_columns(): void

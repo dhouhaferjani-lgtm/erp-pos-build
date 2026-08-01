@@ -53,6 +53,34 @@ final class OwnerSalesSummaryServiceTest extends TestCase
         $this->assertSame('100.00', $summary->delta->grossSalesPct);  // (300-150)/150*100
     }
 
+    /**
+     * `returns` was `ABS(SUM(CASE … receipt_type='return' … total …))` — an ABS
+     * OUTSIDE the SUM. Legacy returns stored a NEGATIVE total and v4 refunds
+     * store a POSITIVE one (spec §7.7), so in a window spanning the cutover the
+     * two eras CANCEL inside the SUM and the report shows zero returns while
+     * netting nothing out of sales. Per-row magnitude is the only safe form.
+     */
+    public function test_returns_do_not_cancel_across_refund_sign_eras(): void
+    {
+        // sales 100 + 200 = 300
+        $sale1 = $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00');
+        $this->seedReceipt($this->locationB, $this->terminalB, '2026-06-11 10:00:00', '200.00');
+        // legacy-era return: NEGATIVE total.
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '-50.00', $sale1);
+        // v4-era refund: POSITIVE total under receipt_type='return'.
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-13 10:00:00', '50.00', $sale1);
+
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id, $this->locationB->id],
+        );
+
+        $this->assertSame('300.00', $summary->grossSales);
+        // 50 + 50 = 100 (the cancelling form reports 0.00).
+        $this->assertSame('100.00', $summary->returnsAmount);
+        $this->assertSame('200.00', $summary->netSales);
+        $this->assertSame(2, $summary->returnsCount);
+    }
+
     public function test_zero_previous_period_yields_null_percentages(): void
     {
         $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00');
