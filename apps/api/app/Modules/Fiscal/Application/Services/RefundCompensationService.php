@@ -93,6 +93,17 @@ final class RefundCompensationService
 
         // review round-2 CRITICAL 3 — event_type=SALE_RECEIPT with
         // invoice_type_code=REFUND.
+        //
+        // treasury re-verification MINOR/NOTE — an UNRESOLVED ingress-
+        // quarantine event has payload=null (it never parsed), so it hits
+        // THIS branch (not_a_refund) rather than a dedicated
+        // "still-quarantined, unreadable" reason. This is deliberate, not
+        // a bug: with no parsed payload there is no invoice_type_code,
+        // amount, or shift_id to safely act on, so refusing here — before
+        // ever reaching the state-guard below — is the correct fail-closed
+        // outcome for that case. Documented explicitly rather than
+        // inventing a new reason code for a case that is already refused
+        // for the right underlying cause (no readable payload).
         $payload = $event->payload;
         if (
             $event->event_type !== FiscalEventType::SALE_RECEIPT
@@ -121,6 +132,33 @@ final class RefundCompensationService
             throw new RefundCompensationRefusedException(
                 reason: 'not_rejected',
                 message: "RefundCompensationService: fiscal_event {$fiscalEventId} is neither dead-lettered nor ingress-quarantined -- refusing to write off an event that already applied (or was never attempted).",
+            );
+        }
+
+        // treasury re-verification CRITICAL — `integrity_exception_class`
+        // is a WRITE-ONCE column (Task-8 immutability trigger): once an
+        // event is ingress-quarantined it STAYS `canonical_parse_failure`
+        // FOREVER, even after `ParseFailureResolutionService` resolves the
+        // parse failure and its projections DISPATCH and APPLY
+        // (`payload_parse_status` transitions to `parsed`, but this column
+        // is never cleared). That makes `$isIngressQuarantined` alone an
+        // UNRELIABLE "still rejected" signal — reachable double-cash-out:
+        // quarantine -> resolve -> projections apply (cash moves via the
+        // NORMAL path) -> the state-guard above still passes (the stale
+        // quarantine flag is still true) -> write-off would ALSO move
+        // cash for the same event. A positive, independent check closes
+        // this: refuse unconditionally whenever ANY fiscal_event_projections
+        // row for this event is Applied, regardless of which arm admitted
+        // it above.
+        $hasAppliedProjection = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $fiscalEventId)
+            ->where('projection_status', ProjectionStatus::Applied->value)
+            ->exists();
+
+        if ($hasAppliedProjection) {
+            throw new RefundCompensationRefusedException(
+                reason: 'already_applied',
+                message: "RefundCompensationService: fiscal_event {$fiscalEventId} has at least one Applied projection -- its own normal path already moved cash; refusing to double-cash-out with a write-off compensation.",
             );
         }
 
@@ -154,10 +192,27 @@ final class RefundCompensationService
             );
         }
 
-        // review round-2 IMPORTANT 6 (rule 19) — currency/scale from the
-        // REPOSITORY (the account this write-off actually posts against),
-        // never a bare `?? 2` / `?? 'EUR'` fallback on the payload.
-        $currency = $repository->currency;
+        // review round-2 IMPORTANT 6 (rule 19) — never a bare `?? 2` /
+        // `?? 'EUR'` fallback: currency comes from the refund's OWN
+        // signed payload (fail loud if absent, same discipline as
+        // payments[0].amount below), not the repository.
+        //
+        // treasury re-verification MINOR — reading `$repository->currency`
+        // instead (an earlier version of this fix did exactly that) makes
+        // the movement port's F12 CurrencyMismatchException guard
+        // trivially always-equal (it compares `$repo->currency !==
+        // $intent->currency`), silently disarming it — the exact TENDER-
+        // currency-not-repository-currency precedent already established
+        // at `TreasuryReceiptBridge::recordPaymentLeg()` (Task 20 review
+        // Fix 2, :1407-1414). The tender/receipt currency is the payload's
+        // own `currency_code`.
+        $currencyCode = $payload['currency_code'] ?? null;
+        if (! is_string($currencyCode) || $currencyCode === '') {
+            throw new RuntimeException(
+                "RefundCompensationService: fiscal_event {$fiscalEventId} has no payload.currency_code to compensate."
+            );
+        }
+        $currency = $currencyCode;
         $scale = $this->scaleResolver->getScale($currency);
 
         // review round-2 IMPORTANT 9 — amount is the CASH TENDER LEG

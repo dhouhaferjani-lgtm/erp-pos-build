@@ -132,8 +132,13 @@ final class ApplyFiscalEventProjectionJobNonRetryableTest extends TestCase
             'server_received_at' => '2026-07-31 10:15:31',
             'reference_event_id' => null,
             'reference_document_id' => null,
+            // fiscal re-verification (CI PG-filter expansion) —
+            // `fiscal_events_source_event_paired_null` CHECK requires
+            // BOTH null or BOTH non-null (PG-only; SQLite never enforced
+            // it). No assertion in this file reads source_event_id's
+            // value.
             'source_event_class' => 'refund_intents',
-            'source_event_id' => null,
+            'source_event_id' => Str::uuid()->toString(),
             'partner_id' => null,
             'partner_identity_snapshot' => null,
             'canonical_bytes' => json_encode($payload, JSON_THROW_ON_ERROR),

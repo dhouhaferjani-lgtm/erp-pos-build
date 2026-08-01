@@ -153,6 +153,36 @@ final class PosCoreReceiptProjectionOriginalLineTrustTest extends TestCase
         self::assertDatabaseMissing('pos_receipts', ['fiscal_event_id' => $refund->id]);
     }
 
+    public function test_a_reference_whose_local_fk_was_nulled_still_resolves_via_the_signed_payload_snapshot(): void
+    {
+        // fiscal re-verification IMPORTANT — writeLines() deliberately
+        // NULLs pos_receipt_lines.product_id for deleted/ad-hoc/
+        // cross-tenant products (its own comment, :1096-1105). A refund of
+        // such an original must still PROJECT: the product_id check
+        // compares against the ORIGINAL's own SIGNED PAYLOAD snapshot
+        // (fiscal_events.payload.line_items[i].product_id), which is
+        // chain-immutable and survives the local FK being suppressed.
+        $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $originalReceipt = Receipt::where('fiscal_event_id', $sale->id)->sole();
+        DB::table('pos_receipt_lines')
+            ->where('receipt_id', $originalReceipt->id)
+            ->update(['product_id' => null]);
+
+        $refund = $this->v4RefundEvent($sale, productId: $product->id, quantity: '2.000', sequenceNumber: 2);
+        $this->project($refund);
+
+        $refundReceipt = Receipt::where('fiscal_event_id', $refund->id)->sole();
+        $refundLine = DB::table('pos_receipt_lines')->where('receipt_id', $refundReceipt->id)->sole();
+        self::assertNotNull($refundLine->original_line_id, 'original_line_id must resolve even when the local FK is NULLed');
+
+        $originalLine = DB::table('pos_receipt_lines')->where('receipt_id', $originalReceipt->id)->sole();
+        self::assertSame((string) $originalLine->id, (string) $refundLine->original_line_id);
+    }
+
     public function test_a_well_formed_reference_still_resolves_and_writes_original_line_id(): void
     {
         // Non-regression: the trust-hole closure must not break the

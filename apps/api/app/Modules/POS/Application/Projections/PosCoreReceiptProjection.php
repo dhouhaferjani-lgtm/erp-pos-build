@@ -868,11 +868,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * (`original_line_references[i]` matches `line_items[i]` at signing
      * time) — it has no access to the ORIGINAL receipt's actual projected
      * `pos_receipt_lines` rows, so it cannot catch a reference whose
-     * `original_line_index` doesn't exist on the original, or whose
-     * `product_id` doesn't match what is actually at that position. Both
-     * are only detectable here, against the real rows.
+     * `original_line_index` doesn't exist on the original. That is
+     * detected here against the real `pos_receipt_lines` rows (by
+     * `line_number`); `product_id` is instead cross-checked against the
+     * ORIGINAL's own SIGNED PAYLOAD snapshot
+     * (`fiscal_events.payload.line_items[i].product_id`), never the local
+     * `pos_receipt_lines.product_id` FK column — `writeLines()`
+     * deliberately NULLs that FK for deleted/ad-hoc/cross-tenant products,
+     * so the lossy local column would falsely dead-letter a genuinely
+     * correct reference.
      *
-     * @param  Collection<int, \stdClass>  $originalLines  each row carrying at least `id`, `line_number`, `product_id` (raw `DB::table('pos_receipt_lines')->get()` rows)
+     * @param  Collection<int, \stdClass>  $originalLines  each row carrying at least `id`, `line_number` (raw `DB::table('pos_receipt_lines')->get()` rows; used ONLY to resolve `line_number` → the local line's `id`/`quantity` for the §12 cap — never for the `product_id` check, see below)
      */
     private function resolveOriginalLineForReference(
         FiscalEvent $event,
@@ -892,17 +898,50 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             );
         }
 
-        $originalProductId = $originalLine->product_id === null ? null : (string) $originalLine->product_id;
-        if ($originalProductId !== $ref->productId) {
+        // fiscal re-verification IMPORTANT — compare against the
+        // ORIGINAL'S OWN SIGNED PAYLOAD snapshot
+        // (fiscal_events.payload.line_items[i].product_id), NEVER the
+        // lossy LOCAL `pos_receipt_lines.product_id` FK column.
+        // `writeLines()` deliberately NULLs that FK for deleted/ad-hoc/
+        // cross-tenant products (see its own comment) — comparing against
+        // it here means a refund of such an original dead-letters
+        // PERMANENTLY on the primary path even though the reference is
+        // genuinely correct. The signed snapshot survives deletion and FK
+        // suppression by construction (it is chain-immutable and was
+        // already validated at ingest time), matching the pattern already
+        // used by {@see assertOriginalNotTraining()} and
+        // {@see computeRefundPolicyAlerts()}.
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
+        $lineItems = ($originalEvent !== null && is_array($originalEvent->payload))
+            ? ($originalEvent->payload['line_items'] ?? null)
+            : null;
+
+        if (
+            ! is_array($lineItems)
+            || ! isset($lineItems[$ref->originalLineIndex])
+            || ! is_array($lineItems[$ref->originalLineIndex])
+        ) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: 'the resolved original fiscal event has no signed line_items entry at that index',
+            );
+        }
+
+        $snapshotProductIdRaw = $lineItems[$ref->originalLineIndex]['product_id'] ?? null;
+        $snapshotProductId = $snapshotProductIdRaw === null ? null : (string) $snapshotProductIdRaw;
+
+        if ($snapshotProductId !== $ref->productId) {
             throw new OriginalLineUnresolvableException(
                 fiscalEventId: $event->id,
                 originalReceiptId: $originalReceiptId,
                 originalLineIndex: $ref->originalLineIndex,
                 reason: sprintf(
-                    'product_id mismatch: reference claims %s, original line_number=%d resolved to %s',
+                    'product_id mismatch: reference claims %s, original signed line_items[%d].product_id resolved to %s',
                     $ref->productId,
-                    (int) $originalLine->line_number,
-                    $originalProductId ?? 'NULL',
+                    $ref->originalLineIndex,
+                    $snapshotProductId ?? 'NULL',
                 ),
             );
         }

@@ -215,6 +215,16 @@ final class RefundCompensationControllerTest extends TestCase
             $balanceAfterFirst,
         );
 
+        // treasury re-verification MINOR item 3 -- the movement port's own
+        // derived idempotency key is structurally distinct from
+        // TreasuryReceiptBridge's per-payment-leg keys
+        // (fiscal_event:{id}:payment:{i}); pin the 'refund_writeoff' leg
+        // discriminator so it can never collide with that same event's own
+        // payment-leg movement.
+        $this->assertDatabaseHas('repository_movements', [
+            'idempotency_key' => "fiscal_event:{$this->rejectedEvent->id}:refund_writeoff",
+        ]);
+
         // Replay -- must NOT write a second movement or decrement again.
         $second = $this->postJson('/api/v1/fiscal/refund-compensations', [
             'fiscal_event_id' => $this->rejectedEvent->id,
@@ -326,6 +336,75 @@ final class RefundCompensationControllerTest extends TestCase
         $this->assertDatabaseCount('repository_movements', 0);
     }
 
+    // =================================================================
+    // treasury re-verification CRITICAL — `integrity_exception_class` is
+    // WRITE-ONCE (Task-8 trigger): it stays 'canonical_parse_failure'
+    // FOREVER even after `ParseFailureResolutionService` resolves the
+    // parse failure and the event's projections DISPATCH+APPLY through
+    // the NORMAL path. The state-guard above (dead-lettered OR
+    // ingress-quarantined) alone is therefore an UNRELIABLE "still
+    // rejected" signal for a RESOLVED-and-since-applied quarantine event
+    // -- reachable double-cash-out. `storeRejectedRefundEvent()` never
+    // exercises the quarantine arm at all (hardcodes
+    // integrity_exception_class=null), so these two tests are the only
+    // coverage of that arm.
+    // =================================================================
+
+    public function test_a_resolved_quarantine_event_with_an_applied_projection_is_refused_the_double_cash_out_case(): void
+    {
+        // Mirrors the exact post-ParseFailureResolutionService::resolve()
+        // shape: integrity_exception_class stays 'canonical_parse_failure'
+        // (write-once), integrity_status flips to Verified,
+        // payload_parse_status flips to Parsed, payload is populated --
+        // and its projection subsequently APPLIED through the normal path
+        // (cash already moved).
+        $resolvedEvent = $this->storeIngressQuarantinedRefundEvent($this->tenant, $this->company, resolved: true);
+        DB::table('fiscal_event_projections')->insert([
+            'id' => (string) Str::uuid(),
+            'fiscal_event_id' => $resolvedEvent->id,
+            'projector_name' => 'pos_core_receipt',
+            'projection_status' => ProjectionStatus::Applied->value,
+            'attempts' => 1,
+        ]);
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $resolvedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('fiscal_refund_compensations', 0);
+        $this->assertDatabaseCount('repository_movements', 0);
+    }
+
+    public function test_an_unresolved_quarantine_event_with_a_null_payload_is_refused_as_not_a_refund(): void
+    {
+        // integrity_exception_class='canonical_parse_failure' but the
+        // parse failure was NEVER resolved -- payload is still NULL, so
+        // there is no invoice_type_code/amount/shift_id to safely act on.
+        // This deliberately hits the SAME not_a_refund throw a non-refund
+        // SALE_RECEIPT would, documented explicitly in
+        // RefundCompensationService rather than inventing a new reason
+        // code for a case that is already refused for the right
+        // underlying cause (no readable payload).
+        $unresolvedEvent = $this->storeIngressQuarantinedRefundEvent($this->tenant, $this->company, resolved: false);
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $unresolvedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('fiscal_refund_compensations', 0);
+        $this->assertDatabaseCount('repository_movements', 0);
+    }
+
     public function test_a_fiscal_event_belonging_to_another_company_is_refused_not_found(): void
     {
         $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id, 'country_code' => 'US']);
@@ -399,8 +478,14 @@ final class RefundCompensationControllerTest extends TestCase
             'server_received_at' => now(),
             'reference_event_id' => null,
             'reference_document_id' => null,
+            // fiscal re-verification (CI PG-filter expansion) —
+            // `fiscal_events_source_event_paired_null` CHECK requires
+            // BOTH null or BOTH non-null (PG-only; SQLite never enforced
+            // it, which is how this fixture passed there while failing
+            // under real PG). No assertion in this file reads
+            // source_event_id's value.
             'source_event_class' => 'refund_intents',
-            'source_event_id' => null,
+            'source_event_id' => Str::uuid()->toString(),
             'partner_id' => null,
             'partner_identity_snapshot' => null,
             'canonical_bytes' => json_encode($payload, JSON_THROW_ON_ERROR),
@@ -426,5 +511,77 @@ final class RefundCompensationControllerTest extends TestCase
         }
 
         return $event;
+    }
+
+    /**
+     * Builds an ingress-quarantine fiscal_events row --
+     * `integrity_exception_class='canonical_parse_failure'` -- in EITHER
+     * the still-unresolved shape (payload NULL, `payload_parse_status`
+     * Failed, `integrity_status` Quarantined) or the
+     * `ParseFailureResolutionService::resolve()`-post shape (payload
+     * populated, `payload_parse_status` Parsed, `integrity_status`
+     * Verified, `integrity_exception_class` UNCHANGED -- it is write-once
+     * per the Task-8 trigger). `storeRejectedRefundEvent()` above never
+     * sets `integrity_exception_class`, so this is the only fixture that
+     * exercises the quarantine arm of the state-guard.
+     */
+    private function storeIngressQuarantinedRefundEvent(
+        Tenant $tenant,
+        Company $company,
+        bool $resolved,
+    ): FiscalEvent {
+        $payload = $resolved ? [
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'invoice_type_code' => 'REFUND',
+            'total' => '20.00',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'payments' => [[
+                'amount' => '20.00',
+                'method_code' => 'CASH',
+            ]],
+        ] : null;
+
+        return FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'operator_id' => $this->operator->id,
+            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_version' => 4,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => random_int(1, 999999),
+            'event_time_device' => now(),
+            'business_date' => now()->startOfDay(),
+            'last_server_time_seen' => null,
+            'server_received_at' => now(),
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            // fiscal re-verification (CI PG-filter expansion) —
+            // `fiscal_events_source_event_paired_null` CHECK requires
+            // BOTH null or BOTH non-null (PG-only; SQLite never enforced
+            // it, which is how this fixture passed there while failing
+            // under real PG). No assertion in this file reads
+            // source_event_id's value.
+            'source_event_class' => 'refund_intents',
+            'source_event_id' => Str::uuid()->toString(),
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            // Unresolved: the canonical bytes are exactly what genuinely
+            // FAILED to parse at ingest (opaque to StrictCanonicalParser).
+            // Resolved: mirrors the original (pre-resolution) bytes --
+            // ParseFailureResolutionService never rewrites canonical_bytes
+            // (write-once/frozen per the Task-8 trigger), only `payload`.
+            'canonical_bytes' => 'not-parseable-as-canonical-bytes',
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => hash('sha256', (string) Str::uuid()),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => $resolved ? IntegrityStatus::Verified : IntegrityStatus::Quarantined,
+            'integrity_exception_class' => 'canonical_parse_failure',
+            'integrity_exception_reason' => 'canonical bytes failed to parse',
+            'payload' => $payload,
+            'payload_parse_status' => $resolved ? PayloadParseStatus::Parsed : PayloadParseStatus::Failed,
+        ])->refresh();
     }
 }
