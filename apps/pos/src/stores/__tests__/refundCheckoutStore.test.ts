@@ -65,7 +65,7 @@ vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
 }));
 vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
   createOrReuseActiveRefundIntent: vi.fn(),
-  markApprovalAuthored: vi.fn().mockResolvedValue(undefined),
+  ensureApprovalAuthored: vi.fn().mockResolvedValue(undefined),
   getCumulativeRefundedQuantityByOriginalLine: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
@@ -81,13 +81,23 @@ vi.mock('@/lib/refundFlow/refundApprovalV3', () => ({
 }));
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   getOfflineReceiptByIdempotencyKey: vi.fn().mockResolvedValue(null),
+  // Finding 19 — the ORIGINAL's own receipt number + total (the value ceiling).
+  getOfflineReceiptById: vi.fn().mockResolvedValue({
+    id: 'orig-receipt-uuid-1',
+    receipt_number: 'MAIN-T01-2026-00000042',
+    total: '20.0000',
+    currency: 'EUR',
+  }),
+}));
+vi.mock('@/lib/db/repositories/localRefundRecordRepository', () => ({
+  sumLegacyRefundedValueForOriginalReceipt: vi.fn().mockResolvedValue('0.00'),
 }));
 
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
 import { resolveOriginalFiscalEventLocally } from '@/lib/db/repositories/fiscalEventRepository';
 import {
   createOrReuseActiveRefundIntent,
-  markApprovalAuthored,
+  ensureApprovalAuthored,
   getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
@@ -96,7 +106,11 @@ import {
   authorRefundReturnApprovalV3,
   recoverRefundApprovalEvidenceLocally,
 } from '@/lib/refundFlow/refundApprovalV3';
-import { getOfflineReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  getOfflineReceiptById,
+  getOfflineReceiptByIdempotencyKey,
+} from '@/lib/db/repositories/offlineReceiptRepository';
+import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
 
 const fakeDb = {} as Database;
 const NO_RETRY = { maxRetries: 0, backoffMs: 0 };
@@ -847,6 +861,18 @@ describe('refundCheckoutStore — v4 flow', () => {
     useRefundReconciliationStore.setState({ epoch: 0 });
 
     vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(v4OriginalView() as never);
+    // Finding 19 — the ORIGINAL's value ceiling and the legacy refund sum.
+    // Re-armed here because the suite clears mocks between tests.
+    vi.mocked(getOfflineReceiptById).mockResolvedValue({
+      id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+      receipt_number: 'MAIN-T01-2026-00000042',
+      total: '20.0000',
+      currency: 'EUR',
+    } as never);
+    vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+    vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
+    vi.mocked(ensureApprovalAuthored).mockResolvedValue(undefined);
     vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
       intent: v4RefundIntent(),
       reused: false,
@@ -1213,7 +1239,7 @@ describe('refundCheckoutStore — v4 flow', () => {
           approvalReferences: [v4ApprovalEvidence],
         }),
       );
-      expect(markApprovalAuthored).toHaveBeenCalledWith(expect.anything(), 'refund-intent-1');
+      expect(ensureApprovalAuthored).toHaveBeenCalledWith(expect.anything(), 'refund-intent-1');
     });
 
     it('finding 7 — seals the ORIGINAL\'s own business date, never the refund day\'s', async () => {
@@ -1251,17 +1277,102 @@ describe('refundCheckoutStore — v4 flow', () => {
       expect(createRefundReceipt).toHaveBeenCalledTimes(2);
     });
 
-    it('a markApprovalAuthored failure is non-fatal — the settle still proceeds with the already-cached approval', async () => {
-      vi.mocked(markApprovalAuthored).mockRejectedValueOnce(new Error('transition guard rejected'));
+    /**
+     * Finding-11 VERIFICATION (wave-3 analysis, "Minor, found while
+     * reading"). This used to assert the OPPOSITE — that a failed
+     * `markApprovalAuthored()` was "non-fatal" and the settle proceeded
+     * anyway. It was not non-fatal: `markRefundEventAppended()` only
+     * transitions FROM `approval_authored`, so the settle was GUARANTEED
+     * to throw inside the write-gate transaction and roll back — and,
+     * because the call sat inside the `approval === null` branch, a retry
+     * never re-ran it. Permanent silent rollback loop for the session.
+     */
+    it('finding 11 — a failure to reach approval_authored refuses the settle instead of rolling back forever', async () => {
+      vi.mocked(ensureApprovalAuthored).mockRejectedValueOnce(new Error('transition guard rejected'));
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
       await v4WalkToApproval();
 
       await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
 
-      expect(useRefundCheckoutStore.getState().step).toBe('settled');
-      expect(createRefundReceipt).toHaveBeenCalledTimes(1);
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+      // The doomed settle is never attempted…
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+      // …and the already-signed approval stays cached, so the retry costs
+      // no second PIN and re-authors nothing.
+      expect(state.approval).toEqual(v4ApprovalEvidence);
       expect(consoleError).toHaveBeenCalled();
       consoleError.mockRestore();
+    });
+
+    it('finding 11 — ensureApprovalAuthored runs on EVERY settle attempt, not only the authoring one', async () => {
+      vi.mocked(createRefundReceipt).mockRejectedValueOnce(new Error('write-gate failure'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      // Authored once; state-advance attempted on both settles (it is
+      // idempotent), so a transient first failure cannot strand the intent
+      // at `drafted` forever.
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledTimes(1);
+      expect(ensureApprovalAuthored).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Wave-2 fix-wave finding 19 (⚖️ §M1) — the receipt-level, VALUE-based
+     * LEGACY bound. `local_refund_records` is the only device-local trace
+     * of a refund settled through the legacy `/return` path, and the
+     * per-line cumulative cap never consulted it.
+     */
+    describe('finding 19 — legacy refund value bound', () => {
+      it('refuses when a prior LEGACY refund plus this one would exceed the original value', async () => {
+        // Original total 20.00; 15.00 already refunded legacy; this
+        // attempt is 20.00 => 35.00 > 20.00.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('15.00');
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('proceeds when the legacy refunds plus this one stay within the original value', async () => {
+        // Original 20.00; nothing refunded legacy; this attempt 20.00.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('FAILS CLOSED when a legacy record is unreadable (never skip-and-undercount)', async () => {
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockRejectedValue(
+          new Error('local_refund_records has a non-canonical total'),
+        );
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+      });
+
+      it('FAILS CLOSED when the ORIGINAL receipt row cannot be read (no value ceiling to bound against)', async () => {
+        vi.mocked(getOfflineReceiptById).mockResolvedValue(null);
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        consoleError.mockRestore();
+      });
     });
 
     it('a PIN/authoring failure returns to approval with errorApproval — no settle attempted', async () => {

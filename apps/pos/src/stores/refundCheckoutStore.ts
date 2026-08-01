@@ -102,7 +102,7 @@ import {
 } from '@/lib/db/repositories/fiscalEventRepository';
 import {
   createOrReuseActiveRefundIntent,
-  markApprovalAuthored,
+  ensureApprovalAuthored,
   getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
@@ -112,8 +112,13 @@ import {
   type RefundLineInput,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
-import { getOfflineReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
-import { bcabs, bcadd, bccomp } from '@/lib/decimal';
+import {
+  getOfflineReceiptById,
+  getOfflineReceiptByIdempotencyKey,
+} from '@/lib/db/repositories/offlineReceiptRepository';
+import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { bcabs, bcadd, bccomp, bcformat } from '@/lib/decimal';
 
 /** quantity scale (rule 19's device-side QuantityScale convention) — must
  *  match refundIntentRepository.ts's own QUANTITY_SCALE exactly, or the
@@ -189,7 +194,17 @@ export type RefundCheckoutErrorKey =
    * refund fiscal event. The refund is done; what remains is payout
    * confirmation / AVOIR reprint, which the reconciliation modal owns.
    */
-  | 'refundFlow.refundAlreadyAppended';
+  | 'refundFlow.refundAlreadyAppended'
+  /**
+   * v3-refund-chain-integration wave-2 fix-wave finding 19 (⚖️
+   * orchestrator-adopted from the wave-3 payout-cash-bound analysis §M1)
+   * — v4-only: the RECEIPT-LEVEL, VALUE-BASED legacy bound. Refunds
+   * settled through the LEGACY `/return` path leave no `refund_intents`
+   * row, so the per-line cumulative cap is blind to them; this bound sums
+   * `local_refund_records` for the ORIGINAL's receipt number and refuses
+   * when the total refunded value would exceed the original's own total.
+   */
+  | 'refundFlow.legacyRefundValueExceeded';
 
 export interface RefundCheckoutError {
   key: RefundCheckoutErrorKey;
@@ -876,6 +891,42 @@ async function beginV4(
     }
   }
 
+  // ── Wave-2 fix-wave finding 19 (⚖️ orchestrator-adopted from the wave-3
+  //    payout-cash-bound analysis §M1) — the LEGACY half of the bound.
+  //
+  //    The cumulative-quantity backstop above sums `refund_intents` rows
+  //    ONLY. Refunds settled through the LEGACY `/return` path — which
+  //    stays live on non-acknowledged terminals BY RULED DESIGN (§9.2's
+  //    dual-path store) — leave no `refund_intents` row at all; their only
+  //    device-local trace is `local_refund_records`. So an original
+  //    already refunded IN FULL through the legacy path could be refunded
+  //    AGAIN, in full, offline, via v4: the device saw zero prior refunds.
+  //
+  //    `local_refund_records` has no per-line quantities and keys the
+  //    original by receipt NUMBER, so this is a RECEIPT-LEVEL, VALUE-BASED
+  //    bound — coarser than the per-line cap above, and accepted as such
+  //    by the ruling. §12's server-side cap remains the sole
+  //    cross-terminal authority; this converts the hole from "invisible"
+  //    to "bounded by the original's own value".
+  //
+  //    Fails closed exactly like finding 18: an unreadable legacy row
+  //    UNDERCOUNTS what has already been refunded, which makes the bound
+  //    more permissive precisely when its data is untrustworthy.
+  const legacyBound = await evaluateLegacyRefundValueBound(
+    input.db,
+    originalLocalReceiptId,
+    lineSnapshot,
+  );
+  if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
+  if (!legacyBound.allowed) {
+    set({
+      step: 'idle',
+      error: { key: 'refundFlow.legacyRefundValueExceeded', serverMessage: null },
+      refundItemsSnapshot: null,
+    });
+    return;
+  }
+
   // ── Wave-2 fix-wave finding 10 (fiscal I-1) — a PARTIAL refund of a
   //    per-line-discounted line is refused HERE, before the manager PIN.
   //
@@ -965,6 +1016,56 @@ async function beginV4(
     approval: recoveredApproval,
     error: null,
   });
+}
+
+/**
+ * Wave-2 fix-wave finding 19 / §M1 — the receipt-level, VALUE-based legacy
+ * refund bound.
+ *
+ * Reads the ORIGINAL's own `offline_receipts` row for its `receipt_number`
+ * and `total` (the value ceiling), sums the magnitude of every LEGACY
+ * refund already recorded against that receipt number, adds THIS refund's
+ * own total, and refuses if the result exceeds the original's total.
+ *
+ * Fail-closed on every unknown: a missing original row, a non-canonical
+ * original total, or an unreadable legacy record all refuse. The bound
+ * only ever ADDS refusals — it can never authorize a refund the
+ * per-line cap already rejected.
+ */
+async function evaluateLegacyRefundValueBound(
+  db: Database,
+  originalLocalReceiptId: string,
+  lines: readonly RefundLineInput[],
+): Promise<{ allowed: boolean }> {
+  try {
+    const originalReceipt = await getOfflineReceiptById(db, originalLocalReceiptId);
+    if (originalReceipt === null) return { allowed: false };
+
+    const scale = getCurrencyDecimals(originalReceipt.currency);
+    const originalTotal = bcabs(originalReceipt.total, scale);
+
+    const legacyRefunded = await sumLegacyRefundedValueForOriginalReceipt(
+      db,
+      originalReceipt.receipt_number,
+      scale,
+    );
+
+    // This attempt's own value: the same |line_total| sum
+    // `createRefundReceipt()` uses for the cash payout leg.
+    const thisRefundTotal = lines.reduce(
+      (sum, line) => bcadd(sum, bcabs(line.cartItem.line_total, scale), scale),
+      bcformat('0', scale),
+    );
+
+    const projected = bcadd(legacyRefunded, thisRefundTotal, scale);
+    return { allowed: bccomp(projected, originalTotal) <= 0 };
+  } catch (boundError) {
+    console.error(
+      '[refundCheckout] legacy refund-value bound could not be computed — refusing (fail closed)',
+      boundError,
+    );
+    return { allowed: false };
+  }
 }
 
 /** The company the v4 flow's local reads/authoring run against. */
@@ -1169,20 +1270,40 @@ async function approveAndSubmitV4(
     // Cache IMMEDIATELY — the fiscal events are already signed at this
     // point regardless of what happens next.
     set({ approval });
-    try {
-      await markApprovalAuthored(db, refundIntent.id);
-    } catch (markError) {
-      // Best-effort local bookkeeping ONLY — the fiscal approval+override
-      // events are ALREADY signed and cached above; this write merely
-      // advances refund_intents.state for crash-recovery/UI purposes. A
-      // failure here must NEVER cause a retry to re-author (which would
-      // double-append fiscal events for the same target), so it is
-      // logged, never surfaced as a checkout error.
-      console.error(
-        '[refundCheckout] markApprovalAuthored failed (non-fatal — approval already signed and cached)',
-        markError,
-      );
-    }
+  }
+
+  // ── Wave-2 fix-wave, finding-11 verification (wave-3 analysis, "Minor,
+  //    found while reading") — the intent MUST be at `approval_authored`
+  //    before the settle, and this runs UNCONDITIONALLY.
+  //
+  //    This write used to sit inside the `approval === null` branch above
+  //    with its failure swallowed as "best-effort local bookkeeping". But
+  //    `markRefundEventAppended()` only transitions FROM
+  //    `approval_authored`, so a failed write left the intent at `drafted`
+  //    and every settle attempt threw INSIDE the write-gate transaction →
+  //    full rollback. And because the call was inside that branch, once
+  //    the approval was cached a retry never re-ran it: a permanent,
+  //    silent rollback loop for the rest of the session, with no
+  //    operator-visible cause.
+  //
+  //    `ensureApprovalAuthored()` is idempotent (already-`approval_authored`
+  //    is a re-read-confirmed no-op), so re-running it can never
+  //    re-author fiscal events — the original reason for swallowing. A
+  //    genuine failure now surfaces as a RETRYABLE approval error instead
+  //    of falling through into a settle guaranteed to roll back.
+  try {
+    await ensureApprovalAuthored(db, refundIntent.id);
+  } catch (markError) {
+    if (get().epoch !== epoch) return;
+    console.error(
+      '[refundCheckout] could not advance refund_intents to approval_authored — refusing to attempt a settle that would roll back',
+      markError,
+    );
+    set({
+      step: 'approval',
+      error: { key: 'refundFlow.checkout.errorApproval', serverMessage: null },
+    });
+    return;
   }
 
   // Receipt-number cosmetics only (matches receiptService.ts's own

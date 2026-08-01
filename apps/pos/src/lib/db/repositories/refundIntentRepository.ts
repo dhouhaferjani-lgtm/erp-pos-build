@@ -216,6 +216,37 @@ export async function markApprovalAuthored(db: Database, id: string): Promise<vo
 }
 
 /**
+ * Wave-2 fix-wave, finding-11 verification (wave-3 analysis, "Minor, found
+ * while reading") — guarantees the intent is at `approval_authored` before
+ * a settle is attempted, IDEMPOTENTLY.
+ *
+ * The bug: `markApprovalAuthored()`'s failure was swallowed as "best-effort
+ * local bookkeeping", but `markRefundEventAppended()` only transitions FROM
+ * `approval_authored`. So a failed bookkeeping write left the intent at
+ * `drafted`, and every subsequent settle attempt threw
+ * `InvalidRefundIntentTransitionError` INSIDE the write-gate transaction →
+ * full rollback. Worse, the swallowed call sat inside the
+ * `if (approval === null)` branch, so once the approval was cached the
+ * retry never re-ran it: a permanent, silent rollback loop for the rest of
+ * the session. Fail-closed on the money (no event, no payout), but the
+ * intent was un-settleable with no operator-visible cause.
+ *
+ * This runs UNCONDITIONALLY before the settle and is safe to call any
+ * number of times: already at `approval_authored` is a confirmed no-op;
+ * anything else PROPAGATES so the caller can surface a retryable error
+ * instead of falling into a guaranteed rollback.
+ */
+export async function ensureApprovalAuthored(db: Database, id: string): Promise<void> {
+  try {
+    await transitionRefundIntentState(db, id, ['drafted'], 'approval_authored');
+  } catch (error) {
+    if (!(error instanceof InvalidRefundIntentTransitionError)) throw error;
+    const current = await getRefundIntentById(db, id);
+    if (current === null || current.state !== 'approval_authored') throw error;
+  }
+}
+
+/**
  * §4.3 — `refund_fiscal_event_id` is only known AFTER `engine.append()`
  * returns; this is the "read-back convenience" write, never the
  * idempotency mechanism (that is `engine.append()`'s own

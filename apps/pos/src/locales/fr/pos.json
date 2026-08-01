@@ -127,6 +127,7 @@
     "refundQuantityExceeded": "Ce remboursement dépasserait la quantité initialement vendue. Vérifiez ce qui a déjà été remboursé pour ce ticket.",
     "discountedPartialRefundRefused": "Cette ligne comportait une remise : elle ne peut être remboursée qu'en totalité. Remboursez la ligne entière, ou demandez à un responsable de traiter un remboursement partiel depuis le back-office.",
     "refundAlreadyAppended": "Ce remboursement a déjà été enregistré. Terminez la confirmation du versement en espèces et l'impression du ticket.",
+    "legacyRefundValueExceeded": "Ce ticket a déjà été remboursé sur ce terminal pour la totalité de sa valeur. Vérifiez le remboursement précédent avant d'en traiter un autre.",
     "capabilityUnavailable": "Les remboursements sont temporairement indisponibles sur ce terminal — contactez le support",
     "confirm": {
       "charge": "Encaisser {{amount}}",
