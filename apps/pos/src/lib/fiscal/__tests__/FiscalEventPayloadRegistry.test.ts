@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FiscalEventPayloadRegistry,
   FiscalEventTypeNotImplementedError,
+  VoidAuthoringProhibitedError,
   type FiscalEventTypeValue,
 } from '../FiscalEventPayloadRegistry';
 
@@ -188,5 +189,68 @@ describe('FiscalEventPayloadRegistry', () => {
         'ACCOUNT_STATUS_CHANGED',
       ]),
     );
+  });
+
+  // -------------------------------------------------------------------
+  // v3-refund-chain-integration spec §2 — payload-aware eventVersionFor()
+  // overload. Every case above (payload-less) MUST keep passing
+  // unmodified — that is the green baseline this extension is not
+  // allowed to disturb.
+  // -------------------------------------------------------------------
+
+  describe('payload-aware eventVersionFor() (spec §2)', () => {
+    it('resolves SALE_RECEIPT to 3 when the second argument is absent entirely (back-compat)', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(3);
+    });
+
+    it('resolves SALE_RECEIPT to 3 when payload.invoice_type_code is SALE', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'SALE' })).toBe(3);
+    });
+
+    it('resolves SALE_RECEIPT to 3 when payload.invoice_type_code is TRAINING', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'TRAINING' })).toBe(3);
+    });
+
+    it('resolves SALE_RECEIPT to 4 when payload.invoice_type_code is REFUND', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'REFUND' })).toBe(4);
+    });
+
+    it('throws VoidAuthoringProhibitedError when payload.invoice_type_code is VOID', () => {
+      expect(() =>
+        registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'VOID' }),
+      ).toThrow(VoidAuthoringProhibitedError);
+    });
+
+    it('throws FiscalEventTypeNotImplementedError (fail-closed) when invoice_type_code is missing', () => {
+      expect(() => registry.eventVersionFor('SALE_RECEIPT', {})).toThrow(
+        FiscalEventTypeNotImplementedError,
+      );
+    });
+
+    it('throws FiscalEventTypeNotImplementedError (fail-closed) when invoice_type_code is non-string', () => {
+      expect(() =>
+        registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 42 }),
+      ).toThrow(FiscalEventTypeNotImplementedError);
+    });
+
+    it('throws FiscalEventTypeNotImplementedError (fail-closed) when invoice_type_code is an unrecognized string', () => {
+      expect(() =>
+        registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'BOGUS' }),
+      ).toThrow(FiscalEventTypeNotImplementedError);
+    });
+
+    it('throws FiscalEventTypeNotImplementedError (fail-closed) when payload is present but not an object', () => {
+      expect(() => registry.eventVersionFor('SALE_RECEIPT', null)).toThrow(
+        FiscalEventTypeNotImplementedError,
+      );
+      expect(() => registry.eventVersionFor('SALE_RECEIPT', 'not-an-object')).toThrow(
+        FiscalEventTypeNotImplementedError,
+      );
+    });
+
+    it('ignores a present payload for non-SALE_RECEIPT types and keeps resolving to their fixed version', () => {
+      expect(registry.eventVersionFor('ACCOUNT_PAYMENT', { invoice_type_code: 'REFUND' })).toBe(1);
+      expect(registry.eventVersionFor('CASH_IN', { anything: 'here' })).toBe(1);
+    });
   });
 });

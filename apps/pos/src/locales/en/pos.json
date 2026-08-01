@@ -121,6 +121,9 @@
     "returningSection": "Returning",
     "buyingNewSection": "Buying new",
     "detailsNotLocal": "The original receipt details are not available on this terminal. Only items from receipts recorded on this terminal can be refunded locally. Ask a manager to look up the receipt from the back office.",
+    "trainingOriginalRefused": "This receipt was recorded in training mode and cannot be refunded.",
+    "wholeDiscountReceiptRefused": "This receipt has a whole-receipt discount; refunds are not available for it in this launch.",
+    "capabilityUnavailable": "Refunds are temporarily unavailable on this terminal — contact support",
     "confirm": {
       "charge": "Charge {{amount}}",
       "refund": "Refund {{amount}}",

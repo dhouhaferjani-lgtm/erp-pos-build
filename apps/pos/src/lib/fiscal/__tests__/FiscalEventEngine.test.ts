@@ -31,6 +31,7 @@ import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
 import {
   FiscalEventPayloadRegistry,
   FiscalEventTypeNotImplementedError,
+  VoidAuthoringProhibitedError,
 } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
 import { goldenAccountPaymentPayload } from '../payloads/AccountPaymentPayload';
@@ -184,6 +185,48 @@ function validSaleReceiptPayload(): Record<string, unknown> {
     ],
     vat_total: '2.000',
     vouchers_redeemed: [],
+  };
+}
+
+/**
+ * A canonical-spec-correct v4 REFUND SALE_RECEIPT payload
+ * (v3-refund-chain-integration spec §2/§3.3/§3.4/§3.7) — the 30-key V3
+ * base plus the three v4-only keys, `invoice_type_code: 'REFUND'`, a
+ * populated `original_receipt_reference`, a single CASH leg (uppercase
+ * `method_code`, `instrument_type: null`), and canonical-zero
+ * `transaction_discount_amount` (§3.5).
+ */
+function validRefundReceiptV4Payload(): Record<string, unknown> {
+  const base = validSaleReceiptPayload();
+  return {
+    ...base,
+    invoice_type_code: 'REFUND',
+    original_line_references: [
+      {
+        disposition: 'restock',
+        original_line_index: 0,
+        product_id: 'p-1',
+        quantity: '1.000',
+      },
+    ],
+    original_receipt_reference: {
+      fiscal_event_id: '55555555-5555-5555-5555-555555555555',
+      original_business_date: '2026-05-15',
+      original_receipt_uuid: '66666666-6666-6666-6666-666666666666',
+      refund_reason: 'customer asked',
+    },
+    payments: [
+      {
+        amount: '12.000',
+        foreign_currency_amount: null,
+        foreign_currency_code: null,
+        instrument_serial: null,
+        instrument_type: null,
+        method_code: 'CASH',
+      },
+    ],
+    refund_destination: 'cash',
+    settlement_allocation: null,
   };
 }
 
@@ -1240,6 +1283,17 @@ d('FiscalEventEngine.append', () => {
   it('Pass 2A.TS — rejects a payload missing a required key', async () => {
     for (const required of SALE_RECEIPT_PAYLOAD_KEYS) {
       const payload = omitKey(validSaleReceiptPayload(), required);
+      if (required === 'invoice_type_code') {
+        // v3-refund-chain-integration spec §2 — eventVersionFor() reads
+        // invoice_type_code to resolve the SALE_RECEIPT version BEFORE the
+        // key-set validator ever runs, so omitting invoice_type_code
+        // itself now fails EARLIER, with the fail-closed version-resolution
+        // error, not the (unreachable, for this one key) key-set error.
+        await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+          FiscalEventTypeNotImplementedError,
+        );
+        continue;
+      }
       await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
         new RegExp(`payload_missing_required:.*\\b${required}\\b`),
       );
@@ -1284,9 +1338,13 @@ d('FiscalEventEngine.append', () => {
   });
 
   it('Pass 2A.TS — rejects invoice_type_code outside the enum', async () => {
+    // v3-refund-chain-integration spec §2 — an unrecognized
+    // invoice_type_code now fails at version resolution (eventVersionFor,
+    // fail-closed), before the key-set/enum validator's own
+    // payload_field_invalid check is ever reached.
     const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'EXPORT' };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
-      /payload_field_invalid:invoice_type_code/,
+      FiscalEventTypeNotImplementedError,
     );
   });
 
@@ -1436,7 +1494,27 @@ d('FiscalEventEngine.append', () => {
   });
 
   it('Pass 2A.TS — rejects REFUND without original_receipt_reference', async () => {
-    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'REFUND' };
+    // v3-refund-chain-integration spec §2 — invoice_type_code=REFUND now
+    // unconditionally resolves to event_version=4 (there is no v3-REFUND
+    // shape any more), so the fixture must be a genuine v4 payload (the
+    // three v4-only keys present) for this test to still reach the
+    // version-independent original_receipt_reference invariant it exists
+    // to prove, rather than failing earlier on the v4 key-set check.
+    const base = validSaleReceiptPayload();
+    const payload = {
+      ...base,
+      invoice_type_code: 'REFUND',
+      original_line_references: [
+        {
+          disposition: 'restock',
+          original_line_index: 0,
+          product_id: 'p-1',
+          quantity: '1.000',
+        },
+      ],
+      refund_destination: 'cash',
+      settlement_allocation: null,
+    };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
       /payload_invoice_type_invalid:original_receipt_reference required/,
     );
@@ -1454,6 +1532,121 @@ d('FiscalEventEngine.append', () => {
     };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
       /payload_invoice_type_invalid:original_receipt_reference present but invoice_type_code=/,
+    );
+  });
+
+  // -------------------------------------------------------------------
+  // v3-refund-chain-integration spec §2/§3/§17 — V4 positive path + VOID
+  // negative path. V1-V3 regression coverage above is unmodified.
+  // -------------------------------------------------------------------
+
+  it('spec §2/§3 — happy path: v4 REFUND payload resolves event_version=4, validates, and seals', async () => {
+    const event = await engine.append(adapter, saleReceiptRequest({ payload: validRefundReceiptV4Payload() }));
+    expect(event.event_version).toBe(4);
+    expect(event.sequence_number).toBe(1);
+    expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('spec §2 — a plain SALE payload still resolves event_version=3 (payload-aware resolution does not regress the common case)', async () => {
+    const event = await engine.append(adapter, saleReceiptRequest());
+    expect(event.event_version).toBe(3);
+  });
+
+  it('spec §2/§3.4 — rejects a v4 REFUND payload missing the three v4-only keys (still v3-shaped)', async () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'REFUND' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_missing_required:.*original_line_references.*refund_destination.*settlement_allocation/,
+    );
+  });
+
+  it('spec §3.4 — rejects a v4 REFUND payload with a non-null settlement_allocation', async () => {
+    const payload = { ...validRefundReceiptV4Payload(), settlement_allocation: { plan: 'store_credit' } };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_settlement_allocation_not_null/,
+    );
+  });
+
+  it('spec §3.4 — rejects a v4 REFUND payload with an unrecognized refund_destination', async () => {
+    const payload = { ...validRefundReceiptV4Payload(), refund_destination: 'store_credit' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:refund_destination/,
+    );
+  });
+
+  it('spec §3.3 — rejects original_line_references whose length does not match line_items', async () => {
+    const base = validRefundReceiptV4Payload();
+    const payload = { ...base, original_line_references: [] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_original_line_references_length_mismatch/,
+    );
+  });
+
+  it('spec §3.3 — rejects original_line_references[i].product_id not matching line_items[i].product_id', async () => {
+    const base = validRefundReceiptV4Payload();
+    const refs = base['original_line_references'] as Array<Record<string, unknown>>;
+    const payload = {
+      ...base,
+      original_line_references: [{ ...refs[0], product_id: 'not-the-same-product' }],
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_original_line_reference_product_id_mismatch/,
+    );
+  });
+
+  it('spec §3.3 — rejects an original_line_references[i].disposition outside the ReturnLineDisposition enum', async () => {
+    const base = validRefundReceiptV4Payload();
+    const refs = base['original_line_references'] as Array<Record<string, unknown>>;
+    const payload = {
+      ...base,
+      original_line_references: [{ ...refs[0], disposition: 'destroyed' }],
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:disposition/,
+    );
+  });
+
+  it('spec §3.7 — rejects a v4 REFUND payload with more than one payment leg', async () => {
+    const base = validRefundReceiptV4Payload();
+    const payments = base['payments'] as Array<Record<string, unknown>>;
+    const payload = { ...base, payments: [payments[0], payments[0]] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_v4_refund_payments_not_single_leg/,
+    );
+  });
+
+  it('spec §3.7 — rejects a v4 REFUND payment leg whose method_code is not CASH', async () => {
+    const base = validRefundReceiptV4Payload();
+    const payments = base['payments'] as Array<Record<string, unknown>>;
+    const payload = { ...base, payments: [{ ...payments[0], method_code: 'VOUCHER' }] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_v4_refund_payment_not_cash/,
+    );
+  });
+
+  it('spec §3.7 — rejects a v4 REFUND payment leg with a non-null instrument_type', async () => {
+    const base = validRefundReceiptV4Payload();
+    const payments = base['payments'] as Array<Record<string, unknown>>;
+    const payload = { ...base, payments: [{ ...payments[0], instrument_type: 'store_voucher' }] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_v4_refund_payment_instrument_type_must_be_null/,
+    );
+  });
+
+  it('spec §3.5 — rejects a v4 REFUND payload with a non-zero transaction_discount_amount', async () => {
+    const payload = {
+      ...validRefundReceiptV4Payload(),
+      transaction_discount_amount: '1.000',
+      transaction_discount_reason: 'whole-receipt discount',
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_v4_refund_transaction_discount_must_be_zero/,
+    );
+  });
+
+  it('spec §2 — throws VoidAuthoringProhibitedError for invoice_type_code=VOID (no legitimate device producer)', async () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'VOID' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      VoidAuthoringProhibitedError,
     );
   });
 

@@ -31,6 +31,15 @@ interface OfflineReceiptLine {
   tax_rate: string;
   tax_amount: string;
   discount_amount?: string | null;
+  /**
+   * v3-refund-chain-integration spec §3.2 — persisted alongside
+   * `discount_amount` by `receiptService.ts:523-558` at sale time (the
+   * ORIGINAL sale's per-line discount reason, independent of the
+   * transaction-level `transaction_discount_reason`). Read here so a
+   * refund of a discounted original carries the reason through onto the
+   * returned `CartItem`, not just the amount.
+   */
+  discount_reason?: string | null;
   modifiers?: Array<{ name: string; price: string }>;
 }
 
@@ -81,6 +90,12 @@ export function hydrateFromReceipt(
       tax_rate: line.tax_rate,
       tax_amount: taxAmount,
       kind: 'return',
+      // v3-refund-chain-integration spec §3.2 — carry the ORIGINAL line's
+      // own discount fields through onto the returned CartItem. A
+      // discount is a reduction regardless of direction, so its magnitude
+      // is NOT negated (only line_total/tax_amount flip sign, above).
+      ...(line.discount_amount != null ? { discount_amount: line.discount_amount } : {}),
+      ...(line.discount_reason != null ? { discount_reason: line.discount_reason } : {}),
     };
   });
 }

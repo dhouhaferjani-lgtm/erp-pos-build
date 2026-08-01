@@ -136,6 +136,37 @@ export class FiscalEventTypeNotImplementedError extends Error {
   }
 }
 
+/**
+ * v3-refund-chain-integration spec §2 — thrown by `eventVersionFor()` when
+ * a payload-aware `SALE_RECEIPT` call resolves `invoice_type_code ===
+ * 'VOID'`. VOID authoring does not exist on the device (§8/§17's
+ * "explicitly NOT touched" list) — this is a hard, typed refusal, never a
+ * silent fallback to a lower event version.
+ */
+export class VoidAuthoringProhibitedError extends Error {
+  constructor() {
+    super(
+      'SALE_RECEIPT payload with invoice_type_code=VOID cannot be device-authored; VOID authoring is not implemented on this device.',
+    );
+    this.name = 'VoidAuthoringProhibitedError';
+  }
+}
+
+/**
+ * Reads `payload.invoice_type_code` defensively — `payload` is `unknown`
+ * at this call site (the registry does not own a SALE_RECEIPT payload
+ * type, per this file's own docblock), so this never throws on a
+ * non-object/null payload; it simply yields `undefined`, which
+ * `eventVersionFor()`'s exhaustive `switch` below treats as "unrecognized"
+ * (fail-closed, §2's resolution table).
+ */
+function readInvoiceTypeCode(payload: unknown): unknown {
+  if (typeof payload !== 'object' || payload === null) {
+    return undefined;
+  }
+  return (payload as Record<string, unknown>)['invoice_type_code'];
+}
+
 export class FiscalEventPayloadRegistry {
   private readonly implemented = new Set<ImplementedEventType>(IMPLEMENTED_EVENT_TYPES);
 
@@ -156,20 +187,60 @@ export class FiscalEventPayloadRegistry {
   }
 
   /**
+   * v3-refund-chain-integration spec §2 — payload-aware overload.
+   * `payload` is OPTIONAL and, when absent, resolution is byte-identical
+   * to the pre-existing payload-less behavior (every call site in this
+   * codebase that does not yet thread a payload keeps working unmodified
+   * — the 192-line registry test's payload-less assertions are the green
+   * baseline this signature must never break).
+   *
+   * Exact resolution table (spec §2, errata F7), `SALE_RECEIPT` only:
+   *
+   *   | second arg          | `invoice_type_code`     | resolution |
+   *   |----------------------|--------------------------|------------|
+   *   | absent                | n/a                       | `3`        |
+   *   | present                | `'SALE'` / `'TRAINING'`   | `3`        |
+   *   | present                | `'REFUND'`                | `4`        |
+   *   | present                | `'VOID'`                  | throws `VoidAuthoringProhibitedError` |
+   *   | present                | missing/non-string/other  | throws `FiscalEventTypeNotImplementedError` (fail-closed) |
+   *
+   * Every other implemented type ignores `payload` entirely and keeps
+   * resolving to its existing fixed version (`1`) — this feature only
+   * introduces version fan-out for `SALE_RECEIPT`.
+   *
    * @throws FiscalEventTypeNotImplementedError when `type` is reserved but
-   *         has no Phase 1 payload handler.
+   *         has no Phase 1 payload handler, OR (SALE_RECEIPT + payload
+   *         present only) when `invoice_type_code` is missing, non-string,
+   *         or not one of the four recognized literals.
+   * @throws VoidAuthoringProhibitedError when `type === 'SALE_RECEIPT'`,
+   *         `payload` is present, and `invoice_type_code === 'VOID'`.
    */
-  eventVersionFor(type: FiscalEventTypeValue): number {
+  eventVersionFor(type: FiscalEventTypeValue, payload?: unknown): number {
     if (!this.implemented.has(type as ImplementedEventType)) {
       throw new FiscalEventTypeNotImplementedError(type);
     }
     // SaleReceiptV3 (cash rounding, 2026-07-27): SALE_RECEIPT carries the
     // signed rounding adjustment + denomination since event_version 3. The
-    // server accepts {1, 2, 3} for parse; the device AUTHORS only 3.
-    // (V2 added the variant identity to each line item; V3 is a strict
-    // superset of V2 and the device never authors either 1 or 2 again.)
+    // server accepts {1, 2, 3, 4} for parse; the device AUTHORS 3 (sale/
+    // training) or 4 (refund, §2).
     if (type === 'SALE_RECEIPT') {
-      return 3;
+      if (payload === undefined) {
+        return 3;
+      }
+      const invoiceTypeCode = readInvoiceTypeCode(payload);
+      switch (invoiceTypeCode) {
+        case 'SALE':
+        case 'TRAINING':
+          return 3;
+        case 'REFUND':
+          return 4;
+        case 'VOID':
+          throw new VoidAuthoringProhibitedError();
+        default:
+          // Missing, non-string, or an unrecognized value — fail-closed,
+          // never silently defaults to 3 (spec §2, errata F7).
+          throw new FiscalEventTypeNotImplementedError(type);
+      }
     }
     return 1;
   }
