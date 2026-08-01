@@ -9,6 +9,7 @@ use App\Modules\POS\Application\DTOs\CustomerAnalyticsData;
 use App\Modules\POS\Application\DTOs\DiscountAnalysisData;
 use App\Modules\POS\Application\DTOs\FnbMetricsData;
 use App\Modules\POS\Application\DTOs\SalesSummaryData;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -215,6 +216,19 @@ final class PosAnalyticsService
 
     /**
      * Discount analysis: totals, by reason, top discounted products.
+     *
+     * SALE receipts only (⚖️ ruling, ticket 2026-08-01-positive-refund-total-consumers).
+     * This metric measures discounting BEHAVIOUR at the moment of sale: refunding
+     * a discounted sale neither grants a new discount nor retracts the historical
+     * grant, so a return is not a member of the population — it is excluded
+     * outright rather than netted (netting would understate discounts actually
+     * granted; including double-counts one grant).
+     *
+     * Note this is NOT only a v4 concern: `pos_receipt_lines_amounts` CHECKs
+     * `discount_amount >= 0` in both eras, so legacy return lines also carried a
+     * POSITIVE discount and were counted by the `> 0` filter. Only
+     * `line_total`/`quantity` ever went negative. The filter is applied to all
+     * three queries below so the one DTO reports a single, consistent population.
      */
     /** @param list<string> $locationIds */
     public function getDiscountAnalysis(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): DiscountAnalysisData
@@ -225,6 +239,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.discount_amount), 0) as total_discount_amount')
             ->selectRaw('COUNT(*) as discount_count')
@@ -239,6 +254,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.discount_reason')
             ->selectRaw("COALESCE(pos_receipt_lines.discount_reason, 'No reason') as reason")
@@ -255,6 +271,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'units.decimal_places')
             ->selectRaw('pos_receipt_lines.product_id')

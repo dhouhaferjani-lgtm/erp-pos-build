@@ -47,9 +47,9 @@ use Tests\TestCase;
  * carry tender legs, because the legacy path wrote none and could not
  * (pos_receipt_payments CHECKs amount > 0):
  *
- *   sale        2026-03-15 10:00   total  +36.000  line +36.000 / +3.0000  cash +36.000
- *   v4 refund   2026-03-15 11:00   total  +12.000  line +12.000 / +1.0000  cash +12.000
- *   legacy ret  2026-03-16 09:00   total   -6.000  line  -6.000 / -0.5000  (no tender row)
+ *   sale        2026-03-15 10:00   total  +36.000  line +36.000 / +3.0000  cash +36.000  disc +5.000
+ *   v4 refund   2026-03-15 11:00   total  +12.000  line +12.000 / +1.0000  cash +12.000  disc +2.000
+ *   legacy ret  2026-03-16 09:00   total   -6.000  line  -6.000 / -0.5000  (no tender row)  disc +1.000
  *
  *   net over the window = 36 − 12 − 6 = 18.000  (a blended SUM yields 42.000)
  *   net quantity        =  3 −  1 − 0.5 = 1.5000 (a blended SUM yields 4.5000)
@@ -287,6 +287,49 @@ final class PosAnalyticsRefundNettingTest extends TestCase
         $this->assertSame(0, bccomp($this->money($rows[0]['quantity']), '1.5000', 4), 'product quantity must net both refund sign eras');
     }
 
+    /**
+     * ⚖️ Ruling — discount analysis EXCLUDES return receipts entirely (sale-only
+     * population), rather than netting them or letting them in.
+     *
+     * The metric measures discounting BEHAVIOUR at sale time: refunding a
+     * discounted sale neither grants a new discount nor retracts the historical
+     * grant, so a return simply is not a member of the population.
+     *
+     * ⚠️ The exposure is WIDER than the round-2 review assumed. It reasoned that
+     * the `discount_amount > 0` filter already dropped legacy return lines
+     * because their discount was negative — but `pos_receipt_lines_amounts`
+     * CHECKs `discount_amount >= 0` (and `unit_price >= 0`) in BOTH eras, so a
+     * legacy return line records its discount as a POSITIVE magnitude and was
+     * counted too. Only `line_total`/`quantity` ever went negative. Excluding
+     * returns therefore corrects both eras, not just the v4 arm.
+     *
+     * Fixture: the sale carries a 5.000 discount, the v4 refund the mirror
+     * 2.000, the legacy return 1.000. Every figure below is the sale's alone.
+     */
+    public function test_discount_analysis_ignores_refunds_of_discounted_sales(): void
+    {
+        $data = $this->getJson('/api/v1/pos/analytics/discounts?from=2026-03-01&to=2026-03-31')
+            ->assertOk()
+            ->json('data');
+
+        // 5.000 alone — including the v4 mirror line reports 7.000.
+        $this->assertSame(0, bccomp($this->money($data['total_discount_amount']), '5.000', 3), 'a refund grants no new discount');
+        // One discounted line, not two.
+        $this->assertSame(1, $data['discount_count']);
+
+        $this->assertCount(1, $data['by_reason']);
+        $this->assertSame('Promo', $data['by_reason'][0]['reason']);
+        $this->assertSame(1, $data['by_reason'][0]['count']);
+        $this->assertSame(0, bccomp($this->money($data['by_reason'][0]['total_amount']), '5.000', 3));
+
+        $this->assertCount(1, $data['top_discounted_products']);
+        $this->assertSame('Espresso', $data['top_discounted_products'][0]['product_name']);
+        $this->assertSame(0, bccomp($this->money($data['top_discounted_products'][0]['discount_amount']), '5.000', 3));
+        // The quantity column the verifier flagged: the sale's 3.0000, never
+        // 4.0000 (sale + refund mirror).
+        $this->assertSame(0, bccomp($this->money($data['top_discounted_products'][0]['quantity']), '3.0000', 4));
+    }
+
     public function test_customer_analytics_nets_positive_v4_and_negative_legacy_refunds(): void
     {
         $data = $this->getJson('/api/v1/pos/analytics/customers?from=2026-03-01&to=2026-03-31')
@@ -325,7 +368,7 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'tax_amount' => '6.000',
             'total' => '36.000',
         ]);
-        $this->seedLine($this->sale, '36.000', '3.0000');
+        $this->seedLine($this->sale, '36.000', '3.0000', discount: '5.000');
         $this->seedCashPayment($this->sale, '36.000');
 
         // v4-era refund: POSITIVE total under receipt_type='return' (spec §7.7),
@@ -339,7 +382,9 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'original_receipt_id' => $this->sale->id,
             'return_reason' => ReturnReason::Other,
         ]);
-        $this->seedLine($v4Refund, '12.000', '1.0000');
+        // Mirror line of a discounted sale: the v4 payload carries the
+        // proportional discount as a POSITIVE magnitude.
+        $this->seedLine($v4Refund, '12.000', '1.0000', discount: '2.000');
         $this->seedCashPayment($v4Refund, '12.000');
 
         // Legacy-era return: NEGATIVE total and NEGATIVE line. No payment row —
@@ -355,10 +400,13 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'original_receipt_id' => $this->sale->id,
             'return_reason' => ReturnReason::Other,
         ]);
-        $this->seedLine($legacyReturn, '-6.000', '-0.5000');
+        // NOTE: discount_amount is CHECKed >= 0 in BOTH eras
+        // (pos_receipt_lines_amounts), so even a legacy return line records the
+        // discount as a POSITIVE magnitude — see the discount-analysis test.
+        $this->seedLine($legacyReturn, '-6.000', '-0.5000', discount: '1.000');
     }
 
-    private function seedLine(Receipt $receipt, string $lineTotal, string $quantity): void
+    private function seedLine(Receipt $receipt, string $lineTotal, string $quantity, string $discount = '0.000'): void
     {
         ReceiptLine::create([
             'receipt_id' => $receipt->id,
@@ -372,7 +420,8 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'tax_rate' => '20.00',
             'tax_amount' => '0.000',
             'line_total' => $lineTotal,
-            'discount_amount' => '0.000',
+            'discount_amount' => $discount,
+            'discount_reason' => 'Promo',
         ]);
     }
 
