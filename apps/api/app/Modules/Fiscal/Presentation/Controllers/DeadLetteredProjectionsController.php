@@ -39,6 +39,13 @@ use Illuminate\Support\Facades\DB;
  * Each list/detail row surfaces `write_off_action_url` — the URL of the
  * write-off endpoint already built behind this read surface — so an
  * operator UI never has to hardcode it.
+ *
+ * **review round-2 IMPORTANT 14 (§5.2 evidence (a)).** Both row formats
+ * ALSO surface `shift_id` and `refund_amount`, read from the event's own
+ * parsed payload (`shift_id`, `payments[0].amount` — the same cash-tender
+ * leg `RefundCompensationService` books, per review round-2 IMPORTANT 9).
+ * On an `ingress_quarantine` row the payload never parsed, so both are
+ * best-effort null when unavailable rather than a hard failure.
  */
 final class DeadLetteredProjectionsController extends Controller
 {
@@ -71,11 +78,13 @@ final class DeadLetteredProjectionsController extends Controller
                 'fiscal_events.id as fiscal_event_id',
                 'fiscal_events.event_type',
                 'fiscal_events.terminal_id',
+                'fiscal_events.payload',
                 'fiscal_event_projections.projector_name',
                 'fiscal_event_projections.attempts',
                 'fiscal_event_projections.last_error',
                 'fiscal_event_projections.dead_lettered_at',
             ]) as $row) {
+            $payload = $this->decodePayload($row->payload);
             $rows[] = $this->formatDeadLetteredRow(
                 fiscalEventId: (string) $row->fiscal_event_id,
                 eventType: (string) $row->event_type,
@@ -84,6 +93,8 @@ final class DeadLetteredProjectionsController extends Controller
                 attempts: (int) $row->attempts,
                 lastError: $row->last_error === null ? null : (string) $row->last_error,
                 deadLetteredAt: $row->dead_lettered_at === null ? null : (string) $row->dead_lettered_at,
+                shiftId: $this->extractShiftId($payload),
+                refundAmount: $this->extractRefundAmount($payload),
             );
         }
 
@@ -100,7 +111,7 @@ final class DeadLetteredProjectionsController extends Controller
                         ->whereColumn('fiscal_event_projections.fiscal_event_id', 'fiscal_events.id');
                 })
                 ->orderByDesc('server_received_at')
-                ->get(['id', 'event_type', 'terminal_id', 'server_received_at', 'integrity_exception_reason']);
+                ->get(['id', 'event_type', 'terminal_id', 'server_received_at', 'integrity_exception_reason', 'payload']);
 
             foreach ($quarantined as $event) {
                 $rows[] = $this->formatQuarantineRow($event);
@@ -137,6 +148,8 @@ final class DeadLetteredProjectionsController extends Controller
             ->first();
 
         if ($projectionRow !== null) {
+            $payload = is_array($event->payload) ? $event->payload : null;
+
             return response()->json([
                 'data' => $this->formatDeadLetteredRow(
                     fiscalEventId: (string) $event->id,
@@ -146,6 +159,8 @@ final class DeadLetteredProjectionsController extends Controller
                     attempts: (int) $projectionRow->attempts,
                     lastError: $projectionRow->last_error === null ? null : (string) $projectionRow->last_error,
                     deadLetteredAt: $projectionRow->dead_lettered_at === null ? null : (string) $projectionRow->dead_lettered_at,
+                    shiftId: $this->extractShiftId($payload),
+                    refundAmount: $this->extractRefundAmount($payload),
                 ),
             ]);
         }
@@ -175,6 +190,8 @@ final class DeadLetteredProjectionsController extends Controller
         int $attempts,
         ?string $lastError,
         ?string $deadLetteredAt,
+        ?string $shiftId,
+        ?string $refundAmount,
     ): array {
         return [
             'source' => 'dead_lettered_projection',
@@ -185,6 +202,8 @@ final class DeadLetteredProjectionsController extends Controller
             'attempts' => $attempts,
             'last_error' => $lastError,
             'dead_lettered_at' => $deadLetteredAt,
+            'shift_id' => $shiftId,
+            'refund_amount' => $refundAmount,
             'write_off_action_url' => route('fiscal.refund-compensations.store'),
         ];
     }
@@ -194,6 +213,8 @@ final class DeadLetteredProjectionsController extends Controller
      */
     private function formatQuarantineRow(FiscalEvent $event): array
     {
+        $payload = is_array($event->payload) ? $event->payload : null;
+
         return [
             'source' => 'ingress_quarantine',
             'fiscal_event_id' => $event->id,
@@ -202,7 +223,67 @@ final class DeadLetteredProjectionsController extends Controller
             'projector_name' => null,
             'integrity_exception_reason' => $event->integrity_exception_reason,
             'server_received_at' => $event->server_received_at->toIso8601String(),
+            'shift_id' => $this->extractShiftId($payload),
+            'refund_amount' => $this->extractRefundAmount($payload),
             'write_off_action_url' => route('fiscal.refund-compensations.store'),
         ];
+    }
+
+    /**
+     * The raw dead-lettered index query reads `fiscal_events.payload` via
+     * `DB::table()` (not the Eloquent model, so no automatic JSON cast).
+     * PG returns a JSONB column as a string through the raw query builder;
+     * decode it defensively -- a row whose payload never parsed at all
+     * (mid-ingestion column state) yields null rather than throwing.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function decodePayload(mixed $rawPayload): ?array
+    {
+        if (is_array($rawPayload)) {
+            return $rawPayload;
+        }
+
+        if (! is_string($rawPayload) || $rawPayload === '') {
+            return null;
+        }
+
+        try {
+            $decoded = json_decode($rawPayload, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     */
+    private function extractShiftId(?array $payload): ?string
+    {
+        $shiftId = $payload['shift_id'] ?? null;
+
+        return is_string($shiftId) && $shiftId !== '' ? $shiftId : null;
+    }
+
+    /**
+     * Mirrors `RefundCompensationService`'s own amount source (review
+     * round-2 IMPORTANT 9) — the cash TENDER leg (`payments[0].amount`),
+     * not `payload.total`, so an operator glancing at this list sees the
+     * exact amount the write-off action would book.
+     *
+     * @param  array<string, mixed>|null  $payload
+     */
+    private function extractRefundAmount(?array $payload): ?string
+    {
+        $payments = $payload['payments'] ?? null;
+        if (! is_array($payments) || ! isset($payments[0]) || ! is_array($payments[0])) {
+            return null;
+        }
+
+        $amount = $payments[0]['amount'] ?? null;
+
+        return is_string($amount) && $amount !== '' ? $amount : null;
     }
 }

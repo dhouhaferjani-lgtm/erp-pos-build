@@ -3590,6 +3590,17 @@ final class GeneralLedgerService
      * transaction (unlike {@see createPosCashRoundingEntry}) so it can
      * participate in that outer one.
      *
+     * **review round-2 CRITICAL 4.** The credit leg posts to the
+     * DECREMENTED REPOSITORY's own `gl_account_id` — the actual cash
+     * account the movement-port write-off leg pulls money out of — never
+     * the company-wide `SystemAccountPurpose::Cash` account, which would
+     * silently diverge from the real repository whenever a company has
+     * more than one cash account. Same null-gl_account_id refusal
+     * precedent as {@see createPOSRefundReversalEntry()}, but as a
+     * `\DomainException` (422-mapped by the generic handler in
+     * `bootstrap/app.php`) rather than `\InvalidArgumentException`
+     * (unmapped, would bubble to a 500).
+     *
      * @param  numeric-string  $amount  positive magnitude at $scale
      */
     public function createRefundCompensationEntry(
@@ -3600,6 +3611,7 @@ final class GeneralLedgerService
         string $amount,
         int $scale,
         \DateTimeInterface $entryDate,
+        PaymentRepository $repository,
     ): JournalEntry {
         $debitPurpose = match ($compensationClass) {
             'invalid_refund' => SystemAccountPurpose::RefundWriteOff,
@@ -3609,8 +3621,14 @@ final class GeneralLedgerService
             ),
         };
 
+        if ($repository->gl_account_id === null) {
+            throw new \DomainException(
+                "Cannot post a refund compensation entry: payment repository '{$repository->name}' ({$repository->code}) ".
+                'has no linked GL account. Assign a GL account to this repository first.'
+            );
+        }
+
         $debitAccount = $this->getAccountByPurpose($companyId, $debitPurpose);
-        $cashAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash);
 
         $sourceType = 'fiscal_refund_compensation';
 
@@ -3640,7 +3658,7 @@ final class GeneralLedgerService
 
         JournalLine::create([
             'journal_entry_id' => $entry->id,
-            'account_id' => $cashAccount->id,
+            'account_id' => $repository->gl_account_id,
             'partner_id' => null,
             'debit' => '0',
             'credit' => $normalizedAmount,

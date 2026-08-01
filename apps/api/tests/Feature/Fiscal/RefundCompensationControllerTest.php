@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
@@ -20,6 +24,7 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\PermissionRegistrar;
@@ -29,8 +34,12 @@ use Tests\TestCase;
  * v3-refund-chain-integration spec §5.2/§17 —
  * `POST /api/v1/fiscal/refund-compensations`.
  *
- * Covers both classes, idempotency-replay, posting/atomicity, and the
- * permission gate.
+ * Covers both classes, idempotency-replay, posting/atomicity, the
+ * permission gate, and — review round-2 CRITICALS 3/4 + IMPORTANTS 5-11 —
+ * the tenant+company scope, the dead-lettered/quarantined state-guard
+ * (double-cash-out refusal), the non-refund refusal, the repository's own
+ * GL account being credited (not the company-wide Cash-purpose account),
+ * and the treasury-half write (repository_movements + balance decrement).
  */
 final class RefundCompensationControllerTest extends TestCase
 {
@@ -43,6 +52,14 @@ final class RefundCompensationControllerTest extends TestCase
     private User $operator;
 
     private FiscalEvent $rejectedEvent;
+
+    /** The repository's OWN GL account -- deliberately DIFFERENT from the
+     *  company-wide SystemAccountPurpose::Cash account, so a test can
+     *  prove the credited leg is the repository's account, not the
+     *  purpose-based one. */
+    private Account $tillAccount;
+
+    private PaymentRepository $repository;
 
     protected function setUp(): void
     {
@@ -65,12 +82,22 @@ final class RefundCompensationControllerTest extends TestCase
 
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
-        PaymentRepository::factory()->create([
+        $this->tillAccount = Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'TILL-1',
+            'name' => 'Till #1',
+            'type' => AccountType::Asset,
+        ]);
+
+        $this->repository = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Cash Register',
             'type' => RepositoryType::CashRegister,
             'currency' => 'EUR',
+            'is_active' => true,
+            'gl_account_id' => $this->tillAccount->id,
         ]);
 
         $this->operator = User::factory()->create(['tenant_id' => $this->tenant->id]);
@@ -82,7 +109,7 @@ final class RefundCompensationControllerTest extends TestCase
         $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->operator->givePermissionTo('fiscal.refunds.manage_dead_letters');
 
-        $this->rejectedEvent = $this->storeRejectedRefundEvent();
+        $this->rejectedEvent = $this->storeRejectedRefundEvent($this->tenant, $this->company);
     }
 
     public function test_invalid_refund_class_posts_write_off_entry_and_persists_compensation(): void
@@ -98,10 +125,12 @@ final class RefundCompensationControllerTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.compensation_class', 'invalid_refund');
         $response->assertJsonPath('data.fiscal_event_id', $this->rejectedEvent->id);
+        $response->assertJsonPath('data.shift_id', '22222222-2222-4222-8222-222222222222');
 
         $this->assertDatabaseHas('fiscal_refund_compensations', [
             'fiscal_event_id' => $this->rejectedEvent->id,
             'compensation_class' => 'invalid_refund',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
         ]);
 
         $journalEntryId = $response->json('data.journal_entry_id');
@@ -125,6 +154,78 @@ final class RefundCompensationControllerTest extends TestCase
 
         $response->assertStatus(201);
         $response->assertJsonPath('data.compensation_class', 'valid_unbooked');
+    }
+
+    // =================================================================
+    // review round-2 CRITICAL 4 — the repository's OWN GL account is
+    // credited, never the company-wide Cash-purpose account.
+    // =================================================================
+
+    public function test_credits_the_repositorys_own_gl_account_not_the_cash_purpose_account(): void
+    {
+        $cashPurposeAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Cash);
+        self::assertNotSame(
+            $this->tillAccount->id,
+            $cashPurposeAccount->id,
+            'fixture sanity: the till account must differ from the Cash-purpose account for this test to be meaningful',
+        );
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $this->rejectedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+        $response->assertStatus(201);
+
+        $journalEntryId = $response->json('data.journal_entry_id');
+        $creditLine = DB::table('journal_lines')
+            ->where('journal_entry_id', $journalEntryId)
+            ->where('credit', '>', 0)
+            ->first();
+        self::assertNotNull($creditLine);
+        self::assertSame($this->tillAccount->id, $creditLine->account_id);
+        self::assertNotSame($cashPurposeAccount->id, $creditLine->account_id);
+    }
+
+    // =================================================================
+    // review round-2 IMPORTANT 9/10 — amount = cash tender leg
+    // (payments[0].amount), treasury-half writes: repository_movements
+    // count 1, balance decremented EXACTLY once (happy path + replay).
+    // =================================================================
+
+    public function test_treasury_half_writes_exactly_one_movement_and_decrements_balance_once_including_on_replay(): void
+    {
+        Sanctum::actingAs($this->operator);
+        $balanceBefore = (string) $this->repository->balance;
+
+        $first = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $this->rejectedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+        $first->assertStatus(201);
+
+        $this->assertDatabaseCount('repository_movements', 1);
+        $this->repository->refresh();
+        $balanceAfterFirst = (string) $this->repository->balance;
+        self::assertSame(
+            bcsub($balanceBefore, '20.00', 3), // precision-ok: payment_repositories.balance is decimal(N,3)
+            $balanceAfterFirst,
+        );
+
+        // Replay -- must NOT write a second movement or decrement again.
+        $second = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $this->rejectedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+        $second->assertStatus(200);
+
+        $this->assertDatabaseCount('repository_movements', 1);
+        $this->repository->refresh();
+        self::assertSame($balanceAfterFirst, (string) $this->repository->balance);
     }
 
     // =================================================================
@@ -195,28 +296,103 @@ final class RefundCompensationControllerTest extends TestCase
     }
 
     // =================================================================
+    // review round-2 CRITICAL 3 — scope + state-guard.
+    // =================================================================
+
+    public function test_a_projected_event_that_already_applied_is_refused_the_double_cash_out_case(): void
+    {
+        // The refund's own projection succeeded (Applied) -- its own
+        // normal path already moved cash out of the drawer. Writing off a
+        // "rejected" compensation for it too would double-cash-out.
+        $appliedEvent = $this->storeRejectedRefundEvent($this->tenant, $this->company, deadLettered: false);
+        DB::table('fiscal_event_projections')->insert([
+            'id' => (string) Str::uuid(),
+            'fiscal_event_id' => $appliedEvent->id,
+            'projector_name' => 'pos_core_receipt',
+            'projection_status' => ProjectionStatus::Applied->value,
+            'attempts' => 1,
+        ]);
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $appliedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('fiscal_refund_compensations', 0);
+        $this->assertDatabaseCount('repository_movements', 0);
+    }
+
+    public function test_a_fiscal_event_belonging_to_another_company_is_refused_not_found(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id, 'country_code' => 'US']);
+        $otherEvent = $this->storeRejectedRefundEvent($this->tenant, $otherCompany);
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $otherEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        $response->assertStatus(404);
+        $this->assertDatabaseCount('fiscal_refund_compensations', 0);
+    }
+
+    public function test_a_non_refund_event_is_refused(): void
+    {
+        // event_type=SALE_RECEIPT but invoice_type_code=SALE, dead-lettered
+        // (structurally possible -- any projection can dead-letter).
+        $saleEvent = $this->storeRejectedRefundEvent($this->tenant, $this->company, invoiceTypeCode: 'SALE');
+
+        Sanctum::actingAs($this->operator);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $saleEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('fiscal_refund_compensations', 0);
+    }
+
+    // =================================================================
     // Helpers
     // =================================================================
 
-    private function storeRejectedRefundEvent(): FiscalEvent
-    {
+    private function storeRejectedRefundEvent(
+        Tenant $tenant,
+        Company $company,
+        bool $deadLettered = true,
+        string $invoiceTypeCode = 'REFUND',
+    ): FiscalEvent {
         $payload = [
             'currency_code' => 'EUR',
             'currency_scale' => 2,
+            'invoice_type_code' => $invoiceTypeCode,
             'total' => '20.00',
             'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'payments' => [[
+                'amount' => '20.00',
+                'method_code' => 'CASH',
+            ]],
         ];
 
-        return FiscalEvent::query()->create([
+        $event = FiscalEvent::query()->create([
             'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'operator_id' => $this->operator->id,
             'event_type' => FiscalEventType::SALE_RECEIPT,
             'event_version' => 4,
             'signature_version' => 'hash-chain-integrity-v1',
-            'sequence_number' => 1,
+            'sequence_number' => random_int(1, 999999),
             'event_time_device' => now(),
             'business_date' => now()->startOfDay(),
             'last_server_time_seen' => null,
@@ -229,7 +405,7 @@ final class RefundCompensationControllerTest extends TestCase
             'partner_identity_snapshot' => null,
             'canonical_bytes' => json_encode($payload, JSON_THROW_ON_ERROR),
             'previous_hash' => str_repeat('a', 64),
-            'current_hash' => str_repeat('b', 64),
+            'current_hash' => hash('sha256', (string) Str::uuid()),
             'signature_status' => SignatureStatus::NotRequired,
             'integrity_status' => IntegrityStatus::Verified,
             'integrity_exception_class' => null,
@@ -237,5 +413,18 @@ final class RefundCompensationControllerTest extends TestCase
             'payload' => $payload,
             'payload_parse_status' => PayloadParseStatus::Parsed,
         ])->refresh();
+
+        if ($deadLettered) {
+            DB::table('fiscal_event_projections')->insert([
+                'id' => (string) Str::uuid(),
+                'fiscal_event_id' => $event->id,
+                'projector_name' => 'pos_core_receipt',
+                'projection_status' => ProjectionStatus::DeadLettered->value,
+                'attempts' => 5,
+                'dead_lettered_at' => now(),
+            ]);
+        }
+
+        return $event;
     }
 }

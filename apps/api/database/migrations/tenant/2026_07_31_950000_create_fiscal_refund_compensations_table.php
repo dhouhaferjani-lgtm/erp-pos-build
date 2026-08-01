@@ -28,6 +28,12 @@ return new class extends Migration
             $table->uuid('company_id');
             $table->uuid('fiscal_event_id');
             $table->string('compensation_class', 32); // 'invalid_refund' | 'valid_unbooked'
+            // review round-2 IMPORTANT 14 (§5.2 evidence (a)) — the refund
+            // event's OWN signed `shift_id`, read from its parsed payload at
+            // compensation time. Payout evidence for this compensation
+            // record includes WHICH shift the original refund attempt
+            // belonged to.
+            $table->uuid('shift_id')->nullable();
             $table->uuid('journal_entry_id');
             $table->uuid('repository_movement_id');
             $table->uuid('operator_id');
