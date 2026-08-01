@@ -16,6 +16,8 @@ use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\POS\Domain\Receipt;
@@ -520,6 +522,235 @@ final class GenerateZReportWithCountsTest extends TestCase
             $crossTenantManager->id,
             false,
         );
+    }
+
+    /**
+     * A v4 refund projects POSITIVE `pos_receipt_payments.amount` legs under a
+     * `receipt_type = 'return'` receipt (v3-refund-chain-integration spec §7.7),
+     * and NO v3+ path writes a `pos_cash_drawer_operations` REFUND row
+     * (ticket 2026-07-31-cashdrawer-v3-expected-cash-blind), so the payment leg
+     * is the ONLY signal that cash left the drawer. Blending it into the
+     * expected-cash SUM would inflate expected cash by the refund instead of
+     * reducing it, and hand the cashier a false overage on every refund shift.
+     *
+     * Legacy returns never wrote receipt-payment rows at all (the legacy path
+     * goes through PaymentRefundService / the cash drawer), so the legacy arm
+     * must remain a no-op — pinned here so the fix cannot regress it.
+     */
+    public function test_expected_cash_subtracts_v4_refund_payout_legs_and_ignores_legacy_returns(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        // v4-era refund: POSITIVE total, POSITIVE cash payout leg.
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+        // Legacy-era return: NEGATIVE total, no payment rows at all.
+        $this->seedRefundReceipt($sale, total: '-5.0000', cashPayoutLeg: null);
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000', // 100 collected − 12 paid out
+        )];
+
+        $z = $this->service->generateZReport(
+            $this->terminal,
+            $this->cashier,
+            $inputs,
+            null,
+            null,
+            false,
+        );
+
+        $count = ZReportCount::where('z_report_id', $z->id)->first();
+        $this->assertNotNull($count);
+        // 100 − 12 = 88 (a blended SUM reports 112 and fires a false 24.00 shortage).
+        $this->assertSame('88.0000', $count->expected_amount);
+        $this->assertSame('0.0000', $count->variance_amount);
+        $this->assertSame('balanced', $count->variance_direction);
+    }
+
+    /**
+     * The Z's printed CASH figure and the cash-count expected figure are two
+     * views of the same drawer and MUST agree once refunds exist.
+     *
+     * `calculateShiftTotals` used to `continue` past return receipts before the
+     * payment loop, so the printed Z showed CASH gross-of-refunds (100.00) while
+     * `buildExpectedPerMethod` reported the net (88.00) — two numbers on one Z
+     * that disagree by the refund. The device contract is unambiguous: the
+     * payment-method breakdown is NET of the refund payout
+     * (spec §7.3, pinned by ReceiptReturnRefactorV3Test — "Z cash must be net of
+     * the refund payout, not gross"), while refunds stay a SEPARATE
+     * POSITIVE-MAGNITUDE block (spec §3.1/§7.3) never folded into gross/net
+     * sales. The server aggregation now matches that contract.
+     */
+    public function test_z_cash_breakdown_agrees_with_net_expected_cash_and_refunds_are_positive_magnitude(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        // v4-era refund: POSITIVE total, POSITIVE cash payout leg.
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+        // Legacy-era return: NEGATIVE total, no payment rows (legacy refunds
+        // routed through PaymentRefundService / the cash drawer).
+        $this->seedRefundReceipt($sale, total: '-5.0000', cashPayoutLeg: null);
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000',
+        )];
+
+        $z = $this->service->generateZReport($this->terminal, $this->cashier, $inputs, null, null, false);
+
+        $reportData = $z->report_data;
+
+        // Sales stay sale-only: the refunds are NOT folded into gross/net.
+        $this->assertSame(1, $reportData['sales_count']);
+        $this->assertSame('100.0000', $reportData['gross_sales']);
+
+        // Refunds: their own block, POSITIVE magnitude in BOTH eras (12 + 5).
+        $this->assertSame(2, $reportData['refunds_count']);
+        $this->assertSame('17.0000', $reportData['refunds_amount']);
+
+        // Printed Z cash is net of the payout leg.
+        /** @var list<array<string, mixed>> $paymentMethods */
+        $paymentMethods = $reportData['payment_methods'];
+        $this->assertCount(1, $paymentMethods);
+        $this->assertSame('Cash', $paymentMethods[0]['payment_type']);
+        $this->assertSame('88.0000', $paymentMethods[0]['total_amount'], 'Z cash must be net of the refund payout, not gross');
+
+        // THE AGREEMENT: printed Z cash === cash-count expected cash.
+        $count = ZReportCount::where('z_report_id', $z->id)->first();
+        $this->assertNotNull($count);
+        $expectedAmount = $count->expected_amount;
+        $this->assertTrue(is_numeric($expectedAmount));
+        $this->assertSame(
+            0,
+            bccomp((string) $paymentMethods[0]['total_amount'], $expectedAmount, 4),
+            'the Z CASH figure and the expected-cash figure must be the same number',
+        );
+        $this->assertSame('balanced', $count->variance_direction);
+
+        // perpetual_grand_total = gross − refunds = 100 − 17 (a signed
+        // refunds_amount would have ADDED the legacy 5.00 back here).
+        /** @var array<string, mixed> $grandTotals */
+        $grandTotals = $z->grand_totals;
+        $this->assertSame('83.0000', $grandTotals['perpetual_grand_total']);
+    }
+
+    /**
+     * NEW-3 — `cumulative_refunds` is a MAGNITUDE accumulator, so a prior Z that
+     * accumulated the legacy NEGATIVE convention must be normalised as it is
+     * read forward. Without that, the wave-4 magnitude change turns the counter
+     * into a mixed-sign accumulator that is neither convention (−50 + 12 = −38).
+     *
+     * `perpetual_grand_total` is deliberately NOT normalised: it is a NET
+     * figure that may legitimately be negative (refunds exceeding sales), so
+     * ABS would corrupt it. Asserted here so the distinction cannot regress.
+     */
+    public function test_cumulative_refunds_normalises_a_legacy_negative_prior_counter(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $priorShift = Shift::create([
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'shift_number' => 99,
+            'status' => ShiftStatus::Closed,
+            'opened_at' => now()->subDays(2),
+            'closed_at' => now()->subDays(2)->addHours(8),
+            'closed_by' => $this->cashier->id,
+            'opening_cash' => '50.0000',
+        ]);
+
+        // Prior Z written under the LEGACY convention: refunds accumulated as
+        // negative magnitudes.
+        ZReport::create([
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $priorShift->id,
+            'z_number' => 1,
+            'fiscal_hash' => str_repeat('a', 64),
+            'previous_z_hash' => null,
+            'report_data' => ['sales_count' => 10],
+            'grand_totals' => [
+                'cumulative_sales' => '500.0000',
+                'cumulative_tax' => '0.0000',
+                'cumulative_refunds' => '-50.0000',
+                'perpetual_grand_total' => '450.0000',
+                'receipt_count_lifetime' => 10,
+            ],
+            'generated_by' => $this->cashier->id,
+            'generated_at' => now()->subDays(2)->addHours(8),
+        ]);
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000',
+        )];
+
+        $z = $this->service->generateZReport($this->terminal, $this->cashier, $inputs, null, null, false);
+
+        /** @var array<string, mixed> $grandTotals */
+        $grandTotals = $z->grand_totals;
+
+        // |−50| + 12 = 62 (the un-normalised accumulator reports −38).
+        $this->assertSame('62.0000', $grandTotals['cumulative_refunds']);
+        // NET counter, untouched: 450 + (100 − 12) = 538.
+        $this->assertSame('538.0000', $grandTotals['perpetual_grand_total']);
+        $this->assertSame('600.0000', $grandTotals['cumulative_sales']);
+    }
+
+    /**
+     * Persist a refund/return receipt inside the shift window.
+     *
+     * @param  string  $total  Signed receipt total ('+' = v4 era, '-' = legacy era)
+     * @param  string|null  $cashPayoutLeg  Positive cash payment leg, or null for none
+     */
+    private function seedRefundReceipt(Receipt $original, string $total, ?string $cashPayoutLeg): Receipt
+    {
+        $refund = Receipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'receipt_number' => 'T001-C001-L01-POS01-2026-'.str_pad((string) random_int(1, 99999999), 8, '0', STR_PAD_LEFT),
+            'chain_sequence' => random_int(1000, 99999),
+            'receipt_year' => (int) date('Y'),
+            'fiscal_hash' => hash('sha256', 'ret-'.uniqid()),
+            'previous_hash' => null,
+            'vat_breakdown_hash' => hash('sha256', 'vat'),
+            'payment_methods_hash' => hash('sha256', 'payments'),
+            'posted_at' => now(),
+            'cashier_id' => $this->cashier->id,
+            'cashier_name' => 'Test Cashier',
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => ReturnReason::Other,
+            'subtotal' => $total,
+            'tax_amount' => '0.0000',
+            'discount_amount' => '0.0000',
+            'total' => $total,
+            'currency' => 'EUR',
+            'is_voided' => false,
+            'is_training' => false,
+        ]);
+
+        if ($cashPayoutLeg !== null) {
+            ReceiptPayment::create([
+                'receipt_id' => $refund->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'payment_type' => 'Cash',
+                'payment_method_code' => 'CASH',
+                'amount' => $cashPayoutLeg,
+            ]);
+        }
+
+        return $refund;
     }
 
     /**

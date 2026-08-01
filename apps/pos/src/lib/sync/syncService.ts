@@ -33,6 +33,8 @@ import Big from 'big.js';
 import {
   upsertTerminalState,
   setShiftNumberSeed,
+  setV4RefundAuthoringEnabled,
+  setV4RefundAuthoringAckFailure,
   upsertZChainState,
   getZChainState,
   type TerminalHashState,
@@ -62,9 +64,15 @@ import type { ModifierGroup } from '@/types/modifier';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
   updateReceiptStatus,
+  updateReceiptStatusByIdempotencyKey,
   cleanupSyncedReceipts,
   cleanupStuckReceipts,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  markSynced as markRefundIntentSynced,
+  getRefundIntentById,
+  InvalidRefundIntentTransitionError,
+} from '@/lib/db/repositories/refundIntentRepository';
 import {
   fiscalEventToWireEnvelope,
   getPendingFiscalEventsForSync,
@@ -147,6 +155,13 @@ interface TerminalStateResponse {
    * shape so a stale server (pre-6.1) does not break the pull; absent → seed 0.
    */
   max_shift_number?: number;
+  /**
+   * v3-refund-chain-integration spec §9.1/§9.3 — the two-phase server-offers
+   * capability flag. Optional in the wire shape so a stale (pre-§9)
+   * server does not break the pull; absent → `false`, the safe default
+   * (mirrors `max_shift_number`'s stale-server contract exactly).
+   */
+  v4_refund_authoring_enabled?: boolean;
   /**
    * Live-counting state is optional so a stale server remains compatible.
    * Missing means no active block; the pull must clear any cached block.
@@ -323,6 +338,72 @@ function isLegacyZSyncRetiredError(error: unknown): boolean {
 }
 
 /**
+ * Wave-2 fix-wave finding 12 (codex M-4) — the THREE local status flips a
+ * refund's server ACK triggers, applied ATOMICALLY.
+ *
+ * Previously each ran as an independent write: mark the fiscal event
+ * synced, locate-and-mark the `offline_receipts` mirror by
+ * `idempotency_key = refund_intents.id` (§7.2a errata T2), advance the
+ * `refund_intents` row to its own terminal `synced` (§4.4/§4.6 — what
+ * frees the active-intent partial unique index for a legitimate later
+ * refund of the same original+line selection). A crash or SQLite failure
+ * after the FIRST write removed the fiscal event from the pending queue
+ * while leaving the receipt pending and/or the intent ACTIVE forever —
+ * permanently blocking every subsequent refund attempt against that
+ * original. The receipt update's affected-row count was never checked
+ * either, and the catch suppressed EVERY
+ * `InvalidRefundIntentTransitionError` although only an already-`synced`
+ * row is benign: a missing row or a wrong state was silently accepted.
+ *
+ * All three now run in ONE write-gate transaction; each requires exactly
+ * one affected row; and an invalid intent transition is RE-READ and
+ * suppressed only when the row is confirmed to be at `synced` already
+ * (the benign duplicate-ACK case). Everything else propagates, so the
+ * event stays in the pending queue and the failure is visible.
+ */
+async function applyRefundAckLocalFlips(
+  fiscalEventId: string,
+  refundIntentId: string,
+): Promise<void> {
+  await withWriteTransaction('fiscal', async (tx) => {
+    const txDb = tx as unknown as Database;
+
+    // Round-2 (finding 12 residual): EACH flip asserts exactly one row —
+    // the fiscal-event flip included. `fiscal_events.id` is the primary
+    // key, so a 0 means the ACK refers to an event this device does not
+    // have, which must abort the transaction rather than half-apply.
+    const eventRows = await updateFiscalEventSyncStatus(txDb, fiscalEventId, 'synced');
+    if (eventRows !== 1) {
+      throw new Error(
+        `Refund ACK: expected exactly 1 fiscal_events row with id = ${fiscalEventId}, updated ${String(eventRows)}. Refusing to half-apply the post-ACK flips.`,
+      );
+    }
+
+    const receiptRows = await updateReceiptStatusByIdempotencyKey(txDb, refundIntentId, 'synced');
+    if (receiptRows !== 1) {
+      throw new Error(
+        `Refund ACK: expected exactly 1 offline_receipts row with idempotency_key = ${refundIntentId}, updated ${String(receiptRows)}. Refusing to half-apply the post-ACK flips.`,
+      );
+    }
+
+    try {
+      await markRefundIntentSynced(txDb, refundIntentId);
+    } catch (transitionError) {
+      if (!(transitionError instanceof InvalidRefundIntentTransitionError)) {
+        throw transitionError;
+      }
+      // Suppress ONLY a re-read-CONFIRMED already-synced row (a duplicate
+      // sync response for an event the device already marked synced). A
+      // missing row, or any other state, is a genuine inconsistency.
+      const current = await getRefundIntentById(txDb, refundIntentId);
+      if (current === null || current.state !== 'synced') {
+        throw transitionError;
+      }
+    }
+  });
+}
+
+/**
  * Push device-authored fiscal events to the server.
  *
  * Kept under the legacy function name because the scheduler and UI badge
@@ -384,9 +465,13 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         && !resultItem.sequence_conflict
         && resultItem.exception_class === null
       ) {
-        await updateFiscalEventSyncStatus(db, event.id, 'synced');
-        if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
-          await updateReceiptStatus(db, event.source_event_id, 'synced');
+        if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
+          await applyRefundAckLocalFlips(event.id, event.source_event_id);
+        } else {
+          await updateFiscalEventSyncStatus(db, event.id, 'synced');
+          if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
+            await updateReceiptStatus(db, event.source_event_id, 'synced');
+          }
         }
         await logSyncOperation(
           db,
@@ -1246,6 +1331,71 @@ export async function pullOperatorPins(db: Database, terminalId: string): Promis
 }
 
 /**
+ * v3-refund-chain-integration spec §9.3 Phase 2 — sends the device's
+ * explicit acknowledgement that it received and locally wrote the server's
+ * `v4_refund_authoring_enabled = true` offer, in the same sync round. The
+ * server records this as `pos_terminals.v4_refund_authoring_acknowledged_at`,
+ * which is what `LegacyCorrectionGuard` actually conditions on (not raw
+ * `fiscal_schema_version`) — an unacknowledged terminal keeps using the
+ * legacy correction endpoint, so this call is the sole trigger that
+ * activates the guard for this terminal.
+ *
+ * Deliberately a distinct, explicit signal (never inferred from "the pull
+ * succeeded") per §9.3's contract, since a pull can succeed while the flag
+ * still lands via the `FiscalRegressionError` fallback branch.
+ *
+ * Non-blocking (a failure must never fail the surrounding terminal-state
+ * pull), but NOT silent.
+ *
+ * **Wave-2 fix-wave finding 9 (fiscal C-6).** This used to downgrade every
+ * failure — including the 404 from a server that had no such route at all
+ * — to a single `console.warn`. Because the endpoint genuinely did not
+ * exist, the protocol was inert and completely unobservable: the guard
+ * never activated, the legacy `/return` path stayed open on v4 terminals
+ * forever, and nothing anywhere surfaced it. A protocol whose only failure
+ * signal is a console line the operator never reads is not a protocol.
+ *
+ * Now: bounded retry with backoff inside the pull, a persisted local
+ * failure marker so the state is inspectable after the fact, and a
+ * `logSyncOperation` row so the device's own sync log carries the failure
+ * the same way every other sync leg does.
+ */
+const V4_ACK_MAX_ATTEMPTS = 3;
+const V4_ACK_BACKOFF_MS = 400;
+
+async function sendV4RefundAuthoringAcknowledgement(
+  db: Database,
+  terminalId: string,
+): Promise<void> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= V4_ACK_MAX_ATTEMPTS; attempt++) {
+    try {
+      await apiPost(`/pos/terminals/${terminalId}/acknowledge-v4-refund-authoring`, {});
+      await setV4RefundAuthoringAckFailure(db, terminalId, null);
+      await logSyncOperation(db, 'push', 'terminal_state', terminalId, 'success', 'v4_ack');
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < V4_ACK_MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, V4_ACK_BACKOFF_MS * attempt));
+      }
+    }
+  }
+
+  const message = coerceSyncError(lastError);
+  console.error(
+    '[fiscal] v4 refund-authoring acknowledgement FAILED after retries — LegacyCorrectionGuard cannot activate for this terminal, so the legacy /return path stays open server-side (§9.3)',
+    { terminal_id: terminalId, attempts: V4_ACK_MAX_ATTEMPTS, error: message },
+  );
+  // Persisted so the state is inspectable long after the console line is
+  // gone, and surfaced through the device's own sync log like every other
+  // sync leg's failure.
+  await setV4RefundAuthoringAckFailure(db, terminalId, message);
+  await logSyncOperation(db, 'push', 'terminal_state', terminalId, 'error', message);
+}
+
+/**
  * Pull terminal state (hash chain state from server).
  *
  * Client-owned invariant: once the local terminal has advanced the chain past
@@ -1291,6 +1441,11 @@ export async function pullTerminalState(
     // local-only behaviour).
     const shiftNumberSeed = state.max_shift_number ?? 0;
 
+    // v3-refund-chain-integration spec §9.1 — absent on a pre-§9 server
+    // (same stale-server contract as max_shift_number above) → false, the
+    // safe "not yet offered" default.
+    const v4RefundAuthoringEnabled = state.v4_refund_authoring_enabled ?? false;
+
     const hashState: TerminalHashState = {
       terminal_id: state.id,
       terminal_code: state.code,
@@ -1306,6 +1461,12 @@ export async function pullTerminalState(
 
     try {
       await upsertTerminalState(db, hashState);
+      // §9.1: guard-independent — rides the success path alongside the main
+      // upsert, but is a plain UPDATE of its own, not part of the guarded row.
+      await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
+      if (v4RefundAuthoringEnabled) {
+        await sendV4RefundAuthoringAcknowledgement(db, terminalId);
+      }
       await projectTerminalCountingState(state);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
@@ -1323,6 +1484,14 @@ export async function pullTerminalState(
         // rejected the whole write (seed included). The row already exists —
         // refresh the monotone shift-number seed on its own.
         await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
+        // §9.1: the capability flag is guard-independent for the exact same
+        // reason the shift-number seed is — the main upsert's regression
+        // guard must never be able to keep this flag from reaching the
+        // device. Refreshed here on the fallback branch too.
+        await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
+        if (v4RefundAuthoringEnabled) {
+          await sendV4RefundAuthoringAcknowledgement(db, terminalId);
+        }
         await projectTerminalCountingState(state);
         await logSyncOperation(
           db,

@@ -125,6 +125,14 @@ final class TerminalResource extends JsonResource
             // so the offline POS client can branch on it (v2 → legacy
             // computeFiscalHash, v3 → canonical-payload SHA-256 builder).
             'fiscal_schema_version' => (int) $this->fiscal_schema_version,
+            // v3-refund-chain-integration spec §6.4/§9.1/§9.3 — the two-phase
+            // enable/acknowledge capability flags. The device reads
+            // `v4_refund_authoring_enabled` via `terminal_state` sync (§9.1's
+            // dedicated setter) rather than this resource directly, but the
+            // fields are exposed here for operator-facing terminal detail
+            // views and the enablement command's own visibility.
+            'v4_refund_authoring_enabled' => (bool) $this->v4_refund_authoring_enabled,
+            'v4_refund_authoring_acknowledged_at' => $this->v4_refund_authoring_acknowledged_at?->toISOString(),
             'is_training_mode' => (bool) $this->is_training_mode,
             // Precision: rely on the model `decimal:2` cast so trailing zeros are
             // preserved (e.g. '15.00' not 15.0). A (float) cast would launder the

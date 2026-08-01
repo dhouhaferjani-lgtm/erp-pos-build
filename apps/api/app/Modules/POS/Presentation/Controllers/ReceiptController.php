@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
+use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
@@ -339,6 +340,19 @@ final class ReceiptController extends Controller
                     ])->values()->toArray(),
                 ],
             ], 201);
+        } catch (LegacyCorrectionRetiredException $e) {
+            // v3-refund-chain-integration spec §9.4/§17 — must escape to
+            // Laravel's exception pipeline UNCAUGHT so the global
+            // `bootstrap/app.php` render() handler (the single source of
+            // truth for the 409 `LEGACY_CORRECTION_RETIRED` body/copy)
+            // handles it. The broad `catch (\RuntimeException $e)` below
+            // would otherwise intercept it first (this exception IS-A
+            // RuntimeException) and misreport it as a 422 `RETURN_FAILED` —
+            // exactly the bug this acceptance-test companion
+            // (ReceiptReturnRefactorV3Test) was written to catch. PHP
+            // dispatches to the first matching catch clause, so this
+            // narrower clause must be declared before the broad one.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -577,6 +591,29 @@ final class ReceiptController extends Controller
     }
 
     /**
+     * MAGNITUDE of a stored return-line quantity, at the canonical quantity
+     * storage scale.
+     *
+     * Mirrors `ReceiptReturnService::quantityMagnitude()` — see that docblock
+     * for the full rationale. Short version (whole-branch review C-5/N-1):
+     * legacy returns store a NEGATIVE quantity, v4 refunds store a POSITIVE
+     * magnitude, so flipping the sign under-reports (indeed NEGATES)
+     * `returned_quantity` for a v4-refunded line. This surface is what the
+     * cashier-facing receipt view uses to show how much of a line is still
+     * returnable, so a negative tally here advertises headroom that does not
+     * exist.
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function quantityMagnitude(string $value): string
+    {
+        return bccomp($value, '0', 4) < 0 // precision-ok: 4 = canonical quantity storage scale
+            ? bcsub('0', $value, 4) // precision-ok: 4 = canonical quantity storage scale
+            : bcadd($value, '0', 4); // precision-ok: 4 = canonical quantity storage scale
+    }
+
+    /**
      * Calculate already-returned quantities per original line ID.
      *
      * Sums absolute quantities from non-voided return receipts.
@@ -592,7 +629,8 @@ final class ReceiptController extends Controller
 
         foreach ($receipt->returnReceipts as $returnReceipt) {
             foreach ($returnReceipt->lines as $returnLine) {
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4);
+                // MAGNITUDE, never a sign flip — see quantityMagnitude().
+                $absQuantity = $this->quantityMagnitude((string) $returnLine->quantity);
 
                 // Prefer direct FK match when available (new return lines)
                 if ($returnLine->original_line_id !== null) {

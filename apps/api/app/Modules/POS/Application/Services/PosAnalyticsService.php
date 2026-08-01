@@ -9,6 +9,8 @@ use App\Modules\POS\Application\DTOs\CustomerAnalyticsData;
 use App\Modules\POS\Application\DTOs\DiscountAnalysisData;
 use App\Modules\POS\Application\DTOs\FnbMetricsData;
 use App\Modules\POS\Application\DTOs\SalesSummaryData;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Query\Builder;
@@ -33,9 +35,9 @@ final class PosAnalyticsService
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->selectRaw('COUNT(*) as receipt_count')
-            ->selectRaw('COALESCE(SUM(subtotal), 0) as gross_sales')
-            ->selectRaw('COALESCE(SUM(total), 0) as net_sales')
-            ->selectRaw('COALESCE(SUM(tax_amount), 0) as tax_total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('subtotal').'), 0) as gross_sales')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as net_sales')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('tax_amount').'), 0) as tax_total')
             ->selectRaw("COALESCE(AVG(CASE WHEN receipt_type = 'sale' THEN total END), 0) as average_ticket")
             ->selectRaw("COUNT(CASE WHEN receipt_type = 'return' THEN 1 END) as refund_count")
             ->selectRaw("COALESCE(SUM(CASE WHEN receipt_type = 'return' THEN ABS(total) END), 0) as refund_total")
@@ -59,7 +61,13 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_payments.payment_type')
             ->selectRaw('pos_receipt_payments.payment_type')
-            ->selectRaw('COALESCE(SUM(pos_receipt_payments.amount), 0) as total')
+            // Tender legs of a v4 refund are POSITIVE payouts, so they must be
+            // SUBTRACTED — otherwise this breakdown contradicts `net_sales`
+            // three lines above it, in the same DTO, by 2x the refund.
+            // `pos_receipt_payments.amount` is CHECKed > 0 and legacy returns
+            // wrote no payment row at all, so the return arm only ever sees a
+            // positive v4 leg; `-ABS` is exact and era-safe.
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_payments.amount').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->get();
 
@@ -100,7 +108,7 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('categories.name')
             ->selectRaw("COALESCE(categories.name, 'Uncategorized') as category_name")
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.line_total').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->orderByDesc('total')
             ->get();
@@ -128,8 +136,9 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_lines.product_name')
             ->selectRaw('pos_receipt_lines.product_name')
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.quantity), 0) as quantity')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.line_total').'), 0) as total')
+            // Quantity nets too: units sold must not GROW when goods come back.
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.quantity').'), 0) as quantity')
             ->orderByDesc('total')
             ->limit($limit)
             ->get();
@@ -162,7 +171,7 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->groupByRaw($truncExpr)
             ->selectRaw("{$truncExpr} as period")
-            ->selectRaw('COALESCE(SUM(total), 0) as total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->orderBy('period')
             ->get();
@@ -191,8 +200,8 @@ final class PosAnalyticsService
             ->selectRaw('cashier_id')
             ->selectRaw('cashier_name')
             ->selectRaw('COUNT(*) as receipt_count')
-            ->selectRaw('COALESCE(SUM(total), 0) as total_sales')
-            ->selectRaw('COALESCE(AVG(total), 0) as average_ticket')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total_sales')
+            ->selectRaw('COALESCE(AVG('.$this->netOfReturns('total').'), 0) as average_ticket')
             ->orderByDesc('total_sales')
             ->get();
 
@@ -201,12 +210,25 @@ final class PosAnalyticsService
             'cashier_name' => $row->cashier_name,
             'receipt_count' => (int) $row->receipt_count,
             'total_sales' => (string) $row->total_sales,
-            'average_ticket' => (string) round((float) $row->average_ticket, 2),
+            'average_ticket' => $this->roundedMoneyString($row->average_ticket, 2),
         ])->all();
     }
 
     /**
      * Discount analysis: totals, by reason, top discounted products.
+     *
+     * SALE receipts only (⚖️ ruling, ticket 2026-08-01-positive-refund-total-consumers).
+     * This metric measures discounting BEHAVIOUR at the moment of sale: refunding
+     * a discounted sale neither grants a new discount nor retracts the historical
+     * grant, so a return is not a member of the population — it is excluded
+     * outright rather than netted (netting would understate discounts actually
+     * granted; including double-counts one grant).
+     *
+     * Note this is NOT only a v4 concern: `pos_receipt_lines_amounts` CHECKs
+     * `discount_amount >= 0` in both eras, so legacy return lines also carried a
+     * POSITIVE discount and were counted by the `> 0` filter. Only
+     * `line_total`/`quantity` ever went negative. The filter is applied to all
+     * three queries below so the one DTO reports a single, consistent population.
      */
     /** @param list<string> $locationIds */
     public function getDiscountAnalysis(string $companyId, CarbonImmutable $from, CarbonImmutable $to, array $locationIds = []): DiscountAnalysisData
@@ -217,6 +239,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->selectRaw('COALESCE(SUM(pos_receipt_lines.discount_amount), 0) as total_discount_amount')
             ->selectRaw('COUNT(*) as discount_count')
@@ -231,6 +254,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.discount_reason')
             ->selectRaw("COALESCE(pos_receipt_lines.discount_reason, 'No reason') as reason")
@@ -247,6 +271,7 @@ final class PosAnalyticsService
             ->where('pos_receipts.is_voided', false)
             ->whereBetween('pos_receipts.posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->where('pos_receipt_lines.discount_amount', '>', 0)
             ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'units.decimal_places')
             ->selectRaw('pos_receipt_lines.product_id')
@@ -309,7 +334,7 @@ final class PosAnalyticsService
             ->groupBy('partner_id', 'customer_name')
             ->selectRaw('partner_id')
             ->selectRaw("COALESCE(customer_name, 'Anonymous') as customer_name")
-            ->selectRaw('COALESCE(SUM(total), 0) as total_spent')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total_spent')
             ->selectRaw('COUNT(*) as receipt_count')
             ->orderByDesc('total_spent')
             ->limit(10)
@@ -404,6 +429,75 @@ final class PosAnalyticsService
                 'count' => (int) $row->count,
             ])->all(),
         );
+    }
+
+    /**
+     * Sign-normalised net contribution of a `pos_receipts` monetary column,
+     * valid across BOTH refund sign eras.
+     *
+     * Legacy returns stored a NEGATIVE total/subtotal/tax_amount, so a bare
+     * `SUM(col)` netted them. v4 refunds project a POSITIVE total under
+     * `receipt_type = 'return'` (v3-refund-chain-integration spec §7.7), which
+     * would make the same `SUM(col)` ADD the refund — doubling the error
+     * (ticket 2026-08-01-positive-refund-total-consumers, a hard pre-enable
+     * gate for `EnableV4RefundAuthoringCommand`).
+     *
+     * `-ABS(col)` on the return arm subtracts the refund magnitude regardless of
+     * how it was stored, so a window that mixes both eras (the cutover month)
+     * stays correct too. Per-row, never `ABS(SUM(...))`, so opposite-signed
+     * rows cannot cancel.
+     *
+     * Callers must aggregate this expression in SQL (SUM/AVG) — no PHP float
+     * ever touches the money.
+     *
+     * @param  'subtotal'|'tax_amount'|'total'  $column  Literal column name; never caller input
+     */
+    private function netOfReturns(string $column): string
+    {
+        return "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+    }
+
+    /**
+     * Same expression for queries that JOIN `pos_receipts` to a child table, so
+     * the discriminator must be table-qualified and the summed column belongs
+     * to the child (payment legs, receipt lines).
+     *
+     * Applies to `pos_receipt_lines.line_total` / `.quantity` — v4 refund lines
+     * project POSITIVE magnitudes (PosCoreReceiptProjection::writeLines copies
+     * the canonical payload verbatim) where legacy return lines were NEGATIVE —
+     * and to `pos_receipt_payments.amount`, which is CHECKed > 0 and therefore
+     * only ever positive in either era.
+     *
+     * @param  'pos_receipt_lines.line_total'|'pos_receipt_lines.quantity'|'pos_receipt_payments.amount'  $column  Literal column name; never caller input
+     */
+    private function netOfReturnsQualified(string $column): string
+    {
+        return "CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+    }
+
+    /**
+     * Round a DB-returned monetary aggregate to a display scale as a DECIMAL
+     * STRING — never through a float (precision contract rule 19).
+     *
+     * `AVG()` returns a high-precision decimal (PG) or a float-ish string
+     * (SQLite); the old `(string) round((float) $v, 2)` round-tripped money
+     * through an IEEE-754 double AND emitted a variable-width string ('6', not
+     * '6.00'). `CurrencyScale::bcround()` is the bcmath boundary helper —
+     * half-away-from-zero, symmetric for negatives (a cashier whose refunds
+     * exceed their sales has a negative average), fixed width at $scale.
+     *
+     * @param  int<0, max>  $scale
+     * @return numeric-string
+     */
+    private function roundedMoneyString(mixed $value, int $scale): string
+    {
+        $string = is_scalar($value) ? (string) $value : '0';
+
+        if (! is_numeric($string)) {
+            $string = '0';
+        }
+
+        return CurrencyScale::bcround($string, $scale);
     }
 
     private function pgsqlDateTrunc(string $granularity): string

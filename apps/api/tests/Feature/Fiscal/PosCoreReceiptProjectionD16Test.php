@@ -84,7 +84,17 @@ final class PosCoreReceiptProjectionD16Test extends TestCase
             // CLAUDE.md rule 13 — constructor injection only.
             ['name' => 'app-helper-container-resolved', 'pattern' => '/\\bapp\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
             ['name' => 'app-make-container-resolved', 'pattern' => '/\\bApp::make\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
-            ['name' => 'resolve-container-resolved', 'pattern' => '/\\bresolve\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
+            // Latent false-positive fix (found by the v3-refund-chain
+            // review-round-2 regression sweep, unrelated to that round's
+            // own changes): the bare pattern also matched legitimate
+            // constructor-injected service calls like
+            // `$this->restockPolicyResolver->resolve($productId)` (added
+            // by the disposition-aware-restock feature) — a METHOD call on
+            // a DI'd dependency, not Laravel's global `resolve()` helper
+            // this guard exists to forbid. Negative lookbehind excludes
+            // `->resolve(`/`::resolve(` (member/static calls) while still
+            // catching the bare global-function-call form.
+            ['name' => 'resolve-container-resolved', 'pattern' => '/(?<!->)(?<!::)\\bresolve\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
         ];
     }
 

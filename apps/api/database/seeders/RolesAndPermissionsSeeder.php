@@ -423,6 +423,12 @@ class RolesAndPermissionsSeeder extends Seeder
             //   and consumed by Task 31 only.
             'fiscal.events.resolve_quarantine',
             'fiscal.events.verify_chain',
+            // v3-refund-chain-integration spec §5.2/§17 — the refund
+            // write-off compensation endpoint + dead-lettered-projections
+            // read surface. Mirrors 'pos.process_returns' (:327) — who
+            // administers POS corrections also administers refund
+            // dead-letter compensation.
+            'fiscal.refunds.manage_dead_letters',
 
             // Compliance / Fraud Detection
             'fraud-settings.view',
@@ -528,6 +534,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'users.view',
                 'pos.manage_terminals', 'pos.operate_terminal', 'pos.audit_sync', 'pos.manage_shifts', 'pos.manage_tables',
                 'pos.view_reports', 'pos.generate_z_report', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
+                'fiscal.refunds.manage_dead_letters',
                 'pos.close_shift_with_variance',
                 'pos.approve_credit_limit_override', 'pos.approve_account_status_override',
                 'pos.approve_discount_limit_override', 'pos.approve_tender_tolerance_override',

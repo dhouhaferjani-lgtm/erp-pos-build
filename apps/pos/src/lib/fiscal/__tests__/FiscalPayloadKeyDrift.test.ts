@@ -4,6 +4,7 @@ import {
   SALE_RECEIPT_LINE_ITEM_KEYS_V2,
   SALE_RECEIPT_PAYLOAD_KEYS,
   SALE_RECEIPT_PAYLOAD_KEYS_V3,
+  SALE_RECEIPT_PAYLOAD_KEYS_V4,
 } from '../FiscalEventEngine';
 import { ACCOUNT_PAYMENT_PAYLOAD_KEYS } from '../payloads/AccountPaymentPayload';
 import { ACCOUNT_CHARGE_PAYLOAD_KEYS } from '../payloads/AccountChargePayload';
@@ -46,6 +47,34 @@ describe('Fiscal payload PHP/TS key drift gates', () => {
       expect(v3.has(key)).toBe(true);
     }
     expect(v3.size - SALE_RECEIPT_PAYLOAD_KEYS.length).toBe(2);
+  });
+
+  // -------------------------------------------------------------------
+  // v3-refund-chain-integration spec §2/§3.3/§3.4/§17 — SALE_RECEIPT v4
+  // key-set drift gate. V1/V2/V3 assertions above are preserved verbatim.
+  // -------------------------------------------------------------------
+
+  it('SALE_RECEIPT_PAYLOAD_KEYS_V4 byte-mirrors the PHP named const', () => {
+    const phpKeys = readPhpNamedConst('SALE_RECEIPT_PAYLOAD_KEYS_V4');
+    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS_V4];
+
+    expect([...tsKeys].sort()).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(33);
+  });
+
+  it('SALE_RECEIPT_PAYLOAD_KEYS_V4 is declared lexicographically sorted', () => {
+    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS_V4];
+    expect(tsKeys).toEqual([...tsKeys].sort());
+  });
+
+  it('V4 is a strict superset of V3 (the three new v4-only keys, nothing removed)', () => {
+    const v3 = new Set<string>(SALE_RECEIPT_PAYLOAD_KEYS_V3);
+    const v4 = new Set<string>(SALE_RECEIPT_PAYLOAD_KEYS_V4);
+    for (const key of v3) {
+      expect(v4.has(key)).toBe(true);
+    }
+    const newKeys = [...v4].filter((key) => !v3.has(key)).sort();
+    expect(newKeys).toEqual(['original_line_references', 'refund_destination', 'settlement_allocation']);
   });
 
   it('M4 — SALE_RECEIPT_LINE_ITEM_KEYS_V2 byte-mirrors the PHP validator V2 line-item list', () => {

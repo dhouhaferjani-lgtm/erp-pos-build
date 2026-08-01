@@ -66,6 +66,21 @@ final class ReportGenerationService
         return $this->scaleResolver->getScale();
     }
 
+    /**
+     * Absolute value of a decimal string, bcmath only — no float ever touches
+     * money (rule 19). Normalises return-receipt amounts across the two refund
+     * sign eras (legacy negative, v4 positive).
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function magnitude(string $value): string
+    {
+        return bccomp($value, '0', $this->scale()) < 0
+            ? bcsub('0', $value, $this->scale())
+            : $value;
+    }
+
     private function assertServerReportAuthoringAllowed(Terminal $terminal, string $operation): void
     {
         if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
@@ -478,6 +493,19 @@ final class ReportGenerationService
      * Cash methods subtract receipt change_due once per receipt to mirror the POS device formula.
      * Always includes a row for every payment_method_id in $inputs (defaulting to '0.0000').
      *
+     * Refund payout legs are SUBTRACTED. A v4 refund projects POSITIVE
+     * `pos_receipt_payments.amount` rows under a `receipt_type = 'return'`
+     * receipt (v3-refund-chain-integration spec §7.7) and no v3+ path writes a
+     * `pos_cash_drawer_operations` REFUND row (ticket
+     * 2026-07-31-cashdrawer-v3-expected-cash-blind), so this leg is the ONLY
+     * record that cash left the drawer — blending it in would inflate expected
+     * cash by the refund and hand the cashier a false overage. Legacy returns
+     * wrote no receipt-payment rows at all (they routed through
+     * PaymentRefundService / the cash drawer), so the return arm is a no-op on
+     * legacy data and `-ABS(...)` is applied per row: a shift spanning both
+     * eras stays correct. See ticket
+     * 2026-08-01-positive-refund-total-consumers (hard pre-enable gate).
+     *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
      * @param  array<int, CashCountInputDTO>  $inputs
@@ -497,7 +525,7 @@ final class ReportGenerationService
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
-            ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, SUM(pos_receipt_payments.amount) as total')
+            ->selectRaw("pos_receipt_payments.payment_method_id as payment_method_id, SUM(CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS(pos_receipt_payments.amount) ELSE pos_receipt_payments.amount END) as total")
             ->groupBy('pos_receipt_payments.payment_method_id')
             ->get();
 
@@ -510,6 +538,12 @@ final class ReportGenerationService
                     ->where('pos_receipts.is_voided', false)
                     ->where('pos_receipts.is_training', false)
                     ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
+                    // Change-due is a SALE concept (money handed back on an
+                    // over-tender). A refund's payout leg IS the cash that left
+                    // the drawer, so a non-zero change_due on a return row
+                    // (possible only via cash-rounding over-tender arithmetic)
+                    // must not be subtracted a second time.
+                    ->where('pos_receipts.receipt_type', '!=', ReceiptType::Return->value)
                     ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
                     ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
                     ->groupBy('pos_receipt_payments.payment_method_id', 'pos_receipts.id'),
@@ -830,6 +864,28 @@ final class ReportGenerationService
      * Shape must match the `ZChainStateResponse` contract consumed by the
      * POS client (apps/pos/src/lib/sync/syncService.ts → pullZChainState).
      *
+     * `cumulative_refunds` is a MAGNITUDE accumulator and the prior value is
+     * normalised as it is read forward. Rationale, and why normalising here is
+     * safe:
+     * - This output is DERIVED, not sealed. `ZReportHashService::serializeForHashing()`
+     *   hashes `z_number|terminal_id|generated_at|report_data_json` only —
+     *   `grand_totals` is NOT a hash input, and no sealed row is rewritten.
+     *   (The v3+ device path is different: there `grand_totals` comes from the
+     *   SIGNED `grand_totals_after` payload key via ZReportProjection, but
+     *   this method never runs for v3+ — server Z authoring is refused at
+     *   `fiscal_schema_version >= 3`.)
+     * - Every prior accumulator reachable here is <= 0: pre-release addends were
+     *   sums of legacy NEGATIVE return totals, and v4 refunds cannot reach this
+     *   path. So ABS converts a pure-legacy accumulator EXACTLY, and is
+     *   idempotent on the positive values written from this release onward.
+     * - `perpetual_grand_total` is deliberately NOT normalised: it is a NET
+     *   figure that may legitimately be negative (refunds exceeding sales).
+     *
+     * Ruling: fix-forward, no backfill (no production tenant predates the
+     * change; tenant #1 provisions fresh at v3). Past over-counts baked into a
+     * prior `perpetual_grand_total` stay as they are — see the release note in
+     * docs/sessions/LANE-C-wave4-report.md.
+     *
      * @param  array<string, mixed>  $reportData  Output of calculateShiftTotals()
      * @return array{
      *     cumulative_sales: string,
@@ -851,7 +907,9 @@ final class ReportGenerationService
         // chain. Reject explicitly instead.
         $priorSales = $this->priorNumeric($previous?->grand_totals['cumulative_sales'] ?? null);
         $priorTax = $this->priorNumeric($previous?->grand_totals['cumulative_tax'] ?? null);
-        $priorRefunds = $this->priorNumeric($previous?->grand_totals['cumulative_refunds'] ?? null);
+        // Era normalisation (see the docblock): |legacy negative| == the same
+        // magnitude the post-release convention accumulates.
+        $priorRefunds = $this->magnitude($this->priorNumeric($previous?->grand_totals['cumulative_refunds'] ?? null));
         $priorPerpetual = $this->priorNumeric($previous?->grand_totals['perpetual_grand_total'] ?? null);
         $priorCount = (int) ($previous?->grand_totals['receipt_count_lifetime'] ?? 0);
 
@@ -900,6 +958,23 @@ final class ReportGenerationService
      * Return receipts (type=return) contribute to refunds_count / refunds_amount.
      * Voided receipts are counted but excluded from monetary totals.
      *
+     * Two sign-era rules, both taken from the device Z contract that this
+     * server-side aggregation must reproduce byte-for-byte in meaning:
+     * - `refunds_amount` is a POSITIVE MAGNITUDE block, never sign-bearing and
+     *   never folded into gross/net sales (spec §3.1/§7.3). It was summing
+     *   `$receipt->total` raw, which is right for a v4 refund (positive) and
+     *   wrong for a legacy return (negative) — and it feeds
+     *   computeGrandTotals() as `gross − refunds`, so a legacy return used to
+     *   ADD itself to `perpetual_grand_total`.
+     * - `payment_methods` is NET of refund payout legs (spec §7.3, pinned by
+     *   ReceiptReturnRefactorV3Test: "Z cash must be net of the refund payout,
+     *   not gross"). Return receipts used to be skipped entirely here, so the
+     *   printed Z showed CASH gross-of-refunds while the cash-count expected
+     *   figure (buildExpectedPerMethod) showed the net — two numbers on the
+     *   same Z that disagreed by the refund.
+     *
+     * VAT breakdown stays SALE-ONLY, unchanged: refunds are their own block.
+     *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
@@ -941,9 +1016,25 @@ final class ReportGenerationService
             }
 
             if ($receipt->receipt_type === ReceiptType::Return) {
-                // Return receipts: accumulate refund counters only.
+                // Return receipts: their own POSITIVE-MAGNITUDE block (both
+                // sign eras), never folded into gross/net sales or VAT.
                 $refundsCount++;
-                $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
+                $refundsAmount = bcadd($refundsAmount, $this->magnitude($receipt->total), $this->scale());
+
+                // ... but their payout legs DO move the drawer, so the payment
+                // breakdown is net of them.
+                foreach ($receipt->payments as $payment) {
+                    $method = $payment->payment_type;
+                    if (! isset($paymentMethods[$method])) {
+                        $paymentMethods[$method] = [
+                            'payment_type' => $payment->payment_type,
+                            'total_amount' => '0.00',
+                            'transaction_count' => 0,
+                        ];
+                    }
+                    $paymentMethods[$method]['total_amount'] = bcsub($paymentMethods[$method]['total_amount'], $this->magnitude($payment->amount), $this->scale());
+                    $paymentMethods[$method]['transaction_count']++;
+                }
 
                 continue;
             }

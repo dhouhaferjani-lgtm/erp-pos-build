@@ -143,47 +143,72 @@ function makeReceiptRows() {
 }
 
 /**
- * Refund records mirrored at settle time (Phase 4 / fiscal audit B2):
- * two CASH refunds (drawer impact) + one STORE_VOUCHER refund (no till cash).
+ * v3-refund-chain-integration spec §7.1/§7.3 (Revision 4) — a v4 refund's
+ * `offline_receipts` row (`receipt_kind: 'refund'`), replacing the former
+ * `local_refund_records` mirror entirely. Two CASH-destination refunds
+ * (10.00 + 5.50) — the OLD mechanism's third fixture row (a
+ * `store_voucher`-destination refund with zero drawer impact) has no v4
+ * equivalent: launch's v4 refund contract is CASH-ONLY (§3.4/§3.7, single
+ * `'cash'` literal); a non-cash refund destination is out of this
+ * feature's scope (§16 roadmap), so every v4 refund now genuinely does
+ * move drawer cash equal to its own magnitude — there is no longer a
+ * "refund that doesn't affect expected_cash" case to fixture.
  */
-function makeRefundRecordRows() {
+function makeRefundOfflineReceiptRow(id: string, total: string, hashSequence: number, createdAt: string) {
+  const positiveAmount = total.startsWith('-') ? total.slice(1) : total;
+  return {
+    id,
+    receipt_number: `T001-01${id.slice(-2)}`,
+    terminal_id: 'term-1',
+    operator_id: 'op-1',
+    operator_name: 'Alice',
+    payment_method_id: 'pm-cash',
+    total,
+    subtotal: total,
+    tax_amount: '0.00',
+    discount_amount: '0.00',
+    transaction_discount_amount: null as string | null,
+    transaction_discount_reason: null as string | null,
+    tendered_amount: null as string | null,
+    change_due: null as string | null,
+    lines: JSON.stringify([
+      { name: 'Refunded Widget', quantity: -1, unit_price: positiveAmount, line_total: total, tax_rate: '0', tax_amount: '0.00', discount_amount: null },
+    ]),
+    fiscal_hash: `h-${id}`,
+    previous_hash: 'genesis',
+    hash_sequence: hashSequence,
+    currency: 'EUR',
+    idempotency_key: `idem-${id}`,
+    status: 'pending',
+    retry_count: 0,
+    payments_json: JSON.stringify([
+      {
+        method_code: 'CASH',
+        amount: positiveAmount,
+        payment_method_id: 'pm-cash',
+        repository_id: 'repo-1',
+        card_last_four: null,
+        transaction_reference: null,
+        instrument_type: null,
+        instrument_serial: null,
+      },
+    ]),
+    consumption_mode: null,
+    table_id: null,
+    server_receipt_id: null,
+    payment_repository_id: 'repo-1',
+    terminal_code: 'T001',
+    created_at: createdAt,
+    synced_at: null,
+    sync_error: null,
+    receipt_kind: 'refund' as const,
+  };
+}
+
+function makeRefundOfflineReceiptRows() {
   return [
-    {
-      id: 'rr-1',
-      receipt_number: 'T001-0101',
-      original_receipt_number: 'T001-0001',
-      shift_id: 'shift-1',
-      terminal_id: 'term-1',
-      destination: 'cash',
-      total: '-10.00',
-      cash_impact: '10.00',
-      currency: 'EUR',
-      settled_at: '2026-04-23T11:00:00+00:00',
-    },
-    {
-      id: 'rr-2',
-      receipt_number: 'T001-0102',
-      original_receipt_number: 'T001-0001',
-      shift_id: 'shift-1',
-      terminal_id: 'term-1',
-      destination: 'cash',
-      total: '-5.50',
-      cash_impact: '5.50',
-      currency: 'EUR',
-      settled_at: '2026-04-23T11:30:00+00:00',
-    },
-    {
-      id: 'rr-3',
-      receipt_number: 'T001-0103',
-      original_receipt_number: 'T001-0001',
-      shift_id: 'shift-1',
-      terminal_id: 'term-1',
-      destination: 'store_voucher',
-      total: '-7.25',
-      cash_impact: '0',
-      currency: 'EUR',
-      settled_at: '2026-04-23T12:00:00+00:00',
-    },
+    makeRefundOfflineReceiptRow('rr-1', '-10.00', 2, '2026-04-23T11:00:00+00:00'),
+    makeRefundOfflineReceiptRow('rr-2', '-5.50', 3, '2026-04-23T11:30:00+00:00'),
   ];
 }
 
@@ -193,20 +218,67 @@ type DrawerOpRow = { id: string; type: 'deposit' | 'payout'; amount: string; shi
 /** Account-payment records mirrored locally (cash account collections raise the drawer). */
 type AccountPaymentRow = { id: string; shift_id: string; method_code: string; cash_impact: string };
 
+/** Wave-2 review fix — the LEGACY refund path's own record-at-settle
+ *  mirror (local_refund_records), restored alongside the v4
+ *  offline_receipts mechanism above (disjoint sources, see
+ *  zReportService.ts's own comment at the fold site). */
+type LegacyRefundRecordRow = {
+  id: string;
+  receipt_number: string;
+  original_receipt_number: string;
+  shift_id: string;
+  terminal_id: string;
+  destination: string;
+  total: string;
+  cash_impact: string;
+  currency: string;
+  settled_at: string;
+};
+
+function makeLegacyRefundRecord(
+  id: string,
+  total: string,
+  shiftId: string,
+  overrides: Partial<LegacyRefundRecordRow> = {},
+): LegacyRefundRecordRow {
+  const positiveAmount = total.startsWith('-') ? total.slice(1) : total;
+  return {
+    id,
+    receipt_number: `T001-99${id.slice(-2)}`,
+    original_receipt_number: 'T001-0001',
+    shift_id: shiftId,
+    terminal_id: 'term-1',
+    destination: 'cash',
+    total,
+    cash_impact: positiveAmount,
+    currency: 'EUR',
+    settled_at: '2026-04-23T11:15:00+00:00',
+    ...overrides,
+  };
+}
+
 /** Setup queryAll to return receipts / payment_methods / refund records / drawer ops / account payments by SQL shape */
 function mockQueryAll(
   db: Database,
-  receipts: ReturnType<typeof makeReceiptRows>,
-  refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
+  // v3-refund-chain-integration spec §7.1/§7.3 — v4 refund rows come
+  // from `offline_receipts` (merge `makeRefundOfflineReceiptRows()` into
+  // this SAME array); LEGACY refund records are a separate, disjoint
+  // source (`legacyRefundRecords` below).
+  receipts: Array<ReturnType<typeof makeReceiptRows>[number] | ReturnType<typeof makeRefundOfflineReceiptRow>>,
   drawerOps: DrawerOpRow[] = [],
   accountPayments: AccountPaymentRow[] = [],
   anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
+  legacyRefundRecords: LegacyRefundRecordRow[] = [],
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
     if (s.includes('shift_receipt_anchors')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
       return (anchor && anchor.shift_id === shiftId ? [anchor] : []) as unknown as never[];
+    }
+    if (s.includes('local_refund_records')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return legacyRefundRecords.filter((r) => r.shift_id === shiftId) as unknown as never[];
     }
     if (s.includes('local_account_payment_records')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
@@ -224,12 +296,6 @@ function mockQueryAll(
         { id: 'pm-cash', code: 'CASH' },
         { id: 'pm-card', code: 'CARD' },
       ];
-    }
-    if (s.includes('local_refund_records')) {
-      // Honor the shift_id filter like the real repository does — a refund
-      // from a different shift must never be returned for this shift.
-      const shiftId = (params as unknown[] | undefined)?.[0];
-      return refundRecords.filter((r) => r.shift_id === shiftId);
     }
     return [];
   });
@@ -314,7 +380,7 @@ describe('generateZReport', () => {
     });
 
     it('M3: bounds the receipt window by hash_sequence (rollback-safe) when a shift anchor exists', async () => {
-      mockQueryAll(db, makeReceiptRows(), [], [], [], {
+      mockQueryAll(db, makeReceiptRows(), [], [], {
         shift_id: 'shift-1',
         opening_hash_sequence: 7,
       });
@@ -438,7 +504,7 @@ describe('generateZReport', () => {
         { id: 'd1', type: 'deposit' as const, amount: '20.00', shift_id: 'shift-1' },
         { id: 'd2', type: 'payout' as const, amount: '5.00', shift_id: 'shift-1' },
       ];
-      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+      mockQueryAll(db, makeReceiptRows(), drawerOps);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
@@ -450,7 +516,7 @@ describe('generateZReport', () => {
       const drawerOps = [
         { id: 'd1', type: 'deposit' as const, amount: '99.00', shift_id: 'OTHER-shift' },
       ];
-      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+      mockQueryAll(db, makeReceiptRows(), drawerOps);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
@@ -467,7 +533,7 @@ describe('generateZReport', () => {
       const accountPayments = [
         { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
       ];
-      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+      mockQueryAll(db, makeReceiptRows(), [], accountPayments);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
@@ -479,7 +545,7 @@ describe('generateZReport', () => {
       const accountPayments = [
         { id: 'ap1', shift_id: 'shift-1', method_code: 'CARD', cash_impact: '0' },
       ];
-      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+      mockQueryAll(db, makeReceiptRows(), [], accountPayments);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
@@ -491,7 +557,7 @@ describe('generateZReport', () => {
       const accountPayments = [
         { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
       ];
-      mockQueryAll(db, [], [], [], accountPayments);
+      mockQueryAll(db, [], [], accountPayments);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
@@ -726,21 +792,25 @@ describe('generateZReport', () => {
       expect(updateGrandTotals).toHaveBeenCalledOnce();
     });
 
-    it('Z accounting (B2): folds settled refunds into refunds totals and expected_cash', async () => {
-      mockQueryAll(db, makeReceiptRows(), makeRefundRecordRows());
+    it('spec §7.3 — folds refund offline_receipts rows into refunds totals and expected_cash', async () => {
+      mockQueryAll(db, [...makeReceiptRows(), ...makeRefundOfflineReceiptRows()]);
 
       const report = await generateZReport(
         db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
         { cashCounts: [{ payment_method_id: 'pm-cash', currency_code: 'EUR', actual_amount: '134.50' }] },
       );
 
-      // 2 cash refunds (10.00 + 5.50) + 1 voucher refund (7.25).
-      expect(report.report_data.refunds_count).toBe(3);
+      // 2 cash refunds (10.00 + 5.50) -- every v4 refund is cash-only at
+      // launch (§3.4/§3.7), so every refund row now genuinely has a cash
+      // impact equal to its own magnitude.
+      expect(report.report_data.refunds_count).toBe(2);
       // refunds_amount is a POSITIVE magnitude (server semantics — see
       // ZReportV3AggregationTest / GrandtotalService netDelta formula).
-      expect(report.report_data.refunds_amount).toBe('22.75');
-      // expected_cash = opening 100 + cash sales 50 − CASH refunds 15.50.
-      // The voucher refund moved no till cash.
+      expect(report.report_data.refunds_amount).toBe('15.50');
+      // expected_cash = opening 100 + cash sales 50 − CASH refunds 15.50,
+      // now computed via aggregateReportData()'s own receipt_kind-branched
+      // paymentByType subtraction (§7.3's simplification -- no separate
+      // cashRefundImpact term any more).
       expect(report.report_data.expected_cash).toBe('134.50');
       expect(report.expected_cash).toBe('134.50');
       // The CASH cash-count row compares against the refund-adjusted expected.
@@ -749,14 +819,45 @@ describe('generateZReport', () => {
       expect(cashRow.variance_amount).toBe('0.00');
 
       // Grand totals flow through the EXISTING formulas with real values:
-      // cumulative_refunds 0 + 22.75; perpetual 500 + (50 − 22.75).
-      expect(report.grand_totals.cumulative_refunds).toBe('22.750');
-      expect(report.grand_totals.perpetual_grand_total).toBe('527.250');
-      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '50.00', '8.00', '22.75', 1);
+      // cumulative_refunds 0 + 15.50; perpetual 500 + (50 − 15.50).
+      expect(report.grand_totals.cumulative_refunds).toBe('15.500');
+      expect(report.grand_totals.perpetual_grand_total).toBe('534.500');
+      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '50.00', '8.00', '15.50', 1);
     });
 
-    it('Z accounting (B2): a shift with no refund records keeps the zero totals (unchanged behavior)', async () => {
-      mockQueryAll(db, makeReceiptRows(), []);
+    // Wave-2 review fix (TREASURY CRITICAL) — a MIXED shift with one
+    // LEGACY refund (local_refund_records, the default/only mechanism for
+    // every terminal that has not yet completed its v4 capability
+    // rollout) and one v4 refund (offline_receipts receipt_kind='refund')
+    // must reduce expected_cash by BOTH exactly once each — disjoint
+    // sources, plain sum, never a double-count.
+    it('wave-2: a MIXED shift (one legacy refund + one v4 refund) reduces expected_cash by both exactly once each', async () => {
+      mockQueryAll(
+        db,
+        [...makeReceiptRows(), makeRefundOfflineReceiptRow('rr-v4', '-10.00', 2, '2026-04-23T11:00:00+00:00')],
+        [],
+        [],
+        null,
+        [makeLegacyRefundRecord('legacy-1', '-7.25', 'shift-1')],
+      );
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      // One from each source.
+      expect(report.report_data.refunds_count).toBe(2);
+      // 7.25 (legacy) + 10.00 (v4) — a plain, non-overlapping sum.
+      expect(report.report_data.refunds_amount).toBe('17.25');
+      // opening 100 + cash sales 50 − v4 CASH refund 10.00 (netted inside
+      // aggregateReportData's paymentByType) − legacy cash_impact 7.25
+      // (the standalone cashRefundImpact term, restored) = 132.75.
+      expect(report.report_data.expected_cash).toBe('132.75');
+      expect(report.expected_cash).toBe('132.75');
+    });
+
+    it('spec §7.3 — a shift with no refund rows keeps the zero totals (unchanged behavior)', async () => {
+      mockQueryAll(db, makeReceiptRows());
 
       const report = await generateZReport(
         db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
@@ -769,31 +870,37 @@ describe('generateZReport', () => {
       expect(report.grand_totals.perpetual_grand_total).toBe('550.000');
     });
 
-    it('Z accounting (B2): refunds recorded under a DIFFERENT shift_id are not counted', async () => {
-      const foreignShiftRefunds = makeRefundRecordRows().map((r) => ({
-        ...r,
-        shift_id: 'shift-OTHER',
-      }));
-      mockQueryAll(db, makeReceiptRows(), foreignShiftRefunds);
+    it('spec §7.3 — a refund row outside the current shift window (M3 hash_sequence bound) is not counted', async () => {
+      // Superseding the OLD "refunds recorded under a different shift_id"
+      // test: refund rows are no longer selected by their own shift_id-
+      // filtered query (local_refund_records is gone) -- they are just
+      // regular offline_receipts rows now, subject to the SAME
+      // hash_sequence/created_at window every other receipt uses (M3).
+      // A refund from a PRIOR shift is excluded by that window, exactly
+      // like a stale sale row would be.
+      const outOfWindowRefund = makeRefundOfflineReceiptRow('rr-old', '-9.99', 1, '2026-04-22T09:00:00+00:00');
+      mockQueryAll(db, [...makeReceiptRows(), outOfWindowRefund], [], [], {
+        shift_id: 'shift-1',
+        opening_hash_sequence: 1, // window excludes hash_sequence <= 1
+      });
 
-      const report = await generateZReport(
+      await generateZReport(
         db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
       );
 
-      // The refund-records query is scoped to THIS shift.
-      const refundCall = vi.mocked(queryAll).mock.calls.find((call) =>
-        String(call[1]).includes('local_refund_records'),
+      const receiptsCall = vi.mocked(queryAll).mock.calls.find(
+        ([, sql]) => (sql as string).includes('FROM offline_receipts'),
       );
-      expect(refundCall).toBeDefined();
-      expect(refundCall![2]).toEqual(['shift-1']);
-
-      expect(report.report_data.refunds_count).toBe(0);
-      expect(report.report_data.refunds_amount).toBe('0.00');
-      expect(report.report_data.expected_cash).toBe('150.00');
+      expect(receiptsCall).toBeDefined();
+      // The real query filters in SQL (hash_sequence > anchor); this mock
+      // returns the full unfiltered fixture array regardless, so assert
+      // the SAME window predicate the M3 sale-side tests already pin,
+      // proving no separate refund-only filter exists any more.
+      expect((receiptsCall![2] as unknown[])[1]).toBe(1);
     });
 
-    it('Z accounting (B2): the signed close input receives the aggregated refund totals', async () => {
-      mockQueryAll(db, makeReceiptRows(), makeRefundRecordRows());
+    it('spec §7.3 — the signed close input receives the aggregated refund totals', async () => {
+      mockQueryAll(db, [...makeReceiptRows(), ...makeRefundOfflineReceiptRows()]);
 
       await generateZReport(
         db,
@@ -822,13 +929,13 @@ describe('generateZReport', () => {
           gross_sales: '50.00',
           net_sales: '42.00',
           tax_amount: '8.00',
-          refunds_count: 3,
-          refunds_amount: '22.75',
+          refunds_count: 2,
+          refunds_amount: '15.50',
           voided_count: 0,
         },
         grandTotalsAfter: {
-          cumulative_refunds: '22.750',
-          perpetual_grand_total: '527.250',
+          cumulative_refunds: '15.500',
+          perpetual_grand_total: '534.500',
         },
       });
     });
@@ -911,12 +1018,15 @@ describe('generateZReport', () => {
   });
 
   describe('refund-only shift (Codex r1 M1)', () => {
-    it('generates a Z-report when the shift has ONLY settled refunds (no receipts)', async () => {
-      // Real flow: open shift → process only an online refund (mirrored into
-      // local_refund_records) → close shift. The empty-receipts guard must
-      // not fire before refund records are considered, otherwise a compliant
-      // refund transaction has no local signed Z closure path.
-      mockQueryAll(db, [], makeRefundRecordRows());
+    it('spec §7.1/§7.3 — generates a Z-report when the shift has ONLY refund offline_receipts rows (no sale rows)', async () => {
+      // Real flow: open shift → process only a v4 refund (its OWN
+      // offline_receipts row, receipt_kind='refund') → close shift. The
+      // empty-receipts guard must not fire before refund rows are
+      // considered, otherwise a compliant refund transaction has no local
+      // signed Z closure path. Refund rows are ALREADY part of the same
+      // `receipts` array queried above (spec §7.1's ruling), so no
+      // separate guard is needed any more than for a sale-only shift.
+      mockQueryAll(db, makeRefundOfflineReceiptRows());
 
       const report = await generateZReport(
         db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
@@ -927,35 +1037,48 @@ describe('generateZReport', () => {
       expect(report.report_data.gross_sales).toBe('0.00');
       expect(report.report_data.net_sales).toBe('0.00');
       expect(report.report_data.tax_amount).toBe('0.00');
-      expect(report.report_data.vat_breakdown).toEqual([]);
-      expect(report.report_data.payment_methods).toEqual([]);
+      // VAT breakdown IS populated -- §7.3's refund branch SUBTRACTS each
+      // refund line's own (0%-rate, in this fixture) VAT contribution
+      // from the running per-rate totals, unlike the OLD
+      // local_refund_records mechanism which had no lines data at all
+      // and therefore never touched vat_breakdown for a refund.
+      expect(report.report_data.vat_breakdown).toEqual([
+        { tax_rate: 0, net_amount: '-15.50', vat_amount: '0.00', gross_amount: '-15.50' },
+      ]);
+      // Payment-method breakdown is populated too -- SUBTRACTED (a
+      // negative CASH line), not simply absent as under the old mechanism.
+      expect(report.report_data.payment_methods).toEqual([
+        { payment_type: 'CASH', total_amount: '-15.50', transaction_count: 2 },
+      ]);
 
-      // …while the refunds fold in: 2 cash (10.00 + 5.50) + 1 voucher (7.25).
-      expect(report.report_data.refunds_count).toBe(3);
-      expect(report.report_data.refunds_amount).toBe('22.75');
+      // …while the refunds fold in: 2 cash refunds (10.00 + 5.50).
+      expect(report.report_data.refunds_count).toBe(2);
+      expect(report.report_data.refunds_amount).toBe('15.50');
 
-      // expected_cash = opening 100 − CASH refund impact 15.50 (no cash sales;
-      // the voucher refund moved no till cash).
+      // expected_cash = opening 100 − CASH refund impact 15.50 (no cash
+      // sales; every v4 refund is cash-only at launch).
       expect(report.report_data.expected_cash).toBe('84.50');
       expect(report.expected_cash).toBe('84.50');
 
       // Cumulative/perpetual formulas stay coherent with zero sales:
-      // cumulative_sales unchanged (+0); cumulative_refunds 0 + 22.75;
-      // perpetual 500 + (0 − 22.75) = 477.250.
+      // cumulative_sales unchanged (+0); cumulative_refunds 0 + 15.50;
+      // perpetual 500 + (0 − 15.50) = 484.500.
       expect(report.grand_totals.cumulative_sales).toBe('500.000');
-      expect(report.grand_totals.cumulative_refunds).toBe('22.750');
-      expect(report.grand_totals.perpetual_grand_total).toBe('477.250');
+      expect(report.grand_totals.cumulative_refunds).toBe('15.500');
+      expect(report.grand_totals.perpetual_grand_total).toBe('484.500');
       expect(report.grand_totals.receipt_count_lifetime).toBe(10);
-      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '0.00', '0.00', '22.75', 0);
+      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '0.00', '0.00', '15.50', 0);
 
-      // No receipts → empty snapshot set, but the Z still persists + chains.
-      expect(report.receipt_snapshots).toEqual([]);
+      // insertZReport still runs -- the Z persists + chains even though
+      // no SALE snapshot exists (receipt_snapshots is built from sale
+      // rows only, a separate, unaffected concern from this section's
+      // fix).
       expect(insertZReport).toHaveBeenCalledOnce();
       expect(advanceZChain).toHaveBeenCalledOnce();
     });
 
     it('refund-only shift supports cash counts against the refund-adjusted expected cash', async () => {
-      mockQueryAll(db, [], makeRefundRecordRows());
+      mockQueryAll(db, makeRefundOfflineReceiptRows());
 
       const report = await generateZReport(
         db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
@@ -965,14 +1088,14 @@ describe('generateZReport', () => {
       const cashRow = (report.report_data.cash_counts ?? [])[0]!;
       expect(cashRow.expected_amount).toBe('84.50');
       expect(cashRow.variance_amount).toBe('0.00');
-      expect(cashRow.transaction_count).toBe(0);
+      expect(cashRow.transaction_count).toBe(2);
     });
 
     it('generates a nil Z for a truly-empty shift (allow empty Z, H3 — server parity)', async () => {
       // A cashier can always close the register; an empty shift produces a nil
       // Z (Z néant) with all-zero totals and expected_cash = opening float. The
       // server ReportGenerationService allows this; the device must match.
-      mockQueryAll(db, [], []);
+      mockQueryAll(db, []);
 
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 

@@ -121,6 +121,17 @@
     "returningSection": "Returning",
     "buyingNewSection": "Buying new",
     "detailsNotLocal": "The original receipt details are not available on this terminal. Only items from receipts recorded on this terminal can be refunded locally. Ask a manager to look up the receipt from the back office.",
+    "trainingOriginalRefused": "This receipt was recorded in training mode and cannot be refunded.",
+    "wholeDiscountReceiptRefused": "This receipt has a whole-receipt discount; refunds are not available for it in this launch.",
+    "nonCashOriginalRefused": "This receipt was not paid in cash. Refunds are paid out in cash only on this terminal, so only cash receipts can be refunded here. Ask a manager to handle this return from the back office.",
+    "refundQuantityExceeded": "This would refund more than was originally sold. Check what has already been refunded for this receipt.",
+    "discountedPartialRefundRefused": "This line had a discount, so it can only be refunded in full. Refund the whole line, or ask a manager to handle a partial refund from the back office.",
+    "refundAlreadyAppended": "This refund has already been recorded. Finish confirming the cash payout and printing the receipt.",
+    "legacyRefundValueExceeded": "This receipt has already been refunded on this terminal for its full value. Check the earlier refund before processing another one.",
+    "offlineRefundCountCeilingReached": "This terminal has reached the number of refunds allowed for one shift while it still has sales waiting to be sent. Reconnect and let the terminal catch up, then try again — or ask a manager to handle this refund from the back office.",
+    "offlineRefundValueCeilingReached": "This terminal has reached the total refund amount allowed for one shift while it still has sales waiting to be sent. Reconnect and let the terminal catch up, then try again — or ask a manager to handle this refund from the back office.",
+    "largeRefundRequiresOnline": "This refund is too large to approve while the terminal is offline. Reconnect the terminal and try again, so a manager's approval can be checked with the server.",
+    "capabilityUnavailable": "Refunds are temporarily unavailable on this terminal — contact support",
     "confirm": {
       "charge": "Charge {{amount}}",
       "refund": "Refund {{amount}}",
@@ -174,6 +185,17 @@
       "subtitle": "A manager must authorize this refund.",
       "confirm": "Authorize refund",
       "submitting": "Processing…"
+    },
+    "reconciliation": {
+      "confirmTitle": "Confirm refund payout",
+      "confirmBody": "Did {{amount}} in cash leave the drawer for this refund?",
+      "confirmBodyNoAmount": "Did the cash leave the drawer for this refund?",
+      "yes": "Yes",
+      "notSure": "No / Not sure",
+      "reprintTitle": "Reprint refund receipt",
+      "reprintBody": "This refund was confirmed but the receipt was never printed — print it now?",
+      "print": "Print",
+      "skip": "Skip"
     }
   },
   "receiptLocator": {

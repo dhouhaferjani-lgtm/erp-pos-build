@@ -100,6 +100,10 @@ final class FraudSettingsPosControllerContractTest extends TestCase
         $this->assertArrayHasKey('requireBlindCashCount', $data);
         $this->assertArrayHasKey('requireManagerPinAboveHard', $data);
         $this->assertArrayHasKey('cashVarianceEmailSeverity', $data);
+        // Lane C M2/M3 — the refund-exposure policies ride this same payload.
+        $this->assertArrayHasKey('offlineRefundCountCeiling', $data);
+        $this->assertArrayHasKey('offlineRefundValueCeiling', $data);
+        $this->assertArrayHasKey('onlineRequiredRefundThreshold', $data);
     }
 
     public function test_data_keys_are_not_snake_case(): void
@@ -120,5 +124,8 @@ final class FraudSettingsPosControllerContractTest extends TestCase
         $this->assertArrayNotHasKey('require_blind_cash_count', $data);
         $this->assertArrayNotHasKey('require_manager_pin_above_hard', $data);
         $this->assertArrayNotHasKey('cash_variance_email_severity', $data);
+        $this->assertArrayNotHasKey('offline_refund_count_ceiling', $data);
+        $this->assertArrayNotHasKey('offline_refund_value_ceiling', $data);
+        $this->assertArrayNotHasKey('online_required_refund_threshold', $data);
     }
 }

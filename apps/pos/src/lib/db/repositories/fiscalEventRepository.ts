@@ -1,5 +1,8 @@
 import type Database from '@tauri-apps/plugin-sql';
-import { execute, queryAll } from '@/lib/db';
+import { execute, queryAll, queryOne } from '@/lib/db';
+import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
+import { validateSaleReceiptPayload } from '@/lib/fiscal/FiscalEventEngine';
+import type { LineItemInput, PaymentInput } from '@/lib/fiscal/FiscalEventEngine';
 
 export type FiscalEventSyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
@@ -72,6 +75,33 @@ export interface FiscalEventSyncBatchResponse {
 
 export const MAX_FISCAL_EVENT_SYNC_RETRIES = 5;
 
+/**
+ * Lane C M2 — how many fiscal events this terminal has authored but NOT yet
+ * handed to the server.
+ *
+ * The velocity ceiling only bites while the device is carrying unsynced
+ * fiscal events: that is precisely the window in which §12's server-side
+ * `FOR UPDATE` cap — the sole cross-terminal authority — cannot see what
+ * this device is paying out. Once the queue drains, the server is back in
+ * the loop and the device-local ceiling stands down.
+ *
+ * Counts every non-`'synced'` row (`pending`, `syncing`, `failed`), NOT just
+ * the drain's `IN ('pending','failed')` set: a row parked at `'syncing'` by a
+ * crash is exactly as invisible to the server as a pending one.
+ */
+export async function countUnsyncedFiscalEvents(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    db,
+    `SELECT COUNT(*) AS count FROM fiscal_events
+      WHERE terminal_id = $1 AND sync_status != 'synced'`,
+    [terminalId],
+  );
+  return row?.count ?? 0;
+}
+
 export async function getPendingFiscalEventsForSync(
   db: Database,
 ): Promise<LocalFiscalEvent[]> {
@@ -107,26 +137,300 @@ export async function recoverStrandedSyncingFiscalEvents(
   return result.rowsAffected;
 }
 
+/**
+ * @returns the number of rows the flip actually touched.
+ *
+ * Round-2 fix (Codex re-review of finding 12): this returned `void`, so
+ * the post-ACK atomic transaction could assert exactly-one-row on the
+ * receipt and intent flips but NOT on the fiscal-event flip — contrary to
+ * the finding's exactly-one-row-on-EACH-flip requirement. `fiscal_events.id`
+ * is the primary key, so the only possible counts are 0 and 1; a 0 means
+ * the event the ACK refers to is not in the local mirror at all, which
+ * must abort the transaction rather than silently leave it pending.
+ */
 export async function updateFiscalEventSyncStatus(
   db: Database,
   id: string,
   status: FiscalEventSyncStatus,
   syncError?: string,
-): Promise<void> {
+): Promise<number> {
   if (status === 'synced') {
-    await execute(
+    const result = await execute(
       db,
       "UPDATE fiscal_events SET sync_status = $1, synced_at = datetime('now'), sync_error = NULL WHERE id = $2",
       [status, id],
     );
-    return;
+    return result.rowsAffected;
   }
 
-  await execute(
+  const result = await execute(
     db,
     'UPDATE fiscal_events SET sync_status = $1, sync_error = $2 WHERE id = $3',
     [status, syncError ?? null, id],
   );
+  return result.rowsAffected;
+}
+
+/**
+ * Round-2 fix (finding 11 residual) — the refund's OWN appended fiscal
+ * event, by primary key. Used to VERIFY a reused, already-appended
+ * intent's linkage before routing it to payout/print recovery: a
+ * non-empty id column is not proof the event exists, nor that it belongs
+ * to this intent.
+ */
+export async function getFiscalEventById(
+  db: Database,
+  id: string,
+): Promise<LocalFiscalEvent | null> {
+  return queryOne<LocalFiscalEvent>(db, 'SELECT * FROM fiscal_events WHERE id = $1', [id]);
+}
+
+/**
+ * v3-refund-chain-integration spec §3.5/§3.7/§4.1 — the ORIGINAL sale's own
+ * signed fields the device-side refund flow refuses against BEFORE any
+ * approval authoring or payload construction: `line_items[]`/`payments[]`
+ * (for `RefundReceiptV4Payload.ts`'s §3.2 normalization + §3.3 parallel-
+ * array construction), `training_flag` (§3.7's training-original refusal),
+ * `transaction_discount_amount` (§3.5's whole-discount-receipt refusal).
+ */
+export interface OriginalFiscalEventLocalView {
+  /** The original's own local `fiscal_events.id` — becomes
+   *  `original_receipt_reference.fiscal_event_id` on the refund payload. */
+  readonly fiscalEventId: string;
+  /**
+   * Wave-2 fix-wave finding 7 (fiscal C-4 / codex M-1) — the ORIGINAL's
+   * OWN signed `payload.business_date`, cross-checked against the
+   * `fiscal_events` row's own column. Becomes
+   * `original_receipt_reference.original_business_date`. Before this
+   * field existed the store stamped the CURRENT business date there, so
+   * a 1-July sale refunded on 1 August signed a payload asserting the
+   * original was sold on 1 August — a fabricated provenance fact, sealed
+   * forever (rule 8) and accepted by the server, which only shape-checks
+   * the field.
+   */
+  readonly businessDate: string;
+  /**
+   * Round-2 fix (finding 19 residual + fiscal N-1) — the ORIGINAL's own
+   * SIGNED, canonical-validated `payload.total` and
+   * `payload.cash_rounding_adjustment`.
+   *
+   * `total` is the ROUNDED total (`receiptService.ts` writes
+   * `policySnapshot.roundedTotal`), and §-v3's own aggregate invariant is
+   * `rounded − adjustment == exact`. The refund's value ceiling must be
+   * the EXACT total, because a refund pays out `Σ|line_total|` — the exact
+   * gross line amounts. Taking the ceiling from the ROUNDED figure refused
+   * every legitimate first full refund of a rounded-DOWN receipt.
+   *
+   * Both come from the byte-bound, validator-checked signed payload, never
+   * from the mutable `offline_receipts` scalars.
+   */
+  readonly total: string;
+  readonly cashRoundingAdjustment: string;
+  readonly lineItems: readonly LineItemInput[];
+  readonly payments: readonly PaymentInput[];
+  /** Read from the original's OWN signed `payload.training_flag` — never
+   *  the CURRENT session's training-mode context (an unrelated concept,
+   *  §3.7). Named `original.training_flag` at every call site to keep the
+   *  source unambiguous. */
+  readonly trainingFlag: boolean;
+  readonly transactionDiscountAmount: string;
+}
+
+/**
+ * Resolve the ORIGINAL sale's own signed fiscal-event fields, purely from
+ * local SQLite — no server round trip. `offline_receipts.id` is the SAME
+ * UUID as the fiscal payload's own `receipt_uuid` (both are `receiptId`,
+ * generated once at sale-authoring time and threaded to both the
+ * `fiscal_events` append call and the `offline_receipts` insert,
+ * `receiptService.ts`), so `originalReceiptUuid` is exactly
+ * `offline_receipts.id` — the same key `getOfflineReceiptById()` already
+ * uses for the existing `hydrateFromReceipt()` call site
+ * (`HomePage.tsx`'s `getOfflineReceiptById(db, event.receiptUuid)`).
+ *
+ * Returns `null` when the original cannot be resolved locally (already
+ * synced-and-pruned from this device, or genuinely never existed here) —
+ * the caller refuses the refund attempt rather than guessing.
+ */
+export async function resolveOriginalFiscalEventLocally(
+  db: Database,
+  originalReceiptUuid: string,
+): Promise<OriginalFiscalEventLocalView | null> {
+  const receipt = await getOfflineReceiptById(db, originalReceiptUuid);
+  if (receipt === null || receipt.canonical_bytes == null || receipt.canonical_bytes === '') {
+    return null;
+  }
+
+  // The original's OWN local fiscal_events row -- linked via the SAME
+  // source_event_class/source_event_id pair `receiptService.ts` writes at
+  // sale-authoring time (`source_event_class: 'offline_receipts',
+  // source_event_id: receiptId`).
+  //
+  // Wave-2 fix-wave finding 2 (codex C-1): this used to select ONLY `id`.
+  // Proving that a row EXISTS is not the same as reading THAT ROW's signed
+  // bytes — every refusal-relevant value was then taken from the
+  // `offline_receipts` mirror with nothing binding the two, so a stale,
+  // mismatched or tampered mirror could authorize a refund whose
+  // `training_flag` / `transaction_discount_amount` were never proved to
+  // belong to the referenced signed event. The signed columns are now
+  // pulled and every one of them is checked below; the mirror is used
+  // ONLY after byte-equality with this row is established.
+  const fiscalEventRow = await queryOne<{
+    id: string;
+    event_type: string;
+    event_version: number;
+    business_date: string;
+    terminal_id: string;
+    sequence_number: number;
+    canonical_bytes: string;
+  }>(
+    db,
+    `SELECT id, event_type, event_version, business_date, terminal_id, sequence_number, canonical_bytes
+       FROM fiscal_events
+      WHERE source_event_class = 'offline_receipts' AND source_event_id = $1
+      LIMIT 1`,
+    [originalReceiptUuid],
+  );
+  if (fiscalEventRow === null) {
+    return null;
+  }
+
+  // -- Envelope identity. A refund's original can only ever be a
+  //    SALE_RECEIPT; anything else (an approval, an override, a Z leg)
+  //    is a resolution bug, not a refundable original.
+  if (fiscalEventRow.event_type !== 'SALE_RECEIPT') {
+    return null;
+  }
+  if (
+    typeof fiscalEventRow.canonical_bytes !== 'string'
+    || fiscalEventRow.canonical_bytes === ''
+  ) {
+    return null;
+  }
+
+  // -- Byte equality: the mirror this function reads from MUST be the very
+  //    same string the chain signed. `receiptService.ts` writes the append
+  //    result's `canonical_bytes` into BOTH tables, so equality is the
+  //    normal case; inequality means the mirror drifted (partial write,
+  //    restore, tampering) and nothing read out of it can be trusted.
+  if (receipt.canonical_bytes !== fiscalEventRow.canonical_bytes) {
+    return null;
+  }
+
+  // Wave-2 review fix (FISCAL CRITICAL) — `offline_receipts.canonical_bytes`
+  // (the SAME string `fiscal_events.canonical_bytes` holds) is the full
+  // chain ENVELOPE `FiscalEventEngine.ts` signs (`canonicalPayload`,
+  // :620-637) — tenant_id/terminal_id/sequence_number/etc alongside the
+  // ACTUAL signed fiscal payload nested one level down at
+  // `envelope.payload`. A previous version of this function read
+  // `training_flag`/`transaction_discount_amount`/`line_items` directly
+  // off the ENVELOPE's top level, where none of those keys exist — every
+  // read silently missed and fell back to a PERMISSIVE default
+  // (`trainingFlag=false`, `transactionDiscountAmount='0'`, `lineItems=[]`),
+  // meaning the §3.5/§3.7 device refusals could NEVER fire. Every failure
+  // mode below is FAIL-CLOSED (returns `null`, the caller refuses the
+  // refund) rather than permissive-default: a refusal check that cannot
+  // prove its negative must never assume the safe case.
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(receipt.canonical_bytes);
+  } catch {
+    return null;
+  }
+  if (!isPlainRecord(envelope)) {
+    return null;
+  }
+  const payload = envelope['payload'];
+  if (!isPlainRecord(payload)) {
+    return null;
+  }
+
+  // -- Wave-2 fix-wave finding 2 — validate the signed payload with the
+  //    CANONICAL validator (the SAME one `FiscalEventEngine.append()` ran
+  //    when this original was authored), not a locally re-invented set of
+  //    shape checks. This is what makes the array members below genuinely
+  //    validated (`line_items[i]`/`payments[i]` key sets, money regexes,
+  //    enums) instead of `Array.isArray()`-and-hope. Any structural
+  //    violation is a fail-closed refusal, exactly like malformed JSON.
+  try {
+    validateSaleReceiptPayload(payload, fiscalEventRow.event_version);
+  } catch {
+    return null;
+  }
+
+  // -- Receipt identity: the signed payload must be about the receipt the
+  //    caller asked to refund. Byte equality alone proves the mirror and
+  //    the chain agree; it does not prove they are about THIS receipt.
+  if (payload['receipt_uuid'] !== originalReceiptUuid) {
+    return null;
+  }
+
+  // -- Discriminator (§2): only a SALE (or the ruled TRAINING
+  //    representation, which §3.7 then refuses on its own signed
+  //    `training_flag`) can be the ORIGINAL of a refund. A REFUND or VOID
+  //    original is structurally meaningless — fail closed rather than
+  //    guessing a supported shape.
+  const invoiceTypeCode = payload['invoice_type_code'];
+  if (invoiceTypeCode !== 'SALE' && invoiceTypeCode !== 'TRAINING') {
+    return null;
+  }
+
+  // -- Business date: read from the signed payload (finding 7) and
+  //    cross-checked against the envelope row's own column so the two
+  //    cannot disagree.
+  const businessDate = payload['business_date'];
+  if (typeof businessDate !== 'string' || businessDate === '') {
+    return null;
+  }
+  if (businessDate !== fiscalEventRow.business_date) {
+    return null;
+  }
+
+  // -- Round-2 hardening (Codex re-review of finding 2) — cross-check the
+  //    ENVELOPE's own identity fields against the selected row's columns.
+  //    Byte equality proves the mirror and the chain hold the same string;
+  //    it does not prove that string describes the row we selected. The
+  //    envelope carries `event_type` / `event_version` / `terminal_id` /
+  //    `sequence_number` alongside the nested payload (FiscalEventEngine's
+  //    `canonicalPayload`), so any disagreement means the row and its own
+  //    bytes describe different events — fail closed rather than trust
+  //    either.
+  if (envelope['event_type'] !== fiscalEventRow.event_type) {
+    return null;
+  }
+  if (envelope['event_version'] !== fiscalEventRow.event_version) {
+    return null;
+  }
+  if (envelope['terminal_id'] !== fiscalEventRow.terminal_id) {
+    return null;
+  }
+  if (envelope['sequence_number'] !== fiscalEventRow.sequence_number) {
+    return null;
+  }
+
+  const lineItems = payload['line_items'] as LineItemInput[];
+  const payments = payload['payments'] as PaymentInput[];
+  const trainingFlag = payload['training_flag'] as boolean;
+  const transactionDiscountAmount = payload['transaction_discount_amount'] as string;
+  // Both are money strings guaranteed by the canonical validator's own
+  // `assertMoneyString` checks (the exact key set was asserted above), so
+  // the casts are runtime-backed like the four fields beside them.
+  const total = payload['total'] as string;
+  const cashRoundingAdjustment = payload['cash_rounding_adjustment'] as string;
+
+  return {
+    fiscalEventId: fiscalEventRow.id,
+    businessDate,
+    total,
+    cashRoundingAdjustment,
+    lineItems,
+    payments,
+    trainingFlag,
+    transactionDiscountAmount,
+  };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function fiscalEventToWireEnvelope(

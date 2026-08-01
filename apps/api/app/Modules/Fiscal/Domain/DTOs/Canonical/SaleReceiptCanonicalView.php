@@ -30,6 +30,7 @@ final readonly class SaleReceiptCanonicalView
      * @param  list<PaymentDTO>  $payments
      * @param  list<VatBreakdownDTO>  $vatBreakdown
      * @param  list<VoucherRedemptionDTO>  $vouchersRedeemed
+     * @param  list<OriginalLineReferenceDTO>|null  $originalLineReferences  v4 REFUND-only (spec §3.3); null on v1/v2/v3
      */
     public function __construct(
         public SaleReceiptPayload $payload,
@@ -40,6 +41,7 @@ final readonly class SaleReceiptCanonicalView
         public array $vatBreakdown,
         public ?OriginalReceiptReferenceDTO $originalReceiptReference,
         public array $vouchersRedeemed,
+        public ?array $originalLineReferences = null,
     ) {}
 
     /** @return list<LineItemDTO> */
@@ -79,6 +81,16 @@ final readonly class SaleReceiptCanonicalView
     public function originalReceiptReference(): ?OriginalReceiptReferenceDTO
     {
         return $this->originalReceiptReference;
+    }
+
+    /**
+     * v4 REFUND-only (spec §3.3): null on every v1/v2/v3 payload.
+     *
+     * @return list<OriginalLineReferenceDTO>|null
+     */
+    public function originalLineReferences(): ?array
+    {
+        return $this->originalLineReferences;
     }
 
     /**

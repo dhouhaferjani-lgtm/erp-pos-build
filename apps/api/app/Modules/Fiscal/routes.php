@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Modules\Fiscal\Presentation\Controllers\DeadLetteredProjectionsController;
 use App\Modules\Fiscal\Presentation\Controllers\FiscalEventIngestionController;
 use App\Modules\Fiscal\Presentation\Controllers\ParseFailureResolutionController;
 use App\Modules\Fiscal\Presentation\Controllers\QuarantineBestEffortParseController;
+use App\Modules\Fiscal\Presentation\Controllers\RefundCompensationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -31,4 +33,19 @@ Route::prefix('api/v1')
             ->middleware('can:fiscal.events.resolve_quarantine');
         Route::post('/fiscal/events/{id}/resolve-parse-failure', [ParseFailureResolutionController::class, 'store'])
             ->middleware('can:fiscal.events.resolve_quarantine');
+        // v3-refund-chain-integration spec §5.2/§17.
+        Route::post('/fiscal/refund-compensations', [RefundCompensationController::class, 'store'])
+            ->name('fiscal.refund-compensations.store')
+            ->middleware('can:fiscal.refunds.manage_dead_letters');
+        // v3-refund-chain-integration spec §5.1/§5.2 — read-only operator
+        // visibility over dead-lettered projections + ingress-quarantined
+        // (canonical-parse-failure) events. Same permission as the write-off
+        // action (rule 12's can: pattern) since the two surfaces are used
+        // together by the same operator role.
+        Route::get('/fiscal/dead-lettered-projections', [DeadLetteredProjectionsController::class, 'index'])
+            ->name('fiscal.dead-lettered-projections.index')
+            ->middleware('can:fiscal.refunds.manage_dead_letters');
+        Route::get('/fiscal/dead-lettered-projections/{fiscalEventId}', [DeadLetteredProjectionsController::class, 'show'])
+            ->name('fiscal.dead-lettered-projections.show')
+            ->middleware('can:fiscal.refunds.manage_dead_letters');
     });

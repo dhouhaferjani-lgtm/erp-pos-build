@@ -40,6 +40,10 @@ describe('companyFraudSettingsCacheRepository', () => {
       require_blind_cash_count: false,
       require_manager_pin_above_hard: true,
       cash_variance_email_severity: 'none',
+      // Lane C M2/M3 refund-exposure policies (seeded defaults).
+      offline_refund_count_ceiling: 5,
+      offline_refund_value_ceiling: '300.0000',
+      online_required_refund_threshold: '100.0000',
     };
 
     vi.mocked(queryAll).mockResolvedValue([
@@ -72,6 +76,52 @@ describe('companyFraudSettingsCacheRepository', () => {
     expect(out?.require_manager_pin_above_hard).toBe(true);
   });
 
+  /**
+   * Lane C M2/M3 — the refund-exposure policies ride this SAME cached row.
+   * A silent drop here would make every device fall back to the seeded
+   * constants and hide a tenant's own tightened ceiling.
+   */
+  it('carries the M2/M3 refund-exposure policies through the upsert and the read', async () => {
+    const row: CompanyFraudSettingsCacheRow = {
+      company_id: 'co-4',
+      cash_variance_over_soft: '1.0000',
+      cash_variance_over_hard: '20.0000',
+      cash_variance_under_soft: '1.0000',
+      cash_variance_under_hard: '20.0000',
+      require_blind_cash_count: false,
+      require_manager_pin_above_hard: true,
+      cash_variance_email_severity: 'none',
+      offline_refund_count_ceiling: 3,
+      offline_refund_value_ceiling: '150.0000',
+      online_required_refund_threshold: '80.0000',
+    };
+
+    vi.mocked(queryAll).mockResolvedValue([
+      {
+        ...row,
+        require_blind_cash_count: 0,
+        require_manager_pin_above_hard: 1,
+      },
+    ]);
+
+    await upsertCompanyFraudSettings(db, row);
+    const out = await getCompanyFraudSettings(db, 'co-4');
+
+    const [, upsertSql, upsertParams] = vi.mocked(execute).mock.calls[0]!;
+    expect(upsertSql).toMatch(/offline_refund_count_ceiling/);
+    expect(upsertSql).toMatch(/offline_refund_value_ceiling/);
+    expect(upsertSql).toMatch(/online_required_refund_threshold/);
+    expect(upsertParams).toContain(3);
+    expect(upsertParams).toContain('150.0000');
+    expect(upsertParams).toContain('80.0000');
+
+    const [, selectSql] = vi.mocked(queryAll).mock.calls[0]!;
+    expect(selectSql).toMatch(/online_required_refund_threshold/);
+    expect(out?.offline_refund_count_ceiling).toBe(3);
+    expect(out?.offline_refund_value_ceiling).toBe('150.0000');
+    expect(out?.online_required_refund_threshold).toBe('80.0000');
+  });
+
   it('upsert overwrites existing row — second call carries new values', async () => {
     const updated: CompanyFraudSettingsCacheRow = {
       company_id: 'co-2',
@@ -82,6 +132,9 @@ describe('companyFraudSettingsCacheRepository', () => {
       require_blind_cash_count: true,
       require_manager_pin_above_hard: true,
       cash_variance_email_severity: 'critical',
+      offline_refund_count_ceiling: 5,
+      offline_refund_value_ceiling: '300.0000',
+      online_required_refund_threshold: '100.0000',
     };
 
     vi.mocked(queryAll).mockResolvedValue([

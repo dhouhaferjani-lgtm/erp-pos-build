@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
@@ -32,6 +33,21 @@ final class GrandtotalService
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Absolute value of a decimal string, bcmath only — no float ever touches
+     * money (rule 19). Used to normalise return-receipt amounts across the two
+     * refund sign eras (legacy negative, v4 positive).
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function magnitude(string $value): string
+    {
+        return bccomp($value, '0', $this->scale()) < 0
+            ? bcsub('0', $value, $this->scale())
+            : $value;
     }
 
     /**
@@ -109,7 +125,19 @@ final class GrandtotalService
     /**
      * Calculate period totals (reset at each closing)
      *
-     * Totals for receipts within the period only.
+     * Totals for receipts within the period only. The returned array is
+     * json_encoded into the grand-total event's fiscal hash, so every figure
+     * here lands in signed, chained bytes.
+     *
+     * Scope, precisely:
+     * - `gross_sales`/`tax_amount` are NET of return receipts (subtracted by
+     *   magnitude, both sign eras — see calculatePerpetualTotals for the full
+     *   rationale; before this, a non-voided `receipt_type='return'` row fell
+     *   into the SALE branch, so a v4 POSITIVE refund total was ADDED);
+     * - `sales_count` counts every NON-VOIDED receipt, returns included;
+     * - `refunds_count`/`refunds_amount` count VOIDS, not returns. That is a
+     *   pre-existing MISLABEL. The keys are part of the signed payload, so they
+     *   are deliberately NOT renamed or re-pointed here; ticketed separately.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @param  Carbon  $periodStart  Period start timestamp
@@ -137,11 +165,21 @@ final class GrandtotalService
             if ($receipt->is_voided) {
                 $refundsCount++;
                 $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
-            } else {
-                $salesCount++;
-                $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
-                $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
+
+                continue;
             }
+
+            $salesCount++;
+
+            if ($receipt->receipt_type === ReceiptType::Return) {
+                $grossSales = bcsub($grossSales, $this->magnitude($receipt->total), $this->scale());
+                $taxAmount = bcsub($taxAmount, $this->magnitude($receipt->tax_amount), $this->scale());
+
+                continue;
+            }
+
+            $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
+            $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
         }
 
         $netSales = bcsub($grossSales, $taxAmount, $this->scale());
@@ -159,20 +197,44 @@ final class GrandtotalService
     /**
      * Calculate perpetual totals (never reset)
      *
-     * Cumulative totals since terminal activation.
+     * Cumulative totals since terminal activation — the NF525 perpetual grand
+     * total exported as `VentesCumulees` / `TaxeCumulee`
+     * (Nf525XmlBuilder::addGrandTotals).
+     *
+     * Scope, precisely (the previous docblock claimed "excluding voids/refunds"
+     * while the query only filtered `is_voided`/`is_training`):
+     * - VOIDED receipts are EXCLUDED (filtered out entirely);
+     * - TRAINING receipts are EXCLUDED (never fiscal);
+     * - RETURN receipts are INCLUDED and SUBTRACTED — the counter is net of
+     *   refunds, which is what it has always been: a legacy return stored a
+     *   NEGATIVE total, so the old blended `SUM(total)` already netted it.
+     * - `lifetime_transactions` counts every non-void, non-training receipt,
+     *   returns included (a refund IS a fiscal transaction).
+     *
+     * v4 refunds project a POSITIVE total under `receipt_type = 'return'`
+     * (v3-refund-chain-integration spec §7.7). Without the sign normalisation
+     * below, a perpetual counter that has netted refunds for its whole life
+     * would start ADDING them mid-chain the moment
+     * `EnableV4RefundAuthoringCommand` runs — a silent discontinuity inside a
+     * hash-chained fiscal counter, and 2x the refund amount off. `-ABS(...)`
+     * is applied PER ROW, so a terminal carrying both sign eras stays correct.
+     * See ticket 2026-08-01-positive-refund-total-consumers (hard pre-enable
+     * gate). This preserves the counter's existing definition across the sign
+     * change; it does not redefine it.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @return array{lifetime_sales: string, lifetime_tax: string, lifetime_transactions: int}
      */
     public function calculatePerpetualTotals(Terminal $terminal): array
     {
-        // Get ALL production receipts for terminal (excluding voids/refunds and training)
+        $netOfReturns = static fn (string $column): string => "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+
         $totals = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->selectRaw('
-                SUM(total) as lifetime_sales,
-                SUM(tax_amount) as lifetime_tax,
+                SUM('.$netOfReturns('total').') as lifetime_sales,
+                SUM('.$netOfReturns('tax_amount').') as lifetime_tax,
                 COUNT(*) as lifetime_transactions
             ')
             ->first();

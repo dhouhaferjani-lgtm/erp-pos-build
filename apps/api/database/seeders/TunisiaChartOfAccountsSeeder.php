@@ -253,6 +253,11 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::GeneralExpense->value, 'is_system' => true],
             ['code' => '6580', 'name' => 'Écart de règlement (charges)', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceExpense->value, 'is_system' => true],
+            // v3-refund-chain-integration spec §5.3 — invalid_refund
+            // write-off (genuine loss booking, distinct from SalesReturn's
+            // valid_unbooked reversal shape).
+            ['code' => '6590', 'name' => 'Perte sur remboursement (write-off)', 'type' => 'expense', 'parent_code' => '65',
+                'system_purpose' => SystemAccountPurpose::RefundWriteOff->value, 'is_system' => true],
             ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
             ['code' => '66', 'name' => 'Charges financières', 'type' => 'expense', 'parent_code' => '6'],
@@ -274,7 +279,16 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '707', 'name' => 'Ventes de marchandises', 'type' => 'revenue', 'parent_code' => '70',
                 'system_purpose' => SystemAccountPurpose::ProductRevenue->value, 'is_system' => true],
             ['code' => '708', 'name' => 'Produits des activités annexes', 'type' => 'revenue', 'parent_code' => '70'],
-            ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'revenue', 'parent_code' => '70'],
+            // v3-refund-chain-integration spec §5.3 (errata T1/4.2): gains
+            // `system_purpose` (previously absent — the account existed but
+            // resolved nowhere via hasAccountForPurpose(SalesReturn), a 500
+            // for any TN tenant's valid_unbooked write-off class) AND its
+            // `type` is aligned from 'revenue' to 'expense', matching this
+            // same file's own 7091/SalesReturnsClearing precedent two lines
+            // below — SystemAccountPurpose::expectedAccountType() groups
+            // SalesReturn in its Expense arm.
+            ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'expense', 'parent_code' => '70',
+                'system_purpose' => SystemAccountPurpose::SalesReturn->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
 

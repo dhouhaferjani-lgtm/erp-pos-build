@@ -303,7 +303,7 @@ export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
 export type PostingMode = 'after_commit' | 'synchronous_in_transaction';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'refund_write_off' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -997,7 +997,9 @@ export type LocationNodeType = 'zone' | 'aisle' | 'rack' | 'shelf' | 'bin' | 'se
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
+export type ReplayPreviewMode = 'timestamp_replay' | 'legacy_delta';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
+export type TerminalSyncHealthState = 'healthy' | 'pending' | 'stale' | 'unknown';
 export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
 export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
 export type TransferType = 'intracompany' | 'intercompany';
@@ -1340,6 +1342,9 @@ cashVarianceUnderHard: string;
 requireBlindCashCount: boolean;
 requireManagerPinAboveHard: boolean;
 cashVarianceEmailSeverity: string;
+offlineRefundCountCeiling: number;
+offlineRefundValueCeiling: string;
+onlineRequiredRefundThreshold: string;
 };
 export type HeldOrderData = {
 id: string;
@@ -1460,6 +1465,7 @@ export type ReceiptType = 'sale' | 'return';
 export type RefundDestination = 'original_payment' | 'cash' | 'store_voucher' | 'exchange_deferred';
 export type ReturnLineDisposition = 'restock' | 'scrap' | 'not_received';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other';
+export type SealedHashAlgorithm = 'legacy_pipe_v1' | 'canonical_json_v3';
 export type ShiftStatus = 'OPEN' | 'CLOSED';
 export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
 export type TableShape = 'rectangle' | 'circle' | 'square';

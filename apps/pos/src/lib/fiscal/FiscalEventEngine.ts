@@ -565,10 +565,13 @@ export class FiscalEventEngine {
     const chainContext = request.chain_context ?? 'operational';
 
     // Step 1 — resolve event_version via the registry. Reserved types
-    // throw before any state mutation.
-    const eventVersion = this.registry.eventVersionFor(request.event_type);
+    // throw before any state mutation. v3-refund-chain-integration spec
+    // §2 — the payload is threaded through so SALE_RECEIPT resolves 3
+    // (sale/training) vs 4 (refund) vs a hard VOID refusal; every other
+    // type ignores the payload argument and keeps its fixed version.
+    const eventVersion = this.registry.eventVersionFor(request.event_type, request.payload);
     this.validateChainContext(request, chainContext);
-    this.validateRequestPayload(request, chainContext);
+    this.validateRequestPayload(request, chainContext, eventVersion);
 
     // Step 2 — device-side idempotency on (tenant_id, terminal_id,
     // source_event_class, source_event_id). The lookup is scoped
@@ -855,10 +858,11 @@ export class FiscalEventEngine {
   private validateRequestPayload(
     request: FiscalEventAppendRequest,
     chainContext: FiscalChainContext,
+    eventVersion: number,
   ): void {
     switch (request.event_type) {
       case 'SALE_RECEIPT':
-        validateSaleReceiptPayload(request.payload);
+        validateSaleReceiptPayload(request.payload, eventVersion);
         return;
       case 'ACCOUNT_PAYMENT':
         validateAccountPaymentPayload(request.payload);
@@ -1111,6 +1115,66 @@ export const SALE_RECEIPT_PAYLOAD_KEYS_V3 = [
   'vat_total',
   'vouchers_redeemed',
 ] as const;
+
+/**
+ * SALE_RECEIPT v4 top-level key set (v3-refund-chain-integration spec §2/
+ * §3.3/§3.4). 33 keys = the 30 v3 keys plus `original_line_references`,
+ * `refund_destination`, `settlement_allocation`, which sort in
+ * alphabetically per this file's established convention.
+ *
+ * The PHP authority is
+ * `FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V4`; the
+ * FiscalPayloadKeyDrift gate pins the two lists (and this list's
+ * sortedness, and its strict-superset-of-V3 relationship) against each
+ * other.
+ *
+ * A NAMED constant, never a mutation of `SALE_RECEIPT_PAYLOAD_KEYS_V3` —
+ * the v3 record stays frozen at 30 keys forever; the device never
+ * authors v4 for a SALE/TRAINING receipt (only REFUND, §2's resolution
+ * table).
+ */
+export const SALE_RECEIPT_PAYLOAD_KEYS_V4 = [
+  'approval_references',
+  'business_date',
+  'buyer',
+  'cash_rounding_adjustment',
+  'cash_rounding_denomination',
+  'cashier_id',
+  'cashier_name',
+  'consumption_mode',
+  'currency_code',
+  'currency_scale',
+  'event_time_device',
+  'invoice_type_code',
+  'line_items',
+  'lottery_code',
+  'notes',
+  'original_line_references',
+  'original_receipt_reference',
+  'payments',
+  'receipt_uuid',
+  'refund_destination',
+  'seller',
+  'settlement_allocation',
+  'shift_id',
+  'subtotal',
+  'table_id',
+  'terminal_id',
+  'total',
+  'training_flag',
+  'transaction_discount_amount',
+  'transaction_discount_reason',
+  'vat_breakdown',
+  'vat_total',
+  'vouchers_redeemed',
+] as const;
+
+/** v4 `original_line_references[].disposition` domain — verbatim values of
+ *  the existing PHP `ReturnLineDisposition` enum (spec §3.3). */
+const RETURN_LINE_DISPOSITIONS = ['restock', 'scrap', 'not_received'] as const;
+
+/** v4 `refund_destination` domain — single literal for launch (spec §3.4). */
+const REFUND_DESTINATIONS = ['cash'] as const;
 
 export const CHAIN_BREAK_DETECTED_PAYLOAD_KEYS = [
   'last_good_hash',
@@ -1448,7 +1512,17 @@ function isZeroMoney(value: string): boolean {
 // validator is authoritative there).
 // -------------------------------------------------------------------
 
-function validateSaleReceiptPayload(payload: unknown): void {
+/**
+ * EXPORTED for the v4 refund flow's original-event resolution
+ * (`resolveOriginalFiscalEventLocally()`, wave-2 fix-wave finding 2 /
+ * codex C-1). That resolver makes §3.5/§3.7 REFUSAL decisions from the
+ * original's signed bytes, so it must validate those bytes with THIS
+ * canonical validator — the same one `append()` ran when the original was
+ * authored — rather than re-implementing a weaker set of shape checks
+ * that could drift. Exported deliberately, not made public API: the only
+ * non-engine caller is the refund resolver.
+ */
+export function validateSaleReceiptPayload(payload: unknown, eventVersion: number): void {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new FiscalEventPayloadValidationError(
       'SALE_RECEIPT payload must be an object.',
@@ -1457,10 +1531,17 @@ function validateSaleReceiptPayload(payload: unknown): void {
   const p = payload as Record<string, unknown>;
 
   // -- 1. key-set: required + extras -- mirrors PHP validatePayloadKeySet.
-  //       Append-time const swap (spec §4.4 F9): the device AUTHORS only
-  //       v3, so there is no version threading here. The ROUNDING feature
-  //       gate lives on `fiscal_schema_version`, not on the payload version.
-  assertExactKeySet(p, SALE_RECEIPT_PAYLOAD_KEYS_V3, 'SALE_RECEIPT');
+  //       v3-refund-chain-integration spec §2 — version-threaded: v4
+  //       (REFUND only, §2's resolution table) carries the 33-key v4 set;
+  //       every other version (the device authors only 3) keeps the
+  //       30-key v3 set unchanged. The ROUNDING feature gate itself still
+  //       lives on `fiscal_schema_version`, not on the payload version —
+  //       unaffected by this threading.
+  assertExactKeySet(
+    p,
+    eventVersion >= 4 ? SALE_RECEIPT_PAYLOAD_KEYS_V4 : SALE_RECEIPT_PAYLOAD_KEYS_V3,
+    'SALE_RECEIPT',
+  );
 
   // -- 2. currency_scale + currency_code first; every subsequent money
   //       check depends on the scale.
@@ -1491,6 +1572,27 @@ function validateSaleReceiptPayload(payload: unknown): void {
 
   // -- 3. enum + format invariants on simple top-level fields --
   const invoiceTypeCode = assertEnum(p, 'invoice_type_code', INVOICE_TYPE_CODES) as InvoiceTypeCode;
+
+  // -- 3z. v4 (v3-refund-chain-integration spec §2 table) — the registry's
+  //        eventVersionFor() never resolves 4 for anything but a REFUND, so
+  //        by construction this branch is unreachable for VOID/SALE/
+  //        TRAINING when eventVersion is genuinely derived from THIS SAME
+  //        payload. It is asserted here anyway as an independent,
+  //        defense-in-depth boundary check (mirrors the PHP validator's own
+  //        §2z, which is a genuinely separate parse path server-side) —
+  //        never trusted to be redundant.
+  if (eventVersion >= 4) {
+    if (invoiceTypeCode === 'VOID') {
+      throw new FiscalEventPayloadValidationError(
+        'payload_void_authoring_prohibited:event_version=4 payloads with invoice_type_code=VOID have no legitimate producer (spec §2/§8)',
+      );
+    }
+    if (invoiceTypeCode !== 'REFUND') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_invoice_type_invalid:event_version=4 requires invoice_type_code=REFUND; got ${jsonOrType(invoiceTypeCode)}`,
+      );
+    }
+  }
   assertOptionalEnum(p, 'consumption_mode', CONSUMPTION_MODES);
   const trainingFlag = assertBool(p, 'training_flag');
   assertCalendarDate(p, 'business_date');
@@ -1557,10 +1659,34 @@ function validateSaleReceiptPayload(payload: unknown): void {
     );
   }
 
+  // -- 5a. v4 REFUND: transaction_discount_amount is ALWAYS canonical zero
+  //        (spec §3.5's ⚖️ orchestrator ruling — RefundReceiptV4Payload.ts's
+  //        own pre-authoring refusal at resolveOriginalFiscalEventLocally()
+  //        already makes a non-zero-original-discount refund unreachable;
+  //        this is the device-side defense-in-depth mirror of the PHP
+  //        validator's identical §4a check, not a new runtime branch). --
+  if (eventVersion >= 4 && !isZeroDiscount) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_v4_refund_transaction_discount_must_be_zero:transaction_discount_amount=${discountAmount}`,
+    );
+  }
+
   // -- 6. nested objects --
   validateSeller(p);
   validateBuyer(p);
   validateOriginalReceiptReference(p, invoiceTypeCode);
+
+  // -- 6z. v4-only nested contract (spec §3.3/§3.4) -- reached only when
+  //        invoice_type_code === 'REFUND' (§3z above already fail-closed on
+  //        every other value at v4). original_line_references[] is
+  //        cross-checked against line_items[] BEFORE line_items' own
+  //        per-row validation below, mirroring the PHP validator's
+  //        placement exactly (both lists are validated by their own
+  //        natural shape check, requireList, first).
+  if (eventVersion >= 4) {
+    validateOriginalLineReferences(p);
+    validateRefundDestinationAndSettlementAllocation(p);
+  }
 
   // -- 7. list containers --
   const approvalReferences = requireList(p, 'approval_references');
@@ -1582,6 +1708,11 @@ function validateSaleReceiptPayload(payload: unknown): void {
   }
   payments.forEach((row, idx) => validatePaymentRow(idx, row, money, scale));
 
+  // -- 7a. v4 single-cash-leg contract (spec §3.7). --
+  if (eventVersion >= 4) {
+    validateSingleCashLegPayment(payments);
+  }
+
   const vatBreakdown = requireList(p, 'vat_breakdown');
   if (vatBreakdown.length === 0) {
     throw new FiscalEventPayloadValidationError(
@@ -1599,6 +1730,127 @@ function validateSaleReceiptPayload(payload: unknown): void {
   // total-arithmetic cross-check are the authoritative enforcement
   // points; the TS validator deliberately stops at structural
   // conformance to avoid duplicating BCMath behavior in JS.
+}
+
+/**
+ * v4 `original_line_references[]` — spec §3.3's exact frozen shape,
+ * strict parallel-array to `line_items[]` (same length, `product_id`
+ * equal, `quantity` equal at every index `i`). Mirrors PHP
+ * `FiscalPayloadConstraintValidator::validateOriginalLineReferences()`.
+ * Reached only when `invoice_type_code === 'REFUND'` (§3z above already
+ * fail-closed on every other value at v4).
+ */
+function validateOriginalLineReferences(p: Record<string, unknown>): void {
+  const lineItems = requireList(p, 'line_items');
+  const refs = requireList(p, 'original_line_references');
+
+  if (refs.length !== lineItems.length) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_original_line_references_length_mismatch:line_items=${lineItems.length}:original_line_references=${refs.length}`,
+    );
+  }
+  if (refs.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_original_line_references_empty:original_line_references must have >= 1 row on a v4 REFUND',
+    );
+  }
+
+  refs.forEach((row, index) => {
+    if (!isPlainObject(row)) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_original_line_reference_invalid:original_line_references[${index}] must be object; got ${typeofTag(row)}`,
+      );
+    }
+    const path = `original_line_references[${index}]`;
+    assertExactKeySetWithPath(
+      row,
+      ['disposition', 'original_line_index', 'product_id', 'quantity'],
+      path,
+    );
+
+    const originalLineIndex = row['original_line_index'];
+    if (typeof originalLineIndex !== 'number' || !Number.isInteger(originalLineIndex) || originalLineIndex < 0) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_integer_format_mismatch:${path}.original_line_index must be an integer >= 0; got ${jsonOrType(originalLineIndex)}`,
+      );
+    }
+    assertNonEmptyStringAt(row, 'product_id', `${path}.product_id`);
+    assertNonEmptyStringAt(row, 'quantity', `${path}.quantity`);
+    assertEnum(row, 'disposition', RETURN_LINE_DISPOSITIONS);
+
+    // Strict parallel-array invariants against line_items[index] -- NOT
+    // original_line_index (that indexes into the ORIGINAL sale's own
+    // line_items[], an entirely different, server-side-resolved list this
+    // validator has no access to; the cross-reference is resolved and
+    // verified server-side by the projector, §17).
+    const lineItem = lineItems[index];
+    if (!isPlainObject(lineItem)) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_original_line_reference_invalid:${path} has no matching line_items[${index}]`,
+      );
+    }
+    if (lineItem['product_id'] !== row['product_id']) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_original_line_reference_product_id_mismatch:${path}.product_id must equal line_items[${index}].product_id`,
+      );
+    }
+    if (lineItem['quantity'] !== row['quantity']) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_original_line_reference_quantity_mismatch:${path}.quantity must equal line_items[${index}].quantity`,
+      );
+    }
+  });
+}
+
+/**
+ * v4 `refund_destination` / `settlement_allocation` (spec §3.4):
+ * `refund_destination` is the single `'cash'` literal for launch;
+ * `settlement_allocation` is required-present-and-null on every launch
+ * v4 payload. Mirrors PHP
+ * `FiscalPayloadConstraintValidator::validateRefundDestinationAndSettlementAllocation()`.
+ */
+function validateRefundDestinationAndSettlementAllocation(p: Record<string, unknown>): void {
+  assertEnum(p, 'refund_destination', REFUND_DESTINATIONS);
+
+  if (!Object.prototype.hasOwnProperty.call(p, 'settlement_allocation')) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_missing_required:settlement_allocation',
+    );
+  }
+  if (p['settlement_allocation'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_settlement_allocation_not_null:settlement_allocation must be null on every launch v4 payload; got ${jsonOrType(p['settlement_allocation'])}`,
+    );
+  }
+}
+
+/**
+ * v4 single-cash-leg contract (spec §3.7): `payments[]` is exactly one
+ * row, `method_code === 'CASH'`, `instrument_type === null`. Mirrors PHP
+ * `FiscalPayloadConstraintValidator::validateSingleCashLegPayment()`.
+ */
+function validateSingleCashLegPayment(payments: readonly unknown[]): void {
+  if (payments.length !== 1) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_v4_refund_payments_not_single_leg:payments must have exactly 1 row; got ${payments.length}`,
+    );
+  }
+  const row = payments[0];
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_v4_refund_payment_invalid:payments[0] must be object',
+    );
+  }
+  if (row['method_code'] !== 'CASH') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_v4_refund_payment_not_cash:payments[0].method_code must be CASH; got ${jsonOrType(row['method_code'])}`,
+    );
+  }
+  if (row['instrument_type'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_v4_refund_payment_instrument_type_must_be_null:payments[0].instrument_type must be null; got ${jsonOrType(row['instrument_type'])}`,
+    );
+  }
 }
 
 function validateSaleReceiptApprovalReference(index: number, row: unknown): void {
@@ -3388,6 +3640,16 @@ function validateOperatorApprovalGrantedPayload(payload: unknown): void {
     'tender_tolerance_override',
     'void_or_return_override',
     'cash_drawer_control',
+    // v3-refund-chain-integration spec §4.5 errata T6 — the solo
+    // payout-dispute audit event reuses OPERATOR_APPROVAL_GRANTED's
+    // existing shape rather than authoring a sixth OVERRIDE_* event type.
+    // A site the spec's own §17 manifest missed (it named only
+    // posOverrideAuthoring.ts's two TS sites + the two PHP
+    // FiscalPayloadConstraintValidator sites) — this device-side engine
+    // validator is a fifth, independent gate that must accept the
+    // literal too, or every dispute-evidence append is rejected locally
+    // before it can ever reach the network.
+    'payout_dispute_evidence',
   ]);
   assertUuid(p, 'cashier_user_id');
   assertUuid(p, 'supervisor_user_id');

@@ -7,12 +7,18 @@ namespace App\Modules\POS\Application\Projections;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalLineReferenceDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\ApprovalEvidenceUnresolvedException;
+use App\Modules\Fiscal\Domain\Exceptions\OriginalLineUnresolvableException;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
+use App\Modules\Fiscal\Domain\Exceptions\RefundQuantityExceededException;
+use App\Modules\Fiscal\Domain\Exceptions\TrainingOriginalRefundRefusedException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\CountingBlockService;
@@ -25,6 +31,7 @@ use App\Modules\POS\Application\Services\PosPaymentPolicyResolver;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Receipt;
@@ -33,6 +40,8 @@ use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Application\Services\RestockPolicyResolver;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -41,6 +50,7 @@ use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use App\Shared\Domain\CashRoundingCutover;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -160,6 +170,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
         private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
+        private readonly RestockPolicyResolver $restockPolicyResolver,
     ) {}
 
     public function name(): string
@@ -306,6 +317,20 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // axis stored in pos_receipts.invoice_type_code.
             $receiptTypeEnum = $this->resolveReceiptType($payload->invoiceTypeCode, $originalReceiptId);
 
+            // v3-refund-chain-integration spec §3.7/§12 — v4-only server-
+            // side defense, reached only when the original resolved above
+            // (a v4 REFUND with no legitimate producer other than REFUND,
+            // per FiscalPayloadConstraintValidator's v4 gate). Training-
+            // original refusal is the device's PRIMARY gate (§3.7); this is
+            // defense-in-depth for an event that somehow bypassed it.
+            $refundPolicyAlerts = null;
+            if ($event->event_version >= 4 && $originalReceiptId !== null) {
+                $this->assertOriginalNotTraining($event, $originalReceiptId);
+                $this->assertRefundQuantityWithinCap($event, $view, $originalReceiptId);
+                $refundPolicyAlerts = $this->computeRefundPolicyAlerts($originalReceiptId);
+                $this->assertApprovalEvidenceResolved($event, $payload);
+            }
+
             // Buyer block snapshot — D16 invariant: read ONLY from the
             // parsed payload. NO live customer/contact/B2B lookup.
             $buyer = $view->buyer;
@@ -357,6 +382,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // from the 27-key canonical payload.
                 'invoice_type_code' => $payload->invoiceTypeCode,
                 'training_flag' => $payload->trainingFlag,
+                // v3-refund-chain-integration spec §3.5/§3.6 — server-
+                // advisory accept-and-flag column. NULL means "no alerts
+                // raised" (the common case, including every non-v4-refund
+                // row); never written for a receipt this projector didn't
+                // just evaluate as a v4 refund.
+                'refund_policy_alerts' => $refundPolicyAlerts !== null ? json_encode($refundPolicyAlerts, JSON_THROW_ON_ERROR) : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -399,10 +430,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 return;
             }
 
-            $this->writeLines($receiptId, $event, $view);
+            $this->writeLines($receiptId, $event, $view, $originalReceiptId);
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
-            $this->redeemVouchers($receiptId, $event, $view);
+            $this->redeemVouchers($receiptId, $event, $view, $receiptTypeEnum);
             // Spec §4.5 consumer matrix: loyalty earns on the SALE VALUE
             // (total − adj), never on the rounded amount collected. On v1/v2
             // there is no adjustment, so the base stays the projected total.
@@ -637,6 +668,411 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * v3-refund-chain-integration spec §3.7 (T4) — server-side defense-in-
+     * depth mirroring the device's primary training-original refusal.
+     * Reads `training_flag` from the RESOLVED ORIGINAL's own signed
+     * fiscal-event payload — never from the CURRENT event's
+     * `payload->trainingFlag` (an unrelated concept: whether the refund
+     * itself is training, not whether the original sale being refunded
+     * was). A training original refunded outside training mode (or a
+     * non-training original refunded from a training session) is a
+     * separate, orthogonal question this check does not answer — see
+     * §10's `redeemVouchers`/`earnLoyaltyPoints` gates for the CURRENT
+     * event's own training exclusion.
+     */
+    private function assertOriginalNotTraining(FiscalEvent $event, string $originalReceiptId): void
+    {
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
+        if ($originalEvent === null || ! is_array($originalEvent->payload)) {
+            return;
+        }
+
+        if (($originalEvent->payload['training_flag'] ?? null) === true) {
+            throw new TrainingOriginalRefundRefusedException(
+                fiscalEventId: $event->id,
+                originalFiscalEventId: $originalEvent->id,
+            );
+        }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §3.5/§3.6 — server-advisory accept-
+     * and-flag alerts, computed purely from data already available AFTER
+     * the refund event is signed (Model 1, §4.1: an already-signed event
+     * is never silently dropped on account of a policy flag).
+     *
+     * **Errata F1 — timestamp-only, not permission-based.** The projector
+     * runs on a Horizon worker with no bound Spatie permissions team (rule
+     * 20); a permission-set check here would silently evaluate against an
+     * unbound/wrong team and produce a meaningless result, not a real
+     * policy signal. Any manager-threshold/daily-cap advisory that would
+     * require a permission check is out of `refund_policy_alerts`'
+     * launch scope entirely (deferred to §16.5's signed-snapshot
+     * mechanism) — not silently half-implemented here.
+     *
+     * **Return-window advisory — N/A for launch, stated explicitly, not
+     * silently omitted.** §3.6 authorizes "whatever policy questions [the
+     * projector] can compute purely from the original receipt's own
+     * timestamp" — but no return-window DURATION exists anywhere as a
+     * source of truth (no company/tenant policy field, no config
+     * constant; `RefundWindowClosedException` is a reserved-but-never-
+     * thrown type with no caller supplying `expiryDays` anywhere in this
+     * codebase). Computing a window advisory would require inventing an
+     * un-authorized business rule, which this launch does not do. Only
+     * the §3.5 alert below — fully specified, no missing input — is
+     * implemented.
+     *
+     * **§3.5 alert — non-zero original transaction_discount_amount.** A
+     * structural impossibility for a device-authored v4 refund (§3.5's
+     * refusal makes this unreachable from a correctly-behaving device),
+     * so its presence here signals a bypassed or compromised client.
+     *
+     * @return list<array<string, mixed>>|null null when no alert fired
+     */
+    private function computeRefundPolicyAlerts(string $originalReceiptId): ?array
+    {
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
+        if ($originalEvent === null || ! is_array($originalEvent->payload)) {
+            return null;
+        }
+
+        $alerts = [];
+
+        $originalDiscount = $originalEvent->payload['transaction_discount_amount'] ?? null;
+        if (is_string($originalDiscount) && is_numeric($originalDiscount)) {
+            $scale = (int) ($originalEvent->payload['currency_scale'] ?? 2);
+            if (bccomp($originalDiscount, '0', $scale) !== 0) { // precision-ok: scale read from the original's own signed payload
+                $alerts[] = [
+                    'type' => 'non_zero_original_transaction_discount',
+                    'detected_at' => now('UTC')->toIso8601String(),
+                    'original_fiscal_event_id' => $originalEvent->id,
+                    'original_transaction_discount_amount' => $originalDiscount,
+                ];
+            }
+        }
+
+        return $alerts === [] ? null : $alerts;
+    }
+
+    /**
+     * Resolve the RESOLVED ORIGINAL's own signed `fiscal_events` row for a
+     * refund, via the local `pos_receipts.fiscal_event_id` link. Shared by
+     * {@see assertOriginalNotTraining()} and
+     * {@see computeRefundPolicyAlerts()} — both read exclusively from the
+     * original's OWN payload, never the current refund event's.
+     */
+    private function resolveOriginalFiscalEvent(string $originalReceiptId): ?FiscalEvent
+    {
+        /** @var Receipt|null $original */
+        $original = Receipt::query()->find($originalReceiptId);
+        if ($original === null || $original->fiscal_event_id === null) {
+            // Legacy-sealed (pre-fiscal-events) or otherwise unresolvable
+            // original — no signed payload to read.
+            return null;
+        }
+
+        return FiscalEvent::query()->find($original->fiscal_event_id);
+    }
+
+    /**
+     * v3-refund-chain-integration spec §12 — per-original quantity cap.
+     *
+     * Locks the ORIGINAL receipt's `pos_receipt_lines` rows
+     * (`FOR UPDATE`) so two concurrent refund projections against the SAME
+     * original serialize rather than both reading a stale
+     * already-refunded sum. For each `original_line_references[]` entry,
+     * sums `ABS(quantity)` across every EXISTING `pos_receipt_lines` row
+     * referencing that original line (`original_line_id`) — the `ABS()`
+     * normalizes both the legacy negative convention
+     * (`ReceiptReturnService.php:955-975`) and the v4 positive-magnitude
+     * convention (§3.1) to their true magnitude, so a mixed-legacy
+     * population (some prior refunds via the legacy path, some via v4)
+     * is counted correctly. Throws
+     * {@see RefundQuantityExceededException} — a
+     * `NonRetryableProjectionException` (§4.2) — when the cumulative
+     * total, INCLUDING the quantity this event is requesting, would
+     * exceed the original line's own quantity.
+     */
+    private function assertRefundQuantityWithinCap(FiscalEvent $event, SaleReceiptCanonicalView $view, string $originalReceiptId): void
+    {
+        $originalLineReferences = $view->originalLineReferences();
+        if ($originalLineReferences === null || $originalLineReferences === []) {
+            return;
+        }
+
+        $originalLines = DB::table('pos_receipt_lines')
+            ->where('receipt_id', $originalReceiptId)
+            ->orderBy('line_number')
+            ->lockForUpdate()
+            ->get(['id', 'line_number', 'quantity', 'product_id']);
+
+        foreach ($originalLineReferences as $ref) {
+            $originalLine = $this->resolveOriginalLineForReference($event, $originalReceiptId, $ref, $originalLines);
+
+            $originalLineId = (string) $originalLine->id;
+            /** @var numeric-string $originalQuantity */
+            $originalQuantity = (string) $originalLine->quantity;
+
+            // review round-2 IMPORTANT 12 — concurrent-redelivery exclusion.
+            // Two racing projector dispatches for the SAME fiscal_event_id
+            // can both pass the top-of-apply() idempotency fast-path before
+            // either commits; the loser then blocks on this method's
+            // `lockForUpdate()` until the winner commits, unblocks, and
+            // re-sums — at which point the SUM would otherwise include the
+            // WINNER'S own just-committed lines for this SAME event,
+            // double-counting them against the loser's identical request
+            // and throwing a false RefundQuantityExceededException. Exclude
+            // rows whose `pos_receipts.fiscal_event_id` equals the CURRENT
+            // event's own id (a prior successful application of THIS event,
+            // not a genuinely separate refund) from the "already refunded"
+            // sum. `whereNull` keeps legacy-authored return lines
+            // (`fiscal_event_id IS NULL`) counted — `<>` alone would drop
+            // them (SQL NULL comparison), so both branches are required.
+            /** @var numeric-string $alreadyRefunded */
+            $alreadyRefunded = (string) (DB::table('pos_receipt_lines')
+                ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
+                ->where('pos_receipt_lines.original_line_id', $originalLineId)
+                ->where(function ($query) use ($event): void {
+                    $query->whereNull('pos_receipts.fiscal_event_id')
+                        ->orWhere('pos_receipts.fiscal_event_id', '<>', $event->id);
+                })
+                ->selectRaw('COALESCE(SUM(ABS(pos_receipt_lines.quantity)), 0) as total')
+                ->value('total') ?? '0');
+
+            /** @var numeric-string $requested */
+            $requested = $ref->quantity;
+
+            $projected = bcadd($alreadyRefunded, $requested, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($projected, $originalQuantity, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+                throw new RefundQuantityExceededException(
+                    fiscalEventId: $event->id,
+                    originalLineId: $originalLineId,
+                    originalQuantity: $originalQuantity,
+                    alreadyRefundedQuantity: $alreadyRefunded,
+                    requestedQuantity: $requested,
+                );
+            }
+        }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §3.3/§12 review round-2 CRITICAL 1
+     * — the SHARED resolution both {@see assertRefundQuantityWithinCap()}
+     * and {@see writeLines()} use for every `original_line_references[]`
+     * row, so the two can never drift into disagreeing about which
+     * original line a reference resolves to.
+     *
+     * `FiscalPayloadConstraintValidator::validateOriginalLineReferences()`
+     * only checks the refund's OWN payload for internal consistency
+     * (`original_line_references[i]` matches `line_items[i]` at signing
+     * time) — it has no access to the ORIGINAL receipt's actual projected
+     * `pos_receipt_lines` rows, so it cannot catch a reference whose
+     * `original_line_index` doesn't exist on the original. That is
+     * detected here against the real `pos_receipt_lines` rows (by
+     * `line_number`); `product_id` is instead cross-checked against the
+     * ORIGINAL's own SIGNED PAYLOAD snapshot
+     * (`fiscal_events.payload.line_items[i].product_id`), never the local
+     * `pos_receipt_lines.product_id` FK column — `writeLines()`
+     * deliberately NULLs that FK for deleted/ad-hoc/cross-tenant products,
+     * so the lossy local column would falsely dead-letter a genuinely
+     * correct reference.
+     *
+     * @param  Collection<int, \stdClass>  $originalLines  each row carrying at least `id`, `line_number` (raw `DB::table('pos_receipt_lines')->get()` rows; used ONLY to resolve `line_number` → the local line's `id`/`quantity` for the §12 cap — never for the `product_id` check, see below)
+     */
+    private function resolveOriginalLineForReference(
+        FiscalEvent $event,
+        string $originalReceiptId,
+        OriginalLineReferenceDTO $ref,
+        Collection $originalLines,
+    ): \stdClass {
+        $originalLine = $originalLines->first(
+            fn (\stdClass $row): bool => (int) $row->line_number === $ref->originalLineIndex + 1
+        );
+        if ($originalLine === null) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: 'no pos_receipt_lines row exists at that line_number on the resolved original receipt',
+            );
+        }
+
+        // fiscal re-verification IMPORTANT — compare against the
+        // ORIGINAL'S OWN SIGNED PAYLOAD snapshot
+        // (fiscal_events.payload.line_items[i].product_id), NEVER the
+        // lossy LOCAL `pos_receipt_lines.product_id` FK column.
+        // `writeLines()` deliberately NULLs that FK for deleted/ad-hoc/
+        // cross-tenant products (see its own comment) — comparing against
+        // it here means a refund of such an original dead-letters
+        // PERMANENTLY on the primary path even though the reference is
+        // genuinely correct. The signed snapshot survives deletion and FK
+        // suppression by construction (it is chain-immutable and was
+        // already validated at ingest time), matching the pattern already
+        // used by {@see assertOriginalNotTraining()} and
+        // {@see computeRefundPolicyAlerts()}.
+        $originalEvent = $this->resolveOriginalFiscalEvent($originalReceiptId);
+        $lineItems = ($originalEvent !== null && is_array($originalEvent->payload))
+            ? ($originalEvent->payload['line_items'] ?? null)
+            : null;
+
+        if (
+            ! is_array($lineItems)
+            || ! isset($lineItems[$ref->originalLineIndex])
+            || ! is_array($lineItems[$ref->originalLineIndex])
+        ) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: 'the resolved original fiscal event has no signed line_items entry at that index',
+            );
+        }
+
+        $snapshotProductIdRaw = $lineItems[$ref->originalLineIndex]['product_id'] ?? null;
+        $snapshotProductId = $snapshotProductIdRaw === null ? null : (string) $snapshotProductIdRaw;
+
+        if ($snapshotProductId !== $ref->productId) {
+            throw new OriginalLineUnresolvableException(
+                fiscalEventId: $event->id,
+                originalReceiptId: $originalReceiptId,
+                originalLineIndex: $ref->originalLineIndex,
+                reason: sprintf(
+                    'product_id mismatch: reference claims %s, original signed line_items[%d].product_id resolved to %s',
+                    $ref->productId,
+                    $ref->originalLineIndex,
+                    $snapshotProductId ?? 'NULL',
+                ),
+            );
+        }
+
+        return $originalLine;
+    }
+
+    /**
+     * v3-refund-chain-integration spec §4.2 — projector-side seven-field
+     * approval-evidence verification. Design "unchanged from Revision 3"
+     * (Codex r3 confirmed it closes the round-2 recovery-key concern); this
+     * is its first actual implementation — Revision 3 declared it in prose
+     * only, and {@see ApprovalEvidenceUnresolvedException} existed as an
+     * unused shell until now.
+     *
+     * `SALE_RECEIPT.approval_references[]` is already structurally
+     * validated at ingestion by
+     * {@see FiscalPayloadConstraintValidator::validateSaleReceiptApprovalReference()}
+     * — every row is guaranteed to carry exactly the seven keys
+     * `approval_event_id`, `approval_id`, `approval_scope`,
+     * `override_event_id`, `policy_version`, `supervisor_user_id`,
+     * `target_reference_id`. What that validator does NOT do — because it
+     * only sees the current event's own payload — is confirm those seven
+     * values actually correspond to two REAL, signed fiscal events. This
+     * method does: for each reference row it resolves the cited
+     * `OPERATOR_APPROVAL_GRANTED` event (by `approval_event_id`) and the
+     * cited `OVERRIDE_*` event (by `override_event_id`), both tenant- AND
+     * company-scoped to `$event` (same cross-tenant-smuggling stance as
+     * {@see resolveProductFk()} — a forged/foreign UUID must never resolve),
+     * then cross-checks `approval_id` / `approval_scope` / `policy_version`
+     * / `supervisor_user_id` against BOTH resolved events' own payloads, the
+     * override event's OWN `approval_event_id` against the reference row's,
+     * and `target_reference_id` against the override event's
+     * `override_context.target_reference_id`. Any absence or mismatch
+     * throws {@see ApprovalEvidenceUnresolvedException} — a
+     * `NonRetryableProjectionException` (§4.2): evidence that does not
+     * exist or does not match can never resolve itself on a later Horizon
+     * attempt.
+     *
+     * Scoped to v4 REFUND only (this method's sole call site), matching the
+     * manifest's placement of this bullet among the v4-only projector
+     * additions — `approval_references[]` can in principle appear on any
+     * SALE_RECEIPT version, but re-verifying it for every historical v1-v3
+     * sale receipt already accepted into the fiscal chain is out of this
+     * feature's scope and would be a new, unrequested regression surface.
+     */
+    private function assertApprovalEvidenceResolved(FiscalEvent $event, SaleReceiptPayload $payload): void
+    {
+        foreach ($payload->approvalReferences as $index => $reference) {
+            $this->assertApprovalReferenceRowResolved($event, $reference, $index);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $reference
+     */
+    private function assertApprovalReferenceRowResolved(FiscalEvent $event, array $reference, int $index): void
+    {
+        $approvalEventId = (string) ($reference['approval_event_id'] ?? '');
+        $overrideEventId = (string) ($reference['override_event_id'] ?? '');
+
+        $approvalEvent = FiscalEvent::query()
+            ->where('id', $approvalEventId)
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->where('event_type', FiscalEventType::OPERATOR_APPROVAL_GRANTED)
+            ->first();
+
+        if ($approvalEvent === null || ! is_array($approvalEvent->payload)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: approval_event_id does not resolve to a signed OPERATOR_APPROVAL_GRANTED event for this tenant/company', $index),
+            );
+        }
+
+        $overrideEvent = FiscalEvent::query()
+            ->where('id', $overrideEventId)
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->whereIn('event_type', [
+                FiscalEventType::OVERRIDE_CREDIT_LIMIT,
+                FiscalEventType::OVERRIDE_ACCOUNT_STATUS,
+                FiscalEventType::OVERRIDE_DISCOUNT_LIMIT,
+                FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
+                FiscalEventType::OVERRIDE_VOID_OR_RETURN,
+            ])
+            ->first();
+
+        if ($overrideEvent === null || ! is_array($overrideEvent->payload)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: override_event_id=%s does not resolve to a signed OVERRIDE_* event for this tenant/company', $index, $overrideEventId),
+            );
+        }
+
+        $approvalPayload = $approvalEvent->payload;
+        $overridePayload = $overrideEvent->payload;
+
+        foreach (['approval_id', 'approval_scope', 'policy_version', 'supervisor_user_id'] as $field) {
+            $referenceValue = $reference[$field] ?? null;
+            if ($referenceValue !== ($approvalPayload[$field] ?? null) || $referenceValue !== ($overridePayload[$field] ?? null)) {
+                throw new ApprovalEvidenceUnresolvedException(
+                    fiscalEventId: $event->id,
+                    approvalEventId: $approvalEventId,
+                    reason: sprintf('approval_references[%d]: %s mismatch across reference/approval/override', $index, $field),
+                );
+            }
+        }
+
+        if (($overridePayload['approval_event_id'] ?? null) !== $approvalEventId) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: override event\'s own approval_event_id does not match the reference row', $index),
+            );
+        }
+
+        $overrideContext = $overridePayload['override_context'] ?? null;
+        $targetReferenceId = is_array($overrideContext) ? ($overrideContext['target_reference_id'] ?? null) : null;
+        if ($targetReferenceId !== ($reference['target_reference_id'] ?? null)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: target_reference_id mismatch against override_context', $index),
+            );
+        }
+    }
+
+    /**
      * Insert the `pos_receipt_lines` rows from the canonical view.
      *
      * Canonical line fields written to columns:
@@ -660,11 +1096,42 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * product FK, honouring the table CHECK
      * `variant_id IS NULL OR product_id IS NOT NULL`. The sealed canonical
      * payload remains authoritative when the FK does not resolve.
+     *
+     * **v4 REFUND `original_line_id` write (spec §3.3/§17).** When the
+     * canonical view carries `original_line_references[]` (v4 REFUND
+     * only), each written line's `original_line_id` is resolved from the
+     * ORIGINAL receipt's own `pos_receipt_lines` via the SAME
+     * `original_line_index + 1 == line_number` mapping
+     * {@see assertRefundQuantityWithinCap()} uses — this is what makes a
+     * v4-authored refund line participate in §12's `SUM(ABS(quantity))`
+     * cap query and in the legacy `ReceiptReturnService::
+     * calculateAlreadyReturnedQuantities()` `original_line_id`-keyed
+     * lookup, exactly like a legacy-authored return line already does.
      */
-    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
+    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ?string $originalReceiptId = null): void
     {
+        // review round-2 CRITICAL 1(c) — SHARED resolution with
+        // assertRefundQuantityWithinCap() via resolveOriginalLineForReference()
+        // so original_line_id is NEVER silently null on a v4 refund: every
+        // reference either resolves to a real, product_id-matching original
+        // line or throws OriginalLineUnresolvableException (both this
+        // method and the cap check throw the SAME way, so a refund whose
+        // cap check already passed can never subsequently write a null
+        // original_line_id here).
+        $originalLineReferences = $view->originalLineReferences();
+        $originalLineIdByIndex = [];
+        if ($originalLineReferences !== null && $originalReceiptId !== null) {
+            $originalLines = DB::table('pos_receipt_lines')
+                ->where('receipt_id', $originalReceiptId)
+                ->get(['id', 'line_number', 'quantity', 'product_id']);
+            foreach ($originalLineReferences as $index => $ref) {
+                $matchingLine = $this->resolveOriginalLineForReference($event, $originalReceiptId, $ref, $originalLines);
+                $originalLineIdByIndex[$index] = (string) $matchingLine->id;
+            }
+        }
+
         $lineNumber = 1;
-        foreach ($view->lineItems as $line) {
+        foreach ($view->lineItems as $index => $line) {
             // pos_receipt_lines.product_id is a foreign key to `products`
             // with `nullable()->restrictOnDelete()`. The canonical
             // `line_items[].product_id` is the audit-stable identifier
@@ -708,6 +1175,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'tax_amount' => $line->lineVat,
                 'discount_amount' => $line->lineDiscountAmount,
                 'discount_reason' => $line->lineDiscountReason,
+                'original_line_id' => $originalLineIdByIndex[$index] ?? null,
             ]);
         }
     }
@@ -937,9 +1405,28 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * Reads from the canonical view; the redemption call inherits the
      * wrapping DB transaction.
+     *
+     * **§10 defense-in-depth gate (v3-refund-chain-integration spec, fold
+     * item 10).** `store_voucher` is excluded from the v4 launch enum
+     * (§3.4's single `refund_destination: 'cash'` literal) and a v4
+     * REFUND's `payments[]` is a single CASH leg by construction (§3.5) —
+     * so this branch is structurally unreachable for a well-formed v4
+     * event. Gated on `ReceiptType::Sale`, matching the EXACT conditional
+     * shape of the sibling `earnLoyaltyPoints()` gate
+     * (`$receiptType !== ReceiptType::Sale`, mirrored per §10's wording
+     * fix) rather than a differently-shaped `invoice_type_code !==
+     * 'REFUND'` check — both are logically equivalent for this launch (a
+     * REFUND event always resolves to `ReceiptType::Return`, never
+     * `Sale`), but keying on the same enum + comparison form as the
+     * sibling gate keeps the two defense-in-depth checks structurally
+     * consistent.
      */
-    private function redeemVouchers(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
+    private function redeemVouchers(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ReceiptType $receiptType): void
     {
+        if ($receiptType !== ReceiptType::Sale) {
+            return;
+        }
+
         $currency = $view->payload->currencyCode;
 
         foreach ($view->payments as $payment) {
@@ -1306,16 +1793,67 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * path (the canonical snapshot stays authoritative; stock is a best-effort
      * downstream projection).
      */
+    /**
+     * v3-refund-chain-integration spec §10 — disposition-aware stock
+     * restore.
+     *
+     * A v4 REFUND carries `original_line_references[i].disposition`
+     * (strict parallel to `line_items[i]`, validated by
+     * `FiscalPayloadConstraintValidator`); a legacy VOID or a pre-v4
+     * REFUND has no disposition data on the canonical view at all
+     * (`$view->originalLineReferences()` is null) — that path keeps its
+     * EXISTING unconditional-restock behavior UNCHANGED (v2/v3/void
+     * non-regression).
+     *
+     *   - `restock` — restores stock, UNLESS the product's own
+     *     `RestockPolicyResolver` resolves `RestockPolicy::Never`
+     *     ("regulated never-restock honored" — a projector can never
+     *     REJECT an already-signed event (Model 1, §4.1), so a
+     *     regulated/controlled item's disposition=restock is silently
+     *     NOT applied rather than corrupting sellable stock; logged for
+     *     operator visibility).
+     *   - `scrap` / `not_received` — no stock movement at all (net stock
+     *     effect zero either way; unlike the legacy interactive
+     *     `ReceiptReturnService::restoreStock()`+`writeOffReturnedStock()`
+     *     pair, this does not additionally write a paired audit-trail
+     *     movement — a deliberate simplification for this launch, not an
+     *     attempt to reproduce the legacy write-off ledger entries here).
+     */
     private function restockForLines(
         string $receiptId,
         FiscalEvent $event,
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
     ): void {
-        foreach ($view->lineItems as $line) {
+        $originalLineReferences = $view->originalLineReferences();
+
+        foreach ($view->lineItems as $index => $line) {
             $productId = $line->productId;
             if ($productId === '' || ! Str::isUuid($productId)) {
                 continue;
+            }
+
+            if ($originalLineReferences !== null) {
+                $reference = $originalLineReferences[$index] ?? null;
+                if ($reference !== null) {
+                    $disposition = ReturnLineDisposition::tryFrom($reference->disposition);
+
+                    if ($disposition === ReturnLineDisposition::NotReceived
+                        || $disposition === ReturnLineDisposition::Scrap) {
+                        continue;
+                    }
+
+                    if ($disposition === ReturnLineDisposition::Restock
+                        && $this->restockPolicyResolver->resolve($productId)->policy === RestockPolicy::Never) {
+                        Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
+                            'fiscal_event_id' => $event->id,
+                            'receipt_id' => $receiptId,
+                            'product_id' => $productId,
+                        ]);
+
+                        continue;
+                    }
+                }
             }
 
             $this->restockStock(

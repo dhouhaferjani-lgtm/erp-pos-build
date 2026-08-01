@@ -71,8 +71,13 @@ export interface OfflineReceipt {
    * Fiscal hash schema version (2 | 3) this receipt was sealed under at the
    * moment of insert. Sent unchanged in the sync payload so the server can
    * hard-reject if the terminal's current version drifted (Codex review B1).
+   *
+   * `4` (v3-refund-chain-integration spec §7.2a) is the refund's OWN
+   * authored `event_version`, not the terminal's `fiscal_schema_version` --
+   * mirrors how a sale row stores its own authored version, just widened
+   * to admit the refund-only value.
    */
-  fiscal_schema_version: 2 | 3;
+  fiscal_schema_version: 2 | 3 | 4;
   /**
    * T2.7 — when the cashier sealed this receipt against a terminal in
    * training mode. SQLite-native 0 or 1 (mirrors `voided`); the wire-shape
@@ -82,6 +87,15 @@ export interface OfflineReceipt {
    * skips chain validation, year roll-over, finalize, and hash mismatch.
    */
   is_training: 0 | 1;
+  /**
+   * v3-refund-chain-integration spec §7.2 — 'sale' (default, every row
+   * written before this feature backfills here) or 'refund'. Optional at
+   * the TYPE level (not just the column's own DB default) so the many
+   * existing fixtures/call sites built before this feature landed do not
+   * all need editing — genuinely zero-behavior-change, not merely
+   * schema-zero-behavior-change.
+   */
+  receipt_kind?: 'sale' | 'refund';
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -100,8 +114,8 @@ export async function insertOfflineReceipt(
       transaction_discount_amount, transaction_discount_reason,
       tendered_amount, change_due, payment_method_id, payment_repository_id, status,
       payments_json, consumption_mode, table_id, fiscal_schema_version, is_training, canonical_bytes,
-      cash_rounding_adjustment, cash_rounding_denomination, tolerance_shortfall
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)`,
+      cash_rounding_adjustment, cash_rounding_denomination, tolerance_shortfall, receipt_kind
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -117,12 +131,69 @@ export async function insertOfflineReceipt(
       receipt.cash_rounding_adjustment ?? null,
       receipt.cash_rounding_denomination ?? null,
       receipt.tolerance_shortfall ?? null,
+      receipt.receipt_kind ?? 'sale',
     ]
   );
   // T2.2 Step 5.1: this function is now transactionally pure. The
   // scheduleDebouncedSync trigger has moved to receiptService.createOfflineReceipt,
   // fired after `db.execute('COMMIT')`, so the scheduler never reads SQLite
   // before the commit has durably persisted.
+}
+
+/**
+ * Lane C M2 — the shift window the refund-velocity ceiling is measured over.
+ *
+ * Mirrors `zReportService.generateZReport()` EXACTLY, and for the same
+ * reason: prefer the monotonic, clock-rollback-immune `hash_sequence` anchor
+ * recorded at shift open, and fall back to the wall-clock `created_at` window
+ * only for legacy shifts opened before anchors were captured. A device clock
+ * rollback must never be able to shrink the window and thereby RAISE the
+ * refund ceiling.
+ */
+export type ShiftReceiptWindow =
+  | { kind: 'anchor'; openingHashSequence: number }
+  | { kind: 'openedAt'; openedAtSqliteUtc: string };
+
+/**
+ * Lane C M2 — every REFUND receipt this terminal has written inside the
+ * current shift window.
+ *
+ * Returns the raw `total` strings rather than a SQL `SUM()`: `total` is a
+ * TEXT column and SQLite's `SUM` would coerce it to a float, which rule 19
+ * forbids on money. The caller sums the magnitudes with `bcadd`/`bcabs`
+ * (a v4 refund row stores a NEGATIVE total, `refundReceiptService.ts`).
+ *
+ * `is_training = 0` matches the Z's own exclusion: a training refund pays out
+ * no real cash and must not consume the real ceiling. Voided rows are NOT
+ * excluded — a voided refund still left the drawer at the time it was
+ * authored, and the exposure this ceiling bounds is cash-out, not net books.
+ */
+export async function getShiftRefundReceiptTotals(
+  db: Database,
+  terminalId: string,
+  window: ShiftReceiptWindow,
+): Promise<readonly string[]> {
+  const rows =
+    window.kind === 'anchor'
+      ? await queryAll<{ total: string }>(
+          db,
+          `SELECT total FROM offline_receipts
+            WHERE terminal_id = $1
+              AND receipt_kind = 'refund'
+              AND is_training = 0
+              AND hash_sequence > $2`,
+          [terminalId, window.openingHashSequence],
+        )
+      : await queryAll<{ total: string }>(
+          db,
+          `SELECT total FROM offline_receipts
+            WHERE terminal_id = $1
+              AND receipt_kind = 'refund'
+              AND is_training = 0
+              AND created_at >= $2`,
+          [terminalId, window.openedAtSqliteUtc],
+        );
+  return rows.map((row) => row.total);
 }
 
 export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]> {
@@ -207,6 +278,51 @@ export async function updateReceiptStatus(
       [status, syncError ?? null, id]
     );
   }
+}
+
+/**
+ * v3-refund-chain-integration spec §7.2a errata T2 — a REFUND's fiscal
+ * event is authored with `source_event_class: 'refund_intents'`
+ * (§4.3, unchanged — this is what makes the append itself idempotent on
+ * the intent's own stable id), never `'offline_receipts'`, so
+ * `updateReceiptStatus()`'s own-primary-key lookup (`WHERE id = $2`)
+ * cannot resolve a refund's `offline_receipts` row from the synced
+ * event's `source_event_id` (that id is the REFUND INTENT's id, not the
+ * `offline_receipts` row's own primary key). Resolves instead via the
+ * idempotency-key relationship §7.2 establishes:
+ * `offline_receipts.idempotency_key = refund_intents.id =
+ * event.source_event_id`. Mirrors `updateReceiptStatus()`'s own
+ * `'synced'`-branch column set exactly, INCLUDING the `sync_error = NULL`
+ * clause -- a prior sync attempt could otherwise leave a stale
+ * `sync_error` string on a row that has since synced successfully.
+ */
+/**
+ * @returns the number of rows the flip actually touched. Wave-2 fix-wave
+ *          finding 12 (codex M-4): the post-ACK refund flip must be able
+ *          to REQUIRE exactly one matching receipt rather than assuming
+ *          the update landed. `offline_receipts.idempotency_key` is
+ *          `NOT NULL UNIQUE`, so the only possible counts are 0 and 1.
+ */
+export async function updateReceiptStatusByIdempotencyKey(
+  db: Database,
+  idempotencyKey: string,
+  status: OfflineReceiptStatus,
+  syncError?: string,
+): Promise<number> {
+  if (status === 'synced') {
+    const result = await execute(
+      db,
+      "UPDATE offline_receipts SET status = $1, synced_at = datetime('now'), sync_error = NULL WHERE idempotency_key = $2",
+      [status, idempotencyKey],
+    );
+    return result.rowsAffected;
+  }
+  const result = await execute(
+    db,
+    'UPDATE offline_receipts SET status = $1, sync_error = $2 WHERE idempotency_key = $3',
+    [status, syncError ?? null, idempotencyKey],
+  );
+  return result.rowsAffected;
 }
 
 export const MAX_SYNC_RETRIES = 5;
@@ -343,6 +459,25 @@ export async function setServerReceiptId(
     db,
     'UPDATE offline_receipts SET server_receipt_id = $1 WHERE idempotency_key = $2',
     [serverReceiptId, idempotencyKey]
+  );
+}
+
+/**
+ * v3-refund-chain-integration §7.2 — a v4 refund's `offline_receipts` row
+ * is keyed to its intent by `idempotency_key = refund_intents.id` (its own
+ * `id` is a distinct fresh UUID). Wave-2 fix-wave finding 11 needs this
+ * lookup to VERIFY a reused, already-appended intent's linkage before
+ * routing it to payout/print recovery — a claim of "appended" with no
+ * local receipt behind it is corrupt, not resumable.
+ */
+export async function getOfflineReceiptByIdempotencyKey(
+  db: Database,
+  idempotencyKey: string,
+): Promise<OfflineReceipt | null> {
+  return queryOne<OfflineReceipt>(
+    db,
+    'SELECT * FROM offline_receipts WHERE idempotency_key = $1',
+    [idempotencyKey]
   );
 }
 

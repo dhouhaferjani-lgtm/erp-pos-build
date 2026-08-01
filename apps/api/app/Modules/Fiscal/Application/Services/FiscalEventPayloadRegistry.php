@@ -117,7 +117,13 @@ final class FiscalEventPayloadRegistry
      * @var array<value-of<FiscalEventType>, list<int>>
      */
     private const SUPPORTED_VERSIONS = [
-        FiscalEventType::SALE_RECEIPT->value => [1, 2, 3],
+        // v4 (refund/void chain integration, spec §2/§17): adds the signed
+        // REFUND authoring path (`invoice_type_code = 'REFUND'`) on top of
+        // v3's cash-rounding contract. VOID is fail-closed at authoring
+        // (`FiscalEventPayloadRegistry.ts`'s `VoidAuthoringProhibitedError`)
+        // and rejected server-side by `FiscalPayloadConstraintValidator`'s
+        // per-version constraint check, not a second branch here.
+        FiscalEventType::SALE_RECEIPT->value => [1, 2, 3, 4],
     ];
 
     /**

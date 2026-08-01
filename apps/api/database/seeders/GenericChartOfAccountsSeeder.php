@@ -185,6 +185,11 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
             ['code' => '6660', 'name' => 'Realized FX Loss', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::RealizedFxLoss->value, 'is_system' => true],
+            // v3-refund-chain-integration spec §5.3 — invalid_refund
+            // write-off (genuine loss booking, distinct from SalesReturn's
+            // valid_unbooked reversal shape).
+            ['code' => '6590', 'name' => 'Refund Write-Off', 'type' => 'expense', 'parent_code' => '6000',
+                'system_purpose' => SystemAccountPurpose::RefundWriteOff->value, 'is_system' => true],
 
             // Class 7: Revenue
             ['code' => '7000', 'name' => 'Revenue', 'type' => 'revenue', 'parent_code' => null, 'is_system' => true],

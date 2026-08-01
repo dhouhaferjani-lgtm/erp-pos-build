@@ -196,6 +196,9 @@ vi.mock('@/lib/replenishment/replenishmentSyncService', () => ({
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
+  setV4RefundAuthoringEnabled: vi.fn().mockResolvedValue(undefined),
+  setV4RefundAuthoringAckFailure: vi.fn().mockResolvedValue(undefined),
+  getV4RefundAuthoringAckState: vi.fn().mockResolvedValue({ acknowledgedAt: null, lastError: null }),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
@@ -253,6 +256,8 @@ import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRep
 import {
   upsertTerminalState,
   setShiftNumberSeed,
+  setV4RefundAuthoringEnabled,
+  setV4RefundAuthoringAckFailure,
 } from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import { setStoredValue, StorageKeys } from '@/lib/storage';
@@ -1113,6 +1118,154 @@ describe('syncService', () => {
       );
     });
 
+    // v3-refund-chain-integration spec §9.1/§9.3 — the capability flag is
+    // guard-independent (mirrors shift_number_seed's own contract exactly):
+    // written via its own setter on the success path, and the device sends
+    // back an explicit Phase-2 acknowledgement in the same round when the
+    // server has offered `true`.
+    it('§9.1: writes the v4 refund-authoring capability flag via its dedicated setter on the success path', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(setV4RefundAuthoringEnabled).toHaveBeenCalledWith(db, 'term-1', true);
+    });
+
+    it('§9.1: defaults the capability flag to false when the server omits it (stale server)', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(setV4RefundAuthoringEnabled).toHaveBeenCalledWith(db, 'term-1', false);
+    });
+
+    it('§9.3 Phase 2: sends the acknowledgement exactly when the server offered true', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+
+      await pullTerminalState(db, 'term-1');
+
+      expect(apiPost).toHaveBeenCalledWith(
+        '/pos/terminals/term-1/acknowledge-v4-refund-authoring',
+        {},
+      );
+    });
+
+    it('§9.3 Phase 2: does NOT send the acknowledgement when the flag is false/absent', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+      });
+
+      await pullTerminalState(db, 'term-1');
+
+      expect(apiPost).not.toHaveBeenCalled();
+    });
+
+    it('§9.3 Phase 2 / finding 9: a failing acknowledgement is RETRIED, then recorded — never swallowed', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+      vi.mocked(apiPost).mockRejectedValue(new Error('404 Not Found'));
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      // The pull itself still succeeds — the acknowledgement must never
+      // fail the surrounding terminal-state pull.
+      expect(result).toBe(true);
+      // …but it is retried with backoff rather than given up on after one
+      // attempt…
+      const ackCalls = vi
+        .mocked(apiPost)
+        .mock.calls.filter(([path]) => String(path).includes('acknowledge-v4-refund-authoring'));
+      expect(ackCalls.length).toBeGreaterThan(1);
+      // …and the failure is DURABLY recorded. Before this fix the only
+      // trace was a console.warn, so a terminal routing to v4 device-side
+      // while the legacy /return path stayed open server-side was
+      // completely unobservable.
+      expect(setV4RefundAuthoringAckFailure).toHaveBeenCalledWith(
+        db,
+        'term-1',
+        expect.any(String),
+      );
+    });
+
+    it('§9.3 Phase 2 / finding 9: a SUCCESSFUL acknowledgement clears any recorded failure', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+      vi.mocked(apiPost).mockResolvedValue(undefined as never);
+
+      await pullTerminalState(db, 'term-1');
+
+      expect(setV4RefundAuthoringAckFailure).toHaveBeenCalledWith(db, 'term-1', null);
+    });
+
+    it('§9.3 Phase 2: a failed acknowledgement (e.g. 404, server not yet shipped) does not fail the pull', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+      vi.mocked(apiPost).mockRejectedValueOnce(new Error('404 Not Found'));
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(setV4RefundAuthoringEnabled).toHaveBeenCalledWith(db, 'term-1', true);
+    });
+
     it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {
       vi.mocked(apiGet).mockResolvedValue({
         id: 'term-1',
@@ -1200,6 +1353,40 @@ describe('syncService', () => {
       // The upsert rejected the whole write (seed included), so the regression
       // path refreshes the monotone shift-number seed on its own.
       expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'terminal-1', 5);
+    });
+
+    it('§9.1: the capability flag also rides the FiscalRegressionError fallback branch, not just the success path', async () => {
+      // Same regression scenario as above, but the server has ALSO offered
+      // the v4 refund-authoring capability this round — proving the flag
+      // reaches the device even during the window the main upsert is
+      // regression-blocked (exactly the failure mode §9.1 documents for
+      // shift_number_seed, now closed for this new column too).
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'terminal-1',
+        code: 'T001',
+        location: { code: 'MAIN' },
+        genesis_seed: 'seed-abc',
+        last_hash: null,
+        hash_sequence: 0,
+        max_shift_number: 5,
+        v4_refund_authoring_enabled: true,
+      });
+      const { FiscalRegressionError } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      vi.mocked(upsertTerminalState).mockRejectedValueOnce(
+        new FiscalRegressionError('terminal-1', 'upsertTerminalState', 12, 0),
+      );
+
+      const db = makeMockDb();
+      const ok = await pullTerminalState(db, 'terminal-1');
+
+      expect(ok).toBe(true);
+      expect(setV4RefundAuthoringEnabled).toHaveBeenCalledWith(db, 'terminal-1', true);
+      expect(apiPost).toHaveBeenCalledWith(
+        '/pos/terminals/terminal-1/acknowledge-v4-refund-authoring',
+        {},
+      );
     });
 
     it('projects counting state when preserving a newer local fiscal head', async () => {

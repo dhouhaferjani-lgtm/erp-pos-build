@@ -33,6 +33,11 @@ final class XReportResource extends JsonResource
             'net_sales' => $this->getNetSales(),
             'tax_amount' => $this->getTaxAmount(),
             'refunds_count' => $this->getRefundsCount(),
+            // v3-refund-chain-integration round-2 minor N-3: the device's
+            // `XReportResponse` now REQUIRES `refunds_amount`, and the same
+            // type models this server response, so omitting it made the
+            // type lie. The accessor already existed on the model.
+            'refunds_amount' => $this->getRefundsAmount(),
             'vat_breakdown' => $this->getVatBreakdown(),
             'payment_methods' => $this->getPaymentMethods(),
 

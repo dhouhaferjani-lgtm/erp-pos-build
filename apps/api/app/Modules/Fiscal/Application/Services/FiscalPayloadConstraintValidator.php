@@ -353,6 +353,69 @@ final class FiscalPayloadConstraintValidator
     ];
 
     /**
+     * SALE_RECEIPT **v4** key set — spec `2026-07-31-v3-refund-chain-integration.md`
+     * §3.3/§3.4/§17. The v3 30-key contract plus three new top-level keys
+     * authored ONLY by the device's REFUND normalization path
+     * (`RefundReceiptV4Payload.ts`, §3.2): `original_line_references`,
+     * `refund_destination`, `settlement_allocation`. Lexicographically
+     * sorted — `original_line_references` sorts before
+     * `original_receipt_reference` (`l` < `r`); `refund_destination`
+     * sorts between `receipt_uuid` and `seller` (`c` < `f` < `s`);
+     * `settlement_allocation` sorts between `seller` and `shift_id`
+     * (`se` + `l` < `t`, then `e` < `h`).
+     *
+     * A NAMED constant, never a mutation of SALE_RECEIPT_PAYLOAD_KEYS_V3 —
+     * v1/v2/v3 events must keep rejecting these keys as `payload_extra_field`
+     * forever (Events are Immutable Forever).
+     *
+     * @var list<string>
+     */
+    public const SALE_RECEIPT_PAYLOAD_KEYS_V4 = [
+        'approval_references',
+        'business_date',
+        'buyer',
+        'cash_rounding_adjustment',
+        'cash_rounding_denomination',
+        'cashier_id',
+        'cashier_name',
+        'consumption_mode',
+        'currency_code',
+        'currency_scale',
+        'event_time_device',
+        'invoice_type_code',
+        'line_items',
+        'lottery_code',
+        'notes',
+        'original_line_references',
+        'original_receipt_reference',
+        'payments',
+        'receipt_uuid',
+        'refund_destination',
+        'seller',
+        'settlement_allocation',
+        'shift_id',
+        'subtotal',
+        'table_id',
+        'terminal_id',
+        'total',
+        'training_flag',
+        'transaction_discount_amount',
+        'transaction_discount_reason',
+        'vat_breakdown',
+        'vat_total',
+        'vouchers_redeemed',
+    ];
+
+    /** original_line_references[].disposition domain — verbatim values of the
+     *  existing `App\Modules\POS\Domain\Enums\ReturnLineDisposition` enum
+     *  (spec §3.3): no new enum, no cross-module import, the v4 contract
+     *  reuses the legacy vocabulary exactly. */
+    private const RETURN_LINE_DISPOSITIONS = ['restock', 'scrap', 'not_received'];
+
+    /** v4 refund_destination domain — single literal for launch (spec §3.4). */
+    private const REFUND_DESTINATIONS = ['cash'];
+
+    /**
      * Version-aware expected key set for an event type.
      *
      * Deliberately takes NO chain context: the z-session CASH_OUT/SAFE_DROP
@@ -363,6 +426,9 @@ final class FiscalPayloadConstraintValidator
      */
     public function payloadKeysFor(FiscalEventType $type, int $eventVersion): ?array
     {
+        if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion >= 4) {
+            return self::SALE_RECEIPT_PAYLOAD_KEYS_V4;
+        }
         if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion >= 3) {
             return self::SALE_RECEIPT_PAYLOAD_KEYS_V3;
         }
@@ -585,6 +651,11 @@ final class FiscalPayloadConstraintValidator
             'tender_tolerance_override',
             'void_or_return_override',
             'cash_drawer_control',
+            // v3-refund-chain-integration spec §4.5 errata T6: server-side
+            // OPERATOR_APPROVAL_GRANTED-adjacent audit event evidencing a
+            // disputed refund payout (§5.2's compensation flow, not a
+            // device-authored override).
+            'payout_dispute_evidence',
         ]);
         $this->assertUuid($payload, 'cashier_user_id');
         $this->assertUuid($payload, 'supervisor_user_id');
@@ -616,6 +687,9 @@ final class FiscalPayloadConstraintValidator
             'discount_limit_override',
             'tender_tolerance_override',
             'void_or_return_override',
+            // spec §17 manifest (exact): both approval_scope assertEnum()
+            // call sites gain the T6 literal.
+            'payout_dispute_evidence',
         ]);
         $this->assertNonEmptyString($payload, 'policy_version');
         $this->assertNonEmptyString($payload, 'reason_code');
@@ -788,6 +862,26 @@ final class FiscalPayloadConstraintValidator
 
         // ---- 2. enum + format invariants on simple top-level fields ----
         $this->assertEnum($payload, 'invoice_type_code', self::INVOICE_TYPE_CODES);
+
+        // ---- 2z. v4 (refund/void chain integration, spec §2 table) — the
+        // ---- device NEVER resolves event_version=4 for anything but a
+        // ---- REFUND (`FiscalEventPayloadRegistry.ts`'s eventVersionFor()
+        // ---- table); VOID authoring has no legitimate producer at any
+        // ---- version and is explicitly rejected here at v4 parse (§8,
+        // ---- §17 manifest: "VOID rejection at v4 parse"). ----
+        if ($eventVersion >= 4) {
+            $invoiceType = $payload['invoice_type_code'] ?? null;
+            if ($invoiceType === 'VOID') {
+                throw new RuntimeException(
+                    'payload_void_authoring_prohibited:event_version=4 payloads with invoice_type_code=VOID have no legitimate producer (spec §2/§8)'
+                );
+            }
+            if ($invoiceType !== 'REFUND') {
+                throw new RuntimeException(
+                    'payload_invoice_type_invalid:event_version=4 requires invoice_type_code=REFUND; got '.var_export($invoiceType, true)
+                );
+            }
+        }
         $this->assertOptionalEnum($payload, 'consumption_mode', self::CONSUMPTION_MODES);
         $this->assertBool($payload, 'training_flag');
         $this->assertIsoDate($payload, 'business_date');
@@ -884,6 +978,19 @@ final class FiscalPayloadConstraintValidator
             );
         }
 
+        // ---- 4a. v4 REFUND: transaction_discount_amount is ALWAYS canonical
+        // ---- zero (spec §3.5's ⚖️ orchestrator ruling — launch refuses any
+        // ---- refund of an original whose OWN transaction_discount_amount is
+        // ---- non-zero, so a v4 refund payload can never legitimately carry
+        // ---- a non-zero one; this is the server-side mirror of the device's
+        // ---- pre-authoring refusal, not a new runtime branch on the
+        // ---- device side). ----
+        if ($eventVersion >= 4 && ! $isZeroDiscount) {
+            throw new RuntimeException(
+                'payload_v4_refund_transaction_discount_must_be_zero:transaction_discount_amount='.$discountAmount
+            );
+        }
+
         // ---- 5. total arithmetic cross-check (§6.D) ----
         $subtotalN = $this->asNumericString($payload['subtotal'], 'subtotal');
         $vatTotalN = $this->asNumericString($payload['vat_total'], 'vat_total');
@@ -909,6 +1016,18 @@ final class FiscalPayloadConstraintValidator
         $this->validateBuyer($payload);
         $this->validateOriginalReceiptReference($payload);
 
+        // ---- 6z. v4-only nested contract (spec §3.3/§3.4) — reached only
+        // ---- when invoice_type_code === 'REFUND' (2z above already
+        // ---- fail-closed on every other value at v4). `original_line_references[]`
+        // ---- is validated against `line_items` for the strict parallel-array
+        // ---- invariant BEFORE line_items' own per-row validation below, so
+        // ---- both lists are validated by their own natural shape checks
+        // ---- first (requireList) and then cross-checked here.
+        if ($eventVersion >= 4) {
+            $this->validateOriginalLineReferences($payload);
+            $this->validateRefundDestinationAndSettlementAllocation($payload);
+        }
+
         // ---- 7. list containers — line_items, payments, vat_breakdown,
         // ----    vouchers_redeemed. List-ness checked before per-row validation. ----
         $approvalReferences = $this->requireList($payload, 'approval_references');
@@ -930,6 +1049,12 @@ final class FiscalPayloadConstraintValidator
         }
         foreach ($payments as $index => $row) {
             $this->validatePayment($index, $row, $moneyRegex, $scale);
+        }
+
+        // ---- 7a. v4 single-cash-leg contract (spec §3.7, §17 manifest:
+        // ---- "single-cash-leg + instrument_type null assertions"). ----
+        if ($eventVersion >= 4) {
+            $this->validateSingleCashLegPayment($payments);
         }
 
         $vatBreakdown = $this->requireList($payload, 'vat_breakdown');
@@ -1823,6 +1948,102 @@ final class FiscalPayloadConstraintValidator
     }
 
     /**
+     * v4 `original_line_references[]` — spec §3.3's exact frozen shape,
+     * strict parallel-array to `line_items[]` (kept from Revision 3's
+     * positional-alignment/equality invariants: same length, `product_id`
+     * equal, `quantity` equal at every index `i`).
+     *
+     * Reached only when `invoice_type_code === 'REFUND'` (§2z above already
+     * fail-closed on every other value at v4).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOriginalLineReferences(array $payload): void
+    {
+        $lineItems = $this->requireList($payload, 'line_items');
+        $refs = $this->requireList($payload, 'original_line_references');
+
+        if (count($refs) !== count($lineItems)) {
+            throw new RuntimeException(
+                'payload_original_line_references_length_mismatch:line_items='.count($lineItems).':original_line_references='.count($refs)
+            );
+        }
+        if (count($refs) === 0) {
+            throw new RuntimeException('payload_original_line_references_empty:original_line_references must have >= 1 row on a v4 REFUND');
+        }
+
+        foreach ($refs as $index => $row) {
+            if (! is_array($row) || (count($row) > 0 && array_is_list($row))) {
+                throw new RuntimeException("payload_original_line_reference_invalid:original_line_references[{$index}] must be object; got ".get_debug_type($row));
+            }
+            /** @var array<string, mixed> $row */
+            $path = "original_line_references[{$index}]";
+            $expected = ['disposition', 'original_line_index', 'product_id', 'quantity'];
+            $missing = array_diff($expected, array_keys($row));
+            if (count($missing) > 0) {
+                sort($missing);
+                throw new RuntimeException("payload_original_line_reference_missing_keys:{$path}:".implode(',', $missing));
+            }
+            $extras = array_diff(array_keys($row), $expected);
+            if (count($extras) > 0) {
+                sort($extras);
+                throw new RuntimeException("payload_original_line_reference_extra_keys:{$path}:".implode(',', $extras));
+            }
+
+            $originalLineIndex = $row['original_line_index'];
+            if (! is_int($originalLineIndex) || $originalLineIndex < 0) {
+                throw new RuntimeException("payload_integer_format_mismatch:{$path}.original_line_index must be an integer >= 0; got ".var_export($originalLineIndex, true));
+            }
+            $this->assertNonEmptyString($row, 'product_id', "{$path}.product_id");
+            $this->assertNonEmptyString($row, 'quantity', "{$path}.quantity");
+            $this->assertEnum($row, 'disposition', self::RETURN_LINE_DISPOSITIONS, "{$path}.disposition");
+
+            // Strict parallel-array invariants against line_items[index] —
+            // NOT original_line_index (that indexes into the ORIGINAL
+            // sale's line_items[], an entirely different, server-side-only
+            // list this validator has no access to; the cross-reference is
+            // resolved and verified server-side by the projector, §17).
+            $lineItem = $lineItems[$index] ?? null;
+            if (! is_array($lineItem)) {
+                throw new RuntimeException("payload_original_line_reference_invalid:{$path} has no matching line_items[{$index}]");
+            }
+            /** @var array<string, mixed> $lineItem */
+            if (($lineItem['product_id'] ?? null) !== $row['product_id']) {
+                throw new RuntimeException(
+                    "payload_original_line_reference_product_id_mismatch:{$path}.product_id must equal line_items[{$index}].product_id"
+                );
+            }
+            if (($lineItem['quantity'] ?? null) !== $row['quantity']) {
+                throw new RuntimeException(
+                    "payload_original_line_reference_quantity_mismatch:{$path}.quantity must equal line_items[{$index}].quantity"
+                );
+            }
+        }
+    }
+
+    /**
+     * v4 `refund_destination` / `settlement_allocation` (spec §3.4,
+     * unchanged from Revision 3): `refund_destination` is the single
+     * `'cash'` literal for launch; `settlement_allocation` is
+     * required-present-and-null on every launch v4 payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateRefundDestinationAndSettlementAllocation(array $payload): void
+    {
+        $this->assertEnum($payload, 'refund_destination', self::REFUND_DESTINATIONS);
+
+        if (! array_key_exists('settlement_allocation', $payload)) {
+            throw new RuntimeException('payload_missing_required:settlement_allocation');
+        }
+        if ($payload['settlement_allocation'] !== null) {
+            throw new RuntimeException(
+                'payload_settlement_allocation_not_null:settlement_allocation must be null on every launch v4 payload; got '.get_debug_type($payload['settlement_allocation'])
+            );
+        }
+    }
+
+    /**
      * SALE_RECEIPT line-item key sets by event_version.
      *
      * V1 — the original 13-key Candidate C-v3 line shape (immutable forever).
@@ -2023,6 +2244,27 @@ final class FiscalPayloadConstraintValidator
             );
         }
         $this->assertMoneyString($row, 'foreign_currency_amount', $this->moneyRegex($foreignScale), $foreignScale, "{$path}.foreign_currency_amount");
+    }
+
+    /**
+     * v4 single-cash-leg contract (spec §3.7, §3.5): `payments[]` is exactly
+     * one row, `method_code === 'CASH'`, `instrument_type === null`. Reached
+     * after every individual row already passed {@see validatePayment()}.
+     *
+     * @param  list<array<string, mixed>>  $payments
+     */
+    private function validateSingleCashLegPayment(array $payments): void
+    {
+        if (count($payments) !== 1) {
+            throw new RuntimeException('payload_v4_refund_payments_not_single_leg:payments must have exactly 1 row; got '.count($payments));
+        }
+        $row = $payments[0];
+        if (($row['method_code'] ?? null) !== 'CASH') {
+            throw new RuntimeException('payload_v4_refund_payment_not_cash:payments[0].method_code must be CASH; got '.var_export($row['method_code'] ?? null, true));
+        }
+        if (($row['instrument_type'] ?? null) !== null) {
+            throw new RuntimeException('payload_v4_refund_payment_instrument_type_must_be_null:payments[0].instrument_type must be null; got '.var_export($row['instrument_type'], true));
+        }
     }
 
     /**

@@ -11,6 +11,8 @@ import {
   setManagerPinThrottle,
   setManagerPinFailedAttempts,
   getTerminalState,
+  getV4RefundAuthoringEnabled,
+  setV4RefundAuthoringEnabled,
   FiscalRegressionError,
   type TerminalHashState,
 } from '../terminalStateRepository';
@@ -101,5 +103,59 @@ describe('terminalStateRepository — regression guards', () => {
 
     const state = await getTerminalState(db, 'terminal-1');
     expect(state?.manager_pin_failed_attempts).toBe(3);
+  });
+});
+
+// v3-refund-chain-integration spec §9.1 — a dedicated, guard-independent
+// setter/reader pair for the v4 refund-authoring capability flag, mirroring
+// `setShiftNumberSeed`'s exact template so a new capability can never be
+// silently swallowed by `upsertTerminalState`'s regression guard.
+describe('terminalStateRepository — v4 refund-authoring capability flag (§9.1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('setV4RefundAuthoringEnabled writes a plain UPDATE independent of upsertTerminalState', async () => {
+    await setV4RefundAuthoringEnabled(db, 'terminal-1', true);
+
+    expect(execute).toHaveBeenCalledOnce();
+    // Guard-independence: it must NOT read current state first (no
+    // regression check, no queryOne call) — a plain, unconditional UPDATE,
+    // exactly like setShiftNumberSeed.
+    expect(queryOne).not.toHaveBeenCalled();
+    const [, sql, params] = vi.mocked(execute).mock.calls[0] as [unknown, string, unknown[]];
+    expect(sql).toMatch(/UPDATE terminal_state SET v4_refund_authoring_enabled/);
+    expect(params).toEqual([1, 'terminal-1']);
+  });
+
+  it('setV4RefundAuthoringEnabled(false) writes 0, not a falsy string', async () => {
+    await setV4RefundAuthoringEnabled(db, 'terminal-1', false);
+
+    const [, , params] = vi.mocked(execute).mock.calls[0] as [unknown, string, unknown[]];
+    expect(params).toEqual([0, 'terminal-1']);
+  });
+
+  it('getV4RefundAuthoringEnabled reads true only when the column stores exactly 1', async () => {
+    vi.mocked(queryOne).mockResolvedValue({ v4_refund_authoring_enabled: 1 });
+
+    await expect(getV4RefundAuthoringEnabled(db, 'terminal-1')).resolves.toBe(true);
+  });
+
+  it('getV4RefundAuthoringEnabled defaults to false when no row exists', async () => {
+    vi.mocked(queryOne).mockResolvedValue(null);
+
+    await expect(getV4RefundAuthoringEnabled(db, 'terminal-1')).resolves.toBe(false);
+  });
+
+  it('getV4RefundAuthoringEnabled defaults to false on a pre-v65 schema (no such column)', async () => {
+    vi.mocked(queryOne).mockRejectedValue(new Error('no such column: v4_refund_authoring_enabled'));
+
+    await expect(getV4RefundAuthoringEnabled(db, 'terminal-1')).resolves.toBe(false);
+  });
+
+  it('getV4RefundAuthoringEnabled re-throws an unrelated error (fail loudly, not silently)', async () => {
+    vi.mocked(queryOne).mockRejectedValue(new Error('disk I/O error'));
+
+    await expect(getV4RefundAuthoringEnabled(db, 'terminal-1')).rejects.toThrow('disk I/O error');
   });
 });

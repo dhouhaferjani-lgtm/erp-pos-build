@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -60,6 +61,7 @@ class ReceiptVoidServiceTest extends TestCase
         $this->service = new ReceiptVoidService(
             $this->app->make(CashDrawerService::class),
             $this->mockCurrencyScale(3),
+            $this->app->make(LegacyCorrectionGuard::class),
         );
 
         $this->tenant = Tenant::factory()->create();

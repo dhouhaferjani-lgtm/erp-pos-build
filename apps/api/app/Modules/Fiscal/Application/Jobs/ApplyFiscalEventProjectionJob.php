@@ -6,6 +6,7 @@ namespace App\Modules\Fiscal\Application\Jobs;
 
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
+use App\Modules\Fiscal\Domain\Exceptions\NonRetryableProjectionException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use Illuminate\Bus\Queueable;
@@ -391,6 +392,25 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
         // terminal-status write OUTSIDE T_apply.
         try {
             $projector->apply($event);
+        } catch (NonRetryableProjectionException $e) {
+            // v3-refund-chain-integration spec §4.2 — some projector
+            // failures can NEVER resolve themselves on a later attempt
+            // (an over-quantity refund, unresolvable approval evidence).
+            // Letting Horizon exhaust all `$tries` retries first only
+            // delays an outcome that is already certain. Perform the SAME
+            // terminal-state write `failed()` already does (DeadLettered +
+            // dead_lettered_at + last_error + Log::critical) IMMEDIATELY,
+            // then call the built-in `fail()` primitive (InteractsWithQueue)
+            // instead of re-throwing — this bypasses Horizon's remaining
+            // retry attempts entirely. `fail()` invokes `failed()` itself,
+            // so the terminal-state write below and `failed()`'s own write
+            // are the SAME idempotent operation (failed()'s `if
+            // ($row->projection_status !== DeadLettered)` guard makes the
+            // second write below a no-op).
+            $this->deadLetterImmediately($row, $e);
+            $this->fail($e);
+
+            return;
         } catch (Throwable $e) {
             // Projector threw. Advance attempt accounting OUTSIDE T_apply
             // (T_apply rolled back; if attempt accounting had been written
@@ -528,6 +548,37 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
         $row->last_attempted_at = Carbon::now('UTC');
         $row->projection_status = ProjectionStatus::Pending;
         $row->save();
+    }
+
+    /**
+     * v3-refund-chain-integration spec §4.2 — the immediate terminal-state
+     * write for a {@see NonRetryableProjectionException}. Mirrors
+     * `failed()`'s own write exactly (DeadLettered + dead_lettered_at +
+     * last_error) so a row dead-lettered via this path is
+     * indistinguishable, in the database, from one dead-lettered after
+     * retry exhaustion — `attempts` is advanced to 1 (this IS the first
+     * and only attempt; the exception is never retried) rather than left
+     * at 0, so operator tooling querying `attempts > 0` still surfaces it.
+     */
+    private function deadLetterImmediately(FiscalEventProjectionRow $row, Throwable $e): void
+    {
+        $row->attempts = $row->attempts + 1;
+        $row->last_attempted_at = Carbon::now('UTC');
+        $row->last_error = $this->truncateError($e::class.': '.$e->getMessage());
+        $row->projection_status = ProjectionStatus::DeadLettered;
+        $row->dead_lettered_at = Carbon::now('UTC');
+        $row->save();
+
+        Log::critical(
+            'ApplyFiscalEventProjectionJob: projection dead-lettered immediately (non-retryable).',
+            [
+                'projection_row_id' => $this->projectionRowId,
+                'fiscal_event_id' => $row->fiscal_event_id,
+                'projector_name' => $row->projector_name,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ],
+        );
     }
 
     /**

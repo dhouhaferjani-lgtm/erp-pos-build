@@ -22,6 +22,7 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptCustomerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptPaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalLineReferenceDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalReceiptReferenceDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
@@ -103,6 +104,18 @@ final class CanonicalPayloadReader
             $vouchers[] = VoucherRedemptionDTO::fromArray($row);
         }
 
+        // v4 (refund/void chain, spec §3.3): null on v1/v2/v3 payloads —
+        // `originalLineReferences` is the DTO's v4 marker (see
+        // SaleReceiptPayload::fromArray()'s array_key_exists discriminator).
+        $originalLineReferences = null;
+        if ($payload->originalLineReferences !== null) {
+            $originalLineReferences = [];
+            foreach ($payload->originalLineReferences as $row) {
+                // @phpstan-ignore-next-line argument.type — validated as list<object> by FiscalPayloadConstraintValidator
+                $originalLineReferences[] = OriginalLineReferenceDTO::fromArray($row);
+            }
+        }
+
         return new SaleReceiptCanonicalView(
             payload: $payload,
             seller: $seller,
@@ -112,6 +125,7 @@ final class CanonicalPayloadReader
             vatBreakdown: $vatBreakdown,
             originalReceiptReference: $originalReceiptReference,
             vouchersRedeemed: $vouchers,
+            originalLineReferences: $originalLineReferences,
         );
     }
 

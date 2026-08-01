@@ -21,6 +21,11 @@ import {
 } from '@/lib/refundFlow/refundApproval';
 import type { CartItem } from '@/types/cart';
 import { useCartStore } from '@/stores/cartStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useTerminalStore } from '@/stores/terminalStore';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { usePaymentStore } from '@/stores/paymentStore';
+import { useRefundReconciliationStore } from '@/stores/refundReconciliationStore';
 import { useRefundCheckoutStore } from '../refundCheckoutStore';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
 
@@ -48,7 +53,95 @@ vi.mock('@/lib/refundFlow/refundZAccounting', () => ({
   recordRefundSettlementForZ: vi.fn(),
 }));
 
+// v3-refund-chain-integration spec §9.2/§9.3 — the v4 branch's own
+// dependencies, mocked so this file stays a pure orchestration test (the
+// individual pieces have their own unit tests: refundApprovalV3.test.ts,
+// refundReceiptService.test.ts, refundIntentRepository.test.ts).
+vi.mock('@/lib/db', () => ({
+  getDatabase: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
+  resolveOriginalFiscalEventLocally: vi.fn(),
+  // Round-2 (finding 11 residual): the appended-intent linkage check now
+  // verifies the fiscal event EXISTS and is sourced from this intent.
+  getFiscalEventById: vi.fn(),
+  // Lane C M2 — the velocity ceiling only bites while the device holds
+  // unsynced fiscal events.
+  countUnsyncedFiscalEvents: vi.fn().mockResolvedValue(0),
+}));
+// Lane C M2/M3 — the refund-exposure policies ride the EXISTING fraud-settings
+// channel (company_fraud_settings → /pos/fraud-settings → this cache table).
+vi.mock('@/lib/db/repositories/companyFraudSettingsCacheRepository', () => ({
+  getCompanyFraudSettings: vi.fn(),
+}));
+vi.mock('@/lib/db/repositories/shiftReceiptAnchorRepository', () => ({
+  getShiftReceiptAnchor: vi.fn(),
+}));
+vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
+  createOrReuseActiveRefundIntent: vi.fn(),
+  ensureApprovalAuthored: vi.fn().mockResolvedValue(undefined),
+  getCumulativeRefundedQuantityByOriginalLine: vi.fn().mockResolvedValue(new Map()),
+  // Round-2 (finding 11 residual): reuse is now resolved BEFORE the caps,
+  // via a read-only lookup on the same key. The REAL interleaving is
+  // exercised in refundCheckoutStore.reuseOrdering.test.ts (real SQLite,
+  // real cap) — this suite stays an orchestration test.
+  computeLineSnapshotFingerprint: vi.fn().mockResolvedValue('fp-1'),
+  findActiveRefundIntent: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
+  getTerminalState: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/offline/refundReceiptService', () => ({
+  createRefundReceipt: vi.fn(),
+}));
+vi.mock('@/lib/refundFlow/refundApprovalV3', () => ({
+  authorRefundReturnApprovalV3: vi.fn(),
+  // Wave-2 fix-wave finding 11 — resume, don't re-author.
+  recoverRefundApprovalEvidenceLocally: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
+  getOfflineReceiptByIdempotencyKey: vi.fn().mockResolvedValue(null),
+  // Lane C M2 — the current shift's already-authored refund receipts.
+  getShiftRefundReceiptTotals: vi.fn().mockResolvedValue([]),
+  // Finding 19 — the ORIGINAL's own receipt number + total (the value ceiling).
+  getOfflineReceiptById: vi.fn().mockResolvedValue({
+    id: 'orig-receipt-uuid-1',
+    receipt_number: 'MAIN-T01-2026-00000042',
+    total: '20.0000',
+    currency: 'EUR',
+  }),
+}));
+vi.mock('@/lib/db/repositories/localRefundRecordRepository', () => ({
+  sumLegacyRefundedValueForOriginalReceipt: vi.fn().mockResolvedValue('0.00'),
+}));
+
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
+import {
+  countUnsyncedFiscalEvents,
+  getFiscalEventById,
+  resolveOriginalFiscalEventLocally,
+} from '@/lib/db/repositories/fiscalEventRepository';
+import { getCompanyFraudSettings } from '@/lib/db/repositories/companyFraudSettingsCacheRepository';
+import { ServerVerifiedPinRequiredError } from '@/lib/operatorApproval/scopedManagerPin';
+import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
+import {
+  createOrReuseActiveRefundIntent,
+  ensureApprovalAuthored,
+  findActiveRefundIntent,
+  getCumulativeRefundedQuantityByOriginalLine,
+  type RefundIntentRow,
+} from '@/lib/db/repositories/refundIntentRepository';
+import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
+import {
+  authorRefundReturnApprovalV3,
+  recoverRefundApprovalEvidenceLocally,
+} from '@/lib/refundFlow/refundApprovalV3';
+import {
+  getOfflineReceiptById,
+  getOfflineReceiptByIdempotencyKey,
+  getShiftRefundReceiptTotals,
+} from '@/lib/db/repositories/offlineReceiptRepository';
+import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
 
 const fakeDb = {} as Database;
 const NO_RETRY = { maxRetries: 0, backoffMs: 0 };
@@ -147,6 +240,11 @@ function beginInput(items: CartItem[] = [returnItem()]) {
     receiptNumber: RECEIPT_NUMBER,
     refundItems: items,
     retry: NO_RETRY,
+    // v3-refund-chain-integration spec §9.2/§9.3 — this ENTIRE file tests
+    // the LEGACY path, which must stay byte-intact. false routes begin()
+    // to the unchanged legacy branch; the v4 branch has its own test
+    // block further down.
+    v4CapabilityEnabled: false,
   };
 }
 
@@ -662,5 +760,1032 @@ describe('refundCheckoutStore — abort & failure paths', () => {
     expect(consoleError).toHaveBeenCalled();
     expect(apiPost).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+// ─── v4 flow (v3-refund-chain-integration §9.2/§9.3) ────────────────────────
+//
+// The legacy suite above stays byte-intact (v4CapabilityEnabled: false in
+// every fixture). These tests exercise the NEW branch, discriminated by
+// v4CapabilityEnabled: true — purely local original resolution (no server
+// round trip), the §3.5/§3.7 lookup-level refusals, refund_intents
+// drafting, and settling via createRefundReceipt's atomic append-first
+// write instead of an HTTP POST.
+describe('refundCheckoutStore — v4 flow', () => {
+  const V4_ORIGINAL_LOCAL_RECEIPT_ID = 'orig-receipt-uuid-1';
+  const V4_ORIGINAL_FISCAL_EVENT_ID = 'fe-original-1';
+  /** Deliberately NOT `approvalContext.businessDate` ('2026-06-10') — the
+   *  whole point of finding 7 is that the two must not be conflated. */
+  const V4_ORIGINAL_BUSINESS_DATE = '2026-05-02';
+  const V4_TERMINAL_ID = 'terminal-1';
+  const V4_OPERATOR_ID = 'operator-1';
+
+  function v4ReturnItem(overrides: Partial<CartItem> = {}): CartItem {
+    return {
+      id: `return-${V4_ORIGINAL_LOCAL_RECEIPT_ID}-0`,
+      product: { id: 'prod-1', name: 'Widget A', sku: 'PROD-001', price: '10.0000' },
+      quantity: -2,
+      unit_price: '10.0000',
+      line_total: '-20.0000',
+      tax_rate: '19.00',
+      tax_amount: '-3.8000',
+      kind: 'return',
+      ...overrides,
+    };
+  }
+
+  function v4OriginalView(overrides: Record<string, unknown> = {}) {
+    return {
+      fiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+      // Wave-2 fix-wave finding 7 — the ORIGINAL's OWN signed business
+      // date, deliberately DIFFERENT from the refund day so a test can
+      // tell the two apart.
+      businessDate: V4_ORIGINAL_BUSINESS_DATE,
+      // Round-2 (finding 19 residual / fiscal N-1) — the value ceiling now
+      // comes from the SIGNED original: the ROUNDED total plus the signed
+      // adjustment, from which the EXACT total is derived.
+      total: '20.00',
+      cashRoundingAdjustment: '0.00',
+      lineItems: [{ product_id: 'prod-1', quantity: '2.000', line_total: '20.000' }],
+      payments: [{ method_code: 'CASH', amount: '20.000' }],
+      trainingFlag: false,
+      transactionDiscountAmount: '0',
+      ...overrides,
+    };
+  }
+
+  function v4RefundIntent(overrides: Partial<RefundIntentRow> = {}): RefundIntentRow {
+    return {
+      id: 'refund-intent-1',
+      terminal_id: V4_TERMINAL_ID,
+      operator_id: V4_OPERATOR_ID,
+      original_local_receipt_id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+      original_fiscal_event_id: V4_ORIGINAL_FISCAL_EVENT_ID,
+      line_snapshot_json: JSON.stringify([{ originalLineIndex: 0 }]),
+      line_snapshot_fingerprint: 'fp-1',
+      approval_source_event_id: 'approval-src-1',
+      override_source_event_id: 'override-src-1',
+      refund_fiscal_event_id: null,
+      state: 'drafted',
+      payout_confirmed_at: null,
+      payout_disputed_at: null,
+      printed_at: null,
+      created_at: '2026-07-31T10:00:00Z',
+      updated_at: '2026-07-31T10:00:00Z',
+      ...overrides,
+    };
+  }
+
+  const v4ApprovalEvidence = {
+    approval_id: 'v4-approval-uuid',
+    approval_event_id: 'fe-v4-approval-1',
+    approval_scope: 'void_or_return_override' as const,
+    override_event_id: 'fe-v4-override-1',
+    policy_version: 'pos-refund-v4-void-return-policy-v1',
+    supervisor_user_id: 'manager-9',
+    target_reference_id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+  };
+
+  /**
+   * Lane C M2/M3 — the cached tenant policy, as
+   * `refreshFraudSettingsCache()` writes it. Seeded defaults: 5 refunds and
+   * 300.0000 per shift while unsynced, 100.0000 as the offline single-refund
+   * ceiling. The suite runs in EUR (scale 2), so these compare as 300.00 /
+   * 100.00 against a 20.00 fixture refund.
+   */
+  function fraudSettingsRow(overrides: Record<string, unknown> = {}) {
+    return {
+      company_id: 'company-1',
+      cash_variance_over_soft: '1.0000',
+      cash_variance_over_hard: '20.0000',
+      cash_variance_under_soft: '1.0000',
+      cash_variance_under_hard: '20.0000',
+      require_blind_cash_count: false,
+      require_manager_pin_above_hard: true,
+      cash_variance_email_severity: 'none' as const,
+      offline_refund_count_ceiling: 5,
+      offline_refund_value_ceiling: '300.0000',
+      online_required_refund_threshold: '100.0000',
+      ...overrides,
+    } as never;
+  }
+
+  const v4CreateReceiptResult = {
+    fiscalEvent: { id: 'fe-v4-refund-1' } as never,
+    offlineReceiptId: 'offline-receipt-1',
+    receiptNumber: 'MAIN-T01-2026-00000007',
+  };
+
+  function v4BeginInput(items: CartItem[] = [v4ReturnItem()]) {
+    return {
+      db: fakeDb,
+      receiptToken: null,
+      receiptNumber: RECEIPT_NUMBER,
+      refundItems: items,
+      v4CapabilityEnabled: true,
+      originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+    };
+  }
+
+  async function v4WalkToApproval(items: CartItem[] = [v4ReturnItem()]) {
+    useCartStore.setState({ items });
+    await useRefundCheckoutStore.getState().begin(v4BeginInput(items));
+    useRefundCheckoutStore.getState().confirmAccepted();
+    expect(useRefundCheckoutStore.getState().step).toBe('approval');
+  }
+
+  beforeEach(() => {
+    useAuthStore.setState({
+      companyId: 'company-1',
+      user: {
+        id: 'user-1',
+        tenantId: 'tenant-1',
+        name: 'Cashier',
+        email: 'cashier@test.com',
+        roles: [],
+        permissions: [],
+      } as never,
+      companies: [{ id: 'company-1', currency: 'EUR', name: 'Test Co' } as never],
+    } as never);
+    useTerminalStore.setState({
+      terminal: { id: V4_TERMINAL_ID, location: null } as never,
+      shift: {
+        id: '11111111-1111-4111-8111-111111111111',
+        // Lane C M2 — the wall-clock fallback window for a pre-anchor shift.
+        opened_at: '2026-07-31T08:00:00Z',
+      } as never,
+    } as never);
+    useOperatorStore.setState({
+      operator: { id: V4_OPERATOR_ID, name: 'Cashier One' } as never,
+    } as never);
+    usePaymentStore.setState({
+      paymentMethods: [{ id: 'pm-cash', code: 'CASH', is_cash_tender: true, is_active: true } as never],
+      paymentRepositories: [{ id: 'pr-cash', type: 'cash_register', is_active: true } as never],
+    } as never);
+    useRefundReconciliationStore.setState({ epoch: 0 });
+
+    vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(v4OriginalView() as never);
+    // Finding 19 — the ORIGINAL's value ceiling and the legacy refund sum.
+    // Re-armed here because the suite clears mocks between tests.
+    vi.mocked(getOfflineReceiptById).mockResolvedValue({
+      id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+      receipt_number: 'MAIN-T01-2026-00000042',
+      total: '20.0000',
+      currency: 'EUR',
+    } as never);
+    vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+    vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
+    vi.mocked(ensureApprovalAuthored).mockResolvedValue(undefined);
+    vi.mocked(findActiveRefundIntent).mockResolvedValue(null);
+    vi.mocked(getFiscalEventById).mockResolvedValue({
+      id: 'fe-v4-refund-1',
+      source_event_class: 'refund_intents',
+      source_event_id: 'refund-intent-1',
+      canonical_bytes: '{"payload":{}}',
+    } as never);
+    vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+      intent: v4RefundIntent(),
+      reused: false,
+    });
+    vi.mocked(authorRefundReturnApprovalV3).mockResolvedValue(v4ApprovalEvidence);
+    vi.mocked(createRefundReceipt).mockResolvedValue(v4CreateReceiptResult);
+    // Lane C M2/M3 — a fully-synced, online terminal with the seeded
+    // policy: both bounds are inert, so every pre-existing v4 test keeps
+    // its original meaning.
+    vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(0);
+    vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([]);
+    vi.mocked(getShiftReceiptAnchor).mockResolvedValue(null);
+    vi.mocked(getCompanyFraudSettings).mockResolvedValue(fraudSettingsRow());
+  });
+
+  describe('begin()', () => {
+    it('resolves the original PURELY LOCALLY (no server round trip) and skips the destination step (cash-only, §3.4)', async () => {
+      useCartStore.setState({ items: [v4ReturnItem()] });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('confirm'); // never 'destination'
+      expect(state.destination).toBe('cash');
+      expect(state.isV4).toBe(true);
+      expect(apiGet).not.toHaveBeenCalled();
+      expect(resolveOriginalFiscalEventLocally).toHaveBeenCalledWith(fakeDb, V4_ORIGINAL_LOCAL_RECEIPT_ID);
+    });
+
+    it('§3.7 — refuses a training original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ trainingFlag: true }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.trainingOriginalRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('§3.5 — refuses a whole-discount original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ transactionDiscountAmount: '5.000' }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.wholeDiscountReceiptRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('§9.6 (finding 8) — refuses a CARD-tendered original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ payments: [{ method_code: 'CARD', amount: '20.000' }] }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.nonCashOriginalRefused');
+      // The manager PIN is never even requested, and no intent is drafted.
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('§9.6 (finding 8) — refuses a MIXED-tender original (a cash leg does not make it cash-only)', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({
+          payments: [
+            { method_code: 'CASH', amount: '5.000' },
+            { method_code: 'CARD', amount: '15.000' },
+          ],
+        }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.nonCashOriginalRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Wave-2 fix-wave finding 10 (fiscal I-1) — a partial refund of a
+     * per-line-discounted line used to throw
+     * `LineArithmeticInvariantError` from the payload builder AFTER the
+     * manager PIN was spent and the approval+override events were on the
+     * chain. It is now refused at the LOOKUP level.
+     */
+    it('finding 10 — refuses a PARTIAL refund of a per-line-discounted line BEFORE the PIN', async () => {
+      // Original line qty 2; the cashier edited the return down to 1.
+      const edited = v4ReturnItem({
+        quantity: -1,
+        line_total: '-10.0000',
+        tax_amount: '-1.9000',
+        discount_amount: '3.0000',
+      });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([edited]));
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.discountedPartialRefundRefused');
+      // No intent drafted, no PIN requested, nothing signed.
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+    });
+
+    it('finding 10 — a FULL-line refund of a discounted line is still allowed (line_total keeps the discount)', async () => {
+      const full = v4ReturnItem({ discount_amount: '3.0000' });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([full]));
+
+      expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      expect(createOrReuseActiveRefundIntent).toHaveBeenCalled();
+    });
+
+    it('finding 10 — an UNDISCOUNTED partial refund is unaffected', async () => {
+      const partial = v4ReturnItem({ quantity: -1, line_total: '-10.0000', tax_amount: '-1.9000' });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([partial]));
+
+      expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+    });
+
+    /**
+     * Lane C M2/M3 (wave-3 payout-cash-bound analysis §M2/§M3, owner-ruled
+     * 2026-08-01) — the two refund-exposure policies. Both are tenant
+     * settings delivered over the existing fraud-settings channel and are
+     * enforced PRE-PIN, in the same refusal family as the bounds above.
+     *
+     * The fixture refund is worth 20.00 (|−20.0000| at EUR scale 2).
+     */
+    describe('M2/M3 — refund-exposure policies', () => {
+      it('M2 — refuses the (N+1)-th offline refund of the shift, BEFORE the PIN', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundCountCeilingReached');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('M2 — BOUNDARY: the N-th offline refund (already 4, ceiling 5) is allowed', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M2 — refuses when THIS refund would push the shift past the VALUE ceiling', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(1);
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: '30.0000' }),
+        );
+        // 15.00 already out + 20.00 now = 35.00 > 30.00.
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(['-15.00']);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundValueCeilingReached');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('M2 — BOUNDARY: landing EXACTLY on the value ceiling is allowed', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(1);
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: '35.0000' }),
+        );
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(['-15.00']);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M2 — stands down entirely once the fiscal-event queue is drained', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(0);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(
+          Array.from({ length: 99 }, () => '-50.00'),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+        // The server's §12 cap can see everything again — the device does
+        // not even measure the shift.
+        expect(getShiftRefundReceiptTotals).not.toHaveBeenCalled();
+      });
+
+      it('M3 — refuses a refund above the threshold while OFFLINE, before the PIN', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: false });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.largeRefundRequiresOnline');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('M3 — BOUNDARY: a refund EQUAL to the threshold is allowed offline', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: false });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '20.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M3 — an ONLINE device bypasses the threshold entirely', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: true });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '0.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('setting ABSENT (never-synced device / un-migrated tenant) falls back to the seeded default — NOT a refusal', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(null);
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(2);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('setting ABSENT still ENFORCES the device fallback ceiling (default ≠ no policy)', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(null);
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(2);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundCountCeilingReached');
+      });
+
+      it('setting PRESENT but UNREADABLE fails closed (a value the device cannot trust ≠ a default)', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: 'not-a-number' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Gate finding I-3 — an empty companyId means the device HAS a cached
+       * policy but cannot address it. That is not the ruled "absent row"
+       * rollout exception; resolving it to the more permissive seeded
+       * constants (and to EUR scale 2 instead of TND scale 3) is a silent
+       * downgrade. Mirrors resumeReusedIntent()'s own posture.
+       */
+      it('an EMPTY companyId fails closed instead of degrading to the fallback constants', async () => {
+        useAuthStore.setState({ companyId: null } as never);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(getCompanyFraudSettings).not.toHaveBeenCalled();
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Gate finding I-1 — M3 was a TOCTOU check: it read `isOnline` at
+       * begin() but the PIN is verified much later, where
+       * `verifyScopedManagerPin` permits the device-local fallback on any
+       * genuine-offline failure. The decision must therefore travel with the
+       * refund as a REQUIREMENT, computed from the amount alone.
+       */
+      describe('I-1 — requireServerVerifiedPin threading', () => {
+        it('sets the flag for an above-threshold refund even when begin() sees the device ONLINE', async () => {
+          mockConnectivity.mockReturnValue({ isOnline: true });
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+          const state = useRefundCheckoutStore.getState();
+          expect(state.step).toBe('confirm');
+          expect(state.requireServerVerifiedPin).toBe(true);
+        });
+
+        it('leaves the flag false for a refund at or below the threshold', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '20.0000' }),
+          );
+
+          await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+          expect(useRefundCheckoutStore.getState().requireServerVerifiedPin).toBe(false);
+        });
+
+        it('threads the flag into authorRefundReturnApprovalV3 at PIN time', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          await v4WalkToApproval();
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          expect(authorRefundReturnApprovalV3).toHaveBeenCalledWith(
+            expect.objectContaining({ requireServerVerifiedPin: true }),
+          );
+        });
+
+        it('the link dropping DURING PIN entry refuses with the M3 copy — nothing signed, intent still recoverable', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          // begin() while ONLINE: M3's begin()-time check passes.
+          mockConnectivity.mockReturnValue({ isOnline: true });
+          await v4WalkToApproval();
+
+          // …the link drops before the manager PIN is verified. The server
+          // verification the flag demands is now impossible.
+          mockConnectivity.mockReturnValue({ isOnline: false });
+          vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(
+            new ServerVerifiedPinRequiredError('void_or_return_override'),
+          );
+
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          const state = useRefundCheckoutStore.getState();
+          expect(state.error?.key).toBe('refundFlow.largeRefundRequiresOnline');
+          // Nothing signed, nothing settled — and the refund is resumable:
+          // the drafted intent is still in state, so reconnecting and
+          // retrying reuses it rather than minting a second one.
+          expect(createRefundReceipt).not.toHaveBeenCalled();
+          expect(state.approval).toBeNull();
+          expect(state.refundIntent).not.toBeNull();
+          expect(state.step).toBe('approval');
+        });
+
+        it('a NON-M3 approval failure still surfaces the generic approval error', async () => {
+          vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(new Error('manager_pin_scope_mismatch'));
+
+          await v4WalkToApproval();
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorApproval');
+        });
+      });
+
+      it('a RESUMED intent whose approval is already signed is NOT re-gated (no orphan approval)', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(
+          v4RefundIntent({ state: 'approval_authored' }),
+        );
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(v4ApprovalEvidence);
+        // Over the count ceiling — a fresh refund here would be refused.
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.approval).toEqual(v4ApprovalEvidence);
+        // The exposure gate never ran — the approval pair is already on the
+        // chain and refusing now would strand it.
+        expect(getShiftRefundReceiptTotals).not.toHaveBeenCalled();
+      });
+    });
+
+    /**
+     * Wave-2 fix-wave finding 11 (fiscal I-2 + codex M-3) — a REUSED
+     * intent is resumed from the state it is actually in.
+     */
+    describe('finding 11 — reused-intent resume', () => {
+      it('an already-APPENDED intent routes to reconciliation instead of replaying the flow', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({
+            state: 'refund_event_appended',
+            refund_fiscal_event_id: 'fe-v4-refund-1',
+          }));
+        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue({
+          id: 'offline-receipt-1',
+          idempotency_key: 'refund-intent-1',
+          canonical_bytes: '{"payload":{}}',
+        } as never);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.refundAlreadyAppended');
+        // The reconciliation prompt is surfaced — the refund IS done.
+        expect(useRefundReconciliationStore.getState().epoch).toBeGreaterThan(0);
+        // …and the flow never reaches the confirm step, so
+        // createRefundReceipt can never re-attempt a transition that would
+        // roll back the whole write-gate transaction.
+        expect(createRefundReceipt).not.toHaveBeenCalled();
+      });
+
+      it('an APPENDED intent with NO linked offline_receipts row fails closed (corrupt linkage)', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({
+            state: 'refund_event_appended',
+            refund_fiscal_event_id: 'fe-v4-refund-1',
+          }));
+        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+      });
+
+      it('an APPENDED intent with no fiscal event id fails closed (never retries the append)', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'refund_event_appended', refund_fiscal_event_id: null }));
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(getOfflineReceiptByIdempotencyKey).not.toHaveBeenCalled();
+      });
+
+      it('an APPROVAL_AUTHORED intent resumes with the RECOVERED approval — no second manager PIN', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'approval_authored' }));
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(v4ApprovalEvidence);
+        const items = [v4ReturnItem()];
+        useCartStore.setState({ items });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput(items));
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        // The already-signed evidence is pre-seeded, so approveAndSubmit
+        // resumes the APPEND only.
+        expect(state.approval).toEqual(v4ApprovalEvidence);
+
+        useRefundCheckoutStore.getState().confirmAccepted();
+        await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+        expect(createRefundReceipt).toHaveBeenCalled();
+      });
+
+      it('an APPROVAL_AUTHORED intent whose approval is NOT locally recoverable fails closed', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'approval_authored' }));
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('a reused DRAFTED intent takes the ordinary path, unchanged', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(v4RefundIntent({ state: 'drafted' }));
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.approval).toBeNull();
+      });
+    });
+
+    it('errorInternal when the original cannot be resolved locally (defensive — should not happen)', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(null);
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+    });
+
+    it('drafts/reuses the refund_intents row with the pre-generated sourceEventIds', async () => {
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      expect(createOrReuseActiveRefundIntent).toHaveBeenCalledWith(
+        fakeDb,
+        expect.objectContaining({
+          terminalId: V4_TERMINAL_ID,
+          operatorId: V4_OPERATOR_ID,
+          originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+          originalFiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+          approvalSourceEventId: expect.any(String),
+          overrideSourceEventId: expect.any(String),
+        }),
+      );
+    });
+
+    // Wave-2 review fix, ORCHESTRATOR-RULED (required) — device-local
+    // cumulative-quantity backstop. The original line's own quantity is
+    // 2.000 (v4OriginalView()'s fixture).
+    describe('cumulative-quantity backstop (§12 device-side belt)', () => {
+      it('refund 1 of qty-2, synced, then refund the remaining 1 → OK (cumulative 2 == original 2)', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(
+          new Map([[0, '1.0000']]),
+        );
+        useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+        await useRefundCheckoutStore.getState().begin(
+          v4BeginInput([v4ReturnItem({ quantity: -1, line_total: '-10.0000' })]),
+        );
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.error).toBeNull();
+        expect(createOrReuseActiveRefundIntent).toHaveBeenCalledOnce();
+      });
+
+      it('refund 2 (full quantity), synced, then attempt to refund 1 more → refused (cumulative 3 > original 2)', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(
+          new Map([[0, '2.0000']]),
+        );
+        useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+        await useRefundCheckoutStore.getState().begin(
+          v4BeginInput([v4ReturnItem({ quantity: -1, line_total: '-10.0000' })]),
+        );
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.refundQuantityExceeded');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('a fresh original with NOTHING refunded yet (empty cumulative map) allows refunding the full quantity', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(new Map());
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.error).toBeNull();
+      });
+
+      it('reads the cumulative map keyed by the SAME originalLocalReceiptId this attempt targets', async () => {
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(getCumulativeRefundedQuantityByOriginalLine).toHaveBeenCalledWith(
+          fakeDb,
+          V4_ORIGINAL_LOCAL_RECEIPT_ID,
+        );
+      });
+    });
+  });
+
+  describe('approveAndSubmit()', () => {
+    it('walks confirm → approval → settles via createRefundReceipt, calling onV4Settled (never onSettled)', async () => {
+      const onSettled = vi.fn();
+      const onV4Settled = vi.fn();
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore
+        .getState()
+        .approveAndSubmit(submitInput({ onSettled, onV4Settled }));
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('settled');
+      expect(state.error).toBeNull();
+      expect(state.v4SettledResult).toEqual({
+        fiscalEventId: 'fe-v4-refund-1',
+        offlineReceiptId: 'offline-receipt-1',
+        receiptNumber: 'MAIN-T01-2026-00000007',
+        refundIntentId: 'refund-intent-1',
+      });
+      // Discriminated from the legacy path — always null on a v4 settle.
+      expect(state.settledResponse).toBeNull();
+      // Atomic write => no separate mirror that can fail independently.
+      expect(state.settledZAccountingRecorded).toBe(true);
+      expect(onV4Settled).toHaveBeenCalledTimes(1);
+      expect(onV4Settled).toHaveBeenCalledWith(state.v4SettledResult);
+      expect(onSettled).not.toHaveBeenCalled();
+      expect(useCartStore.getState().items).toEqual([]);
+      // §4.5 — the reconciliation modal's refresh signal bumped.
+      expect(useRefundReconciliationStore.getState().epoch).toBe(1);
+    });
+
+    it('authors via authorRefundReturnApprovalV3 with the intent-supplied sourceEventIds, then settles createRefundReceipt with the same approval as approvalReferences', async () => {
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalLocalReceiptId: V4_ORIGINAL_LOCAL_RECEIPT_ID,
+          originalFiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+          approvalSourceEventId: 'approval-src-1',
+          overrideSourceEventId: 'override-src-1',
+        }),
+      );
+      expect(createRefundReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          refundIntentId: 'refund-intent-1',
+          paymentMethodId: 'pm-cash',
+          paymentRepositoryId: 'pr-cash',
+          approvalReferences: [v4ApprovalEvidence],
+        }),
+      );
+      expect(ensureApprovalAuthored).toHaveBeenCalledWith(expect.anything(), 'refund-intent-1');
+    });
+
+    it('finding 7 — seals the ORIGINAL\'s own business date, never the refund day\'s', async () => {
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      expect(createRefundReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The NEW refund event is dated today…
+          businessDate: approvalContext.businessDate,
+          // …while the provenance reference carries the ORIGINAL's own
+          // signed date. Conflating them signed a fabricated fact into an
+          // immutable chain (rule 8).
+          originalBusinessDate: V4_ORIGINAL_BUSINESS_DATE,
+        }),
+      );
+      expect(approvalContext.businessDate).not.toBe(V4_ORIGINAL_BUSINESS_DATE);
+    });
+
+    it('caches the authored evidence immediately — a settle failure does NOT re-author on retry (no second PIN, no double fiscal append)', async () => {
+      vi.mocked(createRefundReceipt).mockRejectedValueOnce(new Error('write-gate failure'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      let state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+      expect(state.approval).toEqual(v4ApprovalEvidence);
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('settled');
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledTimes(1);
+      expect(createRefundReceipt).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Finding-11 VERIFICATION (wave-3 analysis, "Minor, found while
+     * reading"). This used to assert the OPPOSITE — that a failed
+     * `markApprovalAuthored()` was "non-fatal" and the settle proceeded
+     * anyway. It was not non-fatal: `markRefundEventAppended()` only
+     * transitions FROM `approval_authored`, so the settle was GUARANTEED
+     * to throw inside the write-gate transaction and roll back — and,
+     * because the call sat inside the `approval === null` branch, a retry
+     * never re-ran it. Permanent silent rollback loop for the session.
+     */
+    it('finding 11 — a failure to reach approval_authored refuses the settle instead of rolling back forever', async () => {
+      vi.mocked(ensureApprovalAuthored).mockRejectedValueOnce(new Error('transition guard rejected'));
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+      // The doomed settle is never attempted…
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+      // …and the already-signed approval stays cached, so the retry costs
+      // no second PIN and re-authors nothing.
+      expect(state.approval).toEqual(v4ApprovalEvidence);
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
+    it('finding 11 — ensureApprovalAuthored runs on EVERY settle attempt, not only the authoring one', async () => {
+      vi.mocked(createRefundReceipt).mockRejectedValueOnce(new Error('write-gate failure'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      // Authored once; state-advance attempted on both settles (it is
+      // idempotent), so a transient first failure cannot strand the intent
+      // at `drafted` forever.
+      expect(authorRefundReturnApprovalV3).toHaveBeenCalledTimes(1);
+      expect(ensureApprovalAuthored).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Wave-2 fix-wave finding 19 (⚖️ §M1) — the receipt-level, VALUE-based
+     * LEGACY bound. `local_refund_records` is the only device-local trace
+     * of a refund settled through the legacy `/return` path, and the
+     * per-line cumulative cap never consulted it.
+     */
+    describe('finding 19 — legacy refund value bound', () => {
+      it('refuses when a prior LEGACY refund plus this one would exceed the original value', async () => {
+        // Original total 20.00; 15.00 already refunded legacy; this
+        // attempt is 20.00 => 35.00 > 20.00.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('15.00');
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('proceeds when the legacy refunds plus this one stay within the original value', async () => {
+        // Original 20.00; nothing refunded legacy; this attempt 20.00.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('FAILS CLOSED when a legacy record is unreadable (never skip-and-undercount)', async () => {
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockRejectedValue(
+          new Error('local_refund_records has a non-canonical total'),
+        );
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        // Round-2 item E3 / minor N-9: still fail-closed, but a bound that
+        // could not be COMPUTED must not claim the receipt "has already
+        // been refunded for its full value" — a fact the device does not
+        // know. Only a genuine over-value gets that copy.
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+      });
+
+      it('FAILS CLOSED when the ORIGINAL receipt row cannot be read (no value ceiling to bound against)', async () => {
+        vi.mocked(getOfflineReceiptById).mockResolvedValue(null);
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+      });
+
+      /**
+       * Round-2 fiscal N-1 — the ceiling is the EXACT total, not the
+       * ROUNDED one. `offline_receipts.total` / the signed `total` carry
+       * `policySnapshot.roundedTotal`, and the v3 aggregate invariant is
+       * `rounded − adjustment == exact`. A refund pays out
+       * `Σ|line_total|` — the EXACT gross line amounts — so comparing
+       * against the ROUNDED figure refused every legitimate FIRST full
+       * refund of a rounded-DOWN receipt.
+       */
+      it('fiscal N-1 — a FIRST full refund of a cash-rounded-DOWN original is ALLOWED', async () => {
+        // Exact 12.34 rounded DOWN to 12.30 ⇒ adjustment = rounded − exact
+        // = −0.04. The return line carries the EXACT 12.34.
+        vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+          v4OriginalView({ total: '12.30', cashRoundingAdjustment: '-0.04' }) as never,
+        );
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+        const rounded = v4ReturnItem({ line_total: '-12.34', tax_amount: '-0.00' });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput([rounded]));
+
+        // Pre-fix this refused with `legacyRefundValueExceeded`, naming a
+        // cause that does not exist, and no operator override existed.
+        expect(useRefundCheckoutStore.getState().error).toBeNull();
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('fiscal N-1 — the bound still refuses a genuine over-value against the EXACT total', async () => {
+        vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+          v4OriginalView({ total: '12.30', cashRoundingAdjustment: '-0.04' }) as never,
+        );
+        // 12.34 exact ceiling; 0.01 already refunded + 12.34 now = 12.35.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.01');
+        const rounded = v4ReturnItem({ line_total: '-12.34', tax_amount: '-0.00' });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput([rounded]));
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+      });
+    });
+
+    it('a PIN/authoring failure returns to approval with errorApproval — no settle attempted', async () => {
+      vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(new Error('manager_pin_scope_mismatch'));
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('approval');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+      expect(state.approval).toBeNull();
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+    });
+
+    it('the stale-cart fingerprint guard applies identically to the v4 path', async () => {
+      await v4WalkToApproval();
+      useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.checkout.errorCartChanged');
+      expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      expect(createRefundReceipt).not.toHaveBeenCalled();
+    });
   });
 });

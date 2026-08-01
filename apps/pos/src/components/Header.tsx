@@ -39,6 +39,11 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { usePrinterStore } from '@/stores/printerStore';
 import { toast } from 'sonner';
 import { fetchFraudSettings } from '@/api/fraudSettingsApi';
+import {
+  DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+  DEFAULT_OFFLINE_REFUND_VALUE_CEILING,
+  DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
+} from '@/lib/refundFlow/refundExposureDefaults';
 import { fetchAuthorizedManagers } from '@/api/managersApi';
 import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 import { ApiRequestError } from '@/lib/api';
@@ -147,6 +152,16 @@ export function Header() {
             require_blind_cash_count: settings.requireBlindCashCount,
             require_manager_pin_above_hard: settings.requireManagerPinAboveHard,
             cash_variance_email_severity: settings.cashVarianceEmailSeverity,
+            // Lane C M2/M3 — same seeded-equal fallback contract as
+            // refreshFraudSettingsCache(): a server build without the
+            // refund-exposure fields must not NULL out a NOT NULL column
+            // and lose the whole cache write.
+            offline_refund_count_ceiling:
+              settings.offlineRefundCountCeiling ?? DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+            offline_refund_value_ceiling:
+              settings.offlineRefundValueCeiling ?? DEFAULT_OFFLINE_REFUND_VALUE_CEILING,
+            online_required_refund_threshold:
+              settings.onlineRequiredRefundThreshold ?? DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
           });
         } catch {
           // Non-fatal: a cache-write blip must not block the EOD flow.

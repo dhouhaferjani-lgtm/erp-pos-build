@@ -167,6 +167,7 @@ vi.mock('@/lib/db/repositories/menuRepository', () => ({
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
+  setV4RefundAuthoringEnabled: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
   getZChainState: vi.fn().mockResolvedValue(null),
   FiscalRegressionError: class FiscalRegressionError extends Error {

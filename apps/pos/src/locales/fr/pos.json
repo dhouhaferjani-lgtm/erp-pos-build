@@ -121,6 +121,17 @@
     "returningSection": "À rembourser",
     "buyingNewSection": "Nouvel achat",
     "detailsNotLocal": "Les détails du ticket d'origine ne sont pas disponibles sur ce terminal. Seuls les articles des tickets enregistrés sur ce terminal peuvent être remboursés localement. Demandez à un responsable de retrouver le ticket depuis le back-office.",
+    "trainingOriginalRefused": "Ce ticket a été enregistré en mode formation et ne peut pas être remboursé.",
+    "wholeDiscountReceiptRefused": "Ce ticket comporte une remise sur l'ensemble du ticket ; les remboursements ne sont pas disponibles pour ce type de ticket dans cette version.",
+    "nonCashOriginalRefused": "Ce ticket n'a pas été réglé en espèces. Sur ce terminal, les remboursements sont versés uniquement en espèces : seuls les tickets réglés en espèces peuvent y être remboursés. Demandez à un responsable de traiter ce retour depuis le back-office.",
+    "refundQuantityExceeded": "Ce remboursement dépasserait la quantité initialement vendue. Vérifiez ce qui a déjà été remboursé pour ce ticket.",
+    "discountedPartialRefundRefused": "Cette ligne comportait une remise : elle ne peut être remboursée qu'en totalité. Remboursez la ligne entière, ou demandez à un responsable de traiter un remboursement partiel depuis le back-office.",
+    "refundAlreadyAppended": "Ce remboursement a déjà été enregistré. Terminez la confirmation du versement en espèces et l'impression du ticket.",
+    "legacyRefundValueExceeded": "Ce ticket a déjà été remboursé sur ce terminal pour la totalité de sa valeur. Vérifiez le remboursement précédent avant d'en traiter un autre.",
+    "offlineRefundCountCeilingReached": "Ce terminal a atteint le nombre de remboursements autorisés pour une session tant que des ventes restent à transmettre. Reconnectez le terminal et laissez-le se synchroniser avant de réessayer, ou demandez à un responsable de traiter ce remboursement depuis le back-office.",
+    "offlineRefundValueCeilingReached": "Ce terminal a atteint le montant total de remboursements autorisé pour une session tant que des ventes restent à transmettre. Reconnectez le terminal et laissez-le se synchroniser avant de réessayer, ou demandez à un responsable de traiter ce remboursement depuis le back-office.",
+    "largeRefundRequiresOnline": "Ce remboursement est trop important pour être validé hors connexion. Reconnectez le terminal et réessayez, afin que l'autorisation du responsable soit vérifiée auprès du serveur.",
+    "capabilityUnavailable": "Les remboursements sont temporairement indisponibles sur ce terminal — contactez le support",
     "confirm": {
       "charge": "Encaisser {{amount}}",
       "refund": "Rembourser {{amount}}",
@@ -174,6 +185,17 @@
       "subtitle": "Un responsable doit autoriser ce remboursement.",
       "confirm": "Autoriser le remboursement",
       "submitting": "Traitement…"
+    },
+    "reconciliation": {
+      "confirmTitle": "Confirmer le versement du remboursement",
+      "confirmBody": "{{amount}} en espèces ont-ils bien été remis pour ce remboursement ?",
+      "confirmBodyNoAmount": "L'argent liquide a-t-il bien été remis pour ce remboursement ?",
+      "yes": "Oui",
+      "notSure": "Non / Pas sûr",
+      "reprintTitle": "Réimprimer le ticket de remboursement",
+      "reprintBody": "Ce remboursement a été confirmé mais le ticket n'a jamais été imprimé — l'imprimer maintenant ?",
+      "print": "Imprimer",
+      "skip": "Ignorer"
     }
   },
   "receiptLocator": {

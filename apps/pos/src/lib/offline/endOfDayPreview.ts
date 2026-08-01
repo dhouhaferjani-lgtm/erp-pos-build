@@ -21,8 +21,8 @@ import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
-import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getToleranceAutoAcceptCount } from '@/lib/db/repositories/toleranceAutoAcceptRepository';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -42,6 +42,10 @@ interface OfflineReceiptRow {
   cash_rounding_adjustment: string | null;
   // Auto-accepted tender shortfall, NULL when none was applied (Task 9).
   tolerance_shortfall: string | null;
+  // v3-refund-chain-integration spec §7.3a — 'sale' (default, absent on
+  // rows predating this feature which the LEFT JOIN-free SELECT below
+  // still reads as undefined) or 'refund'.
+  receipt_kind?: 'sale' | 'refund';
 }
 
 interface PaymentJsonRow {
@@ -170,7 +174,7 @@ export async function buildEndOfDayPreview(
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
     `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id,
-            cash_rounding_adjustment, tolerance_shortfall
+            cash_rounding_adjustment, tolerance_shortfall, receipt_kind
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
@@ -188,6 +192,12 @@ export async function buildEndOfDayPreview(
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
+  // Wave-2 fix-wave, adjacent to finding 4 (same defect class as finding 1's
+  // X-report `sales_count: receipts.length`): `receipts` now contains v4
+  // refund rows (§7.2), so a bare `receipts.length` reported every refund as
+  // a SALE while the three sale aggregates right below deliberately skipped
+  // it — an internally inconsistent preview.
+  let salesCount = 0;
   let cashTenderedSum = '0';
   let cashChangeDueSum = '0';
   let toleranceTotal = '0';
@@ -209,34 +219,85 @@ export async function buildEndOfDayPreview(
   >();
 
   for (const receipt of receipts) {
-    grossSales = bcadd(grossSales, receipt.total);
-    netSales = bcadd(netSales, receipt.subtotal);
-    taxAmount = bcadd(taxAmount, receipt.tax_amount);
+    const isRefund = receipt.receipt_kind === 'refund';
+
+    // v3-refund-chain-integration spec §7.3a — grossSales/netSales/
+    // taxAmount are SALE-ONLY, matching zReportService.ts's own §7.3
+    // sale-only semantics: a refund row is skipped entirely for these
+    // three totals (never added, never subtracted — refunds are their
+    // own tracked figure below, never folded into gross/net sales).
+    if (!isRefund) {
+      salesCount += 1;
+      grossSales = bcadd(grossSales, receipt.total);
+      netSales = bcadd(netSales, receipt.subtotal);
+      taxAmount = bcadd(taxAmount, receipt.tax_amount);
+    }
 
     // Receipt-level rounding / tolerance columns (Task 9), written inside the
     // fiscal transaction from the sealed CheckoutPolicySnapshot. NULL means
     // "did not happen"; a stored zero would mean "happened and came to zero",
     // which is why both are compared rather than merely null-checked.
+    // `tolerance_shortfall` is ALWAYS NULL on a refund row (§7.2a — no
+    // tender-tolerance concept applies to a refund payout), so a refund
+    // row never contributes to toleranceTotal at all -- the existing
+    // null-check already excludes it, no branch needed.
     const shortfall = receipt.tolerance_shortfall;
     if (shortfall !== null && shortfall !== '' && bccomp(shortfall, '0') !== 0) {
       toleranceTotal = bcadd(toleranceTotal, shortfall);
       toleranceCount += 1;
     }
+    // `cash_rounding_adjustment` is signed and mirrors the fiscal
+    // payload's own value on EVERY row, sale or refund (§7.2a) -- a sale
+    // row ADDS (unchanged); a refund row SUBTRACTS (a refund's own
+    // rounding reverses the sale's). Canonical zero on every launch v4
+    // refund (a refund payout never rounds), so this branch is currently
+    // dead in practice but must be correct forward-compatibly.
     const adjustment = receipt.cash_rounding_adjustment;
     if (adjustment !== null && adjustment !== '' && bccomp(adjustment, '0') !== 0) {
-      roundingTotal = bcadd(roundingTotal, adjustment);
+      roundingTotal = isRefund
+        ? bcsub(roundingTotal, adjustment)
+        : bcadd(roundingTotal, adjustment);
       roundingCount += 1;
     }
 
-    // VAT breakdown from receipt lines
+    // VAT breakdown from receipt lines.
+    //
+    // Wave-2 review fix (finding 4 / codex C-3) — this loop USED to be
+    // deliberately unbranched, on the stated assumption that a refund
+    // row's negative-signed `lines` JSON made plain addition equivalent
+    // to zReportService's explicit "bcabs-then-subtract" branch. The
+    // equivalence held for the SIGN but not for the DECOMPOSITION: on a
+    // refund row (as on a sale row) `line_total` is the GROSS/TTC line
+    // amount with `tax_amount` EXTRACTED out of it, not the net. Adding
+    // the VAT on top of it therefore booked net −12.00 / gross −14.00
+    // for a 12.00-gross, 2.00-VAT refund instead of net −10.00 / gross
+    // −12.00 — the same double-count the signed Z carried, additively.
+    // The refund branch now derives net the only way it can be derived:
+    // gross − vat, at the currency scale. The SALE branch is left
+    // byte-identical (its own gross-as-net treatment predates this lane
+    // and is not in this wave's scope — see the fix-wave report).
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+
+      if (isRefund) {
+        // Already negative-signed on the row (§7.2), so these stay
+        // additive — only the net DECOMPOSITION changes.
+        const lineGross = line.line_total ?? '0';
+        const lineVat = line.tax_amount ?? '0';
+        const lineNet = bcsub(lineGross, lineVat, scale);
+        existing.net = bcadd(existing.net, lineNet, scale);
+        existing.vat = bcadd(existing.vat, lineVat, scale);
+        existing.gross = bcadd(existing.gross, lineGross, scale);
+        vatByRate.set(rate, existing);
+        continue;
+      }
+
       const lineVat = line.tax_amount ?? '0';
       const lineNet = line.line_total ?? '0';
       const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
       existing.net = bcadd(existing.net, lineNet);
       existing.vat = bcadd(existing.vat, lineVat);
       existing.gross = bcadd(existing.gross, lineGross);
@@ -248,6 +309,12 @@ export async function buildEndOfDayPreview(
     // tender is never dropped because the local payment_methods table no longer
     // lists its method (deactivated/removed by sync mid-shift). The lookup table
     // only supplies display metadata (id, name, is_physical).
+    // `payments_json` is a POSITIVE magnitude on EVERY row, sale or refund
+    // (§7.2a) — left unbranched here, a refund's positive amount would
+    // simply ADD like a sale's, inflating expected cash by its own
+    // magnitude instead of reducing it (the exact +2× error class §7.3
+    // closed in zReportService.ts, reappearing here because this file's
+    // loop was never touched until this fix).
     const payments = JSON.parse(receipt.payments_json || '[]') as PaymentJsonRow[];
     let receiptHasCash = false;
     for (const p of payments) {
@@ -262,12 +329,16 @@ export async function buildEndOfDayPreview(
         total_amount: '0',
         transaction_count: 0,
       };
-      existing.total_amount = bcadd(existing.total_amount, p.amount);
+      existing.total_amount = isRefund
+        ? bcsub(existing.total_amount, p.amount)
+        : bcadd(existing.total_amount, p.amount);
       existing.transaction_count += 1;
       perMethod.set(key, existing);
 
       if (key === 'CASH') {
-        cashTenderedSum = bcadd(cashTenderedSum, p.amount);
+        cashTenderedSum = isRefund
+          ? bcsub(cashTenderedSum, p.amount)
+          : bcadd(cashTenderedSum, p.amount);
         receiptHasCash = true;
       }
     }
@@ -276,6 +347,10 @@ export async function buildEndOfDayPreview(
       // change_due is a receipt-level column (offline_receipts.change_due) and is
       // only ever non-zero when the receipt was paid (over-tendered) in cash, so
       // subtract it once per cash-paid receipt — never per payment row.
+      // `change_due` is ALWAYS NULL on a refund row (§7.2a -- a refund has
+      // no change concept), so this is a no-op for refund rows by
+      // construction; not gated on `isRefund` for the same reason the
+      // tolerance check above isn't.
       if (receiptHasCash) {
         cashChangeDueSum = bcadd(cashChangeDueSum, receipt.change_due ?? '0');
       }
@@ -331,6 +406,20 @@ export async function buildEndOfDayPreview(
   // 4. expected_cash = opening + net cash sales (Σ tendered − Σ change)
   //    + cash drawer deposits − payouts (NF525 drawer reality; mirrors the
   //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
+  // v3-refund-chain-integration spec §7.3a — `cashTenderedSum` is ALREADY
+  // net of V4 refunds by construction of the receipt_kind branch above
+  // (mirrors zReportService.ts's own §7.3 simplification exactly).
+  //
+  // Wave-2 review fix (TREASURY CRITICAL) — that is NOT true of LEGACY
+  // refunds: they never touch `offline_receipts` at all (their only write
+  // is `local_refund_records`, the legacy path's sole mechanism —
+  // §9.3's coexistence ruling keeps this path live for every terminal
+  // that has not yet completed its v4 capability rollout). Removing the
+  // standalone cashRefundImpact term made this preview overstate expected
+  // cash by the full amount of every legacy refund. Restored below,
+  // disjoint from the v4 mechanism by construction (a legacy refund never
+  // writes an `offline_receipts` `receipt_kind='refund'` row; a v4 refund
+  // never writes `local_refund_records`) — a plain, non-overlapping sum.
   let drawerNet = '0';
   let cashRefundImpact = '0';
   // The §8.1 budget is keyed by shift id only — there is no timestamp bind, so
@@ -342,23 +431,25 @@ export async function buildEndOfDayPreview(
     toleranceAutoAcceptCount = await getToleranceAutoAcceptCount(db, shiftId);
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
     for (const op of drawerOps) {
-      drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount) : bcsub(drawerNet, op.amount);
+      drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount, scale) : bcsub(drawerNet, op.amount, scale);
     }
     // Cash collected against customer credit accounts is drawer cash.
     const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
     for (const ap of accountPayments) {
-      drawerNet = bcadd(drawerNet, ap.cash_impact);
+      drawerNet = bcadd(drawerNet, ap.cash_impact, scale);
     }
-    // Cash-destination refunds physically left this drawer (matches the signed
-    // Z's cashRefundImpact so the preview does not overstate expected cash).
+    // Cash-destination LEGACY refunds physically left this drawer (matches
+    // the signed Z's own restored cashRefundImpact term so the preview
+    // does not overstate expected cash for a non-acknowledged terminal).
     const refundRecords = await getRefundRecordsForShift(db, shiftId);
     for (const r of refundRecords) {
-      cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact);
+      cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact, scale);
     }
   }
   const expectedCash = bcsub(
-    bcadd(bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum), drawerNet),
+    bcadd(bcsub(bcadd(openingCash, cashTenderedSum, scale), cashChangeDueSum, scale), drawerNet, scale),
     cashRefundImpact,
+    scale,
   );
 
   // 5. Build VAT breakdown sorted by rate ascending. tax_rate intentionally
@@ -380,7 +471,7 @@ export async function buildEndOfDayPreview(
   }));
 
   return {
-    sales_count: receipts.length,
+    sales_count: salesCount,
     gross_sales: bcformat(grossSales, scale),
     net_sales: bcformat(netSales, scale),
     tax_amount: bcformat(taxAmount, scale),

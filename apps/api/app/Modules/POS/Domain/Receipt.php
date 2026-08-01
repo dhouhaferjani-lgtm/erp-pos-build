@@ -268,6 +268,14 @@ class Receipt extends Model
             'synced_at' => 'datetime',
             'discount_breakdown' => 'array',
             'out_of_window' => 'boolean',
+            // v3-refund-chain-integration spec §6.4: `sealed_hash_algorithm`
+            // is a plain nullable string and needs no cast entry (Eloquent
+            // already returns a bare string for an uncast attribute) — named
+            // here explicitly so it is not silently omitted from this model
+            // the way it was omitted from an earlier spec revision's
+            // manifest. §3.6's `refund_policy_alerts` IS cast — JSONB,
+            // decoded to a plain array, matching `discount_breakdown` above.
+            'refund_policy_alerts' => 'array',
         ];
     }
 

@@ -10,6 +10,7 @@ use App\Modules\Compliance\Application\DTOs\CompanyFraudSettingsData;
 use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -34,6 +35,31 @@ class FraudSettingsController extends Controller
         'require_blind_cash_count',
         'require_manager_pin_above_hard',
         'cash_variance_email_severity',
+    ];
+
+    /**
+     * Lane C M2/M3 — the refund-exposure ceilings.
+     *
+     * They live on `company_fraud_settings` but are NOT part of this
+     * endpoint's surface: per the owner ruling (2026-08-01) they have no
+     * admin UI this pass, are absent from `CompanyFraudSettingsData`, and
+     * have no validation rules in {@see self::update()} (which writes only
+     * `$validated`, so it is already unaffected).
+     *
+     * {@see self::reset()} was the one path that touched them, because
+     * `CompanyFraudSettings::getDefaults()` legitimately carries them for
+     * row CREATION. Resetting them here would silently WIDEN a ceiling a
+     * tenant had tightened by direct DB write — on a screen that shows
+     * nothing about refunds, with no UI trace and no audit of the widening —
+     * and the device would pick the wider values up on its next
+     * fraud-settings refresh.
+     *
+     * @var list<string>
+     */
+    private const REFUND_EXPOSURE_KEYS = [
+        'offline_refund_count_ceiling',
+        'offline_refund_value_ceiling',
+        'online_required_refund_threshold',
     ];
 
     public function __construct(
@@ -155,6 +181,12 @@ class FraudSettingsController extends Controller
     /**
      * Reset fraud detection settings to defaults.
      *
+     * Scoped to the settings this endpoint exposes. The refund-exposure
+     * ceilings are excluded ({@see self::REFUND_EXPOSURE_KEYS}) — a reset
+     * must not widen a ceiling that has no UI to show it. On a company with
+     * no row yet, `updateOrCreate` still seeds them from the model's own
+     * `$attributes`, which resolve to the same `DEFAULT_*` constants.
+     *
      * @group Compliance
      *
      * @subgroup Fraud Detection
@@ -167,7 +199,7 @@ class FraudSettingsController extends Controller
 
         $settings = CompanyFraudSettings::updateOrCreate(
             ['company_id' => $companyId],
-            CompanyFraudSettings::getDefaults()
+            Arr::except(CompanyFraudSettings::getDefaults(), self::REFUND_EXPOSURE_KEYS)
         );
 
         return response()->json([

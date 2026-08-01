@@ -25,6 +25,7 @@ import { RefundDestinationPickerStateful } from '@/components/pos/RefundDestinat
 import {
   useRefundCheckoutStore,
   type RefundCheckoutError,
+  type V4RefundSettledResult,
 } from '@/stores/refundCheckoutStore';
 import { useCurrency } from '@/lib/currency';
 import { bcabs, bcsum } from '@/lib/decimal';
@@ -36,11 +37,20 @@ export interface RefundCheckoutFlowProps {
   terminalId: string | null;
   cashierUserId: string;
   /**
-   * Settled seam — receives the FULL /return response (incl. qr_token and
-   * issued_voucher). Phase 3 wires AVOIR printing here; today the parent
-   * records it, cleans the draft, and shows the success toast.
+   * LEGACY settled seam — receives the FULL /return response (incl.
+   * qr_token and issued_voucher). Never invoked for a v4 settlement (see
+   * `onV4RefundSettled`) — the store itself decides which callback a given
+   * settlement attempt calls, based on which flow actually ran.
    */
   onRefundSettled: (response: ReturnSettlementResponse) => void;
+  /**
+   * v3-refund-chain-integration spec §4.5 (⚖️ orchestrator-ruled settle-
+   * seam extension) — v4 settled seam, receives the device-authored
+   * settlement artifact. Never invoked for a legacy settlement. Optional
+   * so existing callers (and this component's own pre-v4 tests) keep
+   * working unchanged when the v4 flow is not wired up by a caller.
+   */
+  onV4RefundSettled?: (result: V4RefundSettledResult) => void;
 }
 
 /** Translate a typed checkout error (validation wraps the server message). */
@@ -60,6 +70,7 @@ export function RefundCheckoutFlow({
   terminalId,
   cashierUserId,
   onRefundSettled,
+  onV4RefundSettled,
 }: RefundCheckoutFlowProps) {
   const { t } = useTranslation('pos');
   const { format, decimals } = useCurrency();
@@ -99,9 +110,10 @@ export function RefundCheckoutFlow({
         reason,
         terminalId,
         onSettled: onRefundSettled,
+        onV4Settled: onV4RefundSettled,
       });
     },
-    [approvalContext, terminalId, approveAndSubmit, onRefundSettled],
+    [approvalContext, terminalId, approveAndSubmit, onRefundSettled, onV4RefundSettled],
   );
 
   return (

@@ -16,6 +16,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
@@ -366,6 +367,15 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         // and are excluded from both arms — see
         // ReceiptHashService::verifyTerminalChain + the legacy arm filter
         // below.
+        //
+        // **Pre-existing is_voided divergence, noted not fixed (v3-refund-
+        // chain-integration spec §6/§17 "identical repair... incl. the
+        // is_voided note"):** `ReceiptHashService::verifyLegacyArm()`
+        // additionally filters `->where('is_voided', false)`; this method's
+        // legacy query below does NOT. This divergence pre-dates this
+        // feature and is out of this section's scope to close — noted here
+        // explicitly so the per-row algorithm dispatch added below is not
+        // mistaken for silently also aligning the two filters.
         /** @var Terminal|null $terminal */
         $terminal = Terminal::find($terminalId);
 
@@ -422,7 +432,46 @@ final class Nf525DataProvider implements Nf525DataProviderContract
                 );
             }
 
-            $expected = $this->receiptHashService->calculateHash($receipt, $previousHash);
+            // v3-refund-chain-integration spec §6/§17 — identical repair to
+            // ReceiptHashService::verifyLegacyArm(): this "legacy" partition
+            // (fiscal_event_id IS NULL) is not uniformly pipe-format —
+            // ReceiptFinalizationService::finalize() also seals
+            // schema_version=3 receipts here via V3ReceiptHashComputer — so
+            // the per-row sealed_hash_algorithm discriminator picks the
+            // matching re-verification arm instead of assuming pipe-format
+            // unconditionally.
+            //
+            // review round-2 MINOR — preserve the prior missing-terminal
+            // behavior: `Terminal::findOrFail($terminalId)` here would
+            // throw ModelNotFoundException for a genuinely deleted
+            // terminal, crashing this fleet-wide verification sweep for
+            // every OTHER terminal in the same run too. resolveSealedHashAlgorithm()
+            // only actually consults the terminal when the receipt's OWN
+            // `sealed_hash_algorithm` is still null (a pre-migration row);
+            // when it's already set, no terminal lookup is needed at all.
+            // For the genuinely-null-AND-terminal-deleted case, default to
+            // LegacyPipeV1 directly — the same "backfill completion never
+            // recorded" default resolveSealedHashAlgorithm() itself
+            // applies when a real terminal's `sealed_hash_algorithm_backfill_completed_at`
+            // is null.
+            if ($receipt->sealed_hash_algorithm !== null) {
+                $algorithm = SealedHashAlgorithm::from($receipt->sealed_hash_algorithm);
+            } elseif ($terminal !== null) {
+                $algorithm = $this->receiptHashService->resolveSealedHashAlgorithm($receipt, $terminal);
+            } else {
+                $algorithm = SealedHashAlgorithm::LegacyPipeV1;
+            }
+            if ($algorithm === null) {
+                return new Nf525ChainVerificationResult(
+                    isValid: false,
+                    totalRows: $legacyReceipts->count(),
+                    verifiedRows: $verified,
+                    failedAtSequence: (int) $receipt->chain_sequence,
+                    error: 'sealed_hash_algorithm anomaly: NULL after backfill completion for this terminal',
+                );
+            }
+
+            $expected = $this->receiptHashService->computeHashForAlgorithm($receipt, $algorithm, $previousHash);
             if ($expected !== $receipt->fiscal_hash) {
                 return new Nf525ChainVerificationResult(
                     isValid: false,

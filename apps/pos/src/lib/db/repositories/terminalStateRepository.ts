@@ -180,6 +180,129 @@ export async function setShiftNumberSeed(
   );
 }
 
+/**
+ * Read the local `terminal_state.v4_refund_authoring_enabled` capability flag
+ * (v3-refund-chain-integration spec §9.1/§9.2) — the dispatch-seam gate's sole
+ * read (`HomePage.tsx`'s `'start-refund'` interception point). Tolerant of a
+ * pre-v65 schema (no such column) and of a missing row: both read as `false`,
+ * the safe default — refund authoring stays gated off until the device has
+ * both the migration AND a successful pull that wrote a server-confirmed
+ * `true` via {@link setV4RefundAuthoringEnabled}.
+ */
+export async function getV4RefundAuthoringEnabled(
+  db: Database,
+  terminalId: string,
+): Promise<boolean> {
+  try {
+    const row = await queryOne<{ v4_refund_authoring_enabled: number | null }>(
+      db,
+      `SELECT v4_refund_authoring_enabled FROM terminal_state WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return row?.v4_refund_authoring_enabled === 1;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('no such column')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Persist the server-offered v4 refund-authoring capability flag (spec
+ * §9.1). A plain, guard-independent `UPDATE` — mirrors `setShiftNumberSeed`'s
+ * exact template — so the capability flag is never blocked by
+ * `upsertTerminalState`'s `FiscalRegressionError` guard, which can reject the
+ * WHOLE row upsert on a v3+ terminal in steady state (the server's legacy
+ * `current_sequence` counter is effectively frozen for a v3+ terminal, so
+ * this guard can fire on every subsequent pull — bundling a new capability
+ * flag into that same guarded upsert would mean it could never actually
+ * reach the device). No `MAX`/monotone guard needed: unlike the
+ * `shift_number_seed` counter, this is a boolean flag that may legitimately
+ * move in either direction (e.g. a future admin re-disabling it).
+ */
+export async function setV4RefundAuthoringEnabled(
+  db: Database,
+  terminalId: string,
+  enabled: boolean,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET v4_refund_authoring_enabled = $1 WHERE terminal_id = $2`,
+    [enabled ? 1 : 0, terminalId],
+  );
+}
+
+/**
+ * v3-refund-chain-integration §9.3 Phase 2 — wave-2 fix-wave finding 9.
+ *
+ * Records the OUTCOME of the device's acknowledgement POST so it is
+ * inspectable long after the console line is gone.
+ *
+ *  - `error === null` (success): stamps the local
+ *    `v4_refund_authoring_acknowledged_at` and clears any previous error.
+ *  - otherwise: stores the failure message and leaves the acknowledged
+ *    timestamp alone — the terminal is routing to v4 device-side while the
+ *    legacy `/return` path is still open server-side, which is exactly the
+ *    state that must not be invisible.
+ *
+ * Guard-independent (a plain UPDATE), for the same reason
+ * {@link setV4RefundAuthoringEnabled} is: the main upsert's fiscal
+ * regression guard must never be able to keep this from reaching the row.
+ */
+export async function setV4RefundAuthoringAckFailure(
+  db: Database,
+  terminalId: string,
+  error: string | null,
+): Promise<void> {
+  if (error === null) {
+    await execute(
+      db,
+      `UPDATE terminal_state
+          SET v4_refund_authoring_ack_error = NULL,
+              v4_refund_authoring_acknowledged_at = COALESCE(v4_refund_authoring_acknowledged_at, datetime('now'))
+        WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return;
+  }
+
+  await execute(
+    db,
+    `UPDATE terminal_state SET v4_refund_authoring_ack_error = $1 WHERE terminal_id = $2`,
+    [error, terminalId],
+  );
+}
+
+/**
+ * The device's own view of the §9.3 Phase-2 handshake, for diagnostics and
+ * any future operator-visible surface. Fail-closed on a missing row or a
+ * pre-v66 schema: "unknown" reads as "not acknowledged".
+ */
+export async function getV4RefundAuthoringAckState(
+  db: Database,
+  terminalId: string,
+): Promise<{ acknowledgedAt: string | null; lastError: string | null }> {
+  try {
+    const row = await queryOne<{
+      v4_refund_authoring_acknowledged_at: string | null;
+      v4_refund_authoring_ack_error: string | null;
+    }>(
+      db,
+      `SELECT v4_refund_authoring_acknowledged_at, v4_refund_authoring_ack_error
+         FROM terminal_state WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return {
+      acknowledgedAt: row?.v4_refund_authoring_acknowledged_at ?? null,
+      lastError: row?.v4_refund_authoring_ack_error ?? null,
+    };
+  } catch {
+    return { acknowledgedAt: null, lastError: null };
+  }
+}
+
 export async function setManagerPinThrottle(
   db: Database,
   terminalId: string,

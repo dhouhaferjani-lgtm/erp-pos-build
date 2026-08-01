@@ -55,6 +55,14 @@ enum SystemAccountPurpose: string
     // Sales Returns (for credit notes)
     case SalesReturn = 'sales_return';                            // 709
 
+    // v3-refund-chain-integration spec §5.3 — genuine-loss write-off for an
+    // `invalid_refund`-class compensation (quantity cap exceeded, approval
+    // evidence unresolved). Distinct from SalesReturn: SalesReturn is the
+    // reversal shape for a VALID refund that merely failed to book on time
+    // (`valid_unbooked`); RefundWriteOff is booked for a refund that should
+    // never have been honored as real.
+    case RefundWriteOff = 'refund_write_off';
+
     // Extensibility: FX (Phase 2)
     case RealizedFxGain = 'realized_fx_gain';                     // 766
     case RealizedFxLoss = 'realized_fx_loss';                     // 666
@@ -107,6 +115,7 @@ enum SystemAccountPurpose: string
             self::PurchasePriceVarianceExpense => 'Purchase Price Variance Expense',
             self::PurchasePriceVarianceIncome => 'Purchase Price Variance Income',
             self::SalesReturn => 'Sales Return',
+            self::RefundWriteOff => 'Refund Write-Off',
             self::RealizedFxGain => 'Realized FX Gain',
             self::RealizedFxLoss => 'Realized FX Loss',
             self::SalesDiscount => 'Sales Discount',
@@ -165,7 +174,7 @@ enum SystemAccountPurpose: string
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
-            self::PaymentToleranceExpense, self::PurchasePriceVarianceExpense, self::SalesReturn, self::RealizedFxLoss,
+            self::PaymentToleranceExpense, self::PurchasePriceVarianceExpense, self::SalesReturn, self::RefundWriteOff, self::RealizedFxLoss,
             self::SalesDiscount, self::SalesReturnsClearing,
             self::MarketingGoodwillExpense, self::RoundingLossExpense,
             self::PurchaseStampDuty => AccountType::Expense,
