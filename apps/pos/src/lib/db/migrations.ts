@@ -2005,4 +2005,112 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    // v65: v3-refund-chain-integration spec §4.4/§7.2/§9.1 -- one device
+    // migration version bundling all three schema areas the feature needs
+    // (spec §17: "single version, both changes").
+    //
+    // (1) `refund_intents` (§4.4, kept from the design's Revision 3, with
+    //     Revision 4's fold-item-7 correction): the durable pre-signing
+    //     intent/approval/payout-reconciliation state machine --
+    //     `drafted -> approval_authored -> refund_event_appended -> synced`
+    //     (terminal for local purposes, §4.6), or `-> dead_lettered_local`
+    //     (append itself permanently failed, no event exists) or
+    //     `-> abandoned`. The active-intent partial unique index is scoped
+    //     to ONLY the genuinely in-flight window
+    //     (`state IN ('drafted','approval_authored','refund_event_appended')`)
+    //     -- Revision 4's fix: excluding `synced` too (Revision 3's version
+    //     excluded only `dead_lettered_local`/`abandoned`, which left a
+    //     successfully-synced partial refund permanently "active",
+    //     blocking every subsequent legitimate partial refund of a
+    //     different, valid quantity against the same original+line
+    //     selection). `shift_id`/`refund_total`/`cash_impact` (Revision
+    //     3's Z-math columns) are deliberately NOT carried forward --
+    //     Revision 4 §7 replaces refund_intents as the Z/expected-cash
+    //     source of truth with the `offline_receipts.receipt_kind='refund'`
+    //     row instead; this table's job narrows to durable intent state
+    //     only.
+    //
+    // (2) `offline_receipts.receipt_kind` (§7.2): every existing row
+    //     implicitly backfills to `'sale'` (the default) -- a
+    //     zero-behavior-change migration for every row written before
+    //     this feature.
+    //
+    // (3) `terminal_state.v4_refund_authoring_enabled` /
+    //     `v4_refund_authoring_acknowledged_at` (§9.1/§9.3): the two-phase
+    //     server-offers / device-acknowledges capability flag. Written by a
+    //     dedicated, guard-independent setter (`setV4RefundAuthoringEnabled()`,
+    //     a later item) -- NOT the regression-guarded `upsertTerminalState`
+    //     path -- so this column's schema lands now even though its own
+    //     setter/reader are wired up separately.
+    version: 65,
+    name: 'refund_intents_and_v4_refund_capability',
+    sql: '',
+    async run(db) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS refund_intents (
+          id TEXT PRIMARY KEY,
+          terminal_id TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          original_local_receipt_id TEXT NOT NULL,
+          original_fiscal_event_id TEXT NOT NULL,
+          line_snapshot_json TEXT NOT NULL,
+          line_snapshot_fingerprint TEXT NOT NULL,
+          approval_source_event_id TEXT NOT NULL,
+          override_source_event_id TEXT NOT NULL,
+          refund_fiscal_event_id TEXT,
+          state TEXT NOT NULL DEFAULT 'drafted'
+            CHECK (state IN ('drafted', 'approval_authored', 'refund_event_appended', 'synced', 'dead_lettered_local', 'abandoned')),
+          payout_confirmed_at TEXT,
+          payout_disputed_at TEXT,
+          printed_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS refund_intents_line_snapshot_fingerprint_idx
+          ON refund_intents(line_snapshot_fingerprint)
+      `);
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS refund_intents_terminal_idx
+          ON refund_intents(terminal_id)
+      `);
+      // Active-intent uniqueness (spec §4.4, Revision 4 fold item 7): a
+      // cashier retry, double-click, or reopened cart for the SAME
+      // original+line selection reuses the existing active row rather
+      // than creating a second one; a genuinely different line selection
+      // -- or the SAME selection once its prior intent has reached a
+      // terminal state (synced/dead_lettered_local/abandoned) -- is free
+      // to proceed independently.
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS refund_intents_active_unique
+          ON refund_intents (original_local_receipt_id, line_snapshot_fingerprint)
+          WHERE state IN ('drafted', 'approval_authored', 'refund_event_appended')
+      `);
+
+      try {
+        await db.execute(
+          "ALTER TABLE offline_receipts ADD COLUMN receipt_kind TEXT NOT NULL DEFAULT 'sale' CHECK (receipt_kind IN ('sale', 'refund'))",
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+
+      try {
+        await db.execute(
+          'ALTER TABLE terminal_state ADD COLUMN v4_refund_authoring_enabled INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+      try {
+        await db.execute(
+          'ALTER TABLE terminal_state ADD COLUMN v4_refund_authoring_acknowledged_at TEXT',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    },
+  },
 ];
