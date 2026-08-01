@@ -224,6 +224,17 @@ final readonly class SaleReceiptPayload
             'receipt_uuid' => $this->receiptUuid,
             'refund_destination' => $this->refundDestination,
             'seller' => $this->seller,
+            // review round-2 MINOR — round-trip note: this DTO has NO
+            // `$settlementAllocation` property (fromArray() never reads
+            // the incoming key either) because §3.4 requires the field to
+            // ALWAYS be null at this launch — FiscalPayloadConstraintValidator::
+            // validateRefundDestinationAndSettlementAllocation() rejects any
+            // non-null value before a payload is ever signed-and-stored, so
+            // there is no legitimate non-null value this DTO could ever be
+            // asked to round-trip. This is a deliberate launch-scope
+            // simplification, not an oversight — a future revision that
+            // lifts the always-null constraint must add a real property
+            // here (and to fromArray()) at the same time.
             'settlement_allocation' => null,
             'shift_id' => $this->shiftId,
             'subtotal' => $this->subtotal,

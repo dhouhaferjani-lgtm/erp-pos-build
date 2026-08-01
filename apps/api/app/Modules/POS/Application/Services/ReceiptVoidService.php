@@ -73,9 +73,22 @@ final class ReceiptVoidService
         // v3-refund-chain-integration spec §9.1/§9.3 — retires this legacy
         // authoring path for any terminal that has acknowledged v4 refund
         // authoring.
-        /** @var Terminal $terminal */
-        $terminal = Terminal::findOrFail($receipt->terminal_id);
-        $this->legacyCorrectionGuard->assertLegacyCorrectionAllowed($terminal);
+        //
+        // review round-2 MINOR — `$receipt->terminal_id` is the ORIGINAL
+        // receipt's historical terminal, which may since have been
+        // deleted (decommissioned hardware, a legitimately old receipt).
+        // That is a DIFFERENT case from an operationally-active terminal
+        // lookup (which correctly stays a hard `findOrFail()` elsewhere in
+        // this codebase, e.g. ReceiptReturnService's own currently-active
+        // processing terminal). Preserve the prior (pre-guard) behavior
+        // for a deleted terminal: there is no terminal row to check
+        // acknowledgement against, so the guard is a no-op rather than an
+        // uncaught ModelNotFoundException blocking a legitimate void of an
+        // old receipt.
+        $terminal = Terminal::find($receipt->terminal_id);
+        if ($terminal !== null) {
+            $this->legacyCorrectionGuard->assertLegacyCorrectionAllowed($terminal);
+        }
 
         return DB::transaction(function () use ($receipt, $voidedBy, $reason, $authorizedByUserId): Receipt {
             // 1. Mark as voided.

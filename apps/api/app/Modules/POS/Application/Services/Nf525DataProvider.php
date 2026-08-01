@@ -16,6 +16,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
@@ -439,7 +440,27 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             // the per-row sealed_hash_algorithm discriminator picks the
             // matching re-verification arm instead of assuming pipe-format
             // unconditionally.
-            $algorithm = $this->receiptHashService->resolveSealedHashAlgorithm($receipt, $terminal ?? Terminal::findOrFail($terminalId));
+            //
+            // review round-2 MINOR — preserve the prior missing-terminal
+            // behavior: `Terminal::findOrFail($terminalId)` here would
+            // throw ModelNotFoundException for a genuinely deleted
+            // terminal, crashing this fleet-wide verification sweep for
+            // every OTHER terminal in the same run too. resolveSealedHashAlgorithm()
+            // only actually consults the terminal when the receipt's OWN
+            // `sealed_hash_algorithm` is still null (a pre-migration row);
+            // when it's already set, no terminal lookup is needed at all.
+            // For the genuinely-null-AND-terminal-deleted case, default to
+            // LegacyPipeV1 directly — the same "backfill completion never
+            // recorded" default resolveSealedHashAlgorithm() itself
+            // applies when a real terminal's `sealed_hash_algorithm_backfill_completed_at`
+            // is null.
+            if ($receipt->sealed_hash_algorithm !== null) {
+                $algorithm = SealedHashAlgorithm::from($receipt->sealed_hash_algorithm);
+            } elseif ($terminal !== null) {
+                $algorithm = $this->receiptHashService->resolveSealedHashAlgorithm($receipt, $terminal);
+            } else {
+                $algorithm = SealedHashAlgorithm::LegacyPipeV1;
+            }
             if ($algorithm === null) {
                 return new Nf525ChainVerificationResult(
                     isValid: false,

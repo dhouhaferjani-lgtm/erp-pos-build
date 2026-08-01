@@ -1741,9 +1741,24 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     // 2026-07-31-v3-refund-chain-integration.md §3, §17
     // =================================================================
 
-    public function test_f16_v4_refund_key_set_is_exactly_32_keys(): void
+    /**
+     * review round-2 MINOR — renamed from the previous (miscounted)
+     * "...is_exactly_32_keys" name: SALE_RECEIPT_PAYLOAD_KEYS_V4 actually
+     * has 33 entries (the v3 30-key contract plus the three v4-only keys
+     * `original_line_references`/`refund_destination`/`settlement_allocation`
+     * — `shift_id` was already present pre-v4, bringing the v3 count to
+     * 30, not 29). The old body also never actually asserted a key COUNT
+     * or the exact key SET at all — only that validation passed — so the
+     * name's claim was untested either way; both are asserted directly
+     * now.
+     */
+    public function test_f16_v4_refund_key_set_is_exactly_33_keys(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+
+        self::assertCount(33, FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V4);
+        self::assertCount(33, $payload);
+        self::assertEqualsCanonicalizing(FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V4, array_keys($payload));
 
         self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4));
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 4);
