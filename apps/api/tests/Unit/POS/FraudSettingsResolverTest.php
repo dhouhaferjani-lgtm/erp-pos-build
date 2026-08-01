@@ -34,6 +34,55 @@ final class FraudSettingsResolverTest extends TestCase
         $this->assertSame('none', $dto->cashVarianceEmailSeverity);
     }
 
+    /**
+     * Lane C M2/M3 — the refund-exposure policies ride this same DTO to the
+     * device. A company with no row must still receive the SEEDED defaults,
+     * because the device treats an absent setting as "use the default", not
+     * as "refuse every refund".
+     */
+    public function test_returns_seeded_refund_exposure_defaults_when_no_settings_row_exists(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        $dto = app(FraudSettingsResolver::class)->forCompany($company->id);
+
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+            $dto->offlineRefundCountCeiling
+        );
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_VALUE_CEILING,
+            $dto->offlineRefundValueCeiling
+        );
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
+            $dto->onlineRequiredRefundThreshold
+        );
+    }
+
+    /** Lane C M2/M3 — a tenant that tightened its own ceilings wins over the defaults. */
+    public function test_returns_persisted_refund_exposure_policies(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        CompanyFraudSettings::updateOrCreate(
+            ['company_id' => $company->id],
+            [
+                'offline_refund_count_ceiling' => 2,
+                'offline_refund_value_ceiling' => '120.0000',
+                'online_required_refund_threshold' => '40.0000',
+            ]
+        );
+
+        $dto = app(FraudSettingsResolver::class)->forCompany($company->id);
+
+        $this->assertSame(2, $dto->offlineRefundCountCeiling);
+        $this->assertSame('120.0000', $dto->offlineRefundValueCeiling);
+        $this->assertSame('40.0000', $dto->onlineRequiredRefundThreshold);
+    }
+
     public function test_returns_persisted_values_when_settings_row_exists(): void
     {
         $tenant = Tenant::factory()->create();

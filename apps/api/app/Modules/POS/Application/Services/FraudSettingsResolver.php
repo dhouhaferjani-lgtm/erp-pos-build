@@ -30,6 +30,9 @@ final class FraudSettingsResolver
                 requireBlindCashCount: (bool) $defaults['require_blind_cash_count'],
                 requireManagerPinAboveHard: (bool) $defaults['require_manager_pin_above_hard'],
                 cashVarianceEmailSeverity: (string) $defaults['cash_variance_email_severity'],
+                offlineRefundCountCeiling: (int) $defaults['offline_refund_count_ceiling'],
+                offlineRefundValueCeiling: (string) $defaults['offline_refund_value_ceiling'],
+                onlineRequiredRefundThreshold: (string) $defaults['online_required_refund_threshold'],
             );
         }
 
@@ -42,6 +45,17 @@ final class FraudSettingsResolver
             requireBlindCashCount: (bool) $row->require_blind_cash_count,
             requireManagerPinAboveHard: (bool) $row->require_manager_pin_above_hard,
             cashVarianceEmailSeverity: (string) $row->cash_variance_email_severity,
+            // Lane C M2/M3 — a row written before the refund-exposure
+            // migration ran reads back null; fall back to the SAME seeded
+            // defaults rather than emitting 0/'' (which the device would
+            // read as "no refunds allowed at all"). Precedence is
+            // persisted tenant value > seeded default.
+            offlineRefundCountCeiling: (int) ($row->offline_refund_count_ceiling
+                ?? CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_COUNT_CEILING),
+            offlineRefundValueCeiling: (string) ($row->offline_refund_value_ceiling
+                ?? CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_VALUE_CEILING),
+            onlineRequiredRefundThreshold: (string) ($row->online_required_refund_threshold
+                ?? CompanyFraudSettings::DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD),
         );
     }
 
