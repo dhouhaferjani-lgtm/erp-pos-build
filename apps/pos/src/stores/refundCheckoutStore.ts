@@ -133,6 +133,7 @@ import {
   DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
 } from '@/lib/refundFlow/refundExposureDefaults';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { ServerVerifiedPinRequiredError } from '@/lib/operatorApproval/scopedManagerPin';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcabs, bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 
@@ -463,6 +464,20 @@ interface RefundCheckoutState {
    *  via the normal fiscal-event queue, tracked by `refund_intents.state`,
    *  not this flag. */
   approvalSynced: boolean;
+  /**
+   * Lane C M3 (gate finding I-1) — v4-only: this refund's payout exceeds the
+   * tenant's `online_required_refund_threshold`, so the manager PIN MUST be
+   * server-verified and the device-local PIN cache may not approve it.
+   *
+   * Decided ONCE at `begin()` from the AMOUNT alone — deliberately NOT from
+   * the connectivity reading. `evaluateLargeRefundOnlineRequirement()` only
+   * answers "may this be STARTED offline"; the PIN is verified much later, so
+   * a link drop in between would otherwise land in
+   * `verifyScopedManagerPin()`'s genuine-offline branch and approve the payout
+   * against the local cache. Carrying the requirement on the flow makes the
+   * later check independent of when the link dropped.
+   */
+  requireServerVerifiedPin: boolean;
   /** Last settled response (Phase-3 print seam reads this until the next
    *  begin/reset). LEGACY path only — always null on a v4 settlement. */
   settledResponse: ReturnSettlementResponse | null;
@@ -540,6 +555,7 @@ const initialState: RefundCheckoutState = {
   refundRequestId: null,
   approval: null,
   approvalSynced: false,
+  requireServerVerifiedPin: false,
   settledResponse: null,
   v4SettledResult: null,
   settledZAccountingRecorded: null,
@@ -796,6 +812,7 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
       refundRequestId: null,
       approval: null,
       approvalSynced: false,
+      requireServerVerifiedPin: false,
       refundIntent: null,
       v4Original: null,
     });
@@ -1093,7 +1110,29 @@ async function beginV4(
   //    would strand a signed approval pair exactly the way finding 10 was
   //    fixed to prevent. The policy already ran on the pass that authored
   //    them; a resume is not a new exposure decision.
+  let requireServerVerifiedPin = false;
   if (recoveredApproval === null) {
+    // ── Gate finding I-3 — an EMPTY company id is not the ruled "absent row"
+    //    rollout exception. The device may well HOLD a cached policy; it
+    //    simply cannot address it, and `getCompanyFraudSettings(db, '')`
+    //    would match no row and silently resolve to the MORE PERMISSIVE
+    //    seeded constants (while `currencyForBound()` additionally falls back
+    //    to EUR scale 2 instead of TND's 3, so every comparison would run at
+    //    the wrong scale). Refuse, mirroring `resumeReusedIntent()`'s own
+    //    posture for the same condition.
+    const exposureCompanyId = companyIdForResume();
+    if (exposureCompanyId === '') {
+      console.error(
+        '[refundCheckout] refund-exposure policy cannot be addressed: no active company — refusing (fail closed)',
+      );
+      set({
+        step: 'idle',
+        error: { key: 'refundFlow.checkout.errorInternal', serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      return;
+    }
+
     const exposureScale = getCurrencyDecimals(currencyForBound());
     const thisRefundTotal = sumRefundLineTotals(lineSnapshot, exposureScale);
 
@@ -1101,9 +1140,24 @@ async function beginV4(
     try {
       const policy = await readRefundExposurePolicy(
         input.db,
-        companyIdForResume(),
+        exposureCompanyId,
         exposureScale,
       );
+
+      // ── Gate finding I-1 — M3 is TWO obligations, not one.
+      //
+      //    (a) "may this refund be STARTED offline" — the refusal below,
+      //        evaluated against the connectivity reading right now; and
+      //    (b) "may this refund's manager PIN be approved from the LOCAL
+      //        cache" — decided from the AMOUNT alone and carried on the
+      //        flow, because the PIN is verified much later and the link can
+      //        drop in between. Without (b), M3 was a TOCTOU check: pass it
+      //        while online, drop the link during PIN entry, and
+      //        `verifyScopedManagerPin()`'s genuine-offline branch approved
+      //        the above-threshold payout against the device-local PIN cache
+      //        — the exact downgrade M3 exists to prevent.
+      requireServerVerifiedPin =
+        bccomp(thisRefundTotal, policy.onlineRequiredThreshold) > 0;
 
       // M3 first — it is a pure comparison with no DB work, and an offline
       // over-threshold refund is refused regardless of shift velocity.
@@ -1164,6 +1218,10 @@ async function beginV4(
     destination: 'cash',
     refundIntent: intent,
     v4Original: original,
+    // Gate finding I-1 — travels with the flow into `approveAndSubmitV4()`.
+    // False on the resumed-approval path, where no PIN is collected at all
+    // (`approval !== null` short-circuits the authoring call entirely).
+    requireServerVerifiedPin,
     // Finding 11 — a recovered approval means `approveAndSubmitV4()`
     // resumes the APPEND only: no second manager PIN for a refund whose
     // approval is already signed and on the chain.
@@ -1712,12 +1770,25 @@ async function approveAndSubmitV4(
         lineSnapshot: JSON.parse(refundIntent.line_snapshot_json) as unknown,
         approvalSourceEventId: refundIntent.approval_source_event_id,
         overrideSourceEventId: refundIntent.override_source_event_id,
+        // Gate finding I-1 — an above-threshold payout may NOT be approved
+        // from the device-local PIN cache, whatever the link is doing by the
+        // time the PIN is entered.
+        requireServerVerifiedPin: state.requireServerVerifiedPin,
       });
-    } catch {
+    } catch (approvalError) {
       if (get().epoch !== epoch) return;
+      // Gate finding I-1 — name the real cause. This refusal is not a PIN
+      // failure: the PIN may well be correct, but the server that must
+      // confirm it is unreachable. Nothing was signed (the check runs before
+      // `authorPosOverride()`), the drafted intent survives, and reconnecting
+      // and retrying reuses it rather than minting a second one.
+      const key: RefundCheckoutErrorKey =
+        approvalError instanceof ServerVerifiedPinRequiredError
+          ? 'refundFlow.largeRefundRequiresOnline'
+          : 'refundFlow.checkout.errorApproval';
       set({
         step: 'approval',
-        error: { key: 'refundFlow.checkout.errorApproval', serverMessage: null },
+        error: { key, serverMessage: null },
       });
       return;
     }

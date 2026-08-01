@@ -59,6 +59,24 @@ function isGenuineOfflineFailure(error: unknown): boolean {
 }
 
 /**
+ * Lane C M3 (gate finding I-1) — the caller demanded a SERVER-verified PIN
+ * and the server could not be reached, so there is no permissible answer.
+ *
+ * Distinct from the generic `MANAGER_OVERRIDE_SERVICE_UNAVAILABLE` 503 so the
+ * caller can render copy that names the real cause ("reconnect and try
+ * again") instead of a generic approval failure. Thrown BEFORE any fiscal
+ * event is authored — see the docblock on `requireServerVerifiedPin`.
+ */
+export class ServerVerifiedPinRequiredError extends Error {
+  constructor(public readonly approvalScope: string) {
+    super(
+      `Manager approval refused: this ${approvalScope} requires a SERVER-verified manager PIN and the server is unreachable; the device-local PIN cache may not be used.`,
+    );
+    this.name = 'ServerVerifiedPinRequiredError';
+  }
+}
+
+/**
  * A reachable server that could not authorize: a 5xx, or a 408 (Request
  * Timeout) / 429 (Too Many Requests). These are RETRYABLE — the server is up
  * but transiently unable to decide. NOT an authorization rejection.
@@ -84,6 +102,28 @@ export interface ScopedManagerPinApprovalInput {
    * holding the scope may match.
    */
   targetOperatorId?: string;
+  /**
+   * Lane C M3 (gate finding I-1) — when true, the device-local PIN fallback
+   * is FORBIDDEN: only a server-confirmed approval is acceptable, and a
+   * genuinely-unreachable server throws {@link ServerVerifiedPinRequiredError}
+   * instead of returning a local approval.
+   *
+   * Exists because M3 is otherwise a TOCTOU check. The refund store decides
+   * "this payout is too large to approve offline" at `begin()`, but the PIN
+   * is collected and verified much later; a link drop in between used to land
+   * in the genuine-offline branch below and approve the payout against the
+   * local PIN cache — exactly the downgrade M3 exists to prevent. The
+   * requirement therefore travels WITH the request, derived from the amount
+   * alone, never re-derived from a connectivity reading that may have changed.
+   *
+   * Enforced HERE, before `authorPosOverride()` runs in the caller, so a
+   * refusal leaves nothing signed. Re-asserting after authoring would strand
+   * an approval+override pair on the chain (the finding-10 hazard).
+   *
+   * Omitted/false → behaviour is byte-identical to before, for every other
+   * caller and for at-or-below-threshold refunds.
+   */
+  requireServerVerifiedPin?: boolean;
 }
 
 export interface ScopedManagerPinApproval {
@@ -251,6 +291,30 @@ export async function verifyScopedManagerPin(
       // a parser error, a wrapped module error, or a broken instanceof check
       // must NEVER silently downgrade to PIN-only approval. NO pin/hash.
       if (isGenuineOfflineFailure(error)) {
+        // Lane C M3 (gate finding I-1) — the caller demanded a SERVER-verified
+        // PIN. Genuine-offline is exactly the condition that would otherwise
+        // downgrade to the local PIN cache, so it is refused here rather than
+        // honoured. Audited as a denial (the attempt must stay visible to
+        // fraud) and thrown BEFORE the caller authors anything.
+        if (input.requireServerVerifiedPin === true) {
+          void recordAuditEvent({
+            type: 'pos.manager_override_denied',
+            aggregateType: 'Override',
+            aggregateId: input.context.terminalId,
+            tenantId: input.context.tenantId,
+            companyId: input.context.companyId,
+            operatorId: matched.id,
+            payload: {
+              scope: toTaxonomyScope(input.approvalScope),
+              requested_amount: null,
+              cart_total: null,
+              reason: input.reason,
+              denied_kind: 'server_verification_required',
+            },
+          }).catch(() => {});
+          throw new ServerVerifiedPinRequiredError(input.approvalScope);
+        }
+
         // FU-1b — bound stale offline authority. The offline fallback bypasses
         // the server's revocation/caps checks; refuse it if the matched
         // operator's cached approval metadata is older than the TTL. FU-1 prunes

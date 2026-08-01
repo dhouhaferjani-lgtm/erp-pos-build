@@ -6,6 +6,7 @@ namespace Tests\Feature\Compliance;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -167,5 +168,71 @@ final class FraudSettingsControllerContractTest extends TestCase
             $this->assertArrayHasKey($key, $data, "missing key {$key} in /fraud-settings reset payload");
         }
         $this->assertTrue($data['is_configured']);
+    }
+
+    /**
+     * Lane C M2/M3 gate finding I-2 — `reset()` restores the CASH-CONTROL
+     * defaults this endpoint's UI is about. The three refund-exposure
+     * ceilings have no admin UI yet (owner ruling: DB-only until post-launch),
+     * so a "reset fraud settings" click must not silently WIDEN a ceiling
+     * nobody can see, on a screen that says nothing about refunds.
+     */
+    public function test_reset_preserves_the_refund_exposure_policies(): void
+    {
+        CompanyFraudSettings::updateOrCreate(
+            ['company_id' => $this->company->id],
+            [
+                'offline_refund_count_ceiling' => 2,
+                'offline_refund_value_ceiling' => '120.0000',
+                'online_required_refund_threshold' => '40.0000',
+            ]
+        );
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/fraud-settings/reset')
+            ->assertOk();
+
+        $settings = CompanyFraudSettings::query()
+            ->where('company_id', $this->company->id)
+            ->firstOrFail();
+
+        $this->assertSame(2, (int) $settings->offline_refund_count_ceiling);
+        $this->assertSame('120.0000', (string) $settings->offline_refund_value_ceiling);
+        $this->assertSame('40.0000', (string) $settings->online_required_refund_threshold);
+        // …while the cash-control defaults it IS about were genuinely reset.
+        $this->assertSame('20.0000', (string) $settings->cash_variance_over_hard);
+    }
+
+    /**
+     * A company with NO row still gets sane refund-exposure values on reset —
+     * excluding them from the payload must not create a row with 0/NULL
+     * ceilings (the model's own $attributes supply the seeded defaults).
+     */
+    public function test_reset_on_a_company_with_no_row_still_seeds_the_refund_exposure_defaults(): void
+    {
+        CompanyFraudSettings::query()->where('company_id', $this->company->id)->delete();
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/fraud-settings/reset')
+            ->assertOk();
+
+        $settings = CompanyFraudSettings::query()
+            ->where('company_id', $this->company->id)
+            ->firstOrFail();
+
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+            (int) $settings->offline_refund_count_ceiling
+        );
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_OFFLINE_REFUND_VALUE_CEILING,
+            (string) $settings->offline_refund_value_ceiling
+        );
+        $this->assertSame(
+            CompanyFraudSettings::DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
+            (string) $settings->online_required_refund_threshold
+        );
     }
 }

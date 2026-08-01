@@ -3,7 +3,7 @@ import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators, type CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
 import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
-import { verifyScopedManagerPin } from '../scopedManagerPin';
+import { ServerVerifiedPinRequiredError, verifyScopedManagerPin } from '../scopedManagerPin';
 
 vi.mock('bcryptjs', () => ({
   default: {
@@ -210,6 +210,64 @@ describe('verifyScopedManagerPin', () => {
       roles: ['manager'],
     });
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Lane C M3 gate finding I-1 — `requireServerVerifiedPin` closes the TOCTOU
+   * hole between the begin()-time connectivity check and the much-later PIN
+   * verification. With the flag set, NO genuine-offline condition may downgrade
+   * to the device-local PIN cache: an above-threshold cash payout must be
+   * authorized by the server or not at all.
+   */
+  describe('requireServerVerifiedPin (Lane C M3 / I-1)', () => {
+    it('refuses the local-PIN fallback on a transport failure when the flag is set', async () => {
+      mockConnectivityOnline(false);
+      vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+      await expect(
+        verifyScopedManagerPin({ ...input, requireServerVerifiedPin: true }),
+      ).rejects.toBeInstanceOf(ServerVerifiedPinRequiredError);
+      // No retry — the server is genuinely unreachable, there is simply no
+      // permissible answer.
+      expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses the local-PIN fallback on a read timeout when the flag is set', async () => {
+      vi.mocked(apiPost).mockRejectedValue(
+        new FetchTimeoutError('/pos/verify-manager-pin', 10_000, 'POST'),
+      );
+
+      await expect(
+        verifyScopedManagerPin({ ...input, requireServerVerifiedPin: true }),
+      ).rejects.toBeInstanceOf(ServerVerifiedPinRequiredError);
+    });
+
+    it('COMPANION: without the flag the offline fallback still works (≤ threshold refunds, and every non-refund caller)', async () => {
+      mockConnectivityOnline(false);
+      vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+      await expect(verifyScopedManagerPin(input)).resolves.toEqual({
+        id: 'supervisor-1',
+        name: 'Supervisor',
+        roles: ['manager'],
+      });
+    });
+
+    it('a server-CONFIRMED approval is unaffected by the flag', async () => {
+      vi.mocked(apiPost).mockResolvedValue({
+        valid: true,
+        user_id: 'supervisor-1',
+        user_name: 'Supervisor Online',
+      });
+
+      await expect(
+        verifyScopedManagerPin({ ...input, requireServerVerifiedPin: true }),
+      ).resolves.toEqual({
+        id: 'supervisor-1',
+        name: 'Supervisor Online',
+        roles: ['manager'],
+      });
+    });
   });
 
   it('FAILS CLOSED on an unexpected error while online (regression for MAJOR security finding)', async () => {

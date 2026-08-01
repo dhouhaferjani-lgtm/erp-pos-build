@@ -122,6 +122,7 @@ import {
   resolveOriginalFiscalEventLocally,
 } from '@/lib/db/repositories/fiscalEventRepository';
 import { getCompanyFraudSettings } from '@/lib/db/repositories/companyFraudSettingsCacheRepository';
+import { ServerVerifiedPinRequiredError } from '@/lib/operatorApproval/scopedManagerPin';
 import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 import {
   createOrReuseActiveRefundIntent,
@@ -1224,6 +1225,108 @@ describe('refundCheckoutStore — v4 flow', () => {
         expect(state.step).toBe('idle');
         expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
         expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Gate finding I-3 — an empty companyId means the device HAS a cached
+       * policy but cannot address it. That is not the ruled "absent row"
+       * rollout exception; resolving it to the more permissive seeded
+       * constants (and to EUR scale 2 instead of TND scale 3) is a silent
+       * downgrade. Mirrors resumeReusedIntent()'s own posture.
+       */
+      it('an EMPTY companyId fails closed instead of degrading to the fallback constants', async () => {
+        useAuthStore.setState({ companyId: null } as never);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(getCompanyFraudSettings).not.toHaveBeenCalled();
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Gate finding I-1 — M3 was a TOCTOU check: it read `isOnline` at
+       * begin() but the PIN is verified much later, where
+       * `verifyScopedManagerPin` permits the device-local fallback on any
+       * genuine-offline failure. The decision must therefore travel with the
+       * refund as a REQUIREMENT, computed from the amount alone.
+       */
+      describe('I-1 — requireServerVerifiedPin threading', () => {
+        it('sets the flag for an above-threshold refund even when begin() sees the device ONLINE', async () => {
+          mockConnectivity.mockReturnValue({ isOnline: true });
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+          const state = useRefundCheckoutStore.getState();
+          expect(state.step).toBe('confirm');
+          expect(state.requireServerVerifiedPin).toBe(true);
+        });
+
+        it('leaves the flag false for a refund at or below the threshold', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '20.0000' }),
+          );
+
+          await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+          expect(useRefundCheckoutStore.getState().requireServerVerifiedPin).toBe(false);
+        });
+
+        it('threads the flag into authorRefundReturnApprovalV3 at PIN time', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          await v4WalkToApproval();
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          expect(authorRefundReturnApprovalV3).toHaveBeenCalledWith(
+            expect.objectContaining({ requireServerVerifiedPin: true }),
+          );
+        });
+
+        it('the link dropping DURING PIN entry refuses with the M3 copy — nothing signed, intent still recoverable', async () => {
+          vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+            fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+          );
+
+          // begin() while ONLINE: M3's begin()-time check passes.
+          mockConnectivity.mockReturnValue({ isOnline: true });
+          await v4WalkToApproval();
+
+          // …the link drops before the manager PIN is verified. The server
+          // verification the flag demands is now impossible.
+          mockConnectivity.mockReturnValue({ isOnline: false });
+          vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(
+            new ServerVerifiedPinRequiredError('void_or_return_override'),
+          );
+
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          const state = useRefundCheckoutStore.getState();
+          expect(state.error?.key).toBe('refundFlow.largeRefundRequiresOnline');
+          // Nothing signed, nothing settled — and the refund is resumable:
+          // the drafted intent is still in state, so reconnecting and
+          // retrying reuses it rather than minting a second one.
+          expect(createRefundReceipt).not.toHaveBeenCalled();
+          expect(state.approval).toBeNull();
+          expect(state.refundIntent).not.toBeNull();
+          expect(state.step).toBe('approval');
+        });
+
+        it('a NON-M3 approval failure still surfaces the generic approval error', async () => {
+          vi.mocked(authorRefundReturnApprovalV3).mockRejectedValue(new Error('manager_pin_scope_mismatch'));
+
+          await v4WalkToApproval();
+          await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+          expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorApproval');
+        });
       });
 
       it('a RESUMED intent whose approval is already signed is NOT re-gated (no orphan approval)', async () => {

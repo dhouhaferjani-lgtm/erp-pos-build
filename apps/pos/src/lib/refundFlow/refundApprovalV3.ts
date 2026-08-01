@@ -44,6 +44,18 @@ export interface AuthorRefundReturnApprovalV3Input {
   approvalSourceEventId: string;
   overrideSourceEventId: string;
   eventTimeDevice?: Date;
+  /**
+   * Lane C M3 (gate finding I-1) — this refund's payout exceeds the tenant's
+   * `online_required_refund_threshold`, so the manager PIN MUST be verified by
+   * the server; the device-local PIN cache may not approve it. Decided from
+   * the amount at `begin()` and carried here unchanged, because the
+   * connectivity reading that motivated it can (and does) go stale between
+   * `begin()` and PIN entry.
+   *
+   * Enforced inside `verifyScopedManagerPin()` below, which runs BEFORE
+   * `authorPosOverride()` — a refusal therefore leaves nothing on the chain.
+   */
+  requireServerVerifiedPin?: boolean;
 }
 
 /**
@@ -70,6 +82,7 @@ export async function authorRefundReturnApprovalV3(
     targetEventType: 'SALE_RECEIPT',
     targetReferenceId: input.originalLocalReceiptId,
     reason: reasonText || 'Void or return override',
+    requireServerVerifiedPin: input.requireServerVerifiedPin === true,
   });
 
   return authorPosOverride({

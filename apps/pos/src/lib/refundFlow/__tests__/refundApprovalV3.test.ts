@@ -97,7 +97,24 @@ describe('authorRefundReturnApprovalV3', () => {
       targetEventType: 'SALE_RECEIPT',
       targetReferenceId: ORIGINAL_LOCAL_RECEIPT_ID,
       reason: 'customer return',
+      // Lane C M3 (gate finding I-1) — defaults to false, so every
+      // at-or-below-threshold refund keeps the existing offline-fallback
+      // behaviour byte-for-byte.
+      requireServerVerifiedPin: false,
     });
+  });
+
+  /**
+   * Lane C M3 (gate finding I-1) — an above-threshold refund carries the
+   * server-verification requirement into the PIN check, which runs BEFORE
+   * authorPosOverride() and therefore cannot strand a signed approval pair.
+   */
+  it('threads requireServerVerifiedPin into the PIN check for an above-threshold refund', async () => {
+    await authorRefundReturnApprovalV3({ ...baseInput(), requireServerVerifiedPin: true });
+
+    expect(verifyScopedManagerPin).toHaveBeenCalledWith(
+      expect.objectContaining({ requireServerVerifiedPin: true }),
+    );
   });
 
   it('authors the approval + override events with the target binding the original + frozen line snapshot, and threads the pre-generated sourceEventIds through', async () => {
