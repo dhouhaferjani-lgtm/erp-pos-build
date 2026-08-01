@@ -640,6 +640,72 @@ final class GenerateZReportWithCountsTest extends TestCase
     }
 
     /**
+     * NEW-3 — `cumulative_refunds` is a MAGNITUDE accumulator, so a prior Z that
+     * accumulated the legacy NEGATIVE convention must be normalised as it is
+     * read forward. Without that, the wave-4 magnitude change turns the counter
+     * into a mixed-sign accumulator that is neither convention (−50 + 12 = −38).
+     *
+     * `perpetual_grand_total` is deliberately NOT normalised: it is a NET
+     * figure that may legitimately be negative (refunds exceeding sales), so
+     * ABS would corrupt it. Asserted here so the distinction cannot regress.
+     */
+    public function test_cumulative_refunds_normalises_a_legacy_negative_prior_counter(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $priorShift = Shift::create([
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'shift_number' => 99,
+            'status' => ShiftStatus::Closed,
+            'opened_at' => now()->subDays(2),
+            'closed_at' => now()->subDays(2)->addHours(8),
+            'closed_by' => $this->cashier->id,
+            'opening_cash' => '50.0000',
+        ]);
+
+        // Prior Z written under the LEGACY convention: refunds accumulated as
+        // negative magnitudes.
+        ZReport::create([
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $priorShift->id,
+            'z_number' => 1,
+            'fiscal_hash' => str_repeat('a', 64),
+            'previous_z_hash' => null,
+            'report_data' => ['sales_count' => 10],
+            'grand_totals' => [
+                'cumulative_sales' => '500.0000',
+                'cumulative_tax' => '0.0000',
+                'cumulative_refunds' => '-50.0000',
+                'perpetual_grand_total' => '450.0000',
+                'receipt_count_lifetime' => 10,
+            ],
+            'generated_by' => $this->cashier->id,
+            'generated_at' => now()->subDays(2)->addHours(8),
+        ]);
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000',
+        )];
+
+        $z = $this->service->generateZReport($this->terminal, $this->cashier, $inputs, null, null, false);
+
+        /** @var array<string, mixed> $grandTotals */
+        $grandTotals = $z->grand_totals;
+
+        // |−50| + 12 = 62 (the un-normalised accumulator reports −38).
+        $this->assertSame('62.0000', $grandTotals['cumulative_refunds']);
+        // NET counter, untouched: 450 + (100 − 12) = 538.
+        $this->assertSame('538.0000', $grandTotals['perpetual_grand_total']);
+        $this->assertSame('600.0000', $grandTotals['cumulative_sales']);
+    }
+
+    /**
      * Persist a refund/return receipt inside the shift window.
      *
      * @param  string  $total  Signed receipt total ('+' = v4 era, '-' = legacy era)

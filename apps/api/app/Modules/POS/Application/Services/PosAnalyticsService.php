@@ -60,7 +60,13 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_payments.payment_type')
             ->selectRaw('pos_receipt_payments.payment_type')
-            ->selectRaw('COALESCE(SUM(pos_receipt_payments.amount), 0) as total')
+            // Tender legs of a v4 refund are POSITIVE payouts, so they must be
+            // SUBTRACTED — otherwise this breakdown contradicts `net_sales`
+            // three lines above it, in the same DTO, by 2x the refund.
+            // `pos_receipt_payments.amount` is CHECKed > 0 and legacy returns
+            // wrote no payment row at all, so the return arm only ever sees a
+            // positive v4 leg; `-ABS` is exact and era-safe.
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_payments.amount').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->get();
 
@@ -101,7 +107,7 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('categories.name')
             ->selectRaw("COALESCE(categories.name, 'Uncategorized') as category_name")
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.line_total').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->orderByDesc('total')
             ->get();
@@ -129,8 +135,9 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'pos_receipts.location_id'))
             ->groupBy('pos_receipt_lines.product_name')
             ->selectRaw('pos_receipt_lines.product_name')
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as total')
-            ->selectRaw('COALESCE(SUM(pos_receipt_lines.quantity), 0) as quantity')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.line_total').'), 0) as total')
+            // Quantity nets too: units sold must not GROW when goods come back.
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturnsQualified('pos_receipt_lines.quantity').'), 0) as quantity')
             ->orderByDesc('total')
             ->limit($limit)
             ->get();
@@ -431,6 +438,24 @@ final class PosAnalyticsService
     private function netOfReturns(string $column): string
     {
         return "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+    }
+
+    /**
+     * Same expression for queries that JOIN `pos_receipts` to a child table, so
+     * the discriminator must be table-qualified and the summed column belongs
+     * to the child (payment legs, receipt lines).
+     *
+     * Applies to `pos_receipt_lines.line_total` / `.quantity` — v4 refund lines
+     * project POSITIVE magnitudes (PosCoreReceiptProjection::writeLines copies
+     * the canonical payload verbatim) where legacy return lines were NEGATIVE —
+     * and to `pos_receipt_payments.amount`, which is CHECKed > 0 and therefore
+     * only ever positive in either era.
+     *
+     * @param  'pos_receipt_lines.line_total'|'pos_receipt_lines.quantity'|'pos_receipt_payments.amount'  $column  Literal column name; never caller input
+     */
+    private function netOfReturnsQualified(string $column): string
+    {
+        return "CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
     }
 
     /**

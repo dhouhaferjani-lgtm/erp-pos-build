@@ -864,6 +864,28 @@ final class ReportGenerationService
      * Shape must match the `ZChainStateResponse` contract consumed by the
      * POS client (apps/pos/src/lib/sync/syncService.ts → pullZChainState).
      *
+     * `cumulative_refunds` is a MAGNITUDE accumulator and the prior value is
+     * normalised as it is read forward. Rationale, and why normalising here is
+     * safe:
+     * - This output is DERIVED, not sealed. `ZReportHashService::serializeForHashing()`
+     *   hashes `z_number|terminal_id|generated_at|report_data_json` only —
+     *   `grand_totals` is NOT a hash input, and no sealed row is rewritten.
+     *   (The v3+ device path is different: there `grand_totals` comes from the
+     *   SIGNED `grand_totals_after` payload key via ZReportProjection, but
+     *   this method never runs for v3+ — server Z authoring is refused at
+     *   `fiscal_schema_version >= 3`.)
+     * - Every prior accumulator reachable here is <= 0: pre-release addends were
+     *   sums of legacy NEGATIVE return totals, and v4 refunds cannot reach this
+     *   path. So ABS converts a pure-legacy accumulator EXACTLY, and is
+     *   idempotent on the positive values written from this release onward.
+     * - `perpetual_grand_total` is deliberately NOT normalised: it is a NET
+     *   figure that may legitimately be negative (refunds exceeding sales).
+     *
+     * Ruling: fix-forward, no backfill (no production tenant predates the
+     * change; tenant #1 provisions fresh at v3). Past over-counts baked into a
+     * prior `perpetual_grand_total` stay as they are — see the release note in
+     * docs/sessions/LANE-C-wave4-report.md.
+     *
      * @param  array<string, mixed>  $reportData  Output of calculateShiftTotals()
      * @return array{
      *     cumulative_sales: string,
@@ -885,7 +907,9 @@ final class ReportGenerationService
         // chain. Reject explicitly instead.
         $priorSales = $this->priorNumeric($previous?->grand_totals['cumulative_sales'] ?? null);
         $priorTax = $this->priorNumeric($previous?->grand_totals['cumulative_tax'] ?? null);
-        $priorRefunds = $this->priorNumeric($previous?->grand_totals['cumulative_refunds'] ?? null);
+        // Era normalisation (see the docblock): |legacy negative| == the same
+        // magnitude the post-release convention accumulates.
+        $priorRefunds = $this->magnitude($this->priorNumeric($previous?->grand_totals['cumulative_refunds'] ?? null));
         $priorPerpetual = $this->priorNumeric($previous?->grand_totals['perpetual_grand_total'] ?? null);
         $priorCount = (int) ($previous?->grand_totals['receipt_count_lifetime'] ?? 0);
 

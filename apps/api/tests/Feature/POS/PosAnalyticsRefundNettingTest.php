@@ -12,8 +12,13 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Category;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -30,18 +35,24 @@ use Tests\TestCase;
  * (ticket 2026-08-01-positive-refund-total-consumers):
  *
  *  - getSalesSummary          net_sales / gross_sales / tax_total
+ *  - getSalesSummary          payment_breakdown (NEW-1)
  *  - getSalesByTimePeriod     period total
  *  - getCashierPerformance    total_sales / average_ticket
  *  - getCustomerAnalytics     top_customers.total_spent
+ *  - getSalesByCategory       line_total (NEW-2)
+ *  - getSalesByProduct        line_total AND quantity (NEW-2)
  *
  * Fixture (one window, BOTH sign eras present so a fix cannot pass by simply
- * flipping the convention):
+ * flipping the convention). Every receipt carries a line; only the v4-era rows
+ * carry tender legs, because the legacy path wrote none and could not
+ * (pos_receipt_payments CHECKs amount > 0):
  *
- *   sale        2026-03-15 10:00   total  +36.000  (subtotal 30, tax 6)
- *   v4 refund   2026-03-15 11:00   total  +12.000  (subtotal 10, tax 2)
- *   legacy ret  2026-03-16 09:00   total   -6.000  (subtotal -5, tax -1)
+ *   sale        2026-03-15 10:00   total  +36.000  line +36.000 / +3.0000  cash +36.000
+ *   v4 refund   2026-03-15 11:00   total  +12.000  line +12.000 / +1.0000  cash +12.000
+ *   legacy ret  2026-03-16 09:00   total   -6.000  line  -6.000 / -0.5000  (no tender row)
  *
  *   net over the window = 36 − 12 − 6 = 18.000  (a blended SUM yields 42.000)
+ *   net quantity        =  3 −  1 − 0.5 = 1.5000 (a blended SUM yields 4.5000)
  */
 final class PosAnalyticsRefundNettingTest extends TestCase
 {
@@ -58,6 +69,10 @@ final class PosAnalyticsRefundNettingTest extends TestCase
     private Terminal $terminal;
 
     private Partner $partner;
+
+    private PaymentMethod $cashMethod;
+
+    private Product $product;
 
     private Receipt $sale;
 
@@ -88,6 +103,22 @@ final class PosAnalyticsRefundNettingTest extends TestCase
         $this->partner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
+        ]);
+        $this->cashMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Cash',
+            'code' => 'CASH',
+        ]);
+        $category = Category::factory()->create([
+            'company_id' => $this->company->id,
+            'name' => 'Beverages',
+        ]);
+        $this->product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Espresso',
+            'category_id' => $category->id,
         ]);
 
         $this->seedBothSignEras();
@@ -175,6 +206,87 @@ final class PosAnalyticsRefundNettingTest extends TestCase
         $this->assertSame('3.33', $rows[1]['average_ticket']);
     }
 
+    /**
+     * NEW-1 — the payment breakdown lives in the SAME method (and the SAME DTO)
+     * as `net_sales`. A v4 refund projects a POSITIVE `pos_receipt_payments.amount`
+     * leg (PosCoreReceiptProjection::writePayment writes the canonical amount
+     * verbatim), so a blended SUM made `SalesSummaryData` contradict itself: a
+     * netted `net_sales` beside a gross-of-refunds `payment_breakdown`.
+     *
+     * Note the era asymmetry, which is what makes `-ABS` exactly right here:
+     * `pos_receipt_payments.amount` can never be negative (CHECK amount > 0) and
+     * legacy returns wrote NO payment row at all, so the return arm only ever
+     * sees a positive v4 payout leg.
+     */
+    public function test_summary_payment_breakdown_nets_v4_refund_payout_legs(): void
+    {
+        // Whole window: sale 36 collected − 12 paid out = 24 (blended: 48).
+        $data = $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-31')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $data['payment_breakdown']);
+        $this->assertSame('cash', $data['payment_breakdown'][0]['payment_type']);
+        $this->assertSame(0, bccomp($this->money($data['payment_breakdown'][0]['total']), '24.000', 3));
+
+        // v4-era-only window (the legacy return is on 03-16 and carries no
+        // payment row, since money never moved through one in that era). Here
+        // every receipt has tender legs, so the DTO must RECONCILE WITH ITSELF:
+        // net_sales === the summed payment breakdown.
+        $v4Window = $this->getJson('/api/v1/pos/analytics/summary?from=2026-03-01&to=2026-03-15')
+            ->assertOk()
+            ->json('data');
+
+        $paymentTotal = '0.000';
+        foreach ($v4Window['payment_breakdown'] as $row) {
+            $paymentTotal = bcadd($paymentTotal, $this->money($row['total']), 3);
+        }
+
+        $this->assertSame(0, bccomp($this->money($v4Window['net_sales']), '24.000', 3));
+        $this->assertSame(0, bccomp($paymentTotal, '24.000', 3));
+        $this->assertSame(
+            0,
+            bccomp($this->money($v4Window['net_sales']), $paymentTotal, 3),
+            'net_sales and payment_breakdown are two views of the same money and must agree',
+        );
+    }
+
+    /**
+     * NEW-2 — line-level aggregates. v4 refund LINES project POSITIVE
+     * `line_total`/`quantity` (PosCoreReceiptProjection::writeLines copies the
+     * positive-magnitude payload verbatim); legacy return lines were NEGATIVE.
+     * Category revenue was therefore off by 2x the refund while the headline
+     * `net_sales` on the same dashboard was netted.
+     */
+    public function test_sales_by_category_nets_both_refund_sign_eras(): void
+    {
+        $rows = $this->getJson('/api/v1/pos/analytics/sales-by-category?from=2026-03-01&to=2026-03-31')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Beverages', $rows[0]['category_name']);
+        $this->assertSame(3, $rows[0]['count']);
+        // 36 − 12 − 6 = 18 (blended SUM would report 42).
+        $this->assertSame(0, bccomp($this->money($rows[0]['total']), '18.000', 3), 'category revenue must net both refund sign eras');
+    }
+
+    /** NEW-2 — same defect on `line_total` AND on `quantity`. */
+    public function test_sales_by_product_nets_both_refund_sign_eras_for_value_and_quantity(): void
+    {
+        $rows = $this->getJson('/api/v1/pos/analytics/sales-by-product?from=2026-03-01&to=2026-03-31')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Espresso', $rows[0]['product_name']);
+        // 36 − 12 − 6 = 18 (blended SUM would report 42).
+        $this->assertSame(0, bccomp($this->money($rows[0]['total']), '18.000', 3), 'product revenue must net both refund sign eras');
+        // 3.0000 − 1.0000 − 0.5000 = 1.5000 (blended SUM would report 4.5000):
+        // units sold must not GROW when goods come back.
+        $this->assertSame(0, bccomp($this->money($rows[0]['quantity']), '1.5000', 4), 'product quantity must net both refund sign eras');
+    }
+
     public function test_customer_analytics_nets_positive_v4_and_negative_legacy_refunds(): void
     {
         $data = $this->getJson('/api/v1/pos/analytics/customers?from=2026-03-01&to=2026-03-31')
@@ -213,9 +325,12 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'tax_amount' => '6.000',
             'total' => '36.000',
         ]);
+        $this->seedLine($this->sale, '36.000', '3.0000');
+        $this->seedCashPayment($this->sale, '36.000');
 
-        // v4-era refund: POSITIVE total under receipt_type='return' (spec §7.7).
-        $this->createReceipt([
+        // v4-era refund: POSITIVE total under receipt_type='return' (spec §7.7),
+        // with a POSITIVE line and a POSITIVE cash payout leg.
+        $v4Refund = $this->createReceipt([
             'receipt_type' => ReceiptType::Return,
             'posted_at' => '2026-03-15 11:00:00',
             'subtotal' => '10.000',
@@ -224,9 +339,14 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'original_receipt_id' => $this->sale->id,
             'return_reason' => ReturnReason::Other,
         ]);
+        $this->seedLine($v4Refund, '12.000', '1.0000');
+        $this->seedCashPayment($v4Refund, '12.000');
 
-        // Legacy-era return: NEGATIVE total.
-        $this->createReceipt([
+        // Legacy-era return: NEGATIVE total and NEGATIVE line. No payment row —
+        // the legacy path never wrote one (ReceiptReturnService routes refunds
+        // through PaymentRefundService / the cash drawer), and it could not:
+        // pos_receipt_payments CHECKs amount > 0.
+        $legacyReturn = $this->createReceipt([
             'receipt_type' => ReceiptType::Return,
             'posted_at' => '2026-03-16 09:00:00',
             'subtotal' => '-5.000',
@@ -234,6 +354,35 @@ final class PosAnalyticsRefundNettingTest extends TestCase
             'total' => '-6.000',
             'original_receipt_id' => $this->sale->id,
             'return_reason' => ReturnReason::Other,
+        ]);
+        $this->seedLine($legacyReturn, '-6.000', '-0.5000');
+    }
+
+    private function seedLine(Receipt $receipt, string $lineTotal, string $quantity): void
+    {
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $this->product->id,
+            'product_name' => $this->product->name,
+            'product_code' => $this->product->sku,
+            'quantity' => $quantity,
+            'unit' => 'pcs',
+            'unit_price' => '12.000',
+            'tax_rate' => '20.00',
+            'tax_amount' => '0.000',
+            'line_total' => $lineTotal,
+            'discount_amount' => '0.000',
+        ]);
+    }
+
+    private function seedCashPayment(Receipt $receipt, string $amount): void
+    {
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'payment_type' => 'cash',
+            'amount' => $amount,
         ]);
     }
 
