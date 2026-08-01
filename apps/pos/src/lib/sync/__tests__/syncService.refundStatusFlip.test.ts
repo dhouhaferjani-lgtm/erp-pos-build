@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+/** The transaction handle the mocked write gate hands the callback. */
+const h = vi.hoisted(() => ({ db: {} as unknown }));
+
 /**
  * v3-refund-chain-integration spec §7.2a errata T2 — proves a refund's
  * `offline_receipts` row reaches `'synced'` (not stuck `'pending'`
@@ -40,7 +43,9 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   return {
     ...actual,
     updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
-    updateReceiptStatusByIdempotencyKey: vi.fn().mockResolvedValue(undefined),
+    // Wave-2 fix-wave finding 12 — now returns the affected-row count so
+    // the ACK flip can REQUIRE exactly one matching receipt.
+    updateReceiptStatusByIdempotencyKey: vi.fn().mockResolvedValue(1),
     cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
     cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
   };
@@ -72,10 +77,20 @@ vi.mock('@/lib/db/repositories/refundIntentRepository', async () => {
   return {
     ...actual,
     markSynced: vi.fn().mockResolvedValue(undefined),
+    // Finding 12: the benign already-synced case is suppressed ONLY after
+    // a RE-READ confirms the row really is at 'synced'.
+    getRefundIntentById: vi.fn().mockResolvedValue({ id: 'refund-intent-1', state: 'synced' }),
   };
 });
 
+// The three post-ACK flips run inside ONE write-gate transaction
+// (finding 12); the gate itself is exercised by its own suite.
+vi.mock('@/lib/db/writeGate', () => ({
+  withWriteTransaction: vi.fn(async (_lane: string, cb: (tx: unknown) => unknown) => cb(h.db)),
+}));
+
 import { pushOfflineReceipts } from '../syncService';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import { apiPostRaw } from '@/lib/api';
 import {
   updateReceiptStatus,
@@ -83,6 +98,7 @@ import {
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   markSynced,
+  getRefundIntentById,
   InvalidRefundIntentTransitionError,
 } from '@/lib/db/repositories/refundIntentRepository';
 import {
@@ -149,7 +165,7 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
 
     expect(result.pushed).toBe(1);
     expect(result.failed).toBe(0);
-    expect(updateReceiptStatusByIdempotencyKey).toHaveBeenCalledWith(db, 'refund-intent-1', 'synced');
+    expect(updateReceiptStatusByIdempotencyKey).toHaveBeenCalledWith(h.db, 'refund-intent-1', 'synced');
     // The own-id lookup (the SALE branch) must NEVER fire for a refund --
     // 'refund-intent-1' is refund_intents.id, not an offline_receipts
     // primary key; calling updateReceiptStatus with it would silently
@@ -170,7 +186,7 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
 
     await pushOfflineReceipts(db);
 
-    expect(markSynced).toHaveBeenCalledWith(db, 'refund-intent-1');
+    expect(markSynced).toHaveBeenCalledWith(h.db, 'refund-intent-1');
   });
 
   it('a SALE fiscal event never touches refund_intents.markSynced (own-id lookup only)', async () => {
@@ -195,6 +211,7 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
     vi.mocked(markSynced).mockRejectedValueOnce(
       new InvalidRefundIntentTransitionError('refund-intent-3', 'synced', ['refund_event_appended']),
     );
+    vi.mocked(getRefundIntentById).mockResolvedValueOnce({ id: 'refund-intent-3', state: 'synced' } as never);
 
     const result = await pushOfflineReceipts(db);
 
@@ -202,7 +219,7 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
     expect(result.failed).toBe(0);
     // The offline_receipts mirror still flips -- the swallowed transition
     // error must not skip the sibling write above it.
-    expect(updateReceiptStatusByIdempotencyKey).toHaveBeenCalledWith(db, 'refund-intent-3', 'synced');
+    expect(updateReceiptStatusByIdempotencyKey).toHaveBeenCalledWith(h.db, 'refund-intent-3', 'synced');
   });
 
   it('propagates a genuinely unexpected markSynced failure (not the benign already-synced case)', async () => {
@@ -260,5 +277,81 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
     await pushOfflineReceipts(db);
 
     expect(updateReceiptStatusByIdempotencyKey).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Wave-2 fix-wave finding 12 (codex M-4) — the three post-ACK flips are
+ * ONE transaction, each requires exactly one affected row, and only a
+ * RE-READ-CONFIRMED already-`synced` intent is suppressed.
+ */
+describe('refund ACK local flips — atomicity and affected-row assertions (finding 12)', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(updateReceiptStatusByIdempotencyKey).mockResolvedValue(1);
+    vi.mocked(getRefundIntentById).mockResolvedValue({ id: 'refund-intent-1', state: 'synced' } as never);
+  });
+
+  it('runs all three flips inside ONE write-gate transaction', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-1', source_event_id: 'refund-intent-1' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-1'));
+
+    await pushOfflineReceipts(db);
+
+    // One transaction for the ACK flips (the 'syncing' pre-flip is a
+    // deliberate pre-transaction write — it is what makes the event
+    // recoverable if the process dies mid-request).
+    const ackTransactions = vi
+      .mocked(withWriteTransaction)
+      .mock.calls.filter(([lane]) => lane === 'fiscal');
+    expect(ackTransactions).toHaveLength(1);
+  });
+
+  it('fails the push when the receipt flip matches ZERO rows (never half-applies)', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-9', source_event_id: 'refund-intent-9' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-9'));
+    vi.mocked(updateReceiptStatusByIdempotencyKey).mockResolvedValue(0);
+
+    const result = await pushOfflineReceipts(db);
+
+    expect(result.pushed).toBe(0);
+    expect(result.failed).toBe(1);
+    // The intent transition is never even attempted — the transaction
+    // aborts on the row-count assertion.
+    expect(markSynced).not.toHaveBeenCalled();
+  });
+
+  it('propagates an invalid intent transition when the re-read does NOT confirm synced', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-10', source_event_id: 'refund-intent-10' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-10'));
+    vi.mocked(markSynced).mockRejectedValueOnce(
+      new InvalidRefundIntentTransitionError('refund-intent-10', 'synced', ['refund_event_appended']),
+    );
+    // The row is at a WRONG state, not the benign already-synced case.
+    vi.mocked(getRefundIntentById).mockResolvedValueOnce({ id: 'refund-intent-10', state: 'drafted' } as never);
+
+    const result = await pushOfflineReceipts(db);
+
+    expect(result.failed).toBe(1);
+  });
+
+  it('propagates an invalid intent transition when the row is MISSING entirely', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-11', source_event_id: 'refund-intent-11' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-11'));
+    vi.mocked(markSynced).mockRejectedValueOnce(
+      new InvalidRefundIntentTransitionError('refund-intent-11', 'synced', ['refund_event_appended']),
+    );
+    vi.mocked(getRefundIntentById).mockResolvedValueOnce(null);
+
+    const result = await pushOfflineReceipts(db);
+
+    expect(result.failed).toBe(1);
   });
 });

@@ -85,6 +85,30 @@ function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+/**
+ * Wave-2 fix-wave finding 6 — recovers the `approval_id` actually SIGNED
+ * into an `OPERATOR_APPROVAL_GRANTED` event from its own canonical bytes.
+ *
+ * `canonical_bytes` is the chain ENVELOPE (`FiscalEventEngine`'s
+ * `canonicalPayload`); the signed fiscal payload is nested one level down
+ * at `envelope.payload` — the exact structure whose earlier misreading
+ * caused the wave-2 FISCAL CRITICAL in `fiscalEventRepository.ts`.
+ * Returns `null` on anything unreadable so the caller can fall back
+ * explicitly rather than propagating an empty identity.
+ */
+function readApprovalIdFromCanonicalBytes(canonicalBytes: string): string | null {
+  try {
+    const envelope: unknown = JSON.parse(canonicalBytes);
+    if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) return null;
+    const payload = (envelope as Record<string, unknown>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+    const approvalId = (payload as Record<string, unknown>)['approval_id'];
+    return typeof approvalId === 'string' && approvalId !== '' ? approvalId : null;
+  } catch {
+    return null;
+  }
+}
+
 function overrideEventTypeFor(scope: PosOverrideApprovalScope): FiscalEventAppendResult['event_type'] {
   if (scope === 'discount_limit_override') return 'OVERRIDE_DISCOUNT_LIMIT';
   if (scope === 'tender_tolerance_override') return 'OVERRIDE_TENDER_TOLERANCE';
@@ -111,7 +135,7 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
   const approvalScope = input.approvalScope;
 
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
-  const approvalId = crypto.randomUUID();
+  const candidateApprovalId = crypto.randomUUID();
   const db = await getDatabase(input.context.companyId);
   const engine = await getFiscalEventEngine(input.context.companyId, db);
 
@@ -127,7 +151,7 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
       event_time_device: isoSecondsUtc(eventTimeDevice),
       business_date: input.context.businessDate,
       payload: {
-        approval_id: approvalId,
+        approval_id: candidateApprovalId,
         approval_scope: approvalScope,
         cashier_user_id: input.context.cashierUserId,
         company_id: input.context.companyId,
@@ -155,8 +179,36 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
       // pre-known identifier after a crash. Existing callers (discount/
       // tender-tolerance overrides) omit `sourceEventIds` and keep
       // today's exact behavior -- byte-identical, zero regression risk.
-      source_event_id: input.sourceEventIds?.approval ?? approvalId,
+      source_event_id: input.sourceEventIds?.approval ?? candidateApprovalId,
     });
+
+    // ── Wave-2 fix-wave finding 6 (fiscal C-3) — `approval_id` must be
+    //    STABLE across a re-authored approval.
+    //
+    //    `engine.append()` is idempotent on
+    //    (tenant, terminal, source_event_class, source_event_id). When the
+    //    caller threads a STABLE, pre-generated `sourceEventIds` (the
+    //    refund flow does: they live on the `refund_intents` row from
+    //    before the manager PIN is even entered), a second call returns
+    //    the EXISTING event and silently ignores the payload just built —
+    //    including the freshly minted `candidateApprovalId`.
+    //
+    //    Returning that fresh id was a live money bug: the refund is
+    //    signed with `approval_references[0].approval_id` = the new UUID,
+    //    which matches NEITHER resolved event's own payload, so
+    //    `PosCoreReceiptProjection`'s cross-check throws
+    //    `ApprovalEvidenceUnresolvedException` — a NON-RETRYABLE
+    //    dead-letter, AFTER the cash left the drawer. Reachable by an
+    //    ordinary cancel-then-retry on the same return cart.
+    //
+    //    So the AUTHORITATIVE id is read back out of the resolved event's
+    //    own signed bytes. On a first append that is exactly
+    //    `candidateApprovalId` (same object, byte-identical); on an
+    //    idempotent hit it is the ORIGINAL one. The fallback is
+    //    deliberately the candidate: unreadable bytes must not silently
+    //    produce a `null`/empty approval identity.
+    const approvalId =
+      readApprovalIdFromCanonicalBytes(approvalEvent.canonical_bytes) ?? candidateApprovalId;
 
     const overrideEventType = overrideEventTypeFor(approvalScope);
     const overrideEvent = await engine.append(tx, {

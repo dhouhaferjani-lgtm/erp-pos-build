@@ -240,25 +240,33 @@ export async function updateReceiptStatus(
  * clause -- a prior sync attempt could otherwise leave a stale
  * `sync_error` string on a row that has since synced successfully.
  */
+/**
+ * @returns the number of rows the flip actually touched. Wave-2 fix-wave
+ *          finding 12 (codex M-4): the post-ACK refund flip must be able
+ *          to REQUIRE exactly one matching receipt rather than assuming
+ *          the update landed. `offline_receipts.idempotency_key` is
+ *          `NOT NULL UNIQUE`, so the only possible counts are 0 and 1.
+ */
 export async function updateReceiptStatusByIdempotencyKey(
   db: Database,
   idempotencyKey: string,
   status: OfflineReceiptStatus,
   syncError?: string,
-): Promise<void> {
+): Promise<number> {
   if (status === 'synced') {
-    await execute(
+    const result = await execute(
       db,
       "UPDATE offline_receipts SET status = $1, synced_at = datetime('now'), sync_error = NULL WHERE idempotency_key = $2",
       [status, idempotencyKey],
     );
-  } else {
-    await execute(
-      db,
-      'UPDATE offline_receipts SET status = $1, sync_error = $2 WHERE idempotency_key = $3',
-      [status, syncError ?? null, idempotencyKey],
-    );
+    return result.rowsAffected;
   }
+  const result = await execute(
+    db,
+    'UPDATE offline_receipts SET status = $1, sync_error = $2 WHERE idempotency_key = $3',
+    [status, syncError ?? null, idempotencyKey],
+  );
+  return result.rowsAffected;
 }
 
 export const MAX_SYNC_RETRIES = 5;

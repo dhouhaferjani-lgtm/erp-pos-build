@@ -151,3 +151,105 @@ describe('authorPosOverride', () => {
     expect(evidence.target_reference_id).toBe('receipt-1');
   });
 });
+
+/**
+ * Wave-2 fix-wave finding 6 (fiscal C-3) — `approval_id` must be STABLE
+ * across a re-authored approval.
+ *
+ * `authorPosOverride()` minted a FRESH `approval_id` on every call while
+ * threading the caller's STABLE `sourceEventIds` into `engine.append()`.
+ * The engine's source-based idempotency therefore returned the EXISTING
+ * approval/override events, but the returned `PosOverrideEvidence` carried
+ * the NEW random `approval_id`. The refund was then signed with an
+ * `approval_references[0].approval_id` that matches NEITHER resolved
+ * event's own payload, so `PosCoreReceiptProjection`'s cross-check throws
+ * `ApprovalEvidenceUnresolvedException` — a NON-RETRYABLE dead-letter,
+ * AFTER the cash left the drawer.
+ *
+ * Reachable by an ordinary cashier action: begin a v4 refund, enter the
+ * manager PIN (approval+override signed against the intent's pre-generated
+ * ids), press Cancel, then press Pay again on the same return cart — the
+ * intent row is REUSED, so the same `sourceEventIds` are threaded again.
+ */
+describe('authorPosOverride — approval_id stability across re-authoring (finding 6)', () => {
+  /**
+   * Models `FiscalEventEngine.append()` faithfully: the FIRST call for a
+   * given `source_event_id` stores and returns a new event whose
+   * `canonical_bytes` embed the payload it was given; every LATER call
+   * with the same source id returns THAT SAME stored event, ignoring the
+   * newly-supplied payload (the real Step-2 idempotency short-circuit).
+   */
+  function installIdempotentEngine(): void {
+    const stored = new Map<string, Record<string, unknown>>();
+    let seq = 0;
+    appendMock.mockReset();
+    appendMock.mockImplementation(
+      (_tx: unknown, request: { event_type: string; source_event_id: string; payload: unknown }) => {
+        const existing = stored.get(request.source_event_id);
+        if (existing !== undefined) return Promise.resolve(existing);
+        seq += 1;
+        const event = {
+          id: `${request.event_type}-fiscal-event-${String(seq)}`,
+          event_type: request.event_type,
+          sequence_number: seq,
+          current_hash: 'h'.repeat(64),
+          previous_hash: 'p'.repeat(64),
+          event_version: 1,
+          canonical_bytes: JSON.stringify({ payload: request.payload }),
+        };
+        stored.set(request.source_event_id, event);
+        return Promise.resolve(event);
+      },
+    );
+  }
+
+  const STABLE_SOURCE_IDS = {
+    approval: 'approval-uuid-stable',
+    override: 'override-uuid-stable',
+  };
+
+  beforeEach(() => {
+    installIdempotentEngine();
+  });
+
+  it('returns the SAME approval_id when authoring twice with the same sourceEventIds', async () => {
+    const first = await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS }));
+    const second = await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS }));
+
+    expect(second.approval_id).toBe(first.approval_id);
+    // …and the resolved events are literally the same rows.
+    expect(second.approval_event_id).toBe(first.approval_event_id);
+    expect(second.override_event_id).toBe(first.override_event_id);
+  });
+
+  it('the returned approval_id is the one actually SIGNED into the resolved approval event', async () => {
+    const first = await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS }));
+    const second = await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS }));
+
+    // The projector cross-checks `approval_references[i].approval_id`
+    // against BOTH resolved events' own payloads; a mismatch is a
+    // non-retryable dead-letter.
+    const approvalCall = appendMock.mock.calls[0] as [unknown, { payload: { approval_id: string } }];
+    const signedApprovalId = approvalCall[1].payload.approval_id;
+    expect(first.approval_id).toBe(signedApprovalId);
+    expect(second.approval_id).toBe(signedApprovalId);
+  });
+
+  it('a re-authored OVERRIDE event carries the ORIGINAL approval_id (partial-crash recovery)', async () => {
+    // First attempt: approval appended, then the override append fails —
+    // the classic crash-between-the-two window.
+    await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS })).catch(() => undefined);
+    const signedApprovalId = (
+      appendMock.mock.calls[0] as [unknown, { payload: { approval_id: string } }]
+    )[1].payload.approval_id;
+
+    appendMock.mockClear();
+    const retry = await authorPosOverride(baseInput({ sourceEventIds: STABLE_SOURCE_IDS }));
+
+    // The override append on the retry must reference the ORIGINAL
+    // approval_id, not a freshly minted one.
+    const overrideCall = appendMock.mock.calls[1] as [unknown, { payload: { approval_id: string } }];
+    expect(overrideCall[1].payload.approval_id).toBe(signedApprovalId);
+    expect(retry.approval_id).toBe(signedApprovalId);
+  });
+});

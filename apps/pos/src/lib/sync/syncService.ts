@@ -69,6 +69,7 @@ import {
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   markSynced as markRefundIntentSynced,
+  getRefundIntentById,
   InvalidRefundIntentTransitionError,
 } from '@/lib/db/repositories/refundIntentRepository';
 import {
@@ -336,6 +337,64 @@ function isLegacyZSyncRetiredError(error: unknown): boolean {
 }
 
 /**
+ * Wave-2 fix-wave finding 12 (codex M-4) — the THREE local status flips a
+ * refund's server ACK triggers, applied ATOMICALLY.
+ *
+ * Previously each ran as an independent write: mark the fiscal event
+ * synced, locate-and-mark the `offline_receipts` mirror by
+ * `idempotency_key = refund_intents.id` (§7.2a errata T2), advance the
+ * `refund_intents` row to its own terminal `synced` (§4.4/§4.6 — what
+ * frees the active-intent partial unique index for a legitimate later
+ * refund of the same original+line selection). A crash or SQLite failure
+ * after the FIRST write removed the fiscal event from the pending queue
+ * while leaving the receipt pending and/or the intent ACTIVE forever —
+ * permanently blocking every subsequent refund attempt against that
+ * original. The receipt update's affected-row count was never checked
+ * either, and the catch suppressed EVERY
+ * `InvalidRefundIntentTransitionError` although only an already-`synced`
+ * row is benign: a missing row or a wrong state was silently accepted.
+ *
+ * All three now run in ONE write-gate transaction; each requires exactly
+ * one affected row; and an invalid intent transition is RE-READ and
+ * suppressed only when the row is confirmed to be at `synced` already
+ * (the benign duplicate-ACK case). Everything else propagates, so the
+ * event stays in the pending queue and the failure is visible.
+ */
+async function applyRefundAckLocalFlips(
+  db: Database,
+  fiscalEventId: string,
+  refundIntentId: string,
+): Promise<void> {
+  await withWriteTransaction('fiscal', async (tx) => {
+    const txDb = tx as unknown as Database;
+
+    await updateFiscalEventSyncStatus(txDb, fiscalEventId, 'synced');
+
+    const receiptRows = await updateReceiptStatusByIdempotencyKey(txDb, refundIntentId, 'synced');
+    if (receiptRows !== 1) {
+      throw new Error(
+        `Refund ACK: expected exactly 1 offline_receipts row with idempotency_key = ${refundIntentId}, updated ${String(receiptRows)}. Refusing to half-apply the post-ACK flips.`,
+      );
+    }
+
+    try {
+      await markRefundIntentSynced(txDb, refundIntentId);
+    } catch (transitionError) {
+      if (!(transitionError instanceof InvalidRefundIntentTransitionError)) {
+        throw transitionError;
+      }
+      // Suppress ONLY a re-read-CONFIRMED already-synced row (a duplicate
+      // sync response for an event the device already marked synced). A
+      // missing row, or any other state, is a genuine inconsistency.
+      const current = await getRefundIntentById(txDb, refundIntentId);
+      if (current === null || current.state !== 'synced') {
+        throw transitionError;
+      }
+    }
+  });
+}
+
+/**
  * Push device-authored fiscal events to the server.
  *
  * Kept under the legacy function name because the scheduler and UI badge
@@ -397,39 +456,12 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         && !resultItem.sequence_conflict
         && resultItem.exception_class === null
       ) {
-        await updateFiscalEventSyncStatus(db, event.id, 'synced');
-        if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
-          await updateReceiptStatus(db, event.source_event_id, 'synced');
-        } else if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
-          // v3-refund-chain-integration spec §7.2a errata T2 — a refund's
-          // fiscal event carries source_event_id = refund_intents.id, not
-          // an offline_receipts primary key, so the row is resolved via
-          // the idempotency-key relationship instead (§7.2:
-          // offline_receipts.idempotency_key = refund_intents.id). Without
-          // this branch the refund's offline_receipts row stayed 'pending'
-          // forever — the device's sync-status badge counted it as
-          // perpetually outstanding, and any retention routine collecting
-          // only 'synced'/'error' rows never reclaimed it.
-          await updateReceiptStatusByIdempotencyKey(db, event.source_event_id, 'synced');
-          // §4.4/§4.6 — the refund_intents row reaches its OWN terminal
-          // 'synced' state here too, not just the offline_receipts mirror
-          // above: this is what frees the active-intent partial unique
-          // index (§4.4's fold-item-7 fix) for a legitimate NEW refund of
-          // the same original+line selection. Without this the row would
-          // stay stuck at 'refund_event_appended' (an ACTIVE state)
-          // forever, permanently blocking every subsequent refund attempt
-          // against the same original — reproducing the exact
-          // permanently-blocked-repeat-refund bug this spec revision
-          // fixed. Tolerant of a row already at 'synced' (a benign repeat
-          // confirmation, e.g. a duplicate sync response for an event the
-          // device already marked synced) — anything else thrown by the
-          // transition guard is a genuine bug and must propagate.
-          try {
-            await markRefundIntentSynced(db, event.source_event_id);
-          } catch (transitionError) {
-            if (!(transitionError instanceof InvalidRefundIntentTransitionError)) {
-              throw transitionError;
-            }
+        if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
+          await applyRefundAckLocalFlips(db, event.id, event.source_event_id);
+        } else {
+          await updateFiscalEventSyncStatus(db, event.id, 'synced');
+          if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
+            await updateReceiptStatus(db, event.source_event_id, 'synced');
           }
         }
         await logSyncOperation(
