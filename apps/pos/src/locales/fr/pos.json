@@ -123,6 +123,7 @@
     "detailsNotLocal": "Les détails du ticket d'origine ne sont pas disponibles sur ce terminal. Seuls les articles des tickets enregistrés sur ce terminal peuvent être remboursés localement. Demandez à un responsable de retrouver le ticket depuis le back-office.",
     "trainingOriginalRefused": "Ce ticket a été enregistré en mode formation et ne peut pas être remboursé.",
     "wholeDiscountReceiptRefused": "Ce ticket comporte une remise sur l'ensemble du ticket ; les remboursements ne sont pas disponibles pour ce type de ticket dans cette version.",
+    "refundQuantityExceeded": "Ce remboursement dépasserait la quantité initialement vendue. Vérifiez ce qui a déjà été remboursé pour ce ticket.",
     "capabilityUnavailable": "Les remboursements sont temporairement indisponibles sur ce terminal — contactez le support",
     "confirm": {
       "charge": "Encaisser {{amount}}",

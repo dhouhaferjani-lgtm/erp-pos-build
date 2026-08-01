@@ -218,23 +218,67 @@ type DrawerOpRow = { id: string; type: 'deposit' | 'payout'; amount: string; shi
 /** Account-payment records mirrored locally (cash account collections raise the drawer). */
 type AccountPaymentRow = { id: string; shift_id: string; method_code: string; cash_impact: string };
 
+/** Wave-2 review fix — the LEGACY refund path's own record-at-settle
+ *  mirror (local_refund_records), restored alongside the v4
+ *  offline_receipts mechanism above (disjoint sources, see
+ *  zReportService.ts's own comment at the fold site). */
+type LegacyRefundRecordRow = {
+  id: string;
+  receipt_number: string;
+  original_receipt_number: string;
+  shift_id: string;
+  terminal_id: string;
+  destination: string;
+  total: string;
+  cash_impact: string;
+  currency: string;
+  settled_at: string;
+};
+
+function makeLegacyRefundRecord(
+  id: string,
+  total: string,
+  shiftId: string,
+  overrides: Partial<LegacyRefundRecordRow> = {},
+): LegacyRefundRecordRow {
+  const positiveAmount = total.startsWith('-') ? total.slice(1) : total;
+  return {
+    id,
+    receipt_number: `T001-99${id.slice(-2)}`,
+    original_receipt_number: 'T001-0001',
+    shift_id: shiftId,
+    terminal_id: 'term-1',
+    destination: 'cash',
+    total,
+    cash_impact: positiveAmount,
+    currency: 'EUR',
+    settled_at: '2026-04-23T11:15:00+00:00',
+    ...overrides,
+  };
+}
+
 /** Setup queryAll to return receipts / payment_methods / refund records / drawer ops / account payments by SQL shape */
 function mockQueryAll(
   db: Database,
-  // v3-refund-chain-integration spec §7.1/§7.3 — sale AND refund rows
-  // both come from `offline_receipts` now (no separate
-  // `local_refund_records` query); callers merge
-  // `makeRefundOfflineReceiptRows()` into this SAME array.
+  // v3-refund-chain-integration spec §7.1/§7.3 — v4 refund rows come
+  // from `offline_receipts` (merge `makeRefundOfflineReceiptRows()` into
+  // this SAME array); LEGACY refund records are a separate, disjoint
+  // source (`legacyRefundRecords` below).
   receipts: Array<ReturnType<typeof makeReceiptRows>[number] | ReturnType<typeof makeRefundOfflineReceiptRow>>,
   drawerOps: DrawerOpRow[] = [],
   accountPayments: AccountPaymentRow[] = [],
   anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
+  legacyRefundRecords: LegacyRefundRecordRow[] = [],
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
     if (s.includes('shift_receipt_anchors')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
       return (anchor && anchor.shift_id === shiftId ? [anchor] : []) as unknown as never[];
+    }
+    if (s.includes('local_refund_records')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return legacyRefundRecords.filter((r) => r.shift_id === shiftId) as unknown as never[];
     }
     if (s.includes('local_account_payment_records')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
@@ -779,6 +823,37 @@ describe('generateZReport', () => {
       expect(report.grand_totals.cumulative_refunds).toBe('15.500');
       expect(report.grand_totals.perpetual_grand_total).toBe('534.500');
       expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '50.00', '8.00', '15.50', 1);
+    });
+
+    // Wave-2 review fix (TREASURY CRITICAL) — a MIXED shift with one
+    // LEGACY refund (local_refund_records, the default/only mechanism for
+    // every terminal that has not yet completed its v4 capability
+    // rollout) and one v4 refund (offline_receipts receipt_kind='refund')
+    // must reduce expected_cash by BOTH exactly once each — disjoint
+    // sources, plain sum, never a double-count.
+    it('wave-2: a MIXED shift (one legacy refund + one v4 refund) reduces expected_cash by both exactly once each', async () => {
+      mockQueryAll(
+        db,
+        [...makeReceiptRows(), makeRefundOfflineReceiptRow('rr-v4', '-10.00', 2, '2026-04-23T11:00:00+00:00')],
+        [],
+        [],
+        null,
+        [makeLegacyRefundRecord('legacy-1', '-7.25', 'shift-1')],
+      );
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      // One from each source.
+      expect(report.report_data.refunds_count).toBe(2);
+      // 7.25 (legacy) + 10.00 (v4) — a plain, non-overlapping sum.
+      expect(report.report_data.refunds_amount).toBe('17.25');
+      // opening 100 + cash sales 50 − v4 CASH refund 10.00 (netted inside
+      // aggregateReportData's paymentByType) − legacy cash_impact 7.25
+      // (the standalone cashRefundImpact term, restored) = 132.75.
+      expect(report.report_data.expected_cash).toBe('132.75');
+      expect(report.expected_cash).toBe('132.75');
     });
 
     it('spec §7.3 — a shift with no refund rows keeps the zero totals (unchanged behavior)', async () => {

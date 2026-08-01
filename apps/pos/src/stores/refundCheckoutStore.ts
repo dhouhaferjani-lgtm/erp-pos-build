@@ -100,6 +100,7 @@ import {
 import {
   createOrReuseActiveRefundIntent,
   markApprovalAuthored,
+  getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
 import {
@@ -108,6 +109,12 @@ import {
   type RefundLineInput,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
+import { bcabs, bcadd, bccomp } from '@/lib/decimal';
+
+/** quantity scale (rule 19's device-side QuantityScale convention) — must
+ *  match refundIntentRepository.ts's own QUANTITY_SCALE exactly, or the
+ *  cumulative-quantity backstop below compares mismatched precisions. */
+const QUANTITY_SCALE = 4;
 
 // ─── Steps / errors ──────────────────────────────────────────────────────────
 
@@ -145,7 +152,16 @@ export type RefundCheckoutErrorKey =
    * original's own signed `transaction_discount_amount` is non-zero.
    * Same lookup-level enforcement point as above.
    */
-  | 'refundFlow.wholeDiscountReceiptRefused';
+  | 'refundFlow.wholeDiscountReceiptRefused'
+  /**
+   * v3-refund-chain-integration wave-2 review fix, orchestrator-ruled
+   * (required) — v4-only: the device-local cumulative-quantity backstop
+   * (§12 stays the server-side cross-terminal authority; this is a
+   * device-side belt) found the new refund selection would exceed the
+   * original line's own quantity, summed against every ALREADY-appended
+   * refund_intents row for the same original.
+   */
+  | 'refundFlow.refundQuantityExceeded';
 
 export interface RefundCheckoutError {
   key: RefundCheckoutErrorKey;
@@ -746,6 +762,36 @@ async function beginV4(
       refundItemsSnapshot: null,
     });
     return;
+  }
+
+  // Orchestrator-ruled (required) — device-local cumulative-quantity
+  // BACKSTOP (§12's server-side FOR UPDATE lock stays the sole
+  // cross-terminal authority; this is a single-device belt). Sums the
+  // ALREADY-refunded quantity per original line across every
+  // refund_intents row for this SAME original that has reached a state
+  // proving a fiscal event was actually appended, then refuses THIS
+  // attempt if the new selection would push the cumulative total past
+  // the original line's own quantity.
+  const cumulativeRefunded = await getCumulativeRefundedQuantityByOriginalLine(
+    input.db,
+    originalLocalReceiptId,
+  );
+  if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
+
+  for (const line of lineSnapshot) {
+    const alreadyRefunded = cumulativeRefunded.get(line.originalLineIndex) ?? '0';
+    const newQuantity = bcabs(String(line.cartItem.quantity), QUANTITY_SCALE);
+    const projectedTotal = bcadd(alreadyRefunded, newQuantity, QUANTITY_SCALE);
+    const originalLine = original.lineItems[line.originalLineIndex];
+    const originalQuantity = originalLine ? bcabs(originalLine.quantity, QUANTITY_SCALE) : '0';
+    if (bccomp(projectedTotal, originalQuantity) > 0) {
+      set({
+        step: 'idle',
+        error: { key: 'refundFlow.refundQuantityExceeded', serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      return;
+    }
   }
 
   const { intent } = await createOrReuseActiveRefundIntent(input.db, {

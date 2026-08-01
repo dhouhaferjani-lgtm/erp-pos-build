@@ -66,6 +66,7 @@ vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
 vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
   createOrReuseActiveRefundIntent: vi.fn(),
   markApprovalAuthored: vi.fn().mockResolvedValue(undefined),
+  getCumulativeRefundedQuantityByOriginalLine: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   getTerminalState: vi.fn().mockResolvedValue(null),
@@ -82,6 +83,7 @@ import { resolveOriginalFiscalEventLocally } from '@/lib/db/repositories/fiscalE
 import {
   createOrReuseActiveRefundIntent,
   markApprovalAuthored,
+  getCumulativeRefundedQuantityByOriginalLine,
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
 import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
@@ -899,6 +901,62 @@ describe('refundCheckoutStore — v4 flow', () => {
           overrideSourceEventId: expect.any(String),
         }),
       );
+    });
+
+    // Wave-2 review fix, ORCHESTRATOR-RULED (required) — device-local
+    // cumulative-quantity backstop. The original line's own quantity is
+    // 2.000 (v4OriginalView()'s fixture).
+    describe('cumulative-quantity backstop (§12 device-side belt)', () => {
+      it('refund 1 of qty-2, synced, then refund the remaining 1 → OK (cumulative 2 == original 2)', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(
+          new Map([[0, '1.0000']]),
+        );
+        useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+        await useRefundCheckoutStore.getState().begin(
+          v4BeginInput([v4ReturnItem({ quantity: -1, line_total: '-10.0000' })]),
+        );
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.error).toBeNull();
+        expect(createOrReuseActiveRefundIntent).toHaveBeenCalledOnce();
+      });
+
+      it('refund 2 (full quantity), synced, then attempt to refund 1 more → refused (cumulative 3 > original 2)', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(
+          new Map([[0, '2.0000']]),
+        );
+        useCartStore.setState({ items: [v4ReturnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+        await useRefundCheckoutStore.getState().begin(
+          v4BeginInput([v4ReturnItem({ quantity: -1, line_total: '-10.0000' })]),
+        );
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.refundQuantityExceeded');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('a fresh original with NOTHING refunded yet (empty cumulative map) allows refunding the full quantity', async () => {
+        vi.mocked(getCumulativeRefundedQuantityByOriginalLine).mockResolvedValue(new Map());
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.error).toBeNull();
+      });
+
+      it('reads the cumulative map keyed by the SAME originalLocalReceiptId this attempt targets', async () => {
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(getCumulativeRefundedQuantityByOriginalLine).toHaveBeenCalledWith(
+          fakeDb,
+          V4_ORIGINAL_LOCAL_RECEIPT_ID,
+        );
+      });
     });
   });
 

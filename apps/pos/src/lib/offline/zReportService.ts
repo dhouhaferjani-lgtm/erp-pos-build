@@ -25,6 +25,10 @@ import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepositor
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
+import {
+  getRefundRecordsForShift,
+  type LocalRefundRecord,
+} from '@/lib/db/repositories/localRefundRecordRepository';
 import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
@@ -190,13 +194,26 @@ export async function generateZReport(
     [terminalId, toSqliteUtc(shiftOpenedAt)]
   );
 
-  // v3-refund-chain-integration spec §7.1/§7.3 (Revision 4, superseding
-  // the former local_refund_records design entirely) — a v4 refund
-  // inserts its own `offline_receipts` row (`receipt_kind = 'refund'`),
-  // so it is ALREADY included in the `receipts` array queried above; a
-  // refund-only shift (open → refund → close) naturally has a non-empty
-  // `receipts` array now (no separate empty-shift guard is needed for
-  // that case any more than for a sale-only shift).
+  // v3-refund-chain-integration spec §7.1/§7.3 — a v4 refund inserts its
+  // own `offline_receipts` row (`receipt_kind = 'refund'`), so it is
+  // ALREADY included in the `receipts` array queried above; a refund-only
+  // shift (open → refund → close) naturally has a non-empty `receipts`
+  // array now (no separate empty-shift guard is needed for that case any
+  // more than for a sale-only shift).
+  //
+  // Wave-2 review fix (TREASURY CRITICAL) — `local_refund_records` was
+  // NOT superseded by the v4 mechanism: it is the LEGACY refund path's
+  // ONLY write (`recordRefundSettlementForZ`, `refundZAccounting.ts`,
+  // reached by `refundCheckoutStore.ts`'s legacy branch, §9.3's
+  // coexistence ruling — the legacy path stays live for every terminal
+  // that has not yet completed its v4 capability rollout). Removing this
+  // term made every legacy refund overstate expected_cash by its full
+  // amount and sign a Z with refunds=0 — a regression against shipping
+  // behavior. The two sources are DISJOINT BY CONSTRUCTION (a v4 refund
+  // never writes `local_refund_records`; a legacy refund never writes an
+  // `offline_receipts` `receipt_kind='refund'` row), so folding both in
+  // is a plain, non-overlapping sum — never a double-count.
+  const refundRecords = await getRefundRecordsForShift(db, shiftId);
 
   // Cash drawer movements + customer account collections also close into the
   // signed Z. (H3 — allow empty Z: a cashier can always close the register; an
@@ -209,22 +226,32 @@ export async function generateZReport(
   // Build payment method lookup for names
   const paymentMethodMap = await buildPaymentMethodMap(db);
 
-  // 4. Compute report data
-  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals);
+  // 4. Compute report data — refundRecords (LEGACY) seeds refunds_count/
+  // refunds_amount; the receipt_kind branch inside (v4) continues
+  // accumulating on top of that seed (disjoint sources, see above).
+  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals, refundRecords);
 
   // 5. Compute expected cash BEFORE hashing — must be embedded in report_data
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
   // to report_data before hash computation.
-  // v3-refund-chain-integration spec §7.3 — genuine simplification, not
-  // merely a rename: `cashSales` (below) is now ALREADY net of refunds by
-  // construction of aggregateReportData()'s per-row receipt_kind
-  // branching above (a refund's CASH leg is SUBTRACTED from
-  // paymentByType there), so the standalone `cashRefundImpact` term this
-  // section used to sum independently from `local_refund_records` is
-  // removed entirely — one code path computes cash correctly instead of
-  // two paths that had to be kept in sync by hand.
+  // v3-refund-chain-integration spec §7.3 — `cashSales` (below) is
+  // ALREADY net of V4 refunds by construction of aggregateReportData()'s
+  // per-row receipt_kind branching (a v4 refund's CASH leg is SUBTRACTED
+  // from paymentByType there). LEGACY refunds do NOT flow through that
+  // branch at all (local_refund_records carries no per-line/per-method
+  // detail, only a shift-level `cash_impact` magnitude) — restored below
+  // as the standalone `cashRefundImpact` term, subtracted independently.
   const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
   const cashSales = cashPayments ? cashPayments.total_amount : '0';
+
+  // Wave-2 review fix (TREASURY CRITICAL) — the LEGACY refund path's cash
+  // impact (positive magnitude that physically left the drawer, '0' for
+  // non-cash destinations). Never double-counted against `cashSales`
+  // above: disjoint sources (see the refundRecords fetch's own comment).
+  let cashRefundImpact = '0';
+  for (const record of refundRecords) {
+    cashRefundImpact = bcadd(cashRefundImpact, record.cash_impact, decimals);
+  }
 
   // Cash drawer movements (NF525 / DSFinV-K, 2026-06-11 research): paid-ins
   // (deposit) raise the theoretical drawer, payouts lower it. The device is the
@@ -246,13 +273,17 @@ export async function generateZReport(
     cashAccountCollections = bcadd(cashAccountCollections, ap.cash_impact, decimals);
   }
 
-  const expectedCash = bcadd(
+  const expectedCash = bcsub(
     bcadd(
-      bcadd(openingCash, cashSales, decimals),
-      drawerNet,
+      bcadd(
+        bcadd(openingCash, cashSales, decimals),
+        drawerNet,
+        decimals,
+      ),
+      cashAccountCollections,
       decimals,
     ),
-    cashAccountCollections,
+    cashRefundImpact,
     decimals,
   );
 
@@ -773,25 +804,33 @@ function aggregateReportData(
   receipts: OfflineReceipt[],
   paymentMethodMap: Map<string, string>,
   decimals: number,
+  refundRecords: LocalRefundRecord[],
 ): ZReportData {
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
   let salesCount = 0;
-  // v3-refund-chain-integration spec §7.3 — refund rows now live in the
+  // v3-refund-chain-integration spec §7.3 — v4 refund rows live in the
   // SAME `offline_receipts` table (`receipt_kind = 'refund'`), branched
-  // below per row, replacing the former separate
-  // `local_refund_records`/`getRefundRecordsForShift` pass entirely.
-  // refunds_amount is a POSITIVE magnitude: the server pins these
-  // semantics (ReportGenerationService::calculateShiftTotals asserts a
-  // positive refunds_amount in ZReportV3AggregationTest, and
-  // GrandtotalService advances perpetual_grand_total by gross_sales −
-  // refunds_amount). `receipt.total` is stored negative per §7.2's
-  // convention, so bcabs() recovers the existing positive-magnitude
-  // semantics unchanged. Void counters remain 0 offline — voiding is a
-  // server-side operation tracked after sync.
-  let refundsCount = 0;
+  // below per row. Wave-2 review fix: this does NOT replace
+  // `local_refund_records`/`getRefundRecordsForShift` — that remains the
+  // LEGACY refund path's only write (disjoint source, see the caller's
+  // own comment), seeded here BEFORE the receipts loop below continues
+  // accumulating on top of it. refunds_amount is a POSITIVE magnitude:
+  // the server pins these semantics (ReportGenerationService::
+  // calculateShiftTotals asserts a positive refunds_amount in
+  // ZReportV3AggregationTest, and GrandtotalService advances
+  // perpetual_grand_total by gross_sales − refunds_amount). `receipt.total`
+  // is stored negative per §7.2's convention, so bcabs() recovers the
+  // existing positive-magnitude semantics unchanged; `record.total` (the
+  // legacy record) is likewise signed negative for a return, same bcabs()
+  // treatment. Void counters remain 0 offline — voiding is a server-side
+  // operation tracked after sync.
+  let refundsCount = refundRecords.length;
   let refundsAmount = '0';
+  for (const record of refundRecords) {
+    refundsAmount = bcadd(refundsAmount, bcabs(record.total, decimals), decimals);
+  }
   const voidedCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();

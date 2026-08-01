@@ -22,6 +22,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import { getToleranceAutoAcceptCount } from '@/lib/db/repositories/toleranceAutoAcceptRepository';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -374,11 +375,22 @@ export async function buildEndOfDayPreview(
   // 4. expected_cash = opening + net cash sales (Σ tendered − Σ change)
   //    + cash drawer deposits − payouts (NF525 drawer reality; mirrors the
   //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
-  // v3-refund-chain-integration spec §7.3a — `cashTenderedSum` is now
-  // ALREADY net of refunds by construction of the receipt_kind branch
-  // above (mirrors zReportService.ts's own §7.3 simplification exactly):
-  // this formula needs no separate refund-impact term any more.
+  // v3-refund-chain-integration spec §7.3a — `cashTenderedSum` is ALREADY
+  // net of V4 refunds by construction of the receipt_kind branch above
+  // (mirrors zReportService.ts's own §7.3 simplification exactly).
+  //
+  // Wave-2 review fix (TREASURY CRITICAL) — that is NOT true of LEGACY
+  // refunds: they never touch `offline_receipts` at all (their only write
+  // is `local_refund_records`, the legacy path's sole mechanism —
+  // §9.3's coexistence ruling keeps this path live for every terminal
+  // that has not yet completed its v4 capability rollout). Removing the
+  // standalone cashRefundImpact term made this preview overstate expected
+  // cash by the full amount of every legacy refund. Restored below,
+  // disjoint from the v4 mechanism by construction (a legacy refund never
+  // writes an `offline_receipts` `receipt_kind='refund'` row; a v4 refund
+  // never writes `local_refund_records`) — a plain, non-overlapping sum.
   let drawerNet = '0';
+  let cashRefundImpact = '0';
   // The §8.1 budget is keyed by shift id only — there is no timestamp bind, so
   // this read never touches the SQLite TEXT-boundary hazard that forces
   // toSqliteUtc() on the receipt window above. Stays NULL (unknown) without a
@@ -388,15 +400,26 @@ export async function buildEndOfDayPreview(
     toleranceAutoAcceptCount = await getToleranceAutoAcceptCount(db, shiftId);
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
     for (const op of drawerOps) {
-      drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount) : bcsub(drawerNet, op.amount);
+      drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount, scale) : bcsub(drawerNet, op.amount, scale);
     }
     // Cash collected against customer credit accounts is drawer cash.
     const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
     for (const ap of accountPayments) {
-      drawerNet = bcadd(drawerNet, ap.cash_impact);
+      drawerNet = bcadd(drawerNet, ap.cash_impact, scale);
+    }
+    // Cash-destination LEGACY refunds physically left this drawer (matches
+    // the signed Z's own restored cashRefundImpact term so the preview
+    // does not overstate expected cash for a non-acknowledged terminal).
+    const refundRecords = await getRefundRecordsForShift(db, shiftId);
+    for (const r of refundRecords) {
+      cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact, scale);
     }
   }
-  const expectedCash = bcadd(bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum), drawerNet);
+  const expectedCash = bcsub(
+    bcadd(bcsub(bcadd(openingCash, cashTenderedSum, scale), cashChangeDueSum, scale), drawerNet, scale),
+    cashRefundImpact,
+    scale,
+  );
 
   // 5. Build VAT breakdown sorted by rate ascending. tax_rate intentionally
   // remains a number to match the signed Z-report aggregate/wire shape; trim or

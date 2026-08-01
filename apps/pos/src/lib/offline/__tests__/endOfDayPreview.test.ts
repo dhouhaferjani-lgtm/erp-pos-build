@@ -328,6 +328,71 @@ describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallb
     expect(preview.expected_cash).toBe('140.00');
   });
 
+  // Wave-2 review fix (TREASURY CRITICAL) — a MIXED shift with one LEGACY
+  // refund (local_refund_records, restored — the default/only mechanism
+  // for every terminal that has not yet completed its v4 capability
+  // rollout) and one v4 refund (offline_receipts receipt_kind='refund')
+  // must reduce expected_cash by BOTH exactly once each.
+  it('wave-2: a MIXED shift (one legacy refund + one v4 refund) reduces expected_cash by both exactly once each', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+      const s = sql as string;
+      if (s.includes('offline_cash_drawer_ops') || s.includes('local_account_payment_records')) {
+        return [] as never[];
+      }
+      if (s.includes('local_refund_records')) {
+        const shiftId = (params as unknown[] | undefined)?.[0];
+        return (
+          shiftId === 'shift-1' ? [{ id: 'legacy-1', shift_id: 'shift-1', cash_impact: '7.25' }] : []
+        ) as unknown as never[];
+      }
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '50.00',
+            subtotal: '42.02',
+            tax_amount: '7.98',
+            change_due: '0.00',
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '50.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '7.98', line_total: '42.02' }]),
+            created_at: '2026-06-10T10:00:00Z',
+            receipt_kind: 'sale',
+          },
+          {
+            id: 'r2',
+            total: '-10.00',
+            subtotal: '-8.40',
+            tax_amount: '-1.60',
+            change_due: null,
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '-1.60', line_total: '-8.40' }]),
+            created_at: '2026-06-10T10:05:00Z',
+            receipt_kind: 'refund',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR', 'shift-1',
+    );
+
+    // opening 100 + net cash 50 − v4 CASH refund 10.00 (netted in
+    // cashTenderedSum) − legacy cash_impact 7.25 (restored standalone
+    // cashRefundImpact term) = 132.75.
+    expect(preview.expected_cash).toBe('132.75');
+  });
+
   it('excludes training receipts from the preview (is_training = 0 in the query)', async () => {
     vi.mocked(queryAll).mockResolvedValue([] as never[]);
     await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR', 'shift-1');

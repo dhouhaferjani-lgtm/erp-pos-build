@@ -16,6 +16,10 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { sha256 } from '@/lib/fiscal/hashService';
+import { bcadd } from '@/lib/decimal';
+
+/** quantity scale (rule 19's device-side QuantityScale convention). */
+const QUANTITY_SCALE = 4;
 
 export const REFUND_INTENT_STATES = [
   'drafted',
@@ -319,4 +323,76 @@ export async function getRefundIntentsPendingReprint(db: Database): Promise<Refu
       WHERE payout_confirmed_at IS NOT NULL AND printed_at IS NULL
       ORDER BY payout_confirmed_at ASC`,
   );
+}
+
+/**
+ * v3-refund-chain-integration wave-2 review fix, ORCHESTRATOR-RULED
+ * (promoted from treasury's recommendation to REQUIRED) — device-local
+ * cumulative-quantity BACKSTOP. §12's server-side per-original quantity-
+ * cap lock (`FOR UPDATE` + `ABS()`-normalized query,
+ * `PosCoreReceiptProjection.php`) remains the sole CROSS-TERMINAL
+ * authority; this is a single-device, best-effort BELT that closes a
+ * full-refund-value cash-loss class for tenant #1's whole (single-
+ * terminal) topology at trivial local-query cost, well before any network
+ * round trip: a device that has ALREADY appended two refund fiscal events
+ * covering the original's full quantity must refuse a third attempt
+ * locally, rather than authoring a doomed-to-be-rejected fiscal event (or
+ * worse, succeeding locally while the server-side lock is the only thing
+ * standing between the tenant and a double payout).
+ *
+ * Sums the ALREADY-refunded quantity per `original_line_index`, decoded
+ * from `line_snapshot_json`, across every `refund_intents` row for the
+ * SAME `original_local_receipt_id` that has reached a state PROVING a
+ * fiscal event was actually appended (`refund_event_appended` or
+ * `synced`) — `drafted`/`approval_authored`/`dead_lettered_local`/
+ * `abandoned` never signed anything real and must never count toward the
+ * cap (an abandoned draft is not a refunded unit). A row with malformed
+ * JSON, or an entry missing the expected shape, is skipped rather than
+ * thrown — this backstop degrading to "count what it can parse" is safer
+ * than a parse error blocking every subsequent refund attempt on this
+ * device.
+ */
+export async function getCumulativeRefundedQuantityByOriginalLine(
+  db: Database,
+  originalLocalReceiptId: string,
+): Promise<Map<number, string>> {
+  const rows = await queryAll<{ line_snapshot_json: string }>(
+    db,
+    `SELECT line_snapshot_json FROM refund_intents
+      WHERE original_local_receipt_id = $1
+        AND state IN ('refund_event_appended', 'synced')`,
+    [originalLocalReceiptId],
+  );
+
+  const totals = new Map<number, string>();
+  for (const row of rows) {
+    let entries: unknown;
+    try {
+      entries = JSON.parse(row.line_snapshot_json);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(entries)) continue;
+
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const record = entry as Record<string, unknown>;
+      const originalLineIndex = record['originalLineIndex'];
+      const cartItem = record['cartItem'];
+      if (
+        typeof originalLineIndex !== 'number'
+        || typeof cartItem !== 'object'
+        || cartItem === null
+      ) {
+        continue;
+      }
+      const quantity = (cartItem as Record<string, unknown>)['quantity'];
+      if (typeof quantity !== 'number' || !Number.isFinite(quantity)) continue;
+
+      const magnitude = Math.abs(quantity).toFixed(QUANTITY_SCALE);
+      const existing = totals.get(originalLineIndex) ?? '0';
+      totals.set(originalLineIndex, bcadd(existing, magnitude, QUANTITY_SCALE));
+    }
+  }
+  return totals;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FiscalEventCanonicalEncoder } from '@/lib/fiscal/FiscalEventCanonicalEncoder';
 import {
   buildRefundReceiptV4Payload,
   type BuildRefundReceiptV4PayloadInput,
@@ -6,93 +7,21 @@ import {
 } from '../RefundReceiptV4Payload';
 import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
 import type { CartItem } from '@/types/cart';
-import { bcadd, bcdiv } from '@/lib/decimal';
 
 /**
- * Cross-language parity against golden fixture F-16
- * (`apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-16-refund-v4-cash-eur/payload.json`)
- * — the SAME v4 REFUND receipt `GoldenFixtureBuilder.php::f16RefundV4Cash()`
- * asserts the SERVER accepts (`expected.json: {"accept": true}`).
- *
- * F-16 has no stored `expected_canonical_string`/`expected_sha256_hex`
- * pair (unlike the older `sale-receipt-v2-golden.json` fixture family) —
- * it is a PARSE-ACCEPTANCE fixture, proving the PHP validator accepts
- * this exact payload shape at `event_version=4`. The corresponding
- * PHP-side parity test is `CanonicalByteHashV4ParityTest.php` (out of
- * scope for this wave — no `apps/api` changes). This test proves the
- * DEVICE builder, driven by an input that reconstructs the SAME logical
- * refund, produces a payload whose v4-defining fields
- * (`invoice_type_code`, `original_line_references[]`,
- * `refund_destination`, `settlement_allocation`,
- * `original_receipt_reference`, the single-cash-leg `payments[]`, and
- * every line's `product_id`/`quantity`) are IDENTICAL to F-16's own
- * `payload.json` — proving the builder's output is a member of the same
- * accepted-payload family the server fixture pins, field-for-field on
- * every key this builder is responsible for.
+ * Wave-2 review fix (FISCAL IMPORTANT) — the byte/hash golden EXISTS
+ * (`apps/api/tests/Fixtures/Fiscal/sale-receipt-v4-refund-golden.json`,
+ * wave 1) and carries `expected_canonical_string` +
+ * `expected_sha256_hex`. Consumed here exactly like the established
+ * `saleReceiptV2CanonicalParity.test.ts` pattern: build the payload,
+ * encode via the SAME `FiscalEventCanonicalEncoder` the chain uses,
+ * compare the canonical string and its SHA-256 to the committed golden
+ * values.
  */
 
-interface GoldenPaymentRow {
-  amount: string;
-  method_code: string;
-  instrument_type: string | null;
-  instrument_serial: string | null;
-  foreign_currency_amount: string | null;
-  foreign_currency_code: string | null;
-}
-
-interface GoldenLineItem {
-  product_id: string;
-  quantity: string;
-  unit_price: string;
-  line_subtotal: string;
-  line_vat: string;
-  line_discount_amount: string;
-  line_discount_reason: string | null;
-  name: string;
-  sku: string;
-  tax_category_code: string;
-  vat_rate: string;
-}
-
-interface GoldenOriginalLineReference {
-  disposition: 'restock' | 'scrap' | 'not_received';
-  original_line_index: number;
-  product_id: string;
-  quantity: string;
-}
-
 interface GoldenFixture {
-  invoice_type_code: string;
-  currency_code: string;
-  currency_scale: number;
-  subtotal: string;
-  total: string;
-  vat_total: string;
-  transaction_discount_amount: string;
-  refund_destination: string;
-  settlement_allocation: unknown;
-  line_items: GoldenLineItem[];
-  original_line_references: GoldenOriginalLineReference[];
-  original_receipt_reference: {
-    fiscal_event_id: string;
-    original_business_date: string;
-    original_receipt_uuid: string;
-    refund_reason: string;
-  };
-  payments: GoldenPaymentRow[];
-  receipt_uuid: string;
-  terminal_id: string;
-  cashier_id: string;
-  cashier_name: string;
-  shift_id: string;
-  business_date: string;
-  event_time_device: string;
-  seller: {
-    name: string;
-    tax_number: string;
-    tax_jurisdiction_country_code: string;
-    address: { city: string; country_code: string; postal_code: string; street: string };
-  };
+  expected_canonical_string: string;
+  expected_sha256_hex: string;
 }
 
 function readGoldenFixture(): GoldenFixture {
@@ -101,130 +30,98 @@ function readGoldenFixture(): GoldenFixture {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const path = require('node:path') as typeof import('node:path');
   const candidates = [
-    path.resolve(
-      __dirname,
-      '../../../../../../../apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-16-refund-v4-cash-eur/payload.json',
-    ),
-    path.resolve(
-      __dirname,
-      '../../../../../../api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-16-refund-v4-cash-eur/payload.json',
-    ),
+    path.resolve(__dirname, '../../../../../../../apps/api/tests/Fixtures/Fiscal/sale-receipt-v4-refund-golden.json'),
+    path.resolve(__dirname, '../../../../../../api/tests/Fixtures/Fiscal/sale-receipt-v4-refund-golden.json'),
   ];
   const fixturePath = candidates.find((p) => fs.existsSync(p));
   if (!fixturePath) {
-    throw new Error(`F-16 payload.json not found at any candidate path: ${candidates.join(', ')}`);
+    throw new Error(`sale-receipt-v4-refund-golden.json not found at any candidate path: ${candidates.join(', ')}`);
   }
   return JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as GoldenFixture;
 }
 
-describe('RefundReceiptV4Payload cross-language parity (F-16)', () => {
-  it('reconstructs F-16 via the device builder and matches its v4-defining fields exactly', () => {
-    const golden = readGoldenFixture();
-    expect(golden.line_items).toHaveLength(1);
-    expect(golden.original_line_references).toHaveLength(1);
-    expect(golden.payments).toHaveLength(1);
+/** Reconstructs the exact logical refund `sale-receipt-v4-refund-golden.json`
+ *  encodes: one cash-tendered v4 refund citing original line 0
+ *  (disposition=restock), 10.00 net / 2.00 VAT / 12.00 gross, EUR. */
+function goldenInput(): BuildRefundReceiptV4PayloadInput {
+  // Fix round 2 (see docs/sessions/LANE-C-wave2-fix-verify-report.md §7/§8)
+  // — unit_price: '12.00' is the CORRECT device-side value per rule 19 /
+  // docs/architecture/precision-contract.md (POS unit_price is GROSS/TTC,
+  // written verbatim from the cart), matching the established
+  // `sale-receipt-v2-golden.json` convention (its line 1 pins
+  // unit_price:'25.00' == line_total, GROSS, not line_subtotal:'20.83'
+  // NET) and required by `buildLineItems()`'s arithmetic invariant
+  // (`line_total === unit_price × quantity − discount`).
+  // `apps/api/tests/Helpers/Fiscal/GoldenFixtureBuilder.php::f16RefundV4Cash()`
+  // previously pinned `unit_price: '10.00'` (NET) — the opposite
+  // convention — a PHP-side fixture-authoring bug, now corrected there
+  // (orchestrator-ruled fix round 2), with
+  // `sale-receipt-v4-refund-golden.json`'s `expected_canonical_string`/
+  // `expected_sha256_hex` regenerated to match via
+  // `GoldenFixtureBuilder::jcsCanonicalEncode()` (the same generator
+  // `FiscalPayloadConstraintValidatorTest::test_f16_matches_committed_fixture_bytes`
+  // uses). `line_subtotal`/`line_vat`/every other byte is unchanged.
+  const cartItem: CartItem = {
+    id: 'return-line-0',
+    product: { id: 'prod-default', name: 'Default item', sku: 'SKU-DEFAULT', price: '12.00' },
+    quantity: -1,
+    unit_price: '12.00',
+    line_total: '-12.00',
+    tax_rate: '20.00',
+    tax_amount: '-2.00',
+    kind: 'return',
+  };
 
-    const goldenLine = golden.line_items[0]!;
-    const goldenRef = golden.original_line_references[0]!;
-    const goldenPayment = golden.payments[0]!;
+  const original: OriginalFiscalEventLocalView = {
+    fiscalEventId: '99999999-9999-4999-8999-999999999999',
+    lineItems: [],
+    payments: [],
+    trainingFlag: false,
+    transactionDiscountAmount: '0.00',
+  };
 
-    // Reconstruct the NEGATIVE-signed input the same shape
-    // hydrateFromReceipt.ts would have produced for this SAME original
-    // sale line -- line_total negated, tax_amount negated, quantity
-    // negated. `unit_price` on a real DEVICE-originated CartItem is
-    // GROSS/tax-inclusive (rule 19: "unit_price is context-overloaded --
-    // tax-INCLUSIVE in the B2C POS"), so it is DERIVED here as
-    // (line_subtotal + line_vat) / quantity to satisfy
-    // buildLineItems()'s own gross-arithmetic safety invariant
-    // (line_total === unit_price*quantity - discount) -- F-16's own
-    // "unit_price":"10.00" is the fixture-authoring (PHP-side, DTO-direct)
-    // NET convention, not reproducible byte-for-byte from a real device
-    // cart without breaking that invariant; only the line's NET/VAT/
-    // product_id/quantity fields (asserted below) are the byte-parity
-    // contract this builder owns.
-    const grossTotal = bcadd(goldenLine.line_subtotal, goldenLine.line_vat, golden.currency_scale);
-    const derivedUnitPrice = bcdiv(grossTotal, goldenLine.quantity, golden.currency_scale);
-    const cartItem: CartItem = {
-      id: 'return-line-0',
-      product: { id: goldenLine.product_id, name: goldenLine.name, sku: goldenLine.sku, price: derivedUnitPrice },
-      quantity: -Number(goldenLine.quantity),
-      unit_price: derivedUnitPrice,
-      line_total: `-${grossTotal}`,
-      tax_rate: goldenLine.vat_rate,
-      tax_amount: `-${goldenLine.line_vat}`,
-      kind: 'return',
-    };
+  const lines: RefundLineInput[] = [
+    { cartItem, originalLineIndex: 0, disposition: 'restock' },
+  ];
 
-    const original: OriginalFiscalEventLocalView = {
-      fiscalEventId: golden.original_receipt_reference.fiscal_event_id,
-      lineItems: [],
-      payments: [],
-      trainingFlag: false,
-      transactionDiscountAmount: golden.transaction_discount_amount,
-    };
+  return {
+    receiptId: '00000000-0000-4000-8000-000000000016',
+    terminalId: '33333333-3333-4333-8333-333333333333',
+    operatorId: '11111111-1111-4111-8111-111111111111',
+    operatorName: 'Default Cashier',
+    shiftId: '22222222-2222-4222-8222-222222222222',
+    currency: 'EUR',
+    eventTimeDevice: new Date('2026-05-20T14:30:00.000Z'),
+    businessDate: '2026-05-20',
+    lines,
+    payment: { methodCode: 'CASH', amount: '12.00' },
+    seller: {
+      name: 'Default Seller S.A.',
+      taxNumber: '12345678901234',
+      countryCode: 'FR',
+      street: '1 rue de la Paix',
+      city: 'Paris',
+      postalCode: '75001',
+    },
+    refundReason: 'customer return',
+    original,
+    originalReceiptUuid: '00000000-0000-4000-8000-000000000001',
+    originalBusinessDate: '2026-05-19',
+  };
+}
 
-    const lines: RefundLineInput[] = [
-      { cartItem, originalLineIndex: goldenRef.original_line_index, disposition: goldenRef.disposition },
-    ];
+describe('RefundReceiptV4Payload cross-language byte/hash parity (wave-2)', () => {
+  it('encodes the golden v4 refund to the locked canonical bytes + hash', async () => {
+    const encoder = new FiscalEventCanonicalEncoder();
+    const fixture = readGoldenFixture();
 
-    const input: BuildRefundReceiptV4PayloadInput = {
-      receiptId: golden.receipt_uuid,
-      terminalId: golden.terminal_id,
-      operatorId: golden.cashier_id,
-      operatorName: golden.cashier_name,
-      shiftId: golden.shift_id,
-      currency: golden.currency_code,
-      eventTimeDevice: new Date(golden.event_time_device),
-      businessDate: golden.business_date,
-      lines,
-      payment: { methodCode: goldenPayment.method_code, amount: goldenPayment.amount },
-      seller: {
-        name: golden.seller.name,
-        taxNumber: golden.seller.tax_number,
-        countryCode: golden.seller.address.country_code,
-        street: golden.seller.address.street,
-        city: golden.seller.address.city,
-        postalCode: golden.seller.address.postal_code,
-      },
-      refundReason: golden.original_receipt_reference.refund_reason,
-      original,
-      originalReceiptUuid: golden.original_receipt_reference.original_receipt_uuid,
-      originalBusinessDate: golden.original_receipt_reference.original_business_date,
-    };
+    const payload = buildRefundReceiptV4Payload(goldenInput());
+    const canonical = encoder.encode(payload);
 
-    const payload = buildRefundReceiptV4Payload(input);
+    expect(canonical).toBe(fixture.expected_canonical_string);
 
-    // v4-defining fields, field-for-field against the golden fixture.
-    expect(payload.invoice_type_code).toBe(golden.invoice_type_code);
-    expect(payload.refund_destination).toBe(golden.refund_destination);
-    expect(payload.settlement_allocation).toBe(golden.settlement_allocation);
-    expect(payload.currency_code).toBe(golden.currency_code);
-    expect(payload.currency_scale).toBe(golden.currency_scale);
-    expect(payload.subtotal).toBe(golden.subtotal);
-    expect(payload.total).toBe(golden.total);
-    expect(payload.vat_total).toBe(golden.vat_total);
-    expect(payload.transaction_discount_amount).toBe(golden.transaction_discount_amount);
-    expect(payload.original_receipt_reference).toEqual(golden.original_receipt_reference);
-
-    expect(payload.line_items).toHaveLength(1);
-    const line = payload.line_items[0]!;
-    expect(line.product_id).toBe(goldenLine.product_id);
-    expect(line.quantity).toBe(goldenLine.quantity);
-    // unit_price is NOT asserted byte-identical -- see the derivation
-    // comment above; net/VAT/product_id/quantity are this builder's own
-    // byte-parity contract.
-    expect(line.line_subtotal).toBe(goldenLine.line_subtotal);
-    expect(line.line_vat).toBe(goldenLine.line_vat);
-    expect(line.line_discount_amount).toBe(goldenLine.line_discount_amount);
-    expect(line.tax_category_code).toBe(goldenLine.tax_category_code);
-    expect(line.vat_rate).toBe(goldenLine.vat_rate);
-
-    expect(payload.original_line_references).toHaveLength(1);
-    expect(payload.original_line_references[0]).toEqual(goldenRef);
-
-    expect(payload.payments).toHaveLength(1);
-    expect(payload.payments[0]?.amount).toBe(goldenPayment.amount);
-    expect(payload.payments[0]?.method_code).toBe(goldenPayment.method_code);
-    expect(payload.payments[0]?.instrument_type).toBe(goldenPayment.instrument_type);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    expect(hex).toBe(fixture.expected_sha256_hex);
   });
 });

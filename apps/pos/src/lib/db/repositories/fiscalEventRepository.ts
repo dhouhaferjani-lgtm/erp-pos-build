@@ -192,31 +192,65 @@ export async function resolveOriginalFiscalEventLocally(
     return null;
   }
 
-  let payload: Record<string, unknown>;
+  // Wave-2 review fix (FISCAL CRITICAL) — `offline_receipts.canonical_bytes`
+  // (the SAME string `fiscal_events.canonical_bytes` holds) is the full
+  // chain ENVELOPE `FiscalEventEngine.ts` signs (`canonicalPayload`,
+  // :620-637) — tenant_id/terminal_id/sequence_number/etc alongside the
+  // ACTUAL signed fiscal payload nested one level down at
+  // `envelope.payload`. A previous version of this function read
+  // `training_flag`/`transaction_discount_amount`/`line_items` directly
+  // off the ENVELOPE's top level, where none of those keys exist — every
+  // read silently missed and fell back to a PERMISSIVE default
+  // (`trainingFlag=false`, `transactionDiscountAmount='0'`, `lineItems=[]`),
+  // meaning the §3.5/§3.7 device refusals could NEVER fire. Every failure
+  // mode below is FAIL-CLOSED (returns `null`, the caller refuses the
+  // refund) rather than permissive-default: a refusal check that cannot
+  // prove its negative must never assume the safe case.
+  let envelope: unknown;
   try {
-    payload = JSON.parse(receipt.canonical_bytes) as Record<string, unknown>;
+    envelope = JSON.parse(receipt.canonical_bytes);
   } catch {
     return null;
   }
+  if (!isPlainRecord(envelope)) {
+    return null;
+  }
+  const payload = envelope['payload'];
+  if (!isPlainRecord(payload)) {
+    return null;
+  }
 
-  const lineItems = Array.isArray(payload['line_items'])
-    ? (payload['line_items'] as LineItemInput[])
-    : [];
-  const payments = Array.isArray(payload['payments'])
-    ? (payload['payments'] as PaymentInput[])
-    : [];
-  const transactionDiscountAmount =
-    typeof payload['transaction_discount_amount'] === 'string'
-      ? payload['transaction_discount_amount']
-      : '0';
+  if (!Array.isArray(payload['line_items'])) {
+    return null;
+  }
+  const lineItems = payload['line_items'] as LineItemInput[];
+
+  if (!Array.isArray(payload['payments'])) {
+    return null;
+  }
+  const payments = payload['payments'] as PaymentInput[];
+
+  if (typeof payload['training_flag'] !== 'boolean') {
+    return null;
+  }
+  const trainingFlag = payload['training_flag'];
+
+  if (typeof payload['transaction_discount_amount'] !== 'string') {
+    return null;
+  }
+  const transactionDiscountAmount = payload['transaction_discount_amount'];
 
   return {
     fiscalEventId: fiscalEventRow.id,
     lineItems,
     payments,
-    trainingFlag: payload['training_flag'] === true,
+    trainingFlag,
     transactionDiscountAmount,
   };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function fiscalEventToWireEnvelope(
