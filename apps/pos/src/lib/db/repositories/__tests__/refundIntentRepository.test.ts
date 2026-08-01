@@ -388,17 +388,17 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
     it('sums already-refunded quantity per original line as decimal strings', async () => {
       const db = adapter.asDatabase();
       await seedAppendedIntentWithSnapshot(db, 'intent-a', [
-        { originalLineIndex: 0, quantity: '1.5000' },
-        { originalLineIndex: 1, quantity: '2.0000' },
+        { originalLineIndex: 0, quantity: '1.500' },
+        { originalLineIndex: 1, quantity: '2.000' },
       ]);
       await seedAppendedIntentWithSnapshot(db, 'intent-b', [
-        { originalLineIndex: 0, quantity: '0.2500' },
+        { originalLineIndex: 0, quantity: '0.250' },
       ]);
 
       const totals = await getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1');
 
-      expect(totals.get(0)).toBe('1.7500');
-      expect(totals.get(1)).toBe('2.0000');
+      expect(totals.get(0)).toBe('1.750');
+      expect(totals.get(1)).toBe('2.000');
     });
 
     it('counts only states that PROVE a fiscal event was appended', async () => {
@@ -406,7 +406,7 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
       // drafted only — nothing was ever signed, so it must not count.
       await createOrReuseActiveRefundIntent(
         db,
-        baseInput({ id: 'intent-draft', lineSnapshot: [{ originalLineIndex: 0, quantity: '9.0000' }] }),
+        baseInput({ id: 'intent-draft', lineSnapshot: [{ originalLineIndex: 0, quantity: '9.000' }] }),
       );
 
       const totals = await getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1');
@@ -416,7 +416,7 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
 
     it('finding 18 — FAILS CLOSED on an unparseable prior snapshot (never skip-and-undercount)', async () => {
       const db = adapter.asDatabase();
-      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.0000' }]);
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.000' }]);
       // Corrupt the stored snapshot of an ALREADY-APPENDED intent.
       await adapter.execute(
         "UPDATE refund_intents SET line_snapshot_json = 'not-json' WHERE id = 'intent-a'",
@@ -438,7 +438,7 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
 
     it('finding 18 — FAILS CLOSED on a non-array snapshot', async () => {
       const db = adapter.asDatabase();
-      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.0000' }]);
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.000' }]);
       await adapter.execute(
         `UPDATE refund_intents SET line_snapshot_json = '{"not":"an array"}' WHERE id = 'intent-a'`,
       );

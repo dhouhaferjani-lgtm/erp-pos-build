@@ -86,6 +86,27 @@ function isoSecondsUtc(date: Date): string {
 }
 
 /**
+ * Round-2 fix (Codex re-review of finding 6) — the signed `approval_id`
+ * could not be read back out of the resolved approval event's own
+ * canonical bytes.
+ *
+ * FAIL CLOSED: the alternative — minting a fresh identity — is exactly the
+ * defect finding 6 closed. An `approval_id` that matches neither resolved
+ * event's payload makes `PosCoreReceiptProjection`'s cross-check throw
+ * `ApprovalEvidenceUnresolvedException`, a NON-RETRYABLE dead-letter, after
+ * the cash has already left the drawer. A refusal here costs a retry; a
+ * re-mint costs the refund.
+ */
+export class ApprovalIdentityUnreadableError extends Error {
+  constructor(public readonly approvalEventId: string) {
+    super(
+      `Approval identity is unreadable: fiscal event ${approvalEventId} has no readable payload.approval_id in its canonical bytes. Refusing to mint a replacement identity (spec §4.2 — the projector cross-checks this field against the resolved events themselves).`,
+    );
+    this.name = 'ApprovalIdentityUnreadableError';
+  }
+}
+
+/**
  * Wave-2 fix-wave finding 6 — recovers the `approval_id` actually SIGNED
  * into an `OPERATOR_APPROVAL_GRANTED` event from its own canonical bytes.
  *
@@ -204,11 +225,20 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
     //    So the AUTHORITATIVE id is read back out of the resolved event's
     //    own signed bytes. On a first append that is exactly
     //    `candidateApprovalId` (same object, byte-identical); on an
-    //    idempotent hit it is the ORIGINAL one. The fallback is
-    //    deliberately the candidate: unreadable bytes must not silently
-    //    produce a `null`/empty approval identity.
-    const approvalId =
-      readApprovalIdFromCanonicalBytes(approvalEvent.canonical_bytes) ?? candidateApprovalId;
+    //    idempotent hit it is the ORIGINAL one.
+    //
+    //    Round-2 (Codex re-review of finding 6): unreadable bytes now FAIL
+    //    CLOSED. Falling back to the freshly minted candidate re-created
+    //    the very identity mismatch this fix exists to prevent — the
+    //    evidence would carry an `approval_id` that matches NEITHER
+    //    resolved event's payload, and the projector would dead-letter the
+    //    refund after the cash left the drawer. Identity is never
+    //    re-minted; if it cannot be read from the signed bytes, nothing is
+    //    returned and the caller surfaces a retryable approval error.
+    const approvalId = readApprovalIdFromCanonicalBytes(approvalEvent.canonical_bytes);
+    if (approvalId === null) {
+      throw new ApprovalIdentityUnreadableError(approvalEvent.id);
+    }
 
     const overrideEventType = overrideEventTypeFor(approvalScope);
     const overrideEvent = await engine.append(tx, {

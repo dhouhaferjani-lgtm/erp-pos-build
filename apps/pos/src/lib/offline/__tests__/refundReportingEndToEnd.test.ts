@@ -118,12 +118,16 @@ import { FiscalEventEngine } from '@/lib/fiscal/FiscalEventEngine';
 import { FiscalEventCanonicalEncoder } from '@/lib/fiscal/FiscalEventCanonicalEncoder';
 import { HashChainIntegrityProvider } from '@/lib/fiscal/HashChainIntegrityProvider';
 import { FiscalEventPayloadRegistry } from '@/lib/fiscal/FiscalEventPayloadRegistry';
+import { bcadd, bccomp } from '@/lib/decimal';
 import { createRefundReceipt, type CreateRefundReceiptInput } from '../refundReceiptService';
 import { generateZReport } from '../zReportService';
 import { buildEndOfDayPreview } from '../endOfDayPreview';
 import { generateXReport, fetchShiftReceipts } from '@/api/reportApi';
 import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
-import type { RefundLineInput } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
+import {
+  REFUND_QUANTITY_SCALE,
+  type RefundLineInput,
+} from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import type { CartItem } from '@/types/cart';
 
 // ─── Constants / fixture arithmetic (computed BY HAND, not by the code) ──────
@@ -169,7 +173,7 @@ function returnCartItem(): CartItem {
 
 function refundInput(): CreateRefundReceiptInput {
   const lines: RefundLineInput[] = [
-    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
+    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.000' },
   ];
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: ORIGINAL_FISCAL_EVENT_ID,
@@ -278,16 +282,38 @@ describe('v4 refund reporting — REAL writer through Z / EOD / X (findings 1, 4
     expect(row['total']).toBe(NEG_GROSS);
     expect(row['tax_amount']).toBe(NEG_VAT);
     expect(row['subtotal']).toBe(NEG_NET);
-    // subtotal + tax_amount == total, at the configured scale.
-    expect(
-      (Number.parseFloat(row['subtotal']!) + Number.parseFloat(row['tax_amount']!)).toFixed(2),
-    ).toBe(Number.parseFloat(row['total']!).toFixed(2));
+    // subtotal + tax_amount == total, at the configured scale — asserted
+    // with DECIMAL helpers. Round-2 minor N-5: this identity used to be
+    // checked with `Number.parseFloat(...) + Number.parseFloat(...)`,
+    // i.e. float arithmetic on money inside the one test that exists to
+    // prove decimal correctness (and a repo-guard violation).
+    expect(bccomp(bcadd(row['subtotal']!, row['tax_amount']!, 2), row['total']!)).toBe(0);
 
     // The line mirror stays GROSS-signed (§7.2's stated convention) — this is
     // exactly the value the three consumers below must NOT mistake for net.
     const lines = JSON.parse(row['lines']!) as Array<Record<string, string>>;
     expect(lines[0]!['line_total']).toBe(NEG_GROSS);
     expect(lines[0]!['tax_amount']).toBe(NEG_VAT);
+
+    // ── Round-2 finding 3 — ONE canonical quantity string, VERBATIM.
+    //    The boundary normalizes at REFUND_QUANTITY_SCALE (the canonical
+    //    payload's own frozen scale), and that exact string appears
+    //    unmodified in the local line mirror (sign applied by decimal
+    //    arithmetic) and in the signed payload's BOTH parallel arrays.
+    //    Previously the boundary used scale 4 while the payload signed at
+    //    scale 3, so the cap and the row could carry a 4th decimal the
+    //    chain truncated away.
+    expect(REFUND_QUANTITY_SCALE).toBe(3);
+    expect(lines[0]!['quantity']).toBe('-1.000');
+
+    const envelope = JSON.parse(row['canonical_bytes']!) as { payload: Record<string, unknown> };
+    const signedLines = envelope.payload['line_items'] as Array<Record<string, string>>;
+    const signedRefs = envelope.payload['original_line_references'] as Array<Record<string, string>>;
+    expect(signedLines[0]!['quantity']).toBe('1.000');
+    // §3.3's parallel-array invariant, on the REAL signed bytes.
+    expect(signedRefs[0]!['quantity']).toBe(signedLines[0]!['quantity']);
+    // …and the local mirror is the same string, negated — not a re-format.
+    expect(lines[0]!['quantity']).toBe(`-${signedLines[0]!['quantity']}`);
 
     // ── 2. §7.3 — the SIGNED Z. ────────────────────────────────────────────
     const z = await generateZReport(

@@ -21,6 +21,7 @@ import { withWriteTransaction } from '@/lib/db/writeGate';
 import type { FiscalEventAppendResult, SaleReceiptApprovalReferenceInput } from '@/lib/fiscal/FiscalEventEngine';
 import {
   buildRefundReceiptV4Payload,
+  REFUND_QUANTITY_SCALE,
   type RefundLineInput,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import type { SaleReceiptSellerInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
@@ -30,9 +31,13 @@ import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptReposi
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type Database from '@tauri-apps/plugin-sql';
 
-/** Device-side quantity scale (rule 19) — must match
- *  `refundIntentRepository.ts`'s own `QUANTITY_SCALE`. */
-const QUANTITY_SCALE = 4;
+/**
+ * The refund path's ONE quantity scale — the canonical payload's frozen
+ * scale, so the negative line mirror carries the SAME string the chain
+ * signed (with the sign applied by decimal arithmetic). Round-2 fix for
+ * finding 3.
+ */
+const QUANTITY_SCALE = REFUND_QUANTITY_SCALE;
 
 function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');

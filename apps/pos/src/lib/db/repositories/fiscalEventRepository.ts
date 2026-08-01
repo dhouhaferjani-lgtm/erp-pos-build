@@ -210,10 +210,11 @@ export async function resolveOriginalFiscalEventLocally(
     event_version: number;
     business_date: string;
     terminal_id: string;
+    sequence_number: number;
     canonical_bytes: string;
   }>(
     db,
-    `SELECT id, event_type, event_version, business_date, terminal_id, canonical_bytes
+    `SELECT id, event_type, event_version, business_date, terminal_id, sequence_number, canonical_bytes
        FROM fiscal_events
       WHERE source_event_class = 'offline_receipts' AND source_event_id = $1
       LIMIT 1`,
@@ -311,6 +312,28 @@ export async function resolveOriginalFiscalEventLocally(
     return null;
   }
   if (businessDate !== fiscalEventRow.business_date) {
+    return null;
+  }
+
+  // -- Round-2 hardening (Codex re-review of finding 2) — cross-check the
+  //    ENVELOPE's own identity fields against the selected row's columns.
+  //    Byte equality proves the mirror and the chain hold the same string;
+  //    it does not prove that string describes the row we selected. The
+  //    envelope carries `event_type` / `event_version` / `terminal_id` /
+  //    `sequence_number` alongside the nested payload (FiscalEventEngine's
+  //    `canonicalPayload`), so any disagreement means the row and its own
+  //    bytes describe different events — fail closed rather than trust
+  //    either.
+  if (envelope['event_type'] !== fiscalEventRow.event_type) {
+    return null;
+  }
+  if (envelope['event_version'] !== fiscalEventRow.event_version) {
+    return null;
+  }
+  if (envelope['terminal_id'] !== fiscalEventRow.terminal_id) {
+    return null;
+  }
+  if (envelope['sequence_number'] !== fiscalEventRow.sequence_number) {
     return null;
   }
 

@@ -92,7 +92,7 @@ async function seedAppendedIntent(id = INTENT_ID): Promise<void> {
     operatorId: 'operator-1',
     originalLocalReceiptId: ORIGINAL_LOCAL_RECEIPT_ID,
     originalFiscalEventId: 'fe-orig-1',
-    lineSnapshot: [{ originalLineIndex: 0, quantity: '1.0000' }],
+    lineSnapshot: [{ originalLineIndex: 0, quantity: '1.000' }],
     approvalSourceEventId: `approval-src-${id}`,
     overrideSourceEventId: `override-src-${id}`,
   });

@@ -262,8 +262,28 @@ export class RefundQuantityAlignmentError extends Error {
   }
 }
 
-/** §3.1 — quantity is frozen at 3 decimal places in the canonical payload. */
-const FROZEN_QUANTITY_SCALE = 3;
+/**
+ * §3.1 — the canonical payload's quantity scale, FROZEN at 3 decimal
+ * places in Phase 1 (`LineItemInput.quantity`: "Money at `quantity_scale`
+ * (fixed at 3 in Phase 1)").
+ *
+ * **Round-2 fix (finding 3, Codex re-review).** This is the ONE scale the
+ * whole refund quantity path uses — boundary normalization, the
+ * `refund_intents` line snapshot, the cumulative cap, the
+ * `offline_receipts` line mirror and `original_line_references[i]` — so
+ * the canonical string flows VERBATIM and this module's `bcformat` is a
+ * provable no-op rather than a re-format.
+ *
+ * It deliberately is NOT the device-side `QuantityScale` convention of 4:
+ * the chain can only ever sign 3 decimals, so a device cap counting a
+ * 4th would be measuring a quantity that was never signed (and `bcformat`
+ * TRUNCATES, so the extra digit is silently dropped at signing time). The
+ * server-side §12 cap reads the SIGNED quantities; the device bound must
+ * speak the same units. It is also NOT the currency scale — a coincidence
+ * of value only, for a 3-decimal currency.
+ */
+export const REFUND_QUANTITY_SCALE = 3;
+const FROZEN_QUANTITY_SCALE = REFUND_QUANTITY_SCALE;
 
 /**
  * §3.5 errata T7 — the refusal's PRIMARY enforcement point: the spec

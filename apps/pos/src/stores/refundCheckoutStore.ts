@@ -108,6 +108,7 @@ import {
 } from '@/lib/db/repositories/refundIntentRepository';
 import {
   assertOriginalRefundable,
+  REFUND_QUANTITY_SCALE,
   type ReturnLineDisposition,
   type RefundLineInput,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
@@ -120,10 +121,15 @@ import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcabs, bcadd, bccomp, bcformat } from '@/lib/decimal';
 
-/** quantity scale (rule 19's device-side QuantityScale convention) — must
- *  match refundIntentRepository.ts's own QUANTITY_SCALE exactly, or the
- *  cumulative-quantity backstop below compares mismatched precisions. */
-const QUANTITY_SCALE = 4;
+/**
+ * The refund path's ONE quantity scale — the canonical payload's own
+ * frozen scale, re-exported from the module that owns the contract
+ * (`REFUND_QUANTITY_SCALE`). Round-2 fix for finding 3: normalizing here
+ * at a DIFFERENT scale from the one the chain signs meant the cap and the
+ * local row could carry a 4th decimal the payload truncates away, i.e. a
+ * quantity that was never signed.
+ */
+const QUANTITY_SCALE = REFUND_QUANTITY_SCALE;
 
 // ─── Steps / errors ──────────────────────────────────────────────────────────
 

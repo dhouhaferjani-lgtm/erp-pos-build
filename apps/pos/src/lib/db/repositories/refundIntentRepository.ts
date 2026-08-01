@@ -17,9 +17,14 @@ import type Database from '@tauri-apps/plugin-sql';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { sha256 } from '@/lib/fiscal/hashService';
 import { bcadd } from '@/lib/decimal';
+import { REFUND_QUANTITY_SCALE } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 
-/** quantity scale (rule 19's device-side QuantityScale convention). */
-const QUANTITY_SCALE = 4;
+/**
+ * The refund path's ONE quantity scale — the canonical payload's frozen
+ * scale (`REFUND_QUANTITY_SCALE`), so the cumulative cap sums exactly the
+ * strings the chain signs. Round-2 fix for finding 3.
+ */
+const QUANTITY_SCALE = REFUND_QUANTITY_SCALE;
 
 export const REFUND_INTENT_STATES = [
   'drafted',

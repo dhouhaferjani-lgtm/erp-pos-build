@@ -534,6 +534,62 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
     });
 
+    it('round 2 — fails closed when the ENVELOPE terminal identity disagrees with the row', async () => {
+      const receiptId = '7a7a7a7a-7a7a-47a7-87a7-7a7a7a7a7a7a';
+      // Byte equality holds and the payload is valid; the envelope simply
+      // describes a DIFFERENT terminal than the row it was selected from.
+      await seedRawOriginalPair(receiptId, {
+        event_type: 'SALE_RECEIPT',
+        event_version: 3,
+        terminal_id: 'some-other-terminal',
+        sequence_number: 1,
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('round 2 — fails closed when the ENVELOPE sequence identity disagrees with the row', async () => {
+      const receiptId = '8b8b8b8b-8b8b-48b8-88b8-8b8b8b8b8b8b';
+      await seedRawOriginalPair(receiptId, {
+        event_type: 'SALE_RECEIPT',
+        event_version: 3,
+        terminal_id: TERMINAL_ID,
+        sequence_number: 99,
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('round 2 — fails closed when the ENVELOPE event_type/version disagree with the row', async () => {
+      const receiptId = '9c9c9c9c-9c9c-49c9-89c9-9c9c9c9c9c9c';
+      await seedRawOriginalPair(receiptId, {
+        event_type: 'OPERATOR_APPROVAL_GRANTED',
+        event_version: 4,
+        terminal_id: TERMINAL_ID,
+        sequence_number: 1,
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('round 2 — a fully identity-consistent envelope still resolves (the checks are not vacuous)', async () => {
+      const receiptId = 'ad0d0d0d-0d0d-40d0-80d0-0d0d0d0d0d0d';
+      await seedRawOriginalPair(receiptId, {
+        event_type: 'SALE_RECEIPT',
+        event_version: 3,
+        terminal_id: TERMINAL_ID,
+        sequence_number: 1,
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+      });
+
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+      expect(view).not.toBeNull();
+      expect(view?.businessDate).toBe('2026-08-01');
+    });
+
     it('fails closed when the signed business_date disagrees with the fiscal_events row', async () => {
       const receiptId = '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a';
       await seedRawOriginalPair(

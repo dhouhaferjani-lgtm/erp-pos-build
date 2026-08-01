@@ -16,6 +16,7 @@ vi.mock('@/lib/fiscal/instance', () => ({
 
 import {
   authorPosOverride,
+  ApprovalIdentityUnreadableError,
   type AuthorPosOverrideInput,
   type PosOverrideContext,
   type PosOverrideSupervisor,
@@ -67,7 +68,7 @@ describe('authorPosOverride', () => {
   beforeEach(() => {
     appendMock.mockReset();
     let seq = 0;
-    appendMock.mockImplementation((_tx: unknown, request: { event_type: string; source_event_id?: string }) => {
+    appendMock.mockImplementation((_tx: unknown, request: { event_type: string; source_event_id?: string; payload: unknown }) => {
       seq += 1;
       return Promise.resolve({
         id: `${request.event_type}-fiscal-event-${String(seq)}`,
@@ -76,7 +77,11 @@ describe('authorPosOverride', () => {
         current_hash: 'h'.repeat(64),
         previous_hash: 'p'.repeat(64),
         event_version: 1,
-        canonical_bytes: '{}',
+        // Models the REAL engine: `canonical_bytes` is the chain ENVELOPE
+        // with the signed payload nested at `envelope.payload`. Round-2
+        // fix for finding 6 reads the authoritative `approval_id` back out
+        // of exactly this, so a `'{}'` stub would no longer be faithful.
+        canonical_bytes: JSON.stringify({ payload: request.payload }),
       });
     });
   });
@@ -251,5 +256,52 @@ describe('authorPosOverride — approval_id stability across re-authoring (findi
     const overrideCall = appendMock.mock.calls[1] as [unknown, { payload: { approval_id: string } }];
     expect(overrideCall[1].payload.approval_id).toBe(signedApprovalId);
     expect(retry.approval_id).toBe(signedApprovalId);
+  });
+});
+
+/**
+ * Round-2 fix (Codex re-review of finding 6) — identity is never re-minted.
+ */
+describe('authorPosOverride — unreadable approval identity fails closed (round 2)', () => {
+  it('throws instead of minting a replacement approval_id when the signed bytes are unreadable', async () => {
+    appendMock.mockReset();
+    let seq = 0;
+    appendMock.mockImplementation((_tx: unknown, request: { event_type: string }) => {
+      seq += 1;
+      return Promise.resolve({
+        id: `${request.event_type}-fiscal-event-${String(seq)}`,
+        event_type: request.event_type,
+        sequence_number: seq,
+        current_hash: 'h'.repeat(64),
+        previous_hash: 'p'.repeat(64),
+        event_version: 1,
+        // Unreadable: not the chain envelope shape at all.
+        canonical_bytes: 'not-json',
+      });
+    });
+
+    await expect(authorPosOverride(baseInput())).rejects.toThrow(ApprovalIdentityUnreadableError);
+
+    // The OVERRIDE event is never authored against a fabricated identity.
+    expect(appendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the envelope parses but carries no approval_id', async () => {
+    appendMock.mockReset();
+    let seq = 0;
+    appendMock.mockImplementation((_tx: unknown, request: { event_type: string }) => {
+      seq += 1;
+      return Promise.resolve({
+        id: `${request.event_type}-fiscal-event-${String(seq)}`,
+        event_type: request.event_type,
+        sequence_number: seq,
+        current_hash: 'h'.repeat(64),
+        previous_hash: 'p'.repeat(64),
+        event_version: 1,
+        canonical_bytes: JSON.stringify({ payload: { approval_scope: 'void_or_return_override' } }),
+      });
+    });
+
+    await expect(authorPosOverride(baseInput())).rejects.toThrow(ApprovalIdentityUnreadableError);
   });
 });
