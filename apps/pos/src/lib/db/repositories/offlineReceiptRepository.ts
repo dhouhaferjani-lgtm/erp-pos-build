@@ -406,6 +406,25 @@ export async function setServerReceiptId(
   );
 }
 
+/**
+ * v3-refund-chain-integration §7.2 — a v4 refund's `offline_receipts` row
+ * is keyed to its intent by `idempotency_key = refund_intents.id` (its own
+ * `id` is a distinct fresh UUID). Wave-2 fix-wave finding 11 needs this
+ * lookup to VERIFY a reused, already-appended intent's linkage before
+ * routing it to payout/print recovery — a claim of "appended" with no
+ * local receipt behind it is corrupt, not resumable.
+ */
+export async function getOfflineReceiptByIdempotencyKey(
+  db: Database,
+  idempotencyKey: string,
+): Promise<OfflineReceipt | null> {
+  return queryOne<OfflineReceipt>(
+    db,
+    'SELECT * FROM offline_receipts WHERE idempotency_key = $1',
+    [idempotencyKey]
+  );
+}
+
 export async function getOfflineReceiptById(
   db: Database,
   id: string,

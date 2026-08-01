@@ -125,6 +125,8 @@
     "wholeDiscountReceiptRefused": "Ce ticket comporte une remise sur l'ensemble du ticket ; les remboursements ne sont pas disponibles pour ce type de ticket dans cette version.",
     "nonCashOriginalRefused": "Ce ticket n'a pas été réglé en espèces. Sur ce terminal, les remboursements sont versés uniquement en espèces : seuls les tickets réglés en espèces peuvent y être remboursés. Demandez à un responsable de traiter ce retour depuis le back-office.",
     "refundQuantityExceeded": "Ce remboursement dépasserait la quantité initialement vendue. Vérifiez ce qui a déjà été remboursé pour ce ticket.",
+    "discountedPartialRefundRefused": "Cette ligne comportait une remise : elle ne peut être remboursée qu'en totalité. Remboursez la ligne entière, ou demandez à un responsable de traiter un remboursement partiel depuis le back-office.",
+    "refundAlreadyAppended": "Ce remboursement a déjà été enregistré. Terminez la confirmation du versement en espèces et l'impression du ticket.",
     "capabilityUnavailable": "Les remboursements sont temporairement indisponibles sur ce terminal — contactez le support",
     "confirm": {
       "charge": "Encaisser {{amount}}",

@@ -393,6 +393,25 @@ correctly allows N legitimate sequential partials up to the original quantity an
 legitimately be refunded over time. This is stated explicitly so the two mechanisms (local
 uniqueness, server cap) are understood as non-overlapping, not redundant.
 
+> **⚖️ ERRATUM — post-FINAL, 2026-08-01, orchestrator-ruled (wave-2 fix wave, finding 18 /
+> Codex Q-1).** In addition to the duplicate-in-flight guard above, the device carries a
+> **cumulative-quantity BACKSTOP** (`getCumulativeRefundedQuantityByOriginalLine()`), which sums
+> the already-refunded quantity per `original_line_index` across every `refund_intents` row for
+> the same original that has reached a state PROVING a fiscal event was appended
+> (`refund_event_appended` or `synced`), and refuses a new selection that would push a line past
+> the original's own quantity. This backstop is **retained as a hardening bound only** — §12's
+> server-side per-original quantity-cap lock remains the **sole authority**, and the backstop is
+> explicitly single-device, best-effort, and blind to refunds settled through the legacy
+> `/return` path. Its policy role is to close a full-refund-value cash-loss class for a
+> single-terminal launch tenant *before any network round trip*, not to adjudicate refund
+> eligibility. **Its tolerance is nil:** a malformed, unparseable, or non-canonical prior
+> appended snapshot **fails closed** (refuses the refund) rather than skipping the row —
+> skipping *undercounts* what has already been refunded, which makes the cap more permissive in
+> exactly the case where its data is untrustworthy, i.e. the direction that loses money. Refund
+> quantities in the snapshot are canonical positive decimal **strings** (§3.2's `bcabs`
+> normalization, applied once at the refund boundary); a number-typed quantity is treated as
+> non-canonical and refused, never coerced.
+
 ### 4.5 Payout/print reconciliation — payout-confirmed-but-unprinted recovery, dispute money
 effect (fold item 7)
 

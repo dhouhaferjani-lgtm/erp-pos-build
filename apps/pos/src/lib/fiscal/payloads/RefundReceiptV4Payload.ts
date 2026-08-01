@@ -349,22 +349,34 @@ export function buildRefundReceiptV4Payload(
   //    is a reduction regardless of direction) and is passed through
   //    unchanged, no bcabs() needed.
   //
-  // Wave-2 fix-wave finding 3: the positive quantity is NOT re-derived
-  // here with `Math.abs(item.quantity)`. It comes from the caller's
-  // canonical decimal string (`line.quantity`), normalized once at the
-  // refund boundary. The one remaining numeric hop is unavoidable and
-  // narrow: `CartItem.quantity` is `number`-typed app-wide, and the
-  // SHARED `buildSaleReceiptV3Payload`/`buildLineItems` path (the sale
-  // path, untouched by this lane) reads it to derive both the gross
-  // line-total identity check and `line_items[i].quantity`. So the
-  // canonical STRING is the source and the number is projected from it —
-  // never the reverse — and the projection is then PROVED correct by the
-  // §3.3 alignment assertion in Step 4 below.
+  // Wave-2 fix-wave finding 3 — where the canonical quantity STRING lives
+  // and where a number is still unavoidable.
+  //
+  // The authoritative quantity for this refund is `line.quantity`: a
+  // canonical positive decimal string normalized ONCE at the refund
+  // boundary and carried verbatim through the intent snapshot, the
+  // cumulative-quantity cap, the `offline_receipts` line mirror and
+  // `original_line_references[i].quantity` (Step 4). That is the whole of
+  // the "decimal string end-to-end" contract.
+  //
+  // The ONE remaining numeric hop is narrow and structural:
+  // `CartItem.quantity` is `number`-typed app-wide, and the SHARED
+  // `buildSaleReceiptV3Payload`/`buildLineItems()` path (the SALE path,
+  // deliberately untouched by this lane) reads it to derive both the gross
+  // line-total identity check and `line_items[i].quantity`. Retyping
+  // `CartItem.quantity` is a cross-cutting refactor outside this wave.
+  //
+  // `Math.abs` is used rather than `Number(line.quantity)`: on an existing
+  // number it flips the sign bit EXACTLY, with no parse, whereas coercing
+  // the string back to a float is a genuine float conversion (and is what
+  // the `no-parsefloat-on-money` guard exists to stop). Either way the
+  // result is PROVED correct rather than assumed — Step 4 asserts
+  // `line_items[i].quantity` is byte-identical to the canonical string.
   const normalizedCartItems: CartItem[] = input.lines.map((line) => {
     const item = line.cartItem;
     return {
       ...item,
-      quantity: Number(line.quantity),
+      quantity: Math.abs(item.quantity),
       line_total: bcabs(item.line_total, scale),
       tax_amount: bcabs(item.tax_amount, scale),
       kind: 'sale',

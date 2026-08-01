@@ -76,6 +76,11 @@ vi.mock('@/lib/offline/refundReceiptService', () => ({
 }));
 vi.mock('@/lib/refundFlow/refundApprovalV3', () => ({
   authorRefundReturnApprovalV3: vi.fn(),
+  // Wave-2 fix-wave finding 11 — resume, don't re-author.
+  recoverRefundApprovalEvidenceLocally: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
+  getOfflineReceiptByIdempotencyKey: vi.fn().mockResolvedValue(null),
 }));
 
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
@@ -87,7 +92,11 @@ import {
   type RefundIntentRow,
 } from '@/lib/db/repositories/refundIntentRepository';
 import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
-import { authorRefundReturnApprovalV3 } from '@/lib/refundFlow/refundApprovalV3';
+import {
+  authorRefundReturnApprovalV3,
+  recoverRefundApprovalEvidenceLocally,
+} from '@/lib/refundFlow/refundApprovalV3';
+import { getOfflineReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
 
 const fakeDb = {} as Database;
 const NO_RETRY = { maxRetries: 0, backoffMs: 0 };
@@ -916,6 +925,159 @@ describe('refundCheckoutStore — v4 flow', () => {
       expect(state.step).toBe('idle');
       expect(state.error?.key).toBe('refundFlow.nonCashOriginalRefused');
       expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Wave-2 fix-wave finding 10 (fiscal I-1) — a partial refund of a
+     * per-line-discounted line used to throw
+     * `LineArithmeticInvariantError` from the payload builder AFTER the
+     * manager PIN was spent and the approval+override events were on the
+     * chain. It is now refused at the LOOKUP level.
+     */
+    it('finding 10 — refuses a PARTIAL refund of a per-line-discounted line BEFORE the PIN', async () => {
+      // Original line qty 2; the cashier edited the return down to 1.
+      const edited = v4ReturnItem({
+        quantity: -1,
+        line_total: '-10.0000',
+        tax_amount: '-1.9000',
+        discount_amount: '3.0000',
+      });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([edited]));
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.discountedPartialRefundRefused');
+      // No intent drafted, no PIN requested, nothing signed.
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+    });
+
+    it('finding 10 — a FULL-line refund of a discounted line is still allowed (line_total keeps the discount)', async () => {
+      const full = v4ReturnItem({ discount_amount: '3.0000' });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([full]));
+
+      expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      expect(createOrReuseActiveRefundIntent).toHaveBeenCalled();
+    });
+
+    it('finding 10 — an UNDISCOUNTED partial refund is unaffected', async () => {
+      const partial = v4ReturnItem({ quantity: -1, line_total: '-10.0000', tax_amount: '-1.9000' });
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput([partial]));
+
+      expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+    });
+
+    /**
+     * Wave-2 fix-wave finding 11 (fiscal I-2 + codex M-3) — a REUSED
+     * intent is resumed from the state it is actually in.
+     */
+    describe('finding 11 — reused-intent resume', () => {
+      it('an already-APPENDED intent routes to reconciliation instead of replaying the flow', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({
+            state: 'refund_event_appended',
+            refund_fiscal_event_id: 'fe-v4-refund-1',
+          }),
+          reused: true,
+        });
+        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue({ id: 'offline-receipt-1' } as never);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.refundAlreadyAppended');
+        // The reconciliation prompt is surfaced — the refund IS done.
+        expect(useRefundReconciliationStore.getState().epoch).toBeGreaterThan(0);
+        // …and the flow never reaches the confirm step, so
+        // createRefundReceipt can never re-attempt a transition that would
+        // roll back the whole write-gate transaction.
+        expect(createRefundReceipt).not.toHaveBeenCalled();
+      });
+
+      it('an APPENDED intent with NO linked offline_receipts row fails closed (corrupt linkage)', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({
+            state: 'refund_event_appended',
+            refund_fiscal_event_id: 'fe-v4-refund-1',
+          }),
+          reused: true,
+        });
+        vi.mocked(getOfflineReceiptByIdempotencyKey).mockResolvedValue(null);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+      });
+
+      it('an APPENDED intent with no fiscal event id fails closed (never retries the append)', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({ state: 'refund_event_appended', refund_fiscal_event_id: null }),
+          reused: true,
+        });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(getOfflineReceiptByIdempotencyKey).not.toHaveBeenCalled();
+      });
+
+      it('an APPROVAL_AUTHORED intent resumes with the RECOVERED approval — no second manager PIN', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({ state: 'approval_authored' }),
+          reused: true,
+        });
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(v4ApprovalEvidence);
+        const items = [v4ReturnItem()];
+        useCartStore.setState({ items });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput(items));
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        // The already-signed evidence is pre-seeded, so approveAndSubmit
+        // resumes the APPEND only.
+        expect(state.approval).toEqual(v4ApprovalEvidence);
+
+        useRefundCheckoutStore.getState().confirmAccepted();
+        await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+        expect(createRefundReceipt).toHaveBeenCalled();
+      });
+
+      it('an APPROVAL_AUTHORED intent whose approval is NOT locally recoverable fails closed', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({ state: 'approval_authored' }),
+          reused: true,
+        });
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(null);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('a reused DRAFTED intent takes the ordinary path, unchanged', async () => {
+        vi.mocked(createOrReuseActiveRefundIntent).mockResolvedValue({
+          intent: v4RefundIntent({ state: 'drafted' }),
+          reused: true,
+        });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.approval).toBeNull();
+      });
     });
 
     it('errorInternal when the original cannot be resolved locally (defensive — should not happen)', async () => {

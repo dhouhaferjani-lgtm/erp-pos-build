@@ -135,6 +135,102 @@ export async function resolveRefundApprovalEvidenceLocally(
   return { approvalEvent, overrideEvent };
 }
 
+/**
+ * Wave-2 fix-wave finding 11 (fiscal I-2 + codex M-3) — RESUME, don't
+ * re-author.
+ *
+ * When a v4 refund attempt is abandoned after the manager PIN was already
+ * spent (cancel at the approval step, a crash, an app restart), the intent
+ * row survives at `approval_authored` and `createOrReuseActiveRefundIntent()`
+ * REUSES it. The store's in-memory `approval` cache is gone, though, so the
+ * flow used to re-run `authorRefundReturnApprovalV3()` — asking for a
+ * second manager PIN for a refund whose approval is already signed and on
+ * the chain.
+ *
+ * This reconstructs the seven-field `PosOverrideEvidence` purely from the
+ * device's OWN local `fiscal_events` mirror, keyed by the intent's
+ * pre-generated `sourceEventIds`. Fail-closed: a missing event, an
+ * unreadable envelope, a missing field, or an approval-id/scope
+ * DISAGREEMENT between the two events all return `null`, and the caller
+ * treats that as "cannot resume" rather than guessing. (An
+ * approval_id disagreement is exactly what finding 6 made structurally
+ * impossible going forward, but a row authored by a pre-fix build could
+ * still carry one — so it is rejected here rather than propagated into a
+ * signed refund that the projector would dead-letter.)
+ */
+export async function recoverRefundApprovalEvidenceLocally(
+  companyId: string,
+  approvalSourceEventId: string,
+  overrideSourceEventId: string,
+  targetReferenceId: string,
+): Promise<PosOverrideEvidence | null> {
+  const { approvalEvent, overrideEvent } = await resolveRefundApprovalEvidenceLocally(
+    companyId,
+    approvalSourceEventId,
+    overrideSourceEventId,
+  );
+  if (approvalEvent === null || overrideEvent === null) return null;
+
+  const approvalPayload = readSignedPayload(approvalEvent.canonical_bytes);
+  const overridePayload = readSignedPayload(overrideEvent.canonical_bytes);
+  if (approvalPayload === null || overridePayload === null) return null;
+
+  const approvalId = readNonEmptyString(approvalPayload, 'approval_id');
+  const policyVersion = readNonEmptyString(approvalPayload, 'policy_version');
+  const supervisorUserId = readNonEmptyString(approvalPayload, 'supervisor_user_id');
+  const approvalScope = readNonEmptyString(approvalPayload, 'approval_scope');
+  if (
+    approvalId === null
+    || policyVersion === null
+    || supervisorUserId === null
+    || approvalScope !== 'void_or_return_override'
+  ) {
+    return null;
+  }
+
+  // The projector cross-checks these across BOTH events; if the local
+  // mirror already disagrees, resuming would author a refund guaranteed to
+  // dead-letter server-side.
+  if (
+    readNonEmptyString(overridePayload, 'approval_id') !== approvalId
+    || readNonEmptyString(overridePayload, 'approval_scope') !== approvalScope
+    || readNonEmptyString(overridePayload, 'policy_version') !== policyVersion
+    || readNonEmptyString(overridePayload, 'supervisor_user_id') !== supervisorUserId
+    || readNonEmptyString(overridePayload, 'approval_event_id') !== approvalEvent.id
+  ) {
+    return null;
+  }
+
+  return {
+    approval_id: approvalId,
+    approval_event_id: approvalEvent.id,
+    approval_scope: 'void_or_return_override',
+    override_event_id: overrideEvent.id,
+    policy_version: policyVersion,
+    supervisor_user_id: supervisorUserId,
+    target_reference_id: targetReferenceId,
+  };
+}
+
+/** `canonical_bytes` is the chain ENVELOPE; the signed payload is nested
+ *  one level down at `envelope.payload`. */
+function readSignedPayload(canonicalBytes: string): Record<string, unknown> | null {
+  try {
+    const envelope: unknown = JSON.parse(canonicalBytes);
+    if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) return null;
+    const payload = (envelope as Record<string, unknown>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+    return payload as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function readNonEmptyString(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }

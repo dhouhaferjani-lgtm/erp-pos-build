@@ -83,7 +83,10 @@ import {
   syncRefundApprovalEvents,
 } from '@/lib/refundFlow/refundApproval';
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
-import { authorRefundReturnApprovalV3 } from '@/lib/refundFlow/refundApprovalV3';
+import {
+  authorRefundReturnApprovalV3,
+  recoverRefundApprovalEvidenceLocally,
+} from '@/lib/refundFlow/refundApprovalV3';
 import type { PosOverrideContext, PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -109,6 +112,7 @@ import {
   type RefundLineInput,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
+import { getOfflineReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
 import { bcabs, bcadd, bccomp } from '@/lib/decimal';
 
 /** quantity scale (rule 19's device-side QuantityScale convention) — must
@@ -170,7 +174,22 @@ export type RefundCheckoutErrorKey =
    * original line's own quantity, summed against every ALREADY-appended
    * refund_intents row for the same original.
    */
-  | 'refundFlow.refundQuantityExceeded';
+  | 'refundFlow.refundQuantityExceeded'
+  /**
+   * v3-refund-chain-integration wave-2 fix-wave finding 10 (fiscal I-1) —
+   * v4-only: a PARTIAL refund of a line that carried a per-line discount.
+   * Refused at the LOOKUP level, before the manager PIN is spent, rather
+   * than throwing `LineArithmeticInvariantError` from the payload builder
+   * AFTER the approval + override events are already on the chain.
+   */
+  | 'refundFlow.discountedPartialRefundRefused'
+  /**
+   * v3-refund-chain-integration wave-2 fix-wave finding 11 (fiscal I-2 +
+   * codex M-3) — v4-only: the reused intent has ALREADY appended its
+   * refund fiscal event. The refund is done; what remains is payout
+   * confirmation / AVOIR reprint, which the reconciliation modal owns.
+   */
+  | 'refundFlow.refundAlreadyAppended';
 
 export interface RefundCheckoutError {
   key: RefundCheckoutErrorKey;
@@ -857,7 +876,47 @@ async function beginV4(
     }
   }
 
-  const { intent } = await createOrReuseActiveRefundIntent(input.db, {
+  // ── Wave-2 fix-wave finding 10 (fiscal I-1) — a PARTIAL refund of a
+  //    per-line-discounted line is refused HERE, before the manager PIN.
+  //
+  //    `hydrateFromReceipt()` carries the original line's
+  //    `discount_amount` onto the return CartItem but NOT its
+  //    `discount_type`, and `cartStore.recalcLineTotal()` only subtracts a
+  //    discount when `discount_type === 'fixed'`. So the moment the
+  //    cashier edits the return quantity, `line_total` silently becomes
+  //    `unit_price × qty` with the discount dropped while
+  //    `discount_amount` stays on the item — and `buildLineItems()`
+  //    enforces `line_total == unit_price × quantity − discount` exactly,
+  //    throwing `LineArithmeticInvariantError`. That throw happened AFTER
+  //    the approval + override fiscal events were signed and appended:
+  //    fail-closed on the money, but an orphan approval pair permanently
+  //    on the chain, the intent stuck at `approval_authored`, and a
+  //    generic `errorInternal` for the operator.
+  //
+  //    Launch refuses instead (consistent with §3.5's whole-receipt-
+  //    discount refusal — this launch does not do discount proration).
+  //    A FULL-line refund of a discounted line is unaffected and still
+  //    works: its quantity is unedited, so `line_total` still carries the
+  //    original discount and the invariant holds.
+  for (const line of lineSnapshot) {
+    const discountAmount = line.cartItem.discount_amount ?? '0';
+    if (bccomp(bcabs(discountAmount, QUANTITY_SCALE), '0') === 0) continue;
+
+    const originalLine = original.lineItems[line.originalLineIndex];
+    const originalQuantity = originalLine
+      ? bcabs(originalLine.quantity, QUANTITY_SCALE)
+      : null;
+    if (originalQuantity === null || bccomp(line.quantity, originalQuantity) !== 0) {
+      set({
+        step: 'idle',
+        error: { key: 'refundFlow.discountedPartialRefundRefused', serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      return;
+    }
+  }
+
+  const { intent, reused } = await createOrReuseActiveRefundIntent(input.db, {
     id: crypto.randomUUID(),
     terminalId: terminal.id,
     operatorId: operator.id,
@@ -869,6 +928,30 @@ async function beginV4(
   });
   if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
 
+  // ── Wave-2 fix-wave finding 11 (fiscal I-2 + codex M-3) — a REUSED
+  //    intent is resumed from the state it is actually in, never replayed
+  //    from the top.
+  let recoveredApproval: PosOverrideEvidence | null = null;
+  if (reused) {
+    const resumed = await resumeReusedIntent(input.db, companyIdForResume(), intent);
+    if (get().epoch !== epoch) return;
+    if (resumed.outcome === 'refuse') {
+      set({
+        step: 'idle',
+        error: { key: resumed.errorKey, serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      if (resumed.showReconciliation) {
+        // The refund IS done — surface the payout/reprint prompt the
+        // reconciliation modal owns instead of pretending the flow can
+        // start over.
+        useRefundReconciliationStore.getState().refresh();
+      }
+      return;
+    }
+    recoveredApproval = resumed.approval;
+  }
+
   // v4 is cash-only at launch (§3.4) — the destination step is skipped
   // entirely; 'cash' is stamped programmatically, never chosen in a picker.
   set({
@@ -876,8 +959,99 @@ async function beginV4(
     destination: 'cash',
     refundIntent: intent,
     v4Original: original,
+    // Finding 11 — a recovered approval means `approveAndSubmitV4()`
+    // resumes the APPEND only: no second manager PIN for a refund whose
+    // approval is already signed and on the chain.
+    approval: recoveredApproval,
     error: null,
   });
+}
+
+/** The company the v4 flow's local reads/authoring run against. */
+function companyIdForResume(): string {
+  return useAuthStore.getState().companyId ?? '';
+}
+
+type ReusedIntentResume =
+  | { outcome: 'proceed'; approval: PosOverrideEvidence | null }
+  | {
+      outcome: 'refuse';
+      errorKey: RefundCheckoutErrorKey;
+      showReconciliation: boolean;
+    };
+
+/**
+ * Wave-2 fix-wave finding 11 — branch on the REUSED intent's actual state.
+ *
+ * `refund_event_appended` is deliberately an ACTIVE state (§4.4 keeps it in
+ * the uniqueness set as an in-flight duplicate guard), so
+ * `createOrReuseActiveRefundIntent()` can and does return one. The store
+ * used to ignore the reused row's state entirely and reopen confirmation,
+ * after which `createRefundReceipt()` would get an idempotent-append hit
+ * from the engine and then unconditionally attempt
+ * `markRefundEventAppended()` from `approval_authored` — a transition that
+ * updates zero rows, throws, and ROLLS BACK the whole write-gate
+ * transaction. The intent could sit in that error loop forever instead of
+ * entering payout/print recovery.
+ *
+ * Every inconsistent linkage is fail-closed: a state that claims an
+ * appended event with no `refund_fiscal_event_id`, or an approval that
+ * cannot be recovered from the local chain mirror, refuses rather than
+ * guessing.
+ */
+async function resumeReusedIntent(
+  db: Database,
+  companyId: string,
+  intent: RefundIntentRow,
+): Promise<ReusedIntentResume> {
+  if (intent.state === 'refund_event_appended') {
+    if (intent.refund_fiscal_event_id === null || intent.refund_fiscal_event_id === '') {
+      // Structurally impossible (the transition writes both together in
+      // one statement) — but a row claiming an appended event without one
+      // is corrupt, and corrupt never means "retry the append".
+      console.error('[refundCheckout] reused intent claims refund_event_appended with no fiscal event id', {
+        intentId: intent.id,
+      });
+      return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
+    }
+    // Verify the linked local receipt exists (§7.2: keyed by
+    // `offline_receipts.idempotency_key = refund_intents.id`) — that row
+    // is what the AVOIR reprint reads.
+    const linkedReceipt = await getOfflineReceiptByIdempotencyKey(db, intent.id);
+    if (linkedReceipt === null) {
+      console.error('[refundCheckout] reused intent has an appended fiscal event but no linked offline_receipts row', {
+        intentId: intent.id,
+      });
+      return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
+    }
+    return { outcome: 'refuse', errorKey: 'refundFlow.refundAlreadyAppended', showReconciliation: true };
+  }
+
+  if (intent.state === 'approval_authored') {
+    if (companyId === '') {
+      return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorInternal', showReconciliation: false };
+    }
+    const approval = await recoverRefundApprovalEvidenceLocally(
+      companyId,
+      intent.approval_source_event_id,
+      intent.override_source_event_id,
+      intent.original_local_receipt_id,
+    );
+    if (approval === null) {
+      // The row says the approval was authored but the local chain mirror
+      // cannot prove it (missing/unreadable/disagreeing events). Resuming
+      // would either re-author (a second PIN, a second signed pair) or
+      // sign a refund the projector will dead-letter — refuse instead.
+      console.error('[refundCheckout] reused intent at approval_authored: approval evidence is not locally recoverable', {
+        intentId: intent.id,
+      });
+      return { outcome: 'refuse', errorKey: 'refundFlow.checkout.errorApproval', showReconciliation: false };
+    }
+    return { outcome: 'proceed', approval };
+  }
+
+  // 'drafted' — nothing was signed; the ordinary path applies unchanged.
+  return { outcome: 'proceed', approval: null };
 }
 
 /**

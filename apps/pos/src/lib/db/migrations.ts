@@ -2131,6 +2131,7 @@ export const migrations: Migration[] = [
      */
     version: 66,
     name: 'add_v4_refund_authoring_ack_error_to_terminal_state',
+    sql: '',
     run: async (db) => {
       try {
         await db.execute(

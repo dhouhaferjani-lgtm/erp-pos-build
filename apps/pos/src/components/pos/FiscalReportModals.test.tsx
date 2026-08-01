@@ -54,6 +54,7 @@ const xReport: XReportResponse = {
   net_sales: '100.00',
   tax_amount: '19.00',
   refunds_count: 0,
+  refunds_amount: '0.00',
   vat_breakdown: [
     { tax_rate: 19.1234, net_amount: '100.00', vat_amount: '19.00', gross_amount: '119.00' },
   ],

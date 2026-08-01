@@ -128,7 +128,6 @@ import type { CartItem } from '@/types/cart';
 
 // ─── Constants / fixture arithmetic (computed BY HAND, not by the code) ──────
 
-const TERMINAL_ID = 'terminal-1';
 const COMPANY_ID = 'company-1';
 const TENANT_ID = 'tenant-1';
 const SHIFT_UUID = '33333333-3333-4333-8333-333333333333';
@@ -142,8 +141,6 @@ const SHIFT_OPENED_AT = '2020-01-01T00:00:00.000Z';
 
 /** ONE unit refunded at 12.00 TTC / 20 % VAT. */
 const GROSS = '12.00';
-const VAT = '2.00';
-const NET = '10.00'; // 12.00 − 2.00, by hand.
 const NEG_GROSS = '-12.00';
 const NEG_VAT = '-2.00';
 const NEG_NET = '-10.00';

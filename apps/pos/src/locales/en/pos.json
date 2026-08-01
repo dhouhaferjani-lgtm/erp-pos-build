@@ -125,6 +125,8 @@
     "wholeDiscountReceiptRefused": "This receipt has a whole-receipt discount; refunds are not available for it in this launch.",
     "nonCashOriginalRefused": "This receipt was not paid in cash. Refunds are paid out in cash only on this terminal, so only cash receipts can be refunded here. Ask a manager to handle this return from the back office.",
     "refundQuantityExceeded": "This would refund more than was originally sold. Check what has already been refunded for this receipt.",
+    "discountedPartialRefundRefused": "This line had a discount, so it can only be refunded in full. Refund the whole line, or ask a manager to handle a partial refund from the back office.",
+    "refundAlreadyAppended": "This refund has already been recorded. Finish confirming the cash payout and printing the receipt.",
     "capabilityUnavailable": "Refunds are temporarily unavailable on this terminal — contact support",
     "confirm": {
       "charge": "Charge {{amount}}",

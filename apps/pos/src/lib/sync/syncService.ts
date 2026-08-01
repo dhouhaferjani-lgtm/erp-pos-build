@@ -362,7 +362,6 @@ function isLegacyZSyncRetiredError(error: unknown): boolean {
  * event stays in the pending queue and the failure is visible.
  */
 async function applyRefundAckLocalFlips(
-  db: Database,
   fiscalEventId: string,
   refundIntentId: string,
 ): Promise<void> {
@@ -458,7 +457,7 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         && resultItem.exception_class === null
       ) {
         if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
-          await applyRefundAckLocalFlips(db, event.id, event.source_event_id);
+          await applyRefundAckLocalFlips(event.id, event.source_event_id);
         } else {
           await updateFiscalEventSyncStatus(db, event.id, 'synced');
           if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
