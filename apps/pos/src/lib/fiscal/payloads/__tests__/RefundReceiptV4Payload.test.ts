@@ -9,6 +9,7 @@ import {
   type RefundLineInput,
 } from '../RefundReceiptV4Payload';
 import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
+import { CASH_ORIGINAL_PAYMENTS } from '@/lib/fiscal/payloads/__tests__/helpers/originalFiscalEventFixtures';
 import type { CartItem } from '@/types/cart';
 
 /**
@@ -21,8 +22,9 @@ import type { CartItem } from '@/types/cart';
 function originalView(overrides: Partial<OriginalFiscalEventLocalView> = {}): OriginalFiscalEventLocalView {
   return {
     fiscalEventId: '99999999-9999-4999-8999-999999999999',
+    businessDate: '2026-05-19',
     lineItems: [],
-    payments: [],
+    payments: CASH_ORIGINAL_PAYMENTS,
     trainingFlag: false,
     transactionDiscountAmount: '0.00',
     ...overrides,

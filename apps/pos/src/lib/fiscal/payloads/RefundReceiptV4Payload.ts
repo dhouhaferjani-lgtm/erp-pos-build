@@ -156,6 +156,39 @@ export class WholeReceiptDiscountRefundRefusedError extends Error {
 }
 
 /**
+ * v3-refund-chain-integration spec §9.6 — wave-2 fix-wave finding 8
+ * (fiscal C-5). "The cash-only launch payload (§3) simply cannot represent
+ * a refund of an original that wasn't cash-tendered — such an attempt is
+ * REFUSED by the same typed mechanism as any other unsupported
+ * destination." That refusal did not exist: the original's `payments[]`
+ * was resolved into `OriginalFiscalEventLocalView` and then never read,
+ * while `createRefundReceipt()` unconditionally built a single CASH payout
+ * leg. A €200 CARD purchase could therefore be refunded €200 in CASH out
+ * of the drawer, with the card leg never reversed — an uncontrolled
+ * cash-out-for-card-sale channel.
+ *
+ * The check is deliberately conservative: it demands EXACTLY ONE payment
+ * leg whose `method_code` is `CASH` (case-insensitively — `method_code` is
+ * the tenant's own `payment_methods.code`, opaque at the payload boundary,
+ * and the canonical v4 refund leg spells it uppercase). A mixed tender, a
+ * card tender, a voucher tender, an empty `payments[]`, or a
+ * structurally-odd member all fail closed.
+ */
+export class NonCashOriginalRefundRefusedError extends Error {
+  readonly i18nKey = 'refundFlow.nonCashOriginalRefused';
+
+  constructor(
+    public readonly originalReceiptUuid: string,
+    public readonly methodCodes: readonly string[],
+  ) {
+    super(
+      `Refund refused: original receipt ${originalReceiptUuid} was not tendered as a single CASH leg (method codes: ${JSON.stringify(methodCodes)}). This launch pays refunds out in cash only, and can only refund cash-tendered originals (spec §9.6).`,
+    );
+    this.name = 'NonCashOriginalRefundRefusedError';
+  }
+}
+
+/**
  * §3.2 step 1's defense-in-depth assertion: every input line must already
  * be classified `kind === 'return'` by `cartClassification.ts` before it
  * ever reaches this builder. A violation here is a programmer error, not
@@ -213,6 +246,18 @@ export function assertOriginalRefundable(
       originalReceiptUuid,
       original.transactionDiscountAmount,
     );
+  }
+
+  // -- §9.6 (wave-2 fix-wave finding 8) — non-cash-original refusal. Same
+  //    lookup-level placement and same one-implementation/two-call-sites
+  //    discipline as the two refusals above.
+  const methodCodes = original.payments.map((payment) =>
+    typeof payment?.method_code === 'string' ? payment.method_code : '',
+  );
+  const isSingleCashLeg =
+    methodCodes.length === 1 && methodCodes[0]!.trim().toUpperCase() === 'CASH';
+  if (!isSingleCashLeg) {
+    throw new NonCashOriginalRefundRefusedError(originalReceiptUuid, methodCodes);
   }
 }
 

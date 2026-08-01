@@ -1512,7 +1512,17 @@ function isZeroMoney(value: string): boolean {
 // validator is authoritative there).
 // -------------------------------------------------------------------
 
-function validateSaleReceiptPayload(payload: unknown, eventVersion: number): void {
+/**
+ * EXPORTED for the v4 refund flow's original-event resolution
+ * (`resolveOriginalFiscalEventLocally()`, wave-2 fix-wave finding 2 /
+ * codex C-1). That resolver makes §3.5/§3.7 REFUSAL decisions from the
+ * original's signed bytes, so it must validate those bytes with THIS
+ * canonical validator — the same one `append()` ran when the original was
+ * authored — rather than re-implementing a weaker set of shape checks
+ * that could drift. Exported deliberately, not made public API: the only
+ * non-engine caller is the refund resolver.
+ */
+export function validateSaleReceiptPayload(payload: unknown, eventVersion: number): void {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new FiscalEventPayloadValidationError(
       'SALE_RECEIPT payload must be an object.',

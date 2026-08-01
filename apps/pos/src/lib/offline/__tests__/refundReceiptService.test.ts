@@ -52,6 +52,7 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
 import { createRefundReceipt, type CreateRefundReceiptInput } from '../refundReceiptService';
 import type { RefundLineInput } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
+import { CASH_ORIGINAL_PAYMENTS } from '@/lib/fiscal/payloads/__tests__/helpers/originalFiscalEventFixtures';
 import type { CartItem } from '@/types/cart';
 
 function returnCartItem(overrides: Partial<CartItem> = {}): CartItem {
@@ -76,8 +77,9 @@ function baseInput(): CreateRefundReceiptInput {
   ];
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: '99999999-9999-4999-8999-999999999999',
+    businessDate: '2026-05-19',
     lineItems: [],
-    payments: [],
+    payments: CASH_ORIGINAL_PAYMENTS,
     trainingFlag: false,
     transactionDiscountAmount: '0.00',
   };

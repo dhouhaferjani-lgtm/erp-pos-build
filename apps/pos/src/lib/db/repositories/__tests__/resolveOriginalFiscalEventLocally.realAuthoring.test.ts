@@ -36,6 +36,7 @@ import { insertOfflineReceipt, type OfflineReceipt } from '../offlineReceiptRepo
 import { resolveOriginalFiscalEventLocally } from '../fiscalEventRepository';
 import {
   assertOriginalRefundable,
+  NonCashOriginalRefundRefusedError,
   TrainingOriginalRefundRefusedError,
   WholeReceiptDiscountRefundRefusedError,
 } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
@@ -197,7 +198,14 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
    *  offline_receipts row exactly as receiptService.ts does: same
    *  receiptId, canonical_bytes = the engine's own envelope bytes,
    *  source_event_class/source_event_id linking the two tables. */
-  async function sealOriginal(receiptId: string, payload: Record<string, unknown>): Promise<void> {
+  async function sealOriginal(
+    receiptId: string,
+    payload: Record<string, unknown>,
+    /** Wave-2 fix-wave finding 2: lets a test desynchronize the
+     *  `offline_receipts` MIRROR from the signed `fiscal_events` row, which
+     *  is precisely the trust boundary the resolver must now close. */
+    opts: { mirrorCanonicalBytes?: string } = {},
+  ): Promise<void> {
     // A training_flag=true payload MUST append under the training_*
     // chain_context (FiscalEventEngine.ts:814-818) -- exactly why
     // seedTerminalState above seeds both chain heads.
@@ -249,7 +257,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       table_id: null,
       fiscal_schema_version: 3,
       is_training: payload['training_flag'] === true ? 1 : 0,
-      canonical_bytes: appended.canonical_bytes,
+      canonical_bytes: opts.mirrorCanonicalBytes ?? appended.canonical_bytes,
       cash_rounding_adjustment: '0.000',
       cash_rounding_denomination: '0.000',
       tolerance_shortfall: null,
@@ -383,5 +391,251 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
 
     expect(view).toBeNull();
+  });
+
+  /**
+   * `fiscal_events` is append-only (a real SQLite trigger rejects any
+   * UPDATE outside sync_status/sync_error/synced_at) — which is itself
+   * part of what makes finding 2's binding meaningful. So the
+   * envelope-identity cases below seed a RAW, self-consistent pair
+   * instead of mutating a sealed one: a `fiscal_events` row and an
+   * `offline_receipts` row carrying the SAME `canonical_bytes`, with the
+   * envelope columns under the test's control. Byte equality therefore
+   * holds by construction and each test isolates exactly one identity
+   * mismatch.
+   */
+  async function seedRawOriginalPair(
+    receiptId: string,
+    envelope: unknown,
+    columns: { eventType?: string; eventVersion?: number; businessDate?: string } = {},
+  ): Promise<void> {
+    const bytes = typeof envelope === 'string' ? envelope : JSON.stringify(envelope);
+    const eventType = columns.eventType ?? 'SALE_RECEIPT';
+    const eventVersion = columns.eventVersion ?? 3;
+    const businessDate = columns.businessDate ?? '2026-08-01';
+    await adapter.execute(
+      `INSERT INTO fiscal_events (
+         id, tenant_id, company_id, terminal_id, operator_id,
+         event_type, event_version, signature_version, sequence_number,
+         event_time_device, business_date, canonical_bytes,
+         previous_hash, current_hash, sync_status, created_at,
+         source_event_class, source_event_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'v1', 1,
+                 '2026-08-01T10:00:00Z', $8, $9,
+                 $10, $11, 'pending', '2026-08-01T10:00:00Z',
+                 'offline_receipts', $12)`,
+      [
+        `${receiptId}-fe`, TENANT_ID, COMPANY_ID, TERMINAL_ID, CASHIER_UUID,
+        eventType, eventVersion, businessDate, bytes,
+        '0'.repeat(64), '1'.repeat(64), receiptId,
+      ],
+    );
+    await insertOfflineReceipt(adapter.asDatabase(), {
+      id: receiptId,
+      idempotency_key: receiptId,
+      receipt_number: `MAIN-T01-2026-${receiptId.slice(0, 8)}`,
+      terminal_id: TERMINAL_ID,
+      terminal_code: 'T01',
+      operator_id: CASHIER_UUID,
+      operator_name: 'Alice',
+      lines: '[]',
+      subtotal: '10.000',
+      tax_amount: '2.000',
+      discount_amount: '0.000',
+      total: '12.000',
+      currency: 'TND',
+      fiscal_hash: '1'.repeat(64),
+      previous_hash: '0'.repeat(64),
+      hash_sequence: 1,
+      transaction_discount_amount: '0.000',
+      transaction_discount_reason: null,
+      tendered_amount: '12.000',
+      change_due: '0.000',
+      payment_method_id: 'pm-cash',
+      payment_repository_id: 'repo-1',
+      status: 'pending',
+      payments_json: '[]',
+      consumption_mode: null,
+      table_id: null,
+      fiscal_schema_version: 3,
+      is_training: 0,
+      canonical_bytes: bytes,
+      cash_rounding_adjustment: '0.000',
+      cash_rounding_denomination: '0.000',
+      tolerance_shortfall: null,
+      receipt_kind: 'sale',
+    });
+  }
+
+  // ─── Wave-2 fix wave — findings 2 / 7 / 8 ────────────────────────────────
+  //
+  // finding 2 (codex C-1): the resolver proved only that SOME fiscal_events
+  // row existed for the source pair and then read every refusal-relevant
+  // value out of the `offline_receipts` MIRROR, with nothing binding the
+  // two. A stale/mismatched/tampered mirror carrying `training_flag: false`
+  // and `transaction_discount_amount: '0'` therefore authorized refunds
+  // whose refusal facts were never proved to belong to the referenced
+  // signed original.
+
+  describe('finding 2 — the mirror must be BOUND to the signed original', () => {
+    it('fails closed when the mirror bytes differ from the signed fiscal_events row (permissive tampered mirror)', async () => {
+      const receiptId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      // The SIGNED original is a training receipt (must be refused). The
+      // MIRROR is rewritten to claim training_flag:false + zero discount —
+      // the exact permissive payload the old code would have trusted.
+      const tamperedEnvelope = JSON.stringify({
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, training_flag: false }),
+      });
+      await sealOriginal(
+        receiptId,
+        saleReceiptV3Payload({ training_flag: true, invoice_type_code: 'TRAINING' }),
+        { mirrorCanonicalBytes: tamperedEnvelope },
+      );
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('fails closed when the signed payload\'s receipt_uuid is not the receipt being refunded', async () => {
+      const receiptId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      // Byte-equality holds (both rows carry these bytes) — identity does not.
+      await seedRawOriginalPair(receiptId, {
+        payload: saleReceiptV3Payload({ receipt_uuid: '12121212-1212-4121-8121-121212121212' }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('fails closed when the resolved fiscal_events row is not a SALE_RECEIPT', async () => {
+      const receiptId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+      await seedRawOriginalPair(
+        receiptId,
+        { payload: saleReceiptV3Payload({ receipt_uuid: receiptId }) },
+        { eventType: 'OPERATOR_APPROVAL_GRANTED' },
+      );
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('fails closed on an unrecognized original receipt discriminator (a refund cannot be the original of a refund)', async () => {
+      const receiptId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      await seedRawOriginalPair(receiptId, {
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, invoice_type_code: 'REFUND' }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('fails closed on structurally invalid line/payment members (unvalidated element shapes)', async () => {
+      const receiptId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      await seedRawOriginalPair(receiptId, {
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, line_items: ['not-an-object'] }),
+      });
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+
+    it('fails closed when the signed business_date disagrees with the fiscal_events row', async () => {
+      const receiptId = '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a';
+      await seedRawOriginalPair(
+        receiptId,
+        { payload: saleReceiptV3Payload({ receipt_uuid: receiptId, business_date: '2026-08-01' }) },
+        { businessDate: '2026-01-01' },
+      );
+
+      expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
+    });
+  });
+
+  describe('finding 7 — the ORIGINAL\'s own business date is resolved, not the refund day\'s', () => {
+    it('exposes the signed payload\'s business_date on the resolved view', async () => {
+      const receiptId = '2b2b2b2b-2b2b-42b2-82b2-2b2b2b2b2b2b';
+      await sealOriginal(receiptId, saleReceiptV3Payload({ business_date: '2026-08-01' }));
+
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+
+      expect(view).not.toBeNull();
+      // The signed original's OWN date — `refundCheckoutStore` previously
+      // stamped `approvalContext.businessDate` (today) into
+      // `original_receipt_reference.original_business_date`, sealing a
+      // fabricated provenance fact forever (rule 8).
+      expect(view?.businessDate).toBe('2026-08-01');
+    });
+  });
+
+  describe('finding 8 — §9.6 non-cash-original refusal', () => {
+    it('refuses a CARD-tendered original (cash-payout-only launch cannot represent it)', async () => {
+      const receiptId = '3c3c3c3c-3c3c-43c3-83c3-3c3c3c3c3c3c';
+      await sealOriginal(
+        receiptId,
+        saleReceiptV3Payload({
+          payments: [{
+            amount: '12.000',
+            foreign_currency_amount: null,
+            foreign_currency_code: null,
+            instrument_serial: null,
+            instrument_type: null,
+            method_code: 'CARD',
+          }],
+        }),
+      );
+
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+      expect(view).not.toBeNull();
+      expect(() => assertOriginalRefundable(view!, receiptId)).toThrow(
+        NonCashOriginalRefundRefusedError,
+      );
+    });
+
+    it('refuses a MIXED-tender original (a cash leg alongside a card leg is still not cash-only)', async () => {
+      const receiptId = '4d4d4d4d-4d4d-44d4-84d4-4d4d4d4d4d4d';
+      await sealOriginal(
+        receiptId,
+        saleReceiptV3Payload({
+          payments: [
+            {
+              amount: '2.000', foreign_currency_amount: null, foreign_currency_code: null,
+              instrument_serial: null, instrument_type: null, method_code: 'cash',
+            },
+            {
+              amount: '10.000', foreign_currency_amount: null, foreign_currency_code: null,
+              instrument_serial: null, instrument_type: null, method_code: 'CARD',
+            },
+          ],
+        }),
+      );
+
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+      expect(view).not.toBeNull();
+      expect(() => assertOriginalRefundable(view!, receiptId)).toThrow(
+        NonCashOriginalRefundRefusedError,
+      );
+    });
+
+    it('allows a single cash-tendered original (case-insensitive on the tenant-authored method code)', async () => {
+      const receiptId = '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e';
+      await sealOriginal(receiptId, saleReceiptV3Payload());
+
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+      expect(view).not.toBeNull();
+      expect(() => assertOriginalRefundable(view!, receiptId)).not.toThrow();
+    });
+
+    it('fails closed on an EMPTY payments[] (cannot prove the original was cash)', async () => {
+      const receiptId = '6f6f6f6f-6f6f-46f6-86f6-6f6f6f6f6f6f';
+      await seedRawOriginalPair(receiptId, {
+        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, payments: [] }),
+      });
+
+      // An empty `payments[]` may not even be a valid SALE_RECEIPT payload —
+      // if the canonical validator rejects it the resolver fails closed
+      // before the refusal runs. Either outcome is a refusal; assert the
+      // REFUSAL, not the mechanism that produced it.
+      const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
+      if (view !== null) {
+        expect(() => assertOriginalRefundable(view, receiptId)).toThrow(
+          NonCashOriginalRefundRefusedError,
+        );
+      }
+    });
   });
 });

@@ -123,6 +123,7 @@
     "detailsNotLocal": "The original receipt details are not available on this terminal. Only items from receipts recorded on this terminal can be refunded locally. Ask a manager to look up the receipt from the back office.",
     "trainingOriginalRefused": "This receipt was recorded in training mode and cannot be refunded.",
     "wholeDiscountReceiptRefused": "This receipt has a whole-receipt discount; refunds are not available for it in this launch.",
+    "nonCashOriginalRefused": "This receipt was not paid in cash. Refunds are paid out in cash only on this terminal, so only cash receipts can be refunded here. Ask a manager to handle this return from the back office.",
     "refundQuantityExceeded": "This would refund more than was originally sold. Check what has already been refunded for this receipt.",
     "capabilityUnavailable": "Refunds are temporarily unavailable on this terminal — contact support",
     "confirm": {

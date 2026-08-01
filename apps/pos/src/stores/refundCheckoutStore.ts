@@ -154,6 +154,15 @@ export type RefundCheckoutErrorKey =
    */
   | 'refundFlow.wholeDiscountReceiptRefused'
   /**
+   * v3-refund-chain-integration spec §9.6 — wave-2 fix-wave finding 8:
+   * the resolved original was not tendered as a single CASH leg. This
+   * launch pays refunds out in cash only and can therefore only refund
+   * cash-tendered originals; a card/mixed/voucher original is refused at
+   * the SAME lookup-level point as §3.5/§3.7, before any approval
+   * authoring.
+   */
+  | 'refundFlow.nonCashOriginalRefused'
+  /**
    * v3-refund-chain-integration wave-2 review fix, orchestrator-ruled
    * (required) — v4-only: the device-local cumulative-quantity backstop
    * (§12 stays the server-side cross-terminal authority; this is a
@@ -209,6 +218,28 @@ function returnLinesFingerprint(items: readonly CartItem[]): string {
  * hyphen count. A quantity edit on the cart line only changes `quantity`,
  * never `id`, so this stays valid after a partial-refund edit.
  */
+/**
+ * Maps the three typed lookup-level refusals `assertOriginalRefundable()`
+ * can throw (§3.5, §3.7 and — wave-2 fix-wave finding 8 — §9.6) onto their
+ * i18n keys. Kept exhaustive-by-name rather than a two-way ternary so a
+ * fourth refusal cannot silently inherit another one's message: an
+ * unrecognized throwable degrades to `errorInternal`, never to a wrong but
+ * plausible refusal string.
+ */
+function refusalErrorToKey(error: unknown): RefundCheckoutErrorKey {
+  const name = error instanceof Error ? error.name : '';
+  switch (name) {
+    case 'TrainingOriginalRefundRefusedError':
+      return 'refundFlow.trainingOriginalRefused';
+    case 'WholeReceiptDiscountRefundRefusedError':
+      return 'refundFlow.wholeDiscountReceiptRefused';
+    case 'NonCashOriginalRefundRefusedError':
+      return 'refundFlow.nonCashOriginalRefused';
+    default:
+      return 'refundFlow.checkout.errorInternal';
+  }
+}
+
 function resolveOriginalLineIndex(cartItemId: string): number | null {
   const match = /-(\d+)$/.exec(cartItemId);
   if (match === null || match[1] === undefined) return null;
@@ -742,13 +773,9 @@ async function beginV4(
   try {
     assertOriginalRefundable(original, originalLocalReceiptId);
   } catch (refusalError) {
-    const key =
-      refusalError instanceof Error && refusalError.name === 'TrainingOriginalRefundRefusedError'
-        ? 'refundFlow.trainingOriginalRefused'
-        : 'refundFlow.wholeDiscountReceiptRefused';
     set({
       step: 'idle',
-      error: { key, serverMessage: null },
+      error: { key: refusalErrorToKey(refusalError), serverMessage: null },
       refundItemsSnapshot: null,
     });
     return;
@@ -989,7 +1016,15 @@ async function approveAndSubmitV4(
       lines,
       original: v4Original,
       originalReceiptUuid: refundIntent.original_local_receipt_id,
-      originalBusinessDate: input.approvalContext.businessDate,
+      // Wave-2 fix-wave finding 7 (fiscal C-4 / codex M-1) — the ORIGINAL's
+      // OWN signed business date, resolved from its envelope by
+      // `resolveOriginalFiscalEventLocally()` and cross-checked against the
+      // `fiscal_events` row. This slot previously carried
+      // `input.approvalContext.businessDate` — TODAY — so a 1-July sale
+      // refunded on 1 August signed `original_business_date: '2026-08-01'`
+      // into the immutable chain. `approvalContext.businessDate` remains
+      // correct for the NEW refund event's own `businessDate` above.
+      originalBusinessDate: v4Original.businessDate,
       approvalReferences: [approval],
       refundIntentId: refundIntent.id,
       paymentMethodId: cashMethod.id,

@@ -6,6 +6,7 @@ import {
   type RefundLineInput,
 } from '../RefundReceiptV4Payload';
 import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
+import { CASH_ORIGINAL_PAYMENTS } from '@/lib/fiscal/payloads/__tests__/helpers/originalFiscalEventFixtures';
 import type { CartItem } from '@/types/cart';
 
 /**
@@ -67,8 +68,9 @@ describe('buildRefundReceiptV4Payload — §3.7 training-original refusal', () =
   it('refuses a refund whose resolved original has payload.training_flag=true', () => {
     const original: OriginalFiscalEventLocalView = {
       fiscalEventId: '99999999-9999-4999-8999-999999999999',
+      businessDate: '2026-05-19',
       lineItems: [],
-      payments: [],
+      payments: CASH_ORIGINAL_PAYMENTS,
       trainingFlag: true,
       transactionDiscountAmount: '0.00',
     };
@@ -86,8 +88,9 @@ describe('buildRefundReceiptV4Payload — §3.7 training-original refusal', () =
     // layer: there is no current-session flag to accidentally read.
     const original: OriginalFiscalEventLocalView = {
       fiscalEventId: '99999999-9999-4999-8999-999999999999',
+      businessDate: '2026-05-19',
       lineItems: [],
-      payments: [],
+      payments: CASH_ORIGINAL_PAYMENTS,
       trainingFlag: true,
       transactionDiscountAmount: '0.00',
     };
@@ -100,8 +103,9 @@ describe('buildRefundReceiptV4Payload — §3.7 training-original refusal', () =
   it('does NOT refuse a refund of a non-training original (the common case)', () => {
     const original: OriginalFiscalEventLocalView = {
       fiscalEventId: '99999999-9999-4999-8999-999999999999',
+      businessDate: '2026-05-19',
       lineItems: [],
-      payments: [],
+      payments: CASH_ORIGINAL_PAYMENTS,
       trainingFlag: false,
       transactionDiscountAmount: '0.00',
     };
@@ -112,8 +116,9 @@ describe('buildRefundReceiptV4Payload — §3.7 training-original refusal', () =
   it('the refusal error carries a stable i18nKey for the UI layer', () => {
     const original: OriginalFiscalEventLocalView = {
       fiscalEventId: '99999999-9999-4999-8999-999999999999',
+      businessDate: '2026-05-19',
       lineItems: [],
-      payments: [],
+      payments: CASH_ORIGINAL_PAYMENTS,
       trainingFlag: true,
       transactionDiscountAmount: '0.00',
     };

@@ -720,6 +720,9 @@ describe('refundCheckoutStore — abort & failure paths', () => {
 describe('refundCheckoutStore — v4 flow', () => {
   const V4_ORIGINAL_LOCAL_RECEIPT_ID = 'orig-receipt-uuid-1';
   const V4_ORIGINAL_FISCAL_EVENT_ID = 'fe-original-1';
+  /** Deliberately NOT `approvalContext.businessDate` ('2026-06-10') — the
+   *  whole point of finding 7 is that the two must not be conflated. */
+  const V4_ORIGINAL_BUSINESS_DATE = '2026-05-02';
   const V4_TERMINAL_ID = 'terminal-1';
   const V4_OPERATOR_ID = 'operator-1';
 
@@ -740,6 +743,10 @@ describe('refundCheckoutStore — v4 flow', () => {
   function v4OriginalView(overrides: Record<string, unknown> = {}) {
     return {
       fiscalEventId: V4_ORIGINAL_FISCAL_EVENT_ID,
+      // Wave-2 fix-wave finding 7 — the ORIGINAL's OWN signed business
+      // date, deliberately DIFFERENT from the refund day so a test can
+      // tell the two apart.
+      businessDate: V4_ORIGINAL_BUSINESS_DATE,
       lineItems: [{ product_id: 'prod-1', quantity: '2.000', line_total: '20.000' }],
       payments: [{ method_code: 'CASH', amount: '20.000' }],
       trainingFlag: false,
@@ -879,6 +886,38 @@ describe('refundCheckoutStore — v4 flow', () => {
       expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
     });
 
+    it('§9.6 (finding 8) — refuses a CARD-tendered original BEFORE any approval authoring', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({ payments: [{ method_code: 'CARD', amount: '20.000' }] }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.nonCashOriginalRefused');
+      // The manager PIN is never even requested, and no intent is drafted.
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
+    it('§9.6 (finding 8) — refuses a MIXED-tender original (a cash leg does not make it cash-only)', async () => {
+      vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+        v4OriginalView({
+          payments: [
+            { method_code: 'CASH', amount: '5.000' },
+            { method_code: 'CARD', amount: '15.000' },
+          ],
+        }) as never,
+      );
+
+      await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+      const state = useRefundCheckoutStore.getState();
+      expect(state.step).toBe('idle');
+      expect(state.error?.key).toBe('refundFlow.nonCashOriginalRefused');
+      expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+    });
+
     it('errorInternal when the original cannot be resolved locally (defensive — should not happen)', async () => {
       vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(null);
 
@@ -1013,6 +1052,24 @@ describe('refundCheckoutStore — v4 flow', () => {
         }),
       );
       expect(markApprovalAuthored).toHaveBeenCalledWith(expect.anything(), 'refund-intent-1');
+    });
+
+    it('finding 7 — seals the ORIGINAL\'s own business date, never the refund day\'s', async () => {
+      await v4WalkToApproval();
+
+      await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+      expect(createRefundReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The NEW refund event is dated today…
+          businessDate: approvalContext.businessDate,
+          // …while the provenance reference carries the ORIGINAL's own
+          // signed date. Conflating them signed a fabricated fact into an
+          // immutable chain (rule 8).
+          originalBusinessDate: V4_ORIGINAL_BUSINESS_DATE,
+        }),
+      );
+      expect(approvalContext.businessDate).not.toBe(V4_ORIGINAL_BUSINESS_DATE);
     });
 
     it('caches the authored evidence immediately — a settle failure does NOT re-author on retry (no second PIN, no double fiscal append)', async () => {
