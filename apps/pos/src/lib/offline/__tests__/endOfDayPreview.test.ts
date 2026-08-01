@@ -272,15 +272,9 @@ describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallb
     vi.clearAllMocks();
   });
 
-  it('subtracts cash refund impact from expected_cash so the preview matches the signed Z', async () => {
-    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+  it('subtracts cash refund impact from expected_cash so the preview matches the signed Z (v3-refund-chain-integration §7.3a: refund impact now rides IN offline_receipts as a receipt_kind=refund row, not the deleted local_refund_records mechanism)', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
       const s = sql as string;
-      if (s.includes('local_refund_records')) {
-        const shiftId = (params as unknown[] | undefined)?.[0];
-        return (
-          shiftId === 'shift-1' ? [{ id: 'rr1', shift_id: 'shift-1', cash_impact: '10.00' }] : []
-        ) as unknown as never[];
-      }
       if (s.includes('offline_cash_drawer_ops') || s.includes('local_account_payment_records')) {
         return [] as never[];
       }
@@ -298,6 +292,25 @@ describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallb
             ]),
             lines: JSON.stringify([{ tax_rate: '19', tax_amount: '7.98', line_total: '42.02' }]),
             created_at: '2026-06-10T10:00:00Z',
+            receipt_kind: 'sale',
+          },
+          {
+            id: 'r2',
+            // Negative-signed (§7.2) — irrelevant to this assertion (sale-only
+            // gross/net/tax totals aren't checked here) but kept spec-accurate.
+            total: '-10.00',
+            subtotal: '-8.40',
+            tax_amount: '-1.60',
+            change_due: null,
+            payment_method_id: 'pm-cash',
+            // POSITIVE magnitude on every row, sale or refund (§7.2a) — the
+            // isRefund branch in the aggregation loop is what subtracts it.
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '-1.60', line_total: '-8.40' }]),
+            created_at: '2026-06-10T10:05:00Z',
+            receipt_kind: 'refund',
           },
         ] as unknown as never[];
       }

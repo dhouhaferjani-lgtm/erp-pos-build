@@ -23,11 +23,9 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
-import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
-import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
   LocalZReport,
@@ -192,17 +190,13 @@ export async function generateZReport(
     [terminalId, toSqliteUtc(shiftOpenedAt)]
   );
 
-  // 3b. Phase 4 (fiscal audit B2) — refunds settled AT THIS terminal during
-  // this shift, mirrored at settle time into local_refund_records (see
-  // localRefundRecordRepository). Refunds processed at OTHER terminals do not
-  // affect this device's drawer or its Z — the server Z/report side owns
-  // global reconciliation. A device crash between the server settle and the
-  // local mirror write undercounts here (server remains source of truth).
-  // Loaded BEFORE the empty-shift guard (Codex r1 M1): a refund-only shift
-  // (open → online refund → close) has zero offline_receipts but a settled
-  // refund that MUST reach a local signed Z — only a shift with neither
-  // receipts nor settled refunds is rejected.
-  const refundRecords = await getRefundRecordsForShift(db, shiftId);
+  // v3-refund-chain-integration spec §7.1/§7.3 (Revision 4, superseding
+  // the former local_refund_records design entirely) — a v4 refund
+  // inserts its own `offline_receipts` row (`receipt_kind = 'refund'`),
+  // so it is ALREADY included in the `receipts` array queried above; a
+  // refund-only shift (open → refund → close) naturally has a non-empty
+  // `receipts` array now (no separate empty-shift guard is needed for
+  // that case any more than for a sale-only shift).
 
   // Cash drawer movements + customer account collections also close into the
   // signed Z. (H3 — allow empty Z: a cashier can always close the register; an
@@ -216,20 +210,21 @@ export async function generateZReport(
   const paymentMethodMap = await buildPaymentMethodMap(db);
 
   // 4. Compute report data
-  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals, refundRecords);
+  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals);
 
   // 5. Compute expected cash BEFORE hashing — must be embedded in report_data
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
   // to report_data before hash computation.
-  // Cash-destination refunds physically left this drawer and reduce the
-  // expected cash; voucher / original-payment refunds move no till cash
-  // (cash_impact is '0' for those rows by construction).
+  // v3-refund-chain-integration spec §7.3 — genuine simplification, not
+  // merely a rename: `cashSales` (below) is now ALREADY net of refunds by
+  // construction of aggregateReportData()'s per-row receipt_kind
+  // branching above (a refund's CASH leg is SUBTRACTED from
+  // paymentByType there), so the standalone `cashRefundImpact` term this
+  // section used to sum independently from `local_refund_records` is
+  // removed entirely — one code path computes cash correctly instead of
+  // two paths that had to be kept in sync by hand.
   const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
   const cashSales = cashPayments ? cashPayments.total_amount : '0';
-  let cashRefundImpact = '0';
-  for (const record of refundRecords) {
-    cashRefundImpact = bcadd(cashRefundImpact, record.cash_impact);
-  }
 
   // Cash drawer movements (NF525 / DSFinV-K, 2026-06-11 research): paid-ins
   // (deposit) raise the theoretical drawer, payouts lower it. The device is the
@@ -253,7 +248,7 @@ export async function generateZReport(
 
   const expectedCash = bcadd(
     bcadd(
-      bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals),
+      bcadd(openingCash, cashSales, decimals),
       drawerNet,
       decimals,
     ),
@@ -760,29 +755,25 @@ function aggregateReportData(
   receipts: OfflineReceipt[],
   paymentMethodMap: Map<string, string>,
   decimals: number,
-  refundRecords: LocalRefundRecord[],
 ): ZReportData {
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
   let salesCount = 0;
-  // Phase 4 (fiscal audit B2) — refund counters fold in the record-at-settle
-  // mirror of refunds settled at THIS terminal during this shift.
-  // refunds_amount is a POSITIVE magnitude: the server pins these semantics
-  // (ReportGenerationService::calculateShiftTotals asserts a positive
-  // refunds_amount in ZReportV3AggregationTest, and GrandtotalService
-  // advances perpetual_grand_total by gross_sales − refunds_amount). The
-  // signed totals stay on the record's `total`; only the magnitude enters
-  // the report. Store-voucher refunds count here as refunds — voucher
-  // ISSUANCE/redemption counters are a separate server-side v3 ledger
-  // aggregation and are not part of the device report_data (no double-count).
-  // Void counters remain 0 offline — voiding is a server-side operation
-  // tracked after sync.
-  const refundsCount = refundRecords.length;
+  // v3-refund-chain-integration spec §7.3 — refund rows now live in the
+  // SAME `offline_receipts` table (`receipt_kind = 'refund'`), branched
+  // below per row, replacing the former separate
+  // `local_refund_records`/`getRefundRecordsForShift` pass entirely.
+  // refunds_amount is a POSITIVE magnitude: the server pins these
+  // semantics (ReportGenerationService::calculateShiftTotals asserts a
+  // positive refunds_amount in ZReportV3AggregationTest, and
+  // GrandtotalService advances perpetual_grand_total by gross_sales −
+  // refunds_amount). `receipt.total` is stored negative per §7.2's
+  // convention, so bcabs() recovers the existing positive-magnitude
+  // semantics unchanged. Void counters remain 0 offline — voiding is a
+  // server-side operation tracked after sync.
+  let refundsCount = 0;
   let refundsAmount = '0';
-  for (const record of refundRecords) {
-    refundsAmount = bcadd(refundsAmount, bcabs(record.total));
-  }
   const voidedCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
@@ -791,6 +782,52 @@ function aggregateReportData(
   for (const receipt of receipts) {
     // Skip voided receipts (status === 'voided' or similar) — for now we count all
     // since offline receipts don't have a voided flag. Voided receipts are tracked server-side.
+    if (receipt.receipt_kind === 'refund') {
+      // -- §7.3 refund branch — does NOT touch salesCount/grossSales/
+      //    netSales/taxAmount (those remain sale-only aggregates, matching
+      //    the existing server-pinned semantics: refunds_amount is
+      //    tracked as its own field, never folded into gross/net sales). --
+      refundsCount++;
+      refundsAmount = bcadd(refundsAmount, bcabs(receipt.total));
+
+      // VAT breakdown — SUBTRACTED (a refund reverses VAT collected).
+      // Each line's net/vat/gross is recovered via bcabs() from the
+      // negative-stored `lines` JSON (§7.2's sign convention) before
+      // being subtracted from the running per-rate totals.
+      const refundLines = JSON.parse(receipt.lines) as ReceiptLineJson[];
+      for (const line of refundLines) {
+        const rate = line.tax_rate ?? '0';
+        const lineVat = bcabs(line.tax_amount ?? '0');
+        const lineNet = bcabs(line.line_total ?? '0');
+        const lineGross = bcadd(lineNet, lineVat);
+
+        const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcsub(existing.net, lineNet);
+        existing.vat = bcsub(existing.vat, lineVat);
+        existing.gross = bcsub(existing.gross, lineGross);
+        vatByRate.set(rate, existing);
+      }
+
+      // Payment-method breakdown — SUBTRACTED. `payments_json` is a
+      // POSITIVE magnitude on every row, sale or refund (§7.2a) —
+      // consumed here as a magnitude to subtract, not a pre-signed delta
+      // (storing it negative would double-negate against this branch).
+      let refundPayments: Array<{ method_code: string; amount: string }> = [];
+      if (receipt.payments_json) {
+        const parsedRefund = JSON.parse(receipt.payments_json) as unknown;
+        if (Array.isArray(parsedRefund)) {
+          refundPayments = parsedRefund as Array<{ method_code: string; amount: string }>;
+        }
+      }
+      for (const p of refundPayments) {
+        const ex = paymentByType.get(p.method_code) ?? { amount: '0', count: 0 };
+        ex.amount = bcsub(ex.amount, p.amount);
+        ex.count += 1;
+        paymentByType.set(p.method_code, ex);
+      }
+      continue;
+    }
+
     salesCount++;
     grossSales = bcadd(grossSales, receipt.total);
     netSales = bcadd(netSales, receipt.subtotal);

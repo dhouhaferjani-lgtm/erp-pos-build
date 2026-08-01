@@ -21,7 +21,6 @@ import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
-import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getToleranceAutoAcceptCount } from '@/lib/db/repositories/toleranceAutoAcceptRepository';
 
 interface OfflineReceiptRow {
@@ -42,6 +41,10 @@ interface OfflineReceiptRow {
   cash_rounding_adjustment: string | null;
   // Auto-accepted tender shortfall, NULL when none was applied (Task 9).
   tolerance_shortfall: string | null;
+  // v3-refund-chain-integration spec §7.3a — 'sale' (default, absent on
+  // rows predating this feature which the LEFT JOIN-free SELECT below
+  // still reads as undefined) or 'refund'.
+  receipt_kind?: 'sale' | 'refund';
 }
 
 interface PaymentJsonRow {
@@ -170,7 +173,7 @@ export async function buildEndOfDayPreview(
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
     `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id,
-            cash_rounding_adjustment, tolerance_shortfall
+            cash_rounding_adjustment, tolerance_shortfall, receipt_kind
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
@@ -209,26 +212,52 @@ export async function buildEndOfDayPreview(
   >();
 
   for (const receipt of receipts) {
-    grossSales = bcadd(grossSales, receipt.total);
-    netSales = bcadd(netSales, receipt.subtotal);
-    taxAmount = bcadd(taxAmount, receipt.tax_amount);
+    const isRefund = receipt.receipt_kind === 'refund';
+
+    // v3-refund-chain-integration spec §7.3a — grossSales/netSales/
+    // taxAmount are SALE-ONLY, matching zReportService.ts's own §7.3
+    // sale-only semantics: a refund row is skipped entirely for these
+    // three totals (never added, never subtracted — refunds are their
+    // own tracked figure below, never folded into gross/net sales).
+    if (!isRefund) {
+      grossSales = bcadd(grossSales, receipt.total);
+      netSales = bcadd(netSales, receipt.subtotal);
+      taxAmount = bcadd(taxAmount, receipt.tax_amount);
+    }
 
     // Receipt-level rounding / tolerance columns (Task 9), written inside the
     // fiscal transaction from the sealed CheckoutPolicySnapshot. NULL means
     // "did not happen"; a stored zero would mean "happened and came to zero",
     // which is why both are compared rather than merely null-checked.
+    // `tolerance_shortfall` is ALWAYS NULL on a refund row (§7.2a — no
+    // tender-tolerance concept applies to a refund payout), so a refund
+    // row never contributes to toleranceTotal at all -- the existing
+    // null-check already excludes it, no branch needed.
     const shortfall = receipt.tolerance_shortfall;
     if (shortfall !== null && shortfall !== '' && bccomp(shortfall, '0') !== 0) {
       toleranceTotal = bcadd(toleranceTotal, shortfall);
       toleranceCount += 1;
     }
+    // `cash_rounding_adjustment` is signed and mirrors the fiscal
+    // payload's own value on EVERY row, sale or refund (§7.2a) -- a sale
+    // row ADDS (unchanged); a refund row SUBTRACTS (a refund's own
+    // rounding reverses the sale's). Canonical zero on every launch v4
+    // refund (a refund payout never rounds), so this branch is currently
+    // dead in practice but must be correct forward-compatibly.
     const adjustment = receipt.cash_rounding_adjustment;
     if (adjustment !== null && adjustment !== '' && bccomp(adjustment, '0') !== 0) {
-      roundingTotal = bcadd(roundingTotal, adjustment);
+      roundingTotal = isRefund
+        ? bcsub(roundingTotal, adjustment)
+        : bcadd(roundingTotal, adjustment);
       roundingCount += 1;
     }
 
-    // VAT breakdown from receipt lines
+    // VAT breakdown from receipt lines — deliberately UNBRANCHED (spec
+    // §7.3a errata, "additive-over-negative-lines"): a refund row's
+    // `lines` JSON is negative-signed (§7.2), so plain addition already
+    // produces the identical net result zReportService.ts's own
+    // "bcabs-then-subtract" branch computes explicitly. Both are correct;
+    // neither needs to change to match the other.
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
@@ -248,6 +277,12 @@ export async function buildEndOfDayPreview(
     // tender is never dropped because the local payment_methods table no longer
     // lists its method (deactivated/removed by sync mid-shift). The lookup table
     // only supplies display metadata (id, name, is_physical).
+    // `payments_json` is a POSITIVE magnitude on EVERY row, sale or refund
+    // (§7.2a) — left unbranched here, a refund's positive amount would
+    // simply ADD like a sale's, inflating expected cash by its own
+    // magnitude instead of reducing it (the exact +2× error class §7.3
+    // closed in zReportService.ts, reappearing here because this file's
+    // loop was never touched until this fix).
     const payments = JSON.parse(receipt.payments_json || '[]') as PaymentJsonRow[];
     let receiptHasCash = false;
     for (const p of payments) {
@@ -262,12 +297,16 @@ export async function buildEndOfDayPreview(
         total_amount: '0',
         transaction_count: 0,
       };
-      existing.total_amount = bcadd(existing.total_amount, p.amount);
+      existing.total_amount = isRefund
+        ? bcsub(existing.total_amount, p.amount)
+        : bcadd(existing.total_amount, p.amount);
       existing.transaction_count += 1;
       perMethod.set(key, existing);
 
       if (key === 'CASH') {
-        cashTenderedSum = bcadd(cashTenderedSum, p.amount);
+        cashTenderedSum = isRefund
+          ? bcsub(cashTenderedSum, p.amount)
+          : bcadd(cashTenderedSum, p.amount);
         receiptHasCash = true;
       }
     }
@@ -276,6 +315,10 @@ export async function buildEndOfDayPreview(
       // change_due is a receipt-level column (offline_receipts.change_due) and is
       // only ever non-zero when the receipt was paid (over-tendered) in cash, so
       // subtract it once per cash-paid receipt — never per payment row.
+      // `change_due` is ALWAYS NULL on a refund row (§7.2a -- a refund has
+      // no change concept), so this is a no-op for refund rows by
+      // construction; not gated on `isRefund` for the same reason the
+      // tolerance check above isn't.
       if (receiptHasCash) {
         cashChangeDueSum = bcadd(cashChangeDueSum, receipt.change_due ?? '0');
       }
@@ -331,8 +374,11 @@ export async function buildEndOfDayPreview(
   // 4. expected_cash = opening + net cash sales (Σ tendered − Σ change)
   //    + cash drawer deposits − payouts (NF525 drawer reality; mirrors the
   //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
+  // v3-refund-chain-integration spec §7.3a — `cashTenderedSum` is now
+  // ALREADY net of refunds by construction of the receipt_kind branch
+  // above (mirrors zReportService.ts's own §7.3 simplification exactly):
+  // this formula needs no separate refund-impact term any more.
   let drawerNet = '0';
-  let cashRefundImpact = '0';
   // The §8.1 budget is keyed by shift id only — there is no timestamp bind, so
   // this read never touches the SQLite TEXT-boundary hazard that forces
   // toSqliteUtc() on the receipt window above. Stays NULL (unknown) without a
@@ -349,17 +395,8 @@ export async function buildEndOfDayPreview(
     for (const ap of accountPayments) {
       drawerNet = bcadd(drawerNet, ap.cash_impact);
     }
-    // Cash-destination refunds physically left this drawer (matches the signed
-    // Z's cashRefundImpact so the preview does not overstate expected cash).
-    const refundRecords = await getRefundRecordsForShift(db, shiftId);
-    for (const r of refundRecords) {
-      cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact);
-    }
   }
-  const expectedCash = bcsub(
-    bcadd(bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum), drawerNet),
-    cashRefundImpact,
-  );
+  const expectedCash = bcadd(bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum), drawerNet);
 
   // 5. Build VAT breakdown sorted by rate ascending. tax_rate intentionally
   // remains a number to match the signed Z-report aggregate/wire shape; trim or
