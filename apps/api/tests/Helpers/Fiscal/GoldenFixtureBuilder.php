@@ -84,8 +84,23 @@ final class GoldenFixtureBuilder
             // event_version=4 line items use the V2 (16-key) shape — the
             // variant identity triplet is REQUIRED at eventVersion >= 2
             // (`FiscalPayloadConstraintValidator::validateLineItem()`).
+            //
+            // Wave-2 review fix, orchestrator-ruled — `unit_price` is the
+            // POS-flow GROSS/TTC convention (precision-contract.md
+            // "unit_price is context-overloaded"; rule 19), written
+            // verbatim from the device cart; the sibling
+            // `sale-receipt-v2-golden.json` already pins this SAME field
+            // as gross (its line 1: unit_price:'25.00' == line_total, not
+            // line_subtotal:'20.83'). This fixture previously set
+            // unit_price:'10.00' == line_subtotal (NET) — the opposite of
+            // that established convention — which no device-authored
+            // payload can ever byte-match (buildLineItems()'s gross-
+            // arithmetic invariant forces a real device to emit
+            // unit_price:'12.00' for this exact line). Corrected to the
+            // gross value; line_subtotal/line_vat/every other byte is
+            // UNCHANGED.
             'line_items' => [self::lineItem([
-                'unit_price' => '10.00', 'line_subtotal' => '10.00', 'line_vat' => '2.00',
+                'unit_price' => '12.00', 'line_subtotal' => '10.00', 'line_vat' => '2.00',
                 'variant_id' => null, 'variant_name' => null, 'variant_sku' => null,
             ])],
             'payments' => [self::payment(['amount' => '12.00', 'method_code' => 'CASH'])],
