@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -62,17 +63,44 @@ use Tests\TestCase;
  * `/api/v1/pos/sync/fiscal-events` ingestion pipeline, PG hash-chain CHECK
  * constraints, and `fiscal:verify-event-chain` / `pos:verify-chains`.
  *
- * **Scope note (review round-2 IMPORTANT 15).** The "sale -> refund ->
- * next sale" flow this file exercises deliberately stops short of a Z
- * close/report leg -- closing the shift/day is a SEPARATE, later
- * concern (wave 3, not yet scheduled) layered on top of this same
- * fiscal-events chain, not part of §1.1's own acceptance-test text
- * (which specifies exactly the three-event flow this file drives). Not
- * silently omitted: recorded here explicitly as deferred, not forgotten.
+ * **Z close leg (wave 3 — the leg wave 1 deferred).** The flow above now
+ * continues into a full device-authored close: SESSION_OPEN ->
+ * SESSION_CLOSE -> Z_REPORT on the parallel `z_session` chain, then the
+ * next session's first sale back on `operational`. This is the launch-gate
+ * evidence for owner gate E-7 (a refund must not break the fiscal chain
+ * across a Z close), and it additionally pins the Z's own aggregate signs
+ * (§7.3/§7.4: sale-only gross/net/tax, a positive-magnitude `refunds_*`
+ * block, cash and VAT NET of the refund) plus the §7.7 hazard that a
+ * `receipt_type`-blind `SUM(pos_receipts.total)` over the same window is
+ * +2x the truth. See {@see self::runZCloseLeg()}.
  */
 final class ReceiptReturnRefactorV3Test extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * The shift every SALE_RECEIPT payload in this file is authored under.
+     * The Z leg's SESSION_OPEN projects it into a real `pos_shifts` row —
+     * `pos_z_reports.shift_id` is FK-constrained to that table.
+     */
+    private const SHIFT_ID = '22222222-2222-4222-8222-222222222222';
+
+    /** The shift the post-Z session re-opens on. */
+    private const NEXT_SHIFT_ID = '22222222-2222-4222-8222-222222222223';
+
+    private const Z_REPORT_UUID = '66666666-6666-4666-8666-666666666666';
+
+    private const SESSION_CLOSE_UUID = '77777777-7777-4777-8777-777777777777';
+
+    /** Opening float the Z leg's SESSION_OPEN declares. */
+    private const OPENING_FLOAT = '100.00';
+
+    /**
+     * Opening float + NET cash for the window: 100.00 + (24.00 sold −
+     * 12.00 refunded) = 112.00. Written out here rather than derived from
+     * any figure the Z assertions read back.
+     */
+    private const EXPECTED_CASH = '112.00';
 
     private Tenant $tenant;
 
@@ -481,6 +509,438 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             '--terminal' => $terminal->id,
         ])
             ->assertExitCode(0);
+
+        // ---- 6. Z CLOSE leg (wave 3 — the §1.1 leg wave 1 deferred). ----
+        $this->runZCloseLeg(
+            terminal: $terminal,
+            businessDate: $businessDate,
+            baseEventTime: $baseEventTime,
+            lastOperationalHash: (string) $nextSaleEvent->current_hash,
+            productId: $product->id,
+            startingCurrentSequence: $startingCurrentSequence,
+        );
+    }
+
+    // =====================================================================
+    // Z CLOSE leg (wave 3) — §1.1's deferred close: the refund must survive
+    // a Z close AND the next session's first sale must keep chaining.
+    // =====================================================================
+
+    /**
+     * Drive the device-authored Z close over the sale → refund → sale window
+     * this file just built, then re-open and sell again.
+     *
+     * **Why the Z is a z_session chain, not more operational events.** A v3+
+     * terminal's Z is device-authored only — `ReportGenerationService`
+     * refuses server-side Z authoring at `fiscal_schema_version >= 3`
+     * (`Z_SESSION_DEVICE_AUTHORITY_REQUIRED`, pinned by
+     * `ZReportServerAuthoringChokepointTest`) — and the device authors the
+     * session lifecycle on the SEPARATE `z_session` chain context, which
+     * carries its own monotonic `sequence_number` stream
+     * (`OutboxIngestor::verifyZSessionLifecycle()`, and
+     * `OutboxIngestorTest::test_chain_context_allows_parallel_sequence_streams_for_same_terminal`).
+     * So the close is SESSION_OPEN → SESSION_CLOSE → Z_REPORT on `z_session`,
+     * strictly parallel to the SALE_RECEIPT chain on `operational`, and the
+     * two are verified independently by `fiscal:verify-event-chain
+     * --chain-context=…`.
+     *
+     * **Sign convention under test (§7.4 / §3.1 / §7.7).** The refund's
+     * SIGNED payload carries positive magnitudes with direction in
+     * `invoice_type_code = 'REFUND'`, and `PosCoreReceiptProjection` stores
+     * that positive `total` on a `receipt_type = 'return'` row. The Z's own
+     * aggregates must therefore NET the refund explicitly (sale-only
+     * gross/net/tax, its own `refunds_*` block, and a payment-method
+     * breakdown the device already subtracted the refund from, §7.3) rather
+     * than relying on a negative stored total to net itself — a
+     * `SUM(pos_receipts.total)` with no `receipt_type` filter over this same
+     * window is +2× the truth, which the last assertion block pins
+     * explicitly so the hazard is evidence rather than folklore.
+     */
+    private function runZCloseLeg(
+        Terminal $terminal,
+        string $businessDate,
+        Carbon $baseEventTime,
+        string $lastOperationalHash,
+        string $productId,
+        int $startingCurrentSequence,
+    ): void {
+        // The Z window must span exactly the three operational events
+        // authored above (base, +2m, +4m) — `ZReportProjection`'s
+        // completeness gate refuses to project until EVERY verified v3+
+        // SALE_RECEIPT inside it has a `pos_receipts` row, so a green Z here
+        // is itself proof that the v4 refund projected.
+        $periodStart = $baseEventTime->copy()->subMinute();
+        $periodEnd = $baseEventTime->copy()->addMinutes(5);
+
+        $sessionId = '44444444-4444-4444-8444-444444444441';
+        $sessionCloseEventId = Str::uuid()->toString();
+        $zEventId = Str::uuid()->toString();
+
+        // ---- 6a. SESSION_OPEN (z_session sequence 1, off the genesis seed).
+        // `ZSessionLifecycleProjection` projects this into the `pos_shifts`
+        // row that `pos_z_reports.shift_id` is FK-constrained to, so the Z
+        // below has a real shift to land on.
+        $sessionOpenEventId = Str::uuid()->toString();
+        $sessionOpenEnvelope = $this->sealedEnvelope(
+            eventId: $sessionOpenEventId,
+            terminal: $terminal,
+            eventVersion: 1,
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->sessionOpenPayload(
+                $terminal,
+                $sessionId,
+                self::SHIFT_ID,
+                shiftNumber: 1,
+                businessDate: $businessDate,
+                openedAtDevice: $baseEventTime->copy()->subMinutes(2)->format('Y-m-d\TH:i:s.000\Z'),
+            ),
+            eventType: FiscalEventType::SESSION_OPEN,
+            chainContext: 'z_session',
+            eventTimeDevice: $baseEventTime->copy()->subMinutes(2)->format('Y-m-d\TH:i:s.000\Z'),
+            // §z-session lifecycle: SESSION_OPEN must be sourced from
+            // `pos_session` with `source_event_id` equal to the payload's own
+            // `session_id`, or the ingestor quarantines it.
+            sourceEventClass: 'pos_session',
+            sourceEventId: $sessionId,
+        );
+        $sessionOpenResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$sessionOpenEnvelope]]);
+        $sessionOpenResponse->assertOk();
+        $sessionOpenResponse->assertJsonPath('results.0.stored', true);
+        $sessionOpenResponse->assertJsonPath('results.0.exception_class', null);
+
+        $sessionOpenEvent = DB::table('fiscal_events')->where('id', $sessionOpenEventId)->first();
+        self::assertNotNull($sessionOpenEvent);
+        self::assertSame('verified', $sessionOpenEvent->integrity_status);
+        self::assertDatabaseHas('pos_shifts', ['id' => self::SHIFT_ID, 'terminal_id' => $terminal->id]);
+
+        // ---- 6b. SESSION_CLOSE (z_session sequence 2). ----
+        $sessionCloseEnvelope = $this->sealedEnvelope(
+            eventId: $sessionCloseEventId,
+            terminal: $terminal,
+            eventVersion: 1,
+            sequenceNumber: 2,
+            previousHash: (string) $sessionOpenEvent->current_hash,
+            payload: $this->sessionClosePayload(
+                $terminal,
+                $sessionId,
+                self::SHIFT_ID,
+                businessDate: $businessDate,
+                generatedAtDevice: $baseEventTime->copy()->addMinutes(6)->format('Y-m-d\TH:i:s.000\Z'),
+                periodStart: $periodStart->copy()->format('Y-m-d\TH:i:s.000\Z'),
+                periodEnd: $periodEnd->copy()->format('Y-m-d\TH:i:s.000\Z'),
+            ),
+            eventType: FiscalEventType::SESSION_CLOSE,
+            chainContext: 'z_session',
+            eventTimeDevice: $baseEventTime->copy()->addMinutes(6)->format('Y-m-d\TH:i:s.000\Z'),
+            // The device's own source pair for a close
+            // (`zSessionAuthoring.ts:685-686`) — NOT `pos_session`/session_id,
+            // which the SESSION_OPEN already claimed under the
+            // `fiscal_events_source_event_unique` index.
+            sourceEventClass: 'pos_session_close',
+            sourceEventId: self::SESSION_CLOSE_UUID,
+        );
+        $sessionCloseResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$sessionCloseEnvelope]]);
+        $sessionCloseResponse->assertOk();
+        $sessionCloseResponse->assertJsonPath('results.0.stored', true);
+        $sessionCloseResponse->assertJsonPath('results.0.exception_class', null);
+
+        $sessionCloseEvent = DB::table('fiscal_events')->where('id', $sessionCloseEventId)->first();
+        self::assertNotNull($sessionCloseEvent);
+        self::assertSame('verified', $sessionCloseEvent->integrity_status);
+
+        // ---- 6c. Z_REPORT (z_session sequence 3) — the close itself. ----
+        $zEnvelope = $this->sealedEnvelope(
+            eventId: $zEventId,
+            terminal: $terminal,
+            eventVersion: 1,
+            sequenceNumber: 3,
+            previousHash: (string) $sessionCloseEvent->current_hash,
+            payload: $this->zReportPayload(
+                $terminal,
+                $sessionId,
+                self::SHIFT_ID,
+                $sessionCloseEventId,
+                businessDate: $businessDate,
+                closedAtDevice: $baseEventTime->copy()->addMinutes(7)->format('Y-m-d\TH:i:s.000\Z'),
+                periodStart: $periodStart->copy()->format('Y-m-d\TH:i:s.000\Z'),
+                periodEnd: $periodEnd->copy()->format('Y-m-d\TH:i:s.000\Z'),
+            ),
+            eventType: FiscalEventType::Z_REPORT,
+            chainContext: 'z_session',
+            eventTimeDevice: $baseEventTime->copy()->addMinutes(7)->format('Y-m-d\TH:i:s.000\Z'),
+            sourceEventClass: 'z_report',
+            sourceEventId: self::Z_REPORT_UUID,
+        );
+        $zResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$zEnvelope]]);
+        $zResponse->assertOk();
+        $zResponse->assertJsonPath('results.0.stored', true);
+        $zResponse->assertJsonPath('results.0.exception_class', null);
+
+        $zEvent = DB::table('fiscal_events')->where('id', $zEventId)->first();
+        self::assertNotNull($zEvent);
+        self::assertSame('verified', $zEvent->integrity_status);
+        self::assertSame((string) $sessionCloseEvent->current_hash, $zEvent->previous_hash, 'the Z must chain off the session close');
+
+        $zProjectionRow = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $zEventId)
+            ->where('projector_name', 'pos_core_z_report')
+            ->first();
+        self::assertNotNull($zProjectionRow, 'the Z must have a fiscal_event_projections row for pos_core_z_report');
+        self::assertSame(
+            'applied',
+            $zProjectionRow->projection_status,
+            'a pending/failed Z here means ZReportProjection\'s completeness gate did not see the refund projected',
+        );
+
+        // ---- 7. Z aggregates reflect the refund with the spec's signs. ----
+        $zReport = ZReport::query()->where('fiscal_event_id', $zEventId)->firstOrFail();
+        /** @var array<string, mixed> $reportData */
+        $reportData = $zReport->report_data;
+
+        // Sale-only aggregates (§7.3): the refund contributes to NONE of
+        // these — two sales at 12.00 TTC / 10.00 net / 2.00 VAT each.
+        self::assertSame(2, $reportData['sales_count']);
+        self::assertSame('24.00', $reportData['gross_sales']);
+        self::assertSame('20.00', $reportData['net_sales']);
+        self::assertSame('4.00', $reportData['tax_amount']);
+
+        // Refunds tracked as their own POSITIVE-MAGNITUDE block (§3.1/§7.3):
+        // never folded into gross/net sales, never sign-bearing.
+        self::assertSame(1, $reportData['refunds_count']);
+        self::assertSame('12.00', $reportData['refunds_amount']);
+        self::assertSame(0, $reportData['voided_count']);
+
+        // The payment-method breakdown is NET of the refund (§7.3's
+        // subtraction branch): 24.00 cash in minus 12.00 paid out = 12.00.
+        // If a consumer ever added instead of subtracting, this reads 36.00.
+        /** @var list<array<string, mixed>> $paymentMethods */
+        $paymentMethods = $reportData['payment_methods'];
+        self::assertCount(1, $paymentMethods);
+        self::assertSame('CASH', $paymentMethods[0]['payment_type']);
+        self::assertSame('12.00', $paymentMethods[0]['total_amount'], 'Z cash must be net of the refund payout, not gross');
+
+        // expected_cash = opening float 100.00 + net cash 12.00 (§7.3's
+        // formula simplification — one netted cash figure, not a gross
+        // figure with a separate refund-impact subtraction).
+        self::assertSame('112.00', $reportData['expected_cash']);
+        self::assertSame('112.00', $reportData['actual_cash']);
+        self::assertSame('0.00', $reportData['variance']);
+
+        // VAT buckets, cross-checked against an INDEPENDENT source.
+        //
+        // The expected figures below are NOT derived from the Z payload's
+        // own aggregate fields — they are recomputed from
+        // `pos_receipt_vat_details`, the per-receipt rows
+        // `PosCoreReceiptProjection::writeVatBreakdown()` mirrors straight
+        // out of each event's OWN signed `vat_breakdown[]`, split by
+        // `receipt_type` so the refund is subtracted rather than blended.
+        // (Wave-2 lesson: a fixture whose expected values come from the same
+        // field the aggregator reads cannot catch a VAT aggregation bug.)
+        /** @var list<array<string, mixed>> $zVatBreakdown */
+        $zVatBreakdown = $reportData['vat_breakdown'];
+        self::assertCount(1, $zVatBreakdown);
+
+        $vatRows = DB::table('pos_receipt_vat_details')
+            ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_vat_details.receipt_id')
+            ->where('pos_receipts.terminal_id', $terminal->id)
+            ->whereBetween('pos_receipts.posted_at', [
+                $periodStart->copy()->format('Y-m-d H:i:s'),
+                $periodEnd->copy()->format('Y-m-d H:i:s'),
+            ]);
+
+        $independentNet = bcsub(
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'sale')->sum('pos_receipt_vat_details.net_amount'),
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'return')->sum('pos_receipt_vat_details.net_amount'),
+            3,
+        );
+        $independentVat = bcsub(
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'sale')->sum('pos_receipt_vat_details.vat_amount'),
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'return')->sum('pos_receipt_vat_details.vat_amount'),
+            3,
+        );
+        $independentGross = bcsub(
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'sale')->sum('pos_receipt_vat_details.gross_amount'),
+            (string) $vatRows->clone()->where('pos_receipts.receipt_type', 'return')->sum('pos_receipt_vat_details.gross_amount'),
+            3,
+        );
+
+        // Absolute pins first (2 sales − 1 refund, each 10.00 net / 2.00 VAT
+        // / 12.00 gross at 20%), so a change on BOTH sides can't cancel out.
+        self::assertSame(0, bccomp($independentNet, '10.000', 3));
+        self::assertSame(0, bccomp($independentVat, '2.000', 3));
+        self::assertSame(0, bccomp($independentGross, '12.000', 3));
+        // …and the arithmetic identity itself: gross == net + VAT, and VAT is
+        // the stated 20% of net. Neither is read off the Z payload.
+        self::assertSame(0, bccomp($independentGross, bcadd($independentNet, $independentVat, 3), 3));
+        self::assertSame(0, bccomp($independentVat, bcdiv(bcmul($independentNet, '20', 5), '100', 5), 3));
+
+        self::assertSame(20, $zVatBreakdown[0]['tax_rate']);
+        self::assertSame(
+            0,
+            bccomp($this->numericString($zVatBreakdown[0]['net_amount']), $independentNet, 3),
+            'the Z VAT net must equal the receipt_type-aware per-receipt net, i.e. the refund was SUBTRACTED',
+        );
+        self::assertSame(0, bccomp($this->numericString($zVatBreakdown[0]['vat_amount']), $independentVat, 3));
+        self::assertSame(0, bccomp($this->numericString($zVatBreakdown[0]['gross_amount']), $independentGross, 3));
+        // The Z's own sale-only `tax_amount` is the GROSS-of-refunds figure —
+        // stated separately so the two are never conflated: 4.00 collected on
+        // two sales vs 2.00 net of the refund reversal.
+        self::assertSame(
+            0,
+            bccomp($this->numericString($reportData['tax_amount']), bcadd($independentVat, '2.000', 3), 3),
+            'sale-only tax_amount stays gross of the refund; only the VAT breakdown nets it',
+        );
+
+        // Server-DERIVED aggregate (not device-authored): the rounding
+        // summary sums `pos_receipts.cash_rounding_adjustment` across the
+        // window INCLUDING the refund row. Every receipt here is unrounded,
+        // so it must be canonical zero with a zero count — a non-zero count
+        // would mean the refund row leaked a phantom adjustment.
+        /** @var array<string, mixed> $roundingSummary */
+        $roundingSummary = $reportData['cash_rounding_summary'];
+        self::assertSame('0.000', $roundingSummary['total_adjustment']);
+        self::assertSame(0, $roundingSummary['receipt_count']);
+
+        // ---- 8. None of the SUM aggregates go silently wrong. ----
+        // §7.7: a v4 refund projects a POSITIVE `total` under
+        // `receipt_type = 'return'` (legacy returns stored it negative), so
+        // any consumer that blends `SUM(total)` without a `receipt_type`
+        // filter now ADDS the refund. Pinned explicitly, both arms, so the
+        // Z's own netted figure is provably the receipt_type-AWARE one.
+        $windowReceipts = DB::table('pos_receipts')
+            ->where('terminal_id', $terminal->id)
+            ->whereBetween('posted_at', [
+                $periodStart->copy()->format('Y-m-d H:i:s'),
+                $periodEnd->copy()->format('Y-m-d H:i:s'),
+            ]);
+
+        $blendedSum = (string) ($windowReceipts->clone()->sum('total'));
+        $saleSum = (string) ($windowReceipts->clone()->where('receipt_type', 'sale')->sum('total'));
+        $returnSum = (string) ($windowReceipts->clone()->where('receipt_type', 'return')->sum('total'));
+
+        self::assertSame(0, bccomp($returnSum, '12.000', 3), 'the v4 refund projects a POSITIVE total (§7.7)');
+        self::assertSame(0, bccomp($saleSum, '24.000', 3));
+        self::assertSame(
+            0,
+            bccomp($blendedSum, '36.000', 3),
+            'an unfiltered SUM(pos_receipts.total) over this window is +2x the truth — receipt_type-blind consumers must be gated before v4 authoring is enabled',
+        );
+        self::assertSame(
+            0,
+            bccomp(bcsub($saleSum, $returnSum, 3), '12.000', 3),
+            'the receipt_type-AWARE net is what the Z reports as cash',
+        );
+        self::assertSame(
+            0,
+            bccomp($this->numericString($paymentMethods[0]['total_amount']), bcsub($saleSum, $returnSum, 3), 3),
+            'the Z cash figure must equal the receipt_type-aware server-side net, NOT the blended sum',
+        );
+
+        // ---- 9. After the Z close, the next session's first sale keeps
+        // ---- chaining off the pre-Z operational head. ----
+        $nextSessionId = '44444444-4444-4444-8444-444444444442';
+        $reopenEventId = Str::uuid()->toString();
+        $reopenEnvelope = $this->sealedEnvelope(
+            eventId: $reopenEventId,
+            terminal: $terminal,
+            eventVersion: 1,
+            sequenceNumber: 4,
+            previousHash: (string) $zEvent->current_hash,
+            payload: $this->sessionOpenPayload(
+                $terminal,
+                $nextSessionId,
+                self::NEXT_SHIFT_ID,
+                shiftNumber: 2,
+                businessDate: $businessDate,
+                openedAtDevice: $baseEventTime->copy()->addMinutes(8)->format('Y-m-d\TH:i:s.000\Z'),
+            ),
+            eventType: FiscalEventType::SESSION_OPEN,
+            chainContext: 'z_session',
+            eventTimeDevice: $baseEventTime->copy()->addMinutes(8)->format('Y-m-d\TH:i:s.000\Z'),
+            sourceEventClass: 'pos_session',
+            sourceEventId: $nextSessionId,
+        );
+        $reopenResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$reopenEnvelope]]);
+        $reopenResponse->assertOk();
+        $reopenResponse->assertJsonPath('results.0.stored', true);
+        $reopenResponse->assertJsonPath('results.0.exception_class', null);
+
+        $postZSaleUuid = '00000000-0000-4000-8000-000000000004';
+        $postZSaleEventId = Str::uuid()->toString();
+        $postZSaleEnvelope = $this->sealedEnvelope(
+            eventId: $postZSaleEventId,
+            terminal: $terminal,
+            eventVersion: 3,
+            // The operational chain is untouched by the Z — the post-Z sale
+            // is sequence 4 there, chaining off the PRE-Z sale's hash, with
+            // no restart, reseed or gap.
+            sequenceNumber: 4,
+            previousHash: $lastOperationalHash,
+            payload: $this->v3SalePayload(
+                $postZSaleUuid,
+                $businessDate,
+                $baseEventTime->copy()->addMinutes(9)->format('Y-m-d\TH:i:s.000\Z'),
+                $productId,
+            ),
+        );
+        $postZSaleResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$postZSaleEnvelope]]);
+        $postZSaleResponse->assertOk();
+        $postZSaleResponse->assertJsonPath('results.0.stored', true);
+        $postZSaleResponse->assertJsonPath('results.0.exception_class', null);
+
+        $postZSaleEvent = DB::table('fiscal_events')->where('id', $postZSaleEventId)->first();
+        self::assertNotNull($postZSaleEvent);
+        self::assertSame(
+            $lastOperationalHash,
+            $postZSaleEvent->previous_hash,
+            'the first sale after the Z close must continue the operational chain, not restart it',
+        );
+        self::assertNotNull(
+            DB::table('pos_receipts')->where('fiscal_event_id', $postZSaleEventId)->first(),
+            'the post-Z sale must still project',
+        );
+
+        // The Z is immutable and did NOT absorb the post-Z sale.
+        $zReport->refresh();
+        /** @var array<string, mixed> $reportDataAfter */
+        $reportDataAfter = $zReport->report_data;
+        self::assertSame(2, $reportDataAfter['sales_count']);
+        self::assertSame('24.00', $reportDataAfter['gross_sales']);
+        self::assertSame('12.00', $reportDataAfter['refunds_amount']);
+
+        // ---- 10. `current_sequence` STILL never touched — the Z leg is as
+        // ---- decoupled from the legacy counter as the refund leg. ----
+        $terminal->refresh();
+        self::assertSame($startingCurrentSequence, $terminal->current_sequence);
+
+        // ---- 11. Both verify commands still green, both chain contexts. ----
+        $this->artisanCommand('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenant->id,
+            '--terminal' => $terminal->id,
+            '--actor-id' => $this->chainVerifierActor->id,
+        ])
+            ->expectsOutputToContain('chain verified — terminal '.$terminal->id.', tenant '.$this->tenant->id.', context operational, 4 events walked from sequence 1, no quarantine incidents.')
+            ->assertExitCode(0);
+
+        $this->artisanCommand('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenant->id,
+            '--terminal' => $terminal->id,
+            '--chain-context' => 'z_session',
+            '--actor-id' => $this->chainVerifierActor->id,
+        ])
+            ->expectsOutputToContain('chain verified — terminal '.$terminal->id.', tenant '.$this->tenant->id.', context z_session, 4 events walked from sequence 1, no quarantine incidents.')
+            ->assertExitCode(0);
+
+        // `pos:verify-chains` now also exercises its Z-report arm: the
+        // projected `pos_z_reports` row is excluded from the legacy
+        // pipe-string recomputation (`fiscal_event_id IS NOT NULL`) and
+        // verified instead by `ZReportHashService::verifyFiscalEventsArm()`,
+        // which walks the whole `z_session` chain off the genesis seed.
+        $this->artisanCommand('pos:verify-chains', [
+            '--terminal' => $terminal->id,
+        ])
+            ->assertExitCode(0);
     }
 
     // =====================================================================
@@ -775,8 +1235,19 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         int $sequenceNumber,
         string $previousHash,
         array $payload,
+        FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
+        string $chainContext = 'operational',
+        ?string $eventTimeDevice = null,
+        ?string $sourceEventClass = null,
+        ?string $sourceEventId = null,
     ): array {
-        $payloadEventTimeDevice = $payload['event_time_device'];
+        // A SALE_RECEIPT payload carries its own millisecond-precision
+        // `event_time_device`. The z_session family names its device clock
+        // differently per type (`opened_at_device` / `generated_at_device` /
+        // `closed_at_device`) and has no `event_time_device` key at all — its
+        // key set is exact-matched by `FiscalPayloadConstraintValidator`, so
+        // those call sites pass the envelope's device time explicitly instead.
+        $payloadEventTimeDevice = $eventTimeDevice ?? $payload['event_time_device'];
         self::assertIsString($payloadEventTimeDevice);
         $businessDate = $payload['business_date'];
         self::assertIsString($businessDate);
@@ -802,18 +1273,18 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             'company_id' => $this->company->id,
             'terminal_id' => $terminal->id,
             'operator_id' => $this->cashier->id,
-            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'event_type' => $eventType->value,
             'event_version' => $eventVersion,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequenceNumber,
             'event_time_device' => $envelopeEventTimeDevice,
             'business_date' => $businessDate,
-            'chain_context' => 'operational',
+            'chain_context' => $chainContext,
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,
-            'source_event_class' => null,
-            'source_event_id' => null,
+            'source_event_class' => $sourceEventClass,
+            'source_event_id' => $sourceEventId,
             'previous_hash' => $previousHash,
         ];
 
@@ -885,7 +1356,9 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
-                'unit_price' => '10.00',
+                // GROSS/TTC — see `v4RefundPayload()`'s note; the same
+                // device contract governs the SALE side of this fixture.
+                'unit_price' => '12.00',
                 'variant_id' => null,
                 'variant_name' => null,
                 'variant_sku' => null,
@@ -914,7 +1387,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'tax_jurisdiction_country_code' => 'FR',
                 'tax_number' => '12345678901234',
             ],
-            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'shift_id' => self::SHIFT_ID,
             'subtotal' => '10.00',
             'table_id' => null,
             'terminal_id' => '', // overwritten by sealedEnvelope's payload consumer -- see note below
@@ -970,7 +1443,18 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
-                'unit_price' => '10.00',
+                // GROSS/TTC, NOT net. The canonical SALE_RECEIPT
+                // `line_items[].unit_price` is written verbatim from the POS
+                // cart's tax-INCLUSIVE price; the NET figure lives in
+                // `line_subtotal` (precision contract, "unit_price is
+                // context-overloaded"). The F-16 golden this fixture mirrors
+                // carried the same net-authored mistake and was corrected to
+                // '12.00' in 9e0c5f755 (GoldenFixtureBuilder::f16RefundV4Cash);
+                // this file hand-duplicated that mistake and is corrected here
+                // to the same value. Only this one field moves — the aggregate
+                // identity (subtotal 10.00 + vat_total 2.00 == total 12.00 +
+                // transaction_discount_amount 0.00) is untouched.
+                'unit_price' => '12.00',
                 'variant_id' => null,
                 'variant_name' => null,
                 'variant_sku' => null,
@@ -1012,7 +1496,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'tax_number' => '12345678901234',
             ],
             'settlement_allocation' => null,
-            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'shift_id' => self::SHIFT_ID,
             'subtotal' => '10.00',
             'table_id' => null,
             'terminal_id' => '', // overwritten by sealedEnvelope's payload consumer -- see note below
@@ -1030,6 +1514,224 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             'vat_total' => '2.00',
             'vouchers_redeemed' => [],
         ];
+    }
+
+    /**
+     * SESSION_OPEN payload — the exact 13-key `SessionOpenPayload::PAYLOAD_KEYS`
+     * set (`FiscalPayloadConstraintValidator` exact-matches it, so a single
+     * extra or missing key quarantines the event).
+     *
+     * @return array<string, mixed>
+     */
+    private function sessionOpenPayload(
+        Terminal $terminal,
+        string $sessionId,
+        string $shiftId,
+        int $shiftNumber,
+        string $businessDate,
+        string $openedAtDevice,
+    ): array {
+        return [
+            'business_date' => $businessDate,
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'opened_at_device' => $openedAtDevice,
+            'opening_float_amount' => self::OPENING_FLOAT,
+            'operator_id' => $this->cashier->id,
+            'operator_name' => $this->cashier->name,
+            'session_id' => $sessionId,
+            'shift_id' => $shiftId,
+            'shift_number' => $shiftNumber,
+            'terminal_id' => '', // overwritten by sealedEnvelope
+            'terminal_label' => $terminal->code,
+            'training_flag' => false,
+        ];
+    }
+
+    /**
+     * SESSION_CLOSE payload — the exact `SessionClosePayload::PAYLOAD_KEYS`
+     * set. Its money block is the same closed-shift arithmetic the Z repeats:
+     * opening float 100.00 + 24.00 cash in − 12.00 refund payout = 112.00.
+     *
+     * @return array<string, mixed>
+     */
+    private function sessionClosePayload(
+        Terminal $terminal,
+        string $sessionId,
+        string $shiftId,
+        string $businessDate,
+        string $generatedAtDevice,
+        string $periodStart,
+        string $periodEnd,
+    ): array {
+        return [
+            'business_date' => $businessDate,
+            'cash_count_lines' => [],
+            'cash_drawer_totals' => [
+                'expected_cash' => self::EXPECTED_CASH,
+                'opening_cash' => self::OPENING_FLOAT,
+            ],
+            'closure_status' => 'closed',
+            'counted_cash' => self::EXPECTED_CASH,
+            'expected_cash' => self::EXPECTED_CASH,
+            'generated_at_device' => $generatedAtDevice,
+            'manager_approval' => null,
+            'operational_event_range' => ['receipt_count' => 3],
+            'operator_id' => $this->cashier->id,
+            'operator_name' => $this->cashier->name,
+            'payment_method_totals' => $this->netCashPaymentMethodTotals(),
+            'period_end' => $periodEnd,
+            'period_start' => $periodStart,
+            'receipt_count' => 3,
+            'refunds_totals' => ['amount' => '12.00', 'count' => 1],
+            'sales_totals' => ['gross_sales' => '24.00', 'net_sales' => '20.00', 'tax_amount' => '4.00'],
+            'session_close_uuid' => self::SESSION_CLOSE_UUID,
+            'session_id' => $sessionId,
+            'shift_id' => $shiftId,
+            'terminal_id' => '', // overwritten by sealedEnvelope
+            'training_flag' => false,
+            'variance_amount' => '0.00',
+            'variance_direction' => 'balanced',
+            'variance_reason' => null,
+            'variance_severity' => 'balanced',
+            'vat_breakdown' => $this->netVatBreakdown(),
+            'voids_totals' => ['count' => 0],
+        ];
+    }
+
+    /**
+     * Z_REPORT payload — the exact `ZReportPayload::PAYLOAD_KEYS` set,
+     * carrying the aggregates a §7.3-compliant device authors over a window
+     * containing two sales and one v4 refund.
+     *
+     * @return array<string, mixed>
+     */
+    private function zReportPayload(
+        Terminal $terminal,
+        string $sessionId,
+        string $shiftId,
+        string $sessionCloseEventId,
+        string $businessDate,
+        string $closedAtDevice,
+        string $periodStart,
+        string $periodEnd,
+    ): array {
+        return [
+            'business_date' => $businessDate,
+            'cash_count' => [
+                'counted_cash' => self::EXPECTED_CASH,
+                'expected_cash' => self::EXPECTED_CASH,
+                'lines' => [],
+                'variance_amount' => '0.00',
+                'variance_direction' => 'balanced',
+                'variance_reason' => null,
+                'variance_severity' => 'balanced',
+            ],
+            'cash_drawer_totals' => [
+                'expected_cash' => self::EXPECTED_CASH,
+                'opening_cash' => self::OPENING_FLOAT,
+            ],
+            'closed_at_device' => $closedAtDevice,
+            'company_snapshot' => ['company_id' => $this->company->id],
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'formatted_z_number' => 'Z0001',
+            'grand_totals_after' => [
+                'cumulative_refunds' => '12.00',
+                'cumulative_sales' => '24.00',
+                'cumulative_tax' => '4.00',
+                'perpetual_grand_total' => '24.00',
+                'receipt_count_lifetime' => 3,
+            ],
+            'grand_totals_before' => [
+                'cumulative_refunds' => '0.00',
+                'cumulative_sales' => '0.00',
+                'cumulative_tax' => '0.00',
+                'perpetual_grand_total' => '0.00',
+                'receipt_count_lifetime' => 0,
+            ],
+            'legacy_report_reference' => null,
+            'operational_event_range' => ['receipt_count' => 3],
+            'operator_id' => $this->cashier->id,
+            'operator_name' => $this->cashier->name,
+            'payment_method_totals' => $this->netCashPaymentMethodTotals(),
+            'period_end' => $periodEnd,
+            'period_start' => $periodStart,
+            'period_type' => 'DAY',
+            // Sale-only (§7.3): the refund never touches these three.
+            'receipt_totals' => ['count' => 2, 'gross_sales' => '24.00', 'net_sales' => '20.00', 'tax_amount' => '4.00'],
+            // Positive magnitude, its own tracked block (§3.1/§7.3).
+            'refunds_totals' => ['amount' => '12.00', 'count' => 1],
+            'seller' => null,
+            'session_event_range' => [
+                'first_sequence' => 1,
+                'last_sequence' => 2,
+                'session_close_event_id' => $sessionCloseEventId,
+            ],
+            'session_id' => $sessionId,
+            'shift_id' => $shiftId,
+            'terminal_id' => '', // overwritten by sealedEnvelope
+            'terminal_label' => $terminal->code,
+            'tolerance_summary' => null,
+            'training_flag' => false,
+            'vat_breakdown' => $this->netVatBreakdown(),
+            'voids_totals' => ['count' => 0],
+            'z_number' => 1,
+            'z_report_uuid' => self::Z_REPORT_UUID,
+        ];
+    }
+
+    /**
+     * The payment-method block a §7.3-compliant device authors: the refund's
+     * cash leg is SUBTRACTED from the CASH bucket (24.00 in − 12.00 out) while
+     * `transaction_count` still counts all three transactions. Deliberately
+     * NOT derived from any figure the assertions read back.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function netCashPaymentMethodTotals(): array
+    {
+        return [[
+            'payment_type' => 'CASH',
+            'total_amount' => '12.00',
+            'transaction_count' => 3,
+        ]];
+    }
+
+    /**
+     * The VAT block a §7.3-compliant device authors: the refund's per-rate
+     * net/VAT/gross is SUBTRACTED from the running totals. Two sales at
+     * 10.00 net + 2.00 VAT = 12.00 gross each, minus one refund of the same
+     * shape ⇒ 10.00 / 2.00 / 12.00 at the single 20% rate.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function netVatBreakdown(): array
+    {
+        return [[
+            'gross_amount' => '12.00',
+            'net_amount' => '10.00',
+            'tax_rate' => 20,
+            'vat_amount' => '2.00',
+        ]];
+    }
+
+    /**
+     * Narrow a value read out of the projected Z `report_data` JSON (typed
+     * `mixed` by construction) to a real `numeric-string` before it reaches
+     * `bccomp`. A fail-loud guard, not a cast-to-silence: a Z whose money
+     * field is not a numeric string is itself the defect being reported.
+     *
+     * @return numeric-string
+     */
+    private function numericString(mixed $value): string
+    {
+        self::assertIsString($value);
+        if (! is_numeric($value)) {
+            throw new RuntimeException('Z report_data money field is not a numeric string: '.$value);
+        }
+
+        return $value;
     }
 
     /**
