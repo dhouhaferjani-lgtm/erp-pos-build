@@ -7,11 +7,13 @@ namespace App\Modules\POS\Application\Projections;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\ApprovalEvidenceUnresolvedException;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Exceptions\RefundQuantityExceededException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -322,6 +324,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $this->assertOriginalNotTraining($event, $originalReceiptId);
                 $this->assertRefundQuantityWithinCap($event, $view, $originalReceiptId);
                 $refundPolicyAlerts = $this->computeRefundPolicyAlerts($originalReceiptId);
+                $this->assertApprovalEvidenceResolved($event, $payload);
             }
 
             // Buyer block snapshot — D16 invariant: read ONLY from the
@@ -836,6 +839,129 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                     requestedQuantity: $requested,
                 );
             }
+        }
+    }
+
+    /**
+     * v3-refund-chain-integration spec §4.2 — projector-side seven-field
+     * approval-evidence verification. Design "unchanged from Revision 3"
+     * (Codex r3 confirmed it closes the round-2 recovery-key concern); this
+     * is its first actual implementation — Revision 3 declared it in prose
+     * only, and {@see ApprovalEvidenceUnresolvedException} existed as an
+     * unused shell until now.
+     *
+     * `SALE_RECEIPT.approval_references[]` is already structurally
+     * validated at ingestion by
+     * {@see FiscalPayloadConstraintValidator::validateSaleReceiptApprovalReference()}
+     * — every row is guaranteed to carry exactly the seven keys
+     * `approval_event_id`, `approval_id`, `approval_scope`,
+     * `override_event_id`, `policy_version`, `supervisor_user_id`,
+     * `target_reference_id`. What that validator does NOT do — because it
+     * only sees the current event's own payload — is confirm those seven
+     * values actually correspond to two REAL, signed fiscal events. This
+     * method does: for each reference row it resolves the cited
+     * `OPERATOR_APPROVAL_GRANTED` event (by `approval_event_id`) and the
+     * cited `OVERRIDE_*` event (by `override_event_id`), both tenant- AND
+     * company-scoped to `$event` (same cross-tenant-smuggling stance as
+     * {@see resolveProductFk()} — a forged/foreign UUID must never resolve),
+     * then cross-checks `approval_id` / `approval_scope` / `policy_version`
+     * / `supervisor_user_id` against BOTH resolved events' own payloads, the
+     * override event's OWN `approval_event_id` against the reference row's,
+     * and `target_reference_id` against the override event's
+     * `override_context.target_reference_id`. Any absence or mismatch
+     * throws {@see ApprovalEvidenceUnresolvedException} — a
+     * `NonRetryableProjectionException` (§4.2): evidence that does not
+     * exist or does not match can never resolve itself on a later Horizon
+     * attempt.
+     *
+     * Scoped to v4 REFUND only (this method's sole call site), matching the
+     * manifest's placement of this bullet among the v4-only projector
+     * additions — `approval_references[]` can in principle appear on any
+     * SALE_RECEIPT version, but re-verifying it for every historical v1-v3
+     * sale receipt already accepted into the fiscal chain is out of this
+     * feature's scope and would be a new, unrequested regression surface.
+     */
+    private function assertApprovalEvidenceResolved(FiscalEvent $event, SaleReceiptPayload $payload): void
+    {
+        foreach ($payload->approvalReferences as $index => $reference) {
+            $this->assertApprovalReferenceRowResolved($event, $reference, $index);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $reference
+     */
+    private function assertApprovalReferenceRowResolved(FiscalEvent $event, array $reference, int $index): void
+    {
+        $approvalEventId = (string) ($reference['approval_event_id'] ?? '');
+        $overrideEventId = (string) ($reference['override_event_id'] ?? '');
+
+        $approvalEvent = FiscalEvent::query()
+            ->where('id', $approvalEventId)
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->where('event_type', FiscalEventType::OPERATOR_APPROVAL_GRANTED)
+            ->first();
+
+        if ($approvalEvent === null || ! is_array($approvalEvent->payload)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: approval_event_id does not resolve to a signed OPERATOR_APPROVAL_GRANTED event for this tenant/company', $index),
+            );
+        }
+
+        $overrideEvent = FiscalEvent::query()
+            ->where('id', $overrideEventId)
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->whereIn('event_type', [
+                FiscalEventType::OVERRIDE_CREDIT_LIMIT,
+                FiscalEventType::OVERRIDE_ACCOUNT_STATUS,
+                FiscalEventType::OVERRIDE_DISCOUNT_LIMIT,
+                FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
+                FiscalEventType::OVERRIDE_VOID_OR_RETURN,
+            ])
+            ->first();
+
+        if ($overrideEvent === null || ! is_array($overrideEvent->payload)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: override_event_id=%s does not resolve to a signed OVERRIDE_* event for this tenant/company', $index, $overrideEventId),
+            );
+        }
+
+        $approvalPayload = $approvalEvent->payload;
+        $overridePayload = $overrideEvent->payload;
+
+        foreach (['approval_id', 'approval_scope', 'policy_version', 'supervisor_user_id'] as $field) {
+            $referenceValue = $reference[$field] ?? null;
+            if ($referenceValue !== ($approvalPayload[$field] ?? null) || $referenceValue !== ($overridePayload[$field] ?? null)) {
+                throw new ApprovalEvidenceUnresolvedException(
+                    fiscalEventId: $event->id,
+                    approvalEventId: $approvalEventId,
+                    reason: sprintf('approval_references[%d]: %s mismatch across reference/approval/override', $index, $field),
+                );
+            }
+        }
+
+        if (($overridePayload['approval_event_id'] ?? null) !== $approvalEventId) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: override event\'s own approval_event_id does not match the reference row', $index),
+            );
+        }
+
+        $overrideContext = $overridePayload['override_context'] ?? null;
+        $targetReferenceId = is_array($overrideContext) ? ($overrideContext['target_reference_id'] ?? null) : null;
+        if ($targetReferenceId !== ($reference['target_reference_id'] ?? null)) {
+            throw new ApprovalEvidenceUnresolvedException(
+                fiscalEventId: $event->id,
+                approvalEventId: $approvalEventId,
+                reason: sprintf('approval_references[%d]: target_reference_id mismatch against override_context', $index),
+            );
         }
     }
 

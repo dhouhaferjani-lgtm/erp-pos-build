@@ -91,6 +91,15 @@ final class EnableV4RefundAuthoringCommand extends TenantScopedCommand
         $terminal = $deviceTerminals->first();
 
         // ---- 2. §9.6/X3 — v3-from-birth verification. ----
+        // Orchestrator amendment (post-wave-2 sweep): the §17 manifest bullet
+        // `InventoryV3LegacyCorrectionsCommand.php` was DROPPED — this exact
+        // check (a per-terminal inventory of legacy-sealed corrections that
+        // must be resolved/absent before enablement) is what that command
+        // would have existed to compute. Its purpose is substantively
+        // subsumed here: this preflight already enumerates and refuses on
+        // any legacy-sealed fiscalized receipt for the target terminal, so a
+        // standalone inventory command would be duplicate machinery over the
+        // same query.
         $legacyFiscalizedCount = DB::table('pos_receipts')
             ->where('terminal_id', $terminal->id)
             ->whereNull('fiscal_event_id')
