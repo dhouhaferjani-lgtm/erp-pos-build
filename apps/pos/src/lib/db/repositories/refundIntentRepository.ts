@@ -257,18 +257,59 @@ export async function markAbandoned(db: Database, id: string): Promise<void> {
 }
 
 /**
+ * Wave-2 fix-wave finding 5 (fiscal C-2 + codex M-5) — a payout is
+ * resolved EXACTLY ONCE, into EXACTLY ONE of two mutually exclusive
+ * terminal outcomes.
+ */
+export type RefundPayoutResolution = 'confirmed' | 'disputed';
+
+export class InvalidRefundPayoutResolutionError extends Error {
+  constructor(
+    public readonly id: string,
+    public readonly resolution: RefundPayoutResolution,
+  ) {
+    super(
+      `refund_intents ${id}: cannot resolve the payout as '${resolution}' -- the row does not exist, has no appended refund fiscal event, or has ALREADY been resolved (confirmed or disputed). §4.5's two outcomes are mutually exclusive and set once.`,
+    );
+    this.name = 'InvalidRefundPayoutResolutionError';
+  }
+}
+
+/**
  * §4.5 — set only by an explicit cashier action AFTER
  * `refund_event_appended`; the fiscal event's already-signed effect is
  * never touched, this is purely local bookkeeping.
+ *
+ * **Wave-2 fix-wave finding 5.** Both branches previously guarded only on
+ * `refund_fiscal_event_id IS NOT NULL`, never excluded the OPPOSITE
+ * timestamp, and never asserted that a row changed — so repeated or
+ * concurrent actions could set BOTH timestamps, and a missing row was a
+ * silent no-op. One guarded statement now sets exactly one timestamp,
+ * requires the other to be NULL, and requires exactly one affected row.
  */
-export async function confirmRefundIntentPayout(db: Database, id: string): Promise<void> {
-  await execute(
+async function resolveRefundIntentPayout(
+  db: Database,
+  id: string,
+  resolution: RefundPayoutResolution,
+): Promise<void> {
+  const column = resolution === 'confirmed' ? 'payout_confirmed_at' : 'payout_disputed_at';
+  const result = await execute(
     db,
     `UPDATE refund_intents
-        SET payout_confirmed_at = datetime('now'), updated_at = datetime('now')
-      WHERE id = $1 AND refund_fiscal_event_id IS NOT NULL`,
+        SET ${column} = datetime('now'), updated_at = datetime('now')
+      WHERE id = $1
+        AND refund_fiscal_event_id IS NOT NULL
+        AND payout_confirmed_at IS NULL
+        AND payout_disputed_at IS NULL`,
     [id],
   );
+  if (result.rowsAffected !== 1) {
+    throw new InvalidRefundPayoutResolutionError(id, resolution);
+  }
+}
+
+export async function confirmRefundIntentPayout(db: Database, id: string): Promise<void> {
+  await resolveRefundIntentPayout(db, id, 'confirmed');
 }
 
 /**
@@ -277,15 +318,13 @@ export async function confirmRefundIntentPayout(db: Database, id: string): Promi
  * from the device Z's expected-cash subtraction (that lives entirely on
  * the `offline_receipts` row, a separate table) -- purely a server-side
  * evidence signal surfaced for finance-team investigation.
+ *
+ * It IS, however, a TERMINAL reconciliation outcome: a disputed intent
+ * leaves the payout-confirmation queue (finding 5's infinite-re-prompt
+ * loop) and enters print recovery like a confirmed one.
  */
 export async function disputeRefundIntentPayout(db: Database, id: string): Promise<void> {
-  await execute(
-    db,
-    `UPDATE refund_intents
-        SET payout_disputed_at = datetime('now'), updated_at = datetime('now')
-      WHERE id = $1 AND refund_fiscal_event_id IS NOT NULL`,
-    [id],
-  );
+  await resolveRefundIntentPayout(db, id, 'disputed');
 }
 
 export async function confirmRefundIntentPrinted(db: Database, id: string): Promise<void> {
@@ -304,24 +343,38 @@ export async function confirmRefundIntentPrinted(db: Database, id: string): Prom
 export async function getRefundIntentsPendingPayoutConfirmation(
   db: Database,
 ): Promise<RefundIntentRow[]> {
+  // Wave-2 fix-wave finding 5: "pending confirmation" is BOTH timestamps
+  // null. The missing `payout_disputed_at IS NULL` term meant "No / Not
+  // sure" re-selected the same row immediately, re-rendering a
+  // non-dismissible, Skip-less modal — and the only way out was a FALSE
+  // "Yes" attestation.
   return queryAll<RefundIntentRow>(
     db,
     `SELECT * FROM refund_intents
-      WHERE refund_fiscal_event_id IS NOT NULL AND payout_confirmed_at IS NULL
+      WHERE refund_fiscal_event_id IS NOT NULL
+        AND payout_confirmed_at IS NULL
+        AND payout_disputed_at IS NULL
       ORDER BY created_at ASC`,
   );
 }
 
 /**
- * §4.5 print-recovery -- payout confirmed but the AVOIR was never
- * printed (app start prompt: "print it now?").
+ * §4.5 print-recovery -- the payout was RESOLVED (confirmed or disputed)
+ * but the AVOIR was never printed (app start prompt: "print it now?").
+ *
+ * Wave-2 fix-wave finding 5: gating on `payout_confirmed_at IS NOT NULL`
+ * alone left a disputed-then-crashed-before-print intent in NO queue at
+ * all — invisible to both recovery paths. A dispute does not block the
+ * AVOIR (it is still the customer's proof), so either resolution enters
+ * print recovery.
  */
 export async function getRefundIntentsPendingReprint(db: Database): Promise<RefundIntentRow[]> {
   return queryAll<RefundIntentRow>(
     db,
     `SELECT * FROM refund_intents
-      WHERE payout_confirmed_at IS NOT NULL AND printed_at IS NULL
-      ORDER BY payout_confirmed_at ASC`,
+      WHERE (payout_confirmed_at IS NOT NULL OR payout_disputed_at IS NOT NULL)
+        AND printed_at IS NULL
+      ORDER BY COALESCE(payout_confirmed_at, payout_disputed_at) ASC`,
   );
 }
 

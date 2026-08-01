@@ -4,6 +4,7 @@ import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelp
 import {
   CumulativeRefundSnapshotUnreadableError,
   InvalidRefundIntentTransitionError,
+  InvalidRefundPayoutResolutionError,
   computeLineSnapshotFingerprint,
   getCumulativeRefundedQuantityByOriginalLine,
   confirmRefundIntentPayout,
@@ -257,11 +258,98 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
       expect(await getRefundIntentsPendingReprint(db)).toEqual([]);
     });
 
-    it('a payout-unconfirmed intent never appears in the reprint queue (confirmation gates reprint)', async () => {
+    it('a payout-UNRESOLVED intent never appears in the reprint queue (resolution gates reprint)', async () => {
       const db = adapter.asDatabase();
       await appendedIntent(db);
 
       expect(await getRefundIntentsPendingReprint(db)).toEqual([]);
+    });
+
+    /**
+     * Wave-2 fix wave — finding 5 (fiscal C-2 + codex M-5).
+     *
+     * The pending-confirmation query omitted `payout_disputed_at IS NULL`,
+     * so "No / Not sure" re-selected the SAME row and re-rendered a
+     * non-dismissible, Skip-less modal forever. The only escape was
+     * tapping "Yes" — a FALSE payout attestation, destroying the very
+     * evidence §4.5 exists to capture. Confirm and dispute also guarded
+     * only on a non-null fiscal-event id, never excluded the opposite
+     * timestamp, and never checked that a row actually changed.
+     */
+    describe('finding 5 — payout resolution is a single, mutually-exclusive, asserted transition', () => {
+      it('a DISPUTED intent leaves the payout-confirmation queue (no infinite re-prompt loop)', async () => {
+        const db = adapter.asDatabase();
+        const id = await appendedIntent(db);
+        expect((await getRefundIntentsPendingPayoutConfirmation(db)).map((r) => r.id)).toEqual([id]);
+
+        await disputeRefundIntentPayout(db, id);
+
+        expect(await getRefundIntentsPendingPayoutConfirmation(db)).toEqual([]);
+      });
+
+      it('a DISPUTED-but-unprinted intent DOES enter reprint recovery', async () => {
+        const db = adapter.asDatabase();
+        const id = await appendedIntent(db);
+
+        await disputeRefundIntentPayout(db, id);
+
+        expect((await getRefundIntentsPendingReprint(db)).map((r) => r.id)).toEqual([id]);
+        await confirmRefundIntentPrinted(db, id);
+        expect(await getRefundIntentsPendingReprint(db)).toEqual([]);
+      });
+
+      it('confirm then dispute is rejected — the two timestamps are mutually exclusive', async () => {
+        const db = adapter.asDatabase();
+        const id = await appendedIntent(db);
+        await confirmRefundIntentPayout(db, id);
+
+        await expect(disputeRefundIntentPayout(db, id)).rejects.toThrow(
+          InvalidRefundPayoutResolutionError,
+        );
+
+        const row = await getRefundIntentById(db, id);
+        expect(row?.payout_confirmed_at).not.toBeNull();
+        expect(row?.payout_disputed_at).toBeNull();
+      });
+
+      it('dispute then confirm is rejected — the two timestamps are mutually exclusive', async () => {
+        const db = adapter.asDatabase();
+        const id = await appendedIntent(db);
+        await disputeRefundIntentPayout(db, id);
+
+        await expect(confirmRefundIntentPayout(db, id)).rejects.toThrow(
+          InvalidRefundPayoutResolutionError,
+        );
+
+        const row = await getRefundIntentById(db, id);
+        expect(row?.payout_disputed_at).not.toBeNull();
+        expect(row?.payout_confirmed_at).toBeNull();
+      });
+
+      it('repeating the SAME resolution is rejected rather than silently re-stamping', async () => {
+        const db = adapter.asDatabase();
+        const id = await appendedIntent(db);
+        await disputeRefundIntentPayout(db, id);
+
+        await expect(disputeRefundIntentPayout(db, id)).rejects.toThrow(
+          InvalidRefundPayoutResolutionError,
+        );
+      });
+
+      it('resolving an intent with no appended fiscal event affects zero rows and throws', async () => {
+        const db = adapter.asDatabase();
+        const { intent } = await createOrReuseActiveRefundIntent(db, baseInput());
+
+        await expect(confirmRefundIntentPayout(db, intent.id)).rejects.toThrow(
+          InvalidRefundPayoutResolutionError,
+        );
+      });
+
+      it('resolving a row that does not exist throws instead of silently no-opping', async () => {
+        await expect(
+          confirmRefundIntentPayout(adapter.asDatabase(), 'no-such-intent'),
+        ).rejects.toThrow(InvalidRefundPayoutResolutionError);
+      });
     });
   });
 

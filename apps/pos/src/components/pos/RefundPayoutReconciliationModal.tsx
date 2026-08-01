@@ -5,21 +5,27 @@
  * Two prompts, mutually exclusive, shown one at a time, oldest-first:
  *
  *   1. Payout confirmation — a `refund_intents` row has an appended fiscal
- *      event (`refund_fiscal_event_id IS NOT NULL`) but no
- *      `payout_confirmed_at` yet: "did the cash leave the drawer?"
+ *      event (`refund_fiscal_event_id IS NOT NULL`) and is UNRESOLVED
+ *      (BOTH `payout_confirmed_at` and `payout_disputed_at` null):
+ *      "did the cash leave the drawer?"
  *        - Yes    → `confirmRefundIntentPayout()`, then print.
- *        - No / Not sure → `disputeRefundIntentPayout()` PLUS a signed
- *          `authorPayoutDisputeEvidence()` audit event (§4.5's dispute
+ *        - No / Not sure → a signed `authorPayoutDisputeEvidence()` audit
+ *          event FIRST, then `disputeRefundIntentPayout()` (§4.5's dispute
  *          money-effect ruling: this does NOT change the fiscal event's
  *          already-signed effect and does NOT exclude the refund from the
  *          device Z's expected-cash subtraction — purely a server-side
  *          evidence signal for finance-team investigation) — still prints
  *          (dispute state does not block the AVOIR).
- *   2. Reprint recovery — `payout_confirmed_at IS NOT NULL AND printed_at
- *      IS NULL` (the confirm succeeded but the app closed/crashed before
- *      the print completed): "print it now?" Print sets `printed_at`;
- *      Skip leaves it null and re-prompts next restart (never silently
- *      dropped).
+ *
+ *      Both outcomes are TERMINAL and mutually exclusive (wave-2 fix-wave
+ *      finding 5): a disputed intent leaves this queue instead of being
+ *      re-prompted forever behind a non-dismissible, Skip-less modal whose
+ *      only escape was a false "Yes" attestation.
+ *   2. Reprint recovery — the payout was RESOLVED (either way) but
+ *      `printed_at IS NULL` (the resolve succeeded but the app
+ *      closed/crashed before the print completed): "print it now?" Print
+ *      sets `printed_at`; Skip leaves it null and re-prompts next restart
+ *      (never silently dropped).
  *
  * Triggered on mount (app-start recovery, §4.5's own requirement) AND
  * whenever `useRefundReconciliationStore`'s epoch bumps (immediately after
@@ -34,7 +40,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/pos/Modal';
-import { getDatabase } from '@/lib/db';
+import { getDatabase, queryOne } from '@/lib/db';
+import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -66,16 +73,31 @@ type PendingPrompt =
  *  own never-block philosophy for the legacy path). Returns whether the
  *  print is considered to have happened (so the caller can decide whether
  *  to stamp `printed_at`). */
-async function attemptPrint(intentId: string): Promise<boolean> {
+async function attemptPrint(intent: RefundIntentRow): Promise<boolean> {
   if (!isTauriEnvironment()) return false;
   const { printerConfig } = usePrinterStore.getState();
   if (printerConfig === null) return false;
 
   try {
-    const fullReceipt = await getOfflineReceiptForPrint(intentId);
+    const fullReceipt = await getOfflineReceiptForPrint(intent.id);
     const sellerLocation = useTerminalStore.getState().terminal?.location ?? null;
+    // Wave-2 fix-wave finding 15 (fiscal I-3) — legacy parity. The AVOIR
+    // used to print with `originalReceiptNumber`/`originalReceiptQrToken`
+    // both absent, so the REMBOURSEMENT header block was empty: a
+    // corrective receipt with no reference to the ticket it corrects and
+    // no QR for a follow-up partial refund. The legacy path
+    // (`HomePage.tsx`'s `printRefundSettlementArtifacts`) passes both.
+    // Here they are resolved from the intent's own
+    // `original_local_receipt_id` — which works at app-start reprint
+    // recovery too, where the scanned session token no longer exists.
+    const original = await resolveOriginalReceiptPrintRefs(intent.original_local_receipt_id);
     const receiptData = buildEscPosReceiptData(fullReceipt, {
-      extras: { receiptKind: 'refund', qrToken: null },
+      extras: {
+        receiptKind: 'refund',
+        qrToken: null,
+        originalReceiptNumber: original.receiptNumber,
+        originalReceiptQrToken: original.qrToken,
+      },
       sellerLocation,
     });
     await printReceipt(receiptData, printerConfig, getPrintSettingsFromStore());
@@ -83,6 +105,39 @@ async function attemptPrint(intentId: string): Promise<boolean> {
   } catch (error) {
     console.error('[refundReconciliation] AVOIR print failed', serializeErrorForLog(error));
     return false;
+  }
+}
+
+/**
+ * The ORIGINAL's receipt number (from its own `offline_receipts` row) and
+ * server-signed QR token (from the synced `receipt_qr_index`, keyed by the
+ * same `receipt_uuid`). Both are best-effort: a missing QR token is the
+ * normal state for an offline-issued original whose token has not synced
+ * yet, and must degrade to `null` rather than block the print.
+ */
+async function resolveOriginalReceiptPrintRefs(
+  originalLocalReceiptId: string,
+): Promise<{ receiptNumber: string | null; qrToken: string | null }> {
+  try {
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) return { receiptNumber: null, qrToken: null };
+    const db = await getDatabase(companyId);
+    const original = await getOfflineReceiptById(db, originalLocalReceiptId);
+    const qrRow = await queryOne<{ qr_token: string | null }>(
+      db,
+      'SELECT qr_token FROM receipt_qr_index WHERE receipt_uuid = $1',
+      [originalLocalReceiptId],
+    );
+    return {
+      receiptNumber: original?.receipt_number ?? null,
+      qrToken: qrRow?.qr_token ?? null,
+    };
+  } catch (error) {
+    console.error(
+      '[refundReconciliation] could not resolve the original receipt print references',
+      serializeErrorForLog(error),
+    );
+    return { receiptNumber: null, qrToken: null };
   }
 }
 
@@ -157,7 +212,7 @@ export function RefundPayoutReconciliationModal() {
       if (!companyId) return;
       const db = await getDatabase(companyId);
       await confirmRefundIntentPayout(db, prompt.intent.id);
-      const printed = await attemptPrint(prompt.intent.id);
+      const printed = await attemptPrint(prompt.intent);
       if (printed) {
         await confirmRefundIntentPrinted(db, prompt.intent.id);
       }
@@ -176,12 +231,40 @@ export function RefundPayoutReconciliationModal() {
       const operator = useOperatorStore.getState().operator;
       if (!companyId || terminal === null || operator === null) return;
       const db = await getDatabase(companyId);
-      await disputeRefundIntentPayout(db, prompt.intent.id);
 
-      // §4.5 — a signed, server-observable evidence record. Best-effort:
-      // a failure here must never block the reconciliation flow (the
-      // fiscal event's own effect and the device Z are ALREADY correct
-      // regardless of whether this audit event lands).
+      // ── Wave-2 fix-wave finding 13 (codex M-6) — ORDER IS THE
+      //    DURABILITY MECHANISM. The evidence event is authored BEFORE
+      //    the dispute marker is persisted, not after it in a
+      //    catch-and-log block. §4.5 requires that setting
+      //    `payout_disputed_at` TRIGGERS a signed, syncable evidence
+      //    record; with the old order a crash or authoring failure right
+      //    after the marker left the marker set, no evidence, no
+      //    "evidence pending" state and no retry path — the mandated
+      //    record was lost permanently.
+      //
+      //    Authoring first makes the implication hold in the only
+      //    direction that matters: marker set ⇒ evidence exists. The
+      //    reverse gap is self-healing and harmless — a crash between the
+      //    two leaves evidence authored but no marker, so the prompt
+      //    simply reappears and the cashier taps "No / Not sure" again;
+      //    `authorPayoutDisputeEvidence()` is idempotent on
+      //    `source_event_id = refundIntentId`, so the retry resolves the
+      //    SAME event rather than appending a second one.
+      //
+      //    A failure here therefore must NOT be swallowed: without the
+      //    evidence there is nothing to mark, so the flow stays on the
+      //    prompt and the cashier can retry.
+      const refundFiscalEventId = prompt.intent.refund_fiscal_event_id;
+      if (refundFiscalEventId === null || refundFiscalEventId === '') {
+        // Structurally unreachable (the pending query requires NOT NULL)
+        // — but never sign an empty reference if it ever becomes so.
+        console.error(
+          '[refundReconciliation] refusing to author dispute evidence for an intent with no refund fiscal event',
+          { intentId: prompt.intent.id },
+        );
+        return;
+      }
+
       try {
         await authorPayoutDisputeEvidence({
           context: {
@@ -193,20 +276,23 @@ export function RefundPayoutReconciliationModal() {
             isTraining: terminal.is_training_mode === true,
           },
           operator: { id: operator.id, name: operator.name, roles: operator.roles },
-          refundFiscalEventId: prompt.intent.refund_fiscal_event_id ?? '',
+          refundFiscalEventId,
           refundIntentId: prompt.intent.id,
           reason: '',
         });
       } catch (error) {
         console.error(
-          '[refundReconciliation] authorPayoutDisputeEvidence failed (non-fatal)',
+          '[refundReconciliation] authorPayoutDisputeEvidence failed — dispute NOT recorded, prompt stays up for retry',
           serializeErrorForLog(error),
         );
+        return;
       }
+
+      await disputeRefundIntentPayout(db, prompt.intent.id);
 
       // Dispute does not block printing — the AVOIR is still the
       // customer's proof regardless of local reconciliation uncertainty.
-      const printed = await attemptPrint(prompt.intent.id);
+      const printed = await attemptPrint(prompt.intent);
       if (printed) {
         await confirmRefundIntentPrinted(db, prompt.intent.id);
       }
@@ -223,7 +309,7 @@ export function RefundPayoutReconciliationModal() {
       const companyId = useAuthStore.getState().companyId;
       if (!companyId) return;
       const db = await getDatabase(companyId);
-      const printed = await attemptPrint(prompt.intent.id);
+      const printed = await attemptPrint(prompt.intent);
       if (printed) {
         await confirmRefundIntentPrinted(db, prompt.intent.id);
       }
