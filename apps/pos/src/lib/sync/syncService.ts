@@ -62,6 +62,7 @@ import type { ModifierGroup } from '@/types/modifier';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
   updateReceiptStatus,
+  updateReceiptStatusByIdempotencyKey,
   cleanupSyncedReceipts,
   cleanupStuckReceipts,
 } from '@/lib/db/repositories/offlineReceiptRepository';
@@ -387,6 +388,17 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         await updateFiscalEventSyncStatus(db, event.id, 'synced');
         if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
           await updateReceiptStatus(db, event.source_event_id, 'synced');
+        } else if (event.source_event_class === 'refund_intents' && event.source_event_id !== null) {
+          // v3-refund-chain-integration spec §7.2a errata T2 — a refund's
+          // fiscal event carries source_event_id = refund_intents.id, not
+          // an offline_receipts primary key, so the row is resolved via
+          // the idempotency-key relationship instead (§7.2:
+          // offline_receipts.idempotency_key = refund_intents.id). Without
+          // this branch the refund's offline_receipts row stayed 'pending'
+          // forever — the device's sync-status badge counted it as
+          // perpetually outstanding, and any retention routine collecting
+          // only 'synced'/'error' rows never reclaimed it.
+          await updateReceiptStatusByIdempotencyKey(db, event.source_event_id, 'synced');
         }
         await logSyncOperation(
           db,

@@ -30,6 +30,7 @@ import type {
   SaleReceiptPaymentInput,
   SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
+import type { SaleReceiptApprovalReferenceInput } from '@/lib/fiscal/FiscalEventEngine';
 import {
   buildSaleReceiptV3Payload,
   type SaleReceiptV3PayloadInput,
@@ -85,6 +86,12 @@ export interface BuildRefundReceiptV4PayloadInput {
   readonly original: OriginalFiscalEventLocalView;
   readonly originalReceiptUuid: string;
   readonly originalBusinessDate: string;
+  /** §4.2's approval evidence -- the seven-field record
+   *  `authorRefundReturnApprovalV3()` (a sibling module) produced, already
+   *  shaped identically to `SaleReceiptApprovalReferenceInput`. Defaults
+   *  to `[]` when omitted, matching `buildSaleReceiptPayload()`'s own
+   *  default. */
+  readonly approvalReferences?: SaleReceiptApprovalReferenceInput[];
 }
 
 export type RefundReceiptV4Payload = SaleReceiptV3PayloadInput & {
@@ -260,6 +267,7 @@ export function buildRefundReceiptV4Payload(
       payments: [input.payment],
       isTraining: false,
       seller: input.seller,
+      approvalReferences: input.approvalReferences,
     },
     {
       exactTotal: total,

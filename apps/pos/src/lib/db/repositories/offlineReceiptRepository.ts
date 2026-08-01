@@ -71,8 +71,13 @@ export interface OfflineReceipt {
    * Fiscal hash schema version (2 | 3) this receipt was sealed under at the
    * moment of insert. Sent unchanged in the sync payload so the server can
    * hard-reject if the terminal's current version drifted (Codex review B1).
+   *
+   * `4` (v3-refund-chain-integration spec §7.2a) is the refund's OWN
+   * authored `event_version`, not the terminal's `fiscal_schema_version` --
+   * mirrors how a sale row stores its own authored version, just widened
+   * to admit the refund-only value.
    */
-  fiscal_schema_version: 2 | 3;
+  fiscal_schema_version: 2 | 3 | 4;
   /**
    * T2.7 — when the cashier sealed this receipt against a terminal in
    * training mode. SQLite-native 0 or 1 (mirrors `voided`); the wire-shape
@@ -82,6 +87,15 @@ export interface OfflineReceipt {
    * skips chain validation, year roll-over, finalize, and hash mismatch.
    */
   is_training: 0 | 1;
+  /**
+   * v3-refund-chain-integration spec §7.2 — 'sale' (default, every row
+   * written before this feature backfills here) or 'refund'. Optional at
+   * the TYPE level (not just the column's own DB default) so the many
+   * existing fixtures/call sites built before this feature landed do not
+   * all need editing — genuinely zero-behavior-change, not merely
+   * schema-zero-behavior-change.
+   */
+  receipt_kind?: 'sale' | 'refund';
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -100,8 +114,8 @@ export async function insertOfflineReceipt(
       transaction_discount_amount, transaction_discount_reason,
       tendered_amount, change_due, payment_method_id, payment_repository_id, status,
       payments_json, consumption_mode, table_id, fiscal_schema_version, is_training, canonical_bytes,
-      cash_rounding_adjustment, cash_rounding_denomination, tolerance_shortfall
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)`,
+      cash_rounding_adjustment, cash_rounding_denomination, tolerance_shortfall, receipt_kind
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -117,6 +131,7 @@ export async function insertOfflineReceipt(
       receipt.cash_rounding_adjustment ?? null,
       receipt.cash_rounding_denomination ?? null,
       receipt.tolerance_shortfall ?? null,
+      receipt.receipt_kind ?? 'sale',
     ]
   );
   // T2.2 Step 5.1: this function is now transactionally pure. The
@@ -205,6 +220,43 @@ export async function updateReceiptStatus(
       db,
       'UPDATE offline_receipts SET status = $1, sync_error = $2 WHERE id = $3',
       [status, syncError ?? null, id]
+    );
+  }
+}
+
+/**
+ * v3-refund-chain-integration spec §7.2a errata T2 — a REFUND's fiscal
+ * event is authored with `source_event_class: 'refund_intents'`
+ * (§4.3, unchanged — this is what makes the append itself idempotent on
+ * the intent's own stable id), never `'offline_receipts'`, so
+ * `updateReceiptStatus()`'s own-primary-key lookup (`WHERE id = $2`)
+ * cannot resolve a refund's `offline_receipts` row from the synced
+ * event's `source_event_id` (that id is the REFUND INTENT's id, not the
+ * `offline_receipts` row's own primary key). Resolves instead via the
+ * idempotency-key relationship §7.2 establishes:
+ * `offline_receipts.idempotency_key = refund_intents.id =
+ * event.source_event_id`. Mirrors `updateReceiptStatus()`'s own
+ * `'synced'`-branch column set exactly, INCLUDING the `sync_error = NULL`
+ * clause -- a prior sync attempt could otherwise leave a stale
+ * `sync_error` string on a row that has since synced successfully.
+ */
+export async function updateReceiptStatusByIdempotencyKey(
+  db: Database,
+  idempotencyKey: string,
+  status: OfflineReceiptStatus,
+  syncError?: string,
+): Promise<void> {
+  if (status === 'synced') {
+    await execute(
+      db,
+      "UPDATE offline_receipts SET status = $1, synced_at = datetime('now'), sync_error = NULL WHERE idempotency_key = $2",
+      [status, idempotencyKey],
+    );
+  } else {
+    await execute(
+      db,
+      'UPDATE offline_receipts SET status = $1, sync_error = $2 WHERE idempotency_key = $3',
+      [status, syncError ?? null, idempotencyKey],
     );
   }
 }
