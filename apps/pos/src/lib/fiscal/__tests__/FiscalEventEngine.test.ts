@@ -2179,6 +2179,86 @@ d('FiscalEventEngine.append', () => {
     expect(event.event_type).toBe('ACCOUNT_CHARGE');
   });
 
+  // -------------------------------------------------------------------
+  // v3-refund-chain-integration spec §4.5 errata T6 — a gap the spec's
+  // own manifest missed: `authorPayoutDisputeEvidence()` appends an
+  // OPERATOR_APPROVAL_GRANTED event with `approval_scope:
+  // 'payout_dispute_evidence'`, but THIS engine's own
+  // `validateOperatorApprovalGrantedPayload()` has its OWN `assertEnum`
+  // allowlist (independent of posOverrideAuthoring.ts's TS guard and the
+  // two PHP FiscalPayloadConstraintValidator call sites the manifest
+  // named) — without the literal here too, every dispute-evidence append
+  // throws locally, before the event ever reaches the network.
+  // -------------------------------------------------------------------
+
+  // Phase4Common's own `assertUuid` gate (distinct from the top-level
+  // request's looser tenant_id/company_id/terminal_id, e.g. TENANT_ID
+  // above) requires lowercase-hex UUID shapes INSIDE the payload — the
+  // plain 'tenant-1'/'company-1' constants used by the other request
+  // builders in this file do not satisfy it.
+  const OAG_TENANT_UUID = '99999999-9999-4999-8999-999999999999';
+  const OAG_COMPANY_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  function operatorApprovalGrantedRequest(
+    overrides: Partial<FiscalEventAppendRequest> = {},
+    payloadOverrides: Record<string, unknown> = {},
+  ): FiscalEventAppendRequest {
+    return {
+      event_type: 'OPERATOR_APPROVAL_GRANTED',
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      terminal_id: TERMINAL_ID,
+      operator_id: SR_CASHIER_UUID,
+      event_time_device: '2026-05-16T10:00:00Z',
+      business_date: '2026-05-16',
+      payload: {
+        approval_id: '77777777-7777-4777-8777-777777777777',
+        approval_scope: 'payout_dispute_evidence',
+        cashier_user_id: SR_CASHIER_UUID,
+        company_id: OAG_COMPANY_UUID,
+        event_time_device: '2026-05-16T10:00:00.000Z',
+        policy_version: 'pos-refund-v4-payout-dispute-evidence-v1',
+        reason_code: 'payout_dispute',
+        reason_text: null,
+        regime_extensions: null,
+        requested_at_device: '2026-05-16T10:00:00.000Z',
+        resolved_at_device: '2026-05-16T10:00:00.000Z',
+        supervisor_user_id: SR_CASHIER_UUID,
+        supervisor_user_snapshot: { name: 'Alice', roles: [] },
+        target: { refund_fiscal_event_id: '88888888-8888-4888-8888-888888888888' },
+        tenant_id: OAG_TENANT_UUID,
+        terminal_id: SR_TERMINAL_UUID,
+        training_flag: false,
+        ...payloadOverrides,
+      },
+      ...overrides,
+    };
+  }
+
+  it('§4.5 errata T6 — accepts approval_scope: "payout_dispute_evidence" on OPERATOR_APPROVAL_GRANTED', async () => {
+    const event = await engine.append(adapter, operatorApprovalGrantedRequest());
+
+    expect(event.event_type).toBe('OPERATOR_APPROVAL_GRANTED');
+  });
+
+  it('still rejects a genuinely unknown approval_scope (the allowlist widened by exactly one value, not opened up)', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        operatorApprovalGrantedRequest({}, { approval_scope: 'not_a_real_scope' }),
+      ),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('still accepts the pre-existing scopes unchanged (no regression on the other six)', async () => {
+    const event = await engine.append(
+      adapter,
+      operatorApprovalGrantedRequest({}, { approval_scope: 'void_or_return_override' }),
+    );
+
+    expect(event.event_type).toBe('OPERATOR_APPROVAL_GRANTED');
+  });
+
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

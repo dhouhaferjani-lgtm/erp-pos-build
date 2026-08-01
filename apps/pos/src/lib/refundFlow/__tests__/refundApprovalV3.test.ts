@@ -20,12 +20,25 @@ vi.mock('@/lib/operatorApproval/posOverrideAuthoring', () => ({
   authorPosOverride: vi.fn(),
 }));
 
+const { disputeAppendMock } = vi.hoisted(() => ({
+  disputeAppendMock: vi.fn(),
+}));
+
+vi.mock('@/lib/db/writeGate', () => ({
+  withWriteTransaction: vi.fn((_lane: string, cb: (tx: unknown) => unknown) => cb({})),
+}));
+
+vi.mock('@/lib/fiscal/instance', () => ({
+  getFiscalEventEngine: vi.fn().mockResolvedValue({ append: disputeAppendMock }),
+}));
+
 import { queryOne } from '@/lib/db';
 import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 import { authorPosOverride } from '@/lib/operatorApproval/posOverrideAuthoring';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
 import {
   authorRefundReturnApprovalV3,
+  authorPayoutDisputeEvidence,
   resolveRefundApprovalEvidenceLocally,
 } from '../refundApprovalV3';
 
@@ -169,5 +182,85 @@ describe('resolveRefundApprovalEvidenceLocally', () => {
     const result = await resolveRefundApprovalEvidenceLocally('company-1', 'approval-id', 'override-id');
 
     expect(result).toEqual({ approvalEvent: null, overrideEvent: null });
+  });
+});
+
+// v3-refund-chain-integration spec §4.5 — the SOLO payout-dispute evidence
+// authoring path. No PIN, no paired override event; the disputing
+// operator's own identity fills the payload's supervisor_user_id/
+// supervisor_user_snapshot slot (there is no distinct approver to record).
+describe('authorPayoutDisputeEvidence', () => {
+  const operator = { id: 'cashier-9', name: 'Cashier Nine', roles: ['cashier'] };
+  const REFUND_FISCAL_EVENT_ID = '99999999-9999-4999-8999-999999999999';
+  const REFUND_INTENT_ID = 'refund-intent-1';
+
+  beforeEach(() => {
+    disputeAppendMock.mockReset();
+    disputeAppendMock.mockResolvedValue({ id: 'fe-dispute-1' });
+  });
+
+  function input() {
+    return {
+      context,
+      operator,
+      refundFiscalEventId: REFUND_FISCAL_EVENT_ID,
+      refundIntentId: REFUND_INTENT_ID,
+      reason: '  cash drawer jammed  ',
+    };
+  }
+
+  it('appends a SOLO OPERATOR_APPROVAL_GRANTED event — no paired override', async () => {
+    await authorPayoutDisputeEvidence(input());
+
+    expect(disputeAppendMock).toHaveBeenCalledOnce();
+    const [, request] = disputeAppendMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(request['event_type']).toBe('OPERATOR_APPROVAL_GRANTED');
+  });
+
+  it('carries the exact §4.5 required fields: approval_scope, refund_fiscal_event_id, disputing operator identity', async () => {
+    await authorPayoutDisputeEvidence(input());
+
+    const [, request] = disputeAppendMock.mock.calls[0] as [unknown, { payload: Record<string, unknown> }];
+    const payload = request.payload;
+
+    expect(payload['approval_scope']).toBe('payout_dispute_evidence');
+    expect(payload['supervisor_user_id']).toBe('cashier-9');
+    expect(payload['supervisor_user_snapshot']).toEqual({ name: 'Cashier Nine', roles: ['cashier'] });
+    expect(payload['target']).toEqual({
+      refund_fiscal_event_id: REFUND_FISCAL_EVENT_ID,
+      refund_intent_id: REFUND_INTENT_ID,
+      reason: 'cash drawer jammed',
+    });
+    expect(payload['reason_text']).toBe('cash drawer jammed');
+  });
+
+  it('keys the append idempotently by the refund_intents row id (a repeat dispute tap resolves, not duplicates)', async () => {
+    await authorPayoutDisputeEvidence(input());
+
+    const [, request] = disputeAppendMock.mock.calls[0] as [unknown, { source_event_class: string; source_event_id: string }];
+    expect(request.source_event_class).toBe('payout_dispute_evidence');
+    expect(request.source_event_id).toBe(REFUND_INTENT_ID);
+  });
+
+  it('defaults reason_text to null and reason_code to the un-reasoned bucket when the cashier leaves it blank', async () => {
+    await authorPayoutDisputeEvidence({ ...input(), reason: '   ' });
+
+    const [, request] = disputeAppendMock.mock.calls[0] as [unknown, { payload: Record<string, unknown> }];
+    expect(request.payload['reason_text']).toBeNull();
+    expect(request.payload['reason_code']).toBe('payout_dispute');
+  });
+
+  it('never calls the PAIRED authorPosOverride() — this is a solo authoring path', async () => {
+    await authorPayoutDisputeEvidence(input());
+
+    expect(authorPosOverride).not.toHaveBeenCalled();
+    expect(verifyScopedManagerPin).not.toHaveBeenCalled();
+  });
+
+  it('returns the approval id and the appended fiscal event id', async () => {
+    const result = await authorPayoutDisputeEvidence(input());
+
+    expect(result.approval_event_id).toBe('fe-dispute-1');
+    expect(result.approval_id).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

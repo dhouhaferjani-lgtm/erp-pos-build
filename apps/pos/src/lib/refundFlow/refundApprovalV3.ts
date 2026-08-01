@@ -18,6 +18,8 @@ import {
   type PosOverrideContext,
   type PosOverrideEvidence,
 } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import type { LocalFiscalEvent } from '@/lib/db/repositories/fiscalEventRepository';
 
 export interface AuthorRefundReturnApprovalV3Input {
@@ -131,4 +133,112 @@ export async function resolveRefundApprovalEvidenceLocally(
   );
 
   return { approvalEvent, overrideEvent };
+}
+
+function isoSecondsUtc(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+export interface AuthorPayoutDisputeEvidenceInput {
+  context: PosOverrideContext;
+  /**
+   * The disputing operator's own identity — NOT a supervisor/manager. This
+   * is a solo evidence record (spec §4.5), authored by the cashier who
+   * could not confirm the cash left the drawer; there is no elevated
+   * authority to verify and no paired override event (unlike
+   * `authorRefundReturnApprovalV3()` above), so no PIN is required.
+   */
+  operator: { id: string; name: string; roles?: string[] };
+  /** The already-signed v4 REFUND fiscal event this dispute concerns. */
+  refundFiscalEventId: string;
+  /** The `refund_intents` row this dispute concerns — doubles as the
+   *  device-local idempotency key so a double-tap of "dispute" cannot
+   *  author two evidence events for the same refund. */
+  refundIntentId: string;
+  /** Cashier-entered note; may be empty. */
+  reason: string;
+  eventTimeDevice?: Date;
+}
+
+export interface PayoutDisputeEvidenceResult {
+  approval_id: string;
+  approval_event_id: string;
+}
+
+/**
+ * v3-refund-chain-integration spec §4.5 — authors the SOLO
+ * `OPERATOR_APPROVAL_GRANTED` audit event that records "the local device
+ * could not confirm this cash left the drawer" for the finance team's own
+ * investigation. Deliberately does NOT change the already-signed refund
+ * fiscal event's effect and does NOT touch `refund_intents` state or the
+ * device Z's arithmetic (spec §7.3's sign convention) — purely a
+ * server-observable evidence signal, entirely separate from and
+ * non-blocking of fiscal reality.
+ *
+ * This is the ONLY legitimate author of `approval_scope:
+ * 'payout_dispute_evidence'` — `authorPosOverride()` (the PAIRED
+ * approval+override function) hard-rejects that scope before appending
+ * anything, since there is no paired `OVERRIDE_*` event for it (§4.5
+ * errata T6). Reuses `OPERATOR_APPROVAL_GRANTED`'s existing payload shape
+ * rather than authoring a sixth `OVERRIDE_*` event type.
+ */
+export async function authorPayoutDisputeEvidence(
+  input: AuthorPayoutDisputeEvidenceInput,
+): Promise<PayoutDisputeEvidenceResult> {
+  const reasonText = input.reason.trim();
+  const eventTimeDevice = input.eventTimeDevice ?? new Date();
+  const approvalId = crypto.randomUUID();
+  const db = await getDatabase(input.context.companyId);
+  const engine = await getFiscalEventEngine(input.context.companyId, db);
+
+  return withWriteTransaction('fiscal', async (tx) => {
+    const approvalEvent = await engine.append(tx, {
+      event_type: 'OPERATOR_APPROVAL_GRANTED',
+      tenant_id: input.context.tenantId,
+      company_id: input.context.companyId,
+      terminal_id: input.context.terminalId,
+      operator_id: input.operator.id,
+      event_time_device: isoSecondsUtc(eventTimeDevice),
+      business_date: input.context.businessDate,
+      payload: {
+        approval_id: approvalId,
+        approval_scope: 'payout_dispute_evidence',
+        cashier_user_id: input.context.cashierUserId,
+        company_id: input.context.companyId,
+        event_time_device: eventTimeDevice.toISOString(),
+        policy_version: 'pos-refund-v4-payout-dispute-evidence-v1',
+        reason_code: reasonText === '' ? 'payout_dispute' : 'payout_dispute_reason',
+        reason_text: reasonText || null,
+        regime_extensions: null,
+        requested_at_device: eventTimeDevice.toISOString(),
+        resolved_at_device: eventTimeDevice.toISOString(),
+        // No supervisor for a SOLO evidence event — the disputing operator
+        // fills this slot; there is no distinct elevated-authority
+        // approver to record separately from the author.
+        supervisor_user_id: input.operator.id,
+        supervisor_user_snapshot: {
+          name: input.operator.name,
+          roles: input.operator.roles ?? [],
+        },
+        target: {
+          refund_fiscal_event_id: input.refundFiscalEventId,
+          refund_intent_id: input.refundIntentId,
+          reason: reasonText,
+        },
+        tenant_id: input.context.tenantId,
+        terminal_id: input.context.terminalId,
+        training_flag: input.context.isTraining,
+      },
+      source_event_class: 'payout_dispute_evidence',
+      // Keyed by the refund_intents row id — idempotent by construction:
+      // a repeat dispute tap for the same refund resolves to the SAME
+      // append rather than authoring a second evidence event.
+      source_event_id: input.refundIntentId,
+    });
+
+    return {
+      approval_id: approvalId,
+      approval_event_id: approvalEvent.id,
+    };
+  });
 }

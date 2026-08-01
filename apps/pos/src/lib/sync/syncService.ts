@@ -33,6 +33,7 @@ import Big from 'big.js';
 import {
   upsertTerminalState,
   setShiftNumberSeed,
+  setV4RefundAuthoringEnabled,
   upsertZChainState,
   getZChainState,
   type TerminalHashState,
@@ -66,6 +67,10 @@ import {
   cleanupSyncedReceipts,
   cleanupStuckReceipts,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  markSynced as markRefundIntentSynced,
+  InvalidRefundIntentTransitionError,
+} from '@/lib/db/repositories/refundIntentRepository';
 import {
   fiscalEventToWireEnvelope,
   getPendingFiscalEventsForSync,
@@ -148,6 +153,13 @@ interface TerminalStateResponse {
    * shape so a stale server (pre-6.1) does not break the pull; absent → seed 0.
    */
   max_shift_number?: number;
+  /**
+   * v3-refund-chain-integration spec §9.1/§9.3 — the two-phase server-offers
+   * capability flag. Optional in the wire shape so a stale (pre-§9)
+   * server does not break the pull; absent → `false`, the safe default
+   * (mirrors `max_shift_number`'s stale-server contract exactly).
+   */
+  v4_refund_authoring_enabled?: boolean;
   /**
    * Live-counting state is optional so a stale server remains compatible.
    * Missing means no active block; the pull must clear any cached block.
@@ -399,6 +411,26 @@ export async function pushOfflineReceipts(db: Database): Promise<{
           // perpetually outstanding, and any retention routine collecting
           // only 'synced'/'error' rows never reclaimed it.
           await updateReceiptStatusByIdempotencyKey(db, event.source_event_id, 'synced');
+          // §4.4/§4.6 — the refund_intents row reaches its OWN terminal
+          // 'synced' state here too, not just the offline_receipts mirror
+          // above: this is what frees the active-intent partial unique
+          // index (§4.4's fold-item-7 fix) for a legitimate NEW refund of
+          // the same original+line selection. Without this the row would
+          // stay stuck at 'refund_event_appended' (an ACTIVE state)
+          // forever, permanently blocking every subsequent refund attempt
+          // against the same original — reproducing the exact
+          // permanently-blocked-repeat-refund bug this spec revision
+          // fixed. Tolerant of a row already at 'synced' (a benign repeat
+          // confirmation, e.g. a duplicate sync response for an event the
+          // device already marked synced) — anything else thrown by the
+          // transition guard is a genuine bug and must propagate.
+          try {
+            await markRefundIntentSynced(db, event.source_event_id);
+          } catch (transitionError) {
+            if (!(transitionError instanceof InvalidRefundIntentTransitionError)) {
+              throw transitionError;
+            }
+          }
         }
         await logSyncOperation(
           db,
@@ -1258,6 +1290,36 @@ export async function pullOperatorPins(db: Database, terminalId: string): Promis
 }
 
 /**
+ * v3-refund-chain-integration spec §9.3 Phase 2 — sends the device's
+ * explicit acknowledgement that it received and locally wrote the server's
+ * `v4_refund_authoring_enabled = true` offer, in the same sync round. The
+ * server records this as `pos_terminals.v4_refund_authoring_acknowledged_at`,
+ * which is what `LegacyCorrectionGuard` actually conditions on (not raw
+ * `fiscal_schema_version`) — an unacknowledged terminal keeps using the
+ * legacy correction endpoint, so this call is the sole trigger that
+ * activates the guard for this terminal.
+ *
+ * Deliberately a distinct, explicit signal (never inferred from "the pull
+ * succeeded") per §9.3's contract, since a pull can succeed while the flag
+ * still lands via the `FiscalRegressionError` fallback branch.
+ *
+ * Best-effort and non-blocking: a failure here (including a 404 from a
+ * server that has not yet shipped the acknowledgement endpoint) must never
+ * fail the surrounding terminal-state pull — the device will simply
+ * re-acknowledge on its next successful pull while `enabled` stays true.
+ */
+async function sendV4RefundAuthoringAcknowledgement(terminalId: string): Promise<void> {
+  try {
+    await apiPost(`/pos/terminals/${terminalId}/acknowledge-v4-refund-authoring`, {});
+  } catch (error) {
+    console.warn('[fiscal] v4 refund-authoring acknowledgement failed (non-fatal, will retry next pull)', {
+      terminal_id: terminalId,
+      error: coerceSyncError(error),
+    });
+  }
+}
+
+/**
  * Pull terminal state (hash chain state from server).
  *
  * Client-owned invariant: once the local terminal has advanced the chain past
@@ -1303,6 +1365,11 @@ export async function pullTerminalState(
     // local-only behaviour).
     const shiftNumberSeed = state.max_shift_number ?? 0;
 
+    // v3-refund-chain-integration spec §9.1 — absent on a pre-§9 server
+    // (same stale-server contract as max_shift_number above) → false, the
+    // safe "not yet offered" default.
+    const v4RefundAuthoringEnabled = state.v4_refund_authoring_enabled ?? false;
+
     const hashState: TerminalHashState = {
       terminal_id: state.id,
       terminal_code: state.code,
@@ -1318,6 +1385,12 @@ export async function pullTerminalState(
 
     try {
       await upsertTerminalState(db, hashState);
+      // §9.1: guard-independent — rides the success path alongside the main
+      // upsert, but is a plain UPDATE of its own, not part of the guarded row.
+      await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
+      if (v4RefundAuthoringEnabled) {
+        await sendV4RefundAuthoringAcknowledgement(terminalId);
+      }
       await projectTerminalCountingState(state);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
@@ -1335,6 +1408,14 @@ export async function pullTerminalState(
         // rejected the whole write (seed included). The row already exists —
         // refresh the monotone shift-number seed on its own.
         await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
+        // §9.1: the capability flag is guard-independent for the exact same
+        // reason the shift-number seed is — the main upsert's regression
+        // guard must never be able to keep this flag from reaching the
+        // device. Refreshed here on the fallback branch too.
+        await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
+        if (v4RefundAuthoringEnabled) {
+          await sendV4RefundAuthoringAcknowledgement(terminalId);
+        }
         await projectTerminalCountingState(state);
         await logSyncOperation(
           db,

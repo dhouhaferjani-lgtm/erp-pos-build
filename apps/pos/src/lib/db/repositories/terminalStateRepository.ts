@@ -180,6 +180,60 @@ export async function setShiftNumberSeed(
   );
 }
 
+/**
+ * Read the local `terminal_state.v4_refund_authoring_enabled` capability flag
+ * (v3-refund-chain-integration spec §9.1/§9.2) — the dispatch-seam gate's sole
+ * read (`HomePage.tsx`'s `'start-refund'` interception point). Tolerant of a
+ * pre-v65 schema (no such column) and of a missing row: both read as `false`,
+ * the safe default — refund authoring stays gated off until the device has
+ * both the migration AND a successful pull that wrote a server-confirmed
+ * `true` via {@link setV4RefundAuthoringEnabled}.
+ */
+export async function getV4RefundAuthoringEnabled(
+  db: Database,
+  terminalId: string,
+): Promise<boolean> {
+  try {
+    const row = await queryOne<{ v4_refund_authoring_enabled: number | null }>(
+      db,
+      `SELECT v4_refund_authoring_enabled FROM terminal_state WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return row?.v4_refund_authoring_enabled === 1;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('no such column')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Persist the server-offered v4 refund-authoring capability flag (spec
+ * §9.1). A plain, guard-independent `UPDATE` — mirrors `setShiftNumberSeed`'s
+ * exact template — so the capability flag is never blocked by
+ * `upsertTerminalState`'s `FiscalRegressionError` guard, which can reject the
+ * WHOLE row upsert on a v3+ terminal in steady state (the server's legacy
+ * `current_sequence` counter is effectively frozen for a v3+ terminal, so
+ * this guard can fire on every subsequent pull — bundling a new capability
+ * flag into that same guarded upsert would mean it could never actually
+ * reach the device). No `MAX`/monotone guard needed: unlike the
+ * `shift_number_seed` counter, this is a boolean flag that may legitimately
+ * move in either direction (e.g. a future admin re-disabling it).
+ */
+export async function setV4RefundAuthoringEnabled(
+  db: Database,
+  terminalId: string,
+  enabled: boolean,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET v4_refund_authoring_enabled = $1 WHERE terminal_id = $2`,
+    [enabled ? 1 : 0, terminalId],
+  );
+}
+
 export async function setManagerPinThrottle(
   db: Database,
   terminalId: string,

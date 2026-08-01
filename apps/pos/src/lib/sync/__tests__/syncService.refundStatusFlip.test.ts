@@ -65,12 +65,26 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   cleanupOldSyncLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/refundIntentRepository', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/repositories/refundIntentRepository')>(
+    '@/lib/db/repositories/refundIntentRepository',
+  );
+  return {
+    ...actual,
+    markSynced: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import { pushOfflineReceipts } from '../syncService';
 import { apiPostRaw } from '@/lib/api';
 import {
   updateReceiptStatus,
   updateReceiptStatusByIdempotencyKey,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  markSynced,
+  InvalidRefundIntentTransitionError,
+} from '@/lib/db/repositories/refundIntentRepository';
 import {
   getPendingFiscalEventsForSync,
   type LocalFiscalEvent,
@@ -141,6 +155,68 @@ describe('pushOfflineReceipts — refund offline_receipts sync-completion flip (
     // primary key; calling updateReceiptStatus with it would silently
     // touch zero rows (or, worse, collide with an unrelated receipt id).
     expect(updateReceiptStatus).not.toHaveBeenCalled();
+  });
+
+  // v3-refund-chain-integration spec §4.4/§4.6 — the refund_intents row
+  // must ALSO reach its own terminal 'synced' state on this same flip, not
+  // just the offline_receipts mirror. Without this the row stays stuck at
+  // 'refund_event_appended' (an ACTIVE state per §4.4's fold-item-7 fix),
+  // permanently blocking every subsequent refund of the same original+line
+  // selection -- reproducing the exact bug this spec revision fixed.
+  it('§4.4/§4.6 — also transitions the refund_intents row to synced (frees the active-intent index)', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-1', source_event_id: 'refund-intent-1' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-1'));
+
+    await pushOfflineReceipts(db);
+
+    expect(markSynced).toHaveBeenCalledWith(db, 'refund-intent-1');
+  });
+
+  it('a SALE fiscal event never touches refund_intents.markSynced (own-id lookup only)', async () => {
+    const event = makeFiscalEvent({
+      id: 'fe-sale-1',
+      source_event_class: 'offline_receipts',
+      source_event_id: 'receipt-1',
+      event_version: 3,
+    });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-sale-1'));
+
+    await pushOfflineReceipts(db);
+
+    expect(markSynced).not.toHaveBeenCalled();
+  });
+
+  it('tolerates a row already at synced (benign repeat confirmation) without failing the push', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-3', source_event_id: 'refund-intent-3' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-3'));
+    vi.mocked(markSynced).mockRejectedValueOnce(
+      new InvalidRefundIntentTransitionError('refund-intent-3', 'synced', ['refund_event_appended']),
+    );
+
+    const result = await pushOfflineReceipts(db);
+
+    expect(result.pushed).toBe(1);
+    expect(result.failed).toBe(0);
+    // The offline_receipts mirror still flips -- the swallowed transition
+    // error must not skip the sibling write above it.
+    expect(updateReceiptStatusByIdempotencyKey).toHaveBeenCalledWith(db, 'refund-intent-3', 'synced');
+  });
+
+  it('propagates a genuinely unexpected markSynced failure (not the benign already-synced case)', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-4', source_event_id: 'refund-intent-4' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-4'));
+    vi.mocked(markSynced).mockRejectedValueOnce(new Error('disk I/O error'));
+
+    const result = await pushOfflineReceipts(db);
+
+    // pushOfflineReceipts catches per-event errors and counts them as
+    // failed rather than throwing out of the whole sync tick (matching
+    // this function's existing per-event error-isolation contract).
+    expect(result.failed).toBeGreaterThan(0);
   });
 
   it('a SALE fiscal event (source_event_class=offline_receipts) still uses the own-id lookup, unchanged', async () => {

@@ -27,6 +27,7 @@ import { routeScanResult } from '@/lib/scan/routeScanResult';
 import { setCachedScan } from '@/lib/scan/scanResolutionCache';
 import { BarcodeChooserModal } from '@/components/molecules/BarcodeChooserModal/BarcodeChooserModal';
 import { getDatabase } from '@/lib/db';
+import { getV4RefundAuthoringEnabled } from '@/lib/db/repositories/terminalStateRepository';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
 import { deleteRefundDraft } from '@/lib/db/repositories/refundDraftRepository';
 import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
@@ -1101,6 +1102,25 @@ export function HomePage() {
     }
     try {
       const db = await getDatabase(companyId);
+
+      // v3-refund-chain-integration spec §9.2 — the real dispatch seam: the
+      // capability check happens HERE, reading the local
+      // `terminal_state.v4_refund_authoring_enabled` flag, BEFORE the refund
+      // flow proceeds to draft a refund_intents row. Local-only (no network
+      // call), so the check is instant and works offline. A missing terminal
+      // id is treated the same as "not enabled" — fail-closed, never assume
+      // capability without positive local evidence (§9.4's exact typed
+      // refusal copy, never "use the legacy path" — that path is itself
+      // 409-blocked once the server-side guard activates).
+      const terminalId = useTerminalStore.getState().terminal?.id ?? null;
+      const capabilityEnabled =
+        terminalId !== null && (await getV4RefundAuthoringEnabled(db, terminalId));
+      if (!capabilityEnabled) {
+        setScanMessage({ text: t('pos:refundFlow.capabilityUnavailable'), type: 'error' });
+        setTimeout(() => setScanMessage(null), 4000);
+        return;
+      }
+
       await useRefundCheckoutStore.getState().begin({
         db,
         receiptToken: activeRefundReceiptToken,

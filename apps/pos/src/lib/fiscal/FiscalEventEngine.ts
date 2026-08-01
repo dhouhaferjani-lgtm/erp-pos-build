@@ -3630,6 +3630,16 @@ function validateOperatorApprovalGrantedPayload(payload: unknown): void {
     'tender_tolerance_override',
     'void_or_return_override',
     'cash_drawer_control',
+    // v3-refund-chain-integration spec §4.5 errata T6 — the solo
+    // payout-dispute audit event reuses OPERATOR_APPROVAL_GRANTED's
+    // existing shape rather than authoring a sixth OVERRIDE_* event type.
+    // A site the spec's own §17 manifest missed (it named only
+    // posOverrideAuthoring.ts's two TS sites + the two PHP
+    // FiscalPayloadConstraintValidator sites) — this device-side engine
+    // validator is a fifth, independent gate that must accept the
+    // literal too, or every dispute-evidence append is rejected locally
+    // before it can ever reach the network.
+    'payout_dispute_evidence',
   ]);
   assertUuid(p, 'cashier_user_id');
   assertUuid(p, 'supervisor_user_id');
