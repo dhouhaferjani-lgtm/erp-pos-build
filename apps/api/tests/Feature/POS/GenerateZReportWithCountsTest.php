@@ -16,6 +16,8 @@ use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\POS\Domain\Receipt;
@@ -520,6 +522,100 @@ final class GenerateZReportWithCountsTest extends TestCase
             $crossTenantManager->id,
             false,
         );
+    }
+
+    /**
+     * A v4 refund projects POSITIVE `pos_receipt_payments.amount` legs under a
+     * `receipt_type = 'return'` receipt (v3-refund-chain-integration spec §7.7),
+     * and NO v3+ path writes a `pos_cash_drawer_operations` REFUND row
+     * (ticket 2026-07-31-cashdrawer-v3-expected-cash-blind), so the payment leg
+     * is the ONLY signal that cash left the drawer. Blending it into the
+     * expected-cash SUM would inflate expected cash by the refund instead of
+     * reducing it, and hand the cashier a false overage on every refund shift.
+     *
+     * Legacy returns never wrote receipt-payment rows at all (the legacy path
+     * goes through PaymentRefundService / the cash drawer), so the legacy arm
+     * must remain a no-op — pinned here so the fix cannot regress it.
+     */
+    public function test_expected_cash_subtracts_v4_refund_payout_legs_and_ignores_legacy_returns(): void
+    {
+        $this->setFraudSettings(softOver: '1.0000', hardOver: '20.0000', softUnder: '1.0000', hardUnder: '20.0000');
+
+        $sale = $this->seedReceiptWithCashPayment(amount: '100.0000');
+        // v4-era refund: POSITIVE total, POSITIVE cash payout leg.
+        $this->seedRefundReceipt($sale, total: '12.0000', cashPayoutLeg: '12.0000');
+        // Legacy-era return: NEGATIVE total, no payment rows at all.
+        $this->seedRefundReceipt($sale, total: '-5.0000', cashPayoutLeg: null);
+
+        $inputs = [new CashCountInputDTO(
+            paymentMethodId: $this->cashMethod->id,
+            currencyCode: 'EUR',
+            actualAmount: '88.0000', // 100 collected − 12 paid out
+        )];
+
+        $z = $this->service->generateZReport(
+            $this->terminal,
+            $this->cashier,
+            $inputs,
+            null,
+            null,
+            false,
+        );
+
+        $count = ZReportCount::where('z_report_id', $z->id)->first();
+        $this->assertNotNull($count);
+        // 100 − 12 = 88 (a blended SUM reports 112 and fires a false 24.00 shortage).
+        $this->assertSame('88.0000', $count->expected_amount);
+        $this->assertSame('0.0000', $count->variance_amount);
+        $this->assertSame('balanced', $count->variance_direction);
+    }
+
+    /**
+     * Persist a refund/return receipt inside the shift window.
+     *
+     * @param  string  $total  Signed receipt total ('+' = v4 era, '-' = legacy era)
+     * @param  string|null  $cashPayoutLeg  Positive cash payment leg, or null for none
+     */
+    private function seedRefundReceipt(Receipt $original, string $total, ?string $cashPayoutLeg): Receipt
+    {
+        $refund = Receipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'receipt_number' => 'T001-C001-L01-POS01-2026-'.str_pad((string) random_int(1, 99999999), 8, '0', STR_PAD_LEFT),
+            'chain_sequence' => random_int(1000, 99999),
+            'receipt_year' => (int) date('Y'),
+            'fiscal_hash' => hash('sha256', 'ret-'.uniqid()),
+            'previous_hash' => null,
+            'vat_breakdown_hash' => hash('sha256', 'vat'),
+            'payment_methods_hash' => hash('sha256', 'payments'),
+            'posted_at' => now(),
+            'cashier_id' => $this->cashier->id,
+            'cashier_name' => 'Test Cashier',
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => ReturnReason::Other,
+            'subtotal' => $total,
+            'tax_amount' => '0.0000',
+            'discount_amount' => '0.0000',
+            'total' => $total,
+            'currency' => 'EUR',
+            'is_voided' => false,
+            'is_training' => false,
+        ]);
+
+        if ($cashPayoutLeg !== null) {
+            ReceiptPayment::create([
+                'receipt_id' => $refund->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'payment_type' => 'Cash',
+                'payment_method_code' => 'CASH',
+                'amount' => $cashPayoutLeg,
+            ]);
+        }
+
+        return $refund;
     }
 
     /**

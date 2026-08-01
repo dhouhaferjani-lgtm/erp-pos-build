@@ -33,9 +33,9 @@ final class PosAnalyticsService
             ->whereBetween('posted_at', [$from->startOfDay(), $to->endOfDay()])
             ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->selectRaw('COUNT(*) as receipt_count')
-            ->selectRaw('COALESCE(SUM(subtotal), 0) as gross_sales')
-            ->selectRaw('COALESCE(SUM(total), 0) as net_sales')
-            ->selectRaw('COALESCE(SUM(tax_amount), 0) as tax_total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('subtotal').'), 0) as gross_sales')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as net_sales')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('tax_amount').'), 0) as tax_total')
             ->selectRaw("COALESCE(AVG(CASE WHEN receipt_type = 'sale' THEN total END), 0) as average_ticket")
             ->selectRaw("COUNT(CASE WHEN receipt_type = 'return' THEN 1 END) as refund_count")
             ->selectRaw("COALESCE(SUM(CASE WHEN receipt_type = 'return' THEN ABS(total) END), 0) as refund_total")
@@ -162,7 +162,7 @@ final class PosAnalyticsService
             ->where($this->locationScope($companyId, $locationIds, 'location_id'))
             ->groupByRaw($truncExpr)
             ->selectRaw("{$truncExpr} as period")
-            ->selectRaw('COALESCE(SUM(total), 0) as total')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total')
             ->selectRaw('COUNT(*) as count')
             ->orderBy('period')
             ->get();
@@ -191,8 +191,8 @@ final class PosAnalyticsService
             ->selectRaw('cashier_id')
             ->selectRaw('cashier_name')
             ->selectRaw('COUNT(*) as receipt_count')
-            ->selectRaw('COALESCE(SUM(total), 0) as total_sales')
-            ->selectRaw('COALESCE(AVG(total), 0) as average_ticket')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total_sales')
+            ->selectRaw('COALESCE(AVG('.$this->netOfReturns('total').'), 0) as average_ticket')
             ->orderByDesc('total_sales')
             ->get();
 
@@ -309,7 +309,7 @@ final class PosAnalyticsService
             ->groupBy('partner_id', 'customer_name')
             ->selectRaw('partner_id')
             ->selectRaw("COALESCE(customer_name, 'Anonymous') as customer_name")
-            ->selectRaw('COALESCE(SUM(total), 0) as total_spent')
+            ->selectRaw('COALESCE(SUM('.$this->netOfReturns('total').'), 0) as total_spent')
             ->selectRaw('COUNT(*) as receipt_count')
             ->orderByDesc('total_spent')
             ->limit(10)
@@ -404,6 +404,32 @@ final class PosAnalyticsService
                 'count' => (int) $row->count,
             ])->all(),
         );
+    }
+
+    /**
+     * Sign-normalised net contribution of a `pos_receipts` monetary column,
+     * valid across BOTH refund sign eras.
+     *
+     * Legacy returns stored a NEGATIVE total/subtotal/tax_amount, so a bare
+     * `SUM(col)` netted them. v4 refunds project a POSITIVE total under
+     * `receipt_type = 'return'` (v3-refund-chain-integration spec §7.7), which
+     * would make the same `SUM(col)` ADD the refund — doubling the error
+     * (ticket 2026-08-01-positive-refund-total-consumers, a hard pre-enable
+     * gate for `EnableV4RefundAuthoringCommand`).
+     *
+     * `-ABS(col)` on the return arm subtracts the refund magnitude regardless of
+     * how it was stored, so a window that mixes both eras (the cutover month)
+     * stays correct too. Per-row, never `ABS(SUM(...))`, so opposite-signed
+     * rows cannot cancel.
+     *
+     * Callers must aggregate this expression in SQL (SUM/AVG) — no PHP float
+     * ever touches the money.
+     *
+     * @param  'subtotal'|'tax_amount'|'total'  $column  Literal column name; never caller input
+     */
+    private function netOfReturns(string $column): string
+    {
+        return "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
     }
 
     private function pgsqlDateTrunc(string $granularity): string

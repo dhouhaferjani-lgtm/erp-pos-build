@@ -159,20 +159,44 @@ final class GrandtotalService
     /**
      * Calculate perpetual totals (never reset)
      *
-     * Cumulative totals since terminal activation.
+     * Cumulative totals since terminal activation — the NF525 perpetual grand
+     * total exported as `VentesCumulees` / `TaxeCumulee`
+     * (Nf525XmlBuilder::addGrandTotals).
+     *
+     * Scope, precisely (the previous docblock claimed "excluding voids/refunds"
+     * while the query only filtered `is_voided`/`is_training`):
+     * - VOIDED receipts are EXCLUDED (filtered out entirely);
+     * - TRAINING receipts are EXCLUDED (never fiscal);
+     * - RETURN receipts are INCLUDED and SUBTRACTED — the counter is net of
+     *   refunds, which is what it has always been: a legacy return stored a
+     *   NEGATIVE total, so the old blended `SUM(total)` already netted it.
+     * - `lifetime_transactions` counts every non-void, non-training receipt,
+     *   returns included (a refund IS a fiscal transaction).
+     *
+     * v4 refunds project a POSITIVE total under `receipt_type = 'return'`
+     * (v3-refund-chain-integration spec §7.7). Without the sign normalisation
+     * below, a perpetual counter that has netted refunds for its whole life
+     * would start ADDING them mid-chain the moment
+     * `EnableV4RefundAuthoringCommand` runs — a silent discontinuity inside a
+     * hash-chained fiscal counter, and 2x the refund amount off. `-ABS(...)`
+     * is applied PER ROW, so a terminal carrying both sign eras stays correct.
+     * See ticket 2026-08-01-positive-refund-total-consumers (hard pre-enable
+     * gate). This preserves the counter's existing definition across the sign
+     * change; it does not redefine it.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @return array{lifetime_sales: string, lifetime_tax: string, lifetime_transactions: int}
      */
     public function calculatePerpetualTotals(Terminal $terminal): array
     {
-        // Get ALL production receipts for terminal (excluding voids/refunds and training)
+        $netOfReturns = static fn (string $column): string => "CASE WHEN receipt_type = 'return' THEN -ABS({$column}) ELSE {$column} END";
+
         $totals = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->selectRaw('
-                SUM(total) as lifetime_sales,
-                SUM(tax_amount) as lifetime_tax,
+                SUM('.$netOfReturns('total').') as lifetime_sales,
+                SUM('.$netOfReturns('tax_amount').') as lifetime_tax,
                 COUNT(*) as lifetime_transactions
             ')
             ->first();

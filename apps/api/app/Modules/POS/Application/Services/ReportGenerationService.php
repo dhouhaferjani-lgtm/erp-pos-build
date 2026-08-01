@@ -478,6 +478,19 @@ final class ReportGenerationService
      * Cash methods subtract receipt change_due once per receipt to mirror the POS device formula.
      * Always includes a row for every payment_method_id in $inputs (defaulting to '0.0000').
      *
+     * Refund payout legs are SUBTRACTED. A v4 refund projects POSITIVE
+     * `pos_receipt_payments.amount` rows under a `receipt_type = 'return'`
+     * receipt (v3-refund-chain-integration spec §7.7) and no v3+ path writes a
+     * `pos_cash_drawer_operations` REFUND row (ticket
+     * 2026-07-31-cashdrawer-v3-expected-cash-blind), so this leg is the ONLY
+     * record that cash left the drawer — blending it in would inflate expected
+     * cash by the refund and hand the cashier a false overage. Legacy returns
+     * wrote no receipt-payment rows at all (they routed through
+     * PaymentRefundService / the cash drawer), so the return arm is a no-op on
+     * legacy data and `-ABS(...)` is applied per row: a shift spanning both
+     * eras stays correct. See ticket
+     * 2026-08-01-positive-refund-total-consumers (hard pre-enable gate).
+     *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
      * @param  array<int, CashCountInputDTO>  $inputs
@@ -497,7 +510,7 @@ final class ReportGenerationService
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
-            ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, SUM(pos_receipt_payments.amount) as total')
+            ->selectRaw("pos_receipt_payments.payment_method_id as payment_method_id, SUM(CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS(pos_receipt_payments.amount) ELSE pos_receipt_payments.amount END) as total")
             ->groupBy('pos_receipt_payments.payment_method_id')
             ->get();
 
@@ -510,6 +523,12 @@ final class ReportGenerationService
                     ->where('pos_receipts.is_voided', false)
                     ->where('pos_receipts.is_training', false)
                     ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
+                    // Change-due is a SALE concept (money handed back on an
+                    // over-tender). A refund's payout leg IS the cash that left
+                    // the drawer, so a non-zero change_due on a return row
+                    // (possible only via cash-rounding over-tender arithmetic)
+                    // must not be subtracted a second time.
+                    ->where('pos_receipts.receipt_type', '!=', ReceiptType::Return->value)
                     ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
                     ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
                     ->groupBy('pos_receipt_payments.payment_method_id', 'pos_receipts.id'),
