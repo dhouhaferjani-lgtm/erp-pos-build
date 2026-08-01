@@ -321,6 +321,94 @@ describe('CreateCreditNoteForm', () => {
     })
   })
 
+  // Regression (money-campaign W1b MTP-DOC-20): the form used to validate
+  // with `zodResolver(amountBasedSchema)` in BOTH modes. `amount` is
+  // schema-required there but the `#amount` input is not rendered in
+  // Line-Based mode, so the schema was permanently unsatisfiable and Save
+  // silently no-opped — no mutation, no network request, no error. The
+  // resolver now switches with `creditMode`.
+  it('submits a LINE-BASED credit note (no amount typed) with the selected lines', async () => {
+    const user = userEvent.setup()
+    const invoice = {
+      ...mockInvoice,
+      lines: [
+        {
+          id: 'line-1',
+          product_id: 'product-1',
+          product_code: 'SKU-1',
+          description: 'Widget',
+          quantity: 2,
+          unit_price: '40.000',
+          tax_rate: '19.00',
+          total: '95.200',
+        },
+        {
+          id: 'line-2',
+          product_id: 'product-2',
+          product_code: 'SKU-2',
+          description: 'Gadget',
+          quantity: 3,
+          unit_price: '20.000',
+          tax_rate: '19.00',
+          total: '71.400',
+        },
+      ],
+    }
+
+    renderWithProviders(<CreateCreditNoteForm invoice={invoice} />)
+
+    await user.click(screen.getByRole('button', { name: 'sales:creditNotes.form.lineBased' }))
+    // Select the FIRST line only (checkbox defaults its quantity to the full 2).
+    await user.click(screen.getAllByRole('checkbox')[0])
+    await user.selectOptions(screen.getByLabelText('Reason'), 'return')
+
+    const submitButton = screen.getByRole('button', { name: 'Save' })
+    expect(submitButton).toBeEnabled()
+    await user.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockMutate.mock.calls[0][0]).toMatchObject({
+      source_invoice_id: 'invoice-1',
+      reason: 'return',
+      lines: [{ line_id: 'line-1', quantity: 2 }],
+    })
+    // Line-based payloads must NOT carry an `amount` — the backend picks the
+    // line-based branch off the presence of `lines`.
+    expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('amount')
+  })
+
+  it('still enforces the amount rules in AMOUNT mode after switching back from lines', async () => {
+    const user = userEvent.setup()
+    const invoice = {
+      ...mockInvoice,
+      lines: [{
+        id: 'line-1',
+        product_id: 'product-1',
+        product_code: 'SKU-1',
+        description: 'Widget',
+        quantity: 2,
+        unit_price: '40.000',
+        tax_rate: '19.00',
+        total: '95.200',
+      }],
+    }
+
+    renderWithProviders(<CreateCreditNoteForm invoice={invoice} />)
+
+    await user.click(screen.getByRole('button', { name: 'sales:creditNotes.form.lineBased' }))
+    await user.click(screen.getByRole('button', { name: 'sales:creditNotes.form.amountBased' }))
+    await user.selectOptions(screen.getByLabelText('Reason'), 'return')
+
+    // Amount is empty -> the amount schema must still block the submit.
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(screen.getByText('Amount is required')).toBeInTheDocument()
+    })
+    expect(mockMutate).not.toHaveBeenCalled()
+  })
+
   it('calls onCancel callback when cancel is clicked', async () => {
     const onCancel = vi.fn()
     const user = userEvent.setup()

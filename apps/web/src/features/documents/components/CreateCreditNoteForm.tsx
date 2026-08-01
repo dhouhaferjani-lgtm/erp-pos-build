@@ -4,8 +4,8 @@
  * Supports both amount-based and line-based credit note creation
  */
 
-import { useState, useMemo } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useCallback, useRef, useState, useMemo } from 'react'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
@@ -22,23 +22,46 @@ import { getQuantityDecimals } from '@/lib/quantityScale'
 // Credit mode enum
 type CreditMode = 'amount' | 'line'
 
+const reasonSchema = z.enum([
+  'return',
+  'price_adjustment',
+  'billing_error',
+  'damaged_goods',
+  'service_issue',
+  'other',
+])
+
 // Zod validation schema for amount-based mode
 const amountBasedSchema = z.object({
   amount: z
     .string()
-    .min(1, 'sales.creditNotes.form.amountRequired')
-    .refine((val) => parseFloat(val) > 0, 'sales.creditNotes.form.amountPositive'),
-  reason: z.enum([
-    'return',
-    'price_adjustment',
-    'billing_error',
-    'damaged_goods',
-    'service_issue',
-    'other',
-  ]),
+    // i18n keys are resolved through `t()` at render time. `useTranslation`
+    // here declares `sales` as the DEFAULT namespace, so the key must be
+    // `creditNotes.…` — the old `sales.creditNotes.…` (dot, not colon) was
+    // looked up verbatim inside the sales namespace, missed, and rendered the
+    // raw key to the user.
+    .min(1, 'creditNotes.form.amountRequired')
+    .refine((val) => parseFloat(val) > 0, 'creditNotes.form.amountPositive'),
+  reason: reasonSchema,
   notes: z.string().optional(),
 })
 
+/**
+ * Line-based mode credits selected INVOICE LINES, not a typed amount — the
+ * `#amount` input is not even rendered in that mode. Validating it with
+ * `amountBasedSchema` (whose `amount` is `min(1)`-required) made the schema
+ * permanently unsatisfiable there, so react-hook-form blocked `handleSubmit`
+ * client-side and Save silently no-opped with zero network activity
+ * (money-campaign W1b MTP-DOC-20). The selected-lines requirement is enforced
+ * separately in `onSubmit` and by the Save button's disabled state.
+ */
+const lineBasedSchema = z.object({
+  // Same shape as amountBasedSchema (so both resolvers agree on the form type),
+  // minus the non-empty/positive constraints — the value is not collected here.
+  amount: z.string(),
+  reason: reasonSchema,
+  notes: z.string().optional(),
+})
 
 type CreditNoteFormData = z.infer<typeof amountBasedSchema>
 
@@ -87,6 +110,21 @@ export function CreateCreditNoteForm({
   // Line selections for line-based mode
   const [selectedLines, setSelectedLines] = useState<Map<string, number>>(new Map())
 
+  // Mode-aware resolver. Read through a ref so the resolver identity stays
+  // stable (react-hook-form snapshots `resolver` on the form instance) while
+  // still validating against whichever schema the CURRENT mode requires.
+  const creditModeRef = useRef<CreditMode>(creditMode)
+  creditModeRef.current = creditMode
+  const resolver = useCallback<Resolver<CreditNoteFormData>>(
+    (values, context, options) =>
+      zodResolver(creditModeRef.current === 'amount' ? amountBasedSchema : lineBasedSchema)(
+        values,
+        context,
+        options,
+      ),
+    [],
+  )
+
   const {
     register,
     handleSubmit,
@@ -95,7 +133,7 @@ export function CreateCreditNoteForm({
     control,
     formState: { errors },
   } = useForm<CreditNoteFormData>({
-    resolver: zodResolver(amountBasedSchema),
+    resolver,
     defaultValues: {
       amount: '',
       notes: '',
