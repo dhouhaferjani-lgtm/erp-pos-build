@@ -20,6 +20,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -311,17 +312,19 @@ final class RefundCompensationControllerTest extends TestCase
 
     public function test_a_projected_event_that_already_applied_is_refused_the_double_cash_out_case(): void
     {
-        // The refund's own projection succeeded (Applied) -- its own
-        // normal path already moved cash out of the drawer. Writing off a
-        // "rejected" compensation for it too would double-cash-out.
-        $appliedEvent = $this->storeRejectedRefundEvent($this->tenant, $this->company, deadLettered: false);
-        DB::table('fiscal_event_projections')->insert([
-            'id' => (string) Str::uuid(),
-            'fiscal_event_id' => $appliedEvent->id,
-            'projector_name' => 'pos_core_receipt',
-            'projection_status' => ProjectionStatus::Applied->value,
-            'attempts' => 1,
-        ]);
+        // treasury re-verification IMPORTANT (guard-precision fix) --
+        // dead-lettered (admits the state-guard) but cash ALREADY moved,
+        // e.g. treasury_receipt_bridge applied and recorded its payment
+        // leg(s) before pos_core_receipt (a SEPARATE projector for the
+        // SAME fiscal_event_id) dead-lettered for an unrelated reason.
+        // Writing off a "rejected" compensation for it would
+        // double-cash-out the drawer. Keyed on repository_movements, NOT
+        // on any projector's Applied projection_status -- an "any Applied
+        // projection" check would wrongly ALSO refuse the valid_unbooked
+        // case below (pos_core_receipt Applied + bridge DeadLettered +
+        // zero movements), which must proceed.
+        $appliedEvent = $this->storeRejectedRefundEvent($this->tenant, $this->company, deadLettered: true);
+        $this->seedCashAlreadyMovedFor($appliedEvent);
 
         Sanctum::actingAs($this->operator);
 
@@ -333,7 +336,7 @@ final class RefundCompensationControllerTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertDatabaseCount('fiscal_refund_compensations', 0);
-        $this->assertDatabaseCount('repository_movements', 0);
+        $this->assertDatabaseCount('repository_movements', 1); // only the pre-seeded movement -- no new write
     }
 
     // =================================================================
@@ -356,16 +359,11 @@ final class RefundCompensationControllerTest extends TestCase
         // shape: integrity_exception_class stays 'canonical_parse_failure'
         // (write-once), integrity_status flips to Verified,
         // payload_parse_status flips to Parsed, payload is populated --
-        // and its projection subsequently APPLIED through the normal path
-        // (cash already moved).
+        // and cash already moved (guard-precision fix: keyed on
+        // repository_movements, not on any projector's Applied
+        // projection_status).
         $resolvedEvent = $this->storeIngressQuarantinedRefundEvent($this->tenant, $this->company, resolved: true);
-        DB::table('fiscal_event_projections')->insert([
-            'id' => (string) Str::uuid(),
-            'fiscal_event_id' => $resolvedEvent->id,
-            'projector_name' => 'pos_core_receipt',
-            'projection_status' => ProjectionStatus::Applied->value,
-            'attempts' => 1,
-        ]);
+        $this->seedCashAlreadyMovedFor($resolvedEvent);
 
         Sanctum::actingAs($this->operator);
 
@@ -377,7 +375,7 @@ final class RefundCompensationControllerTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertDatabaseCount('fiscal_refund_compensations', 0);
-        $this->assertDatabaseCount('repository_movements', 0);
+        $this->assertDatabaseCount('repository_movements', 1); // only the pre-seeded movement -- no new write
     }
 
     public function test_an_unresolved_quarantine_event_with_a_null_payload_is_refused_as_not_a_refund(): void
@@ -403,6 +401,64 @@ final class RefundCompensationControllerTest extends TestCase
         $response->assertStatus(422);
         $this->assertDatabaseCount('fiscal_refund_compensations', 0);
         $this->assertDatabaseCount('repository_movements', 0);
+    }
+
+    // =================================================================
+    // treasury re-verification IMPORTANT (guard-precision fix) — the
+    // spec's PRIMARY valid_unbooked partition, finally reachable:
+    // pos_core_receipt Applied (the receipt itself projected fine) +
+    // treasury_receipt_bridge DeadLettered (e.g. a missing purpose-
+    // account at booking time) + ZERO repository_movements (cash never
+    // moved -- the bridge never got to record a leg). This must PROCEED
+    // to 201. Before the fix, the over-broad "any Applied projection"
+    // check refused this exact partition, making SalesReturn seeding,
+    // the backfill's second purpose, and the §5.3 both-purpose precheck
+    // unreachable dead code, and permanently 422ing
+    // DeadLetteredProjectionsController's own advertised
+    // write_off_action_url for it.
+    // =================================================================
+
+    public function test_pos_core_receipt_applied_and_treasury_bridge_dead_lettered_with_no_movements_proceeds_the_valid_unbooked_happy_path(): void
+    {
+        $event = $this->storeRejectedRefundEvent($this->tenant, $this->company, deadLettered: false);
+        DB::table('fiscal_event_projections')->insert([
+            [
+                'id' => (string) Str::uuid(),
+                'fiscal_event_id' => $event->id,
+                'projector_name' => 'pos_core_receipt',
+                'projection_status' => ProjectionStatus::Applied->value,
+                'attempts' => 1,
+                'dead_lettered_at' => null,
+            ],
+            [
+                'id' => (string) Str::uuid(),
+                'fiscal_event_id' => $event->id,
+                'projector_name' => 'treasury_receipt_bridge',
+                'projection_status' => ProjectionStatus::DeadLettered->value,
+                'attempts' => 5,
+                'dead_lettered_at' => now(),
+            ],
+        ]);
+        $this->assertDatabaseCount('repository_movements', 0);
+
+        Sanctum::actingAs($this->operator);
+        $balanceBefore = (string) $this->repository->balance;
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $event->id,
+            'compensation_class' => 'valid_unbooked',
+            'operator_attestation' => 'Genuine refund; purpose-account was missing at booking time.',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.compensation_class', 'valid_unbooked');
+
+        $this->assertDatabaseCount('repository_movements', 1);
+        $this->repository->refresh();
+        self::assertSame(
+            bcsub($balanceBefore, '20.00', 3), // precision-ok: payment_repositories.balance is decimal(N,3)
+            (string) $this->repository->balance,
+        );
     }
 
     public function test_a_fiscal_event_belonging_to_another_company_is_refused_not_found(): void
@@ -583,5 +639,37 @@ final class RefundCompensationControllerTest extends TestCase
             'payload' => $payload,
             'payload_parse_status' => $resolved ? PayloadParseStatus::Parsed : PayloadParseStatus::Failed,
         ])->refresh();
+    }
+
+    /**
+     * Raw-inserts a `repository_movements` row for `$event` on
+     * `$this->repository` -- simulates the cash-moving leg
+     * `TreasuryReceiptBridge::recordPaymentLeg()` would have written,
+     * without running the full bridge. The guard-precision fix keys
+     * `already_applied` on THIS table (`source_type`/`source_id`), never
+     * on any `fiscal_event_projections` row's `projector_name`/
+     * `projection_status` -- see `RefundCompensationService`'s own
+     * docblock at the check site.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function seedCashAlreadyMovedFor(FiscalEvent $event, string $amount = '20.00'): void
+    {
+        DB::table('repository_movements')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $event->tenant_id,
+            'company_id' => $event->company_id,
+            'payment_repository_id' => $this->repository->id,
+            'direction' => 'out',
+            'amount' => $amount,
+            'currency' => 'EUR',
+            'balance_after' => bcsub((string) $this->repository->balance, $amount, 3), // precision-ok: payment_repositories.balance is decimal(N,3)
+            'ordinal' => 1,
+            'source_type' => MovementSourceType::FiscalEvent->value,
+            'source_id' => $event->id,
+            'idempotency_key' => "fiscal_event:{$event->id}:payment:0",
+            'occurred_at' => now(),
+            'created_at' => now(),
+        ]);
     }
 }

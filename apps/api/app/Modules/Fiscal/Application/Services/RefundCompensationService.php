@@ -146,19 +146,38 @@ final class RefundCompensationService
         // quarantine -> resolve -> projections apply (cash moves via the
         // NORMAL path) -> the state-guard above still passes (the stale
         // quarantine flag is still true) -> write-off would ALSO move
-        // cash for the same event. A positive, independent check closes
-        // this: refuse unconditionally whenever ANY fiscal_event_projections
-        // row for this event is Applied, regardless of which arm admitted
-        // it above.
-        $hasAppliedProjection = DB::table('fiscal_event_projections')
-            ->where('fiscal_event_id', $fiscalEventId)
-            ->where('projection_status', ProjectionStatus::Applied->value)
+        // cash for the same event.
+        //
+        // treasury re-verification IMPORTANT (guard-precision fix) — the
+        // positive check must key on the MONEY, not the projector name.
+        // `pos_core_receipt` Applied does NOT mean cash moved: only
+        // `TreasuryReceiptBridge` moves cash (via `repository_movements`),
+        // and it is a SEPARATE projector from `pos_core_receipt` for the
+        // SAME `fiscal_event_id`. The spec's primary `valid_unbooked`
+        // partition is EXACTLY `pos_core_receipt` Applied +
+        // `treasury_receipt_bridge` DeadLettered (e.g. a missing
+        // purpose-account at booking time) — cash NEVER moved there, and
+        // an "any Applied projection" check refused it, making the entire
+        // `valid_unbooked` half (SalesReturn seeding, the backfill's
+        // second purpose, the §5.3 both-purpose precheck) unreachable
+        // dead code and permanently 422ing
+        // `DeadLetteredProjectionsController`'s own advertised
+        // `write_off_action_url` for that partition. Checking
+        // `repository_movements` directly is immune to projector renames,
+        // to the write-once quarantine flag above, and to which projector
+        // happened to succeed: a fully-applied refund always has its
+        // `payment:{i}` movement legs recorded by
+        // `TreasuryReceiptBridge::recordPaymentLeg()` under this exact
+        // `source_type`/`source_id` pair.
+        $cashAlreadyMoved = DB::table('repository_movements')
+            ->where('source_type', MovementSourceType::FiscalEvent->value)
+            ->where('source_id', $fiscalEventId)
             ->exists();
 
-        if ($hasAppliedProjection) {
+        if ($cashAlreadyMoved) {
             throw new RefundCompensationRefusedException(
                 reason: 'already_applied',
-                message: "RefundCompensationService: fiscal_event {$fiscalEventId} has at least one Applied projection -- its own normal path already moved cash; refusing to double-cash-out with a write-off compensation.",
+                message: "RefundCompensationService: fiscal_event {$fiscalEventId} already has at least one repository_movements row -- cash already moved for this event; refusing to double-cash-out with a write-off compensation.",
             );
         }
 
