@@ -260,7 +260,7 @@ final class DisableV4RefundAuthoringCommandTest extends TestCase
             '--company' => $this->company->id,
         ])
             ->expectsConfirmation(
-                'Clear BOTH v4 refund-authoring flags for the terminal(s) listed above?',
+                'Clear BOTH v4 refund-authoring flags, accepting that on a v3-from-birth terminal this HALTS ALL REFUNDS until v4 is re-enabled?',
                 'no',
             )
             ->assertFailed();
@@ -279,7 +279,7 @@ final class DisableV4RefundAuthoringCommandTest extends TestCase
             '--company' => $this->company->id,
         ])
             ->expectsConfirmation(
-                'Clear BOTH v4 refund-authoring flags for the terminal(s) listed above?',
+                'Clear BOTH v4 refund-authoring flags, accepting that on a v3-from-birth terminal this HALTS ALL REFUNDS until v4 is re-enabled?',
                 'yes',
             )
             ->assertSuccessful();

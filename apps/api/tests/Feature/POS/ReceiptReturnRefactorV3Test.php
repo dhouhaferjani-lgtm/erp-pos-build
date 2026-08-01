@@ -1349,6 +1349,111 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         );
     }
 
+    /**
+     * ⚖️ C-6 ruling — ACCEPTED AS FAIL-CLOSED. This test PINS that ruling.
+     *
+     * On a v3-from-birth terminal (`current_sequence = 0` forever, because the
+     * v3/v4 ingestion path never advances it, while the projector fills
+     * `pos_receipts.chain_sequence` from the device's fiscal-event sequence
+     * numbers) the legacy path's `chain_sequence = $terminal->current_sequence`
+     * allocation cannot produce a valid sequence. So `pos:disable-v4-refund-authoring`
+     * does NOT restore a working legacy /return on such a terminal — it HALTS
+     * refunds until v4 is re-enabled.
+     *
+     * That is accepted, on the condition that it FAILS CLOSED. This test
+     * asserts the fail-closed INVARIANT, deliberately NOT a specific
+     * PostgreSQL error code (the ruling is about side effects, and a future
+     * numbering fix should flip this test to green by making the return
+     * SUCCEED, not by changing which SQLSTATE it emits):
+     *
+     *   non-2xx  AND  zero new fiscal_events
+     *            AND  zero new pos_cash_drawer_operations
+     *            AND  zero return receipts against the original.
+     */
+    public function test_legacy_return_on_a_v3_from_birth_terminal_after_a_rollback_fails_closed(): void
+    {
+        // The REAL launch shape: current_sequence never advanced past 0.
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'genesis_seed' => $this->genesisSeed,
+            'fiscal_schema_version' => 3,
+            'current_sequence' => 0,
+            'type' => TerminalType::Physical,
+            'is_active' => true,
+            'v4_refund_authoring_enabled' => true,
+            'v4_refund_authoring_acknowledged_at' => now(),
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        ['sale_receipt_id' => $saleReceiptId] =
+            $this->authorV3SaleThenV4Refund($terminal, $product->id, saleQuantity: '2.000');
+
+        $this->artisanCommand('pos:disable-v4-refund-authoring', [
+            '--tenant' => $this->tenant->id,
+            '--company' => $this->company->id,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $this->openShiftOn($terminal);
+
+        /** @var Receipt $saleReceipt */
+        $saleReceipt = Receipt::query()->findOrFail($saleReceiptId);
+        $saleLineId = $this->firstLineIdOf($saleReceiptId);
+
+        Sanctum::actingAs($this->cashier);
+        $requestData = [
+            'terminal_id' => $terminal->id,
+            'return_reason' => ReturnReason::CustomerChangedMind->value,
+            'lines' => [['line_id' => $saleLineId, 'quantity' => '1']],
+            'notes' => 'C-6 fail-closed probe',
+        ];
+        // Baseline is taken AFTER the approval scaffolding, which legitimately
+        // writes its own OPERATOR_APPROVAL_GRANTED / OVERRIDE fiscal events.
+        $payload = $this->withVoidReturnApproval($saleReceipt, $requestData);
+
+        $fiscalEventsBefore = DB::table('fiscal_events')->count();
+        $drawerOpsBefore = DB::table('pos_cash_drawer_operations')->count();
+        // NB: the legitimate v4 refund is ITSELF a `receipt_type = 'return'`
+        // row carrying this same `original_receipt_id`, so this must be a
+        // before/after delta, never an absolute `== 0`.
+        $returnReceiptsBefore = DB::table('pos_receipts')
+            ->where('original_receipt_id', $saleReceiptId)
+            ->where('receipt_type', 'return')
+            ->count();
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$saleReceiptId}/return", $payload);
+
+        self::assertFalse(
+            $response->isSuccessful(),
+            'a legacy return on a v3-from-birth terminal must NOT report success — it cannot allocate a chain_sequence',
+        );
+
+        // The invariant that makes C-6 acceptable: nothing partial escaped.
+        self::assertSame(
+            $fiscalEventsBefore,
+            DB::table('fiscal_events')->count(),
+            'fail-closed: no fiscal event may be written by a refused legacy return',
+        );
+        self::assertSame(
+            $drawerOpsBefore,
+            DB::table('pos_cash_drawer_operations')->count(),
+            'fail-closed: no cash may leave the drawer',
+        );
+        self::assertSame(
+            $returnReceiptsBefore,
+            DB::table('pos_receipts')
+                ->where('original_receipt_id', $saleReceiptId)
+                ->where('receipt_type', 'return')
+                ->count(),
+            'fail-closed: no legacy return receipt may be persisted',
+        );
+    }
+
     // =====================================================================
     // C-5 fixtures.
     // =====================================================================
