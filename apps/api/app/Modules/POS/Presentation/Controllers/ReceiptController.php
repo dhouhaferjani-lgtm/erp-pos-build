@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
+use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
@@ -339,6 +340,19 @@ final class ReceiptController extends Controller
                     ])->values()->toArray(),
                 ],
             ], 201);
+        } catch (LegacyCorrectionRetiredException $e) {
+            // v3-refund-chain-integration spec §9.4/§17 — must escape to
+            // Laravel's exception pipeline UNCAUGHT so the global
+            // `bootstrap/app.php` render() handler (the single source of
+            // truth for the 409 `LEGACY_CORRECTION_RETIRED` body/copy)
+            // handles it. The broad `catch (\RuntimeException $e)` below
+            // would otherwise intercept it first (this exception IS-A
+            // RuntimeException) and misreport it as a 422 `RETURN_FAILED` —
+            // exactly the bug this acceptance-test companion
+            // (ReceiptReturnRefactorV3Test) was written to catch. PHP
+            // dispatches to the first matching catch clause, so this
+            // narrower clause must be declared before the broad one.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
