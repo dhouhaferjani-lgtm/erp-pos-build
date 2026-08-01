@@ -275,7 +275,21 @@ function buildV4RefundLines(
     if (originalLineIndex === null || original.lineItems[originalLineIndex] === undefined) {
       return null;
     }
-    lines.push({ cartItem: item, originalLineIndex, disposition });
+    // ── Wave-2 fix-wave finding 3 (codex C-2) — THE single normalization
+    //    point for refund quantity. `bcabs` at the quantity scale turns
+    //    the negative-signed return `CartItem.quantity` into the
+    //    canonical POSITIVE decimal string §3.2 defines, and that one
+    //    string is then carried verbatim into the intent's line
+    //    snapshot, the cumulative-quantity cap, the `offline_receipts`
+    //    line mirror, and `original_line_references[i].quantity`.
+    //    Previously each of those four consumers re-derived its own
+    //    string from the number with a different formatter.
+    lines.push({
+      cartItem: item,
+      originalLineIndex,
+      disposition,
+      quantity: bcabs(String(item.quantity), QUANTITY_SCALE),
+    });
   }
   return lines;
 }
@@ -799,16 +813,38 @@ async function beginV4(
   // proving a fiscal event was actually appended, then refuses THIS
   // attempt if the new selection would push the cumulative total past
   // the original line's own quantity.
-  const cumulativeRefunded = await getCumulativeRefundedQuantityByOriginalLine(
-    input.db,
-    originalLocalReceiptId,
-  );
+  //
+  // ⚖️ Q-1 ruling (wave-2 fix-wave finding 18): an UNREADABLE prior
+  // appended snapshot now THROWS rather than being skipped. Skipping
+  // undercounted the already-refunded quantity, making the cap more
+  // permissive exactly when its data was untrustworthy. Caught here and
+  // surfaced as the same refusal the cap itself produces — fail closed.
+  let cumulativeRefunded: Map<number, string>;
+  try {
+    cumulativeRefunded = await getCumulativeRefundedQuantityByOriginalLine(
+      input.db,
+      originalLocalReceiptId,
+    );
+  } catch (backstopError) {
+    console.error(
+      '[refundCheckout] cumulative-quantity backstop could not be computed — refusing (fail closed)',
+      backstopError,
+    );
+    if (get().epoch !== epoch) return;
+    set({
+      step: 'idle',
+      error: { key: 'refundFlow.refundQuantityExceeded', serverMessage: null },
+      refundItemsSnapshot: null,
+    });
+    return;
+  }
   if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
 
   for (const line of lineSnapshot) {
     const alreadyRefunded = cumulativeRefunded.get(line.originalLineIndex) ?? '0';
-    const newQuantity = bcabs(String(line.cartItem.quantity), QUANTITY_SCALE);
-    const projectedTotal = bcadd(alreadyRefunded, newQuantity, QUANTITY_SCALE);
+    // Finding 3 — the SAME canonical string the snapshot/cap/payload use;
+    // never a second `Math.abs(...).toFixed(...)` derivation.
+    const projectedTotal = bcadd(alreadyRefunded, line.quantity, QUANTITY_SCALE);
     const originalLine = original.lineItems[line.originalLineIndex];
     const originalQuantity = originalLine ? bcabs(originalLine.quantity, QUANTITY_SCALE) : '0';
     if (bccomp(projectedTotal, originalQuantity) > 0) {

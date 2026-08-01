@@ -83,7 +83,7 @@ function goldenInput(): BuildRefundReceiptV4PayloadInput {
   };
 
   const lines: RefundLineInput[] = [
-    { cartItem, originalLineIndex: 0, disposition: 'restock' },
+    { cartItem, originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
   ];
 
   return {

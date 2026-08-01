@@ -36,7 +36,7 @@ function returnCartItem(): CartItem {
 
 function baseInput(original: OriginalFiscalEventLocalView): BuildRefundReceiptV4PayloadInput {
   const lines: RefundLineInput[] = [
-    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock' },
+    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
   ];
   return {
     receiptId: '00000000-0000-4000-8000-000000000016',

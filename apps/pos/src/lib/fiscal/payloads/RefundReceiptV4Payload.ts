@@ -74,6 +74,29 @@ export interface RefundLineInput {
   readonly cartItem: CartItem;
   readonly originalLineIndex: number;
   readonly disposition: ReturnLineDisposition;
+  /**
+   * Wave-2 fix-wave finding 3 (codex C-2) — the CANONICAL POSITIVE
+   * quantity for this refund line, as a decimal STRING, normalized
+   * exactly ONCE at the refund boundary (`refundCheckoutStore`'s
+   * `buildV4RefundLines()`, via `bcabs(...)` at the quantity scale).
+   *
+   * It is then carried VERBATIM through the `refund_intents` line
+   * snapshot, the cumulative-quantity cap, the `offline_receipts` line
+   * mirror, and `original_line_references[i].quantity` — one derivation,
+   * one string. Previously each of those four consumers re-derived its
+   * own string from the number-typed `cartItem.quantity` with a
+   * DIFFERENT formatter (`Math.abs(q)`, `Math.abs(q).toFixed(4)`,
+   * `bcformat(String(q), 3)`), so the same source quantity could produce
+   * three different strings — contaminating the cap and putting the §3.3
+   * parallel-array byte-equality invariant at the mercy of coincidence.
+   *
+   * `cartItem.quantity` remains `number`-typed (a pre-existing, app-wide
+   * `CartItem` property; retyping it is a cross-cutting refactor outside
+   * this wave) and is still what `buildLineItems()` formats
+   * `line_items[i].quantity` from — which is why the builder ASSERTS the
+   * two agree byte-for-byte rather than assuming it.
+   */
+  readonly quantity: string;
 }
 
 export interface BuildRefundReceiptV4PayloadInput {
@@ -217,6 +240,32 @@ export class RefundPaymentNotSingleCashLegError extends Error {
 }
 
 /**
+ * Wave-2 fix-wave finding 3 — §3.3's parallel-array invariant, asserted.
+ * `original_line_references[i].quantity` MUST be byte-identical to
+ * `line_items[i].quantity`; the two are derived by different code paths
+ * (this module's canonical `RefundLineInput.quantity` string vs
+ * `buildLineItems()`'s formatting of the number-typed
+ * `CartItem.quantity`), so their agreement is PROVED here, not assumed.
+ * A violation is a programmer error and fails loud — never a silent
+ * fallback that signs two disagreeing quantities into one payload.
+ */
+export class RefundQuantityAlignmentError extends Error {
+  constructor(
+    public readonly index: number,
+    public readonly referenceQuantity: string,
+    public readonly signedLineQuantity: string | null,
+  ) {
+    super(
+      `RefundReceiptV4Payload: original_line_references[${String(index)}].quantity (${referenceQuantity}) does not match line_items[${String(index)}].quantity (${signedLineQuantity ?? 'MISSING'}). §3.3's parallel-array invariant is violated.`,
+    );
+    this.name = 'RefundQuantityAlignmentError';
+  }
+}
+
+/** §3.1 — quantity is frozen at 3 decimal places in the canonical payload. */
+const FROZEN_QUANTITY_SCALE = 3;
+
+/**
  * §3.5 errata T7 — the refusal's PRIMARY enforcement point: the spec
  * requires this check to run at the LOOKUP level (immediately after
  * `resolveOriginalFiscalEventLocally()`, in the refund flow's own
@@ -299,11 +348,23 @@ export function buildRefundReceiptV4Payload(
   //    a non-negative magnitude on both sale and return lines (a discount
   //    is a reduction regardless of direction) and is passed through
   //    unchanged, no bcabs() needed.
+  //
+  // Wave-2 fix-wave finding 3: the positive quantity is NOT re-derived
+  // here with `Math.abs(item.quantity)`. It comes from the caller's
+  // canonical decimal string (`line.quantity`), normalized once at the
+  // refund boundary. The one remaining numeric hop is unavoidable and
+  // narrow: `CartItem.quantity` is `number`-typed app-wide, and the
+  // SHARED `buildSaleReceiptV3Payload`/`buildLineItems` path (the sale
+  // path, untouched by this lane) reads it to derive both the gross
+  // line-total identity check and `line_items[i].quantity`. So the
+  // canonical STRING is the source and the number is projected from it —
+  // never the reverse — and the projection is then PROVED correct by the
+  // §3.3 alignment assertion in Step 4 below.
   const normalizedCartItems: CartItem[] = input.lines.map((line) => {
     const item = line.cartItem;
     return {
       ...item,
-      quantity: Math.abs(item.quantity),
+      quantity: Number(line.quantity),
       line_total: bcabs(item.line_total, scale),
       tax_amount: bcabs(item.tax_amount, scale),
       kind: 'sale',
@@ -358,19 +419,32 @@ export function buildRefundReceiptV4Payload(
   );
 
   // -- Step 4 (spec §3.2/§3.3/§3.4) — compose the v4 fields on top. --
+  //
+  // Wave-2 fix-wave finding 3: the reference quantity is the CANONICAL
+  // decimal string normalized once at the refund boundary, formatted at
+  // the frozen payload scale — never a second, independently-derived
+  // float formatting of `cartItem.quantity`. §3.3's parallel-array
+  // invariant (`original_line_references[i].quantity` byte-identical to
+  // `line_items[i].quantity`) is then ASSERTED rather than assumed: the
+  // old `?? bcformat(String(Math.abs(...)), 3)` fallback was a silent
+  // second derivation that could disagree with `buildLineItems()`.
   const originalLineReferences: OriginalLineReferenceInput[] = input.lines.map(
-    (line, index) => ({
-      disposition: line.disposition,
-      original_line_index: line.originalLineIndex,
-      // Byte-identical to what buildLineItems() independently derives for
-      // line_items[index] from the SAME normalized CartItem -- both sides
-      // format the SAME Math.abs(quantity) through the SAME bcformat(...,
-      // 3) call, so strict string equality (the parallel-array invariant,
-      // §3.3) holds by construction, not by coincidence.
-      product_id: v3Skeleton.line_items[index]?.product_id ?? line.cartItem.product.id,
-      quantity: v3Skeleton.line_items[index]?.quantity
-        ?? bcformat(String(Math.abs(line.cartItem.quantity)), 3),
-    }),
+    (line, index) => {
+      const signedLine = v3Skeleton.line_items[index];
+      if (signedLine === undefined) {
+        throw new RefundQuantityAlignmentError(index, line.quantity, null);
+      }
+      const referenceQuantity = bcformat(line.quantity, FROZEN_QUANTITY_SCALE);
+      if (signedLine.quantity !== referenceQuantity) {
+        throw new RefundQuantityAlignmentError(index, referenceQuantity, signedLine.quantity);
+      }
+      return {
+        disposition: line.disposition,
+        original_line_index: line.originalLineIndex,
+        product_id: signedLine.product_id,
+        quantity: referenceQuantity,
+      };
+    },
   );
 
   return {

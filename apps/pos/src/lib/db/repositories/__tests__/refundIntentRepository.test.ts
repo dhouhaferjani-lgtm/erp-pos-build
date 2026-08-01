@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import {
+  CumulativeRefundSnapshotUnreadableError,
   InvalidRefundIntentTransitionError,
   computeLineSnapshotFingerprint,
+  getCumulativeRefundedQuantityByOriginalLine,
   confirmRefundIntentPayout,
   confirmRefundIntentPrinted,
   createOrReuseActiveRefundIntent,
@@ -267,6 +269,104 @@ d('refundIntentRepository — §4.4 durable intent state machine', () => {
     it('returns null when no active row exists for the key', async () => {
       const fingerprint = await computeLineSnapshotFingerprint(baseInput().lineSnapshot);
       expect(await findActiveRefundIntent(adapter.asDatabase(), 'orig-receipt-1', fingerprint)).toBeNull();
+    });
+  });
+
+  /**
+   * Wave-2 fix wave — findings 3 and 18, both in the cumulative-quantity
+   * backstop.
+   *
+   * finding 3 (codex C-2): the backstop reconstructed magnitudes with
+   * `Math.abs(quantity).toFixed(4)` off an IEEE-754 `number`. Quantity is
+   * now a canonical decimal STRING, normalized once at the refund
+   * boundary and carried verbatim through the snapshot.
+   *
+   * finding 18 (⚖️ Q-1 ruling): a malformed or unparseable prior-appended
+   * snapshot used to be SKIPPED. Skipping UNDERCOUNTS what has already
+   * been refunded, which makes the cap too PERMISSIVE in exactly the case
+   * where it matters. It must FAIL CLOSED.
+   */
+  describe('getCumulativeRefundedQuantityByOriginalLine (findings 3, 18)', () => {
+    async function seedAppendedIntentWithSnapshot(
+      db: ReturnType<typeof adapter.asDatabase>,
+      id: string,
+      lineSnapshot: unknown,
+    ): Promise<void> {
+      const { intent } = await createOrReuseActiveRefundIntent(db, baseInput({ id, lineSnapshot }));
+      await markApprovalAuthored(db, intent.id);
+      await markRefundEventAppended(db, intent.id, `fe-${id}`);
+    }
+
+    it('sums already-refunded quantity per original line as decimal strings', async () => {
+      const db = adapter.asDatabase();
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [
+        { originalLineIndex: 0, quantity: '1.5000' },
+        { originalLineIndex: 1, quantity: '2.0000' },
+      ]);
+      await seedAppendedIntentWithSnapshot(db, 'intent-b', [
+        { originalLineIndex: 0, quantity: '0.2500' },
+      ]);
+
+      const totals = await getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1');
+
+      expect(totals.get(0)).toBe('1.7500');
+      expect(totals.get(1)).toBe('2.0000');
+    });
+
+    it('counts only states that PROVE a fiscal event was appended', async () => {
+      const db = adapter.asDatabase();
+      // drafted only — nothing was ever signed, so it must not count.
+      await createOrReuseActiveRefundIntent(
+        db,
+        baseInput({ id: 'intent-draft', lineSnapshot: [{ originalLineIndex: 0, quantity: '9.0000' }] }),
+      );
+
+      const totals = await getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1');
+
+      expect(totals.get(0)).toBeUndefined();
+    });
+
+    it('finding 18 — FAILS CLOSED on an unparseable prior snapshot (never skip-and-undercount)', async () => {
+      const db = adapter.asDatabase();
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.0000' }]);
+      // Corrupt the stored snapshot of an ALREADY-APPENDED intent.
+      await adapter.execute(
+        "UPDATE refund_intents SET line_snapshot_json = 'not-json' WHERE id = 'intent-a'",
+      );
+
+      await expect(
+        getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1'),
+      ).rejects.toThrow(CumulativeRefundSnapshotUnreadableError);
+    });
+
+    it('finding 18 — FAILS CLOSED on a snapshot entry missing its quantity string', async () => {
+      const db = adapter.asDatabase();
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0 }]);
+
+      await expect(
+        getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1'),
+      ).rejects.toThrow(CumulativeRefundSnapshotUnreadableError);
+    });
+
+    it('finding 18 — FAILS CLOSED on a non-array snapshot', async () => {
+      const db = adapter.asDatabase();
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: '1.0000' }]);
+      await adapter.execute(
+        `UPDATE refund_intents SET line_snapshot_json = '{"not":"an array"}' WHERE id = 'intent-a'`,
+      );
+
+      await expect(
+        getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1'),
+      ).rejects.toThrow(CumulativeRefundSnapshotUnreadableError);
+    });
+
+    it('finding 3 — rejects a number-typed quantity outright rather than coercing it', async () => {
+      const db = adapter.asDatabase();
+      await seedAppendedIntentWithSnapshot(db, 'intent-a', [{ originalLineIndex: 0, quantity: -1.5 }]);
+
+      await expect(
+        getCumulativeRefundedQuantityByOriginalLine(db, 'orig-receipt-1'),
+      ).rejects.toThrow(CumulativeRefundSnapshotUnreadableError);
     });
   });
 });

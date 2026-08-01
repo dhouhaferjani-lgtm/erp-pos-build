@@ -53,7 +53,7 @@ function returnCartItem(overrides: Partial<CartItem> = {}): CartItem {
 
 function baseInput(overrides: Partial<BuildRefundReceiptV4PayloadInput> = {}): BuildRefundReceiptV4PayloadInput {
   const lines: RefundLineInput[] = [
-    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock' },
+    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
   ];
   return {
     receiptId: '00000000-0000-4000-8000-000000000016',
@@ -143,6 +143,7 @@ describe('buildRefundReceiptV4Payload — §3.2 normalization', () => {
         }),
         originalLineIndex: 0,
         disposition: 'restock',
+        quantity: '2.0000',
       },
       {
         cartItem: returnCartItem({
@@ -157,6 +158,7 @@ describe('buildRefundReceiptV4Payload — §3.2 normalization', () => {
         }),
         originalLineIndex: 1,
         disposition: 'scrap',
+        quantity: '1.0000',
       },
     ];
     const payload = buildRefundReceiptV4Payload(
@@ -176,7 +178,7 @@ describe('buildRefundReceiptV4Payload — §3.2 normalization', () => {
 
   it('rejects a v4 payload it built for itself if a line is not kind=return (defense-in-depth)', () => {
     const input = baseInput({
-      lines: [{ cartItem: returnCartItem({ kind: 'sale' }), originalLineIndex: 0, disposition: 'restock' }],
+      lines: [{ cartItem: returnCartItem({ kind: 'sale' }), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' }],
     });
     expect(() => buildRefundReceiptV4Payload(input)).toThrow(RefundLineNotAReturnError);
   });

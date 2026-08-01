@@ -73,7 +73,7 @@ function returnCartItem(overrides: Partial<CartItem> = {}): CartItem {
 
 function baseInput(): CreateRefundReceiptInput {
   const lines: RefundLineInput[] = [
-    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock' },
+    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
   ];
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: '99999999-9999-4999-8999-999999999999',
@@ -216,7 +216,10 @@ describe('createRefundReceipt', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({
       product_id: 'prod-1',
-      quantity: -1,
+      // Wave-2 fix-wave finding 3 — a negative-signed decimal STRING at the
+      // device quantity scale, produced by decimal arithmetic on the
+      // canonical positive string, not `-Math.abs(number)`.
+      quantity: '-1.0000',
       line_total: '-11.00',
       unit_price: '12.00',
       discount_amount: '1.00',

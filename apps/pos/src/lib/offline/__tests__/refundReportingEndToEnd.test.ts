@@ -172,7 +172,7 @@ function returnCartItem(): CartItem {
 
 function refundInput(): CreateRefundReceiptInput {
   const lines: RefundLineInput[] = [
-    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock' },
+    { cartItem: returnCartItem(), originalLineIndex: 0, disposition: 'restock', quantity: '1.0000' },
   ];
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: ORIGINAL_FISCAL_EVENT_ID,

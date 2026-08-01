@@ -30,6 +30,10 @@ import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptReposi
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type Database from '@tauri-apps/plugin-sql';
 
+/** Device-side quantity scale (rule 19) — must match
+ *  `refundIntentRepository.ts`'s own `QUANTITY_SCALE`. */
+const QUANTITY_SCALE = 4;
+
 function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
@@ -49,7 +53,16 @@ interface OfflineReceiptLine {
   variant_name?: string;
   name: string;
   sku: string;
-  quantity: number;
+  /**
+   * Wave-2 fix-wave finding 3 (codex C-2) — a negative-signed decimal
+   * STRING (§7.2's sign convention applied to the canonical positive
+   * quantity string the refund boundary normalized once), never a
+   * number. `receiptService.ts`'s SALE rows still write a number here;
+   * that is the pre-existing app-wide `CartItem.quantity` type and is
+   * out of this lane's scope. Every consumer of this field reads it as
+   * an opaque display/aggregation value, so the widened type is safe.
+   */
+  quantity: string;
   unit_price: string;
   line_total: string;
   tax_rate: string;
@@ -62,7 +75,11 @@ interface OfflineReceiptLine {
  *  the AVOIR was originally built/printed from (`hydrateFromReceipt.ts`'s
  *  negative CartItems, unchanged) -- a deliberate, stated difference from
  *  the positive-magnitude signed fiscal payload. */
-function cartItemToOfflineReceiptLine(item: RefundLineInput['cartItem']): OfflineReceiptLine {
+function cartItemToOfflineReceiptLine(
+  line: RefundLineInput,
+  quantityScale: number,
+): OfflineReceiptLine {
+  const item = line.cartItem;
   return {
     product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
     composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
@@ -70,7 +87,9 @@ function cartItemToOfflineReceiptLine(item: RefundLineInput['cartItem']): Offlin
     variant_name: item.product.variant_name,
     name: item.product.name,
     sku: item.product.sku,
-    quantity: item.quantity,
+    // Negative-signed by DECIMAL arithmetic on the canonical positive
+    // string (§7.2 / rule 19) — never `-Math.abs(number)`.
+    quantity: bcmul(line.quantity, '-1', quantityScale),
     unit_price: item.unit_price,
     line_total: item.line_total,
     tax_rate: item.tax_rate,
@@ -182,7 +201,7 @@ export async function createRefundReceipt(
 
   const negativeTotal = bcmul(total, '-1', scale);
   const offlineReceiptLines: OfflineReceiptLine[] = input.lines.map((line) =>
-    cartItemToOfflineReceiptLine(line.cartItem),
+    cartItemToOfflineReceiptLine(line, QUANTITY_SCALE),
   );
 
   const db = await getDatabase(input.companyId);

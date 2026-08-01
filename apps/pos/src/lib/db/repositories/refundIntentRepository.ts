@@ -346,12 +346,47 @@ export async function getRefundIntentsPendingReprint(db: Database): Promise<Refu
  * fiscal event was actually appended (`refund_event_appended` or
  * `synced`) — `drafted`/`approval_authored`/`dead_lettered_local`/
  * `abandoned` never signed anything real and must never count toward the
- * cap (an abandoned draft is not a refunded unit). A row with malformed
- * JSON, or an entry missing the expected shape, is skipped rather than
- * thrown — this backstop degrading to "count what it can parse" is safer
- * than a parse error blocking every subsequent refund attempt on this
- * device.
+ * cap (an abandoned draft is not a refunded unit).
+ *
+ * **⚖️ Q-1 ruling, wave-2 fix wave (finding 18) — this function FAILS
+ * CLOSED.** It previously SKIPPED a row with malformed JSON, a non-array
+ * snapshot, or an entry missing the expected shape, on the reasoning that
+ * "count what it can parse" beats a parse error blocking every subsequent
+ * refund. That reasoning is backwards for a cap: skipping an
+ * already-appended refund UNDERCOUNTS what has been refunded, which makes
+ * the backstop *more permissive* precisely when its data is untrustworthy
+ * — the direction that loses money. An unreadable prior snapshot now
+ * throws {@link CumulativeRefundSnapshotUnreadableError} and the caller
+ * refuses the refund. (The device is not left stranded: §12's server-side
+ * cap remains the sole cross-terminal authority and the back office can
+ * still process the return.)
+ *
+ * **Quantity is a decimal STRING (finding 18's sibling, finding 3 /
+ * codex C-2).** The snapshot entry's `quantity` is the canonical positive
+ * decimal string normalized ONCE at the refund boundary
+ * (`buildV4RefundLines()`); it is summed verbatim. The old code read a
+ * number off `cartItem.quantity` and re-derived a string with
+ * `Math.abs(q).toFixed(4)` — a second, divergent derivation of a value
+ * the payload builder formatted differently, contaminating the cap and
+ * breaking the §3.3 parallel-array byte-equality invariant.
  */
+export class CumulativeRefundSnapshotUnreadableError extends Error {
+  readonly i18nKey = 'refundFlow.refundQuantityExceeded';
+
+  constructor(
+    public readonly originalLocalReceiptId: string,
+    public readonly detail: string,
+  ) {
+    super(
+      `refund_intents cumulative-quantity backstop: an ALREADY-APPENDED refund snapshot for original ${originalLocalReceiptId} is unreadable (${detail}). Refusing the refund rather than undercounting the already-refunded quantity (⚖️ Q-1 ruling, spec §4.4 erratum).`,
+    );
+    this.name = 'CumulativeRefundSnapshotUnreadableError';
+  }
+}
+
+/** Canonical positive decimal quantity string, `QUANTITY_SCALE` places. */
+const QUANTITY_STRING_PATTERN = /^\d+(\.\d+)?$/;
+
 export async function getCumulativeRefundedQuantityByOriginalLine(
   db: Database,
   originalLocalReceiptId: string,
@@ -364,34 +399,47 @@ export async function getCumulativeRefundedQuantityByOriginalLine(
     [originalLocalReceiptId],
   );
 
+  const refuse = (detail: string): never => {
+    throw new CumulativeRefundSnapshotUnreadableError(originalLocalReceiptId, detail);
+  };
+
   const totals = new Map<number, string>();
   for (const row of rows) {
     let entries: unknown;
     try {
       entries = JSON.parse(row.line_snapshot_json);
     } catch {
-      continue;
+      refuse('line_snapshot_json is not parseable JSON');
     }
-    if (!Array.isArray(entries)) continue;
+    if (!Array.isArray(entries)) {
+      refuse('line_snapshot_json is not an array');
+    }
 
-    for (const entry of entries) {
-      if (typeof entry !== 'object' || entry === null) continue;
-      const record = entry as Record<string, unknown>;
-      const originalLineIndex = record['originalLineIndex'];
-      const cartItem = record['cartItem'];
-      if (
-        typeof originalLineIndex !== 'number'
-        || typeof cartItem !== 'object'
-        || cartItem === null
-      ) {
-        continue;
+    for (const entry of entries as unknown[]) {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        refuse('a snapshot entry is not an object');
       }
-      const quantity = (cartItem as Record<string, unknown>)['quantity'];
-      if (typeof quantity !== 'number' || !Number.isFinite(quantity)) continue;
+      const record = entry as Record<string, unknown>;
 
-      const magnitude = Math.abs(quantity).toFixed(QUANTITY_SCALE);
-      const existing = totals.get(originalLineIndex) ?? '0';
-      totals.set(originalLineIndex, bcadd(existing, magnitude, QUANTITY_SCALE));
+      const originalLineIndex = record['originalLineIndex'];
+      if (typeof originalLineIndex !== 'number' || !Number.isInteger(originalLineIndex)) {
+        refuse('a snapshot entry has no integer originalLineIndex');
+      }
+
+      // Canonical decimal string only — a number here means the snapshot
+      // predates finding 3's fix or was written by something that is not
+      // `buildV4RefundLines()`. Either way it cannot be trusted to sum
+      // exactly, so it is refused rather than coerced.
+      const quantity = record['quantity'];
+      if (typeof quantity !== 'string' || !QUANTITY_STRING_PATTERN.test(quantity)) {
+        refuse('a snapshot entry has no canonical positive decimal quantity string');
+      }
+
+      const existing = totals.get(originalLineIndex as number) ?? '0';
+      totals.set(
+        originalLineIndex as number,
+        bcadd(existing, quantity as string, QUANTITY_SCALE),
+      );
     }
   }
   return totals;
