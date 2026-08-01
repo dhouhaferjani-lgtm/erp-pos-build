@@ -18,6 +18,7 @@ use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Shift;
@@ -1204,6 +1205,288 @@ final class ReceiptReturnRefactorV3Test extends TestCase
     }
 
     // =====================================================================
+    // C-5 / N-1 REGRESSION — after `pos:disable-v4-refund-authoring` routes a
+    // v4-refunded terminal back to the legacy path, the legacy
+    // remaining-returnable cap must COUNT the v4 refund, not credit extra
+    // headroom for it.
+    //
+    // `calculateAlreadyReturnedQuantities()` used to do
+    // `bcmul($returnLine->quantity, '-1')`, which is only correct in the
+    // LEGACY sign era (negative stored quantities). A v4 refund line is stored
+    // as a POSITIVE magnitude and IS enumerated by `returnReceipts` (the
+    // projector sets `original_receipt_id`), so the flip made the
+    // already-returned tally NEGATIVE and `remaining = original - (-refunded)`
+    // GREW. Refunding 1 of 1 via v4 then allowed a SECOND full legacy refund:
+    // double payout + double restock.
+    //
+    // These drive the REAL ingestion pipeline, so the sign convention they
+    // depend on is the projector's actual output, not a fixture assumption.
+    // =====================================================================
+
+    public function test_legacy_return_after_a_rollback_cannot_double_refund_a_fully_v4_refunded_line(): void
+    {
+        $terminal = $this->v4EnabledTerminal();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        ['sale_receipt_id' => $saleReceiptId, 'refund_line_quantity' => $refundLineQuantity] =
+            $this->authorV3SaleThenV4Refund($terminal, $product->id, saleQuantity: '1.000');
+
+        // Pin the premise the fix rests on: the projector stores a v4 refund
+        // line as a POSITIVE magnitude (no leading '-'). The whole defect is
+        // that the legacy cap assumed the legacy era's NEGATIVE convention.
+        self::assertSame('1.0000', $refundLineQuantity, 'a v4 refund line must project a POSITIVE magnitude');
+
+        // The incident: operator rolls the capability back.
+        $this->artisanCommand('pos:disable-v4-refund-authoring', [
+            '--tenant' => $this->tenant->id,
+            '--company' => $this->company->id,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $this->openShiftOn($terminal);
+        $saleLineId = $this->firstLineIdOf($saleReceiptId);
+
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
+        // The full quantity is already refunded — zero remains.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/Maximum returnable: 0\.0000/');
+
+        $this->app->make(ReceiptReturnService::class)->processReturn(
+            originalReceiptId: $saleReceiptId,
+            returnLines: [['line_id' => $saleLineId, 'quantity' => '1']],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $terminal->id,
+            notes: null,
+        );
+    }
+
+    public function test_legacy_return_after_a_rollback_is_capped_at_the_v4_remainder(): void
+    {
+        $terminal = $this->v4EnabledTerminal();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        // 2 sold, 1 refunded via v4 => exactly 1 remains returnable.
+        ['sale_receipt_id' => $saleReceiptId] =
+            $this->authorV3SaleThenV4Refund($terminal, $product->id, saleQuantity: '2.000');
+
+        $this->artisanCommand('pos:disable-v4-refund-authoring', [
+            '--tenant' => $this->tenant->id,
+            '--company' => $this->company->id,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $this->openShiftOn($terminal);
+        $saleLineId = $this->firstLineIdOf($saleReceiptId);
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+        $service = $this->app->make(ReceiptReturnService::class);
+
+        // Returning 2 must be REFUSED — only 1 is left.
+        try {
+            $service->processReturn(
+                originalReceiptId: $saleReceiptId,
+                returnLines: [['line_id' => $saleLineId, 'quantity' => '2']],
+                returnReason: ReturnReason::CustomerChangedMind,
+                cashier: $this->cashier,
+                terminalId: $terminal->id,
+                notes: null,
+            );
+            self::fail('returning 2 of a 2-unit line with 1 already v4-refunded must be refused');
+        } catch (\InvalidArgumentException $e) {
+            self::assertMatchesRegularExpression('/Maximum returnable: 1\.0000/', $e->getMessage());
+        }
+
+        // Returning 1 must be ALLOWED, and genuinely authored.
+        $returnReceipt = $service->processReturn(
+            originalReceiptId: $saleReceiptId,
+            returnLines: [['line_id' => $saleLineId, 'quantity' => '1']],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $terminal->id,
+            notes: null,
+        );
+
+        self::assertSame(FiscalStatus::Fiscalized, $returnReceipt->fiscal_status);
+    }
+
+    public function test_receipt_show_reports_a_v4_refunded_quantity_as_a_positive_magnitude(): void
+    {
+        // Same sign-flip bug, second site: `ReceiptController::show`'s
+        // `returned_quantity` is what the cashier-facing receipt view uses to
+        // display how much of a line is still returnable. A negated tally
+        // there advertises headroom that does not exist.
+        $terminal = $this->v4EnabledTerminal();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        ['sale_receipt_id' => $saleReceiptId] =
+            $this->authorV3SaleThenV4Refund($terminal, $product->id, saleQuantity: '2.000');
+
+        $this->cashier->givePermissionTo('pos.view_receipts');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->getJson("/api/v1/pos/receipts/{$saleReceiptId}");
+        $response->assertOk();
+
+        /** @var array<int, array<string, mixed>> $lines */
+        $lines = $response->json('data.lines');
+        self::assertCount(1, $lines);
+        // Pre-fix this read back '-1.0000' — the cashier-facing view showed a
+        // NEGATIVE already-returned tally, i.e. MORE headroom than the line has.
+        self::assertSame(
+            '1.0000',
+            $lines[0]['returned_quantity'],
+            'returned_quantity must be the POSITIVE magnitude of the v4 refund, not its negation',
+        );
+    }
+
+    // =====================================================================
+    // C-5 fixtures.
+    // =====================================================================
+
+    private function v4EnabledTerminal(): Terminal
+    {
+        return Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'genesis_seed' => $this->genesisSeed,
+            'fiscal_schema_version' => 3,
+            // Deliberately seeded PAST the two fiscal-event sequence numbers
+            // these tests author (sale=1, refund=2) so the legacy authoring
+            // leg can run at all.
+            //
+            // ⚠ SEPARATE FINDING, NOT FIXED HERE (reported, needs its own
+            // ruling — it changes fiscal chain numbering): a REAL
+            // v3-from-birth terminal has `current_sequence = 0` forever. The
+            // v3/v4 ingestion path never touches it
+            // (`PosCoreReceiptProjection:350` writes
+            // `chain_sequence = $event->sequence_number` and the §1.1
+            // acceptance tests above assert `current_sequence` is never
+            // advanced), while the LEGACY path allocates
+            // `chain_sequence = $terminal->current_sequence`
+            // (`ReceiptFinalizationService:95`). So the first legacy return
+            // after a rollback either violates the `pos_receipts_sequence`
+            // CHECK (sequence 0) or collides with the projected chain on
+            // `pos_receipts_terminal_sequence` (sequence 1..N) — §1's original
+            // failure mode, re-opened by the rollback lever. These tests scope
+            // themselves to the C-5 CAP arithmetic and step around it.
+            'current_sequence' => 3,
+            'type' => TerminalType::Physical,
+            'is_active' => true,
+            'v4_refund_authoring_enabled' => true,
+            'v4_refund_authoring_acknowledged_at' => now(),
+        ]);
+    }
+
+    /**
+     * Author a v3 SALE and a v4 REFUND of 1.000 unit through the REAL
+     * `/pos/sync/fiscal-events` ingestion pipeline, and return the projected
+     * identifiers.
+     *
+     * @return array{sale_receipt_id: string, refund_receipt_id: string, refund_line_quantity: string}
+     */
+    private function authorV3SaleThenV4Refund(Terminal $terminal, string $productId, string $saleQuantity): array
+    {
+        Sanctum::actingAs($this->cashier);
+
+        $saleReceiptUuid = Str::uuid()->toString();
+        $saleEventId = Str::uuid()->toString();
+        $baseEventTime = Carbon::now('UTC')->subMinutes(10);
+        $businessDate = $baseEventTime->toDateString();
+
+        $saleEnvelope = $this->sealedEnvelope(
+            eventId: $saleEventId,
+            terminal: $terminal,
+            eventVersion: 3,
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->v3SalePayload(
+                $saleReceiptUuid,
+                $businessDate,
+                $baseEventTime->copy()->format('Y-m-d\TH:i:s.000\Z'),
+                $productId,
+                $saleQuantity,
+            ),
+        );
+        $saleResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$saleEnvelope]]);
+        $saleResponse->assertOk();
+        $saleResponse->assertJsonPath('results.0.stored', true);
+        $saleResponse->assertJsonPath('results.0.exception_class', null);
+
+        $saleEvent = DB::table('fiscal_events')->where('id', $saleEventId)->first();
+        self::assertNotNull($saleEvent);
+
+        $refundReceiptUuid = Str::uuid()->toString();
+        $refundEventId = Str::uuid()->toString();
+        $refundEnvelope = $this->sealedEnvelope(
+            eventId: $refundEventId,
+            terminal: $terminal,
+            eventVersion: 4,
+            sequenceNumber: 2,
+            previousHash: (string) $saleEvent->current_hash,
+            payload: $this->v4RefundPayload(
+                $refundReceiptUuid,
+                $businessDate,
+                $baseEventTime->copy()->addMinutes(2)->format('Y-m-d\TH:i:s.000\Z'),
+                $saleEventId,
+                $saleReceiptUuid,
+                $productId,
+            ),
+        );
+        $refundResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$refundEnvelope]]);
+        $refundResponse->assertOk();
+        $refundResponse->assertJsonPath('results.0.stored', true);
+        $refundResponse->assertJsonPath('results.0.exception_class', null);
+
+        $saleReceipt = DB::table('pos_receipts')->where('fiscal_event_id', $saleEventId)->first();
+        self::assertNotNull($saleReceipt, 'the sale must have projected a pos_receipts row');
+        $refundReceipt = DB::table('pos_receipts')->where('fiscal_event_id', $refundEventId)->first();
+        self::assertNotNull($refundReceipt, 'the refund must have projected a pos_receipts row');
+        // The linkage that puts the refund inside `Receipt::returnReceipts()`
+        // — i.e. what makes it visible to the legacy cap at all.
+        self::assertSame($saleReceipt->id, $refundReceipt->original_receipt_id);
+
+        $refundLine = DB::table('pos_receipt_lines')->where('receipt_id', $refundReceipt->id)->first();
+        self::assertNotNull($refundLine);
+
+        return [
+            'sale_receipt_id' => (string) $saleReceipt->id,
+            'refund_receipt_id' => (string) $refundReceipt->id,
+            'refund_line_quantity' => (string) $refundLine->quantity,
+        ];
+    }
+
+    private function openShiftOn(Terminal $terminal): Shift
+    {
+        return Shift::create([
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'shift_number' => 99,
+            'opening_cash' => '100.000',
+            'status' => ShiftStatus::Open,
+            'opened_at' => now(),
+        ]);
+    }
+
+    private function firstLineIdOf(string $receiptId): string
+    {
+        $line = DB::table('pos_receipt_lines')->where('receipt_id', $receiptId)->first();
+        self::assertNotNull($line);
+
+        return (string) $line->id;
+    }
+
+    // =====================================================================
     // Command-runner helper (typed PendingCommand narrowing -- Laravel's
     // TestCase::artisan() return type is inferred as PendingCommand|int by
     // Larastan, so a raw fluent chain off it is ambiguous at level 8).
@@ -1329,7 +1612,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
      *
      * @return array<string, mixed>
      */
-    private function v3SalePayload(string $receiptUuid, string $businessDate, string $eventTimeDevice, string $productId): array
+    private function v3SalePayload(string $receiptUuid, string $businessDate, string $eventTimeDevice, string $productId, string $quantity = '1.000'): array
     {
         return [
             'business_date' => $businessDate,
@@ -1353,7 +1636,14 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'name' => 'Default item',
                 'non_collected_subtype' => null,
                 'product_id' => $productId,
-                'quantity' => '1.000',
+                // Defaults to the F-16 golden's '1.000'. Overridable ONLY so
+                // the C-5 partial-refund regression can author a 2-unit sale;
+                // every other caller keeps the golden value, and the aggregate
+                // identity (subtotal 10.00 + vat 2.00 == total 12.00) is
+                // deliberately untouched by the override — rule 19 forbids
+                // asserting `line_subtotal == unit_price x qty` on a POS line,
+                // and no validator does.
+                'quantity' => $quantity,
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
                 // GROSS/TTC — see `v4RefundPayload()`'s note; the same

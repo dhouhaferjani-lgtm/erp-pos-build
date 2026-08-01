@@ -1147,6 +1147,39 @@ final class ReceiptReturnService
     }
 
     /**
+     * MAGNITUDE of a stored return-line quantity, at the canonical quantity
+     * storage scale.
+     *
+     * **Normalises the two refund SIGN ERAS onto one convention** — the same
+     * `-ABS(...)` normalisation wave 4 applied to its six aggregate consumers
+     * (`PosAnalyticsService`, `ReportGenerationService`, `GrandtotalService`),
+     * which this PHP loop was missed by because it is not a SQL aggregate:
+     *
+     *  - LEGACY returns store a NEGATIVE `pos_receipt_lines.quantity`;
+     *  - v4 refunds store a POSITIVE MAGNITUDE — `PosCoreReceiptProjection`
+     *    writes the canonical `line_items[].quantity` verbatim, and the fiscal
+     *    payload validator's quantity regex forbids a leading `-`.
+     *
+     * Flipping the sign (the previous `bcmul($q, '-1')`) is only correct in
+     * the legacy era. On a v4 refund line it produced a NEGATIVE
+     * already-returned tally, which `bcsub`-ed out of the original quantity
+     * GREW `remainingReturnable` — handing out double the original quantity
+     * and allowing the same line to be refunded twice (whole-branch review
+     * C-5/N-1: double payout + double restock). Reachable as soon as
+     * `pos:disable-v4-refund-authoring` routes a v4-refunded terminal back to
+     * this legacy path.
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function quantityMagnitude(string $value): string
+    {
+        return bccomp($value, '0', 4) < 0 // precision-ok: 4 = canonical quantity storage scale
+            ? bcsub('0', $value, 4) // precision-ok: 4 = canonical quantity storage scale
+            : bcadd($value, '0', 4); // precision-ok: 4 = canonical quantity storage scale
+    }
+
+    /**
      * Calculate already-returned quantities per original line.
      *
      * @return array<string, string> Map of original line ID to returned quantity
@@ -1164,7 +1197,8 @@ final class ReceiptReturnService
                 // Canonical quantity scale is 4 END-TO-END here (Codex r1 B1):
                 // truncating at 3 let a 4-decimal request (e.g. 1.0009 against
                 // an original 1.0000) slip past the remaining-returnable cap.
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4); // precision-ok: 4 = canonical quantity storage scale
+                // MAGNITUDE, never a sign flip — see quantityMagnitude().
+                $absQuantity = $this->quantityMagnitude((string) $returnLine->quantity);
 
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;

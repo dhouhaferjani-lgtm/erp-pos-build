@@ -591,6 +591,29 @@ final class ReceiptController extends Controller
     }
 
     /**
+     * MAGNITUDE of a stored return-line quantity, at the canonical quantity
+     * storage scale.
+     *
+     * Mirrors `ReceiptReturnService::quantityMagnitude()` — see that docblock
+     * for the full rationale. Short version (whole-branch review C-5/N-1):
+     * legacy returns store a NEGATIVE quantity, v4 refunds store a POSITIVE
+     * magnitude, so flipping the sign under-reports (indeed NEGATES)
+     * `returned_quantity` for a v4-refunded line. This surface is what the
+     * cashier-facing receipt view uses to show how much of a line is still
+     * returnable, so a negative tally here advertises headroom that does not
+     * exist.
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function quantityMagnitude(string $value): string
+    {
+        return bccomp($value, '0', 4) < 0 // precision-ok: 4 = canonical quantity storage scale
+            ? bcsub('0', $value, 4) // precision-ok: 4 = canonical quantity storage scale
+            : bcadd($value, '0', 4); // precision-ok: 4 = canonical quantity storage scale
+    }
+
+    /**
      * Calculate already-returned quantities per original line ID.
      *
      * Sums absolute quantities from non-voided return receipts.
@@ -606,7 +629,8 @@ final class ReceiptController extends Controller
 
         foreach ($receipt->returnReceipts as $returnReceipt) {
             foreach ($returnReceipt->lines as $returnLine) {
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4);
+                // MAGNITUDE, never a sign flip — see quantityMagnitude().
+                $absQuantity = $this->quantityMagnitude((string) $returnLine->quantity);
 
                 // Prefer direct FK match when available (new return lines)
                 if ($returnLine->original_line_id !== null) {
