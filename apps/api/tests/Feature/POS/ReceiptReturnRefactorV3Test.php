@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -60,6 +61,14 @@ use Tests\TestCase;
  * PG-mode only (`phpunit-pgsql.xml`) — exercises the real
  * `/api/v1/pos/sync/fiscal-events` ingestion pipeline, PG hash-chain CHECK
  * constraints, and `fiscal:verify-event-chain` / `pos:verify-chains`.
+ *
+ * **Scope note (review round-2 IMPORTANT 15).** The "sale -> refund ->
+ * next sale" flow this file exercises deliberately stops short of a Z
+ * close/report leg -- closing the shift/day is a SEPARATE, later
+ * concern (wave 3, not yet scheduled) layered on top of this same
+ * fiscal-events chain, not part of §1.1's own acceptance-test text
+ * (which specifies exactly the three-event flow this file drives). Not
+ * silently omitted: recorded here explicitly as deferred, not forgotten.
  */
 final class ReceiptReturnRefactorV3Test extends TestCase
 {
@@ -80,6 +89,16 @@ final class ReceiptReturnRefactorV3Test extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // review round-2 IMPORTANT 15 — PG driver guard consistent with
+        // this file's §12/§6 siblings: the real `/api/v1/pos/sync/fiscal-events`
+        // ingestion pipeline this acceptance test drives goes through the
+        // SAME `PosCoreReceiptProjection::assertRefundQuantityWithinCap()`
+        // `FOR UPDATE` lock those siblings gate on, and the fiscal-events
+        // hash chain's CHECK constraints are PG-only.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('§1.1 acceptance flow exercises the PG-only §12 FOR UPDATE lock + CHECK constraints; run via phpunit-pgsql.xml.');
+        }
 
         $this->seed(RolesAndPermissionsSeeder::class);
 
@@ -142,6 +161,161 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         $this->runV3RefundChainAcceptance(startingCurrentSequence: 1);
     }
 
+    /**
+     * review round-2 IMPORTANT 15 — exercise `approval_references` NON-
+     * EMPTY on the real envelope-ingestion path at least once (every
+     * other case in this file signs an empty array, which never reaches
+     * §4.2's `assertApprovalEvidenceResolved()` resolution loop at all).
+     * The two cited evidence events (OPERATOR_APPROVAL_GRANTED,
+     * OVERRIDE_VOID_OR_RETURN) are authored via direct `fiscal_events`
+     * inserts -- mirroring `ReceiptReturnFlowTest::storeFiscalEvent()`'s
+     * own established precedent for this exact fixture shape -- since
+     * they are AUDIT_ONLY events outside the SALE_RECEIPT chain this file
+     * verifies, not part of the operational hash chain itself.
+     */
+    public function test_a_refund_citing_non_empty_approval_references_still_projects_and_verifies(): void
+    {
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'genesis_seed' => $this->genesisSeed,
+            'fiscal_schema_version' => 3,
+            'current_sequence' => 1,
+        ]);
+        $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id]);
+
+        Sanctum::actingAs($this->cashier);
+
+        $baseEventTime = Carbon::now('UTC')->subMinutes(10);
+        $businessDate = $baseEventTime->toDateString();
+
+        $saleReceiptUuid = '00000000-0000-4000-8000-000000000001';
+        $saleEventId = Str::uuid()->toString();
+        $saleEnvelope = $this->sealedEnvelope(
+            eventId: $saleEventId,
+            terminal: $terminal,
+            eventVersion: 3,
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->v3SalePayload($saleReceiptUuid, $businessDate, $baseEventTime->copy()->format('Y-m-d\TH:i:s.000\Z'), $product->id),
+        );
+        $saleResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$saleEnvelope]]);
+        $saleResponse->assertOk();
+        $saleEvent = DB::table('fiscal_events')->where('id', $saleEventId)->first();
+        self::assertNotNull($saleEvent);
+
+        $approvalId = (string) Str::uuid();
+        $approvalEventId = (string) Str::uuid();
+        $overrideEventId = (string) Str::uuid();
+        $supervisorId = (string) Str::uuid();
+        $targetReferenceId = (string) Str::uuid();
+
+        // Sequenced BETWEEN the sale (1) and the refund (claimed below as
+        // 4) -- the real ingestion endpoint's own sequence-gap detection
+        // rejects a LOWER sequence_number arriving after a HIGHER one
+        // already exists for the terminal+chain_context, so these two
+        // AUDIT_ONLY events (which default to the SAME
+        // chain_context='operational' as the SALE_RECEIPT chain) must be
+        // inserted BEFORE the refund envelope is posted, at sequence
+        // numbers below it. Their own current_hash is NOT a real
+        // canonical-bytes SHA-256 (mirrors
+        // ReceiptReturnFlowTest::storeFiscalEvent()'s existing precedent,
+        // which never needs to survive fiscal:verify-event-chain either),
+        // so this test intentionally does not call that command -- it
+        // proves the refund's OWN evidence-resolution path, not these two
+        // fixture rows' chain integrity.
+        $this->storeAuxiliaryFiscalEvent($terminal, $approvalEventId, FiscalEventType::OPERATOR_APPROVAL_GRANTED, 2, [
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'cashier_user_id' => $this->cashier->id,
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => 'Acceptance test approval evidence',
+            'regime_extensions' => null,
+            'requested_at_device' => now()->toISOString(),
+            'resolved_at_device' => now()->toISOString(),
+            'supervisor_user_id' => $supervisorId,
+            'supervisor_user_snapshot' => ['name' => 'Manager', 'roles' => ['manager']],
+            'target' => ['target_reference_id' => $targetReferenceId],
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $terminal->id,
+            'training_flag' => false,
+        ], eventTime: $baseEventTime->copy()->addSeconds(30));
+        $this->storeAuxiliaryFiscalEvent($terminal, $overrideEventId, FiscalEventType::OVERRIDE_VOID_OR_RETURN, 3, [
+            'approval_event_id' => $approvalEventId,
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'override_context' => [
+                'target_event_type' => 'SALE_RECEIPT',
+                'target_reference_id' => $targetReferenceId,
+            ],
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => 'Acceptance test approval evidence',
+            'supervisor_user_id' => $supervisorId,
+            'target' => [],
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $terminal->id,
+            'training_flag' => false,
+        ], eventTime: $baseEventTime->copy()->addMinute());
+
+        $refundReceiptUuid = '00000000-0000-4000-8000-000000000002';
+        $refundEventId = Str::uuid()->toString();
+        $refundEnvelope = $this->sealedEnvelope(
+            eventId: $refundEventId,
+            terminal: $terminal,
+            eventVersion: 4,
+            sequenceNumber: 4,
+            // Must chain off the IMMEDIATELY PRIOR row's real current_hash
+            // per OutboxIngestor::verifyLinkage() -- that is the OVERRIDE
+            // auxiliary event at sequence=3, not the sale, since the
+            // ingestion endpoint's linkage check compares against
+            // sequence_number - 1 regardless of event_type.
+            previousHash: hash('sha256', $overrideEventId),
+            payload: $this->v4RefundPayload(
+                $refundReceiptUuid,
+                $businessDate,
+                $baseEventTime->copy()->addMinutes(2)->format('Y-m-d\TH:i:s.000\Z'),
+                $saleEventId,
+                $saleReceiptUuid,
+                $product->id,
+                approvalReferences: [[
+                    'approval_event_id' => $approvalEventId,
+                    'approval_id' => $approvalId,
+                    'approval_scope' => 'void_or_return_override',
+                    'override_event_id' => $overrideEventId,
+                    'policy_version' => 'pos-void-return-policy-v1',
+                    'supervisor_user_id' => $supervisorId,
+                    'target_reference_id' => $targetReferenceId,
+                ]],
+            ),
+        );
+
+        $refundResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$refundEnvelope]]);
+        $refundResponse->assertOk();
+        $refundResponse->assertJsonPath('results.0.stored', true);
+        $refundResponse->assertJsonPath('results.0.exception_class', null);
+
+        $refundReceipt = DB::table('pos_receipts')->where('fiscal_event_id', $refundEventId)->first();
+        self::assertNotNull($refundReceipt, 'the non-empty-approval_references refund must still project cleanly');
+
+        $refundProjectionRow = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $refundEventId)
+            ->where('projector_name', 'pos_core_receipt')
+            ->first();
+        self::assertNotNull($refundProjectionRow);
+        self::assertSame(
+            'applied',
+            $refundProjectionRow->projection_status,
+            'assertApprovalEvidenceResolved() must have resolved both cited events and let the projection apply',
+        );
+    }
+
     private function runV3RefundChainAcceptance(int $startingCurrentSequence): void
     {
         $terminal = Terminal::factory()->create([
@@ -151,6 +325,19 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             'genesis_seed' => $this->genesisSeed,
             'fiscal_schema_version' => 3,
             'current_sequence' => $startingCurrentSequence,
+        ]);
+
+        // review round-2 IMPORTANT 15 — a REAL product UUID (not the F-16
+        // golden fixture's non-UUID "prod-default" sentinel) so
+        // resolveProductFk() actually resolves pos_receipt_lines.product_id
+        // on both the sale and the refund -- required both for the §10
+        // restock stock-movement side effect to execute AND for the
+        // CRITICAL-1 original_line trust check
+        // (resolveOriginalLineForReference()) to have a real, matching,
+        // non-null product_id to compare against.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
         ]);
 
         Sanctum::actingAs($this->cashier);
@@ -171,7 +358,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             eventVersion: 3,
             sequenceNumber: 1,
             previousHash: $this->genesisSeed,
-            payload: $this->v3SalePayload($saleReceiptUuid, $businessDate, $saleEventTimeDevice),
+            payload: $this->v3SalePayload($saleReceiptUuid, $businessDate, $saleEventTimeDevice, $product->id),
         );
 
         $saleResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$saleEnvelope]]);
@@ -195,7 +382,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             eventVersion: 4,
             sequenceNumber: 2,
             previousHash: $saleCurrentHash,
-            payload: $this->v4RefundPayload($refundReceiptUuid, $businessDate, $refundEventTimeDevice, $saleEventId, $saleReceiptUuid),
+            payload: $this->v4RefundPayload($refundReceiptUuid, $businessDate, $refundEventTimeDevice, $saleEventId, $saleReceiptUuid, $product->id),
         );
 
         $refundResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$refundEnvelope]]);
@@ -208,6 +395,36 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         self::assertSame($saleCurrentHash, $refundEvent->previous_hash, 'refund must chain off the sale');
         $refundCurrentHash = (string) $refundEvent->current_hash;
 
+        // review round-2 IMPORTANT 15 — projection assertions: the refund
+        // must actually PROJECT (not merely chain-hash correctly) --
+        // pos_receipts row, receipt_type=return,
+        // original_receipt_id/original_line_id linkage back to the sale,
+        // and the pos_core_receipt projector's own applied status.
+        $saleReceipt = DB::table('pos_receipts')->where('fiscal_event_id', $saleEventId)->first();
+        self::assertNotNull($saleReceipt, 'the sale must have projected a pos_receipts row');
+        $saleLine = DB::table('pos_receipt_lines')->where('receipt_id', $saleReceipt->id)->first();
+        self::assertNotNull($saleLine);
+
+        $refundReceipt = DB::table('pos_receipts')->where('fiscal_event_id', $refundEventId)->first();
+        self::assertNotNull($refundReceipt, 'the refund must have projected a pos_receipts row');
+        self::assertSame('return', $refundReceipt->receipt_type);
+        self::assertSame($saleReceipt->id, $refundReceipt->original_receipt_id);
+
+        $refundLine = DB::table('pos_receipt_lines')->where('receipt_id', $refundReceipt->id)->first();
+        self::assertNotNull($refundLine);
+        self::assertSame(
+            $saleLine->id,
+            $refundLine->original_line_id,
+            'the refund line must link back to the ORIGINAL sale line (CRITICAL-1 trust-hole closure)',
+        );
+
+        $refundProjectionRow = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $refundEventId)
+            ->where('projector_name', 'pos_core_receipt')
+            ->first();
+        self::assertNotNull($refundProjectionRow, 'the refund must have a fiscal_event_projections row for pos_core_receipt');
+        self::assertSame('applied', $refundProjectionRow->projection_status);
+
         // ---- 3. Device-authored NEXT SALE at event_version=3, chained off
         // ---- the refund -- the "next-sale-chains-off-refund" assertion. ----
         $nextSaleReceiptUuid = '00000000-0000-4000-8000-000000000003';
@@ -219,7 +436,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             eventVersion: 3,
             sequenceNumber: 3,
             previousHash: $refundCurrentHash,
-            payload: $this->v3SalePayload($nextSaleReceiptUuid, $businessDate, $nextSaleEventTimeDevice),
+            payload: $this->v3SalePayload($nextSaleReceiptUuid, $businessDate, $nextSaleEventTimeDevice, $product->id),
         );
 
         $nextSaleResponse = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$nextSaleEnvelope]]);
@@ -239,12 +456,25 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         self::assertSame($startingCurrentSequence, $terminal->current_sequence);
 
         // ---- 5. Both verify commands green. ----
+        // review round-2 IMPORTANT 15 — non-vacuous verifier assertion:
+        // asserting the fiscal-arm EVENT COUNT ("3 events walked") proves
+        // the command actually walked all three authored events rather
+        // than trivially passing on an empty/zero-row chain.
+        // `pos:verify-chains` is asserted separately below purely for
+        // exit-code green -- it structurally EXCLUDES every
+        // fiscal_event_id-backed pos_receipts row (`whereNull('fiscal_event_id')`,
+        // proven by PosCoreReceiptProjectionTest's own
+        // "pos verify chains command does not break on projection rows"
+        // regression test), so a non-vacuous row-count assertion against
+        // it is not meaningful for a v3/v4-authored chain -- its green
+        // exit code here is a "does not break" check, not a "verified N
+        // rows" check.
         $this->artisanCommand('fiscal:verify-event-chain', [
             '--tenant' => $this->tenant->id,
             '--terminal' => $terminal->id,
             '--actor-id' => $this->chainVerifierActor->id,
         ])
-            ->expectsOutputToContain('chain verified')
+            ->expectsOutputToContain('chain verified — terminal '.$terminal->id.', tenant '.$this->tenant->id.', context operational, 3 events walked from sequence 1, no quarantine incidents.')
             ->assertExitCode(0);
 
         $this->artisanCommand('pos:verify-chains', [
@@ -520,7 +750,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
      *
      * @return array<string, mixed>
      */
-    private function v3SalePayload(string $receiptUuid, string $businessDate, string $eventTimeDevice): array
+    private function v3SalePayload(string $receiptUuid, string $businessDate, string $eventTimeDevice, string $productId): array
     {
         return [
             'business_date' => $businessDate,
@@ -543,7 +773,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'line_vat' => '2.00',
                 'name' => 'Default item',
                 'non_collected_subtype' => null,
-                'product_id' => 'prod-default',
+                'product_id' => $productId,
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
@@ -602,13 +832,14 @@ final class ReceiptReturnRefactorV3Test extends TestCase
      * event-instance-specific identifiers (receipt_uuid, original receipt
      * reference, business_date) substituted.
      *
+     * @param  list<array<string, mixed>>  $approvalReferences
      * @return array<string, mixed>
      */
-    private function v4RefundPayload(string $receiptUuid, string $businessDate, string $eventTimeDevice, string $originalFiscalEventId, string $originalReceiptUuid): array
+    private function v4RefundPayload(string $receiptUuid, string $businessDate, string $eventTimeDevice, string $originalFiscalEventId, string $originalReceiptUuid, string $productId, array $approvalReferences = []): array
     {
         return [
             'business_date' => $businessDate,
-            'approval_references' => [],
+            'approval_references' => $approvalReferences,
             'buyer' => null,
             'cash_rounding_adjustment' => '0.00',
             'cash_rounding_denomination' => '0.00',
@@ -627,7 +858,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
                 'line_vat' => '2.00',
                 'name' => 'Default item',
                 'non_collected_subtype' => null,
-                'product_id' => 'prod-default',
+                'product_id' => $productId,
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
@@ -642,7 +873,7 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             'original_line_references' => [[
                 'disposition' => 'restock',
                 'original_line_index' => 0,
-                'product_id' => 'prod-default',
+                'product_id' => $productId,
                 'quantity' => '1.000',
             ]],
             'original_receipt_reference' => [
@@ -836,6 +1067,44 @@ final class ReceiptReturnRefactorV3Test extends TestCase
             'business_date' => now()->toDateString(),
             'server_received_at' => now(),
             'reference_event_id' => $referenceEventId,
+            'canonical_bytes' => json_encode(['payload' => $payload], JSON_THROW_ON_ERROR),
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => hash('sha256', $id),
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+            'payload_parse_status' => 'parsed',
+        ]);
+    }
+
+    /**
+     * Direct `fiscal_events` insert for an AUDIT_ONLY approval/override
+     * event at an EXPLICIT sequence_number (the caller is responsible for
+     * choosing one that doesn't collide with the operational SALE_RECEIPT
+     * chain's own sequence numbers in the same tenant+company+terminal+
+     * chain_context UNIQUE index).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function storeAuxiliaryFiscalEvent(
+        Terminal $terminal,
+        string $id,
+        FiscalEventType $eventType,
+        int $sequenceNumber,
+        array $payload,
+        Carbon $eventTime,
+    ): void {
+        DB::table('fiscal_events')->insert([
+            'id' => $id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $terminal->id,
+            'operator_id' => $this->cashier->id,
+            'event_type' => $eventType->value,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $sequenceNumber,
+            'event_time_device' => $eventTime,
+            'business_date' => $eventTime->toDateString(),
+            'server_received_at' => $eventTime,
             'canonical_bytes' => json_encode(['payload' => $payload], JSON_THROW_ON_ERROR),
             'previous_hash' => str_repeat('a', 64),
             'current_hash' => hash('sha256', $id),
