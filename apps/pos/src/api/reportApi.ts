@@ -4,7 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcformat } from '@/lib/decimal';
+import { bcabs, bcadd, bcformat, bcsub } from '@/lib/decimal';
 import { appendXReport } from '@/lib/fiscal/zSessionAuthoring';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { useAuthStore } from '@/stores/authStore';
@@ -45,6 +45,12 @@ export interface XReportResponse {
   net_sales: string;
   tax_amount: string;
   refunds_count: number;
+  /** Positive magnitude (server-pinned semantics — `refunds_amount` is
+   *  never folded into `gross_sales`). Added by the wave-2 fix for
+   *  finding 1: the local X-report previously hardcoded a zero refund
+   *  figure into the SIGNED `X_REPORT` event while silently folding
+   *  refunds into the sale aggregates. */
+  refunds_amount: string;
   vat_breakdown: VatBreakdownItem[];
   payment_methods: PaymentMethodItem[];
 }
@@ -418,13 +424,63 @@ async function generateLocalXReport(
   }
 
   // Aggregate
+  //
+  // v3-refund-chain-integration wave-2 review fix (finding 1 / fiscal C-1).
+  // This function is a THIRD, structurally separate consumer of
+  // `offline_receipts` that §7.3 (`zReportService.ts`) and §7.3a
+  // (`endOfDayPreview.ts`) both branched and §17's manifest never
+  // enumerated. Before this fix it selected EVERY row for the shift with
+  // no `receipt_kind` branch, so a v4 refund row (negative `total`/
+  // `subtotal`/`tax_amount`, §7.2) was folded straight into
+  // gross_sales/net_sales/tax_amount, counted as a sale in `sales_count`,
+  // and reported as `refunds_count: 0` / `refunds_amount: 0` — and those
+  // wrong totals were then SIGNED into an immutable `X_REPORT` fiscal
+  // event (rule 8: never correctable, only superseded). The branch below
+  // mirrors §7.3's exactly: sale-only gross/net/tax/`sales_count`;
+  // refunds tracked as their own positive-magnitude figure; VAT and
+  // payment-method breakdowns SUBTRACTED, with net derived as
+  // gross − vat (finding 4 — `lines[].line_total` is GROSS/TTC).
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
+  let salesCount = 0;
+  let refundsCount = 0;
+  let refundsAmount = '0';
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
   const paymentByType = new Map<string, { amount: string; count: number }>();
 
   for (const receipt of receipts) {
+    const methodCode = methodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
+
+    if (receipt.receipt_kind === 'refund') {
+      refundsCount += 1;
+      refundsAmount = bcadd(refundsAmount, bcabs(receipt.total, decimals), decimals);
+
+      const refundLines = JSON.parse(receipt.lines) as ReceiptLineJson[];
+      for (const line of refundLines) {
+        const rate = line.tax_rate ?? '0';
+        const lineVat = bcabs(line.tax_amount ?? '0', decimals);
+        const lineGross = bcabs(line.line_total ?? '0', decimals);
+        const lineNet = bcsub(lineGross, lineVat, decimals);
+        const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcsub(existing.net, lineNet, decimals);
+        existing.vat = bcsub(existing.vat, lineVat, decimals);
+        existing.gross = bcsub(existing.gross, lineGross, decimals);
+        vatByRate.set(rate, existing);
+      }
+
+      // Payment-method breakdown — SUBTRACTED as a positive magnitude,
+      // matching §7.3's own treatment (never `bcadd` of the already-
+      // negative `total`, which would read as a signed delta here and a
+      // magnitude there).
+      const refundPay = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+      refundPay.amount = bcsub(refundPay.amount, bcabs(receipt.total, decimals), decimals);
+      refundPay.count += 1;
+      paymentByType.set(methodCode, refundPay);
+      continue;
+    }
+
+    salesCount += 1;
     grossSales = bcadd(grossSales, receipt.total);
     netSales = bcadd(netSales, receipt.subtotal);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
@@ -441,7 +497,6 @@ async function generateLocalXReport(
       vatByRate.set(rate, existing);
     }
 
-    const methodCode = methodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
     const payExisting = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
     payExisting.amount = bcadd(payExisting.amount, receipt.total);
     payExisting.count += 1;
@@ -454,11 +509,12 @@ async function generateLocalXReport(
     shift_id: shift?.id ?? null,
     generated_by: 'local',
     generated_at: generatedAtDevice.toISOString(),
-    sales_count: receipts.length,
+    sales_count: salesCount,
     gross_sales: bcformat(grossSales, decimals),
     net_sales: bcformat(netSales, decimals),
     tax_amount: bcformat(taxAmount, decimals),
-    refunds_count: 0,
+    refunds_count: refundsCount,
+    refunds_amount: bcformat(refundsAmount, decimals),
     // Preserve the local X-report/fiscal event tax_rate as a number; trim or
     // round only where the report is rendered.
     vat_breakdown: Array.from(vatByRate.entries())
@@ -506,7 +562,7 @@ async function generateLocalXReport(
         net_sales: report.net_sales,
         tax_amount: report.tax_amount,
         refunds_count: report.refunds_count,
-        refunds_amount: bcformat('0', decimals),
+        refunds_amount: report.refunds_amount,
         voided_count: 0,
       },
       vatBreakdown: report.vat_breakdown.map((row) => ({
@@ -603,7 +659,13 @@ async function fetchLocalShiftReceipts(): Promise<ShiftReceipt[]> {
     return {
       id: receipt.id,
       receipt_number: receipt.receipt_number,
-      receipt_type: 'sale',
+      // Wave-2 review fix (finding 16 / fiscal I-4) — v4 refund rows now
+      // live in `offline_receipts` too (§7.2), so a hardcoded `'sale'`
+      // rendered every refund as a SALE with a negative total and a
+      // negative payment on the operator-visible offline shift-receipts
+      // screen — the exact screen used when the server projection is not
+      // yet available, i.e. right after a refund.
+      receipt_type: receipt.receipt_kind === 'refund' ? 'return' : 'sale',
       total: receipt.total,
       subtotal: receipt.subtotal,
       tax_amount: receipt.tax_amount,

@@ -226,7 +226,16 @@ export async function createRefundReceipt(
       operator_id: input.operatorId,
       operator_name: input.operatorName,
       lines: JSON.stringify(offlineReceiptLines),
-      subtotal: negativeTotal,
+      // Wave-2 review fix (finding 14 / codex M-2) — `subtotal` is the
+      // negative NET, never a third alias of the gross total. The signed
+      // v4 payload already carries the correct net (`subtotal =
+      // subtotalGross − taxAmount`, SaleReceiptPayload.ts's own
+      // `subtotalNet`), so it is negated here rather than recomputed:
+      // one source, no drift. The §7.2a invariant this restores is
+      // `subtotal + tax_amount == total` at the configured scale
+      // (−10.00 + −2.00 == −12.00), which `negativeTotal` in this slot
+      // violated for every taxed refund.
+      subtotal: bcmul(payload.subtotal, '-1', scale),
       tax_amount: bcmul(payload.vat_total, '-1', scale),
       discount_amount: negativeDiscountAmount,
       total: negativeTotal,

@@ -46,6 +46,17 @@ function bindParams(params?: unknown[]): Record<string, unknown> | undefined {
   return out;
 }
 
+/**
+ * Not every production query uses Postgres-style `$n` placeholders — some
+ * (e.g. `endOfDayPreview.ts`'s receipts/payment-methods reads) use SQLite's
+ * own anonymous `?`. The Tauri plugin accepts both; better-sqlite3 needs
+ * anonymous placeholders bound POSITIONALLY (spread), never by name, so
+ * detect the style and let the caller route accordingly.
+ */
+function usesAnonymousPlaceholders(sql: string): boolean {
+  return !/\$\d/.test(sql) && sql.includes('?');
+}
+
 function isSelect(sql: string): boolean {
   return /^\s*(SELECT|PRAGMA|WITH)\b/i.test(sql);
 }
@@ -83,6 +94,13 @@ export class SqliteTestAdapter {
       return { rowsAffected: 0 };
     }
     const stmt: Statement = this.inner.prepare(sql);
+    if (usesAnonymousPlaceholders(sql) && params && params.length > 0) {
+      const anonRes = stmt.run(...(params as never[]));
+      return {
+        rowsAffected: Number(anonRes.changes),
+        lastInsertId: Number(anonRes.lastInsertRowid),
+      };
+    }
     const bound = bindParams(params);
     const res = bound ? stmt.run(bound) : stmt.run();
     return {
@@ -97,7 +115,9 @@ export class SqliteTestAdapter {
     }
     const stmt: Statement = this.inner.prepare(sql);
     const bound = bindParams(params);
-    const rows = bound ? stmt.all(bound) : stmt.all();
+    const rows = usesAnonymousPlaceholders(sql) && params && params.length > 0
+      ? stmt.all(...(params as never[]))
+      : bound ? stmt.all(bound) : stmt.all();
     // better-sqlite3 rows are plain objects already — normalize defensively
     // so downstream test equality helpers behave consistently with the prior
     // `node:sqlite` adapter shape.

@@ -192,6 +192,12 @@ export async function buildEndOfDayPreview(
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
+  // Wave-2 fix-wave, adjacent to finding 4 (same defect class as finding 1's
+  // X-report `sales_count: receipts.length`): `receipts` now contains v4
+  // refund rows (§7.2), so a bare `receipts.length` reported every refund as
+  // a SALE while the three sale aggregates right below deliberately skipped
+  // it — an internally inconsistent preview.
+  let salesCount = 0;
   let cashTenderedSum = '0';
   let cashChangeDueSum = '0';
   let toleranceTotal = '0';
@@ -221,6 +227,7 @@ export async function buildEndOfDayPreview(
     // three totals (never added, never subtracted — refunds are their
     // own tracked figure below, never folded into gross/net sales).
     if (!isRefund) {
+      salesCount += 1;
       grossSales = bcadd(grossSales, receipt.total);
       netSales = bcadd(netSales, receipt.subtotal);
       taxAmount = bcadd(taxAmount, receipt.tax_amount);
@@ -253,20 +260,44 @@ export async function buildEndOfDayPreview(
       roundingCount += 1;
     }
 
-    // VAT breakdown from receipt lines — deliberately UNBRANCHED (spec
-    // §7.3a errata, "additive-over-negative-lines"): a refund row's
-    // `lines` JSON is negative-signed (§7.2), so plain addition already
-    // produces the identical net result zReportService.ts's own
-    // "bcabs-then-subtract" branch computes explicitly. Both are correct;
-    // neither needs to change to match the other.
+    // VAT breakdown from receipt lines.
+    //
+    // Wave-2 review fix (finding 4 / codex C-3) — this loop USED to be
+    // deliberately unbranched, on the stated assumption that a refund
+    // row's negative-signed `lines` JSON made plain addition equivalent
+    // to zReportService's explicit "bcabs-then-subtract" branch. The
+    // equivalence held for the SIGN but not for the DECOMPOSITION: on a
+    // refund row (as on a sale row) `line_total` is the GROSS/TTC line
+    // amount with `tax_amount` EXTRACTED out of it, not the net. Adding
+    // the VAT on top of it therefore booked net −12.00 / gross −14.00
+    // for a 12.00-gross, 2.00-VAT refund instead of net −10.00 / gross
+    // −12.00 — the same double-count the signed Z carried, additively.
+    // The refund branch now derives net the only way it can be derived:
+    // gross − vat, at the currency scale. The SALE branch is left
+    // byte-identical (its own gross-as-net treatment predates this lane
+    // and is not in this wave's scope — see the fix-wave report).
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+
+      if (isRefund) {
+        // Already negative-signed on the row (§7.2), so these stay
+        // additive — only the net DECOMPOSITION changes.
+        const lineGross = line.line_total ?? '0';
+        const lineVat = line.tax_amount ?? '0';
+        const lineNet = bcsub(lineGross, lineVat, scale);
+        existing.net = bcadd(existing.net, lineNet, scale);
+        existing.vat = bcadd(existing.vat, lineVat, scale);
+        existing.gross = bcadd(existing.gross, lineGross, scale);
+        vatByRate.set(rate, existing);
+        continue;
+      }
+
       const lineVat = line.tax_amount ?? '0';
       const lineNet = line.line_total ?? '0';
       const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
       existing.net = bcadd(existing.net, lineNet);
       existing.vat = bcadd(existing.vat, lineVat);
       existing.gross = bcadd(existing.gross, lineGross);
@@ -440,7 +471,7 @@ export async function buildEndOfDayPreview(
   }));
 
   return {
-    sales_count: receipts.length,
+    sales_count: salesCount,
     gross_sales: bcformat(grossSales, scale),
     net_sales: bcformat(netSales, scale),
     tax_amount: bcformat(taxAmount, scale),

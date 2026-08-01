@@ -845,23 +845,33 @@ function aggregateReportData(
       //    the existing server-pinned semantics: refunds_amount is
       //    tracked as its own field, never folded into gross/net sales). --
       refundsCount++;
-      refundsAmount = bcadd(refundsAmount, bcabs(receipt.total));
+      refundsAmount = bcadd(refundsAmount, bcabs(receipt.total, decimals), decimals);
 
       // VAT breakdown — SUBTRACTED (a refund reverses VAT collected).
-      // Each line's net/vat/gross is recovered via bcabs() from the
-      // negative-stored `lines` JSON (§7.2's sign convention) before
-      // being subtracted from the running per-rate totals.
+      //
+      // Wave-2 review fix (finding 4 / codex C-3): `lines[].line_total` is
+      // the GROSS/TTC line amount, NOT the net. The POS cart's
+      // `unit_price` is tax-INCLUSIVE (precision contract) and
+      // `cartStore.recalcLineTotal()` derives `line_total = unit_price ×
+      // qty − discount`, then EXTRACTS `tax_amount` out of that gross
+      // figure (`computeTaxAmount`). `refundReceiptService.ts` copies
+      // those two cart values verbatim onto the refund row. Treating
+      // `line_total` as the net and ADDING the VAT on top therefore
+      // reversed net 12.00 / gross 14.00 for a 12.00-gross, 2.00-VAT
+      // refund instead of net 10.00 / gross 12.00 — a double-count on
+      // the SIGNED Z. Net is now derived the only way it can be:
+      // gross − vat, at the currency scale.
       const refundLines = JSON.parse(receipt.lines) as ReceiptLineJson[];
       for (const line of refundLines) {
         const rate = line.tax_rate ?? '0';
-        const lineVat = bcabs(line.tax_amount ?? '0');
-        const lineNet = bcabs(line.line_total ?? '0');
-        const lineGross = bcadd(lineNet, lineVat);
+        const lineVat = bcabs(line.tax_amount ?? '0', decimals);
+        const lineGross = bcabs(line.line_total ?? '0', decimals);
+        const lineNet = bcsub(lineGross, lineVat, decimals);
 
         const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
-        existing.net = bcsub(existing.net, lineNet);
-        existing.vat = bcsub(existing.vat, lineVat);
-        existing.gross = bcsub(existing.gross, lineGross);
+        existing.net = bcsub(existing.net, lineNet, decimals);
+        existing.vat = bcsub(existing.vat, lineVat, decimals);
+        existing.gross = bcsub(existing.gross, lineGross, decimals);
         vatByRate.set(rate, existing);
       }
 
@@ -878,7 +888,7 @@ function aggregateReportData(
       }
       for (const p of refundPayments) {
         const ex = paymentByType.get(p.method_code) ?? { amount: '0', count: 0 };
-        ex.amount = bcsub(ex.amount, p.amount);
+        ex.amount = bcsub(ex.amount, p.amount, decimals);
         ex.count += 1;
         paymentByType.set(p.method_code, ex);
       }
