@@ -110,26 +110,38 @@ export async function recoverStrandedSyncingFiscalEvents(
   return result.rowsAffected;
 }
 
+/**
+ * @returns the number of rows the flip actually touched.
+ *
+ * Round-2 fix (Codex re-review of finding 12): this returned `void`, so
+ * the post-ACK atomic transaction could assert exactly-one-row on the
+ * receipt and intent flips but NOT on the fiscal-event flip — contrary to
+ * the finding's exactly-one-row-on-EACH-flip requirement. `fiscal_events.id`
+ * is the primary key, so the only possible counts are 0 and 1; a 0 means
+ * the event the ACK refers to is not in the local mirror at all, which
+ * must abort the transaction rather than silently leave it pending.
+ */
 export async function updateFiscalEventSyncStatus(
   db: Database,
   id: string,
   status: FiscalEventSyncStatus,
   syncError?: string,
-): Promise<void> {
+): Promise<number> {
   if (status === 'synced') {
-    await execute(
+    const result = await execute(
       db,
       "UPDATE fiscal_events SET sync_status = $1, synced_at = datetime('now'), sync_error = NULL WHERE id = $2",
       [status, id],
     );
-    return;
+    return result.rowsAffected;
   }
 
-  await execute(
+  const result = await execute(
     db,
     'UPDATE fiscal_events SET sync_status = $1, sync_error = $2 WHERE id = $3',
     [status, syncError ?? null, id],
   );
+  return result.rowsAffected;
 }
 
 /**
@@ -170,6 +182,23 @@ export interface OriginalFiscalEventLocalView {
    * the field.
    */
   readonly businessDate: string;
+  /**
+   * Round-2 fix (finding 19 residual + fiscal N-1) — the ORIGINAL's own
+   * SIGNED, canonical-validated `payload.total` and
+   * `payload.cash_rounding_adjustment`.
+   *
+   * `total` is the ROUNDED total (`receiptService.ts` writes
+   * `policySnapshot.roundedTotal`), and §-v3's own aggregate invariant is
+   * `rounded − adjustment == exact`. The refund's value ceiling must be
+   * the EXACT total, because a refund pays out `Σ|line_total|` — the exact
+   * gross line amounts. Taking the ceiling from the ROUNDED figure refused
+   * every legitimate first full refund of a rounded-DOWN receipt.
+   *
+   * Both come from the byte-bound, validator-checked signed payload, never
+   * from the mutable `offline_receipts` scalars.
+   */
+  readonly total: string;
+  readonly cashRoundingAdjustment: string;
   readonly lineItems: readonly LineItemInput[];
   readonly payments: readonly PaymentInput[];
   /** Read from the original's OWN signed `payload.training_flag` — never
@@ -355,10 +384,17 @@ export async function resolveOriginalFiscalEventLocally(
   const payments = payload['payments'] as PaymentInput[];
   const trainingFlag = payload['training_flag'] as boolean;
   const transactionDiscountAmount = payload['transaction_discount_amount'] as string;
+  // Both are money strings guaranteed by the canonical validator's own
+  // `assertMoneyString` checks (the exact key set was asserted above), so
+  // the casts are runtime-backed like the four fields beside them.
+  const total = payload['total'] as string;
+  const cashRoundingAdjustment = payload['cash_rounding_adjustment'] as string;
 
   return {
     fiscalEventId: fiscalEventRow.id,
     businessDate,
+    total,
+    cashRoundingAdjustment,
     lineItems,
     payments,
     trainingFlag,

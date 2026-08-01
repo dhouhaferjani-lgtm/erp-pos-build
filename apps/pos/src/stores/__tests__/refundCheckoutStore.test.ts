@@ -783,6 +783,11 @@ describe('refundCheckoutStore — v4 flow', () => {
       // date, deliberately DIFFERENT from the refund day so a test can
       // tell the two apart.
       businessDate: V4_ORIGINAL_BUSINESS_DATE,
+      // Round-2 (finding 19 residual / fiscal N-1) — the value ceiling now
+      // comes from the SIGNED original: the ROUNDED total plus the signed
+      // adjustment, from which the EXACT total is derived.
+      total: '20.00',
+      cashRoundingAdjustment: '0.00',
       lineItems: [{ product_id: 'prod-1', quantity: '2.000', line_total: '20.000' }],
       payments: [{ method_code: 'CASH', amount: '20.000' }],
       trainingFlag: false,
@@ -1365,7 +1370,11 @@ describe('refundCheckoutStore — v4 flow', () => {
 
         const state = useRefundCheckoutStore.getState();
         expect(state.step).toBe('idle');
-        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        // Round-2 item E3 / minor N-9: still fail-closed, but a bound that
+        // could not be COMPUTED must not claim the receipt "has already
+        // been refunded for its full value" — a fact the device does not
+        // know. Only a genuine over-value gets that copy.
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
         expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
         consoleError.mockRestore();
       });
@@ -1376,8 +1385,50 @@ describe('refundCheckoutStore — v4 flow', () => {
 
         await useRefundCheckoutStore.getState().begin(v4BeginInput());
 
-        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.legacyRefundValueExceeded');
+        expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
         consoleError.mockRestore();
+      });
+
+      /**
+       * Round-2 fiscal N-1 — the ceiling is the EXACT total, not the
+       * ROUNDED one. `offline_receipts.total` / the signed `total` carry
+       * `policySnapshot.roundedTotal`, and the v3 aggregate invariant is
+       * `rounded − adjustment == exact`. A refund pays out
+       * `Σ|line_total|` — the EXACT gross line amounts — so comparing
+       * against the ROUNDED figure refused every legitimate FIRST full
+       * refund of a rounded-DOWN receipt.
+       */
+      it('fiscal N-1 — a FIRST full refund of a cash-rounded-DOWN original is ALLOWED', async () => {
+        // Exact 12.34 rounded DOWN to 12.30 ⇒ adjustment = rounded − exact
+        // = −0.04. The return line carries the EXACT 12.34.
+        vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+          v4OriginalView({ total: '12.30', cashRoundingAdjustment: '-0.04' }) as never,
+        );
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.00');
+        const rounded = v4ReturnItem({ line_total: '-12.34', tax_amount: '-0.00' });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput([rounded]));
+
+        // Pre-fix this refused with `legacyRefundValueExceeded`, naming a
+        // cause that does not exist, and no operator override existed.
+        expect(useRefundCheckoutStore.getState().error).toBeNull();
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('fiscal N-1 — the bound still refuses a genuine over-value against the EXACT total', async () => {
+        vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue(
+          v4OriginalView({ total: '12.30', cashRoundingAdjustment: '-0.04' }) as never,
+        );
+        // 12.34 exact ceiling; 0.01 already refunded + 12.34 now = 12.35.
+        vi.mocked(sumLegacyRefundedValueForOriginalReceipt).mockResolvedValue('0.01');
+        const rounded = v4ReturnItem({ line_total: '-12.34', tax_amount: '-0.00' });
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput([rounded]));
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.legacyRefundValueExceeded');
       });
     });
 

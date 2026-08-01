@@ -368,7 +368,16 @@ async function applyRefundAckLocalFlips(
   await withWriteTransaction('fiscal', async (tx) => {
     const txDb = tx as unknown as Database;
 
-    await updateFiscalEventSyncStatus(txDb, fiscalEventId, 'synced');
+    // Round-2 (finding 12 residual): EACH flip asserts exactly one row —
+    // the fiscal-event flip included. `fiscal_events.id` is the primary
+    // key, so a 0 means the ACK refers to an event this device does not
+    // have, which must abort the transaction rather than half-apply.
+    const eventRows = await updateFiscalEventSyncStatus(txDb, fiscalEventId, 'synced');
+    if (eventRows !== 1) {
+      throw new Error(
+        `Refund ACK: expected exactly 1 fiscal_events row with id = ${fiscalEventId}, updated ${String(eventRows)}. Refusing to half-apply the post-ACK flips.`,
+      );
+    }
 
     const receiptRows = await updateReceiptStatusByIdempotencyKey(txDb, refundIntentId, 'synced');
     if (receiptRows !== 1) {

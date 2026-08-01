@@ -78,6 +78,8 @@ function baseInput(): CreateRefundReceiptInput {
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: '99999999-9999-4999-8999-999999999999',
     businessDate: '2026-05-19',
+    total: '12.00',
+    cashRoundingAdjustment: '0.00',
     lineItems: [],
     payments: CASH_ORIGINAL_PAYMENTS,
     trainingFlag: false,

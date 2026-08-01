@@ -178,6 +178,8 @@ function refundInput(): CreateRefundReceiptInput {
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: ORIGINAL_FISCAL_EVENT_ID,
     businessDate: '2026-07-31',
+    total: '12.00',
+    cashRoundingAdjustment: '0.00',
     lineItems: [],
     payments: [{ method_code: 'CASH', amount: GROSS }] as unknown as OriginalFiscalEventLocalView['payments'],
     trainingFlag: false,

@@ -122,7 +122,7 @@ import {
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcabs, bcadd, bccomp, bcformat } from '@/lib/decimal';
+import { bcabs, bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 
 /**
  * The refund path's ONE quantity scale — the canonical payload's own
@@ -968,20 +968,38 @@ async function beginV4(
   //    Fails closed exactly like finding 18: an unreadable legacy row
   //    UNDERCOUNTS what has already been refunded, which makes the bound
   //    more permissive precisely when its data is untrustworthy.
-  const legacyBound = await evaluateLegacyRefundValueBound(
-    input.db,
-    originalLocalReceiptId,
-    lineSnapshot,
-  );
-  if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
-  if (!legacyBound.allowed) {
+  try {
+    await evaluateLegacyRefundValueBound(
+      input.db,
+      originalLocalReceiptId,
+      original,
+      currencyForBound(),
+      lineSnapshot,
+    );
+  } catch (boundError) {
+    if (get().epoch !== epoch) return;
+    // Round-2 item E3 / minor N-9: only a genuine over-value gets the
+    // "already refunded for its full value" copy. A bound that could not
+    // be COMPUTED (missing local row, unreadable legacy record) is still
+    // fail-closed, but must not assert a fact the device does not know.
+    const exceeded = boundError instanceof RefundValueBoundExceededError;
+    if (!exceeded) {
+      console.error(
+        '[refundCheckout] legacy refund-value bound could not be computed — refusing (fail closed)',
+        boundError,
+      );
+    }
     set({
       step: 'idle',
-      error: { key: 'refundFlow.legacyRefundValueExceeded', serverMessage: null },
+      error: {
+        key: exceeded ? 'refundFlow.legacyRefundValueExceeded' : 'refundFlow.checkout.errorInternal',
+        serverMessage: null,
+      },
       refundItemsSnapshot: null,
     });
     return;
   }
+  if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
 
   // ── Wave-2 fix-wave finding 10 (fiscal I-1) — a PARTIAL refund of a
   //    per-line-discounted line is refused HERE, before the manager PIN.
@@ -1007,7 +1025,10 @@ async function beginV4(
   //    original discount and the invariant holds.
   for (const line of lineSnapshot) {
     const discountAmount = line.cartItem.discount_amount ?? '0';
-    if (bccomp(bcabs(discountAmount, QUANTITY_SCALE), '0') === 0) continue;
+    // Round-2 minor N-2: `discount_amount` is MONEY — compare it at the
+    // currency scale, not at the quantity scale (rule 19 hygiene). The
+    // zero-test was harmless either way; the precedent was not.
+    if (bccomp(bcabs(discountAmount, getCurrencyDecimals(currencyForBound())), '0') === 0) continue;
 
     const originalLine = original.lineItems[line.originalLineIndex];
     const originalQuantity = originalLine
@@ -1067,37 +1088,99 @@ async function beginV4(
 async function evaluateLegacyRefundValueBound(
   db: Database,
   originalLocalReceiptId: string,
+  original: OriginalFiscalEventLocalView,
+  currency: string,
   lines: readonly RefundLineInput[],
-): Promise<{ allowed: boolean }> {
-  try {
-    const originalReceipt = await getOfflineReceiptById(db, originalLocalReceiptId);
-    if (originalReceipt === null) return { allowed: false };
+): Promise<void> {
+  const scale = getCurrencyDecimals(currency);
 
-    const scale = getCurrencyDecimals(originalReceipt.currency);
-    const originalTotal = bcabs(originalReceipt.total, scale);
+  // ── Round-2 (finding 19 residual) — the ceiling comes from the SIGNED,
+  //    byte-bound, canonical-validated original (the finding-2 path), not
+  //    from the mutable `offline_receipts.total` scalar. The mirror is a
+  //    convenience row; the chain is the authority, and a value bound that
+  //    trusts a mutable scalar is not a bound.
+  //
+  // ── Round-2 (fiscal N-1) — and it is the EXACT total, not the ROUNDED
+  //    one. `receiptService.ts` writes `policySnapshot.roundedTotal` into
+  //    the signed `total`, with the signed `cash_rounding_adjustment`
+  //    alongside; the v3 aggregate invariant is
+  //    `rounded − adjustment == exact`. A refund pays out `Σ|line_total|`
+  //    — the EXACT gross line amounts — so comparing that against the
+  //    ROUNDED total refused every legitimate FIRST full refund of a
+  //    rounded-DOWN receipt (exact 12.34 → rounded 12.30 ⇒ 12.34 > 12.30),
+  //    with copy naming a cause that does not exist.
+  const originalExactTotal = bcabs(
+    bcsub(original.total, original.cashRoundingAdjustment, scale),
+    scale,
+  );
 
-    const legacyRefunded = await sumLegacyRefundedValueForOriginalReceipt(
-      db,
-      originalReceipt.receipt_number,
-      scale,
-    );
-
-    // This attempt's own value: the same |line_total| sum
-    // `createRefundReceipt()` uses for the cash payout leg.
-    const thisRefundTotal = lines.reduce(
-      (sum, line) => bcadd(sum, bcabs(line.cartItem.line_total, scale), scale),
-      bcformat('0', scale),
-    );
-
-    const projected = bcadd(legacyRefunded, thisRefundTotal, scale);
-    return { allowed: bccomp(projected, originalTotal) <= 0 };
-  } catch (boundError) {
-    console.error(
-      '[refundCheckout] legacy refund-value bound could not be computed — refusing (fail closed)',
-      boundError,
-    );
-    return { allowed: false };
+  // The receipt NUMBER is how `local_refund_records` keys the original —
+  // it is not in the signed payload, so it comes from the local mirror,
+  // used ONLY as a lookup key (never as a value).
+  const originalReceipt = await getOfflineReceiptById(db, originalLocalReceiptId);
+  if (originalReceipt === null) {
+    throw new RefundValueBoundUnreadableError(originalLocalReceiptId);
   }
+
+  const legacyRefunded = await sumLegacyRefundedValueForOriginalReceipt(
+    db,
+    originalReceipt.receipt_number,
+    scale,
+  );
+
+  // This attempt's own value: the same |line_total| sum
+  // `createRefundReceipt()` uses for the cash payout leg.
+  const thisRefundTotal = lines.reduce(
+    (sum, line) => bcadd(sum, bcabs(line.cartItem.line_total, scale), scale),
+    bcformat('0', scale),
+  );
+
+  const projected = bcadd(legacyRefunded, thisRefundTotal, scale);
+  if (bccomp(projected, originalExactTotal) > 0) {
+    throw new RefundValueBoundExceededError(
+      originalReceipt.receipt_number,
+      legacyRefunded,
+      thisRefundTotal,
+      originalExactTotal,
+    );
+  }
+}
+
+/**
+ * Round-2 (finding 19 residual, item E3) — the VALUE bound was genuinely
+ * exceeded. Typed and distinct from the data-unreadable failures below, so
+ * the operator copy can assert only what the device actually knows.
+ */
+export class RefundValueBoundExceededError extends Error {
+  constructor(
+    public readonly originalReceiptNumber: string,
+    public readonly alreadyRefunded: string,
+    public readonly thisAttempt: string,
+    public readonly originalExactTotal: string,
+  ) {
+    super(
+      `Refund refused: ${alreadyRefunded} already refunded on this device for original ${originalReceiptNumber} plus ${thisAttempt} now exceeds the original's exact total ${originalExactTotal} (finding 19 / §M1 receipt-level value bound).`,
+    );
+    this.name = 'RefundValueBoundExceededError';
+  }
+}
+
+/** Round-2 — the bound could not be COMPUTED (the original's local row is
+ *  missing). Fail-closed, but a different fact from "already refunded". */
+export class RefundValueBoundUnreadableError extends Error {
+  constructor(public readonly originalLocalReceiptId: string) {
+    super(
+      `Refund refused: the original receipt ${originalLocalReceiptId} has no local row, so the receipt-level value bound cannot be computed.`,
+    );
+    this.name = 'RefundValueBoundUnreadableError';
+  }
+}
+
+/** The active company's currency — the scale every money comparison in the
+ *  v4 bound runs at. */
+function currencyForBound(): string {
+  const authState = useAuthStore.getState();
+  return authState.companies.find((c) => c.id === authState.companyId)?.currency ?? 'EUR';
 }
 
 /** The company the v4 flow's local reads/authoring run against. */

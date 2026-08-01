@@ -59,7 +59,9 @@ vi.mock('@/lib/db/repositories/fiscalEventRepository', async () => {
     ...actual,
     getPendingFiscalEventsForSync: vi.fn(),
     recoverStrandedSyncingFiscalEvents: vi.fn().mockResolvedValue(0),
-    updateFiscalEventSyncStatus: vi.fn().mockResolvedValue(undefined),
+    // Round-2 (finding 12 residual): the flip now reports its affected-row
+    // count so the ACK transaction can assert exactly one on EACH write.
+    updateFiscalEventSyncStatus: vi.fn().mockResolvedValue(1),
   };
 });
 
@@ -103,6 +105,7 @@ import {
 } from '@/lib/db/repositories/refundIntentRepository';
 import {
   getPendingFiscalEventsForSync,
+  updateFiscalEventSyncStatus,
   type LocalFiscalEvent,
 } from '@/lib/db/repositories/fiscalEventRepository';
 
@@ -353,5 +356,43 @@ describe('refund ACK local flips — atomicity and affected-row assertions (find
     const result = await pushOfflineReceipts(db);
 
     expect(result.failed).toBe(1);
+  });
+});
+
+
+/**
+ * Round-2 fix (Codex re-review of finding 12) — the fiscal-event flip is
+ * held to the SAME exactly-one-row rule as the receipt and intent flips.
+ */
+describe('refund ACK — the fiscal-event flip also asserts exactly one row (round 2)', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(updateFiscalEventSyncStatus).mockResolvedValue(1);
+    vi.mocked(updateReceiptStatusByIdempotencyKey).mockResolvedValue(1);
+    vi.mocked(getRefundIntentById).mockResolvedValue({ id: 'refund-intent-1', state: 'synced' } as never);
+  });
+
+  it('fails the push when the fiscal-event flip matches ZERO rows (never half-applies)', async () => {
+    const event = makeFiscalEvent({ id: 'fe-refund-20', source_event_id: 'refund-intent-20' });
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([event]);
+    vi.mocked(apiPostRaw).mockResolvedValue(successResponse('fe-refund-20'));
+    // The ACK refers to an event this device does not have. Note the
+    // FIRST call is the pre-request 'syncing' flip, so target the
+    // post-ACK 'synced' one specifically.
+    vi.mocked(updateFiscalEventSyncStatus).mockImplementation(
+      (async (_db: unknown, _id: string, status: string) => (status === 'synced' ? 0 : 1)) as never,
+    );
+
+    const result = await pushOfflineReceipts(db);
+
+    expect(result.pushed).toBe(0);
+    expect(result.failed).toBe(1);
+    // The sibling flips are never attempted — the transaction aborts on
+    // the first row-count assertion.
+    expect(updateReceiptStatusByIdempotencyKey).not.toHaveBeenCalled();
+    expect(markSynced).not.toHaveBeenCalled();
   });
 });

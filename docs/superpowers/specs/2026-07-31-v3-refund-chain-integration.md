@@ -409,8 +409,22 @@ uniqueness, server cap) are understood as non-overlapping, not redundant.
 > skipping *undercounts* what has already been refunded, which makes the cap more permissive in
 > exactly the case where its data is untrustworthy, i.e. the direction that loses money. Refund
 > quantities in the snapshot are canonical positive decimal **strings** (§3.2's `bcabs`
-> normalization, applied once at the refund boundary); a number-typed quantity is treated as
-> non-canonical and refused, never coerced.
+> normalization, applied once at the refund boundary, at the canonical payload's own FROZEN
+> quantity scale so the string the cap sums is byte-identical to the string the chain signs); a
+> number-typed quantity is treated as non-canonical and refused, never coerced.
+>
+> **Second device-side bound (finding 19, same erratum).** Because the LEGACY `/return` path stays
+> live on non-acknowledged terminals by ruled design (§9.2), refunds settled through it leave no
+> `refund_intents` row and are invisible to the per-line backstop above. A second, RECEIPT-LEVEL,
+> VALUE-based bound therefore also runs at `begin()`: the magnitude of every `local_refund_records`
+> row for the ORIGINAL's receipt number, plus this attempt's own `Σ|line_total|`, must not exceed
+> the original's **exact** total — taken from the SIGNED, byte-bound payload as
+> `total − cash_rounding_adjustment` (the signed `total` is the ROUNDED figure, and a refund pays
+> out the exact gross line amounts, so a rounded-DOWN original must not have its first full refund
+> refused). It has its own typed refusal and i18n key, is coarser than the per-line cap by design
+> (`local_refund_records` carries no per-line quantities and keys the original by receipt number),
+> sees only refunds settled on THIS device, and — like the backstop above — fails closed on
+> unreadable data. §12's server-side cap remains the sole cross-terminal authority for both.
 
 ### 4.5 Payout/print reconciliation — payout-confirmed-but-unprinted recovery, dispute money
 effect (fold item 7)

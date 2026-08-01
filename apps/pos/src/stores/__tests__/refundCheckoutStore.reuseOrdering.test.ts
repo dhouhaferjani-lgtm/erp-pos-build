@@ -140,6 +140,8 @@ describe('beginV4 — reuse is resolved BEFORE the cumulative cap (finding 11 re
     vi.mocked(resolveOriginalFiscalEventLocally).mockResolvedValue({
       fiscalEventId: 'fe-original-1',
       businessDate: '2026-07-30',
+      total: '20.000',
+      cashRoundingAdjustment: '0.000',
       lineItems: [{ product_id: 'prod-1', quantity: '2.000' }] as never,
       payments: [{ method_code: 'CASH', amount: '20.000' }] as never,
       trainingFlag: false,
