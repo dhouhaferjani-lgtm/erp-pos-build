@@ -34,6 +34,7 @@ import {
   upsertTerminalState,
   setShiftNumberSeed,
   setV4RefundAuthoringEnabled,
+  setV4RefundAuthoringAckFailure,
   upsertZChainState,
   getZChainState,
   type TerminalHashState,
@@ -1335,20 +1336,55 @@ export async function pullOperatorPins(db: Database, terminalId: string): Promis
  * succeeded") per §9.3's contract, since a pull can succeed while the flag
  * still lands via the `FiscalRegressionError` fallback branch.
  *
- * Best-effort and non-blocking: a failure here (including a 404 from a
- * server that has not yet shipped the acknowledgement endpoint) must never
- * fail the surrounding terminal-state pull — the device will simply
- * re-acknowledge on its next successful pull while `enabled` stays true.
+ * Non-blocking (a failure must never fail the surrounding terminal-state
+ * pull), but NOT silent.
+ *
+ * **Wave-2 fix-wave finding 9 (fiscal C-6).** This used to downgrade every
+ * failure — including the 404 from a server that had no such route at all
+ * — to a single `console.warn`. Because the endpoint genuinely did not
+ * exist, the protocol was inert and completely unobservable: the guard
+ * never activated, the legacy `/return` path stayed open on v4 terminals
+ * forever, and nothing anywhere surfaced it. A protocol whose only failure
+ * signal is a console line the operator never reads is not a protocol.
+ *
+ * Now: bounded retry with backoff inside the pull, a persisted local
+ * failure marker so the state is inspectable after the fact, and a
+ * `logSyncOperation` row so the device's own sync log carries the failure
+ * the same way every other sync leg does.
  */
-async function sendV4RefundAuthoringAcknowledgement(terminalId: string): Promise<void> {
-  try {
-    await apiPost(`/pos/terminals/${terminalId}/acknowledge-v4-refund-authoring`, {});
-  } catch (error) {
-    console.warn('[fiscal] v4 refund-authoring acknowledgement failed (non-fatal, will retry next pull)', {
-      terminal_id: terminalId,
-      error: coerceSyncError(error),
-    });
+const V4_ACK_MAX_ATTEMPTS = 3;
+const V4_ACK_BACKOFF_MS = 400;
+
+async function sendV4RefundAuthoringAcknowledgement(
+  db: Database,
+  terminalId: string,
+): Promise<void> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= V4_ACK_MAX_ATTEMPTS; attempt++) {
+    try {
+      await apiPost(`/pos/terminals/${terminalId}/acknowledge-v4-refund-authoring`, {});
+      await setV4RefundAuthoringAckFailure(db, terminalId, null);
+      await logSyncOperation(db, 'push', 'terminal_state', terminalId, 'success', 'v4_ack');
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < V4_ACK_MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, V4_ACK_BACKOFF_MS * attempt));
+      }
+    }
   }
+
+  const message = coerceSyncError(lastError);
+  console.error(
+    '[fiscal] v4 refund-authoring acknowledgement FAILED after retries — LegacyCorrectionGuard cannot activate for this terminal, so the legacy /return path stays open server-side (§9.3)',
+    { terminal_id: terminalId, attempts: V4_ACK_MAX_ATTEMPTS, error: message },
+  );
+  // Persisted so the state is inspectable long after the console line is
+  // gone, and surfaced through the device's own sync log like every other
+  // sync leg's failure.
+  await setV4RefundAuthoringAckFailure(db, terminalId, message);
+  await logSyncOperation(db, 'push', 'terminal_state', terminalId, 'error', message);
 }
 
 /**
@@ -1421,7 +1457,7 @@ export async function pullTerminalState(
       // upsert, but is a plain UPDATE of its own, not part of the guarded row.
       await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
       if (v4RefundAuthoringEnabled) {
-        await sendV4RefundAuthoringAcknowledgement(terminalId);
+        await sendV4RefundAuthoringAcknowledgement(db, terminalId);
       }
       await projectTerminalCountingState(state);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
@@ -1446,7 +1482,7 @@ export async function pullTerminalState(
         // device. Refreshed here on the fallback branch too.
         await setV4RefundAuthoringEnabled(db, terminalId, v4RefundAuthoringEnabled);
         if (v4RefundAuthoringEnabled) {
-          await sendV4RefundAuthoringAcknowledgement(terminalId);
+          await sendV4RefundAuthoringAcknowledgement(db, terminalId);
         }
         await projectTerminalCountingState(state);
         await logSyncOperation(

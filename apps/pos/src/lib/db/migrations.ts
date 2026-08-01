@@ -2113,4 +2113,32 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    /**
+     * v3-refund-chain-integration wave-2 fix wave, finding 9 (fiscal C-6)
+     * — an OBSERVABLE failure state for the §9.3 Phase-2 acknowledgement.
+     *
+     * The device posts the acknowledgement on every successful terminal-
+     * state pull while `v4_refund_authoring_enabled` is true. Stamping
+     * `pos_terminals.v4_refund_authoring_acknowledged_at` SERVER-side is
+     * the sole trigger that activates `LegacyCorrectionGuard`, i.e. that
+     * retires the legacy `/return` correction path for the terminal. When
+     * the call fails, the terminal is in the most dangerous configuration
+     * this lane knows: routing to v4 device-side while the legacy path
+     * stays open server-side. That state used to be recorded NOWHERE — the
+     * failure was a single `console.warn`. This column makes it durable and
+     * inspectable.
+     */
+    version: 66,
+    name: 'add_v4_refund_authoring_ack_error_to_terminal_state',
+    run: async (db) => {
+      try {
+        await db.execute(
+          'ALTER TABLE terminal_state ADD COLUMN v4_refund_authoring_ack_error TEXT',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    },
+  },
 ];

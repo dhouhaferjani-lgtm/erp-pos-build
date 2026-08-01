@@ -27,6 +27,7 @@ use App\Modules\POS\Presentation\Controllers\ShiftToleranceController;
 use App\Modules\POS\Presentation\Controllers\StockDistributionController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
+use App\Modules\POS\Presentation\Controllers\V4RefundAuthoringAcknowledgementController;
 use App\Modules\POS\Presentation\Controllers\VoucherSyncController;
 use App\Modules\POS\Presentation\Controllers\ZReportSyncController;
 use App\Modules\POS\Presentation\Middleware\EnsureWebPosDemoTenant;
@@ -70,6 +71,18 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
     // Fiscal-schema cutover: admin-only, gated on no-open-shift + no-unzreported + empty-queue
     Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
+    // v3-refund-chain-integration §9.3 Phase 2 — the DEVICE acknowledges the
+    // server's v4-refund-authoring offer. Stamping
+    // `v4_refund_authoring_acknowledged_at` is the SOLE trigger that
+    // activates LegacyCorrectionGuard (i.e. retires the legacy /return +
+    // /void correction path) for the terminal. Wave-2 fix-wave finding 9:
+    // this route did not exist while the device had been posting to it
+    // since wave 2 and swallowing the 404, so the guard could never fire
+    // and the legacy path stayed open on v4 terminals permanently.
+    Route::post(
+        '/pos/terminals/{id}/acknowledge-v4-refund-authoring',
+        V4RefundAuthoringAcknowledgementController::class
+    )->name('pos.terminals.acknowledge-v4-refund-authoring');
 
     // Shift Management
     // Web POS is demo-account-only (owner decision 2026-06-11): the six

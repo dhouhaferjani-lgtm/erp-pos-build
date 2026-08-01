@@ -197,6 +197,8 @@ vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
   setV4RefundAuthoringEnabled: vi.fn().mockResolvedValue(undefined),
+  setV4RefundAuthoringAckFailure: vi.fn().mockResolvedValue(undefined),
+  getV4RefundAuthoringAckState: vi.fn().mockResolvedValue({ acknowledgedAt: null, lastError: null }),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
@@ -255,6 +257,7 @@ import {
   upsertTerminalState,
   setShiftNumberSeed,
   setV4RefundAuthoringEnabled,
+  setV4RefundAuthoringAckFailure,
 } from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import { setStoredValue, StorageKeys } from '@/lib/storage';
@@ -1189,6 +1192,59 @@ describe('syncService', () => {
       await pullTerminalState(db, 'term-1');
 
       expect(apiPost).not.toHaveBeenCalled();
+    });
+
+    it('§9.3 Phase 2 / finding 9: a failing acknowledgement is RETRIED, then recorded — never swallowed', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+      vi.mocked(apiPost).mockRejectedValue(new Error('404 Not Found'));
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      // The pull itself still succeeds — the acknowledgement must never
+      // fail the surrounding terminal-state pull.
+      expect(result).toBe(true);
+      // …but it is retried with backoff rather than given up on after one
+      // attempt…
+      const ackCalls = vi
+        .mocked(apiPost)
+        .mock.calls.filter(([path]) => String(path).includes('acknowledge-v4-refund-authoring'));
+      expect(ackCalls.length).toBeGreaterThan(1);
+      // …and the failure is DURABLY recorded. Before this fix the only
+      // trace was a console.warn, so a terminal routing to v4 device-side
+      // while the legacy /return path stayed open server-side was
+      // completely unobservable.
+      expect(setV4RefundAuthoringAckFailure).toHaveBeenCalledWith(
+        db,
+        'term-1',
+        expect.any(String),
+      );
+    });
+
+    it('§9.3 Phase 2 / finding 9: a SUCCESSFUL acknowledgement clears any recorded failure', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        v4_refund_authoring_enabled: true,
+      });
+      vi.mocked(apiPost).mockResolvedValue(undefined as never);
+
+      await pullTerminalState(db, 'term-1');
+
+      expect(setV4RefundAuthoringAckFailure).toHaveBeenCalledWith(db, 'term-1', null);
     });
 
     it('§9.3 Phase 2: a failed acknowledgement (e.g. 404, server not yet shipped) does not fail the pull', async () => {
