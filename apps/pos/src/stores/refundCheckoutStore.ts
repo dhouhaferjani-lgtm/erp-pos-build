@@ -97,6 +97,7 @@ import { useRefundReconciliationStore } from '@/stores/refundReconciliationStore
 import { resolveSellerIdentity } from '@/lib/fiscal/sellerIdentity';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import {
+  countUnsyncedFiscalEvents,
   getFiscalEventById,
   resolveOriginalFiscalEventLocally,
   type OriginalFiscalEventLocalView,
@@ -119,8 +120,19 @@ import { createRefundReceipt } from '@/lib/offline/refundReceiptService';
 import {
   getOfflineReceiptById,
   getOfflineReceiptByIdempotencyKey,
+  getShiftRefundReceiptTotals,
+  type ShiftReceiptWindow,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
+import { getCompanyFraudSettings } from '@/lib/db/repositories/companyFraudSettingsCacheRepository';
+import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
+import { toSqliteUtc } from '@/lib/db/sqliteTime';
+import {
+  DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+  DEFAULT_OFFLINE_REFUND_VALUE_CEILING,
+  DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD,
+} from '@/lib/refundFlow/refundExposureDefaults';
+import { useConnectivityStore } from '@/stores/connectivityStore';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcabs, bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 
@@ -213,7 +225,29 @@ export type RefundCheckoutErrorKey =
    * `local_refund_records` for the ORIGINAL's receipt number and refuses
    * when the total refunded value would exceed the original's own total.
    */
-  | 'refundFlow.legacyRefundValueExceeded';
+  | 'refundFlow.legacyRefundValueExceeded'
+  /**
+   * Lane C M2 (wave-3 payout-cash-bound analysis §M2, owner-ruled
+   * 2026-08-01) — v4-only: this terminal has already authored the
+   * configured number of refunds inside the CURRENT shift while holding
+   * unsynced fiscal events. The §12 server cap cannot see any of them yet,
+   * so the device bounds its own aggregate exposure (H4) until the queue
+   * drains. Ceiling is the tenant setting
+   * `company_fraud_settings.offline_refund_count_ceiling`.
+   */
+  | 'refundFlow.offlineRefundCountCeilingReached'
+  /**
+   * Lane C M2 — the same bound, tripped on cumulative VALUE rather than
+   * count (`offline_refund_value_ceiling`). Whichever trips first wins.
+   */
+  | 'refundFlow.offlineRefundValueCeilingReached'
+  /**
+   * Lane C M3 (§M3, owner-ruled 2026-08-01) — v4-only: this refund's payout
+   * exceeds `online_required_refund_threshold` and the device is offline.
+   * A large payout must be authorized against a SERVER-verified manager PIN
+   * (B7's primary path), not the device-local PIN cache.
+   */
+  | 'refundFlow.largeRefundRequiresOnline';
 
 export interface RefundCheckoutError {
   key: RefundCheckoutErrorKey;
@@ -1044,6 +1078,73 @@ async function beginV4(
     }
   }
 
+  // ── Lane C M2 + M3 (wave-3 payout-cash-bound analysis §M2/§M3,
+  //    owner-ruled 2026-08-01) — the two REFUND-EXPOSURE policies.
+  //
+  //    Same refusal family and the same placement as every bound above:
+  //    pre-PIN, pre-intent, before anything is signed (§3.5 / finding-10
+  //    placement). Unlike the bounds above, these are not per-original
+  //    correctness checks — they bound the AGGREGATE cash this terminal can
+  //    pay out while the server cannot see it (H4), and the high-value tail
+  //    that most needs a server-verified manager PIN (B7).
+  //
+  //    SKIPPED when `recoveredApproval !== null`: that intent's approval and
+  //    override events are ALREADY on the immutable chain, so refusing here
+  //    would strand a signed approval pair exactly the way finding 10 was
+  //    fixed to prevent. The policy already ran on the pass that authored
+  //    them; a resume is not a new exposure decision.
+  if (recoveredApproval === null) {
+    const exposureScale = getCurrencyDecimals(currencyForBound());
+    const thisRefundTotal = sumRefundLineTotals(lineSnapshot, exposureScale);
+
+    let exposureRefusal: RefundCheckoutErrorKey | null = null;
+    try {
+      const policy = await readRefundExposurePolicy(
+        input.db,
+        companyIdForResume(),
+        exposureScale,
+      );
+
+      // M3 first — it is a pure comparison with no DB work, and an offline
+      // over-threshold refund is refused regardless of shift velocity.
+      exposureRefusal =
+        evaluateLargeRefundOnlineRequirement(policy, thisRefundTotal)?.refusal ?? null;
+
+      if (exposureRefusal === null) {
+        exposureRefusal =
+          (
+            await evaluateOfflineRefundVelocityCeiling(
+              input.db,
+              terminal.id,
+              policy,
+              thisRefundTotal,
+              exposureScale,
+            )
+          )?.refusal ?? null;
+      }
+    } catch (exposureError) {
+      // Fail closed: an unreadable policy value, an unreadable shift window
+      // or an unreadable prior refund total all UNDERCOUNT exposure. Generic
+      // copy — the device must not assert a ceiling it could not evaluate
+      // (round-2 item E3 / minor N-9).
+      console.error(
+        '[refundCheckout] refund-exposure policy could not be evaluated — refusing (fail closed)',
+        exposureError,
+      );
+      exposureRefusal = 'refundFlow.checkout.errorInternal';
+    }
+    if (get().epoch !== epoch) return; // Torn down mid-flight — stay dead.
+
+    if (exposureRefusal !== null) {
+      set({
+        step: 'idle',
+        error: { key: exposureRefusal, serverMessage: null },
+        refundItemsSnapshot: null,
+      });
+      return;
+    }
+  }
+
   const { intent } = await createOrReuseActiveRefundIntent(input.db, {
     id: crypto.randomUUID(),
     terminalId: terminal.id,
@@ -1128,12 +1229,7 @@ async function evaluateLegacyRefundValueBound(
     scale,
   );
 
-  // This attempt's own value: the same |line_total| sum
-  // `createRefundReceipt()` uses for the cash payout leg.
-  const thisRefundTotal = lines.reduce(
-    (sum, line) => bcadd(sum, bcabs(line.cartItem.line_total, scale), scale),
-    bcformat('0', scale),
-  );
+  const thisRefundTotal = sumRefundLineTotals(lines, scale);
 
   const projected = bcadd(legacyRefunded, thisRefundTotal, scale);
   if (bccomp(projected, originalExactTotal) > 0) {
@@ -1174,6 +1270,223 @@ export class RefundValueBoundUnreadableError extends Error {
     );
     this.name = 'RefundValueBoundUnreadableError';
   }
+}
+
+/**
+ * This refund attempt's own cash-out value: the same `Σ|line_total|` sum
+ * `createRefundReceipt()` pays out at the drawer. ONE derivation, shared by
+ * the legacy value bound (§M1) and both refund-exposure policies (§M2/§M3),
+ * so the three can never disagree about what "this refund is worth".
+ */
+function sumRefundLineTotals(lines: readonly RefundLineInput[], scale: number): string {
+  return lines.reduce(
+    (sum, line) => bcadd(sum, bcabs(line.cartItem.line_total, scale), scale),
+    bcformat('0', scale),
+  );
+}
+
+// ─── Lane C M2/M3 — refund-exposure policies ─────────────────────────────────
+//
+// Owner ruling 2026-08-01: both policies are TENANT SETTINGS with seeded
+// best-practice defaults, enforced DEVICE-SIDE, no admin UI this pass. They
+// arrive over the EXISTING fraud-settings channel (`company_fraud_settings`
+// → `GET /api/v1/pos/fraud-settings` → `company_fraud_settings_cache`) — the
+// same one the offline EOD cash-variance thresholds already ride.
+
+/** The three refund-exposure knobs, validated and ready to compare against. */
+interface RefundExposurePolicy {
+  /** M2 — refunds allowed per shift while the device holds unsynced events. */
+  readonly countCeiling: number;
+  /** M2 — cumulative payout allowed per shift while unsynced, at `scale`. */
+  readonly valueCeiling: string;
+  /** M3 — the largest single refund authorable while offline, at `scale`. */
+  readonly onlineRequiredThreshold: string;
+  /**
+   * True when the values came from the device fallback constants because the
+   * company has NO cached fraud-settings row at all (never-synced terminal,
+   * or a tenant whose refund-exposure migration has not run). Diagnostic
+   * only — the policy is enforced identically either way.
+   */
+  readonly fromFallback: boolean;
+}
+
+/** The policy row exists but carries a value the device cannot trust. Fail closed. */
+export class RefundExposurePolicyUnreadableError extends Error {
+  constructor(public readonly field: string, public readonly rawValue: unknown) {
+    super(
+      `Refund refused: the refund-exposure setting ${field} is unreadable (${String(rawValue)}), so the M2/M3 bounds cannot be evaluated.`,
+    );
+    this.name = 'RefundExposurePolicyUnreadableError';
+  }
+}
+
+/** Canonical non-negative decimal, no exponent, no sign, no whitespace. */
+const NON_NEGATIVE_DECIMAL = /^\d+(\.\d+)?$/;
+
+function readCeilingAmount(field: string, raw: unknown, scale: number): string {
+  if (typeof raw !== 'string' || !NON_NEGATIVE_DECIMAL.test(raw.trim())) {
+    throw new RefundExposurePolicyUnreadableError(field, raw);
+  }
+  // `bcformat` rounds half-up at `scale`; a ceiling stored at the server's
+  // scale 4 therefore lands on the company's own currency scale. Never
+  // `parseFloat` — rule 19.
+  return bcformat(raw.trim(), scale);
+}
+
+function readCeilingCount(field: string, raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+    throw new RefundExposurePolicyUnreadableError(field, raw);
+  }
+  return raw;
+}
+
+/**
+ * Resolve the M2/M3 policy for the active company.
+ *
+ * ## Precedence — ruled, and deliberately NOT uniformly fail-closed
+ *
+ *   1. cached tenant setting (a `company_fraud_settings_cache` row exists)
+ *   2. device fallback constant (`refundExposureDefaults.ts`), used ONLY when
+ *      the company has no cached row at all
+ *
+ * (2) is the brief's stated exception: a not-yet-migrated tenant, or a
+ * terminal that has never completed a fraud-settings refresh, must behave as
+ * a sane default rather than hard-refusing every refund — otherwise the
+ * rollout of this very control would take refunds offline fleet-wide. The
+ * fallback constants are byte-identical to the seeded server defaults, so
+ * "never synced" and "freshly seeded" are the same policy.
+ *
+ * Everything else still fails closed: a row that EXISTS but carries an
+ * unreadable value, or a read that THROWS, refuses the refund. The
+ * distinction is between "the device has no opinion yet" (default) and "the
+ * device holds data it cannot trust" (refuse) — the same line finding 18 and
+ * round-2 item E3 drew for the quantity and legacy-value bounds.
+ */
+async function readRefundExposurePolicy(
+  db: Database,
+  companyId: string,
+  scale: number,
+): Promise<RefundExposurePolicy> {
+  const row = await getCompanyFraudSettings(db, companyId);
+
+  if (row === null) {
+    return {
+      countCeiling: DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
+      valueCeiling: bcformat(DEFAULT_OFFLINE_REFUND_VALUE_CEILING, scale),
+      onlineRequiredThreshold: bcformat(DEFAULT_ONLINE_REQUIRED_REFUND_THRESHOLD, scale),
+      fromFallback: true,
+    };
+  }
+
+  return {
+    countCeiling: readCeilingCount(
+      'offline_refund_count_ceiling',
+      row.offline_refund_count_ceiling,
+    ),
+    valueCeiling: readCeilingAmount(
+      'offline_refund_value_ceiling',
+      row.offline_refund_value_ceiling,
+      scale,
+    ),
+    onlineRequiredThreshold: readCeilingAmount(
+      'online_required_refund_threshold',
+      row.online_required_refund_threshold,
+      scale,
+    ),
+    fromFallback: false,
+  };
+}
+
+/**
+ * §M2 — the OFFLINE REFUND VELOCITY CEILING.
+ *
+ * Refuses when this refund would push the CURRENT SHIFT's already-authored
+ * refund count or cumulative payout past the tenant's ceiling, AND the device
+ * is carrying unsynced fiscal events.
+ *
+ * The unsynced-events precondition is what makes this proportionate: §12's
+ * server-side `FOR UPDATE` cap is the sole cross-terminal authority, and it
+ * is blind exactly while the device's queue is non-empty. Once the queue
+ * drains the server is back in the loop and this ceiling stands down — a
+ * legitimately busy refund day on a healthy network is never blocked.
+ *
+ * Both limbs are expressed as "would this refund push the shift PAST the
+ * ceiling", i.e. `already + this > ceiling`. For the count that is exactly
+ * the brief's `alreadyCount >= ceiling`; for the value it is deliberately
+ * STRICTER than the brief's `alreadyValue >= ceiling`, which would have let
+ * one final unbounded refund through at the boundary — the precise tail this
+ * control exists to bound.
+ *
+ * Fails closed on every unknown EXCEPT the policy fallback above: no open
+ * shift, an unreadable shift window, or an unreadable receipt total all
+ * refuse, because each of them UNDERCOUNTS what the shift has already paid
+ * out and so makes the ceiling more permissive when its data is least
+ * trustworthy (the finding-18 rule).
+ */
+async function evaluateOfflineRefundVelocityCeiling(
+  db: Database,
+  terminalId: string,
+  policy: RefundExposurePolicy,
+  thisRefundTotal: string,
+  scale: number,
+): Promise<{ refusal: RefundCheckoutErrorKey } | null> {
+  const unsynced = await countUnsyncedFiscalEvents(db, terminalId);
+  if (unsynced === 0) return null;
+
+  const shift = useTerminalStore.getState().shift;
+  if (shift === null) {
+    // A refund cannot be authored without a shift anyway (the fiscal event
+    // needs a signed shift id), but the ceiling must not silently pass on
+    // a window it could not establish.
+    throw new Error('refund-velocity ceiling: no open shift on this terminal');
+  }
+
+  // The SAME window `zReportService.generateZReport()` measures the shift by:
+  // the monotonic hash_sequence anchor when the shift recorded one, the
+  // wall-clock open time only for pre-anchor legacy shifts.
+  const anchor = await getShiftReceiptAnchor(db, shift.id);
+  const window: ShiftReceiptWindow = anchor
+    ? { kind: 'anchor', openingHashSequence: anchor.opening_hash_sequence }
+    : { kind: 'openedAt', openedAtSqliteUtc: toSqliteUtc(shift.opened_at) };
+
+  const totals = await getShiftRefundReceiptTotals(db, terminalId, window);
+
+  if (totals.length + 1 > policy.countCeiling) {
+    return { refusal: 'refundFlow.offlineRefundCountCeilingReached' };
+  }
+
+  // A v4 refund row stores a NEGATIVE total — take the magnitude, and never
+  // via SQL SUM (float) or parseFloat (rule 19).
+  const alreadyRefunded = totals.reduce(
+    (sum, total) => bcadd(sum, bcabs(total, scale), scale),
+    bcformat('0', scale),
+  );
+  const projected = bcadd(alreadyRefunded, thisRefundTotal, scale);
+  if (bccomp(projected, policy.valueCeiling) > 0) {
+    return { refusal: 'refundFlow.offlineRefundValueCeilingReached' };
+  }
+
+  return null;
+}
+
+/**
+ * §M3 — LARGE REFUNDS REQUIRE THE DEVICE ONLINE.
+ *
+ * A refund whose payout exceeds the tenant threshold may only be authored
+ * while `connectivityStore.isOnline` is true, so the manager PIN about to be
+ * spent is verified against the SERVER (B7's primary path) rather than
+ * against the device-local PIN cache.
+ *
+ * Boundary: a refund EQUAL to the threshold is allowed — the threshold is the
+ * largest offline-authorable payout, not the first refused one.
+ */
+function evaluateLargeRefundOnlineRequirement(
+  policy: RefundExposurePolicy,
+  thisRefundTotal: string,
+): { refusal: RefundCheckoutErrorKey } | null {
+  if (useConnectivityStore.getState().isOnline) return null;
+  if (bccomp(thisRefundTotal, policy.onlineRequiredThreshold) <= 0) return null;
+  return { refusal: 'refundFlow.largeRefundRequiresOnline' };
 }
 
 /** The active company's currency — the scale every money comparison in the

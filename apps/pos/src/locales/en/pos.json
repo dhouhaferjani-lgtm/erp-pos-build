@@ -128,6 +128,9 @@
     "discountedPartialRefundRefused": "This line had a discount, so it can only be refunded in full. Refund the whole line, or ask a manager to handle a partial refund from the back office.",
     "refundAlreadyAppended": "This refund has already been recorded. Finish confirming the cash payout and printing the receipt.",
     "legacyRefundValueExceeded": "This receipt has already been refunded on this terminal for its full value. Check the earlier refund before processing another one.",
+    "offlineRefundCountCeilingReached": "This terminal has reached the number of refunds allowed for one shift while it still has sales waiting to be sent. Reconnect and let the terminal catch up, then try again — or ask a manager to handle this refund from the back office.",
+    "offlineRefundValueCeilingReached": "This terminal has reached the total refund amount allowed for one shift while it still has sales waiting to be sent. Reconnect and let the terminal catch up, then try again — or ask a manager to handle this refund from the back office.",
+    "largeRefundRequiresOnline": "This refund is too large to approve while the terminal is offline. Reconnect the terminal and try again, so a manager's approval can be checked with the server.",
     "capabilityUnavailable": "Refunds are temporarily unavailable on this terminal — contact support",
     "confirm": {
       "charge": "Charge {{amount}}",

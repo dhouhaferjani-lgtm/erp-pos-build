@@ -140,6 +140,62 @@ export async function insertOfflineReceipt(
   // before the commit has durably persisted.
 }
 
+/**
+ * Lane C M2 — the shift window the refund-velocity ceiling is measured over.
+ *
+ * Mirrors `zReportService.generateZReport()` EXACTLY, and for the same
+ * reason: prefer the monotonic, clock-rollback-immune `hash_sequence` anchor
+ * recorded at shift open, and fall back to the wall-clock `created_at` window
+ * only for legacy shifts opened before anchors were captured. A device clock
+ * rollback must never be able to shrink the window and thereby RAISE the
+ * refund ceiling.
+ */
+export type ShiftReceiptWindow =
+  | { kind: 'anchor'; openingHashSequence: number }
+  | { kind: 'openedAt'; openedAtSqliteUtc: string };
+
+/**
+ * Lane C M2 — every REFUND receipt this terminal has written inside the
+ * current shift window.
+ *
+ * Returns the raw `total` strings rather than a SQL `SUM()`: `total` is a
+ * TEXT column and SQLite's `SUM` would coerce it to a float, which rule 19
+ * forbids on money. The caller sums the magnitudes with `bcadd`/`bcabs`
+ * (a v4 refund row stores a NEGATIVE total, `refundReceiptService.ts`).
+ *
+ * `is_training = 0` matches the Z's own exclusion: a training refund pays out
+ * no real cash and must not consume the real ceiling. Voided rows are NOT
+ * excluded — a voided refund still left the drawer at the time it was
+ * authored, and the exposure this ceiling bounds is cash-out, not net books.
+ */
+export async function getShiftRefundReceiptTotals(
+  db: Database,
+  terminalId: string,
+  window: ShiftReceiptWindow,
+): Promise<readonly string[]> {
+  const rows =
+    window.kind === 'anchor'
+      ? await queryAll<{ total: string }>(
+          db,
+          `SELECT total FROM offline_receipts
+            WHERE terminal_id = $1
+              AND receipt_kind = 'refund'
+              AND is_training = 0
+              AND hash_sequence > $2`,
+          [terminalId, window.openingHashSequence],
+        )
+      : await queryAll<{ total: string }>(
+          db,
+          `SELECT total FROM offline_receipts
+            WHERE terminal_id = $1
+              AND receipt_kind = 'refund'
+              AND is_training = 0
+              AND created_at >= $2`,
+          [terminalId, window.openedAtSqliteUtc],
+        );
+  return rows.map((row) => row.total);
+}
+
 export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]> {
   return queryAll<OfflineReceipt>(
     db,

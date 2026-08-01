@@ -75,6 +75,33 @@ export interface FiscalEventSyncBatchResponse {
 
 export const MAX_FISCAL_EVENT_SYNC_RETRIES = 5;
 
+/**
+ * Lane C M2 — how many fiscal events this terminal has authored but NOT yet
+ * handed to the server.
+ *
+ * The velocity ceiling only bites while the device is carrying unsynced
+ * fiscal events: that is precisely the window in which §12's server-side
+ * `FOR UPDATE` cap — the sole cross-terminal authority — cannot see what
+ * this device is paying out. Once the queue drains, the server is back in
+ * the loop and the device-local ceiling stands down.
+ *
+ * Counts every non-`'synced'` row (`pending`, `syncing`, `failed`), NOT just
+ * the drain's `IN ('pending','failed')` set: a row parked at `'syncing'` by a
+ * crash is exactly as invisible to the server as a pending one.
+ */
+export async function countUnsyncedFiscalEvents(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    db,
+    `SELECT COUNT(*) AS count FROM fiscal_events
+      WHERE terminal_id = $1 AND sync_status != 'synced'`,
+    [terminalId],
+  );
+  return row?.count ?? 0;
+}
+
 export async function getPendingFiscalEventsForSync(
   db: Database,
 ): Promise<LocalFiscalEvent[]> {

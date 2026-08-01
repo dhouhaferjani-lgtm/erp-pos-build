@@ -128,6 +128,9 @@
     "discountedPartialRefundRefused": "Cette ligne comportait une remise : elle ne peut être remboursée qu'en totalité. Remboursez la ligne entière, ou demandez à un responsable de traiter un remboursement partiel depuis le back-office.",
     "refundAlreadyAppended": "Ce remboursement a déjà été enregistré. Terminez la confirmation du versement en espèces et l'impression du ticket.",
     "legacyRefundValueExceeded": "Ce ticket a déjà été remboursé sur ce terminal pour la totalité de sa valeur. Vérifiez le remboursement précédent avant d'en traiter un autre.",
+    "offlineRefundCountCeilingReached": "Ce terminal a atteint le nombre de remboursements autorisés pour une session tant que des ventes restent à transmettre. Reconnectez le terminal et laissez-le se synchroniser avant de réessayer, ou demandez à un responsable de traiter ce remboursement depuis le back-office.",
+    "offlineRefundValueCeilingReached": "Ce terminal a atteint le montant total de remboursements autorisé pour une session tant que des ventes restent à transmettre. Reconnectez le terminal et laissez-le se synchroniser avant de réessayer, ou demandez à un responsable de traiter ce remboursement depuis le back-office.",
+    "largeRefundRequiresOnline": "Ce remboursement est trop important pour être validé hors connexion. Reconnectez le terminal et réessayez, afin que l'autorisation du responsable soit vérifiée auprès du serveur.",
     "capabilityUnavailable": "Les remboursements sont temporairement indisponibles sur ce terminal — contactez le support",
     "confirm": {
       "charge": "Encaisser {{amount}}",

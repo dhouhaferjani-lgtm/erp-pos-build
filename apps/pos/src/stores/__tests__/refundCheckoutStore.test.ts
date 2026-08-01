@@ -65,6 +65,17 @@ vi.mock('@/lib/db/repositories/fiscalEventRepository', () => ({
   // Round-2 (finding 11 residual): the appended-intent linkage check now
   // verifies the fiscal event EXISTS and is sourced from this intent.
   getFiscalEventById: vi.fn(),
+  // Lane C M2 — the velocity ceiling only bites while the device holds
+  // unsynced fiscal events.
+  countUnsyncedFiscalEvents: vi.fn().mockResolvedValue(0),
+}));
+// Lane C M2/M3 — the refund-exposure policies ride the EXISTING fraud-settings
+// channel (company_fraud_settings → /pos/fraud-settings → this cache table).
+vi.mock('@/lib/db/repositories/companyFraudSettingsCacheRepository', () => ({
+  getCompanyFraudSettings: vi.fn(),
+}));
+vi.mock('@/lib/db/repositories/shiftReceiptAnchorRepository', () => ({
+  getShiftReceiptAnchor: vi.fn(),
 }));
 vi.mock('@/lib/db/repositories/refundIntentRepository', () => ({
   createOrReuseActiveRefundIntent: vi.fn(),
@@ -90,6 +101,8 @@ vi.mock('@/lib/refundFlow/refundApprovalV3', () => ({
 }));
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   getOfflineReceiptByIdempotencyKey: vi.fn().mockResolvedValue(null),
+  // Lane C M2 — the current shift's already-authored refund receipts.
+  getShiftRefundReceiptTotals: vi.fn().mockResolvedValue([]),
   // Finding 19 — the ORIGINAL's own receipt number + total (the value ceiling).
   getOfflineReceiptById: vi.fn().mockResolvedValue({
     id: 'orig-receipt-uuid-1',
@@ -104,9 +117,12 @@ vi.mock('@/lib/db/repositories/localRefundRecordRepository', () => ({
 
 import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
 import {
+  countUnsyncedFiscalEvents,
   getFiscalEventById,
   resolveOriginalFiscalEventLocally,
 } from '@/lib/db/repositories/fiscalEventRepository';
+import { getCompanyFraudSettings } from '@/lib/db/repositories/companyFraudSettingsCacheRepository';
+import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 import {
   createOrReuseActiveRefundIntent,
   ensureApprovalAuthored,
@@ -122,6 +138,7 @@ import {
 import {
   getOfflineReceiptById,
   getOfflineReceiptByIdempotencyKey,
+  getShiftRefundReceiptTotals,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { sumLegacyRefundedValueForOriginalReceipt } from '@/lib/db/repositories/localRefundRecordRepository';
 
@@ -828,6 +845,30 @@ describe('refundCheckoutStore — v4 flow', () => {
     target_reference_id: V4_ORIGINAL_LOCAL_RECEIPT_ID,
   };
 
+  /**
+   * Lane C M2/M3 — the cached tenant policy, as
+   * `refreshFraudSettingsCache()` writes it. Seeded defaults: 5 refunds and
+   * 300.0000 per shift while unsynced, 100.0000 as the offline single-refund
+   * ceiling. The suite runs in EUR (scale 2), so these compare as 300.00 /
+   * 100.00 against a 20.00 fixture refund.
+   */
+  function fraudSettingsRow(overrides: Record<string, unknown> = {}) {
+    return {
+      company_id: 'company-1',
+      cash_variance_over_soft: '1.0000',
+      cash_variance_over_hard: '20.0000',
+      cash_variance_under_soft: '1.0000',
+      cash_variance_under_hard: '20.0000',
+      require_blind_cash_count: false,
+      require_manager_pin_above_hard: true,
+      cash_variance_email_severity: 'none' as const,
+      offline_refund_count_ceiling: 5,
+      offline_refund_value_ceiling: '300.0000',
+      online_required_refund_threshold: '100.0000',
+      ...overrides,
+    } as never;
+  }
+
   const v4CreateReceiptResult = {
     fiscalEvent: { id: 'fe-v4-refund-1' } as never,
     offlineReceiptId: 'offline-receipt-1',
@@ -867,7 +908,11 @@ describe('refundCheckoutStore — v4 flow', () => {
     } as never);
     useTerminalStore.setState({
       terminal: { id: V4_TERMINAL_ID, location: null } as never,
-      shift: { id: '11111111-1111-4111-8111-111111111111' } as never,
+      shift: {
+        id: '11111111-1111-4111-8111-111111111111',
+        // Lane C M2 — the wall-clock fallback window for a pre-anchor shift.
+        opened_at: '2026-07-31T08:00:00Z',
+      } as never,
     } as never);
     useOperatorStore.setState({
       operator: { id: V4_OPERATOR_ID, name: 'Cashier One' } as never,
@@ -904,6 +949,13 @@ describe('refundCheckoutStore — v4 flow', () => {
     });
     vi.mocked(authorRefundReturnApprovalV3).mockResolvedValue(v4ApprovalEvidence);
     vi.mocked(createRefundReceipt).mockResolvedValue(v4CreateReceiptResult);
+    // Lane C M2/M3 — a fully-synced, online terminal with the seeded
+    // policy: both bounds are inert, so every pre-existing v4 test keeps
+    // its original meaning.
+    vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(0);
+    vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([]);
+    vi.mocked(getShiftReceiptAnchor).mockResolvedValue(null);
+    vi.mocked(getCompanyFraudSettings).mockResolvedValue(fraudSettingsRow());
   });
 
   describe('begin()', () => {
@@ -1019,6 +1071,181 @@ describe('refundCheckoutStore — v4 flow', () => {
       await useRefundCheckoutStore.getState().begin(v4BeginInput([partial]));
 
       expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+    });
+
+    /**
+     * Lane C M2/M3 (wave-3 payout-cash-bound analysis §M2/§M3, owner-ruled
+     * 2026-08-01) — the two refund-exposure policies. Both are tenant
+     * settings delivered over the existing fraud-settings channel and are
+     * enforced PRE-PIN, in the same refusal family as the bounds above.
+     *
+     * The fixture refund is worth 20.00 (|−20.0000| at EUR scale 2).
+     */
+    describe('M2/M3 — refund-exposure policies', () => {
+      it('M2 — refuses the (N+1)-th offline refund of the shift, BEFORE the PIN', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundCountCeilingReached');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('M2 — BOUNDARY: the N-th offline refund (already 4, ceiling 5) is allowed', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M2 — refuses when THIS refund would push the shift past the VALUE ceiling', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(1);
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: '30.0000' }),
+        );
+        // 15.00 already out + 20.00 now = 35.00 > 30.00.
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(['-15.00']);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundValueCeilingReached');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('M2 — BOUNDARY: landing EXACTLY on the value ceiling is allowed', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(1);
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: '35.0000' }),
+        );
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(['-15.00']);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M2 — stands down entirely once the fiscal-event queue is drained', async () => {
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(0);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue(
+          Array.from({ length: 99 }, () => '-50.00'),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+        // The server's §12 cap can see everything again — the device does
+        // not even measure the shift.
+        expect(getShiftRefundReceiptTotals).not.toHaveBeenCalled();
+      });
+
+      it('M3 — refuses a refund above the threshold while OFFLINE, before the PIN', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: false });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '10.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.largeRefundRequiresOnline');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+        expect(authorRefundReturnApprovalV3).not.toHaveBeenCalled();
+      });
+
+      it('M3 — BOUNDARY: a refund EQUAL to the threshold is allowed offline', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: false });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '20.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('M3 — an ONLINE device bypasses the threshold entirely', async () => {
+        mockConnectivity.mockReturnValue({ isOnline: true });
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ online_required_refund_threshold: '0.0000' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('setting ABSENT (never-synced device / un-migrated tenant) falls back to the seeded default — NOT a refusal', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(null);
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(2);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        expect(useRefundCheckoutStore.getState().step).toBe('confirm');
+      });
+
+      it('setting ABSENT still ENFORCES the device fallback ceiling (default ≠ no policy)', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(null);
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(2);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.offlineRefundCountCeilingReached');
+      });
+
+      it('setting PRESENT but UNREADABLE fails closed (a value the device cannot trust ≠ a default)', async () => {
+        vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+          fraudSettingsRow({ offline_refund_value_ceiling: 'not-a-number' }),
+        );
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('idle');
+        expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+        expect(createOrReuseActiveRefundIntent).not.toHaveBeenCalled();
+      });
+
+      it('a RESUMED intent whose approval is already signed is NOT re-gated (no orphan approval)', async () => {
+        vi.mocked(findActiveRefundIntent).mockResolvedValue(
+          v4RefundIntent({ state: 'approval_authored' }),
+        );
+        vi.mocked(recoverRefundApprovalEvidenceLocally).mockResolvedValue(v4ApprovalEvidence);
+        // Over the count ceiling — a fresh refund here would be refused.
+        vi.mocked(countUnsyncedFiscalEvents).mockResolvedValue(3);
+        vi.mocked(getShiftRefundReceiptTotals).mockResolvedValue([
+          '-1.00', '-1.00', '-1.00', '-1.00', '-1.00',
+        ]);
+
+        await useRefundCheckoutStore.getState().begin(v4BeginInput());
+
+        const state = useRefundCheckoutStore.getState();
+        expect(state.step).toBe('confirm');
+        expect(state.approval).toEqual(v4ApprovalEvidence);
+        // The exposure gate never ran — the approval pair is already on the
+        // chain and refusing now would strand it.
+        expect(getShiftRefundReceiptTotals).not.toHaveBeenCalled();
+      });
     });
 
     /**

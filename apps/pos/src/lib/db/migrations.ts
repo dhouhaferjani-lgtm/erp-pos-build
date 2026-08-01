@@ -2142,4 +2142,42 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    /**
+     * Lane C M2/M3 — the device-side half of the refund-exposure policies.
+     *
+     * These are TENANT SETTINGS (owner ruling 2026-08-01) delivered over the
+     * EXISTING fraud-settings channel: `company_fraud_settings` →
+     * `GET /api/v1/pos/fraud-settings` → `refreshFraudSettingsCache()` →
+     * this table. No new sync channel.
+     *
+     * The DEFAULTS below are byte-identical to the seeded server defaults in
+     * `CompanyFraudSettings::DEFAULT_*`. That is deliberate and is the whole
+     * of the "absent setting" precedence rule: a device holding a
+     * fraud-settings row written BEFORE this app version reads the column
+     * default, which equals what the server would have sent — so a
+     * not-yet-migrated tenant behaves like a freshly-seeded one instead of
+     * hard-refusing every refund. A row that exists but carries a
+     * NON-READABLE value still fails closed (see refundCheckoutStore).
+     */
+    version: 67,
+    name: 'add_refund_exposure_policies_to_company_fraud_settings_cache',
+    sql: '',
+    run: async (db) => {
+      const columns: readonly string[] = [
+        'offline_refund_count_ceiling INTEGER NOT NULL DEFAULT 5',
+        "offline_refund_value_ceiling TEXT NOT NULL DEFAULT '300.0000'",
+        "online_required_refund_threshold TEXT NOT NULL DEFAULT '100.0000'",
+      ];
+      for (const column of columns) {
+        try {
+          await db.execute(
+            `ALTER TABLE company_fraud_settings_cache ADD COLUMN ${column}`,
+          );
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+      }
+    },
+  },
 ];
