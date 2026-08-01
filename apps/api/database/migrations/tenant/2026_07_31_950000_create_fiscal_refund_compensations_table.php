@@ -22,6 +22,15 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Final-review MINOR M-1 — self-guarding idempotence, matching the
+        // `Schema::hasTable`/`hasColumn` no-op guard the other six
+        // migrations in the 2026_07_31_9xxxxx / 2026_08_01 range open with.
+        // A partially-applied batch re-run on a staging tenant must no-op,
+        // not throw "relation already exists".
+        if (Schema::hasTable('fiscal_refund_compensations')) {
+            return;
+        }
+
         Schema::create('fiscal_refund_compensations', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id');

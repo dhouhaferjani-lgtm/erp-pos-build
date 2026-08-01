@@ -29,6 +29,12 @@ use Illuminate\Support\Facades\DB;
  * exception) while every other fiscal column remains exactly as immutable
  * as it is today.
  *
+ * The new branch guards the SAME column set as the FK-cleanup branch it
+ * sits below, plus `fiscal_status` and `is_voided` (final-review condition
+ * 1 / I-1). Because its entry condition `OLD.sealed_hash_algorithm IS NULL`
+ * is true for every row that predates this feature, an unguarded column
+ * here would be an unguarded column for the whole installed base.
+ *
  * §10.4 (rollout's no-rewrite prohibition) is narrowed, not removed: never
  * rewrite/backfill/re-derive any `fiscal_events` row, and never modify any
  * `pos_receipts` column EXCEPT this one-time `sealed_hash_algorithm`
@@ -99,6 +105,18 @@ return new class extends Migration
                     -- attempt to change an already-set value does NOT match
                     -- this branch and falls through to the catch-all
                     -- exception below.
+                    --
+                    -- FINAL-REVIEW CONDITION 1 (I-1): this branch guards the
+                    -- SAME column set as the FK-cleanup branch immediately
+                    -- above it, PLUS fiscal_status/is_voided. That parity is
+                    -- load-bearing, not cosmetic: the entry condition
+                    -- `OLD.sealed_hash_algorithm IS NULL` matches EVERY
+                    -- pos_receipts row that existed before this feature, so
+                    -- any column this branch leaves unguarded is a column
+                    -- the NF525 immutability defense stops covering for the
+                    -- entire installed base. Do not drop a line from this
+                    -- list without re-reading
+                    -- PosReceiptImmutabilityTriggerSealedHashAlgorithmTest.
                     IF OLD.fiscal_status = 'fiscalized'
                        AND OLD.sealed_hash_algorithm IS NULL
                        AND NEW.sealed_hash_algorithm IS NOT NULL
@@ -111,6 +129,12 @@ return new class extends Migration
                        AND NEW.posted_at = OLD.posted_at
                        AND NEW.vat_breakdown_hash IS NOT DISTINCT FROM OLD.vat_breakdown_hash
                        AND NEW.payment_methods_hash IS NOT DISTINCT FROM OLD.payment_methods_hash
+                       AND NEW.customer_name IS NOT DISTINCT FROM OLD.customer_name
+                       AND NEW.customer_identifier IS NOT DISTINCT FROM OLD.customer_identifier
+                       AND NEW.partner_id IS NOT DISTINCT FROM OLD.partner_id
+                       AND NEW.contact_id IS NOT DISTINCT FROM OLD.contact_id
+                       AND NEW.fiscal_status = OLD.fiscal_status
+                       AND NEW.is_voided IS NOT DISTINCT FROM OLD.is_voided
                        AND NEW.canonical_bytes IS NOT DISTINCT FROM OLD.canonical_bytes
                        AND NEW.fiscal_event_id IS NOT DISTINCT FROM OLD.fiscal_event_id THEN
                         RETURN NEW;
