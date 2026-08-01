@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -92,10 +93,12 @@ final class Nf525VerifyChainParityTest extends TestCase
     public function test_both_verifiers_agree_invalid_when_a_non_voided_row_is_tampered(): void
     {
         $terminal = $this->makeTerminal();
-        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 1, null, isVoided: false);
-
-        Receipt::where('terminal_id', $terminal->id)->where('chain_sequence', 1)
-            ->update(['fiscal_hash' => str_repeat('f', 64)]);
+        // The tampered value is written DURING sealReceipt()'s own
+        // pending_seal -> fiscalized transition, not via a later UPDATE --
+        // `prevent_receipt_modification()` (PG immutability trigger)
+        // permits ANY column value change on that one transition but
+        // rejects every fiscal_hash-changing UPDATE afterward.
+        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 1, null, isVoided: false, forcedHash: str_repeat('f', 64));
 
         self::assertFalse($this->runPosVerifyChains($terminal));
         self::assertFalse($this->runNf525VerifyChains($terminal));
@@ -104,13 +107,12 @@ final class Nf525VerifyChainParityTest extends TestCase
     public function test_documented_is_voided_asymmetry_on_a_tampered_voided_row(): void
     {
         // Row 1 anchors the chain (not voided). Row 2 is VOIDED and its
-        // fiscal_hash is tampered post-seal.
+        // fiscal_hash is tampered AT SEAL TIME (see the note in the
+        // previous test for why it cannot be a subsequent UPDATE under
+        // real PG).
         $terminal = $this->makeTerminal();
         $hashAfterFirst = $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 1, null, isVoided: false);
-        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 2, $hashAfterFirst, isVoided: true);
-
-        Receipt::where('terminal_id', $terminal->id)->where('chain_sequence', 2)
-            ->update(['fiscal_hash' => str_repeat('f', 64)]);
+        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 2, $hashAfterFirst, isVoided: true, forcedHash: str_repeat('f', 64));
 
         // pos:verify-chains (ReceiptHashService::verifyLegacyArm) excludes
         // is_voided rows from its legacy query entirely -- the tampered
@@ -167,10 +169,15 @@ final class Nf525VerifyChainParityTest extends TestCase
         ]);
     }
 
-    private function sealReceipt(Terminal $terminal, SealedHashAlgorithm $algorithm, int $sequence, ?string $previousHash, bool $isVoided): string
+    private function sealReceipt(Terminal $terminal, SealedHashAlgorithm $algorithm, int $sequence, ?string $previousHash, bool $isVoided, ?string $forcedHash = null): string
     {
         $cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
 
+        // Created PendingSeal, not Fiscalized: `prevent_receipt_modification()`
+        // (PG immutability trigger) only permits a subsequent UPDATE that
+        // sets fiscal_hash on a `pending_seal -> fiscalized` transition --
+        // every other UPDATE branch on an already-`fiscalized` row rejects
+        // any fiscal_hash change outright.
         $receipt = Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -186,13 +193,22 @@ final class Nf525VerifyChainParityTest extends TestCase
             'fiscal_event_id' => null,
             'sealed_hash_algorithm' => $algorithm->value,
             'is_voided' => $isVoided,
+            // pos_receipts_void_logic CHECK: is_voided=true requires BOTH
+            // voided_at and voided_by to be non-null.
+            'voided_at' => $isVoided ? Carbon::parse('2026-05-20T10:05:00Z') : null,
+            'voided_by' => $isVoided ? $cashier->id : null,
             'is_training' => false,
+            'fiscal_status' => FiscalStatus::PendingSeal,
         ]);
 
         $expectedHash = $this->hashService->computeHashForAlgorithm($receipt, $algorithm, $previousHash);
-        $receipt->fiscal_hash = $expectedHash;
+        // A caller-forced (tampered) value is written INSTEAD of the real
+        // one, but still during this same permitted transition.
+        $storedHash = $forcedHash ?? $expectedHash;
+        $receipt->fiscal_hash = $storedHash;
+        $receipt->fiscal_status = FiscalStatus::Fiscalized;
         $receipt->save();
 
-        return $expectedHash;
+        return $storedHash;
     }
 }

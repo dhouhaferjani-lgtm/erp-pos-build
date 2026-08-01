@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -102,10 +103,16 @@ final class ReceiptHashServiceVerifyLegacyArmV4Test extends TestCase
     public function test_tamper_under_legacy_pipe_v1_is_detected(): void
     {
         $terminal = $this->makeTerminal();
-        $this->sealReceipt($terminal, SealedHashAlgorithm::LegacyPipeV1, 1, null);
-
-        Receipt::where('terminal_id', $terminal->id)->where('chain_sequence', 1)
-            ->update(['fiscal_hash' => str_repeat('f', 64)]);
+        // The tampered value must be written DURING the same
+        // pending_seal -> fiscalized transition sealReceipt() performs,
+        // not as a SEPARATE subsequent UPDATE -- `prevent_receipt_modification()`
+        // (PG immutability trigger) permits ANY column value change on
+        // that ONE transition, but rejects every fiscal_hash-changing
+        // UPDATE afterward (real production tampering can only occur via
+        // a trigger bypass outside the ORM entirely, which is exactly the
+        // threat class this trigger exists to prevent -- not something a
+        // normal ORM UPDATE call can simulate post-seal).
+        $this->sealReceipt($terminal, SealedHashAlgorithm::LegacyPipeV1, 1, null, forcedHash: str_repeat('f', 64));
 
         self::assertFalse($this->hashService->verifyTerminalChain(Terminal::query()->findOrFail($terminal->id)));
     }
@@ -113,10 +120,7 @@ final class ReceiptHashServiceVerifyLegacyArmV4Test extends TestCase
     public function test_tamper_under_canonical_json_v3_is_detected(): void
     {
         $terminal = $this->makeTerminal();
-        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 1, null);
-
-        Receipt::where('terminal_id', $terminal->id)->where('chain_sequence', 1)
-            ->update(['fiscal_hash' => str_repeat('f', 64)]);
+        $this->sealReceipt($terminal, SealedHashAlgorithm::CanonicalJsonV3, 1, null, forcedHash: str_repeat('f', 64));
 
         self::assertFalse($this->hashService->verifyTerminalChain(Terminal::query()->findOrFail($terminal->id)));
     }
@@ -147,8 +151,16 @@ final class ReceiptHashServiceVerifyLegacyArmV4Test extends TestCase
      * point `verifyLegacyArm()` itself uses), persists it, and returns the
      * hash so the caller can chain the next row's `previous_hash` off it.
      */
-    private function sealReceipt(Terminal $terminal, SealedHashAlgorithm $algorithm, int $sequence, ?string $previousHash): string
+    private function sealReceipt(Terminal $terminal, SealedHashAlgorithm $algorithm, int $sequence, ?string $previousHash, ?string $forcedHash = null): string
     {
+        // Created PendingSeal, not Fiscalized: `prevent_receipt_modification()`
+        // (PG immutability trigger) only permits a subsequent UPDATE that
+        // sets fiscal_hash on a `pending_seal -> fiscalized` transition --
+        // every other UPDATE branch on an already-`fiscalized` row rejects
+        // any fiscal_hash change outright. Creating directly as Fiscalized
+        // with a placeholder hash and then overwriting it (the original,
+        // SQLite-only-tested shape of this helper) trips that trigger
+        // under real PG.
         $receipt = Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -165,12 +177,19 @@ final class ReceiptHashServiceVerifyLegacyArmV4Test extends TestCase
             'sealed_hash_algorithm' => $algorithm->value,
             'is_voided' => false,
             'is_training' => false,
+            'fiscal_status' => FiscalStatus::PendingSeal,
         ]);
 
         $expectedHash = $this->hashService->computeHashForAlgorithm($receipt, $algorithm, $previousHash);
-        $receipt->fiscal_hash = $expectedHash;
+        // A caller-forced (tampered) value is written INSTEAD of the real
+        // one, but still during this same permitted transition -- see the
+        // tamper tests above for why this must happen here, not via a
+        // later UPDATE.
+        $storedHash = $forcedHash ?? $expectedHash;
+        $receipt->fiscal_hash = $storedHash;
+        $receipt->fiscal_status = FiscalStatus::Fiscalized;
         $receipt->save();
 
-        return $expectedHash;
+        return $storedHash;
     }
 }
