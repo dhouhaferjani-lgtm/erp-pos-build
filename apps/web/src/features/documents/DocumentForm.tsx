@@ -51,7 +51,23 @@ interface DocumentFormData {
   notes: string
   external_document_number: string
   external_document_date: string
+  /** Credit notes only — `CreditNoteController::store()` requires it server-side. */
+  reason: string
 }
+
+/**
+ * Credit-note reasons, mirroring `CreditNoteReason` (PHP enum) and the option
+ * list rendered by `CreateCreditNoteForm` (the invoice-linked modal) so both
+ * credit-note entry points offer the exact same choices and i18n keys.
+ */
+const CREDIT_NOTE_REASONS: readonly { value: string; labelKey: string }[] = [
+  { value: 'return', labelKey: 'sales:creditNotes.reason.return' },
+  { value: 'price_adjustment', labelKey: 'sales:creditNotes.reason.priceAdjustment' },
+  { value: 'billing_error', labelKey: 'sales:creditNotes.reason.billingError' },
+  { value: 'damaged_goods', labelKey: 'sales:creditNotes.reason.damagedGoods' },
+  { value: 'service_issue', labelKey: 'sales:creditNotes.reason.serviceIssue' },
+  { value: 'other', labelKey: 'sales:creditNotes.reason.other' },
+]
 
 const documentTypeToPath: Record<DocumentType, string> = {
   quote: '/sales/quotes',
@@ -101,6 +117,18 @@ function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
 
 interface DocumentFormProps {
   documentType?: DocumentType
+}
+
+/**
+ * Pure helper: normalises an API date to the `YYYY-MM-DD` value an
+ * `<input type="date">` accepts. The documents API emits plain dates
+ * (`2026-08-01`) but some endpoints emit full ISO 8601 timestamps
+ * (`2026-08-01T00:00:00+01:00`), which the date input silently rejects —
+ * leaving a REQUIRED field empty and blocking submit.
+ */
+function toDateInputValue(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return ''
+  return value.slice(0, 10)
 }
 
 /**
@@ -238,8 +266,11 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       notes: '',
       external_document_number: '',
       external_document_date: '',
+      reason: '',
     },
   })
+
+  const isCreditNote = effectiveType === 'credit_note'
 
   // Determine partner type to filter based on document type
   const partnerTypeFilter = getPartnerTypeForDocument(effectiveType)
@@ -330,17 +361,27 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     enabled: isEditing && apiEndpoint !== '/documents' && tenantId !== null && companyId !== null,
   })
 
-  // Populate form when document data loads
+  // Populate form when document data loads.
+  //
+  // `issue_date` is the FORM field name; the canonical API field is
+  // `document_date` (DocumentData::fromModel emits `document_date`, never
+  // `issue_date` — only a few purchase endpoints use the `issue_date` alias).
+  // Reading `document.issue_date` alone left the required Issue Date input
+  // empty on EVERY document edit, which blocked the submit client-side
+  // (money-campaign W1b MTP-DOC-07/10). Prefer the alias when a given endpoint
+  // does provide it, then fall back to `document_date`, normalised to the
+  // `YYYY-MM-DD` an <input type="date"> accepts.
   useEffect(() => {
     if (document) {
       reset({
         type: document.type as DocumentFormData['type'],
         partner_id: document.partner_id ?? null,
-        issue_date: document.issue_date ?? '',
-        due_date: document.due_date ?? '',
+        issue_date: toDateInputValue(document.issue_date ?? document.document_date),
+        due_date: toDateInputValue(document.due_date),
         notes: document.notes ?? '',
         external_document_number: document.external_document_number ?? '',
-        external_document_date: document.external_document_date ?? '',
+        external_document_date: toDateInputValue(document.external_document_date),
+        reason: document.reason ?? '',
       })
     }
   }, [document, reset])
@@ -451,9 +492,13 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   })
 
   const onSubmit = (data: DocumentFormData) => {
+    // `reason` is a credit-note-only field. Strip it everywhere else so the
+    // other document endpoints (which don't declare it) never receive it.
+    const { reason, ...rest } = data
     // Ensure the type is set from context if not in form
     const submitData = {
-      ...data,
+      ...rest,
+      ...(isCreditNote ? { reason } : {}),
       type: data.type || effectiveType || '',
       lines: lines.map((line) => ({
         ...buildLinePayload(line),
@@ -555,7 +600,19 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
             )}
 
             {/* Partner */}
-            <FormField label={partnerLabel} htmlFor="partner_id" required>
+            {/*
+              `error` is REQUIRED here, not decorative: partner_id is a
+              `required` RHF rule, and without the error prop a submit with no
+              partner selected was a completely silent no-op — no message, no
+              toast, no network request (money-campaign W1b defect 1's "zero
+              feedback" half).
+            */}
+            <FormField
+              label={partnerLabel}
+              htmlFor="partner_id"
+              required
+              error={errors.partner_id?.message}
+            >
               <Controller
                 name="partner_id"
                 control={control}
@@ -594,6 +651,34 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
             <FormField label={t('sales:documents.dueDate')} htmlFor="due_date">
               <Input type="date" id="due_date" {...register('due_date')} />
             </FormField>
+
+            {/* Reason (Credit Notes only) — `CreditNoteController::store()`
+                validates `reason` as `['required', new Enum(CreditNoteReason::class)]`,
+                so without this field a standalone credit note created here
+                could only ever 422 (money-campaign W1b MTP-DOC-23). Same
+                options and i18n keys as the invoice-linked modal
+                (`CreateCreditNoteForm`). */}
+            {isCreditNote && (
+              <FormField
+                label={t('sales:creditNotes.reason.title')}
+                htmlFor="reason"
+                required
+                error={errors.reason?.message}
+              >
+                <Select
+                  id="reason"
+                  {...register('reason', { required: t('validation.required') })}
+                  error={Boolean(errors.reason)}
+                >
+                  <option value="">{t('select')}</option>
+                  {CREDIT_NOTE_REASONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
 
             {/* Supplier Invoice Reference (Purchase Orders only) */}
             {effectiveType === 'purchase_order' && (

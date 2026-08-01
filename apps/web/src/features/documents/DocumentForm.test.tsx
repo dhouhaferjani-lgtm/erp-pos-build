@@ -315,6 +315,114 @@ describe('DocumentForm (canonical layout)', () => {
     expect(payload.lines[0]).not.toHaveProperty('product_id')
   })
 
+  // Regression (money-campaign W1b MTP-DOC-07/10, defect 1): the edit-populate
+  // effect read `document.issue_date`, but the documents API emits
+  // `document_date` (DocumentData::fromModel). The REQUIRED Issue Date input
+  // therefore loaded empty on every edit and react-hook-form blocked the
+  // submit client-side, with no PATCH and no toast.
+  it('populates the Issue Date from the API `document_date` when editing', async () => {
+    routerState.id = 'invoice-1'
+    routerState.pathname = '/sales/invoices/invoice-1/edit'
+    reactQueryState.document = {
+      id: 'invoice-1',
+      type: 'invoice',
+      status: 'draft',
+      partner_id: 'partner-1',
+      document_date: '2026-07-10',
+      due_date: null,
+      notes: null,
+      external_document_number: null,
+      external_document_date: null,
+      lines: [],
+    }
+
+    render(<DocumentForm documentType="invoice" />)
+
+    const issueDate = await screen.findByLabelText('sales:documents.issueDate', { exact: false })
+    await waitFor(() => {
+      expect(issueDate).toHaveValue('2026-07-10')
+    })
+  })
+
+  it('normalises an ISO-8601 `document_date` to the date-input value', async () => {
+    routerState.id = 'invoice-1'
+    routerState.pathname = '/sales/invoices/invoice-1/edit'
+    reactQueryState.document = {
+      id: 'invoice-1',
+      type: 'invoice',
+      status: 'draft',
+      partner_id: 'partner-1',
+      document_date: '2026-07-10T00:00:00+01:00',
+      due_date: null,
+      notes: null,
+      external_document_number: null,
+      external_document_date: null,
+      lines: [],
+    }
+
+    render(<DocumentForm documentType="invoice" />)
+
+    const issueDate = await screen.findByLabelText('sales:documents.issueDate', { exact: false })
+    await waitFor(() => {
+      expect(issueDate).toHaveValue('2026-07-10')
+    })
+  })
+
+  it('surfaces a visible required-field error when saving with no partner selected', async () => {
+    render(<DocumentForm documentType="invoice" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    // The partner FormField had no `error` prop, so a blocked submit produced
+    // NO message anywhere — a completely silent no-op.
+    // The partner rule's message is `t('validation.required', 'This field is
+    // required')`; the mocked `t` falls through to the fallback.
+    await waitFor(() => {
+      expect(screen.getByText('This field is required')).toBeInTheDocument()
+    })
+    expect(reactQueryState.mutationPayloads).toHaveLength(0)
+  })
+
+  // Regression (money-campaign W1b MTP-DOC-23, defect 5): CreditNoteController
+  // requires `reason`, but the generic form never collected it, so a standalone
+  // credit note could only ever 422.
+  it('collects a credit-note reason and sends it in the payload', async () => {
+    const user = userEvent.setup()
+    routerState.pathname = '/sales/credit-notes/new'
+    render(<DocumentForm documentType="credit_note" />)
+
+    const reason = screen.getByLabelText('sales:creditNotes.reason.title', { exact: false })
+    // Two comboboxes on a credit note: the PartnerPicker (first) and the
+    // reason <select>.
+    await user.click(screen.getAllByRole('combobox')[0])
+    await user.click(screen.getByRole('option', { name: /Partner A/i }))
+    await user.selectOptions(reason, 'return')
+    fireEvent.click(screen.getByRole('button', { name: 'Add mocked service line' }))
+    fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(reactQueryState.mutationPayloads).toHaveLength(1)
+    })
+    expect(reactQueryState.mutationPayloads[0]).toMatchObject({ reason: 'return' })
+  })
+
+  it('does not send a reason for non credit-note document types', async () => {
+    const user = userEvent.setup()
+    render(<DocumentForm documentType="invoice" />)
+
+    expect(screen.queryByLabelText('sales:creditNotes.reason.title', { exact: false })).toBeNull()
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /Partner A/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add mocked service line' }))
+    fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(reactQueryState.mutationPayloads).toHaveLength(1)
+    })
+    expect(reactQueryState.mutationPayloads[0]).not.toHaveProperty('reason')
+  })
+
   it('restores service identity for loaded service lines', async () => {
     routerState.id = 'invoice-1'
     routerState.pathname = '/sales/invoices/invoice-1/edit'

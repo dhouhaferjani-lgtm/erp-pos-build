@@ -101,6 +101,10 @@ export interface Document {
   // Computed/extended properties
   issue_date?: string  // Alias for document_date (some endpoints use this)
 
+  // Credit notes only — surfaced by the /credit-notes endpoints
+  // (CreditNoteController::formatCreditNote), never by the generic DocumentData.
+  reason?: string | null
+
   // Lines (may be eager-loaded)
   lines?: DocumentLineData[]
 
