@@ -98,6 +98,49 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Fold document-level taxes (applies_to = DOCUMENT_TOTAL — e.g. the
+     * Tunisian stamp duty, 1.000 TND on a TAX_INVOICE) into a draft's totals.
+     *
+     * Both `store()` and `update()` compute the per-line VAT with a hand-rolled
+     * loop, which by construction can only ever see LINE_ITEMS taxes. Document
+     * -level taxes were therefore applied for the first time at
+     * `confirm()`, where {@see TaxCalculationService::calculateDocumentTaxes()}
+     * runs — so a Draft invoice's on-screen/API total was short by exactly the
+     * stamp until it was confirmed (money-campaign MTP-DOC-01/03/04, TAX-01,
+     * DSC-01). This helper runs the SAME service on the same persisted lines so
+     * a draft's tax_amount/total already equal its post-confirmation values.
+     *
+     * Only the `documentTaxTotal` component is taken: the service's line-item
+     * step only counts a rate that matches an active LINE_ITEMS
+     * TaxConfiguration, so consuming its `totalTax` here would silently ZERO
+     * the VAT of any line carrying an explicitly supplied rate that has no
+     * configuration row (a new P0 regression at create time). The hand-rolled
+     * per-line VAT is left exactly as it was.
+     *
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $lineTaxAmount
+     * @return array{0: numeric-string, 1: numeric-string} [tax_amount, total]
+     */
+    private function withDocumentLevelTaxes(Document $document, string $subtotal, string $lineTaxAmount): array
+    {
+        $scale = $this->scale();
+
+        // The service reads $document->lines; re-read them from the DB so the
+        // just-persisted lines are visible (the relation is not yet loaded).
+        $document->setRelation('lines', $document->lines()->get());
+
+        /** @var numeric-string $documentTaxTotal */
+        $documentTaxTotal = $this->taxCalculationService->calculateDocumentTaxes($document)->documentTaxTotal;
+
+        /** @var numeric-string $taxAmount */
+        $taxAmount = bcadd($lineTaxAmount, $documentTaxTotal, $scale);
+        /** @var numeric-string $total */
+        $total = bcadd($subtotal, $taxAmount, $scale);
+
+        return [$taxAmount, $total];
+    }
+
+    /**
      * Get the CompanyContext service.
      *
      * Required by HandlesDocuments trait.
@@ -309,6 +352,14 @@ class InvoiceController extends Controller
                 ]);
             }
 
+            // Fold document-level taxes (stamp duty) in so the Draft's totals
+            // already equal its post-confirmation totals.
+            [$taxAmount, $total] = $this->withDocumentLevelTaxes($document, $subtotal, $taxAmount);
+            $document->update([
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+            ]);
+
             // Create vehicle context if vehicle_context provided
             if ($vehicleContext !== null) {
                 $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId, $this->vehicleContextBuilder);
@@ -440,7 +491,10 @@ class InvoiceController extends Controller
                     ]);
                 }
 
-                $total = bcadd($subtotal, $taxAmount, $this->scale());
+                // Same document-level tax pipeline as store()/confirm(), so an
+                // edited draft's totals stay equal to its post-confirmation
+                // totals instead of dropping the stamp duty again.
+                [$taxAmount, $total] = $this->withDocumentLevelTaxes($documentModel, $subtotal, $taxAmount);
 
                 $documentModel->update([
                     'subtotal' => $subtotal,
