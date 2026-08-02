@@ -331,7 +331,7 @@ describe('return and credit note page tenant scope', () => {
     await user.click(screen.getByRole('button', { name: 'common:confirm' }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/documents/return-note-1/confirm')
+      expect(mockApiPost).toHaveBeenCalledWith('/return-notes/return-note-1/confirm')
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/documents/return-note-1')).toHaveLength(2)
       expect(queryClient.getQueryState(['document', 'return-note-1', 'tenant-A', 'company-1'])?.isInvalidated).toBe(false)
     })

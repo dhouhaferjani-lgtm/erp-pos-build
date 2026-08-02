@@ -3,7 +3,7 @@
  * Document Module - Delivery Note Features including Tunisia Model Consolidation
  */
 
-import { api, apiGet } from '@/lib/api'
+import { api, apiGet, apiPost } from '@/lib/api'
 
 /**
  * Delivery Note document type
@@ -110,6 +110,20 @@ export async function getInvoiceableDeliveryNotes(partnerId?: string): Promise<D
  */
 export async function getDeliveryNote(id: string): Promise<DeliveryNote> {
   return apiGet<DeliveryNote>(`/delivery-notes/${id}`)
+}
+
+/**
+ * Confirm a draft delivery note (Draft -> Confirmed).
+ *
+ * POST /api/v1/delivery-notes/{id}/confirm
+ *
+ * NOTE: delivery notes are a separate resource from `/documents` — there is
+ * no `/documents/{id}/confirm` route. Always go through this function (or
+ * the matching real route directly) rather than reusing the generic
+ * document confirm/post URL shape.
+ */
+export async function confirmDeliveryNote(id: string): Promise<DeliveryNote> {
+  return apiPost<DeliveryNote>(`/delivery-notes/${id}/confirm`)
 }
 
 /**

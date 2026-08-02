@@ -32,8 +32,10 @@ import {
 import {
   createReturnNote,
   confirmReturnNote,
+  confirmReturnNoteViaUi,
   createDeliveryNote,
   confirmDeliveryNote,
+  confirmDeliveryNoteViaUi,
   getDeliveryNote,
   consolidateDeliveryNotes,
   uniq,
@@ -335,5 +337,55 @@ test.describe('MTP-RET — return notes / delivery notes / consolidation (W-2)',
         await apiRequest(page, 'DELETE', `/roles/${roleRow.id}`)
       }
     }
+  })
+
+  test('MTP-RET-09 (P1, gate F2): delivery note Confirm button on its own detail page hits the real route, not a 404', async ({ page }) => {
+    // TICKETED FIX (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
+    // F2): DeliveryNoteDetailPage.tsx's Confirm button used to POST
+    // /documents/{id}/confirm — a route that never existed — so the button
+    // 404d unconditionally and stock was never issued via the real UI.
+    // MTP-RET-04 above only proves the API endpoint works; this proves the
+    // actual page button now reaches it.
+    const { productId } = await stockedProduct(page, 'RET09', '15')
+    const customerId = await createCustomer(page, uniq('RET09'))
+    const before = await stockAt(page, productId, WAREHOUSE_LOCATION_ID)
+
+    const dn = await createDeliveryNote(page, {
+      partnerId: customerId,
+      locationId: WAREHOUSE_LOCATION_ID,
+      lines: [{ productId, quantity: '4', unitPrice: '10.000', locationId: WAREHOUSE_LOCATION_ID, taxRate: '0.00' }],
+    })
+    expect(dn.status, `create delivery note -> ${dn.status} ${JSON.stringify(dn.body)}`).toBe(201)
+
+    const confirmed = await confirmDeliveryNoteViaUi(page, dn.id!)
+    expect(confirmed.status, 'delivery note confirmed via its own detail page button').toBe('confirmed')
+
+    const after = await stockAt(page, productId, WAREHOUSE_LOCATION_ID)
+    expect(Number(before) - Number(after), 'confirming through the real UI button issues the delivered quantity').toBeCloseTo(4, 4)
+  })
+
+  test('MTP-RET-10 (P1, gate F2): return note Confirm button on its own detail page hits the real route, not a 404', async ({ page }) => {
+    // TICKETED FIX (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
+    // F2): ReturnNoteDetailPage.tsx's Confirm button used to POST
+    // /documents/{id}/confirm — the identical defect, unfixed on this
+    // sibling page. MTP-RET-01 above only proves the API endpoint works;
+    // this proves the actual page button now reaches it.
+    const { productId } = await stockedProduct(page, 'RET10')
+    const customerId = await createCustomer(page, uniq('RET10'))
+    const before = await stockAt(page, productId, WAREHOUSE_LOCATION_ID)
+
+    const rn = await createReturnNote(page, {
+      partnerId: customerId,
+      returnReason: 'defective',
+      returnCondition: 'unopened',
+      lines: [{ productId, quantity: '3', unitPrice: '10.000', locationId: WAREHOUSE_LOCATION_ID, taxRate: '19.00' }],
+    })
+    expect(rn.status, `create standalone return note -> ${rn.status} ${JSON.stringify(rn.body)}`).toBe(201)
+
+    const confirmed = await confirmReturnNoteViaUi(page, rn.id!)
+    expect(confirmed.status, 'return note confirmed via its own detail page button').toBe('confirmed')
+
+    const after = await stockAt(page, productId, WAREHOUSE_LOCATION_ID)
+    expect(Number(after) - Number(before), 'confirming through the real UI button receives the returned quantity back into stock').toBeCloseTo(3, 4)
   })
 })

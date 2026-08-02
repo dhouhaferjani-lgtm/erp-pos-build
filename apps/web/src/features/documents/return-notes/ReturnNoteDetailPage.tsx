@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, FileText, Car, RotateCcw } from 'lucide-react'
-import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { api, getErrorMessage } from '../../../lib/api'
+import { confirmReturnNote } from '../api/returnNotes'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { bccomp, formatQuantity } from '../../../lib/decimal'
@@ -53,7 +54,7 @@ export function ReturnNoteDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      return apiPost(`/documents/${id}/confirm`)
+      return confirmReturnNote(id)
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['document', id] })

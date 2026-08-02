@@ -52,3 +52,17 @@ export async function createReturnNote(
 ): Promise<ReturnNote> {
   return apiPost<ReturnNote>('/return-notes', request)
 }
+
+/**
+ * Confirm a draft return note (Draft -> Confirmed).
+ *
+ * POST /api/v1/return-notes/{id}/confirm
+ *
+ * NOTE: return notes are a separate resource from `/documents` — there is
+ * no `/documents/{id}/confirm` route. Always go through this function (or
+ * the matching real route directly) rather than reusing the generic
+ * document confirm/post URL shape.
+ */
+export async function confirmReturnNote(id: string): Promise<ReturnNote> {
+  return apiPost<ReturnNote>(`/return-notes/${id}/confirm`)
+}

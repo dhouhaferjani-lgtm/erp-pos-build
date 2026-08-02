@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, Truck } from 'lucide-react'
-import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { api, getErrorMessage } from '../../../lib/api'
+import { confirmDeliveryNote } from '../api/deliveryNotes'
 import { formatCurrency } from '../../../lib/format'
 import { formatQuantity } from '../../../lib/decimal'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
@@ -57,7 +58,7 @@ export function DeliveryNoteDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      return apiPost(`/documents/${id}/confirm`)
+      return confirmDeliveryNote(id)
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['document', id] })

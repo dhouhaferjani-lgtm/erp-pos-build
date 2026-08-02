@@ -19,6 +19,7 @@
  * purchase orders/stock) helpers + fixture ids rather than redefining them.
  */
 import type { Page } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { apiRequest, type ApiResult } from './helpers'
 import { COMPANY_ID } from './w2b-support'
 
@@ -140,6 +141,34 @@ export async function confirmReturnNote(page: Page, id: string): Promise<ApiResu
   return apiRequest(page, 'POST', `/return-notes/${id}/confirm`)
 }
 
+/**
+ * Confirms a return note through the REAL detail-page button
+ * (`ReturnNoteDetailPage`'s Confirm action) rather than the direct API call
+ * above.
+ *
+ * TICKETED FIX (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
+ * F2): `ReturnNoteDetailPage.tsx` used to call
+ * `apiPost('/documents/${id}/confirm')` — a route that never existed
+ * (identical defect to the credit-note one `b9653b604` fixed). Every click
+ * 404d unconditionally. Fixed to call `confirmReturnNote()` from
+ * `api/returnNotes.ts`, which hits the real `/return-notes/{id}/confirm`
+ * route. This helper drives the actual UI button so the fix is exercised
+ * end-to-end, not bypassed via a direct API call.
+ */
+export async function confirmReturnNoteViaUi(page: Page, id: string): Promise<Record<string, unknown>> {
+  await page.goto(`/inventory/return-notes/${id}`)
+  await page.getByRole('button', { name: 'Confirm', exact: true }).first().click({ timeout: 30000 })
+  const [confirmResponse] = await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/api/v1/return-notes/${id}/confirm` && r.request().method() === 'POST'
+    ),
+    page.getByRole('button', { name: 'Confirm', exact: true }).last().click(),
+  ])
+  expect(confirmResponse.ok(), `return note confirm -> ${confirmResponse.status()} ${await confirmResponse.text()}`).toBeTruthy()
+  const json = (await confirmResponse.json()) as { data: Record<string, unknown> }
+  return json.data
+}
+
 export async function getReturnNote(page: Page, id: string): Promise<Record<string, unknown>> {
   const res = await apiRequest(page, 'GET', `/return-notes/${id}`)
   return bodyOf(res)
@@ -170,6 +199,34 @@ export async function createDeliveryNote(
 
 export async function confirmDeliveryNote(page: Page, id: string): Promise<ApiResult> {
   return apiRequest(page, 'POST', `/delivery-notes/${id}/confirm`)
+}
+
+/**
+ * Confirms a delivery note through the REAL detail-page button
+ * (`DeliveryNoteDetailPage`'s Confirm action) rather than the direct API
+ * call above.
+ *
+ * TICKETED FIX (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
+ * F2): `DeliveryNoteDetailPage.tsx` used to call
+ * `apiPost('/documents/${id}/confirm')` — a route that never existed
+ * (identical defect to the credit-note one `b9653b604` fixed). Every click
+ * 404d unconditionally. Fixed to call `confirmDeliveryNote()` from
+ * `api/deliveryNotes.ts`, which hits the real `/delivery-notes/{id}/confirm`
+ * route. This helper drives the actual UI button so the fix is exercised
+ * end-to-end, not bypassed via a direct API call.
+ */
+export async function confirmDeliveryNoteViaUi(page: Page, id: string): Promise<Record<string, unknown>> {
+  await page.goto(`/inventory/delivery-notes/${id}`)
+  await page.getByRole('button', { name: 'Confirm', exact: true }).first().click({ timeout: 30000 })
+  const [confirmResponse] = await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/api/v1/delivery-notes/${id}/confirm` && r.request().method() === 'POST'
+    ),
+    page.getByRole('button', { name: 'Confirm', exact: true }).last().click(),
+  ])
+  expect(confirmResponse.ok(), `delivery note confirm -> ${confirmResponse.status()} ${await confirmResponse.text()}`).toBeTruthy()
+  const json = (await confirmResponse.json()) as { data: Record<string, unknown> }
+  return json.data
 }
 
 export async function getDeliveryNote(page: Page, id: string): Promise<Record<string, unknown>> {
