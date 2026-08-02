@@ -7,18 +7,25 @@ import { type Page, expect } from '@playwright/test'
  * tenant `demo-pharmacy-tn` (DemoPharmacySeeder). No mocks — every request hits the real API.
  */
 
-export type Role = 'owner' | 'manager' | 'cashier'
+export type Role = 'owner' | 'manager' | 'cashier' | 'accountant' | 'viewer' | 'technician'
 
 interface Credentials {
   email: string
   password: string
-  pin: string
+  pin: string | null
 }
 
+// accountant/viewer/technician: added 2026-08-02 (W-1 reconciliation pass,
+// plan §A.6/C-3) via DemoPharmacySeeder::seedRoleCoverageUsers() -- the
+// Spatie roles already existed in RolesAndPermissionsSeeder.php; only the
+// user rows were missing. None carry a POS pin (not POS-floor personas).
 export const ROLE_CREDENTIALS: Record<Role, Credentials> = {
   owner: { email: 'owner@pharmabio.tn', password: 'password', pin: '1234' },
   manager: { email: 'manager@pharmabio.tn', password: 'password', pin: '5678' },
   cashier: { email: 'cashier@pharmabio.tn', password: 'password', pin: '0000' },
+  accountant: { email: 'accountant@pharmabio.tn', password: 'password', pin: null },
+  viewer: { email: 'viewer@pharmabio.tn', password: 'password', pin: null },
+  technician: { email: 'technician@pharmabio.tn', password: 'password', pin: null },
 }
 
 /**

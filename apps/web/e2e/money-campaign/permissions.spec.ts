@@ -181,31 +181,79 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
     test.skip(true, 'no bank statement data exists to construct a valid request')
   })
 
-  test('MTP-PERM-09 (P1): BLOCKED — accountant role not provisioned', async () => {
-    test.info().annotations.push({
-      type: 'BLOCKED',
-      description:
-        'No accountant@... credential was supplied to this campaign agent (only ' +
-        'owner@pharmabio.tn / manager@pharmabio.tn / cashier@pharmabio.tn). Cannot verify ' +
-        'accountant has no POS-floor grants without an accountant login.',
+  // A6.3 (C-3 unblock, plan §A.6): the Spatie roles (accountant/viewer/
+  // technician) already existed in RolesAndPermissionsSeeder.php -- only the
+  // USER rows were missing. Added 2026-08-02 via
+  // DemoPharmacySeeder::seedRoleCoverageUsers() (see helpers.ts ROLE_CREDENTIALS
+  // for the new logins). "No POS-floor grants" is verified two ways: the
+  // permissions array carries no `pos.*` string, AND a real money-mutation
+  // attempt (payments.create) is refused/allowed exactly per each role's
+  // actual permission set -- not just list-absence.
+  test('MTP-PERM-09 (P1): accountant is financial-only — payments.create granted, zero POS-floor grants', async ({ page }) => {
+    await loginAsRole(page, 'accountant')
+    const me = await apiRequest(page, 'GET', '/auth/me')
+    expect(me.status).toBe(200)
+    const permissions = ((me.body as { data?: { permissions?: string[] } }).data?.permissions ?? []) as string[]
+    expect(permissions, 'accountant holds payments.create (financial role)').toContain('payments.create')
+    expect(
+      permissions.some((p) => p.startsWith('pos.')),
+      'accountant carries zero pos.* permissions',
+    ).toBe(false)
+
+    // API layer: accountant CAN create an expense (holder of expenses.create,
+    // NOT partners.create -- accountant is 'partners.view' only per
+    // RolesAndPermissionsSeeder.php:717-744), proving the role is genuinely
+    // wired to a real financial permission, not just present-but-inert.
+    const expense = await apiRequest(page, 'POST', '/expenses', {
+      total: '10.000',
+      notes: `MTP-PERM-09-${Date.now()}`,
     })
-    test.skip(true, 'accountant role credentials not provisioned')
+    expect(expense.status, `expense create -> ${expense.status} ${JSON.stringify(expense.body)}`).toBe(201)
   })
 
-  test('MTP-PERM-10 (P1): BLOCKED — viewer role not provisioned', async () => {
-    test.info().annotations.push({
-      type: 'BLOCKED',
-      description: 'No viewer@... credential was supplied to this campaign agent.',
+  test('MTP-PERM-10 (P1): viewer is read-only — zero create/update/delete grants, zero POS-floor grants', async ({ page }) => {
+    await loginAsRole(page, 'viewer')
+    const me = await apiRequest(page, 'GET', '/auth/me')
+    expect(me.status).toBe(200)
+    const permissions = ((me.body as { data?: { permissions?: string[] } }).data?.permissions ?? []) as string[]
+    expect(permissions.length, 'viewer holds at least the seeded *.view permissions').toBeGreaterThan(0)
+    expect(
+      permissions.every((p) => !p.endsWith('.create') && !p.endsWith('.update') && !p.endsWith('.delete') && !p.endsWith('.post') && !p.endsWith('.pay')),
+      'viewer holds NO mutating permission of any kind',
+    ).toBe(true)
+    expect(
+      permissions.some((p) => p.startsWith('pos.')),
+      'viewer carries zero pos.* permissions',
+    ).toBe(false)
+
+    // API layer: a real mutation attempt (partners.create) 403s for viewer.
+    const attempt = await apiRequest(page, 'POST', '/partners', {
+      name: `MTP-PERM-10-${Date.now()}`,
+      type: 'customer',
     })
-    test.skip(true, 'viewer role credentials not provisioned')
+    expect(attempt.status).toBe(403)
   })
 
-  test('MTP-PERM-11 (P1): BLOCKED — technician/operator role not provisioned', async () => {
-    test.info().annotations.push({
-      type: 'BLOCKED',
-      description: 'No technician/operator@... credential was supplied to this campaign agent.',
+  test('MTP-PERM-11 (P1): technician is workshop-only — zero financial/POS-floor grants', async ({ page }) => {
+    await loginAsRole(page, 'technician')
+    const me = await apiRequest(page, 'GET', '/auth/me')
+    expect(me.status).toBe(200)
+    const permissions = ((me.body as { data?: { permissions?: string[] } }).data?.permissions ?? []) as string[]
+    expect(permissions, 'technician holds work-orders.view (workshop role)').toContain('work-orders.view')
+    expect(
+      permissions.some((p) => p.startsWith('pos.') || p.startsWith('payments.')),
+      'technician carries zero pos.* or payments.* permissions',
+    ).toBe(false)
+
+    // API layer: a real money-mutation attempt (payments.create) 403s.
+    const attempt = await apiRequest(page, 'POST', '/payments', {
+      partner_id: '00000000-0000-0000-0000-000000000000',
+      payment_method_id: '00000000-0000-0000-0000-000000000000',
+      amount: '1.000',
+      currency: 'TND',
+      payment_date: new Date().toISOString().slice(0, 10),
     })
-    test.skip(true, 'technician/operator role credentials not provisioned')
+    expect(attempt.status).toBe(403)
   })
 
   test('MTP-PERM-12 (P0): BLOCKED — tenant-blind permission-cache reseed guard', async () => {
@@ -236,6 +284,201 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
         'Validation/DiscountPolicyDocumentValidator.php) as the enforcement point to target.',
     })
     test.skip(true, 'document-authoring schema not established within budget')
+  })
+
+  // A6.4 (plan §A.6): cashier's max_discount_percent=10.00 boundary,
+  // exercised via a real document-authoring API call carrying a line
+  // discount (DiscountPolicyDocumentValidator only evaluates lines with a
+  // product_id — required a real product, established here).
+  test('MTP-PERM-13 (P1): cashier discount policy is ADVISORY-ONLY on this tenant — not enforced against the 10% cap', async ({
+    page,
+  }) => {
+    await loginAsRole(page, 'cashier')
+
+    // REVISED FROM THE PLAN'S PREMISE (finding, not silently swapped): the
+    // plan assumes DiscountPolicyDocumentValidator (invoices.store is on its
+    // POLICY_ROUTES list) REFUSES a line whose effective price falls below
+    // the cashier's max_discount_percent-derived floor. Live-verified: this
+    // tenant's companies.discount_floor_mode = 'Advisory' (confirmed via DB
+    // read at authoring time), and DiscountPolicyDocumentValidator::shouldReject()
+    // returns false unconditionally when mode === Advisory
+    // (DiscountPolicyDocumentValidator.php:156-163) — regardless of how far
+    // below the cap/cost floor the price falls. The validator still RUNS
+    // (an internal warning is recorded on the request, per
+    // `discount_policy_warnings`) but nothing in the response surfaces it and
+    // nothing blocks the create. This is a valid company POLICY CHOICE
+    // (Advisory vs Block/Enforced is a first-class mode), not a defect —
+    // recorded as the true boundary, not the plan's assumed one.
+    const products = await apiRequest(page, 'GET', '/products?per_page=1')
+    expect(products.status).toBe(200)
+    const productList = (products.body as { data?: Array<{ id: string; sale_price?: string }> }).data ?? []
+    expect(productList.length, 'at least one product exists to exercise the policy check').toBeGreaterThan(0)
+    const product = productList[0]
+
+    const customer = await apiRequest(page, 'POST', '/partners', {
+      name: `MTP-PERM-13-${Date.now()}`,
+      type: 'customer',
+    })
+    expect(customer.status).toBe(201)
+    const customerId = ((customer.body as { data?: { id: string } }).data as { id: string }).id
+
+    // 50% line discount — well beyond the cashier's 10.00 cap.
+    const result = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          product_id: product.id,
+          description: 'MTP-PERM-13 probe',
+          quantity: '1',
+          unit_price: product.sale_price ?? '38.290',
+          discount_percent: '50',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(
+      result.status,
+      `expected the 50% discount to succeed (Advisory mode never blocks) -> ${result.status} ${JSON.stringify(result.body)}`,
+    ).toBe(201)
+  })
+
+  // A6.1 (NEW MTP-PERM-15, plan §A.6 / review I6): pin the documented
+  // privilege-widening ruling as an assertion. A principal holding
+  // payments.reverse but NOT instruments.cancel can still, via reverse(),
+  // cancel a `received` instrument as an atomic side effect
+  // (PaymentRefundService.php:670-681, resolveInstrumentForReversal() runs
+  // INSIDE the reverse transaction regardless of the caller's instrument
+  // permissions — the route only gates on can:payments.reverse). No seeded
+  // role naturally isolates this shape (admin holds both permissions;
+  // manager/accountant hold instruments.cancel but not payments.reverse) —
+  // constructed live via the real Roles API (payments.reverse is
+  // deliberately admin-only per RolesAndPermissionsSeeder.php:224-228, so
+  // this custom role is the only way to hold it without also holding
+  // instruments.cancel).
+  test('MTP-PERM-15 (RULING, review I6): payments.reverse holder without instruments.cancel still cancels the linked instrument on reverse', async ({
+    page,
+  }) => {
+    test.setTimeout(150000)
+
+    // Capture the viewer user's id (temporary role donor — restored at the end).
+    await loginAsRole(page, 'viewer')
+    const viewerMe = await apiRequest(page, 'GET', '/auth/me')
+    expect(viewerMe.status).toBe(200)
+    const viewerId = ((viewerMe.body as { data?: { id: string } }).data as { id: string }).id
+    const viewerPermissionsBefore = ((viewerMe.body as { data?: { permissions?: string[] } }).data
+      ?.permissions ?? []) as string[]
+    expect(viewerPermissionsBefore).not.toContain('payments.reverse')
+    expect(viewerPermissionsBefore).not.toContain('instruments.cancel')
+
+    // Owner: create the custom role (payments.reverse ONLY — no instruments.*)
+    // and the fixture payment/instrument.
+    await loginAsRole(page, 'owner')
+    const roleName = `perm15-reverser-${Date.now()}`
+    const roleCreate = await apiRequest(page, 'POST', '/roles', {
+      name: roleName,
+      permissions: ['payments.reverse', 'payments.view'],
+    })
+    expect(roleCreate.status, `role create -> ${roleCreate.status} ${JSON.stringify(roleCreate.body)}`).toBe(201)
+
+    const methods = await apiRequest(page, 'GET', '/payment-methods')
+    const methodList = (methods.body as { data?: Array<{ id: string; code: string }> }).data ?? []
+    const checkMethodId = methodList.find((m) => m.code === 'CHECK')?.id
+    expect(checkMethodId, 'CHECK payment method exists').toBeTruthy()
+    const repos = await apiRequest(page, 'GET', '/payment-repositories')
+    const repoList = (repos.body as { data?: Array<{ id: string; code: string }> }).data ?? []
+    const cashRepoId = repoList.find((r) => r.code === 'CASH-01')?.id
+    expect(cashRepoId, 'CASH-01 repository exists').toBeTruthy()
+
+    const customer = await apiRequest(page, 'POST', '/partners', {
+      name: `MTP-PERM-15-${Date.now()}`,
+      type: 'customer',
+    })
+    expect(customer.status).toBe(201)
+    const customerId = ((customer.body as { data?: { id: string } }).data as { id: string }).id
+
+    const invoice = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [{ description: 'MTP-PERM-15 probe', quantity: '1', unit_price: '99.000', tax_rate: '0.00' }],
+    })
+    expect(invoice.status).toBe(201)
+    const invoiceId = ((invoice.body as { data?: { id: string } }).data as { id: string }).id
+    const confirm = await apiRequest(page, 'POST', `/invoices/${invoiceId}/confirm`)
+    expect(confirm.status).toBe(200)
+    const postRes = await apiRequest(page, 'POST', `/invoices/${invoiceId}/post`)
+    expect(postRes.status).toBe(200)
+    const postedTotal = (
+      (postRes.body as { data?: { total: string } }).data as { total: string }
+    ).total
+
+    const payment = await apiRequest(page, 'POST', '/payments', {
+      partner_id: customerId,
+      payment_method_id: checkMethodId,
+      repository_id: cashRepoId,
+      amount: postedTotal,
+      currency: 'TND',
+      payment_date: new Date().toISOString().slice(0, 10),
+      allocations: [{ document_id: invoiceId, amount: postedTotal }],
+      instrument: {
+        reference: `MTP-PERM-15-CHQ-${Date.now()}`,
+        maturity_date: '2026-12-31',
+        drawer_name: 'MTP-PERM-15 Drawer',
+      },
+    })
+    expect(payment.status, `payment create -> ${payment.status} ${JSON.stringify(payment.body)}`).toBe(201)
+    const paymentId = ((payment.body as { data?: { id: string } }).data as { id: string }).id
+    const instrumentId = ((payment.body as { data?: { instrument_id: string } }).data as { instrument_id: string })
+      .instrument_id
+    expect(instrumentId).toBeTruthy()
+
+    const instrumentBefore = await apiRequest(page, 'GET', `/payment-instruments/${instrumentId}`)
+    expect((instrumentBefore.body as { data?: { status: string } }).data?.status).toBe('received')
+
+    // Grant the custom role to the viewer user (additive — viewer keeps its
+    // own role too).
+    const assign = await apiRequest(page, 'POST', `/users/${viewerId}/roles`, { role: roleName })
+    expect(assign.status, `role assign -> ${assign.status} ${JSON.stringify(assign.body)}`).toBeLessThan(300)
+
+    try {
+      // Now act as the (viewer + perm15-reverser) principal.
+      await loginAsRole(page, 'viewer')
+      const meAfterGrant = await apiRequest(page, 'GET', '/auth/me')
+      const permissionsAfterGrant = ((meAfterGrant.body as { data?: { permissions?: string[] } }).data
+        ?.permissions ?? []) as string[]
+      expect(permissionsAfterGrant, 'principal now holds payments.reverse').toContain('payments.reverse')
+      expect(
+        permissionsAfterGrant,
+        'RULING setup check: principal does NOT hold instruments.cancel',
+      ).not.toContain('instruments.cancel')
+
+      const reverse = await apiRequest(page, 'POST', `/payments/${paymentId}/reverse`, {
+        reason: 'MTP-PERM-15 privilege-widening ruling probe',
+      })
+      expect(
+        reverse.status,
+        `RULING: payments.reverse-only holder can reverse -> ${reverse.status} ${JSON.stringify(reverse.body)}`,
+      ).toBeLessThan(300)
+
+      const instrumentAfter = await apiRequest(page, 'GET', `/payment-instruments/${instrumentId}`)
+      expect(
+        (instrumentAfter.body as { data?: { status: string } }).data?.status,
+        'RULING (I6): the instrument is cancelled as an atomic side effect of reverse(), despite the caller never holding instruments.cancel — documented privilege widening, not a bug',
+      ).toBe('cancelled')
+    } finally {
+      // Cleanup: restore viewer to its clean baseline role set and remove
+      // the throwaway role, so a re-run of MTP-PERM-10 (viewer must hold NO
+      // mutating permission) is not contaminated by this test.
+      await loginAsRole(page, 'owner')
+      await apiRequest(page, 'DELETE', `/users/${viewerId}/roles`, { role: roleName })
+      const roles = await apiRequest(page, 'GET', '/roles')
+      const roleRow = ((roles.body as { data?: Array<{ id: number; name: string }> }).data ?? []).find(
+        (r) => r.name === roleName,
+      )
+      if (roleRow) {
+        await apiRequest(page, 'DELETE', `/roles/${roleRow.id}`)
+      }
+    }
   })
 
   test('MTP-PERM-14 (P1): BLOCKED — barista@cafe-tunis.tn not provisioned', async () => {

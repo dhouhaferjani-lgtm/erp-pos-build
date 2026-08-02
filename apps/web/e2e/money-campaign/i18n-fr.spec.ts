@@ -12,9 +12,17 @@ import { loginAsRole, FR_NBSP, normalizeSpaces } from './helpers'
  * documented below (I18N-04a) rather than depending on it.
  *
  * Ground truth used throughout: /finance/trial-balance for demo-pharmacy-tn renders the
- * "401 Fournisseurs" row's CREDIT cell containing "3 200,000 TND" where the character
- * between "3" and "200" is code point 8239 (U+202F NARROW NO-BREAK SPACE) - verified via
- * charCodeAt at execution time, exactly the plan's predicted vector.
+ * "401 Fournisseurs" row's CREDIT cell containing a grouped TND figure where the character
+ * between the thousands and hundreds digits is code point 8239 (U+202F NARROW NO-BREAK
+ * SPACE) - verified via charCodeAt at execution time, exactly the plan's predicted vector.
+ * RE-VERIFIED 2026-08-02 (W-1 reconciliation pass): the literal balance drifted from
+ * "3 200,000" to "4 184,154" between the original authoring session and this run — this
+ * account is a REAL, LIVE, cumulative GL balance (401 Fournisseurs / supplier payable),
+ * not a frozen fixture, so it moves every time ANY campaign leg posts a supplier invoice
+ * (this pass's own MTP-TRE-06 unblock is one such mover — see treasury-payments.spec.ts).
+ * Re-verify this literal against a fresh `SELECT SUM(credit-debit) ... WHERE account
+ * name='Fournisseurs'` (or the rendered page) before trusting it on a future run; do not
+ * assume it is still correct.
  */
 
 test.describe('I18N - fr-locale number formatting', () => {
@@ -29,11 +37,11 @@ test.describe('I18N - fr-locale number formatting', () => {
     expect(text).not.toBeNull()
     const value = text ?? ''
 
-    // Exact vector: "3<NBSP>200,000" - grouping separator is U+202F, decimal is comma, 3dp.
-    expect(value).toContain(`3${FR_NBSP}200,000`)
+    // Exact vector: "4<NBSP>184,154" - grouping separator is U+202F, decimal is comma, 3dp.
+    expect(value).toContain(`4${FR_NBSP}184,154`)
     // And prove it, not just contain a look-alike: the grouping character is genuinely
     // U+202F, not a plain ASCII space that a naive test/matcher could confuse it with.
-    const nbspIndex = value.indexOf('200,000') - 1
+    const nbspIndex = value.indexOf('184,154') - 1
     expect(value.charCodeAt(nbspIndex)).toBe(0x202f)
   })
 
@@ -46,12 +54,12 @@ test.describe('I18N - fr-locale number formatting', () => {
 
     // A test asserting against an ASCII-space expectation must NOT pass on a raw compare -
     // if it did, the harness would be silently masking a real NBSP regression.
-    expect(text.includes('3 200,000')).toBe(false) // ASCII space (U+0020) between 3 and 200 - absent
-    expect(text.includes(`3${FR_NBSP}200,000`)).toBe(true) // real NBSP - present
+    expect(text.includes('4 184,154')).toBe(false) // ASCII space (U+0020) between 4 and 184 - absent
+    expect(text.includes(`4${FR_NBSP}184,154`)).toBe(true) // real NBSP - present
 
     // Only passes once explicitly normalized - this is the required, stated mechanism,
     // not silent normalization inside a matcher.
-    expect(normalizeSpaces(text)).toContain('3 200,000')
+    expect(normalizeSpaces(text)).toContain('4 184,154')
   })
 
   test('MTP-I18N-03 (P1): BLOCKED - EUR company (demo-garage) not available in this environment', async () => {
@@ -90,6 +98,12 @@ test.describe('I18N - fr-locale number formatting', () => {
     await expect(page.locator('body')).toContainText('Trial Balance')
   })
 
+  // A7.2 (plan §A.7, ORCHESTRATOR RULING 2026-08-02): the plan's literal
+  // wording ("separators switch with UI language") is WRONG for this app and
+  // is hereby amended by ruling, not by re-filing a ticket -- TND (and every
+  // other currency) formats via the currency->locale map (currencyMeta.ts)
+  // REGARDLESS of the selected UI language; only surrounding labels/menus
+  // switch. The PASS + the note below are permanent, not provisional.
   test('MTP-I18N-04b (P1): en<->fr - numeric values identical; TND formatting is currency-locale-bound, not UI-locale-bound', async ({ page }) => {
     await loginAsRole(page, 'owner')
 
@@ -115,13 +129,13 @@ test.describe('I18N - fr-locale number formatting', () => {
     // amounts render via the currency->locale map (TND -> fr-TN, precision contract
     // section I.3 / src/lib/currencyMeta.ts) REGARDLESS of the selected UI language -
     // only surrounding labels/menus switch. Observed: en-UI and fr-UI both render
-    // "3 200,000" for this TND figure (NBSP grouping present even under the English UI,
+    // "4 184,154" for this TND figure (NBSP grouping present even under the English UI,
     // confirmed via charCodeAt in MTP-I18N-01/02). Checked here, not assumed: digits
     // identical across the UI-locale switch, and neither run re-rounds the value.
     const digitsOnly = (s: string) => s.replace(/[^\d]/g, '')
     expect(digitsOnly(frRow)).toBe(digitsOnly(enRow))
-    expect(frRow).toContain(`3${FR_NBSP}200,000`)
-    expect(enRow).toContain(`3${FR_NBSP}200,000`)
+    expect(frRow).toContain(`4${FR_NBSP}184,154`)
+    expect(enRow).toContain(`4${FR_NBSP}184,154`)
 
     // Separately: the account TYPE column ("Liability") is NOT translated under fr
     // either - a partial-translation gap in the same family as the ar fallback covered
@@ -129,17 +143,43 @@ test.describe('I18N - fr-locale number formatting', () => {
     expect(frRow.toLowerCase()).toContain('liability')
   })
 
-  test('MTP-I18N-05 (P1): BLOCKED - no negative money figure exists in reachable data', async () => {
-    test.info().annotations.push({
-      type: 'BLOCKED',
-      description:
-        'No negative documents.total exists in tenant019fbe86-944a-7252-8a3b-8c341dfa9de9 ' +
-        '(confirmed via direct DB query: zero rows with total<0, and zero credit-note-type ' +
-        'documents). Legacy negative-return receipts and cash-variance figures live on the ' +
-        'POS side, which requires device authoring per plan section 0.4/2 - out of scope for ' +
-        'this web-only PERM/I18N/EMPTY/AUTH agent slot.',
-    })
-    test.skip(true, 'no negative money figure available to render')
+  // A7.1 (C-10 unblock, plan §A.7): a negative money figure is now
+  // authorable without the device -- a partial refund writes a
+  // negative-amount `Payment` row (D5, treasury-payments.spec.ts MTP-TRE-10),
+  // and 17 such rows already exist in this tenant from prior campaign runs
+  // (payment_type=refund; reference LIKE 'Refund for payment%' isolates
+  // them, since every refund payment in this app is negative by
+  // construction -- confirmed via direct DB read at authoring time). Render
+  // one under ?lang=fr on the payments list (PaymentListPage.tsx uses the
+  // canonical shared formatCurrency, unlike PaymentDetailPage.tsx which
+  // hardcodes 'en-US' locale regardless of app language -- not a defect
+  // under test here, just why the LIST page was chosen over the detail page).
+  test('MTP-I18N-05 (P1): negative payment amount renders with a real minus sign + NBSP grouping, never a parenthesized negative', async ({
+    page,
+  }) => {
+    await loginAsRole(page, 'owner')
+    await page.goto('/treasury/payments?lang=fr')
+    const search = page.getByRole('textbox').first()
+    await search.fill('Refund for payment')
+    const row = page.locator('table tbody tr').filter({ hasText: '-' }).first()
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    const text = (await row.textContent()) ?? ''
+
+    // A real minus sign, never a parenthesized negative or bare unsigned
+    // amount that silently drops the sign.
+    expect(text, 'renders with a real minus sign').toContain('-')
+    expect(text, 'never a parenthesized negative').not.toMatch(/\(\s*\d/)
+
+    // These refund rows are all -1000.000 or similar (thousands-grouped) --
+    // prove the NBSP grouping character survives on a NEGATIVE amount too
+    // (MTP-I18N-01/02 already proved it for a positive one).
+    const match = text.match(/-(\d)(\D)(\d{3}),(\d{3})/)
+    expect(match, `expected a grouped negative amount in: ${text}`).not.toBeNull()
+    if (match) {
+      expect(match[2].charCodeAt(0), 'grouping separator is U+202F NARROW NO-BREAK SPACE, not ASCII space').toBe(
+        0x202f,
+      )
+    }
   })
 
   test('MTP-I18N-06 (P1): zero balance renders as scale-3 "0,000", never bare "0" or blank', async ({ page }) => {
