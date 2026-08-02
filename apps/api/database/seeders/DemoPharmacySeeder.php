@@ -424,6 +424,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
 
             $this->seedTunisiaTerminals($this->shops);
             $this->seedTunisiaCashiers($this->company, $this->shops);
+            $this->seedRoleCoverageUsers($this->company);
 
             // Distribute front-of-house stock to the 4 POS shops.
             // The warehouse (WH-01) already holds broad stock from the parent's
@@ -1003,6 +1004,66 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 'can_discount' => true,
                 'max_discount_percent' => '10.00',
             ]);
+        }
+    }
+
+    /**
+     * Create one user per role NOT already covered by {@see createTestUsers}
+     * (owner/manager/cashier) or {@see seedTunisiaCashiers} (location-scoped
+     * cashiers), so the money-campaign permission matrix (MTP-PERM-09/10/11)
+     * has real credentials for `accountant`, `viewer`, and `technician` — all
+     * three roles already exist in {@see RolesAndPermissionsSeeder} but had no
+     * seeded user account on this tenant. Additively guarded (firstOrCreate)
+     * so a re-run is a safe no-op, matching every other seedTunisia* method.
+     */
+    protected function seedRoleCoverageUsers(Company $company): void
+    {
+        setPermissionsTeamId($this->tenant->id);
+
+        $domain = $this->localeUserEmailDomain();
+
+        $definitions = [
+            'accountant' => ['membershipRole' => MembershipRole::Accountant, 'name' => 'Amine Trabelsi'],
+            'viewer' => ['membershipRole' => MembershipRole::Viewer, 'name' => 'Nadia Ferjani'],
+            'technician' => ['membershipRole' => MembershipRole::Technician, 'name' => 'Karim Bouzid'],
+        ];
+
+        foreach ($definitions as $roleName => $def) {
+            $email = "{$roleName}@{$domain}";
+
+            $user = User::firstOrCreate(
+                ['email' => $email],
+                [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $this->tenant->id,
+                    'name' => $def['name'],
+                    'password' => Hash::make('password'),
+                    'status' => UserStatus::Active,
+                    'email_verified_at' => now(),
+                    'preferences' => [],
+                    'can_discount' => false,
+                    'max_discount_percent' => '0.00',
+                ],
+            );
+
+            $this->recordIdentity($user, $this->tenant);
+
+            UserCompanyMembership::firstOrCreate(
+                ['user_id' => $user->id, 'company_id' => $company->id],
+                [
+                    'role' => $def['membershipRole'],
+                    'is_primary' => true,
+                    'status' => MembershipStatus::Active,
+                    'accepted_at' => now(),
+                ],
+            );
+
+            $spatieRole = Role::where('name', $roleName)->where('guard_name', 'sanctum')->first();
+            if ($spatieRole && ! $user->hasRole($spatieRole)) {
+                $user->assignRole($spatieRole);
+            }
+
+            $this->command->info("✓ {$roleName}: {$email} / password");
         }
     }
 
