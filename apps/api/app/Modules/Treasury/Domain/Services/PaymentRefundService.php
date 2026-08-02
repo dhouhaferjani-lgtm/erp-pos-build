@@ -6,6 +6,8 @@ namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Document\Domain\CreditNoteAllocation;
+use App\Modules\Document\Domain\Document;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
@@ -293,6 +295,15 @@ class PaymentRefundService
                     'notes' => "Partial refund ({$amount}): {$reason}",
                     'created_by' => $userId,
                 ]);
+
+                // MTP-TRE-10 fix: unwind PaymentAllocation pro-rata for the refunded
+                // amount and reopen the affected document(s)' balance_due — mirrors
+                // refundPayment()'s negative-allocation-row semantics (never deletes/
+                // mutates the original allocation row), but ALSO explicitly recomputes
+                // balance_due (the full-refund path relies solely on the Postgres
+                // balance_due-cache trigger, which is a no-op on SQLite/tests — see
+                // unwindAllocationsProRata() docblock).
+                $this->unwindAllocationsProRata($original, $refund->id, $amount);
 
                 // GL reversal + cash movement OUT via the write port.
                 $this->postRefundGlAndMovement($original, $refund->id, $amount, $refundRequestId, $userId);
@@ -656,6 +667,182 @@ class PaymentRefundService
         }
     }
 
+    /**
+     * MTP-TRE-10 fix: unwind PaymentAllocation pro-rata for a partial-refund
+     * amount, and reopen the affected document(s)' `balance_due` — the
+     * partial-refund counterpart to refundPayment()'s full unwind (which
+     * mirrors every original allocation 1:1 because it always refunds
+     * 100%).
+     *
+     * Mechanics (mirrors refundPayment()'s audit-trail-preserving shape):
+     * for each document the ORIGINAL payment is still live-allocated
+     * against, insert a NEGATIVE PaymentAllocation row (never delete/mutate
+     * the original positive row) sized as this document's pro-rata share of
+     * `$unwindAmount`. "Live" = the original allocation minus whatever prior
+     * partial refunds of this SAME original payment already unwound for
+     * that document — so repeated partial refunds of a multi-document
+     * payment can never unwind more than what's actually still allocated.
+     *
+     * Rounding: proportional shares are truncated to the document's
+     * currency scale; the residual (rounding dust) goes to the LAST
+     * document in deterministic (document_id ASC) order, so
+     * sum(shares) === $unwindAmount exactly — same rounding contract as
+     * buildProportionalMap() above.
+     *
+     * balance_due: the documents table has a Postgres trigger
+     * (`payment_allocation_balance_update`) that recomputes
+     * `balance_due = total - SUM(payment_allocations) - SUM(credit_note_allocations)`
+     * on every payment_allocations write — but it is a no-op on SQLite
+     * (the test driver). This method explicitly recomputes `balance_due`
+     * with the SAME formula in PHP (portable across both), mirroring the
+     * pattern already used by `OutboundInstrumentService::cancel()`.
+     *
+     * @param  numeric-string  $unwindAmount  Positive refund amount at currency scale.
+     */
+    private function unwindAllocationsProRata(Payment $original, string $refundPaymentId, string $unwindAmount): void
+    {
+        $scale = $this->scaleResolver->getScale($original->currency);
+
+        /** @var Collection<int, PaymentAllocation> $originalAllocations */
+        $originalAllocations = PaymentAllocation::where('payment_id', $original->id)->get();
+        if ($originalAllocations->isEmpty()) {
+            // Advance/unallocated payment — nothing to unwind.
+            return;
+        }
+
+        // Sum, per document, of amounts already unwound by PRIOR partial
+        // refunds of this same original payment (full refunds short-circuit
+        // before reaching here — refundPayment() is idempotent/terminal).
+        /** @var array<string, numeric-string> $alreadyUnwoundByDocument */
+        $alreadyUnwoundByDocument = [];
+        $priorRefundPaymentIds = Payment::where('original_payment_id', $original->id)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->where('id', '!=', $refundPaymentId)
+            ->pluck('id');
+
+        if ($priorRefundPaymentIds->isNotEmpty()) {
+            PaymentAllocation::whereIn('payment_id', $priorRefundPaymentIds)
+                ->get()
+                ->each(function (PaymentAllocation $row) use (&$alreadyUnwoundByDocument, $scale): void {
+                    /** @var numeric-string $abs */
+                    $abs = ltrim((string) $row->amount, '-');
+                    /** @var numeric-string $running */
+                    $running = $alreadyUnwoundByDocument[$row->document_id] ?? '0';
+                    $alreadyUnwoundByDocument[$row->document_id] = bcadd($running, $abs, $scale);
+                });
+        }
+
+        // Live remaining allocation per document (original minus already-unwound).
+        /** @var array<string, numeric-string> $liveByDocument */
+        $liveByDocument = [];
+        /** @var numeric-string $liveTotal */
+        $liveTotal = '0';
+        foreach ($originalAllocations as $allocation) {
+            /** @var numeric-string $already */
+            $already = $alreadyUnwoundByDocument[$allocation->document_id] ?? '0';
+            /** @var numeric-string $remaining */
+            $remaining = bcsub((string) $allocation->amount, $already, $scale);
+            if (bccomp($remaining, '0', $scale) <= 0) {
+                continue;
+            }
+            /** @var numeric-string $running */
+            $running = $liveByDocument[$allocation->document_id] ?? '0';
+            $liveByDocument[$allocation->document_id] = bcadd($running, $remaining, $scale);
+            $liveTotal = bcadd($liveTotal, $remaining, $scale);
+        }
+
+        if (bccomp($liveTotal, '0', $scale) <= 0) {
+            // Everything already unwound by prior partial refunds — nothing live.
+            return;
+        }
+
+        // Defensive cap: never unwind more than what's actually live (the
+        // caller's assertWithinRefundableBalance() already guards the
+        // payment-level cumulative total; this guards the allocation side).
+        /** @var numeric-string $toUnwind */
+        $toUnwind = bccomp($unwindAmount, $liveTotal, $scale) > 0 ? $liveTotal : $unwindAmount;
+
+        $documentIds = array_keys($liveByDocument);
+        sort($documentIds);
+        $lastIndex = count($documentIds) - 1;
+
+        /** @var numeric-string $allocated */
+        $allocated = '0';
+        /** @var list<string> $touchedDocumentIds */
+        $touchedDocumentIds = [];
+
+        foreach ($documentIds as $index => $documentId) {
+            /** @var numeric-string $remainingToAllocate */
+            $remainingToAllocate = bcsub($toUnwind, $allocated, $scale);
+            if (bccomp($remainingToAllocate, '0', $scale) <= 0) {
+                break;
+            }
+
+            if ($index === $lastIndex) {
+                /** @var numeric-string $slice */
+                $slice = $remainingToAllocate;
+            } else {
+                /** @var numeric-string $share */
+                $share = $liveByDocument[$documentId];
+                /** @var numeric-string $ratio */
+                $ratio = bcdiv($share, $liveTotal, $scale + 10);
+                /** @var numeric-string $raw */
+                $raw = bcmul($ratio, $toUnwind, $scale + 10);
+                /** @var numeric-string $slice */
+                $slice = CurrencyScale::bcformat($raw, $scale);
+                if (bccomp($slice, $remainingToAllocate, $scale) > 0) {
+                    $slice = $remainingToAllocate;
+                }
+            }
+
+            if (bccomp($slice, '0', $scale) <= 0) {
+                continue;
+            }
+
+            PaymentAllocation::create([
+                'payment_id' => $refundPaymentId,
+                'document_id' => $documentId,
+                'amount' => bcmul($slice, '-1', $scale),
+            ]);
+
+            $allocated = bcadd($allocated, $slice, $scale);
+            $touchedDocumentIds[] = $documentId;
+        }
+
+        foreach ($touchedDocumentIds as $documentId) {
+            /** @var Document|null $document */
+            $document = Document::query()
+                ->where('tenant_id', $original->tenant_id)
+                ->where('company_id', $original->company_id)
+                ->lockForUpdate()
+                ->find($documentId);
+            if ($document === null) {
+                continue;
+            }
+
+            $docScale = $this->scaleResolver->getScaleSafe($document->currency, $scale);
+            /** @var numeric-string $documentTotal */
+            $documentTotal = CurrencyScale::bcformat((string) ($document->total ?? '0'), $docScale);
+
+            /** @var numeric-string $allocatedSum */
+            $allocatedSum = PaymentAllocation::where('document_id', $documentId)
+                ->get('amount')
+                ->reduce(
+                    fn (string $sum, PaymentAllocation $row): string => bcadd($sum, (string) $row->amount, $docScale),
+                    '0'
+                );
+            /** @var numeric-string $creditedSum */
+            $creditedSum = CreditNoteAllocation::where('invoice_id', $documentId)
+                ->get('amount')
+                ->reduce(
+                    fn (string $sum, CreditNoteAllocation $row): string => bcadd($sum, (string) $row->amount, $docScale),
+                    '0'
+                );
+
+            $document->balance_due = bcsub(bcsub($documentTotal, $allocatedSum, $docScale), $creditedSum, $docScale);
+            $document->save();
+        }
+    }
 
     /**
      * Prorate a refund total across all of a receipt's original payments.

@@ -288,21 +288,16 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
     ).toBeTruthy()
 
     const invCAfter = await get(request, owner, `/documents/${invC.id}`)
-    // FINDING (MTP-TRE-10 does not hold as written): PaymentRefundService::
-    // partialRefund() (Domain/Services/PaymentRefundService.php:214-320) only
-    // creates a negative-amount refund Payment row and reverses the GL/cash
-    // leg — it never touches PaymentAllocation rows or the document's
-    // balance_due (contrast with refundPayment(), the FULL-refund path
-    // exercised in MTP-TRE-09 above, which DOES restore balance_due, as
-    // proven by the previous assertions in this same test). So a 250.000
-    // partial refund of a payment that fully settled a 600.000 invoice
-    // leaves that invoice's balance_due at 0.000 — the invoice stays
-    // "fully paid" even though 250.000 of the cash that paid it was handed
-    // back. This is an asymmetry between the two refund paths, not the
-    // "allocations adjusted consistently" the plan describes. Recorded as
-    // FAIL (money-test-plan MTP-TRE-10), not a known-ticketed defect.
-    expect(invCAfter.data.balance_due, 'KNOWN FINDING: partial refund does NOT reopen the allocated invoice').toBe(
-      '0.000',
+    // FIXED (2026-08-02, MTP-TRE-10 treasury-money-campaign-defects ticket):
+    // PaymentRefundService::partialRefund() now unwinds PaymentAllocation
+    // pro-rata for the refunded amount (unwindAllocationsProRata()), mirroring
+    // refundPayment()'s negative-allocation-row semantics, and explicitly
+    // recomputes the document's balance_due. A 250.000 partial refund of a
+    // payment that fully settled a 600.000 invoice must reopen 250.000 of
+    // that invoice's balance_due — the invoice is no longer "fully paid"
+    // once 250.000 of the cash that paid it was handed back.
+    expect(invCAfter.data.balance_due, 'partial refund reopens the allocated invoice pro-rata').toBe(
+      '250.000',
     )
 
     // A second partial refund exceeding the remaining refundable amount must

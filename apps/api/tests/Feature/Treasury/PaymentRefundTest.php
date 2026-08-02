@@ -225,6 +225,150 @@ class PaymentRefundTest extends TestCase
         $this->assertStringContainsString('Partial refund of 300.00', $payment->notes);
     }
 
+    /**
+     * MTP-TRE-10 regression: PaymentRefundService::partialRefund() used to
+     * reverse only the GL/cash leg — it never touched PaymentAllocation or
+     * the document's balance_due, unlike refundPayment() (the full-refund
+     * path). A 250.00 partial refund of a payment that fully settled a
+     * 600.00 invoice left that invoice's balance_due at 0.00 forever —
+     * receivables permanently understated for any amount actually handed
+     * back to the customer.
+     */
+    public function test_partial_refund_unwinds_allocation_and_reopens_document_balance(): void
+    {
+        $invoice = $this->makeInvoice('600.00', '0.00');
+        $payment = $this->createPaymentAllocatedTo($invoice, '600.00');
+
+        $refund = $this->refundService->partialRefund(
+            $payment,
+            '250.00',
+            'Partial product return',
+            $this->user->id
+        );
+
+        $this->assertEquals('-250.000', $refund->amount);
+
+        $refundAllocation = PaymentAllocation::where('payment_id', $refund->id)->sole();
+        $this->assertEquals($invoice->id, $refundAllocation->document_id);
+        $this->assertEquals('-250.000', $refundAllocation->amount);
+
+        $invoice->refresh();
+        $this->assertEquals(
+            '250.000',
+            $invoice->balance_due,
+            'the refunded amount must reopen the invoice balance_due (600.00 - 600.00 + 250.00)'
+        );
+    }
+
+    /**
+     * MTP-TRE-10 fix, multi-document case: a single payment allocated across
+     * two invoices must have its partial refund unwound PRO-RATA across
+     * both, not dumped onto one.
+     */
+    public function test_partial_refund_unwinds_allocation_pro_rata_across_multiple_documents(): void
+    {
+        $invA = $this->makeInvoice('600.00', '0.00');
+        $invB = $this->makeInvoice('400.00', '0.00');
+
+        $payment = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1000.00',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'PMT-'.uniqid(),
+            'created_by' => $this->user->id,
+        ]);
+        PaymentAllocation::create([
+            'id' => Str::uuid()->toString(),
+            'payment_id' => $payment->id,
+            'document_id' => $invA->id,
+            'amount' => '600.00',
+        ]);
+        PaymentAllocation::create([
+            'id' => Str::uuid()->toString(),
+            'payment_id' => $payment->id,
+            'document_id' => $invB->id,
+            'amount' => '400.00',
+        ]);
+
+        $this->refundService->partialRefund($payment, '250.00', 'Pro-rata partial refund', $this->user->id);
+
+        // Pro-rata: invA share = 250 * (600/1000) = 150.000; invB share = 250 * (400/1000) = 100.000
+        $invA->refresh();
+        $invB->refresh();
+        $this->assertEquals('150.000', $invA->balance_due, 'INV-A pro-rata share reopened');
+        $this->assertEquals('100.000', $invB->balance_due, 'INV-B pro-rata share reopened');
+    }
+
+    /**
+     * MTP-TRE-10 fix, repeated-refund case: two partial refunds of the same
+     * payment must never unwind more than what is still live-allocated to
+     * the document (400.00 + 300.00 = 700.00 <= the 1000.00 originally
+     * allocated).
+     */
+    public function test_repeated_partial_refunds_accumulate_the_reopened_balance(): void
+    {
+        $invoice = $this->makeInvoice('1000.00', '0.00');
+        $payment = $this->createPaymentAllocatedTo($invoice, '1000.00');
+
+        $this->refundService->partialRefund($payment, '400.00', 'First return', $this->user->id);
+        $invoice->refresh();
+        $this->assertEquals('400.000', $invoice->balance_due);
+
+        $this->refundService->partialRefund($payment, '300.00', 'Second return', $this->user->id);
+        $invoice->refresh();
+        $this->assertEquals('700.000', $invoice->balance_due);
+    }
+
+    private function makeInvoice(string $total, string $balanceDue): Document
+    {
+        return Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => $total,
+            'tax_amount' => '0.00',
+            'total' => $total,
+            'balance_due' => $balanceDue,
+            'currency' => 'EUR',
+        ]);
+    }
+
+    private function createPaymentAllocatedTo(Document $document, string $amount): Payment
+    {
+        $payment = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => $amount,
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'PMT-'.uniqid(),
+            'created_by' => $this->user->id,
+        ]);
+
+        PaymentAllocation::create([
+            'id' => Str::uuid()->toString(),
+            'payment_id' => $payment->id,
+            'document_id' => $document->id,
+            'amount' => $amount,
+        ]);
+
+        return $payment;
+    }
+
     public function test_cannot_refund_more_than_original_amount(): void
     {
         $payment = $this->createPaymentWithAllocation('500.00');
