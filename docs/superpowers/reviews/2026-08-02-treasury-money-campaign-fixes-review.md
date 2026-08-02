@@ -403,3 +403,203 @@ Full-file run at `HEAD`: `1 failed, 8 passed`. `PaymentRefundTest`: `15 passed`.
 8. **I3, I4, I6, I7, I8** — align `canRefund()`, pass the real `CancellationShape`, decide and
    document the permission story, lock the payment in `reversePayment()`, and add refund/partial-refund
    coverage over a `Received` instrument asserting repository balance and AR totals.
+
+---
+
+# Round 2 re-review
+
+- **Reviewer:** treasury-reviewer (adversarial gate, second pass)
+- **Date:** 2026-08-02
+- **Scope re-gated:** the WHOLE lane `b967dc133..8cb66c1fd` (round-1 commits `f364c316f`, `cae181d19`, `fda03231b`; this REJECT record `c1c46adb4`; round-2 remediation `1a61900d9`, `8cb66c1fd`)
+- **Verdict:** **APPROVE-WITH-FIXES** — all six CRITICALs are genuinely fixed and empirically re-verified; one IMPORTANT residual (N1) must land before merge.
+
+Everything marked EMPIRICAL below was reproduced with instrumented probes against the real test
+database; probes were removed afterwards and `git status` is clean apart from this review file.
+
+## Round-1 finding disposition table
+
+| # | Sev (R1) | Implementer claim | Verified? | Evidence |
+|---|---|---|---|---|
+| C1 | CRITICAL | refund/partial reverted to `assertInstrumentSettledForCashUndo()` fail-closed | **CONFIRMED FIXED** | `PaymentRefundService.php:141`, `:286`. EMPIRICAL reverse-on-uncleared probe: `bal=200.000` (unchanged), `movements=0`. Round 1 was `200.000 → 160.000`, `movements 0 → 1`. |
+| C2 | CRITICAL | atomic cancel is `reversePayment()`-only ⇒ exactly one AR restoration | **CONFIRMED FIXED** | EMPIRICAL: `AR_debit=40 AR_credit=40`, `entries=customer_payment,instrument` — no `customer_payment_refund` bank leg. Round 1 was `AR_debit=80 credit=40` with three entries. |
+| C3 | CRITICAL | partial refund no longer cancels the whole instrument | **CONFIRMED FIXED** | `PaymentRefundService.php:286`; `Received` restored to the blocked loop at `DeferredTenderGuardsTest.php:238` for `full`+`partial`; new HTTP-level 422 test at `:288-303`. |
+| C4 | CRITICAL | `normalizeWithholdingRate()` canonicalises number-or-string at the boundary | **CONFIRMED FIXED** | `PaymentController.php:77-117`, called at `:933`. EMPIRICAL: JSON **number** `0.0150` → `201` (round 1: hard `TypeError`). Domain edges all 422: `5.0E-5 → 422`, `0.00015 → 422`, `1.5 → 422`, `-0.1 → 422` — the E-notation hole in the `(string)`-cast safety argument is unreachable because the 4dp regex rejects it first. |
+| C5 | CRITICAL | `createFromPayment()` calls `WithholdingCalculation::calculate()` directly with the fraction | **CONFIRMED FIXED** | `WithholdingCertificateService.php:156-161`; argument order verified against `WithholdingCalculation::calculate(grossAmount, withholdingRate, currency, ?type)`. EMPIRICAL: `rate=0.0150 amount=17.850 net=1172.150 gross=1190.000` — exactly `1190.000 × 0.0150`. Round 1 produced `0.119`. Value assertions now real (`PaymentTest.php:276-283`, e2e `treasury-payments.spec.ts:505-508`). |
+| C6 | CRITICAL | `reversePayment()` deletes the whole refund lineage | **CONFIRMED FIXED** | `PaymentRefundService.php:637-651`. EMPIRICAL lineage probe: `after_partial=200.000 → after_reverse=700.000` — never above `total`; round 1 would have computed 1400.000. |
+| I1 | IMPORTANT | new `Shared/Contracts` port; deptrac 98/FAIL is pre-existing dev drift | **CONFIRMED — claim is TRUE, branch adds ZERO edges** | See §"Deptrac re-verification" below. |
+| I2 | IMPORTANT | `recomputeDocumentBalances()` reverts Paid→Posted | **PARTIALLY FIXED** | Applied to `reversePayment()` (`:666`) and `partialRefund()` via `unwindAllocationsProRata()` (`:945`) — **but NOT to `refundPayment()`**. See new finding **N1**. |
+| I3 | IMPORTANT | no code change needed under the narrowed ruling | **CONFIRMED** | `canRefund()` (`:544-556`) reports `false` for Received/Deposited/Bounced, which now exactly matches refund/partial behaviour. Verified through the FE too: `PaymentDetailPage.tsx:392,400` gate only Refund/Partial-Refund on `canRefund`; the **Reverse** button (`:404-410`) is ungated, so the newly-unlocked reverse path is reachable in the UI. Only `GET /payments/{payment}/can-refund` exists (`routes.php:206`) — no `can-reverse` counterpart to mislead. |
+| I4 | IMPORTANT | `CancellationShape` derived from `payment->origin` | **CONFIRMED FIXED** | `InstrumentLifecycleService.php:679-682`; `PaymentOrigin::Pos` is what `TreasuryReceiptBridge.php:1334` stamps on POS-authored payments. |
+| I5 | IMPORTANT | `DB::transactionLevel()` guard added | **FIXED IN CODE, UNTESTED** | `InstrumentLifecycleService.php:664-667`. Logic is correct for production. See new finding **N2**. |
+| I6 | IMPORTANT | authorization ruling recorded in comment, no new gate | **CONFIRMED (as described)** | `PaymentRefundService.php:670-681`. A documented ruling, not a technical control; no permission-matrix test accompanies it. |
+| I7 | IMPORTANT | `lockForUpdate()` on the payment in `reversePayment()` | **CONFIRMED FIXED** | `PaymentRefundService.php:620-626` — now tenant+company scoped with `lockForUpdate()`, matching `refundPayment()`/`partialRefund()`. |
+| I8 | IMPORTANT | fail-closed tests for refund/partial over `Received` | **CONFIRMED FIXED** | `DeferredTenderGuardsTest.php:238-252` (service level, all three statuses × full/partial) and `:288-303` (HTTP 422). |
+| I9 | IMPORTANT | lock-order docblocks | **CONFIRMED (documentation only)** | `PaymentRefundService.php:435-447`, `:652-663`, `:989-991`. Order is now stated as Payment → Document(s) → company advisory → Repository, and `reversePayment()` follows the same Document-before-advisory order (`:666` before `:687`). No deadlock test exists; the claim is reasoned, not proven. |
+| M1 | MINOR | (not claimed) | **NOT FIXED** | `refundPayment()` still performs no PHP `balance_due` recompute. Rolled into **N1**. |
+| M2 | MINOR | (not claimed) | **FIXED** | `company_id` scope added at `PaymentRefundService.php:846`. |
+| M3 | MINOR | (not claimed) | **NOT FIXED** | Last-document slice at `:917-919` is still `$remainingToAllocate` with no `min(slice, live)` cap. |
+| M4 | MINOR | (not claimed) | **NOT FIXED** | `recomputeDocumentBalances()` still truncates at currency scale (`:996`, `:1013`). Below `DocumentCacheValidationService`'s 0.01 tolerance. |
+| M5 | MINOR | e2e asserts values | **FIXED** | `treasury-payments.spec.ts:504-508` now asserts `gross_amount`/`withholding_rate`/`withholding_amount`/`net_amount`. |
+
+## Deptrac re-verification (I1 claim independently proven)
+
+Ran the ratchet at HEAD, then checked `apps/api/app` out at the clean base `b967dc133` (deptrac's
+`paths:` is `./app` only) and re-ran, then restored:
+
+```
+HEAD  (8cb66c1fd):  98 violations   ModuleDomain on ModuleApplication  34 -> 35  BLOCKER (+1)   TOTAL 97 -> 98   FAIL
+BASE  (b967dc133):  98 violations   ModuleDomain on ModuleApplication  34 -> 35  BLOCKER (+1)   TOTAL 97 -> 98   FAIL
+```
+
+Per-layer counts are **identical in all six categories**. The implementer's claim is **TRUE**: the
+98/FAIL is pre-existing `dev` drift against a stale baseline (`deptrac.baseline.json` generated
+2026-07-31, `total: 97`), tracked in `project_hexagonal_soc_audit`.
+
+**This branch adds ZERO deptrac edges** — confirmed two ways:
+- identical per-layer counts base vs HEAD (the `allowed` count rises 11744 → 11757, i.e. the new
+  port's edges are all *allowed*);
+- `grep`ping the violation list for `InstrumentLifecycleService` / `InstrumentReversalCanceller`
+  returns **0**. The 14 remaining `PaymentRefundService` entries are the pre-existing
+  `Application\DTOs\MovementIntent` / `RefundAllocation` dependencies, present at the base too.
+
+Round-1 finding **I1 is resolved** (round 1 was +2 over base; round 2 is +0). The ratchet still
+exits FAIL, but that is a `dev` problem, not a lane problem — it must not be treated as this
+branch's gate.
+
+## Port review (attack (d))
+
+- `app/Shared/Contracts/Treasury/InstrumentReversalCancellerInterface.php` has **no `use`
+  statements** and the method takes only primitives (`string $instrumentId, ?string $userId,
+  string $reason`) — no leak of `PaymentInstrument`, no Domain/Application edge of its own.
+- Binding registered: `TreasuryServiceProvider.php:92-95`, provider loaded at
+  `bootstrap/providers.php:74`. EMPIRICAL resolution check:
+  `PROBE-R2-PORT impl=App\Modules\Treasury\Application\Services\InstrumentLifecycleService`.
+- Consumers: exactly `PaymentRefundService` (`:44`, `:784`). No other resolution site.
+
+## Attack (b) — whole-lineage allocation delete
+
+EMPIRICAL probe: invoice 1000.000 with allocations from **two different payments**
+(other = 300.000, target = 700.000); partial-refund the target by 200.000, then reverse the target.
+
+```
+PROBE-R2-LINEAGE after_partial=200.000 after_reverse=700.000
+                 other_alloc_rows=1 target_rows=0 refund_rows=0 doc_status=posted
+```
+
+- The **unrelated** payment's allocation row survives (`other_alloc_rows=1`) — the lineage query
+  (`PaymentRefundService.php:637-641`) is correctly keyed on `original_payment_id` + `company_id`
+  + `payment_type = refund`, so it cannot eat another payment's rows.
+- `balance_due` after reverse is `700.000 = 1000.000 − 300.000` — correct, never above `total`, and
+  not double-restored (`recomputeDocumentBalances()` recomputes from the CURRENT rows, so it is
+  idempotent and converges to the same value the Postgres trigger computes).
+
+## Attack (c) — other callers of `calculateWithOverride()`
+
+Exactly one production caller remains: `WithholdingCertificateService.php:51`, the `create()` path
+fed by `manual_rate_percentage`, validated `min:0 / max:100 / 2dp` at
+`CreateWithholdingCertificateRequest.php:55` — the correct **percentage** domain for that method's
+`bcdiv($rate,'100',4)`. Plus the unit test at
+`tests/Unit/Taxation/WithholdingCalculationServiceTest.php:149` (still `'5.0'`, correct). No caller
+is left feeding a fraction into the percentage path. **Clean.**
+
+## New findings (round 2)
+
+### [IMPORTANT] N1 — I2 was not applied to the FULL-refund path: a fully-refunded invoice stays `status = paid` and stays invisible to receivables
+
+`recomputeDocumentBalances()` is called from `reversePayment()` (`PaymentRefundService.php:666`)
+and from `unwindAllocationsProRata()` (`:945`) only. `refundPayment()` creates its mirrored
+negative allocations at `:177-183` and then never recomputes or reverts the document status.
+
+**EMPIRICAL** (600.00 invoice, `status = paid`, full refund):
+
+```
+PROBE-R2-FULLREFUND doc_status=paid balance_due=0.000 alloc_sum=0.000
+```
+
+`alloc_sum = 0.000` means the Postgres `balance_due`-cache trigger will set `balance_due = 600.000`
+while `status` remains `paid`. That is exactly the state round-1 finding I2 identified as harmful:
+- `AgedReceivablesService.php:149` — `->where('status', DocumentStatus::Posted)`
+- `PaymentAllocationService.php:470-471` — outstanding-document lookup requires `Posted`
+- `UpcomingPaymentsService.php:190,218`
+- `documents_balance_due_index … WHERE type='invoice' AND status='posted'`
+
+So the *full* refund — the more common operation — still leaves the reopened receivable out of
+aged receivables and un-allocatable, even though the partial and reverse paths were fixed. On
+SQLite `balance_due` also stays `0.000` (the round-1 M1 asymmetry), so no test can catch either
+half.
+
+*Fix:* call `$this->recomputeDocumentBalances($documentIds, $original->tenant_id,
+$original->company_id, $this->scaleResolver->getScale($original->currency))` in `refundPayment()`
+after the allocation mirroring, and assert `DocumentStatus::Posted` + `balance_due` in
+`test_full_refund_reverses_allocation`.
+
+### [MINOR] N2 — the I5 transaction guard is inert under `RefreshDatabase` and has no test; the port can still produce the C3 inconsistent state by convention alone
+
+**EMPIRICAL:** calling the port directly from a test produced
+`PROBE-R2-I5 NO-THROW` and `instrument_status_after=cancelled` on a payment that stayed
+`completed`. Cause confirmed by `PROBE-R2-TXLEVEL=1` — PHPUnit's `RefreshDatabase` wraps every test
+in a transaction, so `DB::transactionLevel() < 1` (`InstrumentLifecycleService.php:664`) can never
+be true in the suite. The guard is therefore **correct for production but unverifiable and
+unverified**, and the same probe shows that any future caller resolving
+`InstrumentReversalCancellerInterface` outside `reversePayment()` can cancel a `Received`
+instrument whose payment is not reversed — reproducing round-1 C3's impossible state. The
+"REVERSE-ONLY" rule (`InstrumentReversalCancellerInterface.php:22-25`) is documentation, not a
+control. Today only `PaymentRefundService` resolves the port, so this is latent, not live.
+
+*Suggested:* assert the payment is being reversed (e.g. require the caller to pass the payment id
+and check `status`), or cover the guard with a test that runs outside the wrapping transaction.
+
+### [MINOR] N3 — the port implementation loads the instrument with no tenant/company scope
+
+`InstrumentLifecycleService.php:670` — `PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId)`.
+Consistent with the pre-existing `cancel()` (`:607`) and unreachable cross-company through the sole
+caller (the id comes from `$payment->instrument()`), but the method is now **public API on a
+Shared/Contracts port**. Adding `->where('tenant_id', …)->where('company_id', …)` would cost
+nothing.
+
+### [MINOR] N4 — reverse-after-partial-refund leaves an orphaned refund payment
+
+After the C6 lineage wipe the refund child `Payment` row survives (negative amount, status
+`Completed`) together with its real `repository_movements` OUT row and its
+`customer_payment_refund` GL entry, but with **no allocation**. `balance_due` is restored as if the
+original payment never happened, while the cash genuinely left the till. This is bounded and
+strictly better than round 1 (which computed a balance above the invoice total), and it stems from
+`reversePayment()` posting no GL/cash reversal at all — pre-existing behaviour, not introduced
+here. Worth a follow-up ticket: either block `reversePayment()` on a payment that already has
+refund children, or make it reverse those children properly.
+
+## Test + static-analysis state at `8cb66c1fd`
+
+- `DeferredTenderGuardsTest` + `PaymentRefundTest`: **1 failed, 25 passed**. The single failure is
+  `test_supplier_traite_keeps_cash_payment_shape_and_registers_outbound_instrument`
+  (`:103`, `repository_movements` 0 vs 1) — the **same pre-existing failure verified against the
+  clean base in round 1**, root-caused to `PaymentController.php:1151` (`! $isDeferredSupplier`),
+  a file this lane does not modify.
+- `PaymentTest` + `WithholdingCertificateTest` + `WithholdingLifecycleTest` +
+  `WithholdingCalculationServiceTest` + `WithholdingPrecisionTest`: **77 passed**.
+- PHPStan level 8: **no errors** on all six round-2 changed files.
+- Deptrac: 98/FAIL, **identical to the clean base** (not a lane regression).
+
+## Round-2 verdict
+
+**APPROVE-WITH-FIXES.**
+
+Every round-1 CRITICAL is genuinely closed, and each was re-verified by re-running the original
+repro against the new code rather than trusting the commit message. The money-losing paths
+(phantom cash out, doubled AR debit, whole-instrument destruction for a partial refund) are gone;
+the withholding boundary now accepts both payload shapes and computes the right number; the
+lineage wipe is correctly scoped and cannot over-delete or over-restore; and the deptrac claim
+checks out exactly.
+
+**Required before merge:**
+1. **N1** — call `recomputeDocumentBalances()` from `refundPayment()` so a full refund also reverts
+   `Paid → Posted` and recomputes `balance_due`, with a value+status assertion in
+   `test_full_refund_reverses_allocation`.
+
+**Recommended (can be follow-up tickets, not merge blockers):** N2, N3, N4, and round-1 M3/M4.
+
+**Not a blocker for this lane:** the deptrac 98/FAIL and the
+`test_supplier_traite_keeps_cash_payment_shape_and_registers_outbound_instrument` failure are both
+proven pre-existing on `b967dc133`. They do need owner attention as separate `dev`-hygiene items
+(re-baseline deptrac; fix or quarantine the red test) because they currently mask real regressions
+in any future gate.
