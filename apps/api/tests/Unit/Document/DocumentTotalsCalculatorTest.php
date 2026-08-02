@@ -258,26 +258,39 @@ class DocumentTotalsCalculatorTest extends TestCase
         $this->assertSame('10.000', $document->total);
     }
 
-    public function test_recalculate_leaves_non_fillable_tax_columns_untouched(): void
+    public function test_recalculate_persists_line_tax_and_stamp_duty_columns(): void
     {
-        // PRE-EXISTING BEHAVIOUR (preserved by this refactor, NOT fixed):
-        // line_tax_amount and stamp_duty_amount are NOT in Document::$fillable,
-        // so the update([...]) call inside recalculation silently drops them.
-        // This is a latent bug noted as a follow-up; the refactor must keep
-        // the behaviour byte-identical. Compared via raw DB reads so the
-        // assertion is independent of Eloquent in-memory state.
+        // `line_tax_amount`/`stamp_duty_amount` ARE in Document::$fillable
+        // (Document.php's $fillable array) and ARE written by recalculate()'s
+        // update([...]) call -- a previous version of this test asserted the
+        // opposite ("non-fillable, silently dropped"), which only APPEARED to
+        // hold because with no TaxConfiguration seeded at all, the pre-fix
+        // TaxCalculationService wrote line_tax_amount=0 for an explicit 19%
+        // rate (STEP 1 contributed nothing for an unmatched rate), and
+        // PHPUnit's assertEquals(null, 0) on the untouched-vs-written stdClass
+        // pair passed by coincidence (PHP's null == 0). Documents-defects
+        // lane defect 3 fix: an explicit line rate is now honoured even with
+        // no matching TaxConfiguration row, so line_tax_amount is genuinely
+        // written (19.000, not silently dropped OR silently zeroed).
+        // Compared via raw DB reads so the assertion is independent of
+        // Eloquent in-memory state.
         $document = $this->makeDocument([
             ['quantity' => '1', 'unit_price' => '100.000', 'tax_rate' => '19.00'],
         ]);
 
         $before = DB::table('documents')->where('id', $document->id)
             ->first(['line_tax_amount', 'stamp_duty_amount']);
+        $this->assertNull($before->line_tax_amount);
 
         $this->calculator()->recalculate($document);
 
         $after = DB::table('documents')->where('id', $document->id)
             ->first(['line_tax_amount', 'stamp_duty_amount']);
 
-        $this->assertEquals($before, $after);
+        // Raw DB read (not through Eloquent's decimal cast) -- SQLite returns
+        // the numeric column as a native int/float, so compare numerically.
+        $this->assertEquals(19.0, $after->line_tax_amount);
+        // No TaxConfiguration seeded at all in this test -> no stamp duty to apply.
+        $this->assertEquals(0.0, $after->stamp_duty_amount);
     }
 }

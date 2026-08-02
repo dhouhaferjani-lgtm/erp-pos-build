@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -56,6 +57,18 @@ trait CopiesDocumentData
             'location_id' => $source->location_id,
             'partner_id' => $source->partner_id,
             'type' => $targetType,
+            // Documents-defects lane defect 3 (2026-08-02): this used to be
+            // omitted entirely, so a converted document landed on the raw DB
+            // column default (NON_FISCAL) instead of its real fiscal
+            // category (e.g. TAX_INVOICE for a converted invoice).
+            // TaxCalculationService::calculateDocumentTaxes() filters
+            // TaxConfiguration rows on this value; TN/FR's seeded rates
+            // never list NON_FISCAL in applicable_document_types, so a
+            // converted invoice matched ZERO tax configs regardless of how
+            // well-configured its line rate was -- confirm() silently
+            // zeroed VAT that the draft (recalculateTotals(), below) had
+            // computed correctly moments earlier.
+            'fiscal_category' => FiscalCategory::fromDocumentType($targetType),
             'status' => DocumentStatus::Draft,
             'document_number' => $this->numberingService->generateNumber(
                 $source->tenant_id,

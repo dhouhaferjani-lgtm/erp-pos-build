@@ -14,6 +14,7 @@ use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 
@@ -111,33 +112,38 @@ class TaxCalculationService
                     && bccomp($cfgRate, $lineRate, 2) === 0;
             });
 
+            // Calculate tax for all lines with this rate.
+            //
+            // Precision: quantity is stored at scale 4. bcmul(qty, unitPrice)
+            // is MONEY, so the qty×price intermediate and the ×rate
+            // intermediate both run at scale()+1 — keeping the 4th quantity
+            // decimal alive through both multiplies. The per-rate tax is
+            // accumulated at scale()+1 and rounded ONCE at the currency
+            // boundary, instead of truncating each line's tax to the
+            // boundary scale first (which discarded sub-boundary fractions).
+            //
+            // This runs REGARDLESS of whether a TaxConfiguration row matched
+            // (see the ORCHESTRATOR RULING below) -- an explicit line rate
+            // is always honoured at the currency-rounding level identical to
+            // the matched-config path.
+            /** @var numeric-string $rateFraction */
+            $rateFraction = bcdiv((string) $rate, '100', 6);
+            /** @var numeric-string $taxAccumulator */
+            $taxAccumulator = '0';
+            foreach ($linesWithRate as $line) {
+                // Tax base is the NET line (gross − line discount), computed
+                // at scale+1 to keep the 4th quantity decimal alive. For a
+                // line with no discount calculateTotal() == bcmul(qty, price,
+                // scale+1), so undiscounted lines are byte-identical.
+                $lineSubtotal = $line->calculateTotal($scale + 1);
+                $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
+                $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
+            }
+            $taxAmount = CurrencyScale::bcformat($taxAccumulator, $scale);
+
+            $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, $scale);
+
             if ($matchingConfig) {
-                // Calculate tax for all lines with this rate.
-                //
-                // Precision: quantity is stored at scale 4. bcmul(qty, unitPrice)
-                // is MONEY, so the qty×price intermediate and the ×rate
-                // intermediate both run at scale()+1 — keeping the 4th quantity
-                // decimal alive through both multiplies. The per-rate tax is
-                // accumulated at scale()+1 and rounded ONCE at the currency
-                // boundary, instead of truncating each line's tax to the
-                // boundary scale first (which discarded sub-boundary fractions).
-                /** @var numeric-string $rateFraction */
-                $rateFraction = bcdiv((string) $rate, '100', 6);
-                /** @var numeric-string $taxAccumulator */
-                $taxAccumulator = '0';
-                foreach ($linesWithRate as $line) {
-                    // Tax base is the NET line (gross − line discount), computed
-                    // at scale+1 to keep the 4th quantity decimal alive. For a
-                    // line with no discount calculateTotal() == bcmul(qty, price,
-                    // scale+1), so undiscounted lines are byte-identical.
-                    $lineSubtotal = $line->calculateTotal($scale + 1);
-                    $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
-                    $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
-                }
-                $taxAmount = CurrencyScale::bcformat($taxAccumulator, $scale);
-
-                $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, $scale);
-
                 $calculatedTaxes[] = new CalculatedTax(
                     configurationId: $matchingConfig->id,
                     code: $matchingConfig->code ?? '',
@@ -152,9 +158,37 @@ class TaxCalculationService
                     isRecoverable: $this->determineRecoverability($matchingConfig, $company),
                     appliesTo: $matchingConfig->applies_to,
                 );
-
-                $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, $scale);
+            } else {
+                // ORCHESTRATOR RULING (2026-08-02, documents-defects lane
+                // defect 3): an explicitly-supplied line rate must NEVER be
+                // silently zeroed. No active TaxConfiguration row matched
+                // this rate for this document's fiscal category/country/date
+                // -- either because the rate is genuinely unconfigured, or
+                // because this document type never carries a matching token
+                // (e.g. a NonFiscal quote/sales order; TN/FR's seeded rows
+                // never list a NonFiscal token in applicable_document_types).
+                // Honour the line's own rate directly (the same formula
+                // InvoiceController::store() and CopiesDocumentData::
+                // recalculateTotals() already use for drafts) instead of
+                // contributing zero, so confirm() stays consistent with the
+                // draft it is confirming.
+                $calculatedTaxes[] = new CalculatedTax(
+                    configurationId: '',
+                    code: 'UNCONFIGURED',
+                    name: "VAT {$rateStr}%",
+                    type: TaxType::Percentage,
+                    rate: $rateStr,
+                    fixedAmount: null,
+                    base: $subtotal,
+                    amount: $taxAmount,
+                    sequenceOrder: 0,
+                    isStampDuty: false,
+                    isRecoverable: $company->tax_status !== CompanyTaxStatus::NON_REGISTERED,
+                    appliesTo: TaxApplicationLevel::LineItems,
+                );
             }
+
+            $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, $scale);
         }
 
         // STEP 2: Calculate document-level taxes (these can stack)
