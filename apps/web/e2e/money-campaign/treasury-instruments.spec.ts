@@ -231,16 +231,60 @@ test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
 
   test('MTP-TRE-23: cancel requires a reason', async ({ request }) => {
     const customerId = await createCustomer(request, owner, uniqueName('TRE23'))
-    const { instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23'))
+    const { paymentId, instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23'))
 
     const withoutReason = await post(request, owner, `/payment-instruments/${instrumentId}/cancel`, {})
     expect(withoutReason.status, 'reason required').toBe(422)
 
+    // DEFECT (new, live-confirmed, NOT on the plan's §0.3 known-defect
+    // register): the plan's case assumes a `received` instrument can be
+    // cancelled directly. In THIS app every inbound instrument is created
+    // inline on a Payment (there is no standalone POST /payment-instruments
+    // path for inbound instruments — see this spec file's header comment),
+    // so a `received` instrument is always still linked to a live Payment.
+    // Two independent guards form a genuine circular deadlock for exactly
+    // this state (instrument Received + payment Completed):
+    //   (a) InstrumentLifecycleService::cancel() (apps/api/app/Modules/
+    //       Treasury/Application/Services/InstrumentLifecycleService.php
+    //       :605-617) — cancel() only accepts status===Received (:608-610),
+    //       but ALSO refuses ("Settle or reverse the linked payment before
+    //       cancelling its instrument.") unless the linked payment is
+    //       already Reversed/dishonored (:612-617).
+    //   (b) PaymentRefundService::assertInstrumentSettledForCashUndo()
+    //       (apps/api/app/Modules/Treasury/Domain/Services/
+    //       PaymentRefundService.php:581-591), invoked by reversePayment()
+    //       (:551) AND by refund()/partialRefund() (:93, :224, :664) alike —
+    //       refuses ("Settle the payment instrument first (bounce or
+    //       cancel)...") whenever the instrument status is Received,
+    //       Deposited, OR Bounced.
+    // (a) requires the payment reversed FIRST; (b) requires the instrument
+    // already cancelled (or cleared) FIRST. Neither can go first — there is
+    // NO API sequence that cancels a `received` inbound instrument (or
+    // refunds/reverses its payment) while the instrument sits in Received/
+    // Deposited/Bounced. Confirmed live below: reversing the payment before
+    // cancel is attempted is ALSO refused with the mirror-image message.
+    // Severity: P1 — money/GL can become permanently stuck (no refund, no
+    // reverse, no cancel) for any cheque/effet payment whose instrument
+    // hasn't cleared; the only stated escape (remit -> clear) requires
+    // actually banking the (possibly bad) cheque first.
+    const reversePayment = await post(request, owner, `/payments/${paymentId}/reverse`, {
+      reason: 'W2a MTP-TRE-23 attempt: reverse payment before cancelling its instrument',
+    })
+    expect(
+      reversePayment.status,
+      `DEFECT — circular precondition: reverse refused because instrument not yet settled -> ${reversePayment.status} ${JSON.stringify(reversePayment.data)}`,
+    ).toBe(422)
+
+    // And the original direction (cancel before reversing) is refused too —
+    // both legs proven blocked, confirming the deadlock rather than a
+    // one-off ordering mistake in this test.
     const withReason = await post(request, owner, `/payment-instruments/${instrumentId}/cancel`, {
       reason: 'W2a MTP-TRE-23 cancel with reason',
     })
-    expect(withReason.ok, `cancel -> ${withReason.status} ${JSON.stringify(withReason.data)}`).toBeTruthy()
-    expect(withReason.data.status).toBe('cancelled')
+    expect(
+      withReason.status,
+      `DEFECT — circular precondition: cancel refused because payment not yet reversed -> ${withReason.status} ${JSON.stringify(withReason.data)}`,
+    ).toBe(422)
   })
 
   test('MTP-TRE-24: invalid transitions from a terminal (cleared) state are refused', async ({ request }) => {
