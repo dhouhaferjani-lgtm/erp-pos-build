@@ -22,6 +22,7 @@ import {
   TODAY,
   type Session,
 } from './treasury-support'
+import { loginAsRole } from './helpers'
 
 let owner: Session
 let cashRepoId: string
@@ -34,7 +35,7 @@ async function receiveCheque(
   customerId: string,
   amount: string,
   reference: string,
-): Promise<{ paymentId: string; instrumentId: string }> {
+): Promise<{ paymentId: string; instrumentId: string; invoiceId: string }> {
   const inv = await createPostedInvoice(request, owner, customerId, amount, `W2a instrument fixture ${reference}`)
   const payment = await createPayment(request, owner, {
     partner_id: customerId,
@@ -53,7 +54,7 @@ async function receiveCheque(
   expect(payment.ok, `payment w/ instrument -> ${payment.status} ${JSON.stringify(payment.data)}`).toBeTruthy()
   const instrumentId = payment.data.instrument_id as string
   expect(instrumentId, 'payment carries an instrument_id').toBeTruthy()
-  return { paymentId: payment.data.id as string, instrumentId }
+  return { paymentId: payment.data.id as string, instrumentId, invoiceId: inv.id }
 }
 
 test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
@@ -259,7 +260,7 @@ test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
   // precondition removal.
   test('MTP-TRE-23b: reversing a payment atomically cancels its not-yet-cleared instrument', async ({ request }) => {
     const customerId = await createCustomer(request, owner, uniqueName('TRE23B'))
-    const { paymentId, instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23B'))
+    const { paymentId, instrumentId, invoiceId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23B'))
 
     const instrumentBefore = await get(request, owner, `/payment-instruments/${instrumentId}`)
     expect(instrumentBefore.ok).toBeTruthy()
@@ -285,6 +286,15 @@ test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
       instrumentAfter.data.status,
       'the instrument is cancelled ATOMICALLY as part of the reversal, resolving the deadlock',
     ).toBe('cancelled')
+
+    // A2.1 (D9 + D6 interaction, plan §A.2): the atomic path's document
+    // effect was previously unasserted -- the linked invoice must also
+    // revert Posted with balance_due restored, exactly like the standalone
+    // reverse path (MTP-TRE-11).
+    const invoiceAfter = await get(request, owner, `/documents/${invoiceId}`)
+    expect(invoiceAfter.ok).toBeTruthy()
+    expect(invoiceAfter.data.status, 'atomic reversal also reverts Paid -> Posted').toBe('posted')
+    expect(invoiceAfter.data.balance_due, 'atomic reversal restores balance_due to 90.000').toBe('90.000')
   })
 
   test('MTP-TRE-23c: standalone instrument cancel still fails closed while its payment has not been reversed', async ({
@@ -388,5 +398,46 @@ test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
       reason: 'W2a MTP-TRE-27 cashier attempt',
     })
     expect(bounceAttempt.status, 'bounce 403s for cashier').toBe(403)
+  })
+
+  // A2.2 (NEW MTP-TRE-81, plan §A.2 / review I3 disposition): canRefund now
+  // matches refund behaviour (false for a Received/Deposited/Bounced
+  // instrument), but Reverse is deliberately left ungated -- this asymmetry
+  // must be pinned so a future "tidy-up" doesn't accidentally hide Reverse
+  // too (which would re-create the MTP-TRE-23/23b deadlock with no escape).
+  test('MTP-TRE-81: can-refund is false for a Received-instrument payment; UI disables Refund/Partial-Refund while Reverse stays enabled', async ({
+    request,
+    page,
+  }) => {
+    const customerId = await createCustomer(request, owner, uniqueName('TRE81'))
+    const { paymentId } = await receiveCheque(request, customerId, '200.000', uniqueName('CHQ81'))
+
+    const canRefundResult = await get(request, owner, `/payments/${paymentId}/can-refund`)
+    expect(canRefundResult.ok, `can-refund -> ${canRefundResult.status} ${JSON.stringify(canRefundResult.data)}`).toBeTruthy()
+    expect(
+      canRefundResult.data.can_refund,
+      'D7/I3: PaymentRefundService::canRefund() is false while the instrument is Received',
+    ).toBe(false)
+
+    await loginAsRole(page, 'owner')
+    await page.goto(`/treasury/payments/${paymentId}`)
+    const refundButton = page.getByRole('button', { name: /^refund$/i })
+    const partialRefundButton = page.getByRole('button', { name: /partial refund/i })
+    const reverseButton = page.getByRole('button', { name: /reverse/i })
+    await expect(reverseButton).toBeVisible({ timeout: 20000 })
+
+    // REVISED FROM THE PLAN'S PREMISE (finding, not silently swapped): the
+    // plan's literal wording says Refund/Partial-Refund are "hidden" while
+    // can_refund=false. PaymentDetailPage.tsx:392,400 actually renders both
+    // buttons unconditionally and only toggles `disabled={!canRefund || ...}`
+    // -- present in the DOM, DISABLED, not hidden. Reverse
+    // (PaymentDetailPage.tsx:404-410) has no canRefund gate at all: present
+    // AND enabled whenever payment.status === 'completed'. This is I3's
+    // documented asymmetry, confirmed live below.
+    await expect(refundButton).toBeVisible()
+    await expect(refundButton).toBeDisabled()
+    await expect(partialRefundButton).toBeVisible()
+    await expect(partialRefundButton).toBeDisabled()
+    await expect(reverseButton).toBeEnabled()
   })
 })
