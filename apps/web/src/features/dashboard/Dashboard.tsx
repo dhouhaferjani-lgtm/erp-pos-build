@@ -23,6 +23,7 @@ import { formatCurrency } from '../../lib/format'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
+import { usePermissions } from '../../hooks/usePermissions'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { CashPositionWidget } from '@/features/treasury/components/CashPositionWidget'
@@ -82,6 +83,7 @@ export function Dashboard() {
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { hasPermission } = usePermissions()
 
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(
     () => sessionStorage.getItem('onboarding-banner-dismissed') === 'true'
@@ -90,7 +92,14 @@ export function Dashboard() {
   const { data: onboardingItems = [] } = useQuery({
     queryKey: tenantScopedKey(['onboarding-status']),
     queryFn: fetchOnboardingStatus,
-    enabled: tenantId !== null && companyId !== null,
+    // GET /onboarding/status now requires settings.view (backend route gate,
+    // docs/superpowers/tickets/2026-08-02-settings-setup-route-ungated.md
+    // item 2). Without this, a user lacking settings.view (e.g. technician)
+    // would fire a query that always 403s, and — before this fix — the
+    // banner + hasIncompleteRequired logic could still render for users who
+    // cannot action any linked setup step (dashboard->setup->dashboard
+    // bounce loop, since /settings/setup is itself gated on moduleKey="settings").
+    enabled: tenantId !== null && companyId !== null && hasPermission('settings.view'),
   })
 
   const hasIncompleteRequired = onboardingItems.some((item) => item.required && !item.completed)

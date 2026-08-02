@@ -372,6 +372,26 @@ final class ModuleGatingTenantIsolationTest extends TestCase
         );
     }
 
+    /**
+     * Ticket docs/superpowers/tickets/2026-08-02-settings-setup-route-ungated.md
+     * fix item (2): `GET onboarding/status` now carries `can:settings.view`
+     * middleware (Tenant/routes.php:28) — previously ungated, so a cashier
+     * (holds no `settings.*` permission per RolesAndPermissionsSeeder) could
+     * read the full onboarding/config posture. Cashier deny-path 403.
+     */
+    public function test_onboarding_status_denies_cashier_without_settings_view_permission(): void
+    {
+        $this->bindMockCompanyContext();
+
+        $cashier = $this->makeTargetUser();
+
+        Sanctum::actingAs($cashier);
+
+        $response = $this->getJson('/api/v1/onboarding/status');
+
+        $response->assertForbidden();
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Tenant/CompanySettings (a-2) — 3 callsites; audit-attribution
     // ──────────────────────────────────────────────────────────────────

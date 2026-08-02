@@ -46,7 +46,12 @@ function setTenant(tenantId: string, companyId: string) {
       name: 'User',
       email: 'user@example.test',
       tenant_id: tenantId,
-      roles: [],
+      // The onboarding-status query is now gated on hasPermission('settings.view')
+      // (docs/superpowers/tickets/2026-08-02-settings-setup-route-ungated.md item 3,
+      // mirrors the backend `can:settings.view` gate on GET onboarding/status).
+      // 'admin' holds settings.view — needed so this test's assertion that the
+      // onboarding-status query actually fires (line below) stays valid.
+      roles: ['admin'],
       email_verified_at: null,
     },
     token: 'token',

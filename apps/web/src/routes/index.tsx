@@ -2350,9 +2350,11 @@ export function AppRoutes() {
           <Route
             path="setup"
             element={
-              <SuspenseWrapper>
-                <SetupChecklistPage />
-              </SuspenseWrapper>
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <SetupChecklistPage />
+                </SuspenseWrapper>
+              </RequirePermission>
             }
           />
 
