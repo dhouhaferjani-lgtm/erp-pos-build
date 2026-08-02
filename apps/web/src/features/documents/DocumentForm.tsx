@@ -120,8 +120,8 @@ interface DocumentFormProps {
 }
 
 /**
- * Pure helper: normalises an API date to the `YYYY-MM-DD` value an
- * `<input type="date">` accepts. The documents API emits plain dates
+ * Pure helper: normalises an API date to the `YYYY-MM-DD` value a
+ * native HTML date input element accepts. The documents API emits plain dates
  * (`2026-08-01`) but some endpoints emit full ISO 8601 timestamps
  * (`2026-08-01T00:00:00+01:00`), which the date input silently rejects —
  * leaving a REQUIRED field empty and blocking submit.
@@ -370,7 +370,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   // empty on EVERY document edit, which blocked the submit client-side
   // (money-campaign W1b MTP-DOC-07/10). Prefer the alias when a given endpoint
   // does provide it, then fall back to `document_date`, normalised to the
-  // `YYYY-MM-DD` an <input type="date"> accepts.
+  // `YYYY-MM-DD` a native HTML date input element accepts.
   useEffect(() => {
     if (document) {
       reset({
