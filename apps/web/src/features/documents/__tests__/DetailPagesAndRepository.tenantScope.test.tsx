@@ -245,8 +245,8 @@ describe('detail pages and repository tenant scope', () => {
     await user.click(screen.getByRole('button', { name: 'invoices.post' }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/confirm')
-      expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/post')
+      expect(mockApiPost).toHaveBeenCalledWith('/credit-notes/doc-1/confirm')
+      expect(mockApiPost).toHaveBeenCalledWith('/credit-notes/doc-1/post')
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/documents/doc-1').length).toBeGreaterThanOrEqual(3)
     })
   })

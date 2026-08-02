@@ -1,3 +1,5 @@
+# ✅ CLOSED 2026-08-02 — fixed by 7258a409f (documents fix lane), both arms; gate-verified (docs/superpowers/reviews/2026-08-02-documents-fixlane-gate.md: "Both parent-ticket arms are closed", tests at :155/:245/:303; configured rates byte-identical; no injection hole — 0-100/2dp ceilings on every ingress)
+
 # Ticket: confirm() silently ZEROES VAT for any line whose rate has no active TaxConfiguration row (invoices) — and likely for quotes/orders entirely
 
 From the W1b money-campaign defect-fix lane (2026-08-01, docs/sessions/W1B-DEFECT-FIXES-REPORT.md
