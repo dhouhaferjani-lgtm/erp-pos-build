@@ -22,6 +22,8 @@ use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -220,11 +222,20 @@ final class DeferredTenderGuardsTest extends TestCase
         $this->assertDatabaseCount('repository_movements', 1);
     }
 
+    /**
+     * MTP-TRE-23 fix: a `Received` instrument is now resolved ATOMICALLY by
+     * the reverse/refund/partial-refund paths (see
+     * PaymentRefundService::resolveInstrumentForReversal()) instead of
+     * blocking with a circular precondition — Deposited/Bounced instruments
+     * still block, unchanged (no domain-safe auto-cancel exists for those
+     * states). See test_reverse_atomically_cancels_a_received_instrument_
+     * and_resolves_the_deadlock() below for the Received-specific assertions.
+     */
     public function test_pending_instrument_blocks_refund_partial_and_reverse_but_cleared_allows_refund(): void
     {
         $method = $this->method(InstrumentKind::Cheque);
         $service = app(PaymentRefundService::class);
-        foreach ([InstrumentStatus::Received, InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
+        foreach ([InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
             foreach (['full', 'partial', 'reverse'] as $operationName) {
                 [$payment] = $this->pendingPayment($method, $status->value.'-'.$operationName, $status);
                 try {
@@ -247,6 +258,89 @@ final class DeferredTenderGuardsTest extends TestCase
         [$cancelledPayment, $cancelledInstrument] = $this->pendingPayment($method, 'cancelled');
         $cancelledInstrument->update(['status' => InstrumentStatus::Cancelled]);
         $this->assertTrue($service->canRefund($cancelledPayment->fresh() ?? $cancelledPayment));
+    }
+
+    /**
+     * MTP-TRE-23: the circular precondition deadlock. Before the fix, ALL
+     * THREE of these operations threw for a Received instrument (proven by
+     * the loop above prior to this fix), and
+     * InstrumentLifecycleService::cancel() refused too (requires the
+     * payment already Reversed) — no valid API ordering existed for a
+     * cheque/effet payment whose instrument hadn't cleared. This test
+     * proves the atomic resolution: reversePayment() cancels the
+     * `Received` instrument INSIDE its own transaction (same GL entry +
+     * InstrumentEvent audit row a standalone cancel() would emit) and THEN
+     * flips the payment to Reversed.
+     */
+    public function test_reverse_atomically_cancels_a_received_instrument_and_resolves_the_deadlock(): void
+    {
+        $method = $this->method(InstrumentKind::Cheque);
+        $invoice = Document::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'status' => DocumentStatus::Posted,
+            'currency' => 'TND',
+            'total' => '40.000',
+            'balance_due' => '40.000',
+        ]);
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $this->bank->id,
+            'amount' => '40.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [['document_id' => $invoice->id, 'amount' => '40.000']],
+            'instrument' => ['reference' => 'MTP-TRE-23-CHQ'],
+        ])->assertCreated();
+
+        $payment = Payment::query()->whereKey((string) $response->json('data.id'))->firstOrFail();
+        $instrument = PaymentInstrument::query()->where('payment_id', $payment->id)->sole();
+        $this->assertSame(InstrumentStatus::Received, $instrument->status);
+        $this->assertNotNull($payment->journal_entry_id);
+
+        // Pre-fix, this threw: "Settle the payment instrument first (bounce
+        // or cancel) before using the cash refund/reverse path."
+        app(PaymentRefundService::class)->reversePayment(
+            $payment->fresh() ?? $payment,
+            'MTP-TRE-23 atomic reversal'
+        );
+
+        $payment->refresh();
+        $instrument->refresh();
+        $this->assertSame(PaymentStatus::Reversed, $payment->status);
+        $this->assertSame(InstrumentStatus::Cancelled, $instrument->status);
+
+        $cancelEvent = InstrumentEvent::query()
+            ->where('instrument_id', $instrument->id)
+            ->where('event_type', 'cancelled')
+            ->sole();
+        $this->assertSame('received', $cancelEvent->from_status);
+        $this->assertSame('cancelled', $cancelEvent->to_status);
+        $this->assertNotNull(
+            $cancelEvent->journal_entry_id,
+            'the atomic cancel must post the same GL reversal a standalone cancel() would'
+        );
+        $this->assertNotSame($payment->journal_entry_id, $cancelEvent->journal_entry_id);
+    }
+
+    /**
+     * MTP-TRE-23: standalone InstrumentLifecycleService::cancel() keeps its
+     * existing fail-closed precondition for DIRECT callers — the atomic
+     * resolution above lives ONLY inside the reverse/refund transactions
+     * (PaymentRefundService::resolveInstrumentForReversal() ->
+     * cancelForPaymentReversal()), it does not weaken cancel() itself.
+     */
+    public function test_standalone_cancel_still_fails_closed_for_a_received_instrument_with_an_unreversed_payment(): void
+    {
+        $method = $this->method(InstrumentKind::Cheque);
+        [, $instrument] = $this->pendingPayment($method, 'standalone-cancel-guard');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Settle or reverse the linked payment before cancelling its instrument.');
+
+        app(InstrumentLifecycleService::class)->cancel($instrument->id, $this->user->id, 'direct cancel attempt');
     }
 
     public function test_cleared_deferred_payment_can_refund_from_the_cleared_bank_repository(): void

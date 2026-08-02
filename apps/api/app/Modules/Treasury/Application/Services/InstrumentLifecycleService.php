@@ -37,6 +37,7 @@ use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\InstrumentRemittance;
 use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -616,45 +617,115 @@ final readonly class InstrumentLifecycleService
                 throw new DomainException('Settle or reverse the linked payment before cancelling its instrument.');
             }
 
-            $journalEntryId = null;
-            if ($payment !== null && $payment->journal_entry_id !== null) {
-                $purpose = $instrument->kind === InstrumentKind::Cheque
-                    ? InstrumentAccountPurpose::ChecksToCollect
-                    : InstrumentAccountPurpose::EffectsReceivable;
-                $portfolioAccountId = $this->accountResolver->resolveOrFail($purpose, $instrument->company_id);
-                $entry = $this->generalLedger->createInstrumentCancellationEntry(
-                    companyId: $instrument->company_id,
-                    tenantId: $instrument->tenant_id,
-                    instrumentId: $instrument->id,
-                    partnerId: $instrument->partner_id,
-                    portfolioAccountId: $portfolioAccountId,
-                    amount: $instrument->amount,
-                    shape: $shape,
-                    date: now(),
-                );
-                $this->generalLedger->postEntryNow($entry, User::query()->find($userId), $instrument->currency);
-                $journalEntryId = $entry->id;
-            }
-
-            if ($payment !== null && $shape === CancellationShape::PosRevenue) {
-                $payment->update(['status' => PaymentStatus::Reversed]);
-            }
-
-            $instrument->update(['status' => InstrumentStatus::Cancelled]);
-            InstrumentEvent::query()->create([
-                'tenant_id' => $instrument->tenant_id,
-                'company_id' => $instrument->company_id,
-                'instrument_id' => $instrument->id,
-                'event_type' => InstrumentEventType::Cancelled,
-                'from_status' => InstrumentStatus::Received->value,
-                'to_status' => InstrumentStatus::Cancelled->value,
-                'from_repository_id' => $instrument->repository_id,
-                'journal_entry_id' => $journalEntryId,
-                'payload' => (new InstrumentEventPayload(reason: $reason))->toArray(),
-                'occurred_at' => now(),
-                'created_by' => $userId,
-            ]);
+            $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
         });
+    }
+
+    /**
+     * Cancel a `received` instrument as part of an ATOMIC payment-reversal
+     * operation (MTP-TRE-23 fix).
+     *
+     * Standalone `cancel()` above requires the linked payment already
+     * `Reversed` — but `PaymentRefundService::reversePayment()` /
+     * `refundPayment()` / `partialRefund()` refuse to touch a payment whose
+     * instrument hasn't settled first (see
+     * `PaymentRefundService::assertInstrumentSettledForCashUndo()`). Neither
+     * side can go first, so a `received` cheque/effet payment could never be
+     * undone via the API.
+     *
+     * This method resolves the deadlock by letting the reversal flow cancel
+     * the instrument itself, IN THE SAME transaction, immediately before it
+     * flips the payment to `Reversed`. It deliberately skips the "payment
+     * already reversed" precondition — that precondition is exactly what
+     * this atomic call is short-circuiting — but is otherwise IDENTICAL to
+     * `cancel()`: same GL entry (`performCancellation()`), same
+     * `InstrumentEvent` audit row. Standalone `cancel()` is untouched and
+     * keeps failing closed for any direct caller.
+     *
+     * The caller MUST:
+     *   - already hold an open DB transaction (this method does not open
+     *     its own — it runs inside the caller's reversal transaction so the
+     *     instrument cancellation and the payment-status flip commit or
+     *     roll back together);
+     *   - have locked `$instrument` (`lockForUpdate()`) before calling;
+     *   - flip the linked payment to `Reversed` itself, in the same
+     *     transaction, immediately after this call returns.
+     */
+    public function cancelForPaymentReversal(
+        PaymentInstrument $instrument,
+        ?string $userId,
+        string $reason,
+    ): void {
+        if ($instrument->direction === InstrumentDirection::Outbound) {
+            throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
+        }
+        if ($instrument->status !== InstrumentStatus::Received) {
+            throw new DomainException('Only a received instrument can be cancelled via an atomic payment reversal.');
+        }
+
+        $this->performCancellation(
+            $instrument,
+            $instrument->payment()->first(),
+            $userId,
+            $reason,
+            CancellationShape::B2b,
+        );
+    }
+
+    /**
+     * Shared cancellation body for `cancel()` and `cancelForPaymentReversal()`:
+     * posts the GL reversal (when the payment carries a journal entry),
+     * transitions the instrument to `Cancelled`, and writes the audit
+     * `InstrumentEvent` row. Callers are responsible for every precondition
+     * check — this method performs none.
+     */
+    private function performCancellation(
+        PaymentInstrument $instrument,
+        ?Payment $payment,
+        ?string $userId,
+        string $reason,
+        CancellationShape $shape,
+    ): void {
+        $fromStatus = $instrument->status;
+
+        $journalEntryId = null;
+        if ($payment !== null && $payment->journal_entry_id !== null) {
+            $purpose = $instrument->kind === InstrumentKind::Cheque
+                ? InstrumentAccountPurpose::ChecksToCollect
+                : InstrumentAccountPurpose::EffectsReceivable;
+            $portfolioAccountId = $this->accountResolver->resolveOrFail($purpose, $instrument->company_id);
+            $entry = $this->generalLedger->createInstrumentCancellationEntry(
+                companyId: $instrument->company_id,
+                tenantId: $instrument->tenant_id,
+                instrumentId: $instrument->id,
+                partnerId: $instrument->partner_id,
+                portfolioAccountId: $portfolioAccountId,
+                amount: $instrument->amount,
+                shape: $shape,
+                date: now(),
+            );
+            $this->generalLedger->postEntryNow($entry, User::query()->find($userId), $instrument->currency);
+            $journalEntryId = $entry->id;
+        }
+
+        if ($payment !== null && $shape === CancellationShape::PosRevenue) {
+            $payment->update(['status' => PaymentStatus::Reversed]);
+        }
+
+        $instrument->update(['status' => InstrumentStatus::Cancelled]);
+        InstrumentEvent::query()->create([
+            'tenant_id' => $instrument->tenant_id,
+            'company_id' => $instrument->company_id,
+            'instrument_id' => $instrument->id,
+            'event_type' => InstrumentEventType::Cancelled,
+            'from_status' => $fromStatus->value,
+            'to_status' => InstrumentStatus::Cancelled->value,
+            'from_repository_id' => $instrument->repository_id,
+            'journal_entry_id' => $journalEntryId,
+            'payload' => (new InstrumentEventPayload(reason: $reason))->toArray(),
+            'occurred_at' => now(),
+            'created_by' => $userId,
+        ]);
     }
 
     /**

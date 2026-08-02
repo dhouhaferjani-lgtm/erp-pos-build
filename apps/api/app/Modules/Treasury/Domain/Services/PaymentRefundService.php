@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
@@ -37,6 +38,7 @@ class PaymentRefundService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerService $glService,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly InstrumentLifecycleService $instrumentLifecycle,
     ) {}
 
     private function scale(): int
@@ -90,7 +92,6 @@ class PaymentRefundService
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
-        $this->assertInstrumentSettledForCashUndo($payment);
 
         // Task 18: a stable request id is REQUIRED for DB-level idempotency + the
         // movement key. The admin endpoint supplies a client UUID; direct callers
@@ -121,6 +122,11 @@ class PaymentRefundService
                 if ($existing instanceof Payment) {
                     return $existing;
                 }
+
+                // MTP-TRE-23 fix: resolve the instrument-settlement precondition
+                // ATOMICALLY, in this same transaction, instead of asserting and
+                // throwing. See resolveInstrumentForReversal() docblock.
+                $this->resolveInstrumentForReversal($original, $userId, $reason);
 
                 /** @var numeric-string $originalAmount */
                 $originalAmount = (string) $original->amount;
@@ -221,7 +227,6 @@ class PaymentRefundService
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
-        $this->assertInstrumentSettledForCashUndo($payment);
 
         // Validate refund amount (per-request bounds; the cumulative over-refund
         // guard runs under the original-payment lock inside the transaction).
@@ -255,6 +260,11 @@ class PaymentRefundService
                 if ($existing instanceof Payment) {
                     return $existing;
                 }
+
+                // MTP-TRE-23 fix: resolve the instrument-settlement precondition
+                // ATOMICALLY, in this same transaction, instead of asserting and
+                // throwing. See resolveInstrumentForReversal() docblock.
+                $this->resolveInstrumentForReversal($original, $userId, $reason);
 
                 // Cumulative over-refund guard under the lock.
                 $this->assertWithinRefundableBalance($original, $amount);
@@ -548,14 +558,19 @@ class PaymentRefundService
         if (! in_array($payment->status, [PaymentStatus::Completed, PaymentStatus::Failed], true)) {
             throw new \RuntimeException('Only completed or failed payments can be reversed');
         }
-        $this->assertInstrumentSettledForCashUndo($payment);
 
-        DB::transaction(function () use ($payment, $reason): void {
+        DB::transaction(function () use ($payment, $reason, $userId): void {
             // Double-check inside transaction (another request may have reversed it)
             $payment->refresh();
             if ($payment->status === PaymentStatus::Reversed) {
                 return;
             }
+
+            // MTP-TRE-23 fix: resolve the instrument-settlement precondition
+            // ATOMICALLY, in this same transaction, instead of asserting and
+            // throwing. See resolveInstrumentForReversal() docblock.
+            $this->resolveInstrumentForReversal($payment, $userId, $reason);
+
             // Delete allocations
             PaymentAllocation::where('payment_id', $payment->id)->delete();
 
@@ -589,6 +604,58 @@ class PaymentRefundService
             throw new \RuntimeException('Settle the payment instrument first (bounce or cancel) before using the cash refund/reverse path.');
         }
     }
+
+    /**
+     * MTP-TRE-23 fix: resolve (rather than merely assert) the instrument-
+     * settlement precondition for reverse/refund/partialRefund.
+     *
+     * Before this fix, `assertInstrumentSettledForCashUndo()` threw whenever
+     * the linked instrument was Received/Deposited/Bounced, while
+     * `InstrumentLifecycleService::cancel()` required the payment already
+     * `Reversed` before it would cancel a `received` instrument — a circular
+     * precondition deadlock with no valid API ordering (proven live in both
+     * directions by the MTP-TRE-23 repro).
+     *
+     * For a `received` instrument specifically, this method breaks the cycle
+     * by cancelling the instrument itself, atomically, INSIDE the caller's
+     * open transaction, via
+     * `InstrumentLifecycleService::cancelForPaymentReversal()` — same GL
+     * entry + `InstrumentEvent` audit row a standalone cancel would emit,
+     * just without waiting for the payment to already be reversed (the
+     * caller reverses it in the same transaction, right after this call
+     * returns).
+     *
+     * `Deposited`/`Bounced` instruments are deliberately NOT auto-cancelled
+     * here: there is no domain-safe "cancel a deposited/bounced instrument"
+     * lifecycle transition in `InstrumentLifecycleService` (its `cancel()`
+     * only ever accepts `Received`) — inventing one is out of scope for this
+     * fix, so those states keep failing closed exactly as before.
+     *
+     * MUST be called from inside an open DB transaction, on an already
+     * lockForUpdate()'d Payment.
+     */
+    private function resolveInstrumentForReversal(Payment $payment, ?string $userId, string $reason): void
+    {
+        $instrument = $payment->instrument()->lockForUpdate()->first();
+        if ($instrument === null) {
+            return;
+        }
+
+        if ($instrument->status === InstrumentStatus::Received) {
+            $this->instrumentLifecycle->cancelForPaymentReversal(
+                $instrument,
+                $userId,
+                "Auto-cancelled while reversing payment {$payment->reference}: {$reason}",
+            );
+
+            return;
+        }
+
+        if (in_array($instrument->status, [InstrumentStatus::Deposited, InstrumentStatus::Bounced], true)) {
+            throw new \RuntimeException('Settle the payment instrument first (bounce or cancel) before using the cash refund/reverse path.');
+        }
+    }
+
 
     /**
      * Prorate a refund total across all of a receipt's original payments.

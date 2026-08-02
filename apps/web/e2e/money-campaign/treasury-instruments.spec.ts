@@ -231,59 +231,79 @@ test.describe('MTP-TRE — payment instruments (W2a §E.2)', () => {
 
   test('MTP-TRE-23: cancel requires a reason', async ({ request }) => {
     const customerId = await createCustomer(request, owner, uniqueName('TRE23'))
-    const { paymentId, instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23'))
+    const { instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23'))
 
     const withoutReason = await post(request, owner, `/payment-instruments/${instrumentId}/cancel`, {})
     expect(withoutReason.status, 'reason required').toBe(422)
+  })
 
-    // DEFECT (new, live-confirmed, NOT on the plan's §0.3 known-defect
-    // register): the plan's case assumes a `received` instrument can be
-    // cancelled directly. In THIS app every inbound instrument is created
-    // inline on a Payment (there is no standalone POST /payment-instruments
-    // path for inbound instruments — see this spec file's header comment),
-    // so a `received` instrument is always still linked to a live Payment.
-    // Two independent guards form a genuine circular deadlock for exactly
-    // this state (instrument Received + payment Completed):
-    //   (a) InstrumentLifecycleService::cancel() (apps/api/app/Modules/
-    //       Treasury/Application/Services/InstrumentLifecycleService.php
-    //       :605-617) — cancel() only accepts status===Received (:608-610),
-    //       but ALSO refuses ("Settle or reverse the linked payment before
-    //       cancelling its instrument.") unless the linked payment is
-    //       already Reversed/dishonored (:612-617).
-    //   (b) PaymentRefundService::assertInstrumentSettledForCashUndo()
-    //       (apps/api/app/Modules/Treasury/Domain/Services/
-    //       PaymentRefundService.php:581-591), invoked by reversePayment()
-    //       (:551) AND by refund()/partialRefund() (:93, :224, :664) alike —
-    //       refuses ("Settle the payment instrument first (bounce or
-    //       cancel)...") whenever the instrument status is Received,
-    //       Deposited, OR Bounced.
-    // (a) requires the payment reversed FIRST; (b) requires the instrument
-    // already cancelled (or cleared) FIRST. Neither can go first — there is
-    // NO API sequence that cancels a `received` inbound instrument (or
-    // refunds/reverses its payment) while the instrument sits in Received/
-    // Deposited/Bounced. Confirmed live below: reversing the payment before
-    // cancel is attempted is ALSO refused with the mirror-image message.
-    // Severity: P1 — money/GL can become permanently stuck (no refund, no
-    // reverse, no cancel) for any cheque/effet payment whose instrument
-    // hasn't cleared; the only stated escape (remit -> clear) requires
-    // actually banking the (possibly bad) cheque first.
+  // FIXED (2026-08-02, MTP-TRE-23 treasury-money-campaign-defects ticket).
+  // Was a genuine circular-precondition deadlock for exactly this state
+  // (instrument Received + payment Completed):
+  //   (a) InstrumentLifecycleService::cancel() required the linked payment
+  //       already Reversed/dishonored before it would cancel a `received`
+  //       instrument.
+  //   (b) PaymentRefundService::assertInstrumentSettledForCashUndo()
+  //       (invoked by reverse/refund/partialRefund alike) required the
+  //       instrument already cancelled-or-cleared FIRST.
+  // (a) needed the payment reversed first; (b) needed the instrument
+  // cancelled first — no valid ordering existed. ORCHESTRATOR RULING:
+  // reverse/refund/partialRefund now resolve this ATOMICALLY —
+  // PaymentRefundService::resolveInstrumentForReversal() cancels a
+  // `received` instrument INSIDE the same DB transaction (same GL entry +
+  // InstrumentEvent audit row a standalone cancel() would emit) immediately
+  // before flipping the payment to Reversed. Standalone
+  // InstrumentLifecycleService::cancel() is UNCHANGED for direct callers —
+  // it still fails closed until the payment is already reversed (see the
+  // companion case below), so this is a reverse/refund-path fix, not a
+  // precondition removal.
+  test('MTP-TRE-23b: reversing a payment atomically cancels its not-yet-cleared instrument', async ({ request }) => {
+    const customerId = await createCustomer(request, owner, uniqueName('TRE23B'))
+    const { paymentId, instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23B'))
+
+    const instrumentBefore = await get(request, owner, `/payment-instruments/${instrumentId}`)
+    expect(instrumentBefore.ok).toBeTruthy()
+    expect(instrumentBefore.data.status, 'instrument starts received (not yet cleared)').toBe('received')
+
+    // Pre-fix, this 422'd: "Settle the payment instrument first (bounce or
+    // cancel) before using the cash refund/reverse path."
     const reversePayment = await post(request, owner, `/payments/${paymentId}/reverse`, {
-      reason: 'W2a MTP-TRE-23 attempt: reverse payment before cancelling its instrument',
+      reason: 'W2a MTP-TRE-23 atomic reversal of a payment whose instrument has not cleared',
     })
     expect(
-      reversePayment.status,
-      `DEFECT — circular precondition: reverse refused because instrument not yet settled -> ${reversePayment.status} ${JSON.stringify(reversePayment.data)}`,
-    ).toBe(422)
+      reversePayment.ok,
+      `reverse -> ${reversePayment.status} ${JSON.stringify(reversePayment.data)}`,
+    ).toBeTruthy()
 
-    // And the original direction (cancel before reversing) is refused too —
-    // both legs proven blocked, confirming the deadlock rather than a
-    // one-off ordering mistake in this test.
-    const withReason = await post(request, owner, `/payment-instruments/${instrumentId}/cancel`, {
-      reason: 'W2a MTP-TRE-23 cancel with reason',
+    const paymentAfter = await get(request, owner, `/payments/${paymentId}`)
+    expect(paymentAfter.ok).toBeTruthy()
+    expect(paymentAfter.data.status, 'payment is reversed').toBe('reversed')
+
+    const instrumentAfter = await get(request, owner, `/payment-instruments/${instrumentId}`)
+    expect(instrumentAfter.ok).toBeTruthy()
+    expect(
+      instrumentAfter.data.status,
+      'the instrument is cancelled ATOMICALLY as part of the reversal, resolving the deadlock',
+    ).toBe('cancelled')
+  })
+
+  test('MTP-TRE-23c: standalone instrument cancel still fails closed while its payment has not been reversed', async ({
+    request,
+  }) => {
+    const customerId = await createCustomer(request, owner, uniqueName('TRE23C'))
+    const { instrumentId } = await receiveCheque(request, customerId, '90.000', uniqueName('CHQ23C'))
+
+    // Direct callers of the standalone cancel endpoint are UNAFFECTED by the
+    // MTP-TRE-23 fix — that atomic short-circuit lives only inside the
+    // reverse/refund/partialRefund transactions. A direct cancel attempt on
+    // a `received` instrument whose payment has NOT been reversed must
+    // still be refused, exactly as before.
+    const cancelAttempt = await post(request, owner, `/payment-instruments/${instrumentId}/cancel`, {
+      reason: 'W2a MTP-TRE-23 direct cancel attempt (payment not reversed)',
     })
     expect(
-      withReason.status,
-      `DEFECT — circular precondition: cancel refused because payment not yet reversed -> ${withReason.status} ${JSON.stringify(withReason.data)}`,
+      cancelAttempt.status,
+      `standalone cancel must still require the payment already reversed -> ${cancelAttempt.status} ${JSON.stringify(cancelAttempt.data)}`,
     ).toBe(422)
   })
 
