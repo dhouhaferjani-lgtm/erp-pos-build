@@ -37,6 +37,11 @@ Carried as recorded; re-read the record before scheduling.
   same family as project_hexagonal_soc_audit's "97 vs baseline 61" drift. Re-baseline + ticket per
   that project's pending recommendation; until then every treasury gate must hand-prove +0 edges.
 - `DeferredTenderGuardsTest::test_supplier_traite_keeps_cash_payment_shape_and_registers_outbound_instrument`
-  red on dev (root cause `PaymentController.php:1151` `$isDeferredSupplier` movement guard —
-  supplier traite records no repository movement). Needs its own investigation: the guard may be
-  wrong OR the test's expectation may be stale; either way a red test on dev masks regressions.
+  red on dev — **INVESTIGATED 2026-08-02: STALE TEST, not a bug.** `9ae7db934` (2026-07-18)
+  deliberately moved supplier deferred tenders to portfolio-issuance at creation (Dr 401 / Cr
+  ChecksToPay, `GeneralLedgerService.php:778-801`) with movement + bank GL only at
+  `OutboundInstrumentService::clear()` (`:123-155`, same tx — GL parity holds); it added
+  `DeferredSupplierPaymentTest` for the new design but never updated this old test. FIX (test
+  only): rewrite + rename the stale test to assert 0 movements / unchanged balance at creation,
+  `source_type='instrument'` JE with portfolio credit line; optionally drive clear() and assert
+  the movement lands there. No product change.
