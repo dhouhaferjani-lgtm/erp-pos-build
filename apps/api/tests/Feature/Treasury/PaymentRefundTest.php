@@ -189,7 +189,9 @@ class PaymentRefundTest extends TestCase
 
     public function test_full_refund_reverses_allocation(): void
     {
-        $payment = $this->createPaymentWithAllocation('500.00');
+        $invoice = $this->makeInvoice('500.00', '0.00');
+        $invoice->update(['status' => DocumentStatus::Paid]);
+        $payment = $this->createPaymentAllocatedTo($invoice, '500.00');
 
         $refund = $this->refundService->refundPayment(
             $payment,
@@ -201,7 +203,25 @@ class PaymentRefundTest extends TestCase
         $refundAllocations = $refund->allocations;
         $this->assertCount(1, $refundAllocations);
         $this->assertEquals('-500.000', $refundAllocations->first()->amount);
-        $this->assertEquals($this->invoice->id, $refundAllocations->first()->document_id);
+        $this->assertEquals($invoice->id, $refundAllocations->first()->document_id);
+
+        // N1 fix (re-gate finding, 2026-08-02): recomputeDocumentBalances()
+        // was wired into reversePayment() and unwindAllocationsProRata()
+        // (partialRefund()'s path) but NOT into refundPayment() — the exact
+        // I2 defect (balance_due reopens via the negative-allocation-row +
+        // Postgres trigger, but the cached document `status` column never
+        // reverts Paid -> Posted) on the MOST COMMON refund path.
+        $invoice->refresh();
+        $this->assertEquals(
+            '500.000',
+            $invoice->balance_due,
+            'a full refund must restore balance_due to the full total'
+        );
+        $this->assertEquals(
+            DocumentStatus::Posted,
+            $invoice->status,
+            'a full refund must revert Paid -> Posted, mirroring OutboundInstrumentService::cancel()'
+        );
     }
 
     public function test_partial_refund_maintains_remaining_balance(): void

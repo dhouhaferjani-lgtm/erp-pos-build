@@ -175,13 +175,34 @@ class PaymentRefundService
                 ]);
 
                 // Reverse original payment allocations
+                /** @var list<string> $refundedDocumentIds */
+                $refundedDocumentIds = [];
                 foreach ($original->allocations as $allocation) {
                     PaymentAllocation::create([
                         'payment_id' => $refund->id,
                         'document_id' => $allocation->document_id,
                         'amount' => bcmul($allocation->amount, '-1', $this->scale()), // Negative amount
                     ]);
+                    $refundedDocumentIds[] = $allocation->document_id;
                 }
+
+                // N1 fix (re-gate finding, 2026-08-02): recompute the
+                // refunded documents' balance_due and revert Paid -> Posted
+                // — mirrors partialRefund()'s unwindAllocationsProRata() and
+                // reversePayment(), both of which already call this. Without
+                // it, a FULL refund reopened balance_due only via the
+                // Postgres balance_due-cache trigger (a no-op on SQLite) and
+                // NEVER reverted the cached `status` column on ANY backend —
+                // the exact I2 defect, on refundPayment()'s more common
+                // path. Lock order (I9): Document locks here, BEFORE
+                // postRefundGlAndMovement()'s company advisory lock below —
+                // same order the other two callers already use.
+                $this->recomputeDocumentBalances(
+                    $refundedDocumentIds,
+                    $original->tenant_id,
+                    $original->company_id,
+                    $this->scaleResolver->getScale($original->currency),
+                );
 
                 // GL reversal + cash movement OUT via the write port (atomic with
                 // this transaction). Skipped cleanly when the original payment has
