@@ -456,19 +456,26 @@ export function InventorySettings() {
       </div>
 
       {/* Save Button */}
-      <div className={cn('flex items-center justify-end gap-3 border-t pt-4', borderColors.light)}>
-        {hasChanges && (
-          <span className={cn('text-sm', textColors.tertiary)}>{t('inventory:settings.messages.unsavedChanges')}</span>
+      <div className={cn('flex flex-col items-end gap-1 border-t pt-4', borderColors.light)}>
+        <div className="flex items-center justify-end gap-3">
+          {hasChanges && (
+            <span className={cn('text-sm', textColors.tertiary)}>{t('inventory:settings.messages.unsavedChanges')}</span>
+          )}
+          <Button
+            onClick={() => { void handleSave() }}
+            disabled={!hasChanges || saveMutation.isPending || saveReservationMutation.isPending || !canEdit}
+            title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
+            size="md"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {(saveMutation.isPending || saveReservationMutation.isPending) ? t('common:saving') : `${t('common:save')} ${t('common:settings.title')}`}
+          </Button>
+        </div>
+        {!canEdit && (
+          <span className={`text-xs ${textColors.warning}`}>
+            {t('common:permissions.readOnlyEditHint')}
+          </span>
         )}
-        <Button
-          onClick={() => { void handleSave() }}
-          disabled={!hasChanges || saveMutation.isPending || saveReservationMutation.isPending || !canEdit}
-          title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
-          size="md"
-        >
-          <Save className="mr-2 h-4 w-4" />
-          {(saveMutation.isPending || saveReservationMutation.isPending) ? t('common:saving') : `${t('common:save')} ${t('common:settings.title')}`}
-        </Button>
       </div>
     </div>
   )

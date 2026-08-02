@@ -374,28 +374,35 @@ export function ReceiptSettingsTab() {
       </div>
 
       {/* Save Button */}
-      <div className="flex justify-end gap-3">
-        {isDirty && (
-          <span className={cn('text-sm self-center', textColors.warningDark)}>
-            {t('settings:company.messages.unsavedChanges')}
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex justify-end gap-3">
+          {isDirty && (
+            <span className={cn('text-sm self-center', textColors.warningDark)}>
+              {t('settings:company.messages.unsavedChanges')}
+            </span>
+          )}
+          <Button
+            type="submit"
+            disabled={saveMutation.isPending || !isDirty || !canEdit}
+            title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
+            size="md"
+            className="gap-2"
+          >
+            {saveMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('common:status.saving')}
+              </>
+            ) : (
+              t('common:actions.save')
+            )}
+          </Button>
+        </div>
+        {!canEdit && (
+          <span className={`text-xs ${textColors.warning}`}>
+            {t('common:permissions.readOnlyEditHint')}
           </span>
         )}
-        <Button
-          type="submit"
-          disabled={saveMutation.isPending || !isDirty || !canEdit}
-          title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
-          size="md"
-          className="gap-2"
-        >
-          {saveMutation.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t('common:status.saving')}
-            </>
-          ) : (
-            t('common:actions.save')
-          )}
-        </Button>
       </div>
     </form>
   )

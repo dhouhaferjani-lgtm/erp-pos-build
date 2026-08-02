@@ -82,14 +82,18 @@ function procurementPolicy(preset: 'complet' | 'standard' | 'leger' | null = 'st
   }
 }
 
-function setTenant() {
+function setTenant(roles: string[] = ['admin']) {
   useAuthStore.setState({
     user: {
       id: 'user-1',
       name: 'User',
       email: 'user@example.test',
       tenant_id: 'tenant-A',
-      roles: [],
+      // 'admin' is the only seeded role holding settings.update
+      // (permissionsMap.generated.ts) — the F1/M1 mutation gate on this
+      // page requires it. Callers exercising the deny path pass a role
+      // without it (e.g. []).
+      roles,
       email_verified_at: null,
     },
     token: 'token',
@@ -232,5 +236,77 @@ describe('CompanyPage (canonical primitives)', () => {
         invoice_first_requires_approval: false,
       })
     })
+  })
+})
+
+// M1 (gate review docs/superpowers/reviews/2026-08-02-fe-batch-gate.md): CompanyPage was the
+// largest settings.update-gated surface with NO FE affordance gate at all — five mutation
+// controls (general Save, procurement Save, logo upload, logo delete) stayed fully enabled for
+// a caller without settings.update, a 403 dead-end. M2: this had zero coverage anywhere, so the
+// gate itself was invisible to mutation testing. M3: the visible hint (not just hover `title`)
+// follows the GoodsReceiptListPage.tsx:478-497 pattern.
+describe('CompanyPage settings.update gating', () => {
+  it('disables the general Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
+    setTenant([])
+    const user = userEvent.setup()
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'settings:company.documents.lineDesignation.label',
+    })
+    await user.click(toggle) // makes the form dirty
+
+    const save = screen.getByRole('button', { name: 'common:actions.save' })
+    expect(save).toBeDisabled()
+    expect(screen.getAllByText('common:permissions.readOnlyEditHint').length).toBeGreaterThan(0)
+
+    await user.click(save)
+    expect(mockApiPatch).not.toHaveBeenCalled()
+  })
+
+  it('disables the procurement advanced Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
+    setTenant([])
+    const user = userEvent.setup()
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    await user.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
+    const save = await screen.findByRole('button', { name: 'settings:company.procurement.actions.saveAdvanced' })
+    expect(save).toBeDisabled()
+    expect(screen.getAllByText('common:permissions.readOnlyEditHint').length).toBeGreaterThan(0)
+
+    await user.click(save)
+    expect(mockApiPut).not.toHaveBeenCalledWith('/procurement-policies', expect.anything())
+  })
+
+  it('disables logo upload and delete and shows the read-only hint for a caller without settings.update; neither mutation fires on click', async () => {
+    setTenant([])
+    const user = userEvent.setup()
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    const uploadButton = await screen.findByRole('button', { name: 'settings:company.actions.replaceLogo' })
+    const deleteButton = screen.getByRole('button', { name: 'common:actions.delete' })
+    expect(uploadButton).toBeDisabled()
+    expect(deleteButton).toBeDisabled()
+    expect(screen.getAllByText('common:permissions.readOnlyEditHint').length).toBeGreaterThan(0)
+
+    await user.click(uploadButton)
+    await user.click(deleteButton)
+    expect(mockApiPost).not.toHaveBeenCalled()
+    expect(mockApiDelete).not.toHaveBeenCalled()
+  })
+
+  it('keeps every mutation affordance enabled for a caller WITH settings.update (control case)', async () => {
+    setTenant(['admin'])
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    await screen.findByRole('button', { name: 'common:actions.save' })
+    const uploadButton = screen.getByRole('button', { name: 'settings:company.actions.replaceLogo' })
+    const deleteButton = screen.getByRole('button', { name: 'common:actions.delete' })
+    expect(uploadButton).not.toBeDisabled()
+    expect(deleteButton).not.toBeDisabled()
+    expect(screen.queryByText('common:permissions.readOnlyEditHint')).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
+    expect(await screen.findByRole('button', { name: 'settings:company.procurement.actions.saveAdvanced' })).not.toBeDisabled()
   })
 })

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -150,5 +151,26 @@ describe('TaxSettingsPage (canonical primitives)', () => {
     })
 
     expect(screen.queryByText('19.000%')).not.toBeInTheDocument()
+  })
+})
+
+// M1/M2/M3 (gate review docs/superpowers/reviews/2026-08-02-fe-batch-gate.md): the F1
+// settings.update gate on this screen (aa3fc1cc4) had zero test coverage — mutation-testing
+// it (deleting `|| !canEdit`) left the whole suite green. setTenant() above seeds `roles: []`
+// (no settings.update), so this deny path is the DEFAULT fixture state — no override needed.
+describe('TaxSettingsPage settings.update gating', () => {
+  it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
+    const user = userEvent.setup()
+    render(<TaxSettingsPage />, { wrapper: wrapper() })
+
+    const fiscalYear = await screen.findByLabelText('settings:tax.fiscalYear.label')
+    await user.selectOptions(fiscalYear, '3')
+
+    const save = screen.getByRole('button', { name: 'common:save' })
+    expect(save).toBeDisabled()
+    expect(screen.getAllByText('common:permissions.readOnlyEditHint').length).toBeGreaterThan(0)
+
+    await user.click(save)
+    expect(mockApiPut).not.toHaveBeenCalled()
   })
 })

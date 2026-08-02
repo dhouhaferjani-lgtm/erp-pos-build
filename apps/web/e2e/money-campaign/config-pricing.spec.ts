@@ -87,6 +87,39 @@ test.describe('MTP-CFG — company money settings / setup checklist (W-2)', () =
     )
   })
 
+  test('MTP-CFG-15 (P1): default_target_margin/default_minimum_margin enforce a 2dp ceiling — a 3rd decimal is refused (422)', async ({ page }) => {
+    await loginAsRole(page, 'owner')
+    const before = await getCompany(page)
+    const res = await putCompany(page, { default_target_margin: '25.123' })
+    expect(res.status, `3dp margin must 422 -> ${res.status} ${JSON.stringify(res.body)}`).toBe(422)
+    const after = await getCompany(page)
+    expect(after.default_target_margin).toBe(before.default_target_margin)
+  })
+
+  test('MTP-CFG-16 (P1): margin-band cross-field rule — default_minimum_margin > default_target_margin is refused (422)', async ({ page }) => {
+    await loginAsRole(page, 'owner')
+    const before = await getCompany(page)
+    try {
+      const res = await putCompany(page, { default_minimum_margin: '50.00', default_target_margin: '10.00' })
+      expect(res.status, `minimum > target must 422 -> ${res.status} ${JSON.stringify(res.body)}`).toBe(422)
+    } finally {
+      const after = await getCompany(page)
+      expect(after.default_minimum_margin, 'refused PATCH leaves state untouched').toBe(before.default_minimum_margin)
+    }
+  })
+})
+
+// MTP-CFG-14 lives in its OWN describe block, deliberately WITHOUT the
+// MTP-CFG describe's owner `beforeEach`: the case immediately re-logs in as
+// `cashier` as its first statement, so the shared owner login was pure
+// redundant overhead — and `loginAsRole` navigates to `/login` fresh each
+// call, so the double-login (owner, then cashier) doubled the exposure to
+// the auth-throttle-shaped flake observed live (gate review m4,
+// docs/superpowers/reviews/2026-08-02-fe-batch-gate.md — 1 failure in 2
+// consecutive runs, stuck on /login inside the redundant owner login).
+test.describe('MTP-CFG-14 — onboarding/status permission gate (W-2, isolated)', () => {
+  test.setTimeout(60_000)
+
   test('MTP-CFG-14 (P1, FIXED): GET onboarding/status now requires settings.view — cashier is refused at both layers (API 403 + FE redirect)', async ({ page }) => {
     // Originally this case asserted "onboarding status has no permission gate
     // of its own" — that became FALSE once commit
@@ -112,27 +145,6 @@ test.describe('MTP-CFG — company money settings / setup checklist (W-2)', () =
       /\/dashboard/,
       { timeout: 15_000 }
     )
-  })
-
-  test('MTP-CFG-15 (P1): default_target_margin/default_minimum_margin enforce a 2dp ceiling — a 3rd decimal is refused (422)', async ({ page }) => {
-    await loginAsRole(page, 'owner')
-    const before = await getCompany(page)
-    const res = await putCompany(page, { default_target_margin: '25.123' })
-    expect(res.status, `3dp margin must 422 -> ${res.status} ${JSON.stringify(res.body)}`).toBe(422)
-    const after = await getCompany(page)
-    expect(after.default_target_margin).toBe(before.default_target_margin)
-  })
-
-  test('MTP-CFG-16 (P1): margin-band cross-field rule — default_minimum_margin > default_target_margin is refused (422)', async ({ page }) => {
-    await loginAsRole(page, 'owner')
-    const before = await getCompany(page)
-    try {
-      const res = await putCompany(page, { default_minimum_margin: '50.00', default_target_margin: '10.00' })
-      expect(res.status, `minimum > target must 422 -> ${res.status} ${JSON.stringify(res.body)}`).toBe(422)
-    } finally {
-      const after = await getCompany(page)
-      expect(after.default_minimum_margin, 'refused PATCH leaves state untouched').toBe(before.default_minimum_margin)
-    }
   })
 })
 

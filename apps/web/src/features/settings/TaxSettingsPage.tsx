@@ -341,21 +341,28 @@ export function TaxSettingsPage() {
             </div>
 
             {/* Actions */}
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <Link to="/settings">
-                <Button type="button" variant="secondary">
-                  {t('common:cancel')}
+            <div className="mt-6 flex flex-col items-end gap-1">
+              <div className="flex items-center justify-end gap-3">
+                <Link to="/settings">
+                  <Button type="button" variant="secondary">
+                    {t('common:cancel')}
+                  </Button>
+                </Link>
+                <Button
+                  type="submit"
+                  disabled={!isDirty || updateMutation.isPending || !canEdit}
+                  title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
+                  className="gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {updateMutation.isPending ? t('common:saving') : t('common:save')}
                 </Button>
-              </Link>
-              <Button
-                type="submit"
-                disabled={!isDirty || updateMutation.isPending || !canEdit}
-                title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
-                className="gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {updateMutation.isPending ? t('common:saving') : t('common:save')}
-              </Button>
+              </div>
+              {!canEdit && (
+                <span className={`text-xs ${textColors.warning}`}>
+                  {t('common:permissions.readOnlyEditHint')}
+                </span>
+              )}
             </div>
           </form>
         </TabsContent>

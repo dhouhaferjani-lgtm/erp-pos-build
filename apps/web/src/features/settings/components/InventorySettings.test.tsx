@@ -39,6 +39,12 @@ vi.mock('../../../hooks/useCompany', () => ({
   }),
 }))
 
+// ─── usePermissions mock ────────────────────────────────────────────────────
+const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
+vi.mock('../../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 const companyFixture = {
   id: 'company-1',
@@ -60,6 +66,7 @@ const reservationFixture = {
 
 // ─── TanStack Query mock ────────────────────────────────────────────────────
 // First useQuery call → company-settings; second → reservation-settings.
+const mockMutateAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)))
 vi.mock('@tanstack/react-query', () => {
   let call = 0
   return {
@@ -70,7 +77,7 @@ vi.mock('@tanstack/react-query', () => {
       }
       return { data: reservationFixture, isLoading: false, isLoadingReservation: false }
     },
-    useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useMutation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -78,6 +85,8 @@ vi.mock('@tanstack/react-query', () => {
 describe('InventorySettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockHasPermission.mockReturnValue(true)
+    mockMutateAsync.mockClear()
   })
 
   it('renders margin percent fields as number inputs via atoms', () => {
@@ -140,5 +149,25 @@ describe('InventorySettings', () => {
     render(<InventorySettings />)
     const saveButton = screen.getByRole('button')
     expect(saveButton.tagName).toBe('BUTTON')
+  })
+
+  // M1/M2/M3 (gate review docs/superpowers/reviews/2026-08-02-fe-batch-gate.md): the F1
+  // settings.update gate on this screen (aa3fc1cc4) had zero test coverage — mutation-testing
+  // it (deleting `|| !canEdit`) left the whole suite green. This asserts the real behaviour.
+  it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
+    mockHasPermission.mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<InventorySettings />)
+
+    const target = screen.getByLabelText('inventory:settings.margins.targetLabel') as HTMLInputElement
+    await user.clear(target)
+    await user.type(target, '35.00')
+
+    const saveButton = screen.getByRole('button')
+    expect(saveButton).toBeDisabled()
+    expect(screen.getByText('common:permissions.readOnlyEditHint')).toBeInTheDocument()
+
+    await user.click(saveButton)
+    expect(mockMutateAsync).not.toHaveBeenCalled()
   })
 })

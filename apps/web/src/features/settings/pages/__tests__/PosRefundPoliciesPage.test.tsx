@@ -53,11 +53,12 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 
 // ─── usePermissions mock ──────────────────────────────────────────────────────
 const mockCanAccessModule = vi.fn(() => true)
+const mockHasPermission = vi.fn(() => true)
 
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({
     canAccessModule: mockCanAccessModule,
-    hasPermission: vi.fn(() => true),
+    hasPermission: mockHasPermission,
     hasAnyPermission: vi.fn(() => true),
     hasAllPermissions: vi.fn(() => true),
   }),
@@ -77,6 +78,7 @@ describe('PosRefundPoliciesPage', () => {
     mockQueryReturn.isLoading = false
     mockMutate.mockClear()
     mockCanAccessModule.mockReturnValue(true)
+    mockHasPermission.mockReturnValue(true)
   })
 
   it('renders page title', () => {
@@ -110,6 +112,24 @@ describe('PosRefundPoliciesPage', () => {
     fireEvent.change(input, { target: { value: '45' } })
     const saveBtn = screen.getByTestId('save-button')
     expect(saveBtn).not.toBeDisabled()
+  })
+
+  // M1/M2/M3 (gate review docs/superpowers/reviews/2026-08-02-fe-batch-gate.md): the F1
+  // settings.update gate on this screen (aa3fc1cc4) had zero real coverage — `hasPermission`
+  // was hardcoded `true`, so the existing `toBeDisabled()` assertions above only ever
+  // exercised `isDirty`, not the permission gate. This asserts the real behaviour.
+  it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', () => {
+    mockHasPermission.mockReturnValue(false)
+    renderPage()
+    const input = screen.getByTestId('field-customer_return_expiry_days') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '45' } })
+
+    const saveBtn = screen.getByTestId('save-button')
+    expect(saveBtn).toBeDisabled()
+    expect(screen.getByText('common:permissions.readOnlyEditHint')).toBeInTheDocument()
+
+    fireEvent.click(saveBtn)
+    expect(mockMutate).not.toHaveBeenCalled()
   })
 
   it('calls update mutation with the changed payload on submit', async () => {

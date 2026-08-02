@@ -259,11 +259,6 @@ export async function putCompany(page: Page, patch: Record<string, unknown>, com
   return apiRequest(page, 'PUT', `/companies/${companyId}`, patch)
 }
 
-export async function getOnboardingStatus(page: Page): Promise<Record<string, unknown>> {
-  const res = await apiRequest(page, 'GET', '/onboarding/status')
-  return bodyOf(res)
-}
-
 // ---------------------------------------------------------------------------
 // Payment methods + GL routing (surface PMT)
 // ---------------------------------------------------------------------------

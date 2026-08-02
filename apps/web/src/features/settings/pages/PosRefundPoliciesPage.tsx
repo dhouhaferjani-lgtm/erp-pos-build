@@ -737,25 +737,32 @@ export function PosRefundPoliciesPage() {
             {t('refund-policies:actions.reset')}
           </Button>
 
-          <Button
-            type="submit"
-            data-testid="save-button"
-            disabled={!isDirty || updateMutation.isPending || !canEdit}
-            title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
-            className="gap-2"
-          >
-            {updateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('refund-policies:actions.saving')}
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                {t('refund-policies:actions.save')}
-              </>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              type="submit"
+              data-testid="save-button"
+              disabled={!isDirty || updateMutation.isPending || !canEdit}
+              title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
+              className="gap-2"
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('refund-policies:actions.saving')}
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  {t('refund-policies:actions.save')}
+                </>
+              )}
+            </Button>
+            {!canEdit && (
+              <span className={`text-xs ${textColors.warning}`}>
+                {t('common:permissions.readOnlyEditHint')}
+              </span>
             )}
-          </Button>
+          </div>
         </div>
       </form>
     </div>

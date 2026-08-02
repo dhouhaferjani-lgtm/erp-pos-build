@@ -18,6 +18,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useCompany } from '../../hooks/useCompany'
+import { usePermissions } from '../../hooks/usePermissions'
 import { useCountryProfile } from './hooks/useCountryProfile'
 import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
 import { countries } from '../../lib/countries'
@@ -110,6 +111,8 @@ export function CompanyPage() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const { currentCompany } = useCompany()
+  const { hasPermission } = usePermissions()
+  const canEdit = hasPermission('settings.update')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<CompanyTab>('general')
   const [notification, setNotification] = useState<{
@@ -626,10 +629,11 @@ export function CompanyPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-end">
+                <div className="mt-6 flex flex-col items-end gap-1">
                   <Button
                     type="submit"
-                    disabled={updateProcurementMutation.isPending}
+                    disabled={updateProcurementMutation.isPending || !canEdit}
+                    title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
                     className="gap-2"
                   >
                     {updateProcurementMutation.isPending ? (
@@ -641,6 +645,11 @@ export function CompanyPage() {
                       t('settings:company.procurement.actions.saveAdvanced')
                     )}
                   </Button>
+                  {!canEdit && (
+                    <span className={`text-xs ${textColors.warning}`}>
+                      {t('common:permissions.readOnlyEditHint')}
+                    </span>
+                  )}
                 </div>
               </form>
             </>
@@ -792,7 +801,8 @@ export function CompanyPage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => { fileInputRef.current?.click() }}
-                        disabled={uploadLogoMutation.isPending}
+                        disabled={uploadLogoMutation.isPending || !canEdit}
+                        title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
                         className="gap-2"
                       >
                         <Upload className="h-4 w-4" />
@@ -803,22 +813,30 @@ export function CompanyPage() {
                         variant="danger"
                         size="sm"
                         onClick={handleDeleteLogo}
-                        disabled={deleteLogoMutation.isPending}
+                        disabled={deleteLogoMutation.isPending || !canEdit}
+                        title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
                         className="gap-2"
                       >
                         <Trash2 className="h-4 w-4" />
                         {t('common:actions.delete')}
                       </Button>
+                      {!canEdit && (
+                        <span className={`text-xs ${textColors.warning}`}>
+                          {t('common:permissions.readOnlyEditHint')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (
                   <div
-                    onClick={() => { fileInputRef.current?.click() }}
+                    onClick={() => { if (canEdit) fileInputRef.current?.click() }}
                     className={cn(
-                      'rounded-lg border-2 border-dashed p-8 text-center cursor-pointer transition-colors',
+                      'rounded-lg border-2 border-dashed p-8 text-center transition-colors',
+                      canEdit ? 'cursor-pointer' : 'cursor-not-allowed',
                       borderColors.default,
-                      tokens.card.hoverPrimary,
+                      canEdit ? tokens.card.hoverPrimary : '',
                     )}
+                    title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
                   >
                     {uploadLogoMutation.isPending ? (
                       <Loader2 className={cn('mx-auto h-12 w-12 animate-spin', textColors.brand)} />
@@ -827,6 +845,11 @@ export function CompanyPage() {
                         <Upload className={cn('mx-auto h-12 w-12', textColors.disabled)} />
                         <p className={cn('mt-2 text-sm', textColors.tertiary)}>{t('settings:company.messages.uploadLogo')}</p>
                         <p className={cn('text-xs', textColors.disabled)}>{t('settings:company.messages.logoFormats')}</p>
+                        {!canEdit && (
+                          <p className={`mt-2 text-xs ${textColors.warning}`}>
+                            {t('common:permissions.readOnlyEditHint')}
+                          </p>
+                        )}
                       </>
                     )}
                   </div>
@@ -949,25 +972,33 @@ export function CompanyPage() {
         </div>
 
         {/* Save Button */}
-        <div className="mt-6 flex justify-end gap-3">
-          {isDirty && (
-            <span className={cn('self-center text-sm', textColors.warningDark)}>{t('settings:company.messages.unsavedChanges')}</span>
-          )}
-          <Button
-            type="submit"
-            size="lg"
-            disabled={updateMutation.isPending || !isDirty}
-            className="gap-2"
-          >
-            {updateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('common:status.saving')}
-              </>
-            ) : (
-              t('common:actions.save')
+        <div className="mt-6 flex flex-col items-end gap-1">
+          <div className="flex items-center gap-3">
+            {isDirty && (
+              <span className={cn('self-center text-sm', textColors.warningDark)}>{t('settings:company.messages.unsavedChanges')}</span>
             )}
-          </Button>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={updateMutation.isPending || !isDirty || !canEdit}
+              title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
+              className="gap-2"
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('common:status.saving')}
+                </>
+              ) : (
+                t('common:actions.save')
+              )}
+            </Button>
+          </div>
+          {!canEdit && (
+            <span className={`text-xs ${textColors.warning}`}>
+              {t('common:permissions.readOnlyEditHint')}
+            </span>
+          )}
         </div>
       </form>
       )}
