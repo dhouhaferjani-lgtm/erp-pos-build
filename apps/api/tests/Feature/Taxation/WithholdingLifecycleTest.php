@@ -277,11 +277,14 @@ class WithholdingLifecycleTest extends TestCase
         $document = $this->createInvoice('3000.000');
         $payment = $this->createPayment($document, '2850.000');
 
-        // Create with manual 5% override
+        // Create with manual 5% override. createFromPayment()'s override
+        // rate is a FRACTION (0-1, matching PaymentController's
+        // withholding_rate contract — review finding C5), NOT a percentage
+        // — '0.0500' is 5%, not '5.0'.
         $certData = $this->certificateService->createFromPayment(
             $payment,
             $document,
-            '5.0',
+            '0.0500',
             'Special tax agreement'
         );
 

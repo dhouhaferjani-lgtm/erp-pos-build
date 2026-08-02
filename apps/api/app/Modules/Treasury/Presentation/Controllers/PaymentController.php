@@ -75,6 +75,50 @@ class PaymentController extends Controller
     }
 
     /**
+     * MTP-TRE-15 fix (review finding C4): normalise `withholding_rate` to a
+     * canonical numeric-string ONCE, here at the HTTP boundary, before it
+     * ever reaches `WithholdingCertificateService::createFromPayment()`.
+     *
+     * The FormRequest-equivalent inline rule is `numeric` (not `string`),
+     * so a JSON **number** payload (`"withholding_rate": 0.015`) validates
+     * just as cleanly as a JSON string (`"withholding_rate": "0.015"`) —
+     * Laravel's `numeric`/`regex` rules both accept either shape (`regex`
+     * coerces via `preg_match`'s implicit string cast). `$validated`
+     * therefore carries WHATEVER type the client sent: `string` or `float`/
+     * `int`. Passing that straight through used to throw a TypeError deep
+     * inside the withholding service for the number shape (the exact
+     * defect this fix removes) — the precision contract (rule 19) forbids
+     * "fixing" that by float-casting; instead every caller of
+     * `createFromPayment()` must receive the SAME bcmath-domain string
+     * regardless of how the client encoded the number.
+     *
+     * Does NOT float-cast: `is_string` short-circuits for the already-safe
+     * shape; for the numeric (int/float) shape, PHP's own `(string)` cast
+     * on JSON-decoded numbers is exact for the validated domain here
+     * (`numeric`, `min:0`, `max:1`, regex-capped at 4dp) — PHP's default
+     * `serialize_precision=-1` uses the shortest round-tripping
+     * representation, so `(string) 0.015 === '0.015'`.
+     *
+     * @return numeric-string|null
+     */
+    private function normalizeWithholdingRate(mixed $rawRate): ?string
+    {
+        if ($rawRate === null) {
+            return null;
+        }
+
+        $normalized = is_string($rawRate) ? $rawRate : (string) $rawRate;
+        if (! is_numeric($normalized)) {
+            // The `numeric` FormRequest rule should already have rejected
+            // this with a 422 before we ever get here — this is a
+            // defense-in-depth guard, not the primary validation layer.
+            throw new \InvalidArgumentException('withholding_rate must be numeric');
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Task 16b (spine Wave D, HIGH-7): resolve the client-supplied request-level
      * idempotency key. Prefers the `Idempotency-Key` header (standard practice);
      * falls back to an `idempotency_key` body field for callers that cannot set
@@ -886,7 +930,7 @@ class PaymentController extends Controller
                         $certificateData = $this->withholdingService->createFromPayment(
                             $payment,
                             $document,
-                            $validated['withholding_rate'] ?? null,
+                            $this->normalizeWithholdingRate($validated['withholding_rate'] ?? null),
                             $validated['withholding_override_reason'] ?? null
                         );
 

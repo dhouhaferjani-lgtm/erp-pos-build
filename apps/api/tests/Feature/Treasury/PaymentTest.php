@@ -238,6 +238,14 @@ class PaymentTest extends TestCase
      * test supplies an allocation so it actually exercises the crashing
      * code path.
      */
+    /**
+     * MTP-TRE-15 fix, VALUE-asserting (review finding C5 — the previous
+     * regression test only asserted the certificate ROW exists, which
+     * stayed green even when the computed amount was 100x too small).
+     * withholding_rate is a FRACTION (0-1): 0.015 on a 1190.000 invoice
+     * must withhold 17.850 (1190.000 * 0.015), not 0.119 (the polarity-
+     * flipped percentage-division bug the adversarial review reproduced).
+     */
     public function test_store_creates_payment_with_withholding_certificate_instead_of_500ing(): void
     {
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
@@ -268,7 +276,92 @@ class PaymentTest extends TestCase
             'id' => $payment->withholding_certificate_id,
             'payment_id' => $payment->id,
             'document_id' => $this->invoice->id,
+            'gross_amount' => '1190.000',
+            'withholding_rate' => '0.0150',
+            'withholding_amount' => '17.850',
+            'net_amount' => '1172.150',
         ]);
+    }
+
+    /**
+     * Review finding C4: PaymentController::store()'s `withholding_rate`
+     * FormRequest rule is `numeric` (not `string`), so a JSON NUMBER payload
+     * (`0.015`, not `"0.015"`) validates identically to a JSON string —
+     * Laravel's regex rule accepts either. Pre-remediation, the service
+     * boundary was fixed for the string shape but not the number shape:
+     * PHP decodes a bare JSON number into a native float/int, and passing
+     * THAT into the (by-then) `?string` service parameter threw a TypeError
+     * under strict_types=1 — the SAME class of defect the ticket asked to
+     * remove, just with the crashing payload shape flipped. Exercised here
+     * with Laravel's raw HTTP kernel (not the JSON-encoding test client) so
+     * the request body is genuinely typed, not coerced by PHPUnit's helper.
+     */
+    public function test_store_normalises_a_json_number_withholding_rate_instead_of_500ing(): void
+    {
+        $payload = json_encode([
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1190.00',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $this->invoice->id,
+                    'amount' => '1190.00',
+                ],
+            ],
+            'withholding_enabled' => true,
+            'withholding_rate' => 0.015, // JSON NUMBER, not a string
+        ], JSON_THROW_ON_ERROR);
+        $this->assertIsString($payload);
+
+        $response = $this->actingAs($this->user)->call(
+            'POST',
+            '/api/v1/payments',
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_ACCEPT' => 'application/json',
+            ],
+            $payload
+        );
+
+        $response->assertStatus(201);
+        $paymentId = $response->json('data.id');
+        $payment = Payment::query()->findOrFail($paymentId);
+        $this->assertNotNull($payment->withholding_certificate_id);
+        $this->assertDatabaseHas('withholding_certificates', [
+            'id' => $payment->withholding_certificate_id,
+            'withholding_amount' => '17.850',
+        ]);
+    }
+
+    /**
+     * Out-of-range/garbage withholding_rate must still 422 (the FormRequest
+     * validation layer this fix does not touch): a non-numeric string is
+     * rejected by the `numeric` rule before ever reaching the normalisation/
+     * service boundary.
+     */
+    public function test_store_rejects_garbage_withholding_rate(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1190.00',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $this->invoice->id,
+                    'amount' => '1190.00',
+                ],
+            ],
+            'withholding_enabled' => true,
+            'withholding_rate' => 'not-a-number',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('withholding_rate', $response->json('error.errors') ?? []);
     }
 
     public function test_can_create_payment_with_allocation(): void

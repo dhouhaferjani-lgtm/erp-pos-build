@@ -472,25 +472,44 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
       withholding_enabled: true,
       withholding_rate: '0.0150',
     })
-    // FIXED (2026-08-02, MTP-TRE-15 treasury-money-campaign-defects ticket):
-    // WithholdingCertificateService::createFromPayment()'s $overrideRate
-    // parameter is now `?string` (bcmath domain, precision-contract rule 19)
-    // instead of `?float` — PaymentController::store() (line ~886) passes
-    // the FormRequest-validated `withholding_rate` numeric-string straight
-    // through with no float cast, so it no longer throws a TypeError under
-    // strict_types=1. A valid rate now creates the payment (201) with a
-    // linked withholding certificate (formatPayment() doesn't surface
-    // withholding_certificate_id on the payment payload itself, so confirm
-    // the certificate via GET /withholding/certificates instead).
+    // FIXED (2026-08-02, MTP-TRE-15 ticket + 2026-08-02 adversarial-review
+    // remediation C4/C5): PaymentController::store() now normalises
+    // withholding_rate to a canonical numeric-string ONCE, at the HTTP
+    // boundary (normalizeWithholdingRate() — handles a JSON number payload
+    // too, not just a JSON string), before calling
+    // WithholdingCertificateService::createFromPayment() (`?string`
+    // parameter, bcmath domain per precision-contract rule 19). A valid
+    // rate now creates the payment (201) with a linked withholding
+    // certificate (formatPayment() doesn't surface withholding_certificate_id
+    // on the payment payload itself, so confirm the certificate via
+    // GET /withholding/certificates instead).
+    //
+    // C5 (units): withholding_rate is a FRACTION (0-1, matching the
+    // max:1 FormRequest rule) — 0.0150 on a 1000.000 invoice must withhold
+    // 15.000 (1000.000 * 0.0150), NOT 0.001 (the polarity-flipped
+    // percentage-division bug the adversarial review reproduced: routing a
+    // fraction through the percentage-scaled `calculateWithOverride()`
+    // conversion produced a certificate ~100x too small).
     expect(withWithholding.ok, `payment create -> ${withWithholding.status} ${JSON.stringify(withWithholding.data)}`).toBeTruthy()
     expect(withWithholding.status).toBe(201)
 
     const certificates = await get(request, owner, `/withholding/certificates?partner_id=${customerId}`)
     expect(certificates.ok, `certificates list -> ${certificates.status} ${JSON.stringify(certificates.data)}`).toBeTruthy()
-    const certList = certificates.data as unknown as Array<{ document_id: string; payment_id: string }>
+    const certList = certificates.data as unknown as Array<{
+      document_id: string
+      payment_id: string
+      gross_amount: string
+      withholding_rate: string
+      withholding_amount: string
+      net_amount: string
+    }>
     const linkedCertificate = certList.find((c) => c.document_id === inv.id)
     expect(linkedCertificate, 'a withholding certificate linked to the invoice must exist').toBeTruthy()
     expect(linkedCertificate?.payment_id).toBe(withWithholding.data.id)
+    expect(linkedCertificate?.gross_amount, 'gross_amount matches the invoice total').toBe('1000.000')
+    expect(linkedCertificate?.withholding_rate, 'withholding_rate stored as the submitted fraction').toBe('0.0150')
+    expect(linkedCertificate?.withholding_amount, 'C5: 1000.000 * 0.0150 = 15.000, not 0.001').toBe('15.000')
+    expect(linkedCertificate?.net_amount, 'net_amount = gross - withholding').toBe('985.000')
 
     // MTP-TRE-16: 5dp value and out-of-range 1.5 — these SHOULD be caught by
     // the regex/max:1 FormRequest rule before ever reaching the (broken)

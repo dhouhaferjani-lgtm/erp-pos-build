@@ -16,6 +16,7 @@ use App\Modules\Taxation\Domain\Events\WithholdingCertificateVoided;
 use App\Modules\Taxation\Domain\Events\WithholdingSubmittedToTEJ;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
+use App\Modules\Taxation\Domain\ValueObjects\WithholdingCalculation;
 use App\Modules\Treasury\Domain\Payment;
 use Illuminate\Support\Facades\DB;
 
@@ -113,14 +114,32 @@ class WithholdingCertificateService
      *
      * MTP-TRE-15 fix (precision contract rule 19): $overrideRate is a
      * numeric-string, NOT a float. PaymentController::store() passes the
-     * FormRequest-validated `withholding_rate` straight through — under
-     * strict_types=1 a `?float` parameter here threw an uncaught TypeError
-     * (bare 500) on every payment carrying a withholding override, instead
-     * of validating cleanly. Callers must NOT float-cast before calling this
+     * FormRequest-validated `withholding_rate` (normalised to a canonical
+     * string at the HTTP boundary — see
+     * `PaymentController::normalizeWithholdingRate()`, review finding C4)
+     * straight through — under strict_types=1 a `?float` parameter here
+     * threw an uncaught TypeError (bare 500) on every payment carrying a
+     * withholding override. Callers must NOT float-cast before calling this
      * — bcmath domain end to end, since the rate feeds a money computation
      * (gross_amount * rate).
      *
-     * @param  numeric-string|null  $overrideRate
+     * UNITS (review finding C5): `$overrideRate` is a FRACTION (0–1, e.g.
+     * `"0.015"` for 1.5%) — the SAME domain `PaymentController.php`'s
+     * `withholding_rate` FormRequest rule enforces
+     * (`min:0`, `max:1`, 4dp regex — `max:1` makes a percentage
+     * literally impossible to submit). It therefore calculates the
+     * certificate DIRECTLY via `WithholdingCalculation::calculate()`
+     * (the same fraction-domain entry point `calculateForPayment()` uses
+     * for a matched rule's `->rate`), NOT via
+     * `WithholdingCalculationService::calculateWithOverride()` — that
+     * method is for the OTHER caller of this class, `create()`'s
+     * `manual_rate_percentage` (0–100 PERCENTAGE, validated separately at
+     * `CreateWithholdingCertificateRequest.php`), and divides by 100
+     * internally. Routing a 0–1 fraction through that percentage-scaled
+     * conversion silently produced a certificate ~100x too small (a 1.5%
+     * rate on a 1190.000 invoice must withhold 17.850, not 0.119).
+     *
+     * @param  numeric-string|null  $overrideRate  Fraction (0–1), e.g. "0.015" for 1.5%.
      * @return WithholdingCertificateData The created certificate data
      */
     public function createFromPayment(
@@ -134,13 +153,12 @@ class WithholdingCertificateService
 
             // Calculate withholding using calculation service
             if ($overrideRate !== null) {
-                $calculation = $this->calculationService->calculateWithOverride(
+                $calculation = WithholdingCalculation::calculate(
                     $document->total ?? '0.00',
-                    $document->currency,
                     $overrideRate,
-                    $overrideReason ?? 'Manual override',
+                    $document->currency,
                     null
-                );
+                )->withOverride($overrideReason ?? 'Manual override');
             } else {
                 $calculation = $this->calculationService->calculateForPayment(
                     $partner,

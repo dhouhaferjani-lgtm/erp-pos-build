@@ -211,11 +211,14 @@ class WithholdingCertificateTest extends TestCase
         $document = $this->createInvoice('1000.000');
         $payment = $this->createPayment($document, '950.000');
 
-        // Act - Override to 5% instead of automatic 10%
+        // Act - Override to 5% instead of automatic 10%. createFromPayment()'s
+        // override rate is a FRACTION (0-1, matching PaymentController's
+        // withholding_rate contract — review finding C5), NOT a percentage —
+        // '0.0500' is 5%, not '5.0'.
         $certificateData = $this->service->createFromPayment(
             $payment,
             $document,
-            '5.0',
+            '0.0500',
             'Special agreement with supplier'
         );
 
