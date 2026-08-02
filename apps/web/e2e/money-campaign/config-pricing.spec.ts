@@ -51,39 +51,41 @@ test.describe('MTP-CFG — company money settings / setup checklist (W-2)', () =
     expect(res.status, 'viewer holds settings.view but not settings.update').toBe(403)
   })
 
-  test('MTP-CFG-13 (P0, FINDING): PUT /companies/{id} has NO permission gate at all — any authenticated tenant user can change discount_floor_mode / margin config / tax_status', async ({ page }) => {
+  test('MTP-CFG-13 (P0, FIXED): PUT /companies/{id} is now gated by settings.update — viewer (no settings/company permission at all) is refused', async ({ page }) => {
     test.setTimeout(60_000)
-    // Confirmed by code read: UpdateCompanyRequest::authorize() returns
+    // Originally a FINDING: UpdateCompanyRequest::authorize() returned
     // `true` unconditionally (UpdateCompanyRequest.php:19-21) and
-    // `PUT companies/{companyId}` (Company/routes.php:29) carries no `can:`
+    // `PUT companies/{companyId}` (Company/routes.php:29) carried no `can:`
     // middleware — unlike `PATCH /settings/company`
-    // (CompanySettingsController, gated on settings.update). This is a
-    // DIFFERENT resource controlling the SAME money-relevant fields
+    // (CompanySettingsController, gated on settings.update), a DIFFERENT
+    // resource controlling the SAME money-relevant fields
     // (discount_floor_mode, price_entry_mode, default_target_margin,
     // default_minimum_margin, default_max_discount_percent).
+    //
+    // Fixed 2026-08-02 (docs/superpowers/tickets/
+    // 2026-08-02-company-update-route-unauthorized.md): the route now
+    // carries `->middleware('can:settings.update')`, mirroring the sibling
+    // PATCH route. This case flips from tripwire (asserting the bug) to
+    // regression assertion (asserting the fix holds).
     await loginAsRole(page, 'owner')
     const before = await getCompany(page)
-    try {
-      // 'viewer' is the LOWEST-privilege seeded role (read-only by design,
-      // no settings.* mutate permission whatsoever).
-      await loginAsRole(page, 'viewer')
-      const attempt = await putCompany(page, {
-        default_max_discount_percent: String(Number(before.default_max_discount_percent ?? '10.00') + 1),
-      })
-      expect(
-        attempt.status,
-        `FINDING: viewer (no settings/company permission at all) mutated company-wide discount policy -> ${attempt.status} ${JSON.stringify(attempt.body)}`
-      ).toBe(200)
-    } finally {
-      await loginAsRole(page, 'owner')
-      await putCompany(page, {
-        default_max_discount_percent: before.default_max_discount_percent,
-        default_target_margin: before.default_target_margin,
-        default_minimum_margin: before.default_minimum_margin,
-        discount_floor_mode: before.discount_floor_mode,
-        price_entry_mode: before.price_entry_mode,
-      })
-    }
+
+    // 'viewer' is the LOWEST-privilege seeded role (read-only by design,
+    // no settings.* mutate permission whatsoever).
+    await loginAsRole(page, 'viewer')
+    const attempt = await putCompany(page, {
+      default_max_discount_percent: String(Number(before.default_max_discount_percent ?? '10.00') + 1),
+    })
+    expect(
+      attempt.status,
+      `viewer (no settings.update) must be refused -> ${attempt.status} ${JSON.stringify(attempt.body)}`
+    ).toBe(403)
+
+    await loginAsRole(page, 'owner')
+    const after = await getCompany(page)
+    expect(after.default_max_discount_percent, 'refused PUT leaves company state untouched').toBe(
+      before.default_max_discount_percent
+    )
   })
 
   test('MTP-CFG-14 (P1): /settings/setup (onboarding status) is readable at low privilege; each linked step still enforces its own destination-page gate', async ({ page }) => {

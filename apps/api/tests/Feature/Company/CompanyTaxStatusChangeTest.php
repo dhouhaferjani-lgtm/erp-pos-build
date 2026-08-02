@@ -15,7 +15,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -57,6 +59,15 @@ class CompanyTaxStatusChangeTest extends TestCase
         $this->user = User::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
+
+        // Needed since Company/routes.php `PUT /companies/{id}` now carries
+        // `can:settings.update` middleware (docs/superpowers/tickets/
+        // 2026-08-02-company-update-route-unauthorized.md fix). This test
+        // suite exercises that same route heavily and previously relied on
+        // it being completely ungated.
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->user->assignRole('admin');
 
         $this->actingAs($this->user);
 

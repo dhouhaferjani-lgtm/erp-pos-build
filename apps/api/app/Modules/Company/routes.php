@@ -26,13 +26,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Company retrieval and update
     Route::get('companies/{companyId}', [CompanyController::class, 'show'])->name('companies.show');
-    Route::put('companies/{companyId}', [CompanyController::class, 'update'])->name('companies.update');
+    Route::put('companies/{companyId}', [CompanyController::class, 'update'])
+        ->middleware('can:settings.update')
+        ->name('companies.update');
 
     // Reservation settings management
     Route::get('companies/{companyId}/reservation-settings', [CompanyController::class, 'getReservationSettings'])
         ->name('companies.reservation-settings.show');
 
     Route::put('companies/{companyId}/reservation-settings', [CompanyController::class, 'updateReservationSettings'])
+        ->middleware('can:settings.update')
         ->name('companies.reservation-settings.update');
 
     // POS settings
@@ -41,6 +44,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Receipt customization settings
     Route::put('companies/{companyId}/receipt-settings', [CompanyController::class, 'updateReceiptSettings'])
+        ->middleware('can:settings.update')
         ->name('companies.receipt-settings.update');
 
     Route::get('company/locations', [LocationController::class, 'scopedIndex'])
