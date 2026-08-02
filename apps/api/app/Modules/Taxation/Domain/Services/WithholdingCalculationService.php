@@ -78,18 +78,23 @@ class WithholdingCalculationService
      *
      * Used when user manually sets a different rate.
      *
+     * Precision contract (rule 19): $ratePercentage is bcmath-domain — never
+     * a float. It feeds a money computation (gross_amount * rate), so it
+     * must stay a numeric-string end to end; the caller must NOT float-cast
+     * before calling this.
+     *
      * @param  numeric-string  $amount  Payment amount
-     * @param  float  $ratePercentage  Rate as percentage (e.g., 5.0 for 5%)
+     * @param  numeric-string  $ratePercentage  Rate as a percentage string (e.g. "5.0" for 5%)
      */
     public function calculateWithOverride(
         string $amount,
         string $currency,
-        float $ratePercentage,
+        string $ratePercentage,
         string $overrideReason,
         ?TransactionType $transactionType = null
     ): WithholdingCalculation {
         // Convert percentage to decimal (5.0 → 0.0500)
-        $rate = bcdiv((string) $ratePercentage, '100', 4);
+        $rate = bcdiv($ratePercentage, '100', 4);
 
         return WithholdingCalculation::calculate(
             $amount,

@@ -45,10 +45,12 @@ class WithholdingCertificateService
         return DB::transaction(function () use ($data, $partner, $tenantId) {
             // Calculate withholding
             if ($data->isManualOverride()) {
+                // Precision contract (rule 19): manualRatePercentage is already a
+                // numeric-string (bcmath domain) — never float-cast it.
                 $calculation = $this->calculationService->calculateWithOverride(
                     $data->grossAmount,
                     $data->currency,
-                    (float) ($data->manualRatePercentage ?? '0'),
+                    $data->manualRatePercentage ?? '0',
                     $data->overrideReason ?? 'Manual override',
                     $data->transactionType
                 );
@@ -109,12 +111,22 @@ class WithholdingCertificateService
      * Simplified method for payment integration - creates a draft certificate
      * linked to a payment and document.
      *
+     * MTP-TRE-15 fix (precision contract rule 19): $overrideRate is a
+     * numeric-string, NOT a float. PaymentController::store() passes the
+     * FormRequest-validated `withholding_rate` straight through — under
+     * strict_types=1 a `?float` parameter here threw an uncaught TypeError
+     * (bare 500) on every payment carrying a withholding override, instead
+     * of validating cleanly. Callers must NOT float-cast before calling this
+     * — bcmath domain end to end, since the rate feeds a money computation
+     * (gross_amount * rate).
+     *
+     * @param  numeric-string|null  $overrideRate
      * @return WithholdingCertificateData The created certificate data
      */
     public function createFromPayment(
         Payment $payment,
         Document $document,
-        ?float $overrideRate = null,
+        ?string $overrideRate = null,
         ?string $overrideReason = null
     ): WithholdingCertificateData {
         return DB::transaction(function () use ($payment, $document, $overrideRate, $overrideReason) {

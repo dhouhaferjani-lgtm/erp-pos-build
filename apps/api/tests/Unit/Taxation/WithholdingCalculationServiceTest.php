@@ -149,7 +149,7 @@ class WithholdingCalculationServiceTest extends TestCase
         $calculation = $this->service->calculateWithOverride(
             '1000.000',
             'TND',
-            5.0,
+            '5.0',
             'Special agreement with supplier',
             TransactionType::SERVICES
         );

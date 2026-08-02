@@ -16,7 +16,7 @@ readonly class CreateWithholdingCertificateData
 {
     /**
      * @param  numeric-string  $grossAmount
-     * @param  string|null  $manualRatePercentage  Manual rate override (as percentage string, e.g., "5.0" for 5%; validated to ≤2 dp by ingress)
+     * @param  numeric-string|null  $manualRatePercentage  Manual rate override (as percentage string, e.g., "5.0" for 5%; validated to ≤2 dp by ingress)
      */
     public function __construct(
         public string $companyId,
@@ -38,6 +38,15 @@ readonly class CreateWithholdingCertificateData
      */
     public static function fromArray(array $data): self
     {
+        $manualRatePercentage = null;
+        if (isset($data['manual_rate_percentage'])) {
+            $manualRatePercentageString = (string) $data['manual_rate_percentage'];
+            if (! is_numeric($manualRatePercentageString)) {
+                throw new \InvalidArgumentException('manual_rate_percentage must be numeric');
+            }
+            $manualRatePercentage = $manualRatePercentageString;
+        }
+
         return new self(
             companyId: $data['company_id'],
             direction: WithholdingDirection::from($data['direction']),
@@ -49,9 +58,7 @@ readonly class CreateWithholdingCertificateData
             transactionType: isset($data['transaction_type'])
                 ? TransactionType::from($data['transaction_type'])
                 : null,
-            manualRatePercentage: isset($data['manual_rate_percentage'])
-                ? (string) $data['manual_rate_percentage']
-                : null,
+            manualRatePercentage: $manualRatePercentage,
             overrideReason: $data['override_reason'] ?? null,
         );
     }

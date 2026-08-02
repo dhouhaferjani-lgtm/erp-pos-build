@@ -281,7 +281,7 @@ class WithholdingLifecycleTest extends TestCase
         $certData = $this->certificateService->createFromPayment(
             $payment,
             $document,
-            5.0,
+            '5.0',
             'Special tax agreement'
         );
 

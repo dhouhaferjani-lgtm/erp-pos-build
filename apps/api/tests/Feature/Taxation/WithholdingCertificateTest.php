@@ -215,7 +215,7 @@ class WithholdingCertificateTest extends TestCase
         $certificateData = $this->service->createFromPayment(
             $payment,
             $document,
-            5.0,
+            '5.0',
             'Special agreement with supplier'
         );
 

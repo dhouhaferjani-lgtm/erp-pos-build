@@ -454,7 +454,7 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
     expect(nonHolderAttempt.status, 'non-holder 403s on refund-prepayment').toBe(403)
   })
 
-  test('MTP-TRE-15 / 16: withholding_rate as a fraction — KNOWN DEFECT: 500 TypeError, not a 4dp/range refusal', async ({
+  test('MTP-TRE-15 / 16: withholding_rate as a fraction — valid rate creates the payment (no TypeError), 4dp/range refused with 422', async ({
     request,
   }) => {
     const customerName = uniqueName('TRE15')
@@ -472,21 +472,25 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
       withholding_enabled: true,
       withholding_rate: '0.0150',
     })
-    // FINDING (new, not in the plan's §0.3 known-defect register): this is a
-    // hard 500, not a graceful response. PaymentController::store() (line
-    // ~886) calls WithholdingCertificateService::createFromPayment() passing
-    // $validated['withholding_rate'] — a STRING (FormRequest keeps it as the
-    // validated numeric-string) — into a parameter typed `?float`. PHP's
-    // strict_types (declare(strict_types=1) at the top of the file) refuses
-    // the implicit string->float coercion and throws a TypeError, which
-    // escapes as an uncaught 500 rather than a 422. Confirmed live:
-    //   TypeError: ...createFromPayment(): Argument #3 ($overrideRate) must
-    //   be of type ?float, string given, called in PaymentController.php:886
-    expect(withWithholding.status, 'KNOWN DEFECT — should be 201, is a 500 TypeError').toBe(500)
-    expect(
-      JSON.stringify(withWithholding.data).includes('createFromPayment'),
-      'error body matches the diagnosed WithholdingCertificateService::createFromPayment() float/string mismatch',
-    ).toBeTruthy()
+    // FIXED (2026-08-02, MTP-TRE-15 treasury-money-campaign-defects ticket):
+    // WithholdingCertificateService::createFromPayment()'s $overrideRate
+    // parameter is now `?string` (bcmath domain, precision-contract rule 19)
+    // instead of `?float` — PaymentController::store() (line ~886) passes
+    // the FormRequest-validated `withholding_rate` numeric-string straight
+    // through with no float cast, so it no longer throws a TypeError under
+    // strict_types=1. A valid rate now creates the payment (201) with a
+    // linked withholding certificate (formatPayment() doesn't surface
+    // withholding_certificate_id on the payment payload itself, so confirm
+    // the certificate via GET /withholding/certificates instead).
+    expect(withWithholding.ok, `payment create -> ${withWithholding.status} ${JSON.stringify(withWithholding.data)}`).toBeTruthy()
+    expect(withWithholding.status).toBe(201)
+
+    const certificates = await get(request, owner, `/withholding/certificates?partner_id=${customerId}`)
+    expect(certificates.ok, `certificates list -> ${certificates.status} ${JSON.stringify(certificates.data)}`).toBeTruthy()
+    const certList = certificates.data as unknown as Array<{ document_id: string; payment_id: string }>
+    const linkedCertificate = certList.find((c) => c.document_id === inv.id)
+    expect(linkedCertificate, 'a withholding certificate linked to the invoice must exist').toBeTruthy()
+    expect(linkedCertificate?.payment_id).toBe(withWithholding.data.id)
 
     // MTP-TRE-16: 5dp value and out-of-range 1.5 — these SHOULD be caught by
     // the regex/max:1 FormRequest rule before ever reaching the (broken)

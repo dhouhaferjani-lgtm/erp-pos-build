@@ -224,6 +224,53 @@ class PaymentTest extends TestCase
         );
     }
 
+    /**
+     * MTP-TRE-15 regression: PaymentController::store() (~L886) calls
+     * WithholdingCertificateService::createFromPayment() passing the
+     * FormRequest-validated `withholding_rate` — a numeric STRING — into a
+     * parameter that used to be typed `?float`. Under strict_types=1 that
+     * threw an uncaught TypeError (bare 500) for ANY payment that both (a)
+     * has an allocation (so `$adjustedAllocations` is non-empty — the guard
+     * at PaymentController.php ~L873) and (b) sets withholding_enabled with
+     * a rate. test_store_accepts_4_decimal_withholding_rate() above does NOT
+     * catch this: it posts no `allocations`, so the withholding-certificate
+     * block is never entered and createFromPayment() is never called. This
+     * test supplies an allocation so it actually exercises the crashing
+     * code path.
+     */
+    public function test_store_creates_payment_with_withholding_certificate_instead_of_500ing(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1190.00',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $this->invoice->id,
+                    'amount' => '1190.00',
+                ],
+            ],
+            'withholding_enabled' => true,
+            'withholding_rate' => '0.0150',
+        ]);
+
+        $response->assertStatus(201);
+        $paymentId = $response->json('data.id');
+
+        $payment = Payment::query()->findOrFail($paymentId);
+        $this->assertNotNull(
+            $payment->withholding_certificate_id,
+            'a valid withholding_rate must produce a linked certificate, not silently drop it'
+        );
+
+        $this->assertDatabaseHas('withholding_certificates', [
+            'id' => $payment->withholding_certificate_id,
+            'payment_id' => $payment->id,
+            'document_id' => $this->invoice->id,
+        ]);
+    }
+
     public function test_can_create_payment_with_allocation(): void
     {
         $location = Location::factory()->create(['company_id' => $this->company->id]);
