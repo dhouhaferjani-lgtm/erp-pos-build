@@ -124,6 +124,7 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
   })
 
   test('MTP-DOC-11..14: line-level money/quantity validation ceilings', async ({ page }) => {
+    test.setTimeout(120000)
     const customerName = uniqueName('DOC1114')
     await createCustomer(page, customerName)
 

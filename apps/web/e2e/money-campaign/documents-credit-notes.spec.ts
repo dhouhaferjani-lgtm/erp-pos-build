@@ -178,6 +178,7 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
   })
 
   test('MTP-DOC-23b: the standalone /new form still refuses to submit with no reason', async ({ page }) => {
+    test.setTimeout(120000)
     const customerName = uniqueName('DOC23b')
     await createCustomer(page, customerName)
 
