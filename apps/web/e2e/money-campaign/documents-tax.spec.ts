@@ -71,18 +71,25 @@ test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
     expect(created.data.total).toBe('92.630')
   })
 
-  // A4.1 (NEW MTP-TAX-13, TRIPWIRE T-A finding 1, plan §A.4). Live-verified
-  // BEFORE authoring: the plan's illustrative "13.00, no TN config row" is
-  // WRONG for this tenant -- TunisiaTaxConfigurationSeeder.php seeds 19/13/7/0
-  // as ACTIVE LINE_ITEMS TaxConfiguration rows, confirmed live (13.00 confirms
-  // cleanly, tax_amount unchanged Draft->Confirmed). 21.00 is a genuinely
-  // unconfigured rate for TN and reproduces the defect live (probed via curl
-  // before writing this test: Draft tax_amount 22.000 -> Confirmed 1.000).
-  // The line-editor's tax <select> only lists CONFIGURED rates (19/13/7/0), so
-  // an unconfigured rate cannot be selected through the literal UI form -- a
-  // direct API call is the only way to author it, same pattern as MTP-DOC-24's
-  // cross-partner probe.
-  test('MTP-TAX-13 (TRIPWIRE T-A, finding 1): confirm() silently zeroes VAT for a line whose rate has no active TaxConfiguration', async ({
+  // A4.1 (NEW MTP-TAX-13, plan §A.4). Live-verified BEFORE authoring: the
+  // plan's illustrative "13.00, no TN config row" is WRONG for this tenant --
+  // TunisiaTaxConfigurationSeeder.php seeds 19/13/7/0 as ACTIVE LINE_ITEMS
+  // TaxConfiguration rows, confirmed live (13.00 confirms cleanly, tax_amount
+  // unchanged Draft->Confirmed). 21.00 is a genuinely unconfigured rate for
+  // TN. The line-editor's tax <select> only lists CONFIGURED rates
+  // (19/13/7/0), so an unconfigured rate cannot be selected through the
+  // literal UI form -- a direct API call is the only way to author it, same
+  // pattern as MTP-DOC-24's cross-partner probe.
+  //
+  // FIXED (2026-08-02, W-1 documents-defects lane defect 3 -- was TRIPWIRE
+  // T-A finding 1, docs/superpowers/tickets/2026-08-02-confirm-zeroes-vat-unconfigured-rates.md):
+  // TaxCalculationService STEP 1 used to contribute ZERO for any line rate
+  // with no matching active TaxConfiguration row, so confirm() silently
+  // zeroed a genuinely unconfigured 21% rate that the Draft had correctly
+  // priced. Per the orchestrator ruling, confirm() now honours the explicit
+  // line rate directly when no config row matches -- draft and confirmed
+  // totals are identical again.
+  test('MTP-TAX-13: confirm() honours an explicit line rate with no active TaxConfiguration (not silently zeroed)', async ({
     page,
   }) => {
     test.setTimeout(60000)
@@ -107,21 +114,19 @@ test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
     ).toBe('22.000')
     expect(createdBody.total).toBe('122.000')
 
-    // FINDING (T-A finding 1, TaxCalculationService.php:104-157 +
-    // InvoiceController::confirm()): confirm() recomputes tax via
-    // TaxCalculationService::calculateDocumentTaxes(), whose STEP 1 only
-    // accumulates line tax for a rate it can match to an active LINE_ITEMS
-    // TaxConfiguration row for TN. 21.00 matches none -- it contributes ZERO.
-    // The 21.000 VAT visible at Draft VANISHES on confirm; the document total
-    // SHRINKS from 122.000 to 101.000 (subtotal + stamp ONLY).
+    // FIX: confirm() recomputes tax via TaxCalculationService::
+    // calculateDocumentTaxes(); STEP 1 no longer drops an unmatched rate --
+    // it falls back to the line's own explicit rate. Draft and confirmed
+    // totals must now match exactly (the draft==confirm identity 18e61a554
+    // established, extended to unconfigured rates).
     const confirmed = await apiRequest(page, 'POST', `/invoices/${invoiceId}/confirm`)
     expect(confirmed.status, `confirm failed: ${JSON.stringify(confirmed.body)}`).toBe(200)
     const confirmedBody = (confirmed.body as { data: Record<string, unknown> }).data
     expect(confirmedBody.subtotal).toBe('100.000')
     expect(
       confirmedBody.tax_amount,
-      'FINDING (T-A): confirm() silently zeroes the unconfigured 21% line VAT -- only the 1.000 stamp survives',
-    ).toBe('1.000')
-    expect(confirmedBody.total, 'FINDING (T-A): confirmed total SHRINKS below the Draft total').toBe('101.000')
+      'FIX: confirm() must honour the unconfigured 21% line VAT, not silently zero it',
+    ).toBe('22.000')
+    expect(confirmedBody.total, 'FIX: draft and confirmed totals must match').toBe('122.000')
   })
 })

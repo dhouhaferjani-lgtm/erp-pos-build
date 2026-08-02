@@ -126,14 +126,29 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
   })
 
   // A5.1 (NEW MTP-DOC-06, plan §A.5): quote -> sales order -> invoice
-  // conversion chain, totals byte-identical at every hop, PLUS the quote's
-  // own tax_amount after confirm() (TRIPWIRE T-A finding 2). Driven at the
-  // API layer via apiRequest() (helpers.ts) — NOT bare page.request, which
-  // this app's Bearer-token auth model (SANCTUM_STATEFUL_DOMAINS empty) does
-  // not authenticate (confirmed live: a bare page.request.post() 401s
+  // conversion chain, VAT identical at every hop. Driven at the API layer
+  // via apiRequest() (helpers.ts) — NOT bare page.request, which this app's
+  // Bearer-token auth model (SANCTUM_STATEFUL_DOMAINS empty) does not
+  // authenticate (confirmed live: a bare page.request.post() 401s
   // UNAUTHENTICATED even after a real UI login, because it carries only
   // cookies, never the SPA's manually-attached Authorization header).
-  test('MTP-DOC-06: quote -> order -> invoice conversion chain; totals byte-identical at Draft; TRIPWIRE (T-A finding 2) VAT zeroed on quote/order confirm', async ({
+  //
+  // FIXED (2026-08-02, W-1 documents-defects lane defect 3 -- was two P0
+  // findings here: T-A finding 2 [quote/order confirm zeroed VAT entirely,
+  // NonFiscal by design] and a new finding [the converted invoice's OWN
+  // confirm() ALSO zeroed VAT even on a fully-configured 19% rate]). Root
+  // cause, two coherent mechanisms: (1) CopiesDocumentData::
+  // createTargetDocument() never set fiscal_category on a converted
+  // document, landing on the DB default NON_FISCAL instead of the target
+  // type's real category; (2) TaxCalculationService STEP 1 contributed
+  // NOTHING for any line whose rate had no matching TaxConfiguration row --
+  // true for EVERY NonFiscal document (quotes/orders) regardless of how
+  // well-configured the rate was. Fixed under the orchestrator ruling: an
+  // explicitly-supplied line rate is never silently zeroed; where no config
+  // row matches, confirm()/conversion honours the line's own rate directly.
+  // See CopiesDocumentData.php and TaxCalculationService.php, and the
+  // PHPUnit coverage in ConversionChainVatIntegrityTest.php.
+  test('MTP-DOC-06: quote -> order -> invoice conversion chain; VAT identical at every hop, including confirm()', async ({
     page,
   }) => {
     test.setTimeout(150000)
@@ -154,31 +169,20 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     expect(quoteBody.tax_amount).toBe('19.000')
     expect(quoteBody.total).toBe('119.000')
 
-    // TRIPWIRE (T-A finding 2, docs/superpowers/tickets/2026-08-02-confirm-zeroes-vat-unconfigured-rates.md):
-    // this finding was CODE-READ-ONLY (needs live verify) before this test.
-    // Live-verified here: QuoteController::confirm() zeroes VAT ENTIRELY, even
-    // for a fully-configured 19% rate -- TaxConfiguration::scopeForDocumentType()
-    // matches on applicable_document_types, and the TN seeder's list
-    // (TAX_INVOICE/FISCAL_RECEIPT/CREDIT_NOTE/DELIVERY_NOTE) never contains a
-    // quote/NON_FISCAL token, so `applicableTaxes` is empty and confirm()
-    // writes tax_amount=0. CONFIRMED LIVE, ESCALATING finding 2 from
-    // code-read-only to proven.
+    // Quote confirm(): NonFiscal by design, but the explicit 19% line rate
+    // must survive -- NOT silently zeroed (was T-A finding 2, now fixed).
     const quoteConfirmRes = await apiRequest(page, 'POST', `/quotes/${quoteId}/confirm`)
     expect(quoteConfirmRes.status, `quote confirm failed: ${JSON.stringify(quoteConfirmRes.body)}`).toBe(200)
     const quoteConfirmBody = (quoteConfirmRes.body as { data: Record<string, unknown> }).data
     expect(quoteConfirmBody.subtotal).toBe('100.000')
     expect(
       quoteConfirmBody.tax_amount,
-      'TRIPWIRE (T-A finding 2): confirm() zeroes a NonFiscal quote\'s VAT entirely',
-    ).toBe('0.000')
-    expect(quoteConfirmBody.total, 'TRIPWIRE (T-A finding 2): confirmed quote total SHRINKS').toBe('100.000')
+      'FIX: confirming a NonFiscal quote must honour its explicitly-configured line rate, not zero it',
+    ).toBe('19.000')
+    expect(quoteConfirmBody.total).toBe('119.000')
 
-    // Convert quote -> order. The order's OWN Draft totals are recomputed
-    // from the ORIGINAL line data (100.000/19.000/119.000) -- NOT carried
-    // from the quote's now-corrupted confirmed total (100.000/0.000/100.000).
-    // This is the byte-identity check the case is really after: the chain's
-    // pre-confirm numbers survive the hop even though the quote's OWN
-    // post-confirm total does not (a direct consequence of the tripwire above).
+    // Convert quote -> order. The order's Draft totals are byte-identical to
+    // the quote's own confirmed totals (both now correctly carry the VAT).
     const orderRes = await apiRequest(page, 'POST', `/quotes/${quoteId}/convert-to-order`)
     expect(orderRes.status, `convert-to-order failed: ${JSON.stringify(orderRes.body)}`).toBe(201)
     const orderBody = (orderRes.body as { data: Record<string, unknown> }).data
@@ -187,15 +191,15 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     expect(orderBody.tax_amount, 'order Draft tax_amount byte-identical to the ORIGINAL quote Draft').toBe('19.000')
     expect(orderBody.total, 'order Draft total byte-identical to the ORIGINAL quote Draft').toBe('119.000')
 
-    // Order confirm() has the SAME NonFiscal tripwire shape as the quote.
+    // Order confirm(): same NonFiscal shape as the quote -- VAT must survive.
     const orderConfirmRes = await apiRequest(page, 'POST', `/orders/${orderId}/confirm`)
     expect(orderConfirmRes.status, `order confirm failed: ${JSON.stringify(orderConfirmRes.body)}`).toBe(200)
     const orderConfirmBody = (orderConfirmRes.body as { data: Record<string, unknown> }).data
     expect(
       orderConfirmBody.tax_amount,
-      'TRIPWIRE (T-A finding 2): confirm() ALSO zeroes a NonFiscal sales order\'s VAT entirely',
-    ).toBe('0.000')
-    expect(orderConfirmBody.total).toBe('100.000')
+      'FIX: confirming a NonFiscal sales order must honour its explicitly-configured line rate, not zero it',
+    ).toBe('19.000')
+    expect(orderConfirmBody.total).toBe('119.000')
 
     // Convert order -> invoice. Draft totals are again recomputed from the
     // ORIGINAL line data -- byte-identical to the quote/order's ORIGINAL
@@ -214,39 +218,21 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     )
     expect(invoiceBody.total, 'invoice Draft total byte-identical to the chain\'s original Draft').toBe('119.000')
 
-    // NEW FINDING (not T-A, not pre-registered): confirming the CONVERTED
-    // invoice -- a genuinely FISCAL document, TAX_INVOICE, on an ordinary
-    // fully-configured 19% rate -- ALSO silently zeroes VAT. Live-reproduced
-    // twice (2026-08-02): both runs showed the identical Draft->Confirm
-    // shrinkage below. Root-cause investigation (not a fix) found ONE
-    // contributing mechanism on one repro: SalesOrderToInvoiceConverter's
-    // createTargetDocument() (via CopiesDocumentData.php:48-77, called at
-    // SalesOrderToInvoiceConverter.php:168-170) never sets `fiscal_category`
-    // on the new invoice row -- unlike InvoiceController::store(), which sets
-    // it explicitly. On one repro the column landed on the DB default
-    // (NON_FISCAL, correct for the SOURCE order but wrong for an invoice),
-    // and TaxCalculationService::calculateDocumentTaxes() (TaxCalculationService.php:56)
-    // filters TaxConfiguration::forDocumentType() on that raw value -- TN's
-    // applicable_document_types list never contains NON_FISCAL, so zero
-    // configs match. On the OTHER repro fiscal_category was correctly
-    // TAX_INVOICE in the DB yet confirm() STILL zeroed the tax -- meaning a
-    // SECOND, not-yet-isolated mechanism can independently produce the same
-    // symptom. Recorded as a P0 finding with the reproducible OBSERVED
-    // values below; needs an engineering root-cause pass before a fix,
-    // NOT attempted here (spec-only reconciliation pass, no product code
-    // touched).
+    // Invoice confirm(): a genuinely FISCAL document (TAX_INVOICE, now
+    // correctly set by CopiesDocumentData's fix) on a fully-configured 19%
+    // rate. Picks up the real VAT (19.000) PLUS the 1.000 TND stamp duty a
+    // TAX_INVOICE actually owes -- exactly what a directly-created invoice
+    // with identical line data confirms to (tax_amount=20.000,
+    // total=120.000). This was the P0 finding; both mechanisms are fixed.
     const invoiceConfirmRes = await apiRequest(page, 'POST', `/invoices/${invoiceId}/confirm`)
     expect(invoiceConfirmRes.status, `invoice confirm failed: ${JSON.stringify(invoiceConfirmRes.body)}`).toBe(200)
     const invoiceConfirmBody = (invoiceConfirmRes.body as { data: Record<string, unknown> }).data
-    // eslint-disable-next-line no-console
-    console.log(
-      `[MTP-DOC-06] FINDING: converted-invoice confirm() -> subtotal=${invoiceConfirmBody.subtotal} tax_amount=${invoiceConfirmBody.tax_amount} total=${invoiceConfirmBody.total} (expected tax_amount=20.000 total=120.000 if this were a directly-created invoice)`,
-    )
+    expect(invoiceConfirmBody.subtotal).toBe('100.000')
     expect(
       invoiceConfirmBody.tax_amount,
-      'FINDING (new, P0 candidate): confirming a quote->order->invoice-CONVERTED invoice silently zeroes VAT even on a fully-configured rate -- see console log above and file:line citations in this test\'s comment',
-    ).toBe('0.000')
-    expect(invoiceConfirmBody.total).toBe('100.000')
+      'FIX: confirming a quote->order->invoice-CONVERTED invoice must compute real VAT + stamp duty, not zero it',
+    ).toBe('20.000')
+    expect(invoiceConfirmBody.total).toBe('120.000')
   })
 
   test('MTP-DOC-11..14: line-level money/quantity validation ceilings', async ({ page }) => {
@@ -344,19 +330,27 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     // appended asterisk span) -- exact:true against the bare word never matches.
     await dialog.getByLabel('Method', { exact: false }).selectOption({ index: 1 })
     await dialog.getByRole('button', { name: /pay full amount/i }).click()
+    // Repository options load asynchronously AFTER a method is chosen -- an
+    // immediate count() races the fetch and silently skips selection (seen
+    // live: line Confirmed but Repositories still "Select...").
     const repositorySelect = dialog.getByLabel('Repositories', { exact: false })
-    const repositoryOptionCount = await repositorySelect.locator('option').count()
-    if (repositoryOptionCount > 1) {
+    await expect
+      .poll(async () => repositorySelect.locator('option').count(), { timeout: 10000 })
+      .toBeGreaterThan(1)
+      .catch(() => undefined) // some methods legitimately have no repository
+    if ((await repositorySelect.locator('option').count()) > 1) {
       await repositorySelect.selectOption({ index: 1 })
     }
     await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
 
+    // The submit button carries a confirmed-line count suffix -- "Record
+    // Payment (1)" -- so an exact-match on "Record Payment" never finds it.
     const [response] = await Promise.all([
       page.waitForResponse(
         (r) => new URL(r.url()).pathname === '/api/v1/payments' && r.request().method() === 'POST',
         { timeout: 25000 },
       ),
-      dialog.getByRole('button', { name: 'Record Payment', exact: true }).click(),
+      dialog.getByRole('button', { name: /^record payment/i }).click(),
     ])
     expect(response.ok(), `record payment failed: ${response.status()} ${await response.text()}`).toBeTruthy()
 

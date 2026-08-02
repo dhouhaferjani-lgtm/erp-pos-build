@@ -155,10 +155,19 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     )
 
     const invoiceAfter = await getInvoice(page, invoiceId)
-    const expectedBalance = (Number(balanceBefore) - 50).toFixed(3)
+    // The credited amount is the credit note's POSTED total, not the raw
+    // amount typed in the modal: CreditNoteController::confirm() runs the
+    // document-tax pipeline, which adds the 0.600 TND STAMP_CREDIT_NOTE duty
+    // on TN tenants (50.000 entered -> 50.600 posted). Assert relationally
+    // against the posted total so the case stays correct across tax configs.
+    // Scale-3 integer-millime arithmetic -- exact within float range.
+    const toMillimes = (v: string): number => Math.round(Number(v) * 1000)
+    const expectedBalance = (
+      (toMillimes(balanceBefore) - toMillimes(postedCreditNote.total as string)) / 1000
+    ).toFixed(3)
     expect(
       invoiceAfter.balance_due,
-      'posting the credit note reduces the source invoice balance_due by the credited amount (allocateCreditNote())',
+      'posting the credit note reduces the source invoice balance_due by the posted credit-note total (allocateCreditNote())',
     ).toBe(expectedBalance)
     // This invoice was never paid (balance_due == total throughout), so
     // there is no Paid status to revert here -- it stays Posted. A
@@ -215,16 +224,20 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     expect(response?.ok(), `line-based credit note refused: ${await response?.text()}`).toBeTruthy()
     const body = (await response?.json()) as { data: Record<string, unknown> }
     // L1 credited in full: net 2 * 40.000 = 80.000, VAT 19% = 15.200 -> 95.200.
-    // TRIPWIRE (T-B, docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md,
-    // finding 4): `CreditNoteService::createLineBasedCreditNote()` computes
-    // subtotal/tax/total via bcmul/bcadd at scale 4 (CreditNoteService.php
-    // ~275-291) and writes the raw 4dp string straight to `total` — it is
-    // never reformatted to the currency scale (3) the rest of this app uses
-    // everywhere else. A `toBeCloseTo(95.2, 3)` numeric compare MASKS this
-    // entirely (95.2000 and 95.200 are numerically equal); asserted here as
-    // an exact STRING so the fix is falsifiable — when T-B lands this must
-    // flip to '95.200' and be updated deliberately, not silently re-pass.
-    expect(body.data.total).toBe('95.2000')
+    // RECONCILED (2026-08-02, W-1 documents-defects lane re-run): the T-B
+    // finding (docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md)
+    // predicted `CreditNoteService::createLineBasedCreditNote()`'s raw scale-4
+    // PHP computation (bcmul/bcadd at scale 4, CreditNoteService.php ~275-291,
+    // never explicitly reformatted to currency scale 3) would leak a
+    // '95.2000' total through the API. Live-verified here: it does NOT --
+    // `documents.total` is `decimal(15,3)`, so the database column itself
+    // truncates the raw scale-4 string to scale 3 on write, and the API
+    // response is correctly '95.200'. This assertion was BLOCKED entirely by
+    // the credit-note numbering collision (defect 1, now fixed) in every
+    // prior run, so this is the first live observation of the actual value.
+    // Exact-string assertion kept (not `toBeCloseTo`) so any future
+    // regression to the raw scale-4 value is still falsifiable.
+    expect(body.data.total).toBe('95.200')
     expect(body.data.status).toBe('draft')
   })
 
@@ -256,13 +269,16 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     const result = await submitDocumentCreate(page, '/api/v1/credit-notes')
     expect(result.ok, `standalone credit note refused: ${JSON.stringify(result.data)}`).toBeTruthy()
     // net 2 * 30.000 = 60.000, VAT 19% = 11.400 -> 71.400.
-    // TRIPWIRE (T-B, finding 4 — see MTP-DOC-20 above for the full citation):
-    // `CreditNoteService::createStandaloneCreditNote()` ALSO computes at
-    // scale 4 (CreditNoteService.php ~432-439) and writes the raw string
-    // straight through — same defect, different entry point. Exact-string
-    // assertion so the fix (scale-3 currency formatting) is falsifiable.
-    expect(result.data.subtotal).toBe('60.0000')
-    expect(result.data.total).toBe('71.4000')
+    // RECONCILED (2026-08-02, W-1 documents-defects lane re-run — see
+    // MTP-DOC-20 above for the full citation): `CreditNoteService::
+    // createStandaloneCreditNote()` ALSO computes at scale 4
+    // (CreditNoteService.php ~432-439) and writes the raw string straight
+    // through, but `documents.subtotal`/`total` are `decimal(15,3)`, so the
+    // database truncates to scale 3 on write. Live-verified correctly
+    // formatted; was BLOCKED by the numbering collision (defect 1, now
+    // fixed) in every prior run.
+    expect(result.data.subtotal).toBe('60.000')
+    expect(result.data.total).toBe('71.400')
   })
 
   test('MTP-DOC-23b: the standalone /new form still refuses to submit with no reason', async ({ page }) => {
