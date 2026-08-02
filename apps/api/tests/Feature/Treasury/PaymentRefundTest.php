@@ -237,6 +237,7 @@ class PaymentRefundTest extends TestCase
     public function test_partial_refund_unwinds_allocation_and_reopens_document_balance(): void
     {
         $invoice = $this->makeInvoice('600.00', '0.00');
+        $invoice->update(['status' => DocumentStatus::Paid]);
         $payment = $this->createPaymentAllocatedTo($invoice, '600.00');
 
         $refund = $this->refundService->partialRefund(
@@ -258,6 +259,71 @@ class PaymentRefundTest extends TestCase
             $invoice->balance_due,
             'the refunded amount must reopen the invoice balance_due (600.00 - 600.00 + 250.00)'
         );
+        // Review finding I2: OutboundInstrumentService::cancel() (the
+        // implementer's own cited mirror) ALSO reverts Paid -> Posted when
+        // balance_due > 0 — reopening the cached balance alone still left
+        // the document excluded from AgedReceivablesService, the
+        // outstanding-document lookup, and the partial index that all
+        // filter on status = Posted.
+        $this->assertEquals(DocumentStatus::Posted, $invoice->status);
+    }
+
+    /**
+     * Review finding C6 (adversarial-review remediation, 2026-08-02):
+     * reversePayment() used to delete only the ORIGINAL payment's own
+     * PaymentAllocation rows. unwindAllocationsProRata() (MTP-TRE-10 fix)
+     * writes its negative rows against the REFUND payment's id, not the
+     * original's — so those rows survived a subsequent reversePayment()
+     * call. On Postgres, the balance_due-cache trigger would then compute
+     * total - SUM(allocations), and a surviving -400.00 row plus a wiped
+     * original allocation set computes balance_due ABOVE the invoice total
+     * (1000.00 - (-400.00) = 1400.00). reversePayment() must neutralise
+     * EVERY allocation row in the payment's refund lineage — the original's
+     * AND every refund child's.
+     */
+    public function test_reverse_after_partial_refund_neutralises_the_whole_allocation_lineage(): void
+    {
+        $invoice = $this->makeInvoice('1000.00', '0.00');
+        $invoice->update(['status' => DocumentStatus::Paid]);
+        $payment = $this->createPaymentAllocatedTo($invoice, '1000.00');
+
+        $refund = $this->refundService->partialRefund(
+            $payment,
+            '400.00',
+            'Partial return before reverse',
+            $this->user->id
+        );
+
+        $invoice->refresh();
+        $this->assertEquals('400.000', $invoice->balance_due);
+        $this->assertEquals(DocumentStatus::Posted, $invoice->status);
+
+        // reverse the ORIGINAL payment — partialRefund() never flips its
+        // status, so it is still Completed and reversePayment() accepts it.
+        $payment->refresh();
+        $this->refundService->reversePayment($payment, 'Reverse after partial refund', $this->user->id);
+
+        $this->assertSame(
+            0,
+            PaymentAllocation::where('payment_id', $payment->id)->count(),
+            'the original payment\'s own allocation rows are deleted'
+        );
+        $this->assertSame(
+            0,
+            PaymentAllocation::where('payment_id', $refund->id)->count(),
+            'C6: the refund child\'s negative allocation rows are ALSO deleted'
+        );
+
+        $invoice->refresh();
+        $this->assertEquals(
+            '1000.000',
+            $invoice->balance_due,
+            'reopens to the FULL total — never above it (C6 double-counting bug)'
+        );
+        $this->assertEquals(DocumentStatus::Posted, $invoice->status);
+
+        $payment->refresh();
+        $this->assertEquals(PaymentStatus::Reversed, $payment->status);
     }
 
     /**

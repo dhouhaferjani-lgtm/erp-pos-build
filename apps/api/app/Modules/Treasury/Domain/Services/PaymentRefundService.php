@@ -8,10 +8,10 @@ use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
-use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
@@ -27,6 +27,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
@@ -40,7 +41,7 @@ class PaymentRefundService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerService $glService,
         private readonly TreasuryMovementServiceInterface $movementService,
-        private readonly InstrumentLifecycleService $instrumentLifecycle,
+        private readonly InstrumentReversalCancellerInterface $instrumentReversalCanceller,
     ) {}
 
     private function scale(): int
@@ -125,10 +126,19 @@ class PaymentRefundService
                     return $existing;
                 }
 
-                // MTP-TRE-23 fix: resolve the instrument-settlement precondition
-                // ATOMICALLY, in this same transaction, instead of asserting and
-                // throwing. See resolveInstrumentForReversal() docblock.
-                $this->resolveInstrumentForReversal($original, $userId, $reason);
+                // Review C1/C2 fix (revised orchestrator ruling, 2026-08-02
+                // remediation): a FULL cash refund must fail closed for a
+                // non-cleared instrument — never auto-cancel it. Cancelling
+                // the instrument here would (a) move cash OUT of a
+                // repository the money never actually arrived in (a
+                // deferred customer payment records no cash-IN movement
+                // until the instrument clears — PaymentController.php's
+                // `$isDeferredCustomer` guard), and (b) post a SECOND
+                // AR-restoring GL entry on top of the instrument
+                // cancellation's own one. Only reversePayment() may resolve
+                // the instrument atomically — see
+                // resolveInstrumentForReversal()'s docblock.
+                $this->assertInstrumentSettledForCashUndo($original);
 
                 /** @var numeric-string $originalAmount */
                 $originalAmount = (string) $original->amount;
@@ -263,10 +273,17 @@ class PaymentRefundService
                     return $existing;
                 }
 
-                // MTP-TRE-23 fix: resolve the instrument-settlement precondition
-                // ATOMICALLY, in this same transaction, instead of asserting and
-                // throwing. See resolveInstrumentForReversal() docblock.
-                $this->resolveInstrumentForReversal($original, $userId, $reason);
+                // Review C1/C2/C3 fix (revised orchestrator ruling, 2026-08-02
+                // remediation): a PARTIAL cash refund must fail closed for a
+                // non-cleared instrument too — cancelling the WHOLE
+                // instrument to satisfy a PARTIAL refund would destroy the
+                // remaining collectible balance (a 40.000 cheque partially
+                // refunded 10.000 must NOT cancel the cheque and strand the
+                // other 30.000), on top of the same phantom-cash-out /
+                // double-AR-debit risk refundPayment() has. Only
+                // reversePayment() may resolve the instrument atomically —
+                // see resolveInstrumentForReversal()'s docblock.
+                $this->assertInstrumentSettledForCashUndo($original);
 
                 // Cumulative over-refund guard under the lock.
                 $this->assertWithinRefundableBalance($original, $amount);
@@ -415,9 +432,19 @@ class PaymentRefundService
      * movement OUT of the repository through the single write port — atomically
      * with the caller's refund transaction.
      *
-     * Global lock order (BLOCKER-1): the GL post takes the company advisory lock
-     * FIRST; the port then takes the repository row lock inside record(). The
-     * repository is therefore NOT pre-locked here.
+     * Global lock order (BLOCKER-1, extended by review finding I9): the
+     * caller (refundPayment()/partialRefund()) already holds the ORIGINAL
+     * PAYMENT row lock; partialRefund() additionally takes the affected
+     * DOCUMENT row lock(s) via unwindAllocationsProRata() ->
+     * recomputeDocumentBalances() BEFORE calling this method. THEN this
+     * method's GL post takes the company advisory lock, and the movement
+     * port takes the repository row lock inside record() last — so the
+     * order is Payment -> Document(s) -> company advisory -> Repository.
+     * reversePayment() follows the SAME Document-before-advisory-lock
+     * order via its own recomputeDocumentBalances() call (even though it
+     * never reaches this method — it posts no cash movement), so the two
+     * paths can never deadlock against each other over overlapping
+     * documents/company. The repository itself is NOT pre-locked here.
      *
      * No-ops cleanly when the original payment has no repository (a legacy admin
      * payment recorded without a till) — the refund row still exists, but there is
@@ -500,7 +527,18 @@ class PaymentRefundService
     }
 
     /**
-     * Check if payment can be refunded
+     * Check if payment can be refunded.
+     *
+     * Re-verified against the 2026-08-02 adversarial-review remediation
+     * (review finding I3): under the REVISED, narrower orchestrator ruling
+     * — atomic instrument cancellation is reversePayment()-ONLY —
+     * refundPayment() and partialRefund() still fail closed for
+     * Received/Deposited/Bounced exactly as this method reports, so no
+     * behavioural change was needed here. (I3 was written against an
+     * earlier, broader ruling where refundPayment()/partialRefund() ALSO
+     * auto-cancelled a Received instrument; that ruling was superseded —
+     * see C1/C2/C3 — before merge. This method never gated
+     * reversePayment(), which has no "canReverse" counterpart endpoint.)
      */
     public function canRefund(Payment $payment): bool
     {
@@ -571,33 +609,104 @@ class PaymentRefundService
         }
 
         DB::transaction(function () use ($payment, $reason, $userId): void {
-            // Double-check inside transaction (another request may have reversed it)
-            $payment->refresh();
-            if ($payment->status === PaymentStatus::Reversed) {
+            // I7 fix: lock the payment row for the duration of the
+            // reversal. Before this fix, reversePayment() only called
+            // $payment->refresh() (no lock) — unlike refundPayment()/
+            // partialRefund(), which both lockForUpdate() their original
+            // payment row — so two concurrent reversePayment() calls for
+            // the same payment could both pass the status check and both
+            // run the (non-idempotent) allocation-deletion + instrument-
+            // cancel body below.
+            /** @var Payment $original */
+            $original = Payment::query()
+                ->where('tenant_id', $payment->tenant_id)
+                ->where('company_id', $payment->company_id)
+                ->lockForUpdate()
+                ->findOrFail($payment->id);
+
+            if ($original->status === PaymentStatus::Reversed) {
                 return;
             }
 
-            // MTP-TRE-23 fix: resolve the instrument-settlement precondition
-            // ATOMICALLY, in this same transaction, instead of asserting and
-            // throwing. See resolveInstrumentForReversal() docblock.
-            $this->resolveInstrumentForReversal($payment, $userId, $reason);
+            // C6 fix: neutralise EVERY PaymentAllocation row in this
+            // payment's full refund lineage — the ORIGINAL payment's own
+            // rows AND any negative rows written by prior partialRefund()
+            // calls against it. unwindAllocationsProRata() writes those
+            // negative rows against the REFUND payment's id, not the
+            // original's; reversePayment() used to only delete
+            // `payment_id = original.id`, leaving the refund children's
+            // rows behind. A surviving negative row plus a full allocation
+            // wipe of the original would let the Postgres balance_due-cache
+            // trigger compute MORE than the invoice total (review C6).
+            // Capture the affected document ids BEFORE deleting — they
+            // can't be read back off the rows afterward.
+            $refundPaymentIds = Payment::where('company_id', $original->company_id)
+                ->where('original_payment_id', $original->id)
+                ->where('payment_type', PaymentType::Refund->value)
+                ->pluck('id');
+            $lineagePaymentIds = $refundPaymentIds->push($original->id);
 
-            // Delete allocations
-            PaymentAllocation::where('payment_id', $payment->id)->delete();
+            $affectedDocumentIds = PaymentAllocation::whereIn('payment_id', $lineagePaymentIds)
+                ->pluck('document_id')
+                ->unique()
+                ->values();
+
+            PaymentAllocation::whereIn('payment_id', $lineagePaymentIds)->delete();
+
+            // I2/I9 fix: recompute the affected documents' balance_due (and
+            // revert Paid -> Posted, mirroring
+            // OutboundInstrumentService::cancel()'s pattern exactly) BEFORE
+            // cancelling the instrument below. Lock order: Document row
+            // locks here, THEN the instrument-cancellation GL post (which
+            // takes the company advisory lock) — the SAME order
+            // partialRefund()/unwindAllocationsProRata() already use
+            // (Document lock -> GL company-advisory lock via
+            // postRefundGlAndMovement()), so the two paths cannot deadlock
+            // against each other over overlapping documents/company.
+            $this->recomputeDocumentBalances(
+                $affectedDocumentIds,
+                $original->tenant_id,
+                $original->company_id,
+                $this->scaleResolver->getScale($original->currency),
+            );
+
+            // MTP-TRE-23 fix — reversePayment()-ONLY per the revised
+            // orchestrator ruling: resolve the instrument-settlement
+            // precondition atomically instead of asserting and throwing.
+            // No cash movement and no bank-leg GL entry are posted here —
+            // reversePayment() never calls postRefundGlAndMovement(); the
+            // ONLY GL effect this path can produce is the instrument's own
+            // cancellation entry (Dr 411 / Cr portfolio) inside
+            // resolveInstrumentForReversal() below — exactly ONE AR
+            // restoration, never two (review C2's double-debit does not
+            // apply to this path). See resolveInstrumentForReversal()'s
+            // docblock.
+            //
+            // I6 authorization ruling (review finding, ticket-approved):
+            // `payments.reverse` implicitly authorizes cancelling the
+            // payment's OWN linked instrument when it hasn't cleared — that
+            // is the entire point of the atomic reversal (it is what
+            // resolves the MTP-TRE-23 deadlock). It does NOT require the
+            // actor to separately hold `instruments.cancel`; that
+            // permission continues to gate the STANDALONE
+            // `POST /payment-instruments/{id}/cancel` endpoint only, which
+            // is unaffected and still fails closed for a non-reversed
+            // payment (see InstrumentLifecycleService::cancel()).
+            $this->resolveInstrumentForReversal($original, $userId, $reason);
 
             // Update payment status
-            $payment->update([
+            $original->update([
                 'status' => PaymentStatus::Reversed,
-                'notes' => ($payment->notes ?? '')."\n\nReversed: {$reason}",
+                'notes' => ($original->notes ?? '')."\n\nReversed: {$reason}",
             ]);
 
-            DB::afterCommit(function () use ($payment): void {
+            DB::afterCommit(function () use ($original): void {
                 event(new PaymentReversed(
-                    paymentId: $payment->id,
-                    tenantId: $payment->tenant_id,
-                    companyId: $payment->company_id,
-                    amount: $payment->amount,
-                    currency: $payment->currency,
+                    paymentId: $original->id,
+                    tenantId: $original->tenant_id,
+                    companyId: $original->company_id,
+                    amount: $original->amount,
+                    currency: $original->currency,
                     reversedAt: now()->toIso8601String(),
                 ));
             });
@@ -617,33 +726,52 @@ class PaymentRefundService
     }
 
     /**
-     * MTP-TRE-23 fix: resolve (rather than merely assert) the instrument-
-     * settlement precondition for reverse/refund/partialRefund.
+     * MTP-TRE-23 fix, REVERSE-ONLY (revised orchestrator ruling, 2026-08-02
+     * adversarial-review remediation): resolve (rather than merely assert)
+     * the instrument-settlement precondition — but ONLY for
+     * `reversePayment()`. `refundPayment()`/`partialRefund()` call
+     * `assertInstrumentSettledForCashUndo()` (still throws) instead — a
+     * cash refund/partial-refund must NEVER auto-cancel an instrument the
+     * money never actually cleared through (review C1: doing so on the
+     * refund paths recorded a phantom cash movement OUT of a repository
+     * that never received the money; C2: it also posted a second
+     * AR-restoring GL entry on top of the instrument-cancellation entry;
+     * C3: it could cancel a WHOLE instrument to satisfy a PARTIAL refund).
      *
-     * Before this fix, `assertInstrumentSettledForCashUndo()` threw whenever
-     * the linked instrument was Received/Deposited/Bounced, while
+     * `reversePayment()` never posts a cash movement or a bank-leg GL entry
+     * (it never calls postRefundGlAndMovement()) — cash never arrived for
+     * an uncleared instrument, so there is nothing to reverse on that side.
+     * The ONLY GL effect of a reversal-triggered instrument cancel is the
+     * instrument's OWN Dr 411 / Cr portfolio entry — exactly one AR
+     * restoration.
+     *
+     * Before this fix, `assertInstrumentSettledForCashUndo()` threw
+     * whenever the linked instrument was Received/Deposited/Bounced, while
      * `InstrumentLifecycleService::cancel()` required the payment already
-     * `Reversed` before it would cancel a `received` instrument — a circular
-     * precondition deadlock with no valid API ordering (proven live in both
-     * directions by the MTP-TRE-23 repro).
+     * `Reversed` before it would cancel a `received` instrument — a
+     * circular precondition deadlock with no valid API ordering (proven
+     * live in both directions by the MTP-TRE-23 repro).
      *
-     * For a `received` instrument specifically, this method breaks the cycle
-     * by cancelling the instrument itself, atomically, INSIDE the caller's
-     * open transaction, via
-     * `InstrumentLifecycleService::cancelForPaymentReversal()` — same GL
-     * entry + `InstrumentEvent` audit row a standalone cancel would emit,
-     * just without waiting for the payment to already be reversed (the
-     * caller reverses it in the same transaction, right after this call
-     * returns).
+     * For a `received` instrument specifically, this method breaks the
+     * cycle by cancelling the instrument atomically, INSIDE the caller's
+     * open transaction, via the `InstrumentReversalCancellerInterface` port
+     * (review I1: routed through Shared/Contracts so this Domain-tier
+     * service never imports the Application-tier
+     * `InstrumentLifecycleService` directly) — same GL entry +
+     * `InstrumentEvent` audit row a standalone cancel would emit, just
+     * without waiting for the payment to already be reversed (the caller
+     * reverses it in the same transaction, right after this call returns).
      *
      * `Deposited`/`Bounced` instruments are deliberately NOT auto-cancelled
      * here: there is no domain-safe "cancel a deposited/bounced instrument"
      * lifecycle transition in `InstrumentLifecycleService` (its `cancel()`
-     * only ever accepts `Received`) — inventing one is out of scope for this
-     * fix, so those states keep failing closed exactly as before.
+     * only ever accepts `Received`) — those states keep failing closed
+     * exactly as before.
      *
      * MUST be called from inside an open DB transaction, on an already
-     * lockForUpdate()'d Payment.
+     * `lockForUpdate()`'d Payment. ONLY `reversePayment()` may call this —
+     * `refundPayment()`/`partialRefund()` use
+     * `assertInstrumentSettledForCashUndo()`.
      */
     private function resolveInstrumentForReversal(Payment $payment, ?string $userId, string $reason): void
     {
@@ -653,8 +781,8 @@ class PaymentRefundService
         }
 
         if ($instrument->status === InstrumentStatus::Received) {
-            $this->instrumentLifecycle->cancelForPaymentReversal(
-                $instrument,
+            $this->instrumentReversalCanceller->cancelForPaymentReversal(
+                $instrument->id,
                 $userId,
                 "Auto-cancelled while reversing payment {$payment->reference}: {$reason}",
             );
@@ -715,7 +843,8 @@ class PaymentRefundService
         // before reaching here — refundPayment() is idempotent/terminal).
         /** @var array<string, numeric-string> $alreadyUnwoundByDocument */
         $alreadyUnwoundByDocument = [];
-        $priorRefundPaymentIds = Payment::where('original_payment_id', $original->id)
+        $priorRefundPaymentIds = Payment::where('company_id', $original->company_id)
+            ->where('original_payment_id', $original->id)
             ->where('payment_type', PaymentType::Refund->value)
             ->where('id', '!=', $refundPaymentId)
             ->pluck('id');
@@ -809,38 +938,83 @@ class PaymentRefundService
             $touchedDocumentIds[] = $documentId;
         }
 
-        foreach ($touchedDocumentIds as $documentId) {
+        // I2 fix: recompute balance_due AND revert Paid -> Posted, mirroring
+        // OutboundInstrumentService::cancel()'s pattern exactly (the
+        // implementer's own cited "mirror" does both; the first MTP-TRE-10
+        // fix only did the balance_due half).
+        $this->recomputeDocumentBalances($touchedDocumentIds, $original->tenant_id, $original->company_id, $scale);
+    }
+
+    /**
+     * Recompute `balance_due` for a set of documents from their CURRENT
+     * `payment_allocations` + `credit_note_allocations` rows, and revert
+     * `DocumentStatus::Paid` -> `Posted` when the recomputed balance is
+     * greater than zero — mirrors `OutboundInstrumentService::cancel()`'s
+     * pattern exactly (review finding I2: documents flip to `Paid` on full
+     * allocation, and every downstream consumer — AgedReceivablesService,
+     * PaymentAllocationService's outstanding-document lookup, the
+     * `documents_balance_due_index` partial index — filters on
+     * `status = Posted`; reopening `balance_due` alone left those consumers
+     * still excluding the document).
+     *
+     * Portable across Postgres (where the `balance_due`-cache trigger would
+     * otherwise also fire) and SQLite (the test driver, where the trigger
+     * is a no-op) — this PHP recompute is authoritative in both, and safe
+     * to run alongside the Postgres trigger (both converge on the same
+     * value from the same rows).
+     *
+     * Locks each document row (`lockForUpdate()`) — see the lock-order note
+     * on `postRefundGlAndMovement()` (review finding I9): callers MUST take
+     * these Document locks BEFORE any GL company-advisory lock in the same
+     * transaction.
+     *
+     * @param  iterable<string>  $documentIds
+     */
+    private function recomputeDocumentBalances(
+        iterable $documentIds,
+        string $tenantId,
+        string $companyId,
+        int $fallbackScale,
+    ): void {
+        foreach ($documentIds as $documentId) {
             /** @var Document|null $document */
             $document = Document::query()
-                ->where('tenant_id', $original->tenant_id)
-                ->where('company_id', $original->company_id)
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->lockForUpdate()
                 ->find($documentId);
             if ($document === null) {
                 continue;
             }
 
-            $docScale = $this->scaleResolver->getScaleSafe($document->currency, $scale);
+            $scale = $this->scaleResolver->getScaleSafe($document->currency, $fallbackScale);
             /** @var numeric-string $documentTotal */
-            $documentTotal = CurrencyScale::bcformat((string) ($document->total ?? '0'), $docScale);
+            $documentTotal = CurrencyScale::bcformat((string) ($document->total ?? '0'), $scale);
 
             /** @var numeric-string $allocatedSum */
             $allocatedSum = PaymentAllocation::where('document_id', $documentId)
                 ->get('amount')
                 ->reduce(
-                    fn (string $sum, PaymentAllocation $row): string => bcadd($sum, (string) $row->amount, $docScale),
+                    fn (string $sum, PaymentAllocation $row): string => bcadd($sum, (string) $row->amount, $scale),
                     '0'
                 );
             /** @var numeric-string $creditedSum */
             $creditedSum = CreditNoteAllocation::where('invoice_id', $documentId)
                 ->get('amount')
                 ->reduce(
-                    fn (string $sum, CreditNoteAllocation $row): string => bcadd($sum, (string) $row->amount, $docScale),
+                    fn (string $sum, CreditNoteAllocation $row): string => bcadd($sum, (string) $row->amount, $scale),
                     '0'
                 );
 
-            $document->balance_due = bcsub(bcsub($documentTotal, $allocatedSum, $docScale), $creditedSum, $docScale);
-            $document->save();
+            /** @var numeric-string $balanceDue */
+            $balanceDue = bcsub(bcsub($documentTotal, $allocatedSum, $scale), $creditedSum, $scale);
+
+            $document->forceFill([
+                'balance_due' => $balanceDue,
+                'status' => $document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0
+                    ? DocumentStatus::Posted
+                    : $document->status,
+            ])->save();
         }
     }
 

@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -25,6 +26,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -223,31 +225,47 @@ final class DeferredTenderGuardsTest extends TestCase
     }
 
     /**
-     * MTP-TRE-23 fix: a `Received` instrument is now resolved ATOMICALLY by
-     * the reverse/refund/partial-refund paths (see
-     * PaymentRefundService::resolveInstrumentForReversal()) instead of
-     * blocking with a circular precondition — Deposited/Bounced instruments
-     * still block, unchanged (no domain-safe auto-cancel exists for those
-     * states). See test_reverse_atomically_cancels_a_received_instrument_
-     * and_resolves_the_deadlock() below for the Received-specific assertions.
+     * REVISED (2026-08-02 adversarial-review remediation, review findings
+     * C1/C2/C3/I8): the orchestrator's original MTP-TRE-23 ruling — atomic
+     * instrument cancellation for ALL of reverse/refund/partial-refund —
+     * was found to money-leak on the refund paths (phantom cash OUT of a
+     * repository that never received it, a doubled AR debit, and a WHOLE
+     * instrument destroyed to satisfy a PARTIAL refund) and was narrowed to
+     * reversePayment()-ONLY. `full`/`partial` therefore stay in THIS
+     * blocked loop for ALL THREE non-settled statuses — including
+     * `Received`, restored here (I8: the previous revision of this test
+     * removed it, which is exactly how C1/C2/C3 went untested). `reverse`
+     * is excluded from this loop and covered by its own test below with
+     * `Received`, since it alone resolves the instrument atomically.
      */
-    public function test_pending_instrument_blocks_refund_partial_and_reverse_but_cleared_allows_refund(): void
+    public function test_pending_instrument_blocks_refund_and_partial_but_cleared_allows_refund(): void
     {
         $method = $this->method(InstrumentKind::Cheque);
         $service = app(PaymentRefundService::class);
-        foreach ([InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
-            foreach (['full', 'partial', 'reverse'] as $operationName) {
+        foreach ([InstrumentStatus::Received, InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
+            foreach (['full', 'partial'] as $operationName) {
                 [$payment] = $this->pendingPayment($method, $status->value.'-'.$operationName, $status);
                 try {
                     match ($operationName) {
                         'full' => $service->refundPayment($payment, 'blocked'),
                         'partial' => $service->partialRefund($payment, '5.000', 'blocked'),
-                        'reverse' => $service->reversePayment($payment, 'blocked'),
                     };
-                    $this->fail("{$status->value} instrument must block the cash refund/reverse path");
+                    $this->fail("{$status->value} instrument must block the {$operationName} refund path");
                 } catch (RuntimeException $exception) {
                     $this->assertStringContainsString('instrument', strtolower($exception->getMessage()));
                 }
+            }
+        }
+
+        // Deposited/Bounced also still block reverse() — only Received
+        // resolves atomically (see the dedicated reverse test below).
+        foreach ([InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
+            [$payment] = $this->pendingPayment($method, $status->value.'-reverse', $status);
+            try {
+                $service->reversePayment($payment, 'blocked');
+                $this->fail("{$status->value} instrument must block reversePayment()");
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('instrument', strtolower($exception->getMessage()));
             }
         }
 
@@ -261,9 +279,35 @@ final class DeferredTenderGuardsTest extends TestCase
     }
 
     /**
+     * I8 fix: HTTP-level coverage for the SAME fail-closed paths above —
+     * confirms the RuntimeException PaymentRefundService throws surfaces as
+     * a clean 422 through PaymentRefundController (`catch (\Exception $e)`
+     * -> 422), not a 500, for both full and partial refund of a payment
+     * backed by a `Received` instrument.
+     */
+    public function test_refund_and_partial_refund_422_over_the_http_api_for_a_received_instrument(): void
+    {
+        $method = $this->method(InstrumentKind::Cheque);
+
+        [$fullPayment] = $this->pendingPayment($method, 'http-full-received');
+        $fullResponse = $this->actingAs($this->user)->postJson("/api/v1/payments/{$fullPayment->id}/refund", [
+            'reason' => 'I8 http full refund attempt',
+            'refund_request_id' => Str::uuid()->toString(),
+        ]);
+        $fullResponse->assertStatus(422);
+
+        [$partialPayment] = $this->pendingPayment($method, 'http-partial-received');
+        $partialResponse = $this->actingAs($this->user)->postJson("/api/v1/payments/{$partialPayment->id}/partial-refund", [
+            'amount' => '5.000',
+            'reason' => 'I8 http partial refund attempt',
+            'refund_request_id' => Str::uuid()->toString(),
+        ]);
+        $partialResponse->assertStatus(422);
+    }
+
+    /**
      * MTP-TRE-23: the circular precondition deadlock. Before the fix, ALL
-     * THREE of these operations threw for a Received instrument (proven by
-     * the loop above prior to this fix), and
+     * THREE of these operations threw for a Received instrument, and
      * InstrumentLifecycleService::cancel() refused too (requires the
      * payment already Reversed) — no valid API ordering existed for a
      * cheque/effet payment whose instrument hadn't cleared. This test
@@ -271,6 +315,14 @@ final class DeferredTenderGuardsTest extends TestCase
      * `Received` instrument INSIDE its own transaction (same GL entry +
      * InstrumentEvent audit row a standalone cancel() would emit) and THEN
      * flips the payment to Reversed.
+     *
+     * Review C1/C2 (ruling #2) assertions added on remediation: reversing a
+     * payment whose instrument never cleared must move NO cash (the money
+     * never arrived — a deferred customer payment records no cash-IN
+     * movement until the instrument clears) and post NO bank-leg refund
+     * entry — the ONLY GL effect is the instrument's own Dr 411 / Cr
+     * portfolio cancellation entry, i.e. exactly ONE AR restoration, never
+     * two.
      */
     public function test_reverse_atomically_cancels_a_received_instrument_and_resolves_the_deadlock(): void
     {
@@ -284,6 +336,9 @@ final class DeferredTenderGuardsTest extends TestCase
             'total' => '40.000',
             'balance_due' => '40.000',
         ]);
+
+        $bankBalanceBeforePayment = $this->bank->fresh()?->balance;
+
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $this->partner->id,
             'payment_method_id' => $method->id,
@@ -299,6 +354,10 @@ final class DeferredTenderGuardsTest extends TestCase
         $instrument = PaymentInstrument::query()->where('payment_id', $payment->id)->sole();
         $this->assertSame(InstrumentStatus::Received, $instrument->status);
         $this->assertNotNull($payment->journal_entry_id);
+        // Deferred-customer guard (PaymentController.php `$isDeferredCustomer`):
+        // receiving a cheque records the receivable, NOT cash in hand.
+        $this->assertSame($bankBalanceBeforePayment, $this->bank->fresh()?->balance, 'receiving a cheque moves no cash');
+        $this->assertDatabaseCount('repository_movements', 0);
 
         // Pre-fix, this threw: "Settle the payment instrument first (bounce
         // or cancel) before using the cash refund/reverse path."
@@ -312,6 +371,17 @@ final class DeferredTenderGuardsTest extends TestCase
         $this->assertSame(PaymentStatus::Reversed, $payment->status);
         $this->assertSame(InstrumentStatus::Cancelled, $instrument->status);
 
+        // C6: the reversal's allocation-lineage wipe must leave NOTHING
+        // behind for this payment (no prior partial refunds exist here, so
+        // this is just the base "reverse deletes its own allocations" case
+        // — the multi-generation lineage case is covered separately by
+        // PaymentRefundTest::test_reverse_after_partial_refund_neutralises_the_whole_allocation_lineage()).
+        $this->assertSame(0, PaymentAllocation::where('payment_id', $payment->id)->count());
+
+        $invoice->refresh();
+        $this->assertSame('40.000', $invoice->balance_due, 'balance_due reopens to the full total');
+        $this->assertSame(DocumentStatus::Posted, $invoice->status);
+
         $cancelEvent = InstrumentEvent::query()
             ->where('instrument_id', $instrument->id)
             ->where('event_type', 'cancelled')
@@ -323,6 +393,31 @@ final class DeferredTenderGuardsTest extends TestCase
             'the atomic cancel must post the same GL reversal a standalone cancel() would'
         );
         $this->assertNotSame($payment->journal_entry_id, $cancelEvent->journal_entry_id);
+
+        // Ruling #2: no cash movement, no bank-leg GL entry — reversePayment()
+        // never calls postRefundGlAndMovement().
+        $this->assertSame($bankBalanceBeforePayment, $this->bank->fresh()?->balance, 'no cash leaves the repository — it never arrived');
+        $this->assertDatabaseCount('repository_movements', 0);
+        $this->assertSame(
+            0,
+            JournalEntry::where('company_id', $this->company->id)->where('source_type', 'customer_payment_refund')->count(),
+            'no bank-leg refund entry may be posted for an instrument that never cleared'
+        );
+
+        // Ruling #2: exactly ONE AR restoration — the instrument's own
+        // cancellation entry — never two (review C2's double-debit).
+        $instrumentEntries = JournalEntry::where('company_id', $this->company->id)
+            ->where('source_type', 'instrument')
+            ->where('source_id', $instrument->id)
+            ->get();
+        $this->assertCount(1, $instrumentEntries);
+        $arAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::CustomerReceivable);
+        $arLines = JournalLine::where('journal_entry_id', $instrumentEntries->first()->id)
+            ->where('account_id', $arAccount->id)
+            ->get();
+        $this->assertCount(1, $arLines);
+        $this->assertSame('40.000', $arLines->first()->debit);
+        $this->assertSame('0.000', $arLines->first()->credit);
     }
 
     /**

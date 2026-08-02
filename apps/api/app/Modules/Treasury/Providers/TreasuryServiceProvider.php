@@ -32,6 +32,7 @@ use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
+use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
@@ -82,6 +83,16 @@ class TreasuryServiceProvider extends ServiceProvider
         );
 
         $this->app->bind(InstrumentLifecycleService::class);
+
+        // MTP-TRE-23 fix (review finding I1) — PaymentRefundService (Treasury
+        // Domain) depends on this Shared/Contracts port, never on the concrete
+        // Application-tier InstrumentLifecycleService, to keep the deptrac
+        // hexagonal boundary (Domain -> SharedDomain/SharedContracts only)
+        // clean.
+        $this->app->bind(
+            InstrumentReversalCancellerInterface::class,
+            InstrumentLifecycleService::class,
+        );
         $this->app->bind(InstrumentRemittanceService::class);
         $this->app->bind(OutboundInstrumentIssuerInterface::class, OutboundInstrumentIssuer::class);
         $this->app->singleton(

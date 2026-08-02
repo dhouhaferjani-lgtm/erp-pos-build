@@ -26,6 +26,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceStatus;
@@ -42,13 +43,14 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
-final readonly class InstrumentLifecycleService
+final readonly class InstrumentLifecycleService implements InstrumentReversalCancellerInterface
 {
     private const TOLERANCE_SCALE = 4;
 
@@ -623,15 +625,21 @@ final readonly class InstrumentLifecycleService
 
     /**
      * Cancel a `received` instrument as part of an ATOMIC payment-reversal
-     * operation (MTP-TRE-23 fix).
+     * operation (MTP-TRE-23 fix). Implements
+     * `InstrumentReversalCancellerInterface` (review finding I1 — the port
+     * `PaymentRefundService::reversePayment()` depends on, so that
+     * Domain-tier service never imports this Application-tier class
+     * directly).
      *
      * Standalone `cancel()` above requires the linked payment already
-     * `Reversed` — but `PaymentRefundService::reversePayment()` /
-     * `refundPayment()` / `partialRefund()` refuse to touch a payment whose
-     * instrument hasn't settled first (see
+     * `Reversed` — but `PaymentRefundService::reversePayment()` refuses to
+     * touch a payment whose instrument hasn't settled first (see
      * `PaymentRefundService::assertInstrumentSettledForCashUndo()`). Neither
      * side can go first, so a `received` cheque/effet payment could never be
-     * undone via the API.
+     * reversed via the API. REVERSE-ONLY (revised orchestrator ruling,
+     * 2026-08-02 review remediation): `refundPayment()`/`partialRefund()`
+     * do NOT call this — they fail closed for a non-cleared instrument
+     * instead (review C1/C2/C3).
      *
      * This method resolves the deadlock by letting the reversal flow cancel
      * the instrument itself, IN THE SAME transaction, immediately before it
@@ -642,20 +650,25 @@ final readonly class InstrumentLifecycleService
      * `InstrumentEvent` audit row. Standalone `cancel()` is untouched and
      * keeps failing closed for any direct caller.
      *
-     * The caller MUST:
-     *   - already hold an open DB transaction (this method does not open
-     *     its own — it runs inside the caller's reversal transaction so the
-     *     instrument cancellation and the payment-status flip commit or
-     *     roll back together);
-     *   - have locked `$instrument` (`lockForUpdate()`) before calling;
-     *   - flip the linked payment to `Reversed` itself, in the same
-     *     transaction, immediately after this call returns.
+     * I5 fix: enforces the "already inside a transaction" precondition
+     * (`cancel()`'s docblock only documented it) — throws `\LogicException`
+     * rather than silently running outside atomicity when
+     * `$payment === null || $payment->journal_entry_id === null` skips the
+     * GL/transaction assertions inside `createInstrumentCancellationEntry()`.
+     *
+     * I4 fix: derives the `CancellationShape` from the linked payment's
+     * `origin` instead of hardcoding `B2b` — a POS-bridged instrument
+     * (`PaymentOrigin::Pos`) reversed through this generic admin path still
+     * reverses PRODUCT REVENUE, not the customer receivable account (which
+     * would be wrong for a POS sale that was never on account).
      */
-    public function cancelForPaymentReversal(
-        PaymentInstrument $instrument,
-        ?string $userId,
-        string $reason,
-    ): void {
+    public function cancelForPaymentReversal(string $instrumentId, ?string $userId, string $reason): void
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('cancelForPaymentReversal() must be called inside an open DB transaction (the caller\'s payment-reversal transaction) — it does not open its own, so the instrument cancellation and the caller\'s payment-status flip must commit or roll back together.');
+        }
+
+        $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId);
         if ($instrument->direction === InstrumentDirection::Outbound) {
             throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
         }
@@ -663,13 +676,12 @@ final readonly class InstrumentLifecycleService
             throw new DomainException('Only a received instrument can be cancelled via an atomic payment reversal.');
         }
 
-        $this->performCancellation(
-            $instrument,
-            $instrument->payment()->first(),
-            $userId,
-            $reason,
-            CancellationShape::B2b,
-        );
+        $payment = $instrument->payment()->first();
+        $shape = $payment?->origin === PaymentOrigin::Pos
+            ? CancellationShape::PosRevenue
+            : CancellationShape::B2b;
+
+        $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
     }
 
     /**
