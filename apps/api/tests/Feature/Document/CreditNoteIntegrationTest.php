@@ -382,9 +382,15 @@ class CreditNoteIntegrationTest extends TestCase
         $this->assertStringStartsWith('CN-', $cn2Number);
         $this->assertNotEquals($cn1Number, $cn2Number);
 
-        // Extract numbers and verify sequence
-        preg_match('/CN-(\d+)/', $cn1Number, $matches1);
-        preg_match('/CN-(\d+)/', $cn2Number, $matches2);
+        // Documents-defects lane defect 1 fix (2026-08-02): credit-note
+        // numbering is now unified onto DocumentNumberingService, format
+        // CN-{year}-{seq} (e.g. CN-2026-0001), same as every other document
+        // type -- the old CN-{seq}-only format (and this test's original
+        // `/CN-(\d+)/` regex, which greedily matched the YEAR segment of the
+        // new format) is retired. Extract the trailing sequence segment and
+        // verify it is monotonic.
+        preg_match('/CN-\d+-(\d+)$/', $cn1Number, $matches1);
+        preg_match('/CN-\d+-(\d+)$/', $cn2Number, $matches2);
 
         $this->assertEquals((int) $matches1[1] + 1, (int) $matches2[1]);
     }

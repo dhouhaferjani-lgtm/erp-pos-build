@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Collection;
@@ -23,6 +24,7 @@ class CreditNoteService
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly DocumentNumberingService $numberingService,
     ) {}
 
     /**
@@ -75,7 +77,7 @@ class CreditNoteService
                 throw new \InvalidArgumentException('Total credit notes would exceed invoice total');
             }
 
-            $creditNoteNumber = $this->generateCreditNoteNumber($invoice->company_id);
+            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $invoice->company_id, DocumentType::CreditNote);
 
             // Calculate proportional tax and subtotal
             /** @phpstan-ignore-next-line argument.type */
@@ -247,7 +249,7 @@ class CreditNoteService
                 throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
             }
 
-            $creditNoteNumber = $this->generateCreditNoteNumber($invoice->company_id);
+            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $invoice->company_id, DocumentType::CreditNote);
 
             // Calculate totals from selected lines
             $subtotal = '0.00';
@@ -408,7 +410,7 @@ class CreditNoteService
             $tenantId = $partner->tenant_id;
 
             // Generate credit note number
-            $creditNoteNumber = $this->generateCreditNoteNumber($companyId);
+            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::CreditNote);
 
             // Calculate totals from provided lines
             $subtotal = '0.0000';
@@ -496,25 +498,6 @@ class CreditNoteService
 
             return $creditNote;
         });
-    }
-
-    /**
-     * Generate sequential credit note number.
-     */
-    private function generateCreditNoteNumber(string $companyId): string
-    {
-        $lastCreditNote = Document::where('company_id', $companyId)
-            ->where('type', DocumentType::CreditNote)
-            ->orderBy('created_at', 'desc')
-            ->first();
-
-        if ($lastCreditNote && preg_match('/CN-(\d+)/', $lastCreditNote->document_number, $matches)) {
-            $nextNumber = ((int) $matches[1]) + 1;
-        } else {
-            $nextNumber = 1;
-        }
-
-        return sprintf('CN-%05d', $nextNumber);
     }
 
     /**

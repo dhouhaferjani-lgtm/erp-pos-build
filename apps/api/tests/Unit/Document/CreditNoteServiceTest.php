@@ -231,6 +231,68 @@ class CreditNoteServiceTest extends TestCase
         $this->assertSame('600.000', $creditNote->total);
     }
 
+    /** @test */
+    public function it_generates_collision_free_numbers_when_a_legacy_format_row_exists(): void
+    {
+        // Simulate a prior session's legacy-format credit note (CN-{seq}, no year segment)
+        // sitting alongside a current-format one (CN-{year}-{seq}, produced by
+        // DocumentNumberingService via InvoiceToCreditNoteConverter). The old
+        // `/CN-(\d+)/` regex greedily matches the YEAR segment of the current-format
+        // row and reissues a number that already exists.
+        $invoice = $this->createPostedInvoice('INV-001', '1000.00', '200.00', '1200.00');
+
+        $legacy = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'CN-00006',
+            'document_date' => now()->subDay(),
+            'currency' => 'TND',
+            'total' => '0.000',
+        ]);
+
+        $currentYear = (int) date('Y');
+        $current = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => sprintf('CN-%d-0006', $currentYear),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'total' => '0.000',
+        ]);
+
+        $creditNote = $this->service->createCreditNote(
+            sourceInvoiceId: $invoice->id,
+            amount: '600.00',
+            reason: CreditNoteReason::PRICE_ADJUSTMENT,
+        );
+
+        $this->assertNotEquals($legacy->document_number, $creditNote->document_number);
+        $this->assertNotEquals($current->document_number, $creditNote->document_number);
+        $this->assertNotSame('CN-02027', $creditNote->document_number, 'must not misparse the year segment as a sequence');
+
+        // Persisted without a unique-constraint violation.
+        $this->assertDatabaseHas('documents', [
+            'id' => $creditNote->id,
+            'document_number' => $creditNote->document_number,
+        ]);
+
+        // A second credit note in the same transaction batch must also be collision-free
+        // and monotonically distinct from the first.
+        $creditNote2 = $this->service->createCreditNote(
+            sourceInvoiceId: $invoice->id,
+            amount: '600.00',
+            reason: CreditNoteReason::PRICE_ADJUSTMENT,
+        );
+
+        $this->assertNotEquals($creditNote->document_number, $creditNote2->document_number);
+    }
+
     private function createPostedInvoice(
         string $number,
         string $subtotal,
