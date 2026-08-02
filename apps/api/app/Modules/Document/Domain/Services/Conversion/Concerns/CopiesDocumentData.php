@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -32,6 +33,8 @@ trait CopiesDocumentData
     protected readonly DocumentNumberingService $numberingService;
 
     protected readonly CurrencyScaleResolverInterface $scaleResolver;
+
+    protected readonly TaxCalculationService $taxCalculationService;
 
     protected function scale(): int
     {
@@ -267,27 +270,49 @@ trait CopiesDocumentData
     /**
      * Recalculate document totals based on lines.
      *
+     * Folds in document-level taxes (`applies_to = DOCUMENT_TOTAL` -- e.g. the
+     * Tunisian 1.000 TND STAMP_TAX_INVOICE) the SAME treatment
+     * `InvoiceController::withDocumentLevelTaxes()` (`18e61a554`) applies on the
+     * create/update path. Without this, a converted document (Quote -> Order ->
+     * Invoice, DN -> Invoice, DN consolidation) landed on a draft total short by
+     * exactly the stamp duty, only picking it up at `confirm()` -- the
+     * draft==confirm identity the ORCHESTRATOR RULING in
+     * `tests/Feature/Document/ConversionChainVatIntegrityTest.php` requires.
+     *
+     * Only the `documentTaxTotal` component is taken from the tax service --
+     * NEVER `totalTax` -- so an explicitly-supplied line rate with no matching
+     * `TaxConfiguration` row is never silently re-zeroed by this fold; the
+     * line-item VAT computed by the loop below is preserved exactly as-is.
+     *
      * @param  Document  $document  The document to recalculate
      */
     protected function recalculateTotals(Document $document): void
     {
+        $scale = $this->scaleResolver->getScale($document->currency);
+
         $subtotal = '0';
-        $taxAmount = '0';
-        $total = '0';
+        $lineTaxAmount = '0';
 
         foreach ($document->lines as $line) {
             // DocumentLine has line_total which represents the line subtotal before tax
             $lineTotal = (string) $line->line_total;
-            $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
+            $subtotal = bcadd($subtotal, $lineTotal, $scale);
 
             // Calculate tax for this line if tax_rate is set
             if ($line->tax_rate !== null && bccomp((string) $line->tax_rate, '0', 4) !== 0) {
-                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), $this->scale());
-                $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
+                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), $scale);
+                $lineTaxAmount = bcadd($lineTaxAmount, $lineTax, $scale);
             }
         }
 
-        $total = bcadd($subtotal, $taxAmount, $this->scale());
+        // $document->lines was already accessed (and cached) by the loop above,
+        // reflecting every line persisted before this call -- calculateDocumentTaxes()
+        // reads the same cached relation for its own subtotal/base derivation.
+        /** @var numeric-string $documentTaxTotal */
+        $documentTaxTotal = $this->taxCalculationService->calculateDocumentTaxes($document)->documentTaxTotal;
+
+        $taxAmount = bcadd($lineTaxAmount, $documentTaxTotal, $scale);
+        $total = bcadd($subtotal, $taxAmount, $scale);
 
         $document->update([
             'subtotal' => $subtotal,

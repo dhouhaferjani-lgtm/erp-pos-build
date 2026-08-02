@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -39,6 +40,7 @@ final class QuoteToSalesOrderConverter implements DocumentConverterInterface
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly TaxCalculationService $taxCalculationService,
         private readonly StripSubToleranceDiscountsService $discountStripper,
     ) {}
 

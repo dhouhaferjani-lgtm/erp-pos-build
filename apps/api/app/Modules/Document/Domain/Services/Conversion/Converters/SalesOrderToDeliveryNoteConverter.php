@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -55,6 +56,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
         protected readonly DocumentNumberingService $numberingService,
         private readonly FEFOInventoryService $fefoService,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     public function sourceType(): DocumentType

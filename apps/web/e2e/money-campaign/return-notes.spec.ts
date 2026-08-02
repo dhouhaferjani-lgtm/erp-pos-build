@@ -218,16 +218,15 @@ test.describe('MTP-RET — return notes / delivery notes / consolidation (W-2)',
     const consolidate = await consolidateDeliveryNotes(page, [dn1.id!, dn2.id!])
     expect(consolidate.status, `consolidate -> ${consolidate.status} ${JSON.stringify(consolidate.body)}`).toBeLessThan(300)
     const invoiceBody = (consolidate.body as { data: { total: string; balance_due: string; status: string } }).data
-    // TRIPWIRE (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
+    // FIX (docs/superpowers/tickets/2026-08-02-documents-gate-followups.md
     // F3): the consolidated invoice is created via the SAME conversion
     // machinery (CopiesDocumentData::recalculateTotals(),
-    // Conversion/Concerns/CopiesDocumentData.php:272-298) that F3 already
-    // flags as omitting document-level taxes (the 1.000 TND stamp) on a
-    // DRAFT produced by conversion — 3*20.000 + 2*20.000 = 100.000 is the
-    // CURRENT total, not 101.000. When F3 lands this flips to 101.000 and
-    // this assertion must be updated in the same change.
+    // Conversion/Concerns/CopiesDocumentData.php) which now folds
+    // document-level taxes (the 1.000 TND stamp) into the DRAFT produced by
+    // conversion — 3*20.000 + 2*20.000 = 100.000 subtotal + 1.000 stamp =
+    // 101.000 total, even though every line is 0.00-rated.
     expect(invoiceBody.status, 'consolidation lands as a Draft invoice, not auto-confirmed').toBe('draft')
-    expect(invoiceBody.total, 'TRIPWIRE (F3): stamp duty omitted on this conversion-created draft').toBe('100.000')
+    expect(invoiceBody.total, 'FIX (F3): stamp duty now folded into this conversion-created draft').toBe('101.000')
     expect(invoiceBody.balance_due).toBe(invoiceBody.total)
 
     const stockAfterConsolidation = await stockAt(page, productId, WAREHOUSE_LOCATION_ID)

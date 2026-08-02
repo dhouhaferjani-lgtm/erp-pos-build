@@ -210,8 +210,19 @@ class ConversionChainVatIntegrityTest extends TestCase
         $invoiceResponse->assertCreated();
         $invoice = $invoiceResponse->json('data');
         $this->assertSame('100.000', $invoice['subtotal']);
-        $this->assertSame('19.000', $invoice['tax_amount']);
-        $this->assertSame('119.000', $invoice['total']);
+        // FIX (gate follow-up F3, docs/superpowers/tickets/2026-08-02-documents-gate-followups.md):
+        // CopiesDocumentData::recalculateTotals() now folds document-level
+        // taxes (the 1.000 TND STAMP_TAX_INVOICE) into the DRAFT the same way
+        // InvoiceController::withDocumentLevelTaxes() (18e61a554) does for a
+        // directly-created draft, so a converted invoice's draft tax_amount/
+        // total already equal what confirm() below produces -- no more
+        // 119.000 -> 120.000 jump on confirmation.
+        $this->assertSame(
+            '20.000',
+            $invoice['tax_amount'],
+            'FIX: a converted invoice DRAFT must already carry 19.000 VAT + 1.000 stamp duty, not just line VAT'
+        );
+        $this->assertSame('120.000', $invoice['total']);
 
         // The converted invoice's own fiscal_category must be the real
         // TAX_INVOICE category, not the NON_FISCAL DB column default.
@@ -229,10 +240,12 @@ class ConversionChainVatIntegrityTest extends TestCase
         $invoiceConfirm = $invoiceConfirmResponse->json('data');
         $this->assertSame('100.000', $invoiceConfirm['subtotal']);
         $this->assertSame(
-            '20.000',
+            $invoice['tax_amount'],
             $invoiceConfirm['tax_amount'],
-            'FIX: converted-invoice confirm() must compute 19.000 VAT + 1.000 stamp duty, not silently zero'
+            'FIX: draft==confirm identity through conversion -- confirm() must not change what the draft already showed'
         );
+        $this->assertSame('20.000', $invoiceConfirm['tax_amount']);
+        $this->assertSame($invoice['total'], $invoiceConfirm['total'], 'FIX: draft==confirm identity through conversion');
         $this->assertSame('120.000', $invoiceConfirm['total']);
     }
 
@@ -280,10 +293,23 @@ class ConversionChainVatIntegrityTest extends TestCase
         $invoice = $this->actingAs($this->user, 'sanctum')
             ->postJson("/api/v1/orders/{$order['id']}/convert-to-invoice")
             ->json('data');
+        // FIX (F3): 21.000 VAT (unconfigured, honoured) + 1.000 TND stamp
+        // (a real, correctly-configured TAX_INVOICE document-level tax)
+        // already on the converted DRAFT -- not just after confirm().
+        $this->assertSame(
+            '22.000',
+            $invoice['tax_amount'],
+            'FIX: a converted invoice DRAFT must already carry the unconfigured 21% line rate + 1.000 stamp duty'
+        );
 
         $invoiceConfirm = $this->actingAs($this->user, 'sanctum')
             ->postJson("/api/v1/invoices/{$invoice['id']}/confirm")
             ->json('data');
+        $this->assertSame(
+            $invoice['tax_amount'],
+            $invoiceConfirm['tax_amount'],
+            'FIX: draft==confirm identity through conversion'
+        );
         // 21.000 VAT (unconfigured, honoured) + 1.000 TND stamp (a real,
         // correctly-configured TAX_INVOICE document-level tax).
         $this->assertSame(

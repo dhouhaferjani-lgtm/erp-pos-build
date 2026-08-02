@@ -201,11 +201,16 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     ).toBe('19.000')
     expect(orderConfirmBody.total).toBe('119.000')
 
-    // Convert order -> invoice. Draft totals are again recomputed from the
-    // ORIGINAL line data -- byte-identical to the quote/order's ORIGINAL
-    // Draft numbers (no stamp yet; the conversion path's Draft total does
-    // not go through the same document-level-tax loop InvoiceController::store()
-    // uses for a directly-created invoice).
+    // Convert order -> invoice. The invoice is now a genuinely FISCAL
+    // document (TAX_INVOICE, correctly set by CopiesDocumentData's
+    // fiscal_category fix). FIX (gate follow-up F3,
+    // docs/superpowers/tickets/2026-08-02-documents-gate-followups.md):
+    // CopiesDocumentData::recalculateTotals() now folds document-level
+    // taxes (the 1.000 TND stamp duty) into the Draft the same way
+    // InvoiceController::withDocumentLevelTaxes() (18e61a554) does for a
+    // directly-created draft, so the converted invoice's Draft total
+    // already carries the stamp -- no more 119.000 -> 120.000 jump on
+    // confirmation.
     const invoiceRes = await apiRequest(page, 'POST', `/orders/${orderId}/convert-to-invoice`)
     expect(invoiceRes.status, `convert-to-invoice failed: ${JSON.stringify(invoiceRes.body)}`).toBe(201)
     const invoiceBody = (invoiceRes.body as { data: Record<string, unknown> }).data
@@ -213,14 +218,15 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     expect(invoiceBody.subtotal, 'invoice Draft subtotal byte-identical to the chain\'s original Draft').toBe(
       '100.000',
     )
-    expect(invoiceBody.tax_amount, 'invoice Draft tax_amount byte-identical to the chain\'s original Draft').toBe(
-      '19.000',
-    )
-    expect(invoiceBody.total, 'invoice Draft total byte-identical to the chain\'s original Draft').toBe('119.000')
+    expect(
+      invoiceBody.tax_amount,
+      'FIX: a converted invoice Draft must already carry 19.000 VAT + 1.000 stamp duty, not just line VAT',
+    ).toBe('20.000')
+    expect(invoiceBody.total, 'FIX: converted invoice Draft total already includes the stamp duty').toBe('120.000')
 
-    // Invoice confirm(): a genuinely FISCAL document (TAX_INVOICE, now
-    // correctly set by CopiesDocumentData's fix) on a fully-configured 19%
-    // rate. Picks up the real VAT (19.000) PLUS the 1.000 TND stamp duty a
+    // Invoice confirm(): must be byte-identical to the Draft above -- the
+    // draft==confirm identity through conversion this fix establishes.
+    // Picks up the real VAT (19.000) PLUS the 1.000 TND stamp duty a
     // TAX_INVOICE actually owes -- exactly what a directly-created invoice
     // with identical line data confirms to (tax_amount=20.000,
     // total=120.000). This was the P0 finding; both mechanisms are fixed.
@@ -231,8 +237,8 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     expect(
       invoiceConfirmBody.tax_amount,
       'FIX: confirming a quote->order->invoice-CONVERTED invoice must compute real VAT + stamp duty, not zero it',
-    ).toBe('20.000')
-    expect(invoiceConfirmBody.total).toBe('120.000')
+    ).toBe(invoiceBody.tax_amount)
+    expect(invoiceConfirmBody.total).toBe(invoiceBody.total)
   })
 
   test('MTP-DOC-11..14: line-level money/quantity validation ceilings', async ({ page }) => {

@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         private readonly FEFOInventoryService $fefoService,
         private readonly LocationContext $locationContext,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly TaxCalculationService $taxCalculationService,
         private readonly StripSubToleranceDiscountsService $discountStripper,
     ) {}
 
