@@ -11,6 +11,7 @@
  */
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import { apiRequest } from './helpers'
 
 export const OWNER_EMAIL = 'owner@pharmabio.tn'
 export const OWNER_PASSWORD = 'password'
@@ -335,29 +336,36 @@ export async function getInvoice(page: Page, invoiceId: string): Promise<Record<
 }
 
 /**
- * Confirms then Posts a credit note (Draft -> Confirmed -> Posted). Required
- * before the invoice-balance-reduction check: `CreditNoteController::post()`
- * (apps/api/.../CreditNoteController.php:349-355) only calls
- * `allocateCreditNote()` — the step that actually reduces the SOURCE
- * INVOICE's `balance_due` — on POST, not at creation time. Creating a credit
- * note alone (Draft) does NOT touch the invoice's balance. RULED NOT A DEFECT:
- * allocating at post() is correct accounting; MTP-DOC-17 asserts that.
+ * Confirms then Posts a credit note (Draft -> Confirmed -> Posted).
+ *
+ * REPAIRED (A3.4, 2026-08-02 W-1 reconciliation pass — was BLOCKED in the
+ * original campaign on "did not reliably reach the POST /documents/{id}/confirm
+ * response"). ROOT CAUSE FOUND, NOT A SPEC BUG: `CreditNoteDetailPage.tsx`'s
+ * Confirm/Post buttons call `apiPost('/documents/${id}/confirm')` and
+ * `apiPost('/documents/${id}/post')` (CreditNoteDetailPage.tsx:59,73) — but
+ * NO SUCH ROUTE EXISTS. `php artisan route:list --path=api/v1/documents`
+ * lists no `confirm`/`post` action anywhere under `/documents/{document}/...`;
+ * the real routes are `/credit-notes/{id}/confirm` and `/credit-notes/{id}/post`
+ * (routes.php:203,207 — CreditNoteController::confirm()/post()). Every click
+ * on those buttons 404s, unconditionally, for every tenant — a real P0/P1
+ * product defect (credit notes can never be confirmed/posted via their own
+ * detail page), NOT touched here per house rule (spec-only reconciliation
+ * pass) — recorded in the results ledger. This helper routes around it the
+ * same way `helpers.ts` `logout()` routes around the TopBar z-index defect:
+ * calling the REAL API route directly via `apiRequest()` (a `page.evaluate`
+ * fetch carrying the SPA's Bearer token — this app requires it;
+ * `SANCTUM_STATEFUL_DOMAINS` is empty, so a bare `page.request.*` call only
+ * carries cookies and 401s UNAUTHENTICATED even after a real UI login,
+ * confirmed live), so the assertion still exercises genuine backend
+ * behaviour (`allocateCreditNote()`), just not through the broken UI buttons.
  */
 export async function confirmAndPostCreditNote(page: Page, creditNoteId: string): Promise<Record<string, unknown>> {
-  await page.goto(`/sales/credit-notes/${creditNoteId}`)
-  await page.getByRole('button', { name: 'Confirm', exact: true }).first().click({ timeout: 30000 })
-  await page.waitForResponse(
-    (r) => new URL(r.url()).pathname === `/api/v1/documents/${creditNoteId}/confirm` && r.request().method() === 'POST'
-  )
-  await page.getByRole('button', { name: 'Confirm', exact: true }).last().click()
-  await page.getByRole('button', { name: 'Post', exact: true }).click({ timeout: 30000 })
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (r) => new URL(r.url()).pathname === `/api/v1/documents/${creditNoteId}/post` && r.request().method() === 'POST'
-    ),
-    page.getByRole('button', { name: 'Post Invoice' }).click(),
-  ])
-  const json = (await response.json()) as { data: Record<string, unknown> }
+  const confirmRes = await apiRequest(page, 'POST', `/credit-notes/${creditNoteId}/confirm`)
+  expect(confirmRes.status, `credit note confirm -> ${confirmRes.status} ${JSON.stringify(confirmRes.body)}`).toBeLessThan(300)
+
+  const postRes = await apiRequest(page, 'POST', `/credit-notes/${creditNoteId}/post`)
+  expect(postRes.status, `credit note post -> ${postRes.status} ${JSON.stringify(postRes.body)}`).toBeLessThan(300)
+  const json = postRes.body as { data: Record<string, unknown> }
   return json.data
 }
 

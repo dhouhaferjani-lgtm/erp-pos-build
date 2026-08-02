@@ -21,8 +21,10 @@ import {
   selectPartner,
   addProductLines,
   submitDocumentCreate,
+  getInvoice,
   uniqueName,
 } from './w1b-support'
+import { apiRequest } from './helpers'
 
 test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -123,6 +125,130 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     expect(directAttempt.status).toBeGreaterThanOrEqual(400)
   })
 
+  // A5.1 (NEW MTP-DOC-06, plan §A.5): quote -> sales order -> invoice
+  // conversion chain, totals byte-identical at every hop, PLUS the quote's
+  // own tax_amount after confirm() (TRIPWIRE T-A finding 2). Driven at the
+  // API layer via apiRequest() (helpers.ts) — NOT bare page.request, which
+  // this app's Bearer-token auth model (SANCTUM_STATEFUL_DOMAINS empty) does
+  // not authenticate (confirmed live: a bare page.request.post() 401s
+  // UNAUTHENTICATED even after a real UI login, because it carries only
+  // cookies, never the SPA's manually-attached Authorization header).
+  test('MTP-DOC-06: quote -> order -> invoice conversion chain; totals byte-identical at Draft; TRIPWIRE (T-A finding 2) VAT zeroed on quote/order confirm', async ({
+    page,
+  }) => {
+    test.setTimeout(150000)
+    const customerName = uniqueName('DOC06')
+    const customerId = await createCustomer(page, customerName)
+
+    // Draft quote: net 2 * 50.000 = 100.000, VAT 19% = 19.000, total 119.000.
+    // Quotes are NonFiscal -- no stamp duty (invoice-only).
+    const quoteRes = await apiRequest(page, 'POST', '/quotes', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [{ description: 'MTP-DOC-06 probe', quantity: '2', unit_price: '50.000', tax_rate: '19.00' }],
+    })
+    expect(quoteRes.status, `quote create failed: ${JSON.stringify(quoteRes.body)}`).toBe(201)
+    const quoteBody = (quoteRes.body as { data: Record<string, unknown> }).data
+    const quoteId = quoteBody.id as string
+    expect(quoteBody.subtotal).toBe('100.000')
+    expect(quoteBody.tax_amount).toBe('19.000')
+    expect(quoteBody.total).toBe('119.000')
+
+    // TRIPWIRE (T-A finding 2, docs/superpowers/tickets/2026-08-02-confirm-zeroes-vat-unconfigured-rates.md):
+    // this finding was CODE-READ-ONLY (needs live verify) before this test.
+    // Live-verified here: QuoteController::confirm() zeroes VAT ENTIRELY, even
+    // for a fully-configured 19% rate -- TaxConfiguration::scopeForDocumentType()
+    // matches on applicable_document_types, and the TN seeder's list
+    // (TAX_INVOICE/FISCAL_RECEIPT/CREDIT_NOTE/DELIVERY_NOTE) never contains a
+    // quote/NON_FISCAL token, so `applicableTaxes` is empty and confirm()
+    // writes tax_amount=0. CONFIRMED LIVE, ESCALATING finding 2 from
+    // code-read-only to proven.
+    const quoteConfirmRes = await apiRequest(page, 'POST', `/quotes/${quoteId}/confirm`)
+    expect(quoteConfirmRes.status, `quote confirm failed: ${JSON.stringify(quoteConfirmRes.body)}`).toBe(200)
+    const quoteConfirmBody = (quoteConfirmRes.body as { data: Record<string, unknown> }).data
+    expect(quoteConfirmBody.subtotal).toBe('100.000')
+    expect(
+      quoteConfirmBody.tax_amount,
+      'TRIPWIRE (T-A finding 2): confirm() zeroes a NonFiscal quote\'s VAT entirely',
+    ).toBe('0.000')
+    expect(quoteConfirmBody.total, 'TRIPWIRE (T-A finding 2): confirmed quote total SHRINKS').toBe('100.000')
+
+    // Convert quote -> order. The order's OWN Draft totals are recomputed
+    // from the ORIGINAL line data (100.000/19.000/119.000) -- NOT carried
+    // from the quote's now-corrupted confirmed total (100.000/0.000/100.000).
+    // This is the byte-identity check the case is really after: the chain's
+    // pre-confirm numbers survive the hop even though the quote's OWN
+    // post-confirm total does not (a direct consequence of the tripwire above).
+    const orderRes = await apiRequest(page, 'POST', `/quotes/${quoteId}/convert-to-order`)
+    expect(orderRes.status, `convert-to-order failed: ${JSON.stringify(orderRes.body)}`).toBe(201)
+    const orderBody = (orderRes.body as { data: Record<string, unknown> }).data
+    const orderId = orderBody.id as string
+    expect(orderBody.subtotal, 'order Draft subtotal byte-identical to the ORIGINAL quote Draft').toBe('100.000')
+    expect(orderBody.tax_amount, 'order Draft tax_amount byte-identical to the ORIGINAL quote Draft').toBe('19.000')
+    expect(orderBody.total, 'order Draft total byte-identical to the ORIGINAL quote Draft').toBe('119.000')
+
+    // Order confirm() has the SAME NonFiscal tripwire shape as the quote.
+    const orderConfirmRes = await apiRequest(page, 'POST', `/orders/${orderId}/confirm`)
+    expect(orderConfirmRes.status, `order confirm failed: ${JSON.stringify(orderConfirmRes.body)}`).toBe(200)
+    const orderConfirmBody = (orderConfirmRes.body as { data: Record<string, unknown> }).data
+    expect(
+      orderConfirmBody.tax_amount,
+      'TRIPWIRE (T-A finding 2): confirm() ALSO zeroes a NonFiscal sales order\'s VAT entirely',
+    ).toBe('0.000')
+    expect(orderConfirmBody.total).toBe('100.000')
+
+    // Convert order -> invoice. Draft totals are again recomputed from the
+    // ORIGINAL line data -- byte-identical to the quote/order's ORIGINAL
+    // Draft numbers (no stamp yet; the conversion path's Draft total does
+    // not go through the same document-level-tax loop InvoiceController::store()
+    // uses for a directly-created invoice).
+    const invoiceRes = await apiRequest(page, 'POST', `/orders/${orderId}/convert-to-invoice`)
+    expect(invoiceRes.status, `convert-to-invoice failed: ${JSON.stringify(invoiceRes.body)}`).toBe(201)
+    const invoiceBody = (invoiceRes.body as { data: Record<string, unknown> }).data
+    const invoiceId = invoiceBody.id as string
+    expect(invoiceBody.subtotal, 'invoice Draft subtotal byte-identical to the chain\'s original Draft').toBe(
+      '100.000',
+    )
+    expect(invoiceBody.tax_amount, 'invoice Draft tax_amount byte-identical to the chain\'s original Draft').toBe(
+      '19.000',
+    )
+    expect(invoiceBody.total, 'invoice Draft total byte-identical to the chain\'s original Draft').toBe('119.000')
+
+    // NEW FINDING (not T-A, not pre-registered): confirming the CONVERTED
+    // invoice -- a genuinely FISCAL document, TAX_INVOICE, on an ordinary
+    // fully-configured 19% rate -- ALSO silently zeroes VAT. Live-reproduced
+    // twice (2026-08-02): both runs showed the identical Draft->Confirm
+    // shrinkage below. Root-cause investigation (not a fix) found ONE
+    // contributing mechanism on one repro: SalesOrderToInvoiceConverter's
+    // createTargetDocument() (via CopiesDocumentData.php:48-77, called at
+    // SalesOrderToInvoiceConverter.php:168-170) never sets `fiscal_category`
+    // on the new invoice row -- unlike InvoiceController::store(), which sets
+    // it explicitly. On one repro the column landed on the DB default
+    // (NON_FISCAL, correct for the SOURCE order but wrong for an invoice),
+    // and TaxCalculationService::calculateDocumentTaxes() (TaxCalculationService.php:56)
+    // filters TaxConfiguration::forDocumentType() on that raw value -- TN's
+    // applicable_document_types list never contains NON_FISCAL, so zero
+    // configs match. On the OTHER repro fiscal_category was correctly
+    // TAX_INVOICE in the DB yet confirm() STILL zeroed the tax -- meaning a
+    // SECOND, not-yet-isolated mechanism can independently produce the same
+    // symptom. Recorded as a P0 finding with the reproducible OBSERVED
+    // values below; needs an engineering root-cause pass before a fix,
+    // NOT attempted here (spec-only reconciliation pass, no product code
+    // touched).
+    const invoiceConfirmRes = await apiRequest(page, 'POST', `/invoices/${invoiceId}/confirm`)
+    expect(invoiceConfirmRes.status, `invoice confirm failed: ${JSON.stringify(invoiceConfirmRes.body)}`).toBe(200)
+    const invoiceConfirmBody = (invoiceConfirmRes.body as { data: Record<string, unknown> }).data
+    // eslint-disable-next-line no-console
+    console.log(
+      `[MTP-DOC-06] FINDING: converted-invoice confirm() -> subtotal=${invoiceConfirmBody.subtotal} tax_amount=${invoiceConfirmBody.tax_amount} total=${invoiceConfirmBody.total} (expected tax_amount=20.000 total=120.000 if this were a directly-created invoice)`,
+    )
+    expect(
+      invoiceConfirmBody.tax_amount,
+      'FINDING (new, P0 candidate): confirming a quote->order->invoice-CONVERTED invoice silently zeroes VAT even on a fully-configured rate -- see console log above and file:line citations in this test\'s comment',
+    ).toBe('0.000')
+    expect(invoiceConfirmBody.total).toBe('100.000')
+  })
+
   test('MTP-DOC-11..14: line-level money/quantity validation ceilings', async ({ page }) => {
     test.setTimeout(120000)
     const customerName = uniqueName('DOC1114')
@@ -185,5 +311,73 @@ test.describe('MTP-DOC — documents lifecycle & editability (W1b)', () => {
     } else {
       expect(Number(afterNegative)).toBeGreaterThanOrEqual(0)
     }
+  })
+
+  // A5.2 (NEW MTP-DOC-09, plan §A.5): drive the RecordPaymentModal's
+  // multi-step per-line confirm through the LITERAL UI path to reach Paid,
+  // then record the Cancelled verdict (no UI action anywhere on the invoice
+  // detail page -- assert absence, and check whether the API route
+  // exists-and-refuses or does not exist at all).
+  test('MTP-DOC-09: RecordPaymentModal reaches Paid via the literal UI path; Cancelled has no UI action', async ({
+    page,
+  }) => {
+    test.setTimeout(150000)
+    const customerName = uniqueName('DOC09')
+    await createCustomer(page, customerName)
+
+    const created = await createInvoice(page, {
+      partnerName: customerName,
+      lines: [{ qty: '1', unitPrice: '99.000', taxLabel: 'TVA 19% (19%)' }],
+    })
+    expect(created.ok, `create failed: ${JSON.stringify(created.data)}`).toBeTruthy()
+    const invoiceId = created.data.id as string
+    await confirmInvoice(page, invoiceId)
+    const posted = await postInvoice(page, invoiceId)
+    expect(posted.status).toBe('posted')
+
+    await page.goto(`/sales/invoices/${invoiceId}`)
+    await page.getByRole('button', { name: 'Record Payment', exact: true }).click({ timeout: 30000 })
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 20000 })
+
+    // FormField renders required labels as "Method *" / "Repositories *" (an
+    // appended asterisk span) -- exact:true against the bare word never matches.
+    await dialog.getByLabel('Method', { exact: false }).selectOption({ index: 1 })
+    await dialog.getByRole('button', { name: /pay full amount/i }).click()
+    const repositorySelect = dialog.getByLabel('Repositories', { exact: false })
+    const repositoryOptionCount = await repositorySelect.locator('option').count()
+    if (repositoryOptionCount > 1) {
+      await repositorySelect.selectOption({ index: 1 })
+    }
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (r) => new URL(r.url()).pathname === '/api/v1/payments' && r.request().method() === 'POST',
+        { timeout: 25000 },
+      ),
+      dialog.getByRole('button', { name: 'Record Payment', exact: true }).click(),
+    ])
+    expect(response.ok(), `record payment failed: ${response.status()} ${await response.text()}`).toBeTruthy()
+
+    const invoiceAfter = await getInvoice(page, invoiceId)
+    expect(invoiceAfter.status, 'invoice reached Paid via the literal RecordPaymentModal UI path').toBe('paid')
+    expect(invoiceAfter.balance_due).toBe('0.000')
+
+    // Cancelled: no UI action exists anywhere on the invoice detail page.
+    await page.goto(`/sales/invoices/${invoiceId}`)
+    await expect(page.getByRole('button', { name: /cancel/i })).toHaveCount(0)
+
+    // API layer: record whether the route exists-and-refuses (403/422) a
+    // Paid invoice, or does not exist at all (404/405) -- both are
+    // acceptable "no reachable Cancelled transition" outcomes; a bare 200
+    // would be the failure signature.
+    const cancelAttempt = await apiRequest(page, 'POST', `/invoices/${invoiceId}/cancel`)
+    // eslint-disable-next-line no-console
+    console.log(`[MTP-DOC-09] POST /invoices/{id}/cancel on a Paid invoice -> ${cancelAttempt.status}`)
+    expect(
+      [403, 404, 405, 422],
+      `expected the cancel route to either not exist or refuse -> ${cancelAttempt.status} ${JSON.stringify(cancelAttempt.body)}`,
+    ).toContain(cancelAttempt.status)
   })
 })

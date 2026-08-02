@@ -15,6 +15,34 @@
  * `stamp_duty_amount` at all, so this decomposition cannot be verified from
  * the web surface — DB access would be required, which is out of this
  * Playwright-only campaign's reach.
+ *
+ * NEW P0 FINDING (2026-08-02, W-1 reconciliation re-run — discovered while
+ * re-running this file, NOT caused by these spec edits): EVERY credit note
+ * creation through `CreditNoteController::store()` (amount-based,
+ * line-based, AND standalone) is currently PERMANENTLY BROKEN on this
+ * tenant. `CreditNoteService::generateCreditNoteNumber()`
+ * (CreditNoteService.php:504-518) computes the next number with the regex
+ * `/CN-(\d+)/` against the MOST RECENT credit note's `document_number`,
+ * ordered by `created_at DESC` with no secondary tiebreaker. A separate,
+ * newer numbering path — `DocumentNumberingService::generateForKeyOnce()`
+ * (DocumentNumberingService.php:42-66), used by `InvoiceToCreditNoteConverter`
+ * via `CopiesDocumentData::createTargetDocument()` — produces a DIFFERENT
+ * format: `CN-{year}-{seq}` (e.g. `CN-2026-0006`). The legacy regex matches
+ * the FIRST digit group of that format and extracts the YEAR (`2026`), not
+ * the real sequence, computes `nextNumber = 2027`, and reformats it back
+ * into the OLD `CN-%05d` shape as `CN-02027` — a document_number that
+ * ALREADY EXISTS from a session over a day earlier (confirmed live via
+ * direct DB read: `CN-02027` created 2026-08-01 21:50:40; the most recent
+ * credit note in the tenant is `CN-2026-0006`, created 2026-08-02 14:38:57).
+ * Every subsequent `POST /credit-notes` attempt (any mode) recomputes the
+ * SAME colliding number and 500s on the `documents_tenant_id_type_document_number_unique`
+ * constraint — deterministically, forever, until fixed (confirmed via two
+ * independent full-suite runs, byte-identical collision both times). This
+ * BLOCKS MTP-DOC-16/17/18, MTP-DOC-19, MTP-DOC-20, and MTP-DOC-23 below —
+ * their assertions are correctly written; the underlying product call they
+ * exercise cannot succeed today. NOT fixed here (spec-only reconciliation
+ * pass, no product code touched) — recorded in the results ledger for
+ * ticketing.
  */
 import { test, expect } from '@playwright/test'
 import {
@@ -24,6 +52,7 @@ import {
   confirmInvoice,
   postInvoice,
   createCreditNoteFromInvoice,
+  confirmAndPostCreditNote,
   selectPartner,
   addProductLines,
   submitDocumentCreate,
@@ -61,22 +90,32 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     const cn1 = await createCreditNoteFromInvoice(page, invoiceId, { amount: '100.000', reason: 'Product Return' })
     expect(cn1.ok, `credit note create failed: ${JSON.stringify(cn1.data)}`).toBeTruthy()
     // Stored POSITIVE (no negation).
+    // TRIPWIRE (T-B, docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md,
+    // finding 3): this amount-based DRAFT credit note carries NO 0.600
+    // STAMP_CREDIT_NOTE — total equals the raw submitted amount exactly, with
+    // no document-level tax applied at Draft (mirrors the invoice-side W1b
+    // defect 2 the stamp fix already covers for invoices, but T-B shows
+    // credit notes were never wired into that fix). When T-B lands this
+    // becomes '100.600' and MTP-DOC-18's remaining-amount arithmetic below
+    // shifts accordingly — update both together, deliberately, not silently.
     expect(cn1.data.total).toBe('100.000')
     expect(Number(cn1.data.subtotal)).toBeGreaterThan(0)
     expect(Number(cn1.data.tax_amount)).toBeGreaterThanOrEqual(0)
     expect(cn1.data.status).toBe('draft')
 
-    // MTP-DOC-17 FINDING: creating the credit note does NOT reduce the
-    // source invoice's balance_due — `allocateCreditNote()` only runs inside
-    // `CreditNoteController::post()` (apps/api/.../CreditNoteController.php:349-355),
-    // a SEPARATE step from creation. MTP-DOC-17's expected "balance_due
-    // reduced via the CreditNoteAllocation trigger" does not hold at
-    // creation time; posting the credit note is required first. Confirmed
-    // live: balance_due stays at the full 268.750 here.
+    // MTP-DOC-17 (A3.3, plan): RE-WORDED per the reconciliation pass — this is
+    // DESIGNED BEHAVIOUR UNDER REVIEW, not a defect the W1b lane fixed.
+    // `allocateCreditNote()` only runs inside `CreditNoteController::post()`
+    // (apps/api/.../CreditNoteController.php:349-355), a SEPARATE step from
+    // creation — a Draft credit note intentionally does NOT touch the source
+    // invoice's balance_due (correct accounting: an unconfirmed credit
+    // shouldn't move real balances). See MTP-DOC-19 below for the post-flow
+    // half of this same case (confirm -> post -> balance_due DOES drop).
+    // Confirmed live: balance_due stays at the full 268.750 while cn1 is Draft.
     const invoiceAfterCn1Draft = await getInvoice(page, invoiceId)
     expect(
       invoiceAfterCn1Draft.balance_due,
-      'FINDING did not reproduce: balance_due already reflects an unposted credit note — behavior may have changed'
+      'a Draft credit note must not move the source invoice balance — only post() does (see MTP-DOC-19)'
     ).toBe('268.750')
 
     // MTP-DOC-18: even while cn1 is still Draft, a further credit note of
@@ -87,6 +126,50 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     // remaining = 268.750 - 100.000 (cn1, uncapped by status) = 168.750 < 200.000.
     const overCredit = await createCreditNoteFromInvoice(page, invoiceId, { amount: '200.000', reason: 'Product Return' })
     expect(overCredit.ok, 'expected the over-credit (200.000 > remaining 168.750) to be REFUSED, but it succeeded').toBeFalsy()
+  })
+
+  // A3.4 (NEW MTP-DOC-19, plan §A.3): the post-flow half of MTP-DOC-17 above
+  // — confirm -> post the credit note (repaired confirmAndPostCreditNote
+  // helper, see w1b-support.ts for the routing-defect finding), then assert
+  // the source invoice's balance_due actually drops by the credited amount.
+  test('MTP-DOC-19: posting a credit note reduces the source invoice balance_due by the credited amount', async ({ page }) => {
+    test.setTimeout(150000)
+    const customerName = uniqueName('DOC19')
+    await createCustomer(page, customerName)
+
+    const created = await createInvoice(page, {
+      partnerName: customerName,
+      lines: [{ qty: '1', unitPrice: '99.000', taxLabel: 'TVA 19% (19%)' }],
+    })
+    expect(created.ok, `create failed: ${JSON.stringify(created.data)}`).toBeTruthy()
+    const invoiceId = created.data.id as string
+    await confirmInvoice(page, invoiceId)
+    const posted = await postInvoice(page, invoiceId)
+    expect(posted.status).toBe('posted')
+    const balanceBefore = posted.balance_due as string
+    expect(balanceBefore, 'unpaid at Post time').toBe(posted.total as string)
+
+    const cn = await createCreditNoteFromInvoice(page, invoiceId, { amount: '50.000', reason: 'Product Return' })
+    expect(cn.ok, `credit note create failed: ${JSON.stringify(cn.data)}`).toBeTruthy()
+    const creditNoteId = cn.data.id as string
+    expect(cn.data.status).toBe('draft')
+
+    const postedCreditNote = await confirmAndPostCreditNote(page, creditNoteId)
+    expect(postedCreditNote.status, `credit note did not reach posted: ${JSON.stringify(postedCreditNote)}`).toBe(
+      'posted',
+    )
+
+    const invoiceAfter = await getInvoice(page, invoiceId)
+    const expectedBalance = (Number(balanceBefore) - 50).toFixed(3)
+    expect(
+      invoiceAfter.balance_due,
+      'posting the credit note reduces the source invoice balance_due by the credited amount (allocateCreditNote())',
+    ).toBe(expectedBalance)
+    // This invoice was never paid (balance_due == total throughout), so
+    // there is no Paid status to revert here -- it stays Posted. A
+    // Paid -> Posted revert specifically on credit-note post is a distinct,
+    // unfixtured case (would need a fully-paid invoice first).
+    expect(invoiceAfter.status).toBe('posted')
   })
 
   test('MTP-DOC-20: line-based credit note saves the selected lines', async ({ page }) => {
@@ -137,10 +220,16 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     expect(response?.ok(), `line-based credit note refused: ${await response?.text()}`).toBeTruthy()
     const body = (await response?.json()) as { data: Record<string, unknown> }
     // L1 credited in full: net 2 * 40.000 = 80.000, VAT 19% = 15.200 -> 95.200.
-    // Numeric compare: the line-based service formats at scale 4 while the
-    // amount-based one formats at the currency scale (3) — the VALUE is what
-    // this case is about, not the trailing-zero rendering.
-    expect(Number(body.data.total)).toBeCloseTo(95.2, 3)
+    // TRIPWIRE (T-B, docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md,
+    // finding 4): `CreditNoteService::createLineBasedCreditNote()` computes
+    // subtotal/tax/total via bcmul/bcadd at scale 4 (CreditNoteService.php
+    // ~275-291) and writes the raw 4dp string straight to `total` — it is
+    // never reformatted to the currency scale (3) the rest of this app uses
+    // everywhere else. A `toBeCloseTo(95.2, 3)` numeric compare MASKS this
+    // entirely (95.2000 and 95.200 are numerically equal); asserted here as
+    // an exact STRING so the fix is falsifiable — when T-B lands this must
+    // flip to '95.200' and be updated deliberately, not silently re-pass.
+    expect(body.data.total).toBe('95.2000')
     expect(body.data.status).toBe('draft')
   })
 
@@ -171,10 +260,14 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
 
     const result = await submitDocumentCreate(page, '/api/v1/credit-notes')
     expect(result.ok, `standalone credit note refused: ${JSON.stringify(result.data)}`).toBeTruthy()
-    // net 2 * 30.000 = 60.000, VAT 19% = 11.400 -> 71.400 (see the scale note
-    // on MTP-DOC-20 for why this compares numerically).
-    expect(Number(result.data.subtotal)).toBeCloseTo(60, 3)
-    expect(Number(result.data.total)).toBeCloseTo(71.4, 3)
+    // net 2 * 30.000 = 60.000, VAT 19% = 11.400 -> 71.400.
+    // TRIPWIRE (T-B, finding 4 — see MTP-DOC-20 above for the full citation):
+    // `CreditNoteService::createStandaloneCreditNote()` ALSO computes at
+    // scale 4 (CreditNoteService.php ~432-439) and writes the raw string
+    // straight through — same defect, different entry point. Exact-string
+    // assertion so the fix (scale-3 currency formatting) is falsifiable.
+    expect(result.data.subtotal).toBe('60.0000')
+    expect(result.data.total).toBe('71.4000')
   })
 
   test('MTP-DOC-23b: the standalone /new form still refuses to submit with no reason', async ({ page }) => {

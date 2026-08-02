@@ -17,6 +17,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { loginAsOwner, createCustomer, createInvoice, confirmInvoice, uniqueName } from './w1b-support'
+import { apiRequest } from './helpers'
 
 test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -68,5 +69,59 @@ test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
     // = 15.630 — no eco-tax residue anywhere in the decomposition.
     expect(created.data.tax_amount).toBe('15.630')
     expect(created.data.total).toBe('92.630')
+  })
+
+  // A4.1 (NEW MTP-TAX-13, TRIPWIRE T-A finding 1, plan §A.4). Live-verified
+  // BEFORE authoring: the plan's illustrative "13.00, no TN config row" is
+  // WRONG for this tenant -- TunisiaTaxConfigurationSeeder.php seeds 19/13/7/0
+  // as ACTIVE LINE_ITEMS TaxConfiguration rows, confirmed live (13.00 confirms
+  // cleanly, tax_amount unchanged Draft->Confirmed). 21.00 is a genuinely
+  // unconfigured rate for TN and reproduces the defect live (probed via curl
+  // before writing this test: Draft tax_amount 22.000 -> Confirmed 1.000).
+  // The line-editor's tax <select> only lists CONFIGURED rates (19/13/7/0), so
+  // an unconfigured rate cannot be selected through the literal UI form -- a
+  // direct API call is the only way to author it, same pattern as MTP-DOC-24's
+  // cross-partner probe.
+  test('MTP-TAX-13 (TRIPWIRE T-A, finding 1): confirm() silently zeroes VAT for a line whose rate has no active TaxConfiguration', async ({
+    page,
+  }) => {
+    test.setTimeout(60000)
+    const customerName = uniqueName('TAX13')
+    const customerId = await createCustomer(page, customerName)
+
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [{ description: 'MTP-TAX-13 probe line', quantity: '1', unit_price: '100.000', tax_rate: '21.00' }],
+    })
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201)
+    const createdBody = (created.body as { data: Record<string, unknown> }).data
+    const invoiceId = createdBody.id as string
+
+    // Draft: the line's own tax_rate * subtotal is applied directly (not via
+    // TaxConfiguration matching) -- 21.000 line VAT + 1.000 stamp = 22.000.
+    expect(createdBody.subtotal).toBe('100.000')
+    expect(
+      createdBody.tax_amount,
+      'Draft: line VAT computed from the raw tax_rate, unaffected by TaxConfiguration matching',
+    ).toBe('22.000')
+    expect(createdBody.total).toBe('122.000')
+
+    // FINDING (T-A finding 1, TaxCalculationService.php:104-157 +
+    // InvoiceController::confirm()): confirm() recomputes tax via
+    // TaxCalculationService::calculateDocumentTaxes(), whose STEP 1 only
+    // accumulates line tax for a rate it can match to an active LINE_ITEMS
+    // TaxConfiguration row for TN. 21.00 matches none -- it contributes ZERO.
+    // The 21.000 VAT visible at Draft VANISHES on confirm; the document total
+    // SHRINKS from 122.000 to 101.000 (subtotal + stamp ONLY).
+    const confirmed = await apiRequest(page, 'POST', `/invoices/${invoiceId}/confirm`)
+    expect(confirmed.status, `confirm failed: ${JSON.stringify(confirmed.body)}`).toBe(200)
+    const confirmedBody = (confirmed.body as { data: Record<string, unknown> }).data
+    expect(confirmedBody.subtotal).toBe('100.000')
+    expect(
+      confirmedBody.tax_amount,
+      'FINDING (T-A): confirm() silently zeroes the unconfigured 21% line VAT -- only the 1.000 stamp survives',
+    ).toBe('1.000')
+    expect(confirmedBody.total, 'FINDING (T-A): confirmed total SHRINKS below the Draft total').toBe('101.000')
   })
 })
