@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, FileText, Lock, MinusCircle } from 'lucide-react'
-import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { api, getErrorMessage } from '../../../lib/api'
+import { confirmCreditNote, postCreditNote } from '../api/creditNotes'
 import { formatCurrency } from '../../../lib/format'
 import { formatQuantity } from '../../../lib/decimal'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
@@ -56,7 +57,7 @@ export function CreditNoteDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      return apiPost(`/documents/${id}/confirm`)
+      return confirmCreditNote(id)
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['document', id] })
@@ -70,7 +71,7 @@ export function CreditNoteDetailPage() {
 
   const postMutation = useMutation({
     mutationFn: async () => {
-      return apiPost(`/documents/${id}/post`)
+      return postCreditNote(id)
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['document', id] })

@@ -16,33 +16,26 @@
  * the web surface — DB access would be required, which is out of this
  * Playwright-only campaign's reach.
  *
- * NEW P0 FINDING (2026-08-02, W-1 reconciliation re-run — discovered while
- * re-running this file, NOT caused by these spec edits): EVERY credit note
- * creation through `CreditNoteController::store()` (amount-based,
- * line-based, AND standalone) is currently PERMANENTLY BROKEN on this
- * tenant. `CreditNoteService::generateCreditNoteNumber()`
- * (CreditNoteService.php:504-518) computes the next number with the regex
- * `/CN-(\d+)/` against the MOST RECENT credit note's `document_number`,
- * ordered by `created_at DESC` with no secondary tiebreaker. A separate,
- * newer numbering path — `DocumentNumberingService::generateForKeyOnce()`
- * (DocumentNumberingService.php:42-66), used by `InvoiceToCreditNoteConverter`
- * via `CopiesDocumentData::createTargetDocument()` — produces a DIFFERENT
- * format: `CN-{year}-{seq}` (e.g. `CN-2026-0006`). The legacy regex matches
- * the FIRST digit group of that format and extracts the YEAR (`2026`), not
- * the real sequence, computes `nextNumber = 2027`, and reformats it back
- * into the OLD `CN-%05d` shape as `CN-02027` — a document_number that
- * ALREADY EXISTS from a session over a day earlier (confirmed live via
- * direct DB read: `CN-02027` created 2026-08-01 21:50:40; the most recent
- * credit note in the tenant is `CN-2026-0006`, created 2026-08-02 14:38:57).
- * Every subsequent `POST /credit-notes` attempt (any mode) recomputes the
- * SAME colliding number and 500s on the `documents_tenant_id_type_document_number_unique`
- * constraint — deterministically, forever, until fixed (confirmed via two
- * independent full-suite runs, byte-identical collision both times). This
- * BLOCKS MTP-DOC-16/17/18, MTP-DOC-19, MTP-DOC-20, and MTP-DOC-23 below —
- * their assertions are correctly written; the underlying product call they
- * exercise cannot succeed today. NOT fixed here (spec-only reconciliation
- * pass, no product code touched) — recorded in the results ledger for
- * ticketing.
+ * FIXED (2026-08-02, W-1 documents-defects lane, defect 1): every credit
+ * note creation through `CreditNoteController::store()` (amount-based,
+ * line-based, AND standalone) was PERMANENTLY BROKEN on this tenant.
+ * `CreditNoteService::generateCreditNoteNumber()` computed the next number
+ * with the regex `/CN-(\d+)/` against the MOST RECENT credit note's
+ * `document_number`, ordered by `created_at DESC`. A separate, newer
+ * numbering path — `DocumentNumberingService::generateForKeyOnce()`, used by
+ * `InvoiceToCreditNoteConverter` via `CopiesDocumentData::createTargetDocument()`
+ * — produces a DIFFERENT format: `CN-{year}-{seq}` (e.g. `CN-2026-0006`). The
+ * legacy regex greedily matched the FIRST digit group of that format (the
+ * YEAR), computed `nextNumber = year + 1`, and reformatted it back into the
+ * OLD `CN-%05d` shape — a `document_number` that already existed, 500ing on
+ * the unique constraint on every subsequent create. Fixed by unifying
+ * `CreditNoteService` onto `DocumentNumberingService` (the same atomic,
+ * `lockForUpdate`-guarded `document_sequences` counter every other document
+ * type already uses) instead of parsing `document_number` strings at all —
+ * this also closes the underlying race condition the old MAX-by-regex
+ * approach had. Regression test: `CreditNoteServiceTest::it_generates_collision_free_numbers_when_a_legacy_format_row_exists`.
+ * This previously BLOCKED MTP-DOC-16/17/18, MTP-DOC-19, MTP-DOC-20, and
+ * MTP-DOC-23 below — all now exercise the real product call end-to-end.
  */
 import { test, expect } from '@playwright/test'
 import {
@@ -129,9 +122,11 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
   })
 
   // A3.4 (NEW MTP-DOC-19, plan §A.3): the post-flow half of MTP-DOC-17 above
-  // — confirm -> post the credit note (repaired confirmAndPostCreditNote
-  // helper, see w1b-support.ts for the routing-defect finding), then assert
-  // the source invoice's balance_due actually drops by the credited amount.
+  // — confirm -> post the credit note through the REAL detail-page buttons
+  // (confirmAndPostCreditNote, w1b-support.ts — drives CreditNoteDetailPage's
+  // own Confirm/Post actions now that they hit the real /credit-notes routes,
+  // W-1 documents-defects lane defect 2 fix), then assert the source
+  // invoice's balance_due actually drops by the credited amount.
   test('MTP-DOC-19: posting a credit note reduces the source invoice balance_due by the credited amount', async ({ page }) => {
     test.setTimeout(150000)
     const customerName = uniqueName('DOC19')

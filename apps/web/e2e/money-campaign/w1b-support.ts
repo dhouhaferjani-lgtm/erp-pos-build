@@ -11,7 +11,6 @@
  */
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
-import { apiRequest } from './helpers'
 
 export const OWNER_EMAIL = 'owner@pharmabio.tn'
 export const OWNER_PASSWORD = 'password'
@@ -336,36 +335,40 @@ export async function getInvoice(page: Page, invoiceId: string): Promise<Record<
 }
 
 /**
- * Confirms then Posts a credit note (Draft -> Confirmed -> Posted).
+ * Confirms then Posts a credit note (Draft -> Confirmed -> Posted) through
+ * the REAL detail-page buttons.
  *
- * REPAIRED (A3.4, 2026-08-02 W-1 reconciliation pass — was BLOCKED in the
- * original campaign on "did not reliably reach the POST /documents/{id}/confirm
- * response"). ROOT CAUSE FOUND, NOT A SPEC BUG: `CreditNoteDetailPage.tsx`'s
- * Confirm/Post buttons call `apiPost('/documents/${id}/confirm')` and
- * `apiPost('/documents/${id}/post')` (CreditNoteDetailPage.tsx:59,73) — but
- * NO SUCH ROUTE EXISTS. `php artisan route:list --path=api/v1/documents`
- * lists no `confirm`/`post` action anywhere under `/documents/{document}/...`;
- * the real routes are `/credit-notes/{id}/confirm` and `/credit-notes/{id}/post`
- * (routes.php:203,207 — CreditNoteController::confirm()/post()). Every click
- * on those buttons 404s, unconditionally, for every tenant — a real P0/P1
- * product defect (credit notes can never be confirmed/posted via their own
- * detail page), NOT touched here per house rule (spec-only reconciliation
- * pass) — recorded in the results ledger. This helper routes around it the
- * same way `helpers.ts` `logout()` routes around the TopBar z-index defect:
- * calling the REAL API route directly via `apiRequest()` (a `page.evaluate`
- * fetch carrying the SPA's Bearer token — this app requires it;
- * `SANCTUM_STATEFUL_DOMAINS` is empty, so a bare `page.request.*` call only
- * carries cookies and 401s UNAUTHENTICATED even after a real UI login,
- * confirmed live), so the assertion still exercises genuine backend
- * behaviour (`allocateCreditNote()`), just not through the broken UI buttons.
+ * UN-WORKED-AROUND (2026-08-02 W-1 documents-defects lane, defect 2 fix):
+ * `CreditNoteDetailPage.tsx`'s Confirm/Post buttons used to call
+ * `apiPost('/documents/${id}/confirm')` / `apiPost('/documents/${id}/post')`
+ * — routes that don't exist (`/credit-notes/{id}/confirm|post` are the real
+ * ones, routes.php `credit-notes.confirm`/`credit-notes.post`). Every click
+ * 404d, unconditionally. Fixed in `CreditNoteDetailPage.tsx` (now calls
+ * `confirmCreditNote()`/`postCreditNote()` from `api/creditNotes.ts`, which
+ * hit the real routes) — this helper now drives the actual UI buttons
+ * instead of bypassing them via a direct API call, so the spec exercises the
+ * fix end-to-end.
  */
 export async function confirmAndPostCreditNote(page: Page, creditNoteId: string): Promise<Record<string, unknown>> {
-  const confirmRes = await apiRequest(page, 'POST', `/credit-notes/${creditNoteId}/confirm`)
-  expect(confirmRes.status, `credit note confirm -> ${confirmRes.status} ${JSON.stringify(confirmRes.body)}`).toBeLessThan(300)
+  await page.goto(`/sales/credit-notes/${creditNoteId}`)
+  await page.getByRole('button', { name: 'Confirm', exact: true }).first().click({ timeout: 30000 })
+  const [confirmResponse] = await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/api/v1/credit-notes/${creditNoteId}/confirm` && r.request().method() === 'POST'
+    ),
+    page.getByRole('button', { name: 'Confirm', exact: true }).last().click(),
+  ])
+  expect(confirmResponse.ok(), `credit note confirm -> ${confirmResponse.status()} ${await confirmResponse.text()}`).toBeTruthy()
 
-  const postRes = await apiRequest(page, 'POST', `/credit-notes/${creditNoteId}/post`)
-  expect(postRes.status, `credit note post -> ${postRes.status} ${JSON.stringify(postRes.body)}`).toBeLessThan(300)
-  const json = postRes.body as { data: Record<string, unknown> }
+  await page.getByRole('button', { name: 'Post', exact: true }).click({ timeout: 30000 })
+  const [postResponse] = await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/api/v1/credit-notes/${creditNoteId}/post` && r.request().method() === 'POST'
+    ),
+    page.getByRole('button', { name: 'Post Invoice' }).click(),
+  ])
+  expect(postResponse.ok(), `credit note post -> ${postResponse.status()} ${await postResponse.text()}`).toBeTruthy()
+  const json = (await postResponse.json()) as { data: Record<string, unknown> }
   return json.data
 }
 

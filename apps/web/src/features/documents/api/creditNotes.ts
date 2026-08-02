@@ -51,3 +51,27 @@ export async function createCreditNote(
 ): Promise<CreditNote> {
   return apiPost<CreditNote>('/credit-notes', request)
 }
+
+/**
+ * Confirm a draft credit note (Draft -> Confirmed).
+ *
+ * POST /api/v1/credit-notes/{id}/confirm
+ *
+ * NOTE: credit notes are a separate resource from `/documents` — there is no
+ * `/documents/{id}/confirm` route. Always go through this function (or the
+ * matching real route directly) rather than reusing the generic document
+ * confirm/post URL shape.
+ */
+export async function confirmCreditNote(id: string): Promise<CreditNote> {
+  return apiPost<CreditNote>(`/credit-notes/${id}/confirm`)
+}
+
+/**
+ * Post a confirmed credit note (Confirmed -> Posted), allocating it against
+ * its source invoice.
+ *
+ * POST /api/v1/credit-notes/{id}/post
+ */
+export async function postCreditNote(id: string): Promise<CreditNote> {
+  return apiPost<CreditNote>(`/credit-notes/${id}/post`)
+}
