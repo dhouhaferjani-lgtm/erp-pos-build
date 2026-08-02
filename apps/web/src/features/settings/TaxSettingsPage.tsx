@@ -11,6 +11,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { usePermissions } from '../../hooks/usePermissions'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors, semanticColorTokens as colorTokens } from '../../lib/designTokens'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/molecules/Tabs'
@@ -70,6 +71,12 @@ export function TaxSettingsPage() {
   const { t } = useTranslation(['settings', 'common', 'sales'])
   const { currentCompany } = useCompany()
   const queryClient = useQueryClient()
+  const { hasPermission } = usePermissions()
+  // ORCHESTRATOR RULING (F1, 2026-08-02): company-wide config writes are
+  // admin-only via settings.update. settings.view holders (e.g. manager,
+  // viewer) may still read this tab — only the mutation affordance is
+  // disabled, not the page.
+  const canEdit = hasPermission('settings.update')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -342,7 +349,8 @@ export function TaxSettingsPage() {
               </Link>
               <Button
                 type="submit"
-                disabled={!isDirty || updateMutation.isPending}
+                disabled={!isDirty || updateMutation.isPending || !canEdit}
+                title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
                 className="gap-2"
               >
                 <Save className="h-4 w-4" />

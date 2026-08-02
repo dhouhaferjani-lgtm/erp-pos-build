@@ -15,6 +15,7 @@ import { MoneyInput } from '../../../components/atoms/MoneyInput'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { usePermissions } from '../../../hooks/usePermissions'
 
 interface Company {
   id: string
@@ -87,6 +88,12 @@ export function InventorySettings() {
   const { t } = useTranslation(['common', 'inventory'])
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const { hasPermission } = usePermissions()
+  // ORCHESTRATOR RULING (F1, 2026-08-02): company-wide config writes are
+  // admin-only via settings.update. settings.view holders (e.g. manager,
+  // viewer) may still read this tab — only the mutation affordance is
+  // disabled, not the page.
+  const canEdit = hasPermission('settings.update')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -455,7 +462,8 @@ export function InventorySettings() {
         )}
         <Button
           onClick={() => { void handleSave() }}
-          disabled={!hasChanges || saveMutation.isPending || saveReservationMutation.isPending}
+          disabled={!hasChanges || saveMutation.isPending || saveReservationMutation.isPending || !canEdit}
+          title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
           size="md"
         >
           <Save className="mr-2 h-4 w-4" />

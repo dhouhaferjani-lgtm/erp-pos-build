@@ -49,3 +49,44 @@ requirements is itself a latent risk regardless of which one is fixed.
 Not fixed here (money-campaign agent scope is spec-only, no product-code edits). P0 — pre-launch
 authorization gap on tenant-wide fiscal/discount configuration; recommend triage before any
 external tenant onboarding. Live evidence pinned in `MTP-CFG-13`.
+
+## FIXED — 2026-08-02 (commit `b9c0bd37a`)
+
+`PUT /companies/{companyId}` now carries `->middleware('can:settings.update')`
+(`apps/api/app/Modules/Company/routes.php`), matching `PATCH /settings/company`. The same audit
+gated the two sibling ungated mutations found in the same route file: `PUT
+.../reservation-settings` and `PUT .../receipt-settings`. TDD coverage:
+`apps/api/tests/Feature/Company/CompanyUpdateAuthorizationTest.php` (viewer/cashier 403,
+admin 200, across all three routes). `MTP-CFG-13` flipped from tripwire to regression assertion.
+
+Gate review `docs/superpowers/reviews/2026-08-02-authz-fixlane-gate.md` (tenancy-authz-reviewer,
+APPROVE-WITH-FIXES) raised F9: this ticket's "Fix direction" asked for an explicit
+orchestrator/product ruling on the two-routes-same-fields question, which the fix commit did not
+record. Ruling recorded here per that review, plus the F1 ORCHESTRATOR RULING it depends on:
+
+- **F1 ruling (writes admin-only):** company-wide config writes across all of `PUT
+  /companies/{id}`, `PUT .../reservation-settings`, `PUT .../receipt-settings`, `PATCH
+  /settings/company`, and `POST /settings/company/logo` are **admin-only** via `settings.update`.
+  The pre-fix state (any authenticated tenant user could write) was the anomaly, not an implied
+  `manager` entitlement — `manager` holds `settings.view`/`settings.manage` but was never granted
+  `settings.update` in `RolesAndPermissionsSeeder.php`. `settings.view`/`settings.manage` holders
+  (manager, viewer) keep read access to every affected screen; only the mutation affordance is
+  restricted. FE reflects this: the Save/mutation controls on `TaxSettingsPage`,
+  `ReceiptSettingsTab` (in `CompanyPage`), `InventorySettings`, and `PosRefundPoliciesPage` are
+  now disabled (with a `common:permissions.readOnlyEditHint` tooltip) for any caller without
+  `settings.update`, while the pages themselves stay reachable for `settings.view` holders — see
+  commit following `10ad37743` (gate-review fixlane, F1/F5/F7/F9).
+- **F9 ruling (two routes, not retired):** `PUT /companies/{id}` and `PATCH /settings/company`
+  are kept as two distinct routes, NOT collapsed into one. They are not equivalent: only `PUT
+  /companies/{id}` accepts `tax_status`/margin fields and runs
+  `CompanyTaxStatusValidationService` (`CompanyController.php:207-211`); `PATCH
+  /settings/company` does not accept those fields at all
+  (`UpdateCompanySettingsRequest.php:27-48`). There is no validation-bypass today because both
+  routes now carry the identical `can:settings.update` gate. Retiring either route is deferred —
+  no product driver for the consolidation, and the fields-accepted difference means it is not a
+  pure duplication cleanup. Revisit if a third write path to `companies` is ever proposed.
+
+Follow-up findings from the same gate review (F2 read-side scoped DTO, F3 `POST /companies`
+gating, F4 PG-uuid-guard 500s, F6 inline-vs-route-level convention, F8 `MTP-PMT-05` vacuity
+hygiene, F10 rule-19 precision ceiling on `updateReservationSettings`) are tracked as follow-up
+tickets, not fixed in this lane.

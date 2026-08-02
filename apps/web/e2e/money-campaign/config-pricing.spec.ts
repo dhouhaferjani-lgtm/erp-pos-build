@@ -23,7 +23,6 @@ import {
   getCompany,
   putCompany,
   patchCompanySettings,
-  getOnboardingStatus,
   listPaymentMethods,
   createPaymentMethod,
   updatePaymentMethod,
@@ -88,18 +87,31 @@ test.describe('MTP-CFG — company money settings / setup checklist (W-2)', () =
     )
   })
 
-  test('MTP-CFG-14 (P1): /settings/setup (onboarding status) is readable at low privilege; each linked step still enforces its own destination-page gate', async ({ page }) => {
-    await loginAsRole(page, 'viewer')
-    const status = await getOnboardingStatus(page)
-    expect(status, 'onboarding status has no permission gate of its own (read-only progress view)').toBeTruthy()
+  test('MTP-CFG-14 (P1, FIXED): GET onboarding/status now requires settings.view — cashier is refused at both layers (API 403 + FE redirect)', async ({ page }) => {
+    // Originally this case asserted "onboarding status has no permission gate
+    // of its own" — that became FALSE once commit
+    // 10ad37743 (docs/superpowers/tickets/2026-08-02-settings-setup-route-ungated.md
+    // items 1+2) landed: GET /onboarding/status now carries `can:settings.view`
+    // middleware (Tenant/routes.php), and /settings/setup itself is wrapped in
+    // <RequirePermission moduleKey="settings"> (= settings.view) on the FE
+    // (routes/index.tsx). This case was flagged (gate review F5) as stale —
+    // re-pointed at `cashier` (holds NO settings.* permission per
+    // RolesAndPermissionsSeeder.php) to assert the fixed behaviour explicitly
+    // at both layers, instead of passing only incidentally because `viewer`
+    // happens to hold settings.view.
+    await loginAsRole(page, 'cashier')
 
-    // Spot-check ONE destination the checklist links to: payment methods
-    // management (a real settings.manage-adjacent surface) — viewer must
-    // still be refused there, proving the missing RequirePermission on
-    // /settings/setup itself is benign (per ticket
-    // 2026-08-02-settings-setup-route-ungated.md's own recommended check).
-    const pmAttempt = await createPaymentMethod(page, { code: uniq('CFG14'), name: 'CFG-14 probe method' })
-    expect(pmAttempt.status, 'viewer cannot create a payment method regardless of /settings/setup being ungated').toBe(403)
+    const res = await apiRequest(page, 'GET', '/onboarding/status')
+    expect(res.status, 'cashier holds no settings.* permission -> onboarding/status must 403').toBe(403)
+
+    // FE layer: RequirePermission redirects an unauthorized deep-link to
+    // /dashboard (RequirePermission.tsx) — /dashboard itself is not gated, so
+    // the redirect always lands cleanly.
+    await page.goto('/settings/setup')
+    await expect(page, 'cashier deep-linking to /settings/setup must be redirected to /dashboard').toHaveURL(
+      /\/dashboard/,
+      { timeout: 15_000 }
+    )
   })
 
   test('MTP-CFG-15 (P1): default_target_margin/default_minimum_margin enforce a 2dp ceiling — a 3rd decimal is refused (422)', async ({ page }) => {

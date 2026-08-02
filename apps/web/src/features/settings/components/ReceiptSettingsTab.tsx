@@ -16,6 +16,7 @@ import { Input } from '../../../components/atoms/Input'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { usePermissions } from '../../../hooks/usePermissions'
 
 /**
  * Countries that require VAT breakdown on receipts
@@ -106,6 +107,12 @@ function getPaymentDetailsOverride(countryCode: string | null): LegalOverrideInf
 export function ReceiptSettingsTab() {
   const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
+  const { hasPermission } = usePermissions()
+  // ORCHESTRATOR RULING (F1, 2026-08-02): company-wide config writes are
+  // admin-only via settings.update. settings.view/settings.manage holders
+  // (e.g. manager) may still read this tab — only the mutation affordance
+  // is disabled, not the page.
+  const canEdit = hasPermission('settings.update')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
@@ -375,7 +382,8 @@ export function ReceiptSettingsTab() {
         )}
         <Button
           type="submit"
-          disabled={saveMutation.isPending || !isDirty}
+          disabled={saveMutation.isPending || !isDirty || !canEdit}
+          title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
           size="md"
           className="gap-2"
         >

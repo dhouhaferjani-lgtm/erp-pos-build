@@ -1283,7 +1283,8 @@
       "reconcile": "Rapprocher",
       "export": "Exporter",
       "import": "Importer"
-    }
+    },
+    "readOnlyEditHint": "Vous disposez d'un accès en lecture seule à ce paramètre. Contactez un administrateur pour effectuer des modifications."
   },
   "commandPalette": {
     "placeholder": "Rechercher ou aller à…",

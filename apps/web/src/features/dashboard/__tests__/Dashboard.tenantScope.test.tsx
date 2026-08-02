@@ -39,7 +39,7 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-function setTenant(tenantId: string, companyId: string) {
+function setTenant(tenantId: string, companyId: string, roles: string[] = ['admin']) {
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -49,9 +49,10 @@ function setTenant(tenantId: string, companyId: string) {
       // The onboarding-status query is now gated on hasPermission('settings.view')
       // (docs/superpowers/tickets/2026-08-02-settings-setup-route-ungated.md item 3,
       // mirrors the backend `can:settings.view` gate on GET onboarding/status).
-      // 'admin' holds settings.view — needed so this test's assertion that the
-      // onboarding-status query actually fires (line below) stays valid.
-      roles: ['admin'],
+      // Default 'admin' holds settings.view — needed so this test's assertion that
+      // the onboarding-status query actually fires (line below) stays valid. Callers
+      // that want to exercise the disabled/skipped path pass a role without it.
+      roles,
       email_verified_at: null,
     },
     token: 'token',
@@ -179,5 +180,27 @@ describe('Dashboard tenant scope', () => {
 
     expect(await screen.findByRole('link', { name: /DN-001/ })).toHaveAttribute('href', '/inventory/delivery-notes/dn-1')
     expect(screen.getByRole('link', { name: /PAY-001/ })).toHaveAttribute('href', '/treasury/payments/payment-1')
+  })
+
+  // F7 (gate review docs/superpowers/reviews/2026-08-02-authz-fixlane-gate.md):
+  // the onboarding-status query being gated on hasPermission('settings.view')
+  // was previously only exercised indirectly (via the query firing for an
+  // 'admin' user). This asserts the actual fix — the query is SKIPPED
+  // entirely, not just failing server-side, for a caller without
+  // settings.view (cashier holds no settings.* permission whatsoever per
+  // RolesAndPermissionsSeeder.php).
+  it('skips the onboarding-status query entirely for a user without settings.view', async () => {
+    setTenant('tenant-A', 'company-1', ['cashier'])
+    const queryClient = createClient()
+    render(<Dashboard />, { wrapper: wrapper(queryClient) })
+
+    // Wait for the permitted queries to settle so we're not just observing
+    // an early, still-pending render.
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['dashboard', 'stats', 'tenant-A', 'company-1'])).toBeDefined()
+    })
+
+    expect(mockFetchOnboardingStatus).not.toHaveBeenCalled()
+    expect(queryClient.getQueryData(['onboarding-status', 'tenant-A', 'company-1'])).toBeUndefined()
   })
 })

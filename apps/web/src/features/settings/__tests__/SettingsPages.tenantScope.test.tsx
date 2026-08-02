@@ -80,7 +80,12 @@ function setTenant(tenantId: string, companyId: string) {
       name: 'User',
       email: 'user@example.test',
       tenant_id: tenantId,
-      roles: [],
+      // These tests click the TaxSettingsPage / InventorySettings Save
+      // buttons and expect the mutation to fire. Both are now disabled for
+      // callers without settings.update (ORCHESTRATOR RULING F1,
+      // 2026-08-02: company-wide config writes are admin-only) — 'admin'
+      // holds settings.update, keeping this test's click-through valid.
+      roles: ['admin'],
       email_verified_at: null,
     },
     token: 'token',

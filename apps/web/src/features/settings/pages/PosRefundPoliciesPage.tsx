@@ -99,7 +99,12 @@ function AccessDenied() {
 
 export function PosRefundPoliciesPage() {
   const { t } = useTranslation(['refund-policies', 'common'])
-  const { canAccessModule } = usePermissions()
+  const { canAccessModule, hasPermission } = usePermissions()
+  // ORCHESTRATOR RULING (F1, 2026-08-02): company-wide config writes are
+  // admin-only via settings.update. settings.view holders (e.g. manager,
+  // viewer) may still read this page — only the mutation affordance is
+  // disabled, not the page.
+  const canEdit = hasPermission('settings.update')
   const { data: settings, isLoading } = usePosRefundPolicies()
   const updateMutation = useUpdatePosRefundPolicies()
 
@@ -735,7 +740,8 @@ export function PosRefundPoliciesPage() {
           <Button
             type="submit"
             data-testid="save-button"
-            disabled={!isDirty || updateMutation.isPending}
+            disabled={!isDirty || updateMutation.isPending || !canEdit}
+            title={canEdit ? undefined : t('common:permissions.readOnlyEditHint')}
             className="gap-2"
           >
             {updateMutation.isPending ? (

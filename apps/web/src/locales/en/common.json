@@ -1266,7 +1266,8 @@
       "reconcile": "Reconcile",
       "export": "Export",
       "import": "Import"
-    }
+    },
+    "readOnlyEditHint": "You have view-only access to this setting. Contact an administrator to make changes."
   },
   "commandPalette": {
     "placeholder": "Search or jump to…",
