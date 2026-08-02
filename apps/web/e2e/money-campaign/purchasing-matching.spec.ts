@@ -152,12 +152,16 @@ test.describe('PUR — purchase order / goods receipt / supplier invoice matchin
     const original = await getProcurementPolicy(page)
     try {
       const setRes = await setProcurementPolicy(page, {
+        bill_control_mode: original.bill_control_mode,
         match_mode: original.match_mode,
         match_enforcement: 'block',
         variance_tolerance_percent: original.variance_tolerance_percent,
         variance_tolerance_max_amount: original.variance_tolerance_max_amount,
+        allow_receipt_first: original.allow_receipt_first,
+        allow_invoice_first: original.allow_invoice_first,
+        invoice_first_requires_approval: original.invoice_first_requires_approval,
       })
-      expect(setRes.ok, JSON.stringify(setRes.body)).toBeTruthy()
+      expect(setRes.status, JSON.stringify(setRes.body)).toBe(200)
 
       const { poId, lineId } = await setupReceivedPoLine(page, { supplierId, quantity: '10', unitPrice: '12.500', skuBase: 'PUR09' })
       const inv = await createSupplierInvoice(page, {
@@ -177,10 +181,14 @@ test.describe('PUR — purchase order / goods receipt / supplier invoice matchin
       expect(afterFailedPost.status, 'no GL leg: invoice must remain Draft after refused post').toBe('draft')
     } finally {
       await setProcurementPolicy(page, {
+        bill_control_mode: original.bill_control_mode,
         match_mode: original.match_mode,
         match_enforcement: original.match_enforcement,
         variance_tolerance_percent: original.variance_tolerance_percent,
         variance_tolerance_max_amount: original.variance_tolerance_max_amount,
+        allow_receipt_first: original.allow_receipt_first,
+        allow_invoice_first: original.allow_invoice_first,
+        invoice_first_requires_approval: original.invoice_first_requires_approval,
       })
     }
   })
@@ -217,6 +225,15 @@ test.describe('PUR — purchase order / goods receipt / supplier invoice matchin
     expect(firstPost.status, JSON.stringify(firstPost.body)).toBe(200)
 
     // Second invoice against the same (now fully-invoiced) receipt line: matchable = 0.
+    // NOTE (finding vs. plan wording): SupplierInvoiceMatcher::matchLines() Step 3
+    // ("Unreceived check", ~L366-374) treats matchable <= 0 with a positive attempted
+    // qty as `exception`, distinct from Step 4's `quantity_variance` (~L376-382),
+    // which only fires when matchable is still POSITIVE but the requested qty exceeds
+    // it (a partial over-clear). Here matchable is exactly 0 (fully consumed by the
+    // first invoice), so the correct/documented status is `exception`, not
+    // `quantity_variance` — both are HARD-blocked at post (severity exception(3) >
+    // quantity_variance(2), SupplierInvoiceMatcher.php:58-62), so the case's real
+    // assertion (post refused under warn) is unaffected.
     const secondInv = await createSupplierInvoice(page, {
       partnerId: supplierId,
       sourceDocumentIds: [poId],
@@ -224,7 +241,7 @@ test.describe('PUR — purchase order / goods receipt / supplier invoice matchin
     })
     expect(secondInv.status, 'create still succeeds as Draft; the HARD block is enforced at post').toBe(201)
     const secondCreated = await getSupplierInvoice(page, secondInv.id as string)
-    expect(secondCreated.match_status).toBe('quantity_variance')
+    expect(secondCreated.match_status).toBe('exception')
 
     const secondPost = await postSupplierInvoice(page, secondInv.id as string)
     expect(secondPost.status, 'HARD block applies under warn too (match_enforcement does not govern quantity violations)').toBe(422)

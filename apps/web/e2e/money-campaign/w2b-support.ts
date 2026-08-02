@@ -258,10 +258,17 @@ export interface StockLevelRow {
   quantity: string
 }
 
+/**
+ * GET /products/{id}/stock-levels (ProductController::stockLevels) does NOT return a
+ * bare array — its `data` is `{ locations: StockLevelRow[], totals: {...} }`
+ * (apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:1058-1068).
+ * Original spec code assumed `data` itself was the array and called `.reduce` on it,
+ * which throws `TypeError: levels.reduce is not a function` (spec-side bug, fixed here).
+ */
 export async function getStockLevels(page: Page, productId: string): Promise<StockLevelRow[]> {
   const res = await apiRequest(page, 'GET', `/products/${productId}/stock-levels`)
-  const body = res.body as { data?: StockLevelRow[] }
-  return body.data ?? []
+  const body = res.body as { data?: { locations?: StockLevelRow[] } }
+  return body.data?.locations ?? []
 }
 
 export async function getBatchStock(page: Page, productId: string): Promise<Array<Record<string, unknown>>> {
@@ -404,14 +411,14 @@ export async function setupReceivedPoLine(
     throw new Error(`setupReceivedPoLine: PO create failed: ${poRes.status} ${JSON.stringify(poRes.body)}`)
   }
   const confirmRes = await confirmPurchaseOrder(page, poRes.id)
-  if (!confirmRes.ok) {
+  if (confirmRes.status !== 200 && confirmRes.status !== 201) {
     throw new Error(`setupReceivedPoLine: PO confirm failed: ${confirmRes.status} ${JSON.stringify(confirmRes.body)}`)
   }
   const po = await getPurchaseOrder(page, poRes.id)
   const lines = po.lines as Array<{ id: string }>
   const lineId = lines[0].id
   const receiveRes = await receivePurchaseOrder(page, poRes.id, { quantities: { [lineId]: opts.quantity } })
-  if (!receiveRes.ok) {
+  if (receiveRes.status !== 200 && receiveRes.status !== 201) {
     throw new Error(`setupReceivedPoLine: receive failed: ${receiveRes.status} ${JSON.stringify(receiveRes.body)}`)
   }
   return { poId: poRes.id, lineId, productId }
