@@ -87,23 +87,22 @@ test.describe('AUTH — login / session basics', () => {
     expect(after.status).not.toBe(200)
   })
 
-  test('AUTH-09 EDGE (P1, defect discovery): TopBar "Sign out" is unreachable by a real mouse click', async ({ page }) => {
-    // Documents the click-interception defect described in helpers.ts `logout()`.
-    // Not an MTP case — found while implementing AUTH-08. Kept as its own case so
-    // the defect has an isolated, re-runnable repro independent of the API-level
-    // logout workaround used elsewhere in this file.
+  test('AUTH-09 EDGE (P1): TopBar "Sign out" is reachable by a real mouse click', async ({ page }) => {
+    // Was a defect-discovery tripwire (TopBar dropdown swallowed by <main>'s
+    // stacking order — see docs/superpowers/tickets/2026-08-02-topbar-dropdown-unclickable-zindex.md).
+    // Fixed by giving the dropdown containers an explicit z-index (TopBar.tsx). Flipped
+    // to assert the real, unforced click path now works end-to-end.
     await loginAsRole(page, 'owner')
     await page.getByRole('button', { name: /profile/i }).click()
     const signOut = page.getByRole('button', { name: /sign out/i })
     await expect(signOut).toBeVisible()
-    // A plain, unforced click is what a real user does. Expected (per the app's
-    // intent): navigates to /login. Actual: times out — pointer events on the
-    // overlapping region are captured by <main>, not the dropdown button.
-    await expect(async () => {
-      await signOut.click({ timeout: 3_000 })
-      await expect(page).toHaveURL(/\/login/, { timeout: 2_000 })
-    }).rejects.toThrow()
-    // Prove the page never navigated — the click was swallowed, not merely slow.
-    await expect(page).toHaveURL(/\/reports|\/dashboard/)
+    // A plain, unforced click — what a real user does — must now reach the button.
+    // A short timeout here is deliberate: this is the actual defect assertion (the
+    // old bug made this click time out at 3s via pointer-event interception, never
+    // even reaching the handler). Post-click navigation gets a longer budget below —
+    // this local single-process dev backend can be slow (POST /auth/logout + full
+    // window.location.href reload), matching this suite's other nav waits.
+    await signOut.click({ timeout: 3_000 })
+    await expect(page).toHaveURL(/\/login/, { timeout: 15_000 })
   })
 })

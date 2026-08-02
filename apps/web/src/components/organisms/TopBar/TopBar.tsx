@@ -129,7 +129,7 @@ export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
 
           {/* Language dropdown */}
           {isLangMenuOpen && (
-            <div className={`absolute end-0 mt-2 w-40 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
+            <div className={`absolute end-0 z-50 mt-2 w-40 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
               {languages.map((lang) => (
                 <button
                   key={lang.code}
@@ -169,7 +169,7 @@ export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
 
           {/* Dropdown menu */}
           {isMenuOpen && (
-            <div className={`absolute end-0 mt-2 w-48 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
+            <div className={`absolute end-0 z-50 mt-2 w-48 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
               <button
                 type="button"
                 onClick={handleSettingsClick}

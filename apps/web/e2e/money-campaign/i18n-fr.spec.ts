@@ -8,8 +8,10 @@ import { loginAsRole, FR_NBSP, normalizeSpaces } from './helpers'
  * Targets the live local stack, tenant demo-pharmacy-tn, owner@pharmabio.tn (I18N cases
  * are role-agnostic; the plan does not require cashier). Locale is switched via the
  * `?lang=` querystring (i18next detection order is querystring > localStorage > navigator,
- * confirmed in src/lib/i18n.ts) - this sidesteps a TopBar click-interception defect
- * documented below (I18N-04a) rather than depending on it.
+ * confirmed in src/lib/i18n.ts) for every case except I18N-04a, which now exercises the
+ * real TopBar language-menu click path directly (formerly a click-interception defect —
+ * see docs/superpowers/tickets/2026-08-02-topbar-dropdown-unclickable-zindex.md — fixed
+ * by an explicit z-index on the dropdown containers).
  *
  * Ground truth used throughout: /finance/trial-balance for demo-pharmacy-tn renders the
  * "401 Fournisseurs" row's CREDIT cell containing a grouped TND figure where the character
@@ -74,28 +76,25 @@ test.describe('I18N - fr-locale number formatting', () => {
     test.skip(true, 'demo-garage EUR company not seeded on this local stack')
   })
 
-  test('MTP-I18N-04a (P1): en<->fr switch via TopBar language menu - real mouse click is BLOCKED (same defect as AUTH-09)', async ({ page }) => {
+  test('MTP-I18N-04a (P1): en<->fr switch via TopBar language menu - real mouse click works', async ({ page }) => {
+    // Was a defect-discovery tripwire for the same root cause as AUTH-09 (the language
+    // dropdown was another un-z-indexed position:absolute TopBar child, captured by
+    // <main> underneath — see
+    // docs/superpowers/tickets/2026-08-02-topbar-dropdown-unclickable-zindex.md).
+    // Fixed by giving the dropdown containers an explicit z-index (TopBar.tsx). Flipped
+    // to assert the real, unforced click actually switches the UI language.
     await loginAsRole(page, 'owner')
     await page.goto('/finance/trial-balance')
     await expect(page.locator('tr', { hasText: 'Fournisseurs' }).first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('h1, h2').first()).toContainText(/trial balance/i)
+
     await page.getByRole('button', { name: /select language/i }).click()
     const frOption = page.getByText('Français', { exact: true })
     await expect(frOption).toBeVisible()
-    // Same root cause as AUTH-09 (documented in helpers.ts logout()): the language
-    // dropdown is another un-z-indexed position:absolute TopBar child, so a real,
-    // unforced click on "Francais" is captured by <main> underneath and never reaches
-    // it. Assert the failure mode directly rather than via a nested nowait/retry
-    // combinator (which proved fragile against this app's per-test 30s budget).
-    let clickError: unknown = null
-    try {
-      await frOption.click({ timeout: 5_000 })
-    } catch (e) {
-      clickError = e
-    }
-    expect(clickError).not.toBeNull()
-    expect(String(clickError)).toContain('intercepts pointer events')
-    // Prove nothing changed - the UI never actually left English.
-    await expect(page.locator('body')).toContainText('Trial Balance')
+    await frOption.click({ timeout: 5_000 })
+
+    // The UI must actually switch: the page heading translates to fr.
+    await expect(page.locator('h1, h2').first()).toContainText(/balance g.n.rale/i, { timeout: 5_000 })
   })
 
   // A7.2 (plan §A.7, ORCHESTRATOR RULING 2026-08-02): the plan's literal

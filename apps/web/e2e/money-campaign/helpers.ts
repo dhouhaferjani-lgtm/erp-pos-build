@@ -60,25 +60,24 @@ export async function loginAsRole(page: Page, role: Role): Promise<void> {
 /**
  * Log out.
  *
- * KNOWN DEFECT (recorded in the campaign results, NOT fixed here — this file must
- * not touch application code): TopBar's user-menu dropdown
- * (src/components/organisms/TopBar/TopBar.tsx) is `position: absolute` with NO
- * z-index, inside a sibling that precedes DashboardLayout's
- * `<main className="relative ...">` (src/components/templates/DashboardLayout/DashboardLayout.tsx:57).
- * Per CSS stacking rules, two positioned siblings with z-index:auto stack in DOM
- * order — <main> comes later, so it wins and silently swallows pointer events aimed
- * at the part of the dropdown that visually overlaps it. Confirmed two ways: (1) a
- * plain `.click()` times out after 30s reporting "<section> from <main> subtree
- * intercepts pointer events" even though the dropdown is plainly visible on top in
- * a screenshot; (2) even a synthetic `element.click()` dispatched directly on the
- * "Sign out" button node does not navigate away — something upstream of the
- * onClick handler never receives it either. Real mouse users cannot reliably use
- * this menu (Settings, Sign out, and — same pattern — the language switcher) on
- * any page tall enough for <main> to extend under the header, i.e. effectively
- * everywhere. This helper routes around it by calling the exact same request the
- * button calls (`POST /auth/logout`) and clearing the same client state
+ * FORMER DEFECT (fixed — see docs/superpowers/tickets/2026-08-02-topbar-dropdown-unclickable-zindex.md
+ * and AUTH-09 in auth-session.spec.ts, which now asserts the real UI click path
+ * directly): TopBar's user-menu dropdown (src/components/organisms/TopBar/TopBar.tsx)
+ * was `position: absolute` with NO z-index, inside a sibling that precedes
+ * DashboardLayout's `<main className="relative ...">`
+ * (src/components/templates/DashboardLayout/DashboardLayout.tsx:57). Per CSS
+ * stacking rules, two positioned siblings with z-index:auto stack in DOM order —
+ * <main> came later, so it won and silently swallowed pointer events aimed at the
+ * part of the dropdown that visually overlapped it. Fixed by adding an explicit
+ * z-index to the dropdown containers (matching the z-50 already used by
+ * CompanySelector/ViewScopePicker/QuickCreateButton). The real UI click path
+ * (Settings, Sign out, language switcher) now works for real mouse users.
+ * This helper is KEPT as a fast, direct-API fallback for every OTHER spec in this
+ * suite that just needs to log out as a setup step and doesn't care about
+ * exercising the UI click path itself — it calls the exact same request the
+ * button calls (`POST /auth/logout`) and clears the same client state
  * (`useLogout`/`clearAllAppState`), which still genuinely exercises server-side
- * session invalidation for every other spec that depends on being able to log out.
+ * session invalidation.
  */
 export async function logout(page: Page): Promise<void> {
   await apiRequest(page, 'POST', '/auth/logout')
