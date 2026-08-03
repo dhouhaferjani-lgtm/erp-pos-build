@@ -452,3 +452,349 @@ defect. Pre-existing and outside these two commits' diff — flagging for the la
    `payments.received`; the coordination-doc claim; the throw surface).
 
 **No merge, no push performed. Working tree left clean.**
+
+---
+
+# Re-check 423ea53e2
+
+**Date:** 2026-08-03 · **Scope:** `423ea53e2` only (Taxation-module work by a concurrent agent
+ignored) · **Mode:** read-only + independent re-probe of every claim.
+**Stack:** api :8010, `demo-pharmacy-tn`, tenant DB `tenant019fbe86-944a-7252-8a3b-8c341dfa9de9`.
+
+## VERDICT: **NOT-PROMOTABLE**
+
+Both original blockers (H1, M1) are **genuinely fixed and independently verified**. M2, M4, L1 and
+the documentation items are all correct. But the **L4 refund-netting fix introduces a new HIGH
+defect** — it double-subtracts every FULL refund — and its test only exercises the partial-refund
+shape, so nothing catches it. This is the same class of defect the whole lane exists to fix,
+re-created in the opposite direction. One blocker, narrowly scoped, with a clean fix.
+
+| Item | Claim | Independent verdict |
+|---|---|---|
+| **H1** pending = `SUM(balance_due)` Posted∪Paid | fixed | ✅ **VERIFIED** — SQL == API exactly |
+| **M1** `subMonthNoOverflow` + frozen-clock test | fixed | ✅ **VERIFIED** — red-checked |
+| **M2** `change: null` + FE em-dash | fixed | ✅ **VERIFIED** (⚠️ see N2 — mobile renders `"null %"`) |
+| **L4** refund netting | fixed | ❌ **NEW BLOCKER N1 — double-nets full refunds** |
+| **M4** `CAST(SUM(...) AS TEXT)` | fixed | ✅ **VERIFIED** — hydration eliminated |
+| **L1** six e2e mocks | fixed | ✅ **VERIFIED** — incl. the 6th I missed |
+| Pinning test rewritten, not deleted | claimed | ✅ **VERIFIED** |
+| Coordination record + mobile follow-up | claimed | ✅ **VERIFIED** (one inaccuracy — N2) |
+
+### Gate re-runs
+
+| Check | Result |
+|---|---|
+| `phpunit tests/Feature/Dashboard/DashboardStatsTest.php` | **13/13 pass**, 36 assertions |
+| `phpstan analyse app/Modules/Dashboard` (level 8) | **No errors** |
+| `pnpm typecheck` (apps/web) | **clean** |
+| `pnpm vitest run src/features/dashboard` | **10/10 pass** (7 dashboard, incl. the null case) |
+| M1 red check (revert `subMonthNoOverflow` → `subMonth`) | **new boundary test goes red** |
+| Live `GET /dashboard/stats` vs direct tenant-DB SQL | **exact match** on `pending` and `received` |
+
+Working tree restored to clean after both experiments (`git status` verified). No merge, no push.
+
+---
+
+## N1 — HIGH — **BLOCKER (new)** — refund netting double-subtracts every FULL refund
+
+`DashboardController.php:141` now admits `PaymentType::Refund` into the `paymentsReceived` sum:
+
+```php
+static fn (PaymentType $type): bool => $type->isIncoming() || $type === PaymentType::Refund
+```
+
+justified at `:133-140` by "refund `Payment` rows always carry a NEGATIVE `amount` by convention
+… so including `PaymentType::Refund` … nets them automatically — no sign-flipping needed here."
+
+**The sign-convention half of that claim is TRUE.** Verified in
+`apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php`: every refund row is
+written with a negated amount — `:164` (`refundPayment`), `:184` (allocation mirror), `:324`
+(`partialRefund`), `:955` (pro-rata unwind), `:1197`/`:1221` (POS). No exception found.
+
+**The netting half is FALSE for full refunds, because the original payment is also removed from
+the sum.** `refundPayment()` marks the original `Reversed`:
+
+```php
+// PaymentRefundService.php:213-216
+$original->update([
+    'status' => PaymentStatus::Reversed,
+    ...
+]);
+```
+
+`paymentsReceived` filters `status = Completed` (`DashboardController.php:150`). So for a
+same-month full refund of `X`:
+
+| Row | Old code | New code | Correct |
+|---|---|---|---|
+| Original `document_payment` `+X` → now `Reversed` | excluded | excluded | excluded ✅ |
+| Refund row `−X`, `Completed`, type `Refund` | excluded | **included** | must be excluded |
+| **Net contribution** | **0** ✅ | **−X** ❌ | **0** |
+
+The reversal is already expressed by the status flip; adding the negative row subtracts it a
+second time. `partialRefund()` is fine — `:350-352` updates only `notes`, so the original stays
+`Completed` and the negative row is the *only* expression of the refund. The fix therefore
+happens to be correct for partial refunds and wrong for full ones.
+
+### Live proof (demo-pharmacy-tn, this month)
+
+```sql
+select count(*) filter (where o.status='reversed')  as refunds_whose_original_is_reversed,
+       sum(r.amount) filter (where o.status='reversed') as double_netted,
+       count(*) filter (where o.status='completed') as partial_refunds,
+       sum(r.amount) filter (where o.status='completed') as correctly_netted
+from payments r join payments o on o.id = r.original_payment_id
+where r.payment_type='refund' and r.status='completed'
+  and r.payment_date >= date_trunc('month', now());
+```
+
+```
+ refunds_whose_original_is_reversed | double_netted | partial_refunds | correctly_netted
+------------------------------------+---------------+-----------------+------------------
+                                 17 |    -12650.000 |              21 |        -3450.000
+```
+
+| Quantity | Value (TND) |
+|---|---|
+| Gross completed incoming this month (reversed originals already excluded) | 66,765.979 |
+| Partial refunds — **correctly** netted | −3,450.000 |
+| Full refunds — **double**-netted (original already excluded) | −12,650.000 |
+| **API `payments.received` (probed)** | **50,665.979** |
+| **Correct net received** | **63,315.979** |
+
+Arithmetic closes exactly: `66,765.979 − 3,450.000 − 12,650.000 = 50,665.979`. The reported
+figure is **understated by 12,650.000 — ~20 % of a headline launch tile**, and the error grows
+with every full refund.
+
+### Why no test caught it
+
+`DashboardStatsTest.php:286-330` (`test_payments_received_nets_completed_refund_this_month`)
+creates a `+200.000` `DocumentPayment` that stays `Completed` and a `−80.000` `Refund`, asserting
+`'120.000'`. That is the **partial**-refund shape only. There is no case where the original is
+`PaymentStatus::Reversed` alongside its negative refund row — i.e. no test for
+`refundPayment()`'s actual output, which is the dominant path (17 of 38 refunds on the live
+tenant).
+
+### Required fix
+
+Exclude refund rows whose original payment is no longer `Completed` — the reversal is already
+accounted for by the original's exclusion. E.g. keep `Refund` in the type list but add
+`whereNotExists`/`whereHas` on `original_payment_id` requiring the original to still be
+`Completed`; or, equivalently, restrict the refund leg to rows whose original survives the same
+status filter. Then add the missing test case: original `Reversed` + refund `−X` ⇒ `received`
+contribution `0`.
+
+*(Note: `payments.received` can also now go negative in a refund-heavy month. With N1 fixed that
+is defensible as "net received"; flagging it only so the label/`0`-clamp question is a conscious
+choice rather than a side effect.)*
+
+---
+
+## H1 — VERIFIED FIXED
+
+`DashboardController.php:112-123` now computes
+`sumColumnAsString(Document … whereIn(status,[Posted,Paid]), 'balance_due')`, moved **outside**
+the `Payment`-class `try/catch` and with the `paymentsReceived` subtraction gone entirely.
+
+**Their SQL cross-check confirmed independently.** My own query, run fresh:
+
+```
+select coalesce(sum(balance_due),0) from documents
+where type='invoice' and status in ('posted','paid') and deleted_at is null;
+→ 31018.322
+```
+
+API `payments.pending` = **`"31018.322"`** — exact match.
+
+**Their explanation of the delta vs my earlier 27,842.672 is correct on both counts.** The
+tenant DB is being written to concurrently: between my first-round probe and now, posted invoices
+went 198 → 225 and posted invoice totals 57,307.441 → 63,711.671. My 27,842.672 was a snapshot of
+older data, not a competing answer. Re-measured now, posted `balance_due` 20,478.322 + paid
+10,540.000 = 31,018.322 ✅.
+
+**Their refusal to filter the paid-with-balance rows is the right call.** Verified: **23** `paid`
+invoices have `balance_due = total` (10,290.000), and 24 have `balance_due > 0` (10,540.000) — so
+one further row carries a 250.000 partial residual. Filtering these (`AND balance_due < total`, or
+excluding `Paid`) would paper over a data-integrity anomaly — a `Paid` invoice with an untouched
+`balance_due` is a seeder/treasury-allocation bug, and a KPI query that hides it removes the only
+place it is visible. Summing `balance_due` unconditionally is both the simpler rule and the
+honest one. Correctly escalated as a separate data question rather than patched here.
+
+**Tests:** the pinning test was **rewritten, not deleted** — renamed
+`test_payments_pending_derived_from_posted_and_paid_invoice_base` →
+`test_payments_pending_is_sum_of_balance_due_over_posted_and_paid_base`
+(`DashboardStatsTest.php:341-364`) with explicit `balance_due` fixtures and the asserted value
+corrected `'150.000'` → `'100.000'`. Plus a genuinely new case,
+`test_payments_pending_excludes_settled_prior_month_paid_invoice` (`:375-390`), pinning a settled
+prior-month `Paid` invoice at `0.000` — the exact scenario that produced the old ~2× inflation.
+All 7 original cases survive (13 tests total via `--list-tests`); nothing was dropped.
+
+---
+
+## M1 — VERIFIED FIXED
+
+`DashboardController.php:36-42` → `Carbon::now()->subMonthNoOverflow()` on both bounds, with the
+overflow mechanism documented in-line.
+
+**Red-checked, not taken on trust.** Reverting only those two calls to `subMonth()`:
+
+```
+1) …test_revenue_previous_month_window_does_not_overflow_at_month_end_boundary
+Failed asserting that two strings are identical.
+-'100.000'
++'125.000'
+```
+
+`revenue.previous` returns the *current* month's 125.000 — precisely the window collapse from the
+first-round finding. Restored immediately; tree clean.
+
+The new test (`DashboardStatsTest.php:459-481`) freezes at `2026-05-31 12:00:00` — the same
+boundary as my original repro — and puts the previous-month invoice at an unambiguous
+`2026-04-15` rather than a relative offset. `test_revenue_change_is_a_two_decimal_percent_string`
+(`:428`) is now frozen at `2026-06-15`, removing the original date-dependence. A `tearDown()`
+(`:36-43`) calls `Carbon::setTestNow()` so no frozen clock leaks into sibling tests — a
+correctness detail that is easy to omit and wasn't.
+
+---
+
+## M2 — VERIFIED FIXED (with one documentation inaccuracy, N2)
+
+**Backend** `DashboardController.php:65-77`: `$revenueChange = null` by default; the `bccomp(…) > 0`
+guard is retained, so `previous <= 0` (zero *or* negative) yields `null`. This is a **stricter**
+cutoff than `ExpenseAnalyticsService`'s `!== 0` — deliberate and documented at `:69-71`, and the
+better choice: `ExpenseAnalytics`'s `!== 0` would compute a delta against a negative baseline,
+whose sign is meaningless.
+
+**Frontend** `Dashboard.tsx:165-176`, `:252-269`: a three-way `undefined` / `null` / string split.
+`undefined` (no data yet) renders nothing; `null` renders `colorTokens.text.subtle` + **no arrow
+icon** + `—`; a string keeps the existing big.js sign/`formatPercent` path. The `typeof
+revenueChange === 'string'` guard at `:167` means `new Big()` can never receive `null`. Correct.
+
+**Test** `dashboard.test.tsx:173-202` asserts both the `—` text *and* the absence of
+`.lucide-trending-up` / `.lucide-trending-down` — it pins the arrow suppression, not just the
+glyph. Backend equivalents at `DashboardStatsTest.php:490-506` (previous = 0) and `:515-539`
+(previous **negative**) both assert `null`.
+
+### N2 — MEDIUM — deployed mobile renders the literal string `"null %"` on a first-month tenant
+
+The M2 ruling adds a value the deployed mobile client has never seen. Simulating
+`erp-mobile/src/lib/format.ts:20-23` and `app/(app)/index.tsx:58` verbatim:
+
+```
+null      -> "null %"     | changePositive= true
+"25.00"   -> "+25,00 %"   | changePositive= true
+"-10.50"  -> "-10,50 %"   | changePositive= false
+```
+
+`String(null)` → `"null"`, and `(null ?? 0) >= 0` → `true`, so the deployed app shows a **green ↑
+"null %"** — for exactly the brand-new-tenant first month that M2 exists to serve. Not a crash,
+but a visible garbage string, and a **regression** on the prior `"0 %"`.
+
+This makes two statements inaccurate:
+- `docs/superpowers/coordination/2026-08-03-dashboard-stats-api-shape-change.md` § "Who is
+  affected": "**Runtime impact on the currently-deployed mobile app**: verified non-breaking (no
+  `TypeError`, no white screen)". Literally true, but it hedges the null case only as a
+  *future* risk ("or crash on a `null` `change` it doesn't expect") — it is a *present*,
+  user-visible defect, and it is not a crash.
+- The first-round runtime walkthrough (§ D.1 above) predates the null ruling and no longer covers
+  the full value domain.
+
+**Not a blocker on its own** — but it changes the sequencing conclusion from § D.1: the mobile
+follow-up is no longer purely a type-honesty cleanup. Either land the mobile null-guard
+(follow-up items 2-4) alongside promotion, or accept `"null %"` on the mobile dashboard tab for
+any tenant without previous-month revenue. Both docs should be corrected to say so.
+
+---
+
+## M4 — VERIFIED FIXED
+
+New `sumColumnAsString()` (`DashboardController.php:209-227`) issues
+`CAST(COALESCE(SUM({$column}), 0) AS TEXT) as total_sum` via `selectRaw(…)->first()`. Checks:
+
+- **No float:** PG `SUM(numeric)` is exact; `CAST … AS TEXT` never yields scientific notation for
+  `numeric`. Result goes straight into `CurrencyScale::bcformatStrict(…, 3)` at `:225`.
+- **No hydration:** the first-round finding was that `pluck()` on a `decimal:3`-cast column takes
+  Eloquent's *expensive* path (`Builder.php:1091-1100`, one model per row). A single aggregate row
+  replaces it. `Document` declares no `$with`/`$appends` (verified), so `first()` triggers no
+  eager loads.
+- **Injection:** `$column` is a compile-time literal (`'total'`, `'balance_due'`) from within the
+  class; never request-derived. Documented at `:216-217`.
+- **Null-safety:** `COALESCE(…, 0)` plus `?? '0'` at `:225` — an aggregate with no `GROUP BY`
+  always returns one row, so `$result` cannot be null in practice; belt-and-braces is fine.
+- The `first()`-over-`value()` choice is explained at `:213-215` (`value()`'s column parameter is
+  typed against real model properties; `total_sum` is a raw alias). PHPStan level 8 clean.
+- Pattern precedent (`GeneralLedgerService::availableAdvanceCredit()`) cited — consistent.
+
+Endpoint timing on the live tenant is 0.27-0.89 s, unchanged within noise — expected, since the
+data set is small and latency is dominated by the other queries. The win is structural (the
+all-time `balance_due` scan no longer scales with row count in PHP memory), not visible at this
+size. `paymentsReceived` still uses `pluck()` + `sumDecimalStrings()` (`:146-155`) — inconsistent
+with the new helper but harmless (`payments.amount` sums are month-scoped); worth folding in when
+N1 is fixed, since that query is being touched anyway.
+
+---
+
+## L1 — VERIFIED FIXED, including the 6th mock
+
+All six now carry the string wire shape (`revenue: { current: '15000.000', previous: '12000.000',
+change: '25.00' }`, `payments: { received: '35000.000', pending: '8000.000' }`):
+
+`e2e/fixtures.ts:81`, `e2e/fixtures.ts:380`, `e2e/auth.spec.ts:162`, `e2e/company.spec.ts:72`,
+`e2e/company.spec.ts:189`, **`e2e/company.spec.ts:415`**.
+
+**The 6th is real and my first round genuinely missed it.** `company.spec.ts:406` routes
+`'**/api/v1/dashboard/**'` — a wildcard, not `/dashboard/stats` — so my
+`grep -rn "dashboard/stats"` could not have found it. Their catch, correctly credited.
+
+---
+
+## Documentation — VERIFIED
+
+**`docs/superpowers/coordination/2026-08-03-dashboard-stats-api-shape-change.md`** exists and is
+accurate: before/after table per field (including `change`'s `string | null`), the explicit note
+that `payments.*` are unchanged, the three bucket-definition changes, the affected-consumers list,
+and an honest "not yet promoted to `origin/dev`" status. Correctly scoped as the short-form
+contract with the ticket as the detailed punch list. Only defect is the runtime-impact wording in
+N2.
+
+**Ticket § MOBILE FOLLOW-UP** — every M3/D.2/D.3 correction landed and is accurate against the
+mobile repo (re-verified read-only):
+
+| Correction | Verdict |
+|---|---|
+| New item **1a** — `dashboardApi.test.ts:6`, `:20`, `:52-53` | ✅ my omission, now listed with the exact `typeof … 'number'` assertions |
+| New item **3a** — `format.test.ts:8` | ✅ listed |
+| JSDoc range `:3-8` → **`:3-10`** | ✅ corrected |
+| Item 5 "no change needed" → "Partially unchanged, NOT a blanket …" | ✅ retracted with reasoning |
+| L5 "no convention exists" retracted; `docs/superpowers/coordination/` named | ✅ corrected, precedent doc cited |
+| `change` typed `string \| null` in items 1/2/3/4 | ✅ propagated, incl. the null-guard-at-call-site instruction |
+
+Carry-overs L3 (multi-currency + scale resolver) and "revenue is gross of credit notes" are
+recorded in the ticket as explicitly-not-implemented, with the product rulings they need — the
+correct disposition. L2 (bucket-guard tests for `Cancelled` / posted credit note / pending clamp)
+remains open and is correctly distinguished from the credit-note carry-over.
+
+---
+
+## Disposition
+
+**One blocker: N1.** Everything else in this round is correct and independently verified — H1 and
+M1 are properly fixed (both red-checked or SQL-confirmed), the pinning test was rewritten rather
+than deleted, and the documentation corrections are complete and honest.
+
+**Required before promotion**
+1. **N1** — stop double-subtracting full refunds: exclude refund rows whose original payment is
+   no longer `Completed`, and add the missing test (original `Reversed` + refund `−X` ⇒ `0`
+   contribution). Currently understating `payments.received` by 12,650.000 (~20 %) on the live
+   tenant.
+
+**Should accompany promotion**
+2. **N2** — correct the "verified non-breaking" wording in the coordination doc and § D.1, and
+   decide the sequencing: ship the mobile null-guard with this, or knowingly accept `"null %"` on
+   the deployed mobile dashboard for first-month tenants.
+
+**Carry over** — L2 bucket-guard tests; L3 multi-currency + scale resolver; revenue gross of
+credit notes; the `paid`-with-`balance_due` data anomaly (already ticketed separately); folding
+`paymentsReceived` onto `sumColumnAsString`; the `received`-can-go-negative labelling question.
+
+**No merge, no push performed. Working tree left clean.**
