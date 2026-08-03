@@ -661,14 +661,36 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      * (`PaymentOrigin::Pos`) reversed through this generic admin path still
      * reverses PRODUCT REVENUE, not the customer receivable account (which
      * would be wrong for a POS sale that was never on account).
+     *
+     * N2 fix (2026-08-02 minor-followups ticket): the `DB::transactionLevel()`
+     * guard below only proves SOME transaction is open — it is inert under
+     * `RefreshDatabase` (level is always >= 1 in tests) and does nothing to
+     * stop this port cancelling a `Received` instrument whose payment is
+     * still `Completed` and not actually being reversed by anyone; that was
+     * prevented only by convention (the sole caller flips the payment to
+     * `Reversed` in the SAME transaction right after this call returns — so
+     * at call time the payment is ALWAYS `Completed` by design). Assert that
+     * precondition explicitly: the linked payment must exist and be
+     * `Completed` (`PaymentStatus::canReverse()`); anything else (already
+     * `Reversed`/`Failed`/`Pending`, or no linked payment at all) means this
+     * call is not part of a legitimate in-flight reversal.
+     *
+     * N3 fix (same ticket): scope the instrument lookup by tenant/company —
+     * cheap insurance against a future caller passing a cross-tenant or
+     * cross-company instrument id (currently safe only via db-per-tenant
+     * connection isolation + the single internal caller).
      */
-    public function cancelForPaymentReversal(string $instrumentId, ?string $userId, string $reason): void
+    public function cancelForPaymentReversal(string $instrumentId, string $tenantId, string $companyId, ?string $userId, string $reason): void
     {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('cancelForPaymentReversal() must be called inside an open DB transaction (the caller\'s payment-reversal transaction) — it does not open its own, so the instrument cancellation and the caller\'s payment-status flip must commit or roll back together.');
         }
 
-        $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId);
+        $instrument = PaymentInstrument::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->lockForUpdate()
+            ->findOrFail($instrumentId);
         if ($instrument->direction === InstrumentDirection::Outbound) {
             throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
         }
@@ -677,7 +699,14 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
         }
 
         $payment = $instrument->payment()->first();
-        $shape = $payment?->origin === PaymentOrigin::Pos
+        if ($payment === null || ! $payment->status->canReverse()) {
+            throw new DomainException(
+                'cancelForPaymentReversal() requires the instrument\'s linked payment to be Completed (in the process of being reversed by the caller); found '
+                .($payment?->status->value ?? 'no linked payment').'.'
+            );
+        }
+
+        $shape = $payment->origin === PaymentOrigin::Pos
             ? CancellationShape::PosRevenue
             : CancellationShape::B2b;
 

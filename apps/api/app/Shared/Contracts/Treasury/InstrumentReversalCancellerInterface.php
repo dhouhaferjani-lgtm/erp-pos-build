@@ -49,13 +49,34 @@ interface InstrumentReversalCancellerInterface
      * `Reversed` itself, in the SAME transaction, immediately after this
      * call returns.
      *
+     * N2 hardening (2026-08-02 minor-followups ticket): the tx-level guard
+     * above is unverifiable under `RefreshDatabase` (level is always >= 1 in
+     * tests) and only proves SOME transaction is open, not that THIS call is
+     * part of an in-flight reversal — without a further check the port could
+     * cancel a `Received` instrument whose payment is still `Completed` and
+     * never being reversed at all, prevented previously only by convention
+     * (the sole caller flips the payment status right after this call
+     * returns). Implementations MUST assert a real, testable domain
+     * precondition: the instrument's linked payment must exist and be
+     * `Completed` (`PaymentStatus::canReverse()`) — anything else (already
+     * `Reversed`/`Failed`/`Pending`, or no linked payment) throws
+     * `\DomainException`.
+     *
+     * N3 hardening (same ticket): implementations MUST scope the instrument
+     * lookup by `tenant_id`/`company_id` — cheap insurance against a future
+     * caller passing a cross-tenant/cross-company instrument id.
+     *
      * @param  string  $instrumentId  Treasury `payment_instruments.id` (UUID).
+     * @param  string  $tenantId  Tenant scope for the instrument lookup (N3).
+     * @param  string  $companyId  Company scope for the instrument lookup (N3).
      * @param  string|null  $userId  Actor recorded on the GL entry / audit event.
      * @param  string  $reason  Free-text audit reason, persisted on the
      *                          `InstrumentEvent` row.
      *
-     * @throws \DomainException When the instrument is outbound, or not currently `Received`.
+     * @throws \DomainException When the instrument is outbound, not currently
+     *                          `Received`, or its linked payment is not
+     *                          `Completed` (N2).
      * @throws \LogicException When called outside an open DB transaction.
      */
-    public function cancelForPaymentReversal(string $instrumentId, ?string $userId, string $reason): void;
+    public function cancelForPaymentReversal(string $instrumentId, string $tenantId, string $companyId, ?string $userId, string $reason): void;
 }

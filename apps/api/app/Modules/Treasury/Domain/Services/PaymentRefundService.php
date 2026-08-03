@@ -804,6 +804,8 @@ class PaymentRefundService
         if ($instrument->status === InstrumentStatus::Received) {
             $this->instrumentReversalCanceller->cancelForPaymentReversal(
                 $instrument->id,
+                $payment->tenant_id,
+                $payment->company_id,
                 $userId,
                 "Auto-cancelled while reversing payment {$payment->reference}: {$reason}",
             );
