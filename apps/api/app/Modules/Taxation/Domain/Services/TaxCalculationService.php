@@ -130,16 +130,28 @@ class TaxCalculationService
             $rateFraction = bcdiv((string) $rate, '100', 6);
             /** @var numeric-string $taxAccumulator */
             $taxAccumulator = '0';
+            // Per-rate taxable base: the NET total of ONLY the lines carrying
+            // this rate, not the whole-document subtotal. Accumulated at
+            // scale+1 alongside the tax itself and rounded ONCE, symmetric
+            // with $taxAccumulator, so Σ(rateBase) across every LINE_ITEMS
+            // rate group == $subtotal exactly whenever every line carries a
+            // taxed (non-zero) rate. Fixes the VAT-declaration base
+            // overstatement: this row's tax_base must be the base ACTUALLY
+            // taxed at this rate, not Σ every line regardless of rate.
+            /** @var numeric-string $rateBaseAccumulator */
+            $rateBaseAccumulator = '0';
             foreach ($linesWithRate as $line) {
                 // Tax base is the NET line (gross − line discount), computed
                 // at scale+1 to keep the 4th quantity decimal alive. For a
                 // line with no discount calculateTotal() == bcmul(qty, price,
                 // scale+1), so undiscounted lines are byte-identical.
                 $lineSubtotal = $line->calculateTotal($scale + 1);
+                $rateBaseAccumulator = bcadd($rateBaseAccumulator, $lineSubtotal, $scale + 1);
                 $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
                 $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
             }
             $taxAmount = CurrencyScale::bcformat($taxAccumulator, $scale);
+            $rateBase = CurrencyScale::bcformat($rateBaseAccumulator, $scale);
 
             $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, $scale);
 
@@ -151,7 +163,7 @@ class TaxCalculationService
                     type: $matchingConfig->tax_type,
                     rate: $matchingConfig->percentage_rate,
                     fixedAmount: $matchingConfig->fixed_amount,
-                    base: $subtotal,
+                    base: $rateBase,
                     amount: $taxAmount,
                     sequenceOrder: $matchingConfig->sequence_order,
                     isStampDuty: $matchingConfig->is_stamp_duty,
@@ -179,7 +191,7 @@ class TaxCalculationService
                     type: TaxType::Percentage,
                     rate: $rateStr,
                     fixedAmount: null,
-                    base: $subtotal,
+                    base: $rateBase,
                     amount: $taxAmount,
                     sequenceOrder: 0,
                     isStampDuty: false,
