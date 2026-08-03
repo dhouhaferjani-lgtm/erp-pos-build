@@ -6,8 +6,10 @@
  * flow 38 ("Replenishment queue -> capture -> PO") and the real route surface.
  *
  * Live local stack, tenant demo-pharmacy-tn, real login, real backend. Own products per
- * case; every request this wave raises is RETIRED (cancelled or consumed into a PO) so the
- * replenishment queue a later wave reads is not polluted with W-4 probes.
+ * case; every request this wave raises is RETIRED — cancelled while PENDING, rejected once
+ * IN_PROGRESS — and every purchase order it sources is deleted, so neither the
+ * replenishment queue nor the open-commitment reads a later wave performs are polluted
+ * with W-4 probes.
  */
 import { test, expect } from '@playwright/test'
 import { loginAsRole, apiRequest } from './helpers'
@@ -150,9 +152,34 @@ test.describe('REP — replenishment capture -> queue -> purchase order', () => 
     // tax rate, so pricing the line later yields VAT.
     expect(lines[0].tax_rate, 'a replenishment-sourced line carries the default rate').toBe('19.00')
 
-    const after = await findRequest(page, row.id)
-    expect(after, 'the request stays visible on the queue while it is being sourced').toBeDefined()
-    expect((after as RepRow).status, 'no longer pending — it is bound to a document').toBe('in_progress')
+    try {
+      const after = await findRequest(page, row.id)
+      expect(after, 'the request stays visible on the queue while it is being sourced').toBeDefined()
+      expect((after as RepRow).status, 'no longer pending — it is bound to a document').toBe('in_progress')
+    } finally {
+      // Retire BOTH artifacts: the draft PO (a zero-value open commitment W-6 would read)
+      // and the request it bound. Order matters — the PO is deleted first so the request
+      // is no longer bound when it is cancelled.
+      const delPo = await apiRequest(page, 'DELETE', `/purchase-orders/${documentId}`)
+      expect(delPo.status, `sourced draft PO cleanup: ${JSON.stringify(delPo.body)}`).toBeLessThan(300)
+      const remaining = await findRequest(page, row.id)
+      if (remaining !== undefined && remaining.status !== 'cancelled' && remaining.status !== 'rejected') {
+        // `cancel` is PENDING-only (ReplenishmentRequestController::cancel():141
+        // `abort_unless($row->status === Pending, 422)`); the reject action is the one
+        // that accepts an already-sourced row (openRequests() scopes to Pending +
+        // InProgress, ReplenishmentFulfillmentService.php:222-229).
+        const retire =
+          remaining.status === 'pending'
+            ? await cancelReplenishment(page, row.id)
+            : await replenishmentReject(page, [row.id], 'W4 cleanup: sourcing document deleted')
+        expect(retire.status, `sourced request cleanup: ${JSON.stringify(retire.body)}`).toBeLessThan(300)
+      }
+      const gone = await findRequest(page, row.id)
+      expect(
+        gone === undefined || gone.status !== 'in_progress',
+        'no W-4 replenishment request is left bound to a deleted document'
+      ).toBe(true)
+    }
   })
 
   test('MTP-REP-04 (P1): reject and permission dispositions are recorded, and the queue is denied to a viewer', async ({ page }) => {

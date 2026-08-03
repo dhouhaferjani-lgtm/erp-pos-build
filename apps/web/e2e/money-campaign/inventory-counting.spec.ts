@@ -28,6 +28,8 @@ import {
   finalizeCounting,
   getCounting,
   cancelCounting,
+  stockMovements,
+  queryRows,
   addMoney,
   uniq4,
 } from './w4-support'
@@ -158,10 +160,10 @@ test.describe('INV — counting -> discrepancy report -> apply', () => {
     }
   })
 
-  test('MTP-INV-18 (P0): a correction that would drive stock negative is blocked at apply — no negative stock', async ({ page }) => {
-    // Arrange the ONLY deterministic web path to the negative-at-apply guard: count a
-    // shortage, then consume the stock BEFORE finalizing, so the recorded correction
-    // (-5) is larger than what remains (1) at apply time.
+  test('MTP-INV-18 (P0) PARTIAL: a correction that would drive stock negative posts NOTHING — the pre-apply guard holds', async ({ page }) => {
+    // Arrange the only deterministic web construction of the scenario: count a shortage,
+    // then consume the stock BEFORE finalizing, so the recorded correction (-5) is larger
+    // than what remains (1) at apply time.
     const p = await createW4Product(page, 'INV18')
     expect((await poAndReceive(page, { supplierId, productId: p.id, quantity: '7', unitPrice: '2.000' })).receiveStatus).toBe(200)
 
@@ -182,33 +184,91 @@ test.describe('INV — counting -> discrepancy report -> apply', () => {
     expect((await completeStockTransfer(page, tr.id as string)).status).toBe(200)
 
     const fin = await finalizeCounting(page, countingId)
-    // Whatever the disposition (refused up front, or applied with the offending line
-    // held back), the invariant is the same: warehouse stock must never go negative.
-    expect(fin.status, `finalize disposition recorded: ${fin.status} ${JSON.stringify(fin.body)}`).toBeDefined()
+    // A real assertion, not `toBeDefined()`: on this path finalize itself SUCCEEDS — the
+    // guard lives in the apply, not in the transition.
+    expect(fin.status, `finalize: ${fin.status} ${JSON.stringify(fin.body)}`).toBeLessThan(400)
 
-    await page.waitForTimeout(4000)
+    // The apply runs in ApplyStockAdjustmentsOnCountingCompleted, which is ShouldQueue —
+    // a fixed sleep would let this case "pass" under load having tested nothing. Poll for
+    // a signal that the apply actually RAN, and FAIL if neither terminal signal arrives:
+    //   (a) the item carries a blocking flag  -> the apply ran and held the line, OR
+    //   (b) an `adjustment` movement exists   -> the apply ran and posted.
+    // "Neither" means the worker never processed the job, which must be a failure.
+    // The flag is read from the item row: the report's `flagged_items` surfaces the item
+    // as soon as `is_flagged` flips but was observed carrying a null `flag_reasons`
+    // moments later, so the row is the definitive source (plan §3 evidence rule).
+    const flagReasons = (): string[] => {
+      const rows = queryRows(
+        `select coalesce(i.flag_reasons::text, '') from inventory_counting_items i where i.counting_id = '${countingId}'`
+      )
+      return rows.flatMap((row) => {
+        try {
+          return JSON.parse(row[0] || '[]') as string[]
+        } catch {
+          return []
+        }
+      })
+    }
+    const adjustmentPosted = async (): Promise<boolean> => {
+      const mv = await stockMovements(page, `?product_id=${p.id}`)
+      return ((mv.body as { data?: Array<{ movement_type: string }> }).data ?? []).some((m) => m.movement_type === 'adjustment')
+    }
+
+    await expect
+      .poll(async () => flagReasons().length > 0 || (await adjustmentPosted()), {
+        message:
+          'the queued apply never produced a terminal signal (no blocking flag, no adjustment movement) — ' +
+          'the job did not run, so this case proved nothing',
+        timeout: 90_000,
+        intervals: [1000, 2000, 3000, 5000],
+      })
+      .toBe(true)
+
+    const reasons = flagReasons()
+    const posted = await adjustmentPosted()
+
+    // THE MONEY INVARIANT — nothing was posted, and no location is negative.
+    expect(posted, 'a blocked line posts no movement — nothing was applied').toBe(false)
     const levels = await getStockLevels(page, p.id)
-    const wh = levels.find((l) => l.location_id === WAREHOUSE_LOCATION_ID)
-    const whQty = wh === undefined ? 0 : Number(wh.quantity)
-    expect(whQty, 'the negative-at-apply guard must hold the line — never a negative stock level').toBeGreaterThanOrEqual(0)
     for (const l of levels) {
       expect(Number(l.quantity), `location ${l.location_id} must not be negative`).toBeGreaterThanOrEqual(0)
     }
+    const wh = levels.find((l) => l.location_id === WAREHOUSE_LOCATION_ID)
+    expect(wh === undefined ? 0 : Number(wh.quantity), 'the warehouse row is untouched at the 1 unit the transfer left').toBe(1)
+    expect(reasons.length, 'the line is held for manual review, not silently dropped').toBeGreaterThanOrEqual(1)
 
-    if (fin.status >= 400) {
-      const c = await cancelCounting(page, countingId)
-      expect(c.status, 'refused counting cancelled so it holds no stock block').toBeLessThan(300)
-    }
+    // PARTIAL — which guard fired, disclosed rather than glossed.
+    //
+    // The plan names the `negative_at_apply` arm
+    // (ApplyStockAdjustmentsOnCountingCompleted.php:259-262). That arm is SHADOWED on
+    // every construction this surface allows: `applyReplay()` runs the basket-window
+    // pre-check FIRST (:224-230), and making the correction exceed the remaining stock
+    // REQUIRES moving stock between count and apply — which is exactly what the
+    // basket-window guard detects. Verified live: with the default 15-minute window AND
+    // with `ambiguity_window_minutes: 0`, the recorded reason is `basket_window` both
+    // times. Both arms have the same money contract (nothing posted, line flagged for
+    // review, stock never negative), which is what is asserted above.
+    expect(reasons, 'the pre-apply guard is what holds the line on this construction').toContain('basket_window')
+    test.info().annotations.push({
+      type: 'PARTIAL',
+      description:
+        'The specific `negative_at_apply` flag arm is unreachable from the web surface: the basket-window ' +
+        'pre-check (ApplyStockAdjustmentsOnCountingCompleted.php:224-230) fires first for any scenario in ' +
+        'which stock moves between count and apply, and that movement is what makes the correction exceed ' +
+        'remaining stock in the first place. Confirmed with ambiguity_window_minutes 15 and 0. The money ' +
+        'contract (nothing posted, no negative stock, line held for review) IS asserted.',
+    })
   })
 
   test('MTP-INV-19 (P1): BLOCKED — onboarding opening via counting is not reachable on a bounded scope', async () => {
     // The onboarding/opening arm of the counting apply
-    // (InventoryCountingService::assertOpeningCostsResolved() + the `openingUnitCost`
+    // (InventoryCountingService::assertOpeningCostsResolved(), called :1040 / defined :1187,
+    // + the `openingUnitCost`
     // blend) requires the counting to SEED an item for a product that has no
     // `stock_levels` row yet. Only the whole-location seeding path does that:
-    // `catalogItemSeeds()` (InventoryCountingService.php:441-495) is reached exclusively
+    // `catalogItemSeeds()` (InventoryCountingService.php:451-495) is reached exclusively
     // for `full_inventory` / `location` scope types, and `resolveIncludesZeroStock()`
-    // (:183-199) documents that "only whole-location scopes qualify". A
+    // (:195-210) documents that "only whole-location scopes qualify". A
     // `product_location` scope — the only bounded scope this campaign may safely use —
     // seeds from `stock_levels` alone, so a zero-stock product yields ZERO items and the
     // count cannot be entered. Verified live: a fresh product in a freshly created

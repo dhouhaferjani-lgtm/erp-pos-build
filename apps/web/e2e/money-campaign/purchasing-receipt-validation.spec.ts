@@ -12,7 +12,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { loginAsRole, apiRequest } from './helpers'
-import { createSupplier, createSupplierInvoice, postSupplierInvoice, getStockLevels, WAREHOUSE_LOCATION_ID } from './w2b-support'
+import { createSupplier, createSupplierInvoice, postSupplierInvoice, getStockLevels, getPurchaseOrder, WAREHOUSE_LOCATION_ID } from './w2b-support'
 import { createW4Product, costPrice, poAndReceive, standaloneReceipt, partnerBalance, uniq4, today } from './w4-support'
 
 test.describe.configure({ timeout: 180_000 })
@@ -41,21 +41,56 @@ test.describe('PUR — money / quantity validation ceilings (23..27)', () => {
   })
 
   test('MTP-PUR-23 (P1): unit price 12.5001 (4 dp) is REJECTED, not truncated', async ({ page }) => {
+    // The "nothing persisted" half of this case needs a probe that can actually SEE a PO
+    // if one were created. `?search=` matches `document_number` ONLY
+    // (HandlesDocuments::applySearchFilter():198-201), so searching by a product UUID
+    // returns 0 rows whether or not the PO exists — a vacuous probe. `?partner_id=`
+    // is a real column filter (HandlesDocuments::applyFilters():153-155), so this case
+    // uses a DEDICATED supplier and asserts on that supplier's PO list, with a positive
+    // control proving the probe is not vacuous.
+    const dedicated = await createSupplier(page, uniq4('PUR23-Supplier'))
     const { id: productId } = await createW4Product(page, 'PUR23')
-    const res = await postPoLine(page, {
-      product_id: productId,
-      description: '4dp price',
-      quantity: '1',
-      unit_price: '12.5001',
-      tax_rate: '19.00',
+
+    const before = await apiRequest(page, 'GET', `/purchase-orders?partner_id=${dedicated}`)
+    expect(before.status, JSON.stringify(before.body)).toBe(200)
+    expect(((before.body as { data?: unknown[] }).data ?? []).length, 'dedicated supplier starts with no POs').toBe(0)
+
+    const res = await apiRequest(page, 'POST', '/purchase-orders', {
+      partner_id: dedicated,
+      document_date: today(),
+      location_id: WAREHOUSE_LOCATION_ID,
+      lines: [{ product_id: productId, description: '4dp price', quantity: '1', unit_price: '12.5001', tax_rate: '19.00' }],
     })
     expect(res.status, JSON.stringify(res.body)).toBe(422)
     expect(JSON.stringify(res.body)).toMatch(/at most 3 decimal places/i)
 
     // Nothing persisted: a silently-truncated 12.500 would be a money-integrity hole.
-    const list = await apiRequest(page, 'GET', `/purchase-orders?search=${productId}`)
-    const rows = (list.body as { data?: unknown[] }).data ?? []
-    expect(rows.length, 'no PO created by the rejected request').toBe(0)
+    const after = await apiRequest(page, 'GET', `/purchase-orders?partner_id=${dedicated}`)
+    expect(((after.body as { data?: unknown[] }).data ?? []).length, 'no PO created by the rejected request').toBe(0)
+
+    // POSITIVE CONTROL — the same filter DOES surface a PO for this supplier, so the
+    // zero above is evidence of absence, not a filter that never matches anything.
+    const control = await apiRequest(page, 'POST', '/purchase-orders', {
+      partner_id: dedicated,
+      document_date: today(),
+      location_id: WAREHOUSE_LOCATION_ID,
+      lines: [{ product_id: productId, description: '3dp price control', quantity: '1', unit_price: '12.500', tax_rate: '19.00' }],
+    })
+    expect(control.status, JSON.stringify(control.body)).toBe(201)
+    const controlId = (control.body as { data: { id: string } }).data.id
+    try {
+      const withControl = await apiRequest(page, 'GET', `/purchase-orders?partner_id=${dedicated}`)
+      const rows = (withControl.body as { data: Array<{ id: string }> }).data
+      expect(rows.length, 'the probe CAN see a PO for this supplier').toBe(1)
+      expect(rows[0].id).toBe(controlId)
+      // And the accepted 3-dp value is stored verbatim — no truncation on the happy path.
+      const controlDoc = await getPurchaseOrder(page, controlId)
+      expect((controlDoc.lines as Array<{ unit_price: string }>)[0].unit_price).toBe('12.500')
+    } finally {
+      // The control PO is a probe row, not a money movement the campaign wants to keep.
+      const del = await apiRequest(page, 'DELETE', `/purchase-orders/${controlId}`)
+      expect(del.status, `control PO cleanup: ${JSON.stringify(del.body)}`).toBeLessThan(300)
+    }
   })
 
   test('MTP-PUR-24 (P1): quantity 1.00001 (5 dp) is REJECTED by the qty scale ceiling', async ({ page }) => {

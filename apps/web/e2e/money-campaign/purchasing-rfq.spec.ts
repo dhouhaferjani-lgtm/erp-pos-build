@@ -164,14 +164,22 @@ test.describe('RFQ — quote request -> comparison -> purchase order', () => {
     expect(poLines[0].line_total).toBe('117.500')
     expect(poDoc.subtotal).toBe('117.500')
 
-    const group = await getRfqGroup(page, groupId)
-    const g = (group.body as { data: { has_live_purchase_order: boolean; siblings: RfqSibling[] } }).data
-    expect(g.has_live_purchase_order, 'the group is now bound to a live PO').toBe(true)
-    const byId = Object.fromEntries(g.siblings.map((s) => [s.id, s]))
-    expect(byId[winner.id].status).toBe('confirmed')
-    expect(byId[winner.id].closed_reason).toBeNull()
-    expect(byId[loser.id].status, 'the losing quote is closed out, not left live').toBe('cancelled')
-    expect(byId[loser.id].closed_reason).toBe('lost')
+    try {
+      const group = await getRfqGroup(page, groupId)
+      const g = (group.body as { data: { has_live_purchase_order: boolean; siblings: RfqSibling[] } }).data
+      expect(g.has_live_purchase_order, 'the group is now bound to a live PO').toBe(true)
+      const byId = Object.fromEntries(g.siblings.map((s) => [s.id, s]))
+      expect(byId[winner.id].status).toBe('confirmed')
+      expect(byId[winner.id].closed_reason).toBeNull()
+      expect(byId[loser.id].status, 'the losing quote is closed out, not left live').toBe('cancelled')
+      expect(byId[loser.id].closed_reason).toBe('lost')
+    } finally {
+      // The awarded PO is a probe commitment, not money the campaign wants to keep: a
+      // live 117.500 draft PO would show up in W-6's open-commitment reads. It is still a
+      // DRAFT here, so it is deletable.
+      const del = await apiRequest(page, 'DELETE', `/purchase-orders/${po.id}`)
+      expect(del.status, `awarded draft PO cleanup: ${JSON.stringify(del.body)}`).toBeLessThan(300)
+    }
   })
 
   test('MTP-RFQ-05 (P0): a group can be awarded ONCE; reopen is the only way back', async ({ page }) => {
@@ -258,5 +266,20 @@ test.describe('RFQ — quote request -> comparison -> purchase order', () => {
     const confirmed = await getPurchaseOrder(page, poId)
     expect(confirmed.tax_amount, 'TRIPWIRE: expected 23.750 (19% of 125.000); an RFQ-sourced PO gets none').toBe('0.000')
     expect(confirmed.total, 'TRIPWIRE: expected 148.750').toBe('125.000')
+
+    // STATE THIS CASE CANNOT RETIRE (recorded, and reported in the wave ledger with exact
+    // amounts): proving the VAT is still zero AFTER confirm requires the PO to be
+    // confirmed, and a confirmed PO is not deletable — there is no cancel route on
+    // /purchase-orders at all (index/store/show/patch/delete/confirm/receive only). The
+    // refusal is asserted here so the constraint is pinned rather than assumed.
+    const cannotDelete = await apiRequest(page, 'DELETE', `/purchase-orders/${poId}`)
+    expect(cannotDelete.status, 'a confirmed PO is not deletable — this residue is unavoidable').toBe(422)
+    expect(JSON.stringify(cannotDelete.body)).toMatch(/NOT_DELETABLE|cannot be deleted/i)
+    test.info().annotations.push({
+      type: 'STATE-LEFT-BEHIND',
+      description:
+        `confirmed purchase order ${poId as string} — subtotal 125.000, tax_amount 0.000, total 125.000, ` +
+        'no cancel route exists. Reported in the W-4 ledger for W-6.',
+    })
   })
 })

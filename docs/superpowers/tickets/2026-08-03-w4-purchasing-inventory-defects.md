@@ -13,9 +13,9 @@ Consolidated per the wave's hard rule 3 (one ticket file for the wave).
 
 ## #1 — P1: `ProportionalMoneyAllocator` truncates the PROPORTION before multiplying, so landed-cost shares drift by a millime
 
-**Where:** `apps/api/app/Shared/Domain/ProportionalMoneyAllocator.php:56-58`
+**Where:** `apps/api/app/Shared/Domain/ProportionalMoneyAllocator.php:58-59`
 (used by `apps/api/app/Modules/Inventory/Application/Services/LandedCostService.php`
-`allocateCosts()` / `allocateCostsAndTaxes()` / `reallocateCosts()`).
+`allocateCosts():100` / `allocateCostsAndTaxes():148` / `reallocateCosts():241`).
 
 **Tripwire:** `apps/web/e2e/money-campaign/purchasing-landed-cost.spec.ts` — `MTP-PUR-17`.
 
@@ -113,7 +113,7 @@ POST /supplier-invoices/{id}/post -> 422
 ### Why it matters
 
 - The whole bonus arm of `SupplierInvoiceMatcher::buildQtyGroupStatuses()`
-  (`SupplierInvoiceMatcher.php` ~L295-445) and `ReceiptPlanner::freeMatchableQty()` is
+  (`SupplierInvoiceMatcher.php:291` — bonus accumulation `:295-314`, bonus resolution loop `:389-445`) and `ReceiptLineConsumptionPlanner::freeMatchableQty():91` is
   **unreachable from the API**. That is a large slice of dead code that looks tested.
 - A bonus receipt **cannot be invoiced at all**: the free units are counted against the
   paid matchable window, producing `quantity_variance`, which is a HARD block at post
@@ -131,7 +131,7 @@ Add to `CreateSupplierInvoiceRequest::rules()`:
 'lines.*.is_bonus_line' => ['nullable', 'boolean'],
 ```
 
-(and gate it on `PurchaseBonusGate` the same way `CreateDocumentRequest.php:118-131`
+(and gate it on `PurchaseBonusGate` the same way `CreateDocumentRequest.php:118-127`
 does for purchase orders, so a non-allowlisted country gets `prohibited`).
 
 **When fixed:** `MTP-PUR-16` goes red; rewrite it to the plan's intended assertion —
@@ -202,3 +202,19 @@ the RFQ line has none.
 | R-7 | RFQ group **reopen** is refused while the awarded PO is still live (`has_live_purchase_order`), not merely "was awarded once". The recovery is to retire the PO first. | `MTP-RFQ-05` |
 | R-8 | `POST /partners` leaves `code` NULL unless supplied; the AR/AP opening importer keys on `partner_code`, so an API-created partner is un-importable without an explicit code. | `opening-balances-types.spec.ts` `createCodedPartner()` |
 | R-9 | Documented gaps, re-confirmed: the movements ledger, the entry/exit-note read model, and the expiry write-off page carry **no money columns**. The write-off VALUE is only reachable from the mutation response (`unit_cost` / `total_cost`) or the movement row. | `MTP-INV-08`, `MTP-INV-21`, `MTP-INV-27` |
+
+---
+
+## Addendum — findings added by the W-4 fix round (2026-08-03)
+
+These came out of the review fix round. None is a new money defect; they are contract
+facts that were mis-stated or unproven in the first pass and are now pinned.
+
+| # | Finding | Pinned by |
+|---|---|---|
+| R-10 | The counting apply's **`negative_at_apply`** flag arm is SHADOWED on the web surface: `applyReplay()` runs the basket-window pre-check first (`ApplyStockAdjustmentsOnCountingCompleted.php:224-230`), and the only deterministic way to make a correction exceed remaining stock is to move stock between count and apply — which is exactly what `basket_window` detects. Confirmed with `ambiguity_window_minutes` 15 **and** 0; the recorded reason is `basket_window` both times. The money contract is identical on both arms (nothing posted, line flagged for review, stock never negative). | `MTP-INV-18` (PARTIAL) |
+| R-11 | `recordCostAdjustment()`'s "nothing owned" no-op arm is not entered from the **transfer** path (a transfer of unowned stock is refused first). Its reachable caller is `LinkedCostApplicationService` via `ExpenseService.php:327` — an expense linked to a PO additional cost whose product has since been fully consumed. That is W-5c's surface. | `MTP-INV-05` (PARTIAL) |
+| R-12 | With company-owned quantity at exactly **0**, the retained WAC is preserved (not zeroed), and the next receipt SETS the average outright rather than blending against the stale value — because the blend basis is `companyQty x cost = 0`. Proven live: `20.000000` retained at zero, then `4 @ 10.000` → `10.000000` (not `30.000000`, not `15.000000`). | `MTP-INV-04` |
+| R-13 | `GET /purchase-orders?search=` matches **`document_number` only** (`HandlesDocuments::applySearchFilter():198-201`). Any "did this document get created?" probe keyed on a product/partner UUID via `search` is vacuous. `?partner_id=` is a real column filter (`applyFilters():153-155`). | `MTP-PUR-23` (with a positive control) |
+| R-14 | A **confirmed** purchase order cannot be deleted (`DOCUMENT_NOT_DELETABLE`) and there is **no cancel route** on `/purchase-orders` at all (index/store/show/patch/delete/confirm/receive only). Any case that must confirm a PO leaves it behind permanently. | `MTP-RFQ-06` |
+| R-15 | A replenishment request can be **cancelled only while `pending`** (`ReplenishmentRequestController::cancel():141`); once `in_progress` the **reject** action is the only retirement path (`openRequests()` scopes to Pending + InProgress, `ReplenishmentFulfillmentService.php:222-229`). | `MTP-REP-03` cleanup |

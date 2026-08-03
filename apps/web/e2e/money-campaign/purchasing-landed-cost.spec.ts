@@ -107,8 +107,9 @@ test.describe('PUR — bonus / free goods (14..16)', () => {
     // line 115 then reads `$lineInput['is_bonus_line'] ?? false`. Laravel strips every
     // undeclared key from validated(), so the flag can NEVER be true on the documented
     // creation path. Consequence: the matcher's whole bonus arm
-    // (SupplierInvoiceMatcher::buildQtyGroupStatuses() bonus branch, ~L295-445, and
-    // ReceiptPlanner::freeMatchableQty()) is unreachable from the API, and free units
+    // (SupplierInvoiceMatcher::buildQtyGroupStatuses():291 — accumulation :295-314,
+    // resolution :389-445 — and ReceiptLineConsumptionPlanner::freeMatchableQty():91) is
+    // unreachable from the API, and free units
     // billed on an invoice are counted against the PAID matchable window instead —
     // turning a legitimate bonus invoice into `quantity_variance`, which is a HARD block
     // at post under BOTH match_enforcement modes. i.e. a bonus receipt cannot be invoiced
@@ -326,7 +327,7 @@ test.describe('PUR — additional costs -> landed cost (17..22)', () => {
   test('MTP-PUR-21 (P1): principal WITHOUT goods-receipt.edit-price cannot send received_unit_prices', async ({ page }) => {
     // Author the PO as owner, then attempt the override as a principal that lacks the
     // permission. ReceiveGoodsRequest makes the field `prohibited` for such a user
-    // (ReceiveGoodsRequest.php:34) and GoodsReceiptService:345 re-checks server-side —
+    // (ReceiveGoodsRequest.php:35) and GoodsReceiptService.php:345 re-checks server-side —
     // a two-layer denial, which is exactly what plan §I.4 requires.
     const { id: productId } = await createW4Product(page, 'PUR21')
     const setup = await poAndReceive(page, { supplierId, productId, quantity: '5', unitPrice: '12.500', skipReceive: true })

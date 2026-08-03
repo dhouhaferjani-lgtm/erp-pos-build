@@ -17,15 +17,19 @@
  * because W-6's aged-receivables assertions read those partners.
  *
  * SLOT DISCIPLINE — a company may hold at most ONE *unlocked* batch per type
- * (OpeningBalanceBatchService::createBatch():61-72). Every case clears the slot first and
+ * (OpeningBalanceBatchService::createBatch():62-72). Every case clears the slot first and
  * retires what it created, so the next case (and the next wave) starts clean.
  */
 import { test, expect } from '@playwright/test'
 import { loginAsRole, apiRequest } from './helpers'
 import {
   openingBatchTypes,
+  ensureAccount,
+  W4_GL_DEBIT_ACCOUNT_CODE,
+  W4_GL_CREDIT_ACCOUNT_CODE,
   createOpeningBatchOfType,
-  clearOpeningBatchSlot,
+  requireOpeningBatchSlot,
+
   importOpeningRowsGeneric,
   validateOpening,
   previewOpening,
@@ -98,7 +102,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
 
   test('MTP-OPB-02 (P0): AR open items — totals exact at currency scale, open_amount independent of total', async ({ page }) => {
     const customer = await createCodedPartner(page, 'customer', 'W4AR')
-    await clearOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
+    await requireOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
     const batch = await createOpeningBatchOfType(page, 'AR_OPEN_ITEMS', { name: uniq4('OPB02') })
     expect(batch.status, JSON.stringify(batch.body)).toBe(201)
     const batchId = batch.id as string
@@ -183,7 +187,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
 
   test('MTP-OPB-03 (P0): AP open items — supplier sub-ledger moves, still no GL leg', async ({ page }) => {
     const supplier = await createCodedPartner(page, 'supplier', 'W4AP')
-    await clearOpeningBatchSlot(page, 'AP_OPEN_ITEMS')
+    await requireOpeningBatchSlot(page, 'AP_OPEN_ITEMS')
     const batch = await createOpeningBatchOfType(page, 'AP_OPEN_ITEMS', { name: uniq4('OPB03') })
     expect(batch.status, JSON.stringify(batch.body)).toBe(201)
     const batchId = batch.id as string
@@ -229,16 +233,18 @@ test.describe('OPB — opening balances, non-inventory types', () => {
   })
 
   test('MTP-OPB-04 (P0): GL opening always posts a BALANCED entry; any imbalance is plugged to Opening Balance Equity by exactly the difference', async ({ page }) => {
-    const accounts = await apiRequest(page, 'GET', '/accounts?per_page=300')
-    expect(accounts.status).toBe(200)
-    const all = (accounts.body as { data: Array<{ code: string; type: string; is_active: boolean }> }).data
-    const postable = all.filter((a) => a.is_active && a.code.length >= 3)
-    expect(postable.length, 'the tenant has a chart of accounts to post against').toBeGreaterThanOrEqual(2)
-    const debitAccount = postable[0].code
-    const creditAccount = postable[1].code
+    // DETERMINISTIC ACCOUNTS (review I-7): W-4 posts its GL openings ONLY to two
+    // dedicated, W4-owned accounts, so the amounts are assertable per-account by W-6 and
+    // never land on whichever real account happens to sort first.
+    const debit = await ensureAccount(page, { code: W4_GL_DEBIT_ACCOUNT_CODE, name: 'W4 campaign GL debit', type: 'asset' })
+    const credit = await ensureAccount(page, { code: W4_GL_CREDIT_ACCOUNT_CODE, name: 'W4 campaign GL credit', type: 'liability' })
+    const debitAccount = debit.code
+    const creditAccount = credit.code
+    expect(debitAccount).toBe('W4GL1')
+    expect(creditAccount).toBe('W4GL2')
 
     // (a) BALANCED rows -> a two-leg entry, no plug.
-    await clearOpeningBatchSlot(page, 'ACCOUNTING')
+    await requireOpeningBatchSlot(page, 'ACCOUNTING')
     const balanced = await createOpeningBatchOfType(page, 'ACCOUNTING', { name: uniq4('OPB04-balanced') })
     expect(balanced.status, JSON.stringify(balanced.body)).toBe(201)
     const balancedId = balanced.id as string
@@ -252,14 +258,20 @@ test.describe('OPB — opening balances, non-inventory types', () => {
     ).toBe(200)
     expect((await validateOpening(page, balancedId)).status).toBe(200)
     expect((await postOpening(page, balancedId)).status, 'a balanced GL opening posts').toBe(200)
-
-    const balancedLegs = queryRows(
-      `select jl.debit, jl.credit, jl.description from journal_lines jl join journal_entries je on je.id = jl.journal_entry_id where je.source_id = '${balancedId}'`
-    )
-    expect(balancedLegs.length, 'exactly the two imported legs — no plug line').toBe(2)
-    expect(sumMoney(balancedLegs.map((r) => r[0])), 'Dr').toBe('640.250')
-    expect(sumMoney(balancedLegs.map((r) => r[1])), 'Cr').toBe('640.250')
-    expect(balancedLegs.some((r) => /Opening Balance Equity offset/i.test(r[2])), 'no offset needed').toBe(false)
+    try {
+      const balancedLegs = queryRows(
+        `select jl.debit, jl.credit, jl.description from journal_lines jl join journal_entries je on je.id = jl.journal_entry_id where je.source_id = '${balancedId}'`
+      )
+      expect(balancedLegs.length, 'exactly the two imported legs — no plug line').toBe(2)
+      expect(sumMoney(balancedLegs.map((r) => r[0])), 'Dr').toBe('640.250')
+      expect(sumMoney(balancedLegs.map((r) => r[1])), 'Cr').toBe('640.250')
+      expect(balancedLegs.some((r) => /Opening Balance Equity offset/i.test(r[2])), 'no offset needed').toBe(false)
+    } finally {
+      // Retire it: a posted-but-VALIDATED batch still occupies the company's single
+      // ACCOUNTING slot (review I-5). Locking is the wizard's own terminal step and
+      // un-posts nothing.
+      expect(await retireOpeningBatch(page, balancedId), 'balanced batch retired, slot freed').toBeLessThan(300)
+    }
 
     // (b) UNBALANCED rows -> RECORDED BEHAVIOUR (not a refusal, and NOT a defect): a
     //     carried-over trial balance is expected to be incomplete, so
@@ -268,7 +280,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
     //     the resulting entry is balanced to the last millime — a plug that rounded, or a
     //     posted entry with Dr != Cr, would corrupt the trial balance for the whole
     //     fiscal year.
-    await clearOpeningBatchSlot(page, 'ACCOUNTING')
+    await requireOpeningBatchSlot(page, 'ACCOUNTING')
     const skewed = await createOpeningBatchOfType(page, 'ACCOUNTING', { name: uniq4('OPB04-plugged') })
     expect(skewed.status, JSON.stringify(skewed.body)).toBe(201)
     const skewedId = skewed.id as string
@@ -283,26 +295,29 @@ test.describe('OPB — opening balances, non-inventory types', () => {
     expect((await validateOpening(page, skewedId)).status).toBe(200)
     const skewedPost = await postOpening(page, skewedId)
     expect(skewedPost.status, JSON.stringify(skewedPost.body)).toBe(200)
+    try {
+      const legs = queryRows(
+        `select jl.debit, jl.credit, jl.description from journal_lines jl join journal_entries je on je.id = jl.journal_entry_id where je.source_id = '${skewedId}'`
+      )
+      expect(legs.length, 'the two imported legs plus one Opening Balance Equity plug').toBe(3)
+      const plug = legs.find((r) => /Opening Balance Equity offset/i.test(r[2]))
+      expect(plug, 'the residual is named, not silently absorbed into a real account').toBeDefined()
+      // 500.000 Dr - 400.000 Cr = 100.000 of missing credit.
+      expect((plug as string[])[1], 'plug credit == the exact imbalance').toBe('100.000')
+      expect((plug as string[])[0], 'the plug is one-sided').toBe('0.000')
 
-    const legs = queryRows(
-      `select jl.debit, jl.credit, jl.description from journal_lines jl join journal_entries je on je.id = jl.journal_entry_id where je.source_id = '${skewedId}'`
-    )
-    expect(legs.length, 'the two imported legs plus one Opening Balance Equity plug').toBe(3)
-    const plug = legs.find((r) => /Opening Balance Equity offset/i.test(r[2]))
-    expect(plug, 'the residual is named, not silently absorbed into a real account').toBeDefined()
-    // 500.000 Dr - 400.000 Cr = 100.000 of missing credit.
-    expect((plug as string[])[1], 'plug credit == the exact imbalance').toBe('100.000')
-    expect((plug as string[])[0], 'the plug is one-sided').toBe('0.000')
-
-    // The posted entry is balanced to the millime — the invariant the trial balance rests on.
-    expect(sumMoney(legs.map((r) => r[0]))).toBe('500.000')
-    expect(sumMoney(legs.map((r) => r[1]))).toBe('500.000')
-    expect(sumMoney(legs.map((r) => r[0]))).toBe(sumMoney(legs.map((r) => r[1])))
+      // The posted entry is balanced to the millime — the invariant the trial balance rests on.
+      expect(sumMoney(legs.map((r) => r[0]))).toBe('500.000')
+      expect(sumMoney(legs.map((r) => r[1]))).toBe('500.000')
+      expect(sumMoney(legs.map((r) => r[0]))).toBe(sumMoney(legs.map((r) => r[1])))
+    } finally {
+      expect(await retireOpeningBatch(page, skewedId), 'plugged batch retired, ACCOUNTING slot freed').toBeLessThan(300)
+    }
   })
 
   test('MTP-OPB-05 (P1): AR money fields honour the 3-decimal ceiling — never silently truncated', async ({ page }) => {
     const customer = await createCodedPartner(page, 'customer', 'W4ARX')
-    await clearOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
+    await requireOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
     const batch = await createOpeningBatchOfType(page, 'AR_OPEN_ITEMS', { name: uniq4('OPB05') })
     const batchId = batch.id as string
     try {
@@ -346,7 +361,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
   })
 
   test('MTP-OPB-06 (P1): one unlocked batch per type, and each type refuses another type\'s row shape', async ({ page }) => {
-    await clearOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
+    await requireOpeningBatchSlot(page, 'AR_OPEN_ITEMS')
     const first = await createOpeningBatchOfType(page, 'AR_OPEN_ITEMS', { name: uniq4('OPB06-a') })
     expect(first.status, JSON.stringify(first.body)).toBe(201)
     const firstId = first.id as string
@@ -358,7 +373,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
       expect(JSON.stringify(second.body)).toMatch(/already has an unlocked/i)
 
       // (b) a DIFFERENT type is unaffected by the AR slot — the guard is per-type.
-      await clearOpeningBatchSlot(page, 'AP_OPEN_ITEMS')
+      await requireOpeningBatchSlot(page, 'AP_OPEN_ITEMS')
       const otherType = await createOpeningBatchOfType(page, 'AP_OPEN_ITEMS', { name: uniq4('OPB06-ap') })
       expect(otherType.status, 'the slot guard is per-type, not per-company').toBe(201)
       expect(await retireOpeningBatch(page, otherType.id as string), 'cleanup of the AP probe batch').toBeLessThan(300)
@@ -378,7 +393,7 @@ test.describe('OPB — opening balances, non-inventory types', () => {
     } finally {
       expect(await retireOpeningBatch(page, firstId), 'cleanup of the slot-guard batch').toBeLessThan(300)
       for (const t of ['AR_OPEN_ITEMS', 'AP_OPEN_ITEMS'] as OpeningBatchType[]) {
-        await clearOpeningBatchSlot(page, t)
+        await requireOpeningBatchSlot(page, t)
       }
     }
   })

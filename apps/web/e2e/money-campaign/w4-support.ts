@@ -391,32 +391,96 @@ export async function cancelReplenishment(page: Page, id: string): Promise<ApiRe
 // ---------------------------------------------------------------------------
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS'
 
+/**
+ * Deterministic, W-4-owned GL accounts for the ACCOUNTING opening cases.
+ *
+ * Review finding I-7: picking `postable[0]` / `postable[1]` out of the chart of accounts
+ * is order-dependent, so the wave's GL amounts would land on whichever real accounts
+ * happen to sort first — unassertable by W-6 and a pollution of the tenant's own ledger.
+ * These two accounts are created once (idempotent) and are the ONLY accounts W-4 posts
+ * opening balances to, so W-6 can assert per-account.
+ */
+export const W4_GL_DEBIT_ACCOUNT_CODE = 'W4GL1'
+export const W4_GL_CREDIT_ACCOUNT_CODE = 'W4GL2'
+
+export async function ensureAccount(
+  page: Page,
+  opts: { code: string; name: string; type: string }
+): Promise<{ id: string; code: string }> {
+  const existing = await apiRequest(page, 'GET', `/accounts?per_page=500`)
+  const found = ((existing.body as { data?: Array<{ id: string; code: string }> }).data ?? []).find((a) => a.code === opts.code)
+  if (found !== undefined) return { id: found.id, code: found.code }
+
+  const res = await apiRequest(page, 'POST', '/accounts', {
+    code: opts.code,
+    name: opts.name,
+    type: opts.type,
+    is_active: true,
+  })
+  if (res.status !== 201) {
+    throw new Error(`ensureAccount(${opts.code}) failed: ${res.status} ${JSON.stringify(res.body)}`)
+  }
+  const body = (res.body as { data: { id: string; code: string } }).data
+  return { id: body.id, code: body.code }
+}
+
 export async function openingBatchTypes(page: Page): Promise<ApiResult> {
   return apiRequest(page, 'GET', '/opening-batches/types')
 }
 
 /**
  * The company may hold at most ONE *unlocked* batch per type
- * (OpeningBalanceBatchService::createBatch():61-72 — `unlocked()` means status != LOCKED,
+ * (OpeningBalanceBatchService::createBatch():62-72 — `unlocked()` means status != LOCKED,
  * so a DRAFT **and** an already-POSTED-but-VALIDATED batch both occupy the slot). The
  * wizard's own lock step is what frees it. Sequential campaign cases therefore have to
  * clear the slot before creating: DRAFT batches are deletable, VALIDATED ones are not —
  * they must be LOCKED (which is the wizard's terminal step anyway, and never un-posts
  * anything).
  *
- * Returns the ids it cleared, so a caller can record what it touched.
+ * SAFETY (review finding I-4): this only ever touches batches THIS WAVE created, i.e.
+ * whose `name` carries the `W4-` prefix. A foreign unlocked batch — another wave's, or
+ * one the owner left mid-wizard — must NOT be destroyed to make room for a test; deleting
+ * a stranger's draft opening balance would silently discard real work, and locking one
+ * would seal it prematurely. When a foreign batch holds the slot this returns
+ * `{ blockedBy }` and the caller records a BLOCKED verdict instead of proceeding.
  */
-export async function clearOpeningBatchSlot(page: Page, type: OpeningBatchType): Promise<string[]> {
+export interface SlotClearResult {
+  cleared: string[]
+  blockedBy: Array<{ id: string; name: string; status: string }>
+}
+
+export async function clearOpeningBatchSlot(page: Page, type: OpeningBatchType): Promise<SlotClearResult> {
   const list = await apiRequest(page, 'GET', `/companies/${COMPANY_ID}/opening-batches?type=${type}`)
-  const rows = ((list.body as { data?: Array<{ id: string; type: string; status: string }> }).data ?? []).filter(
+  const rows = ((list.body as { data?: Array<{ id: string; type: string; status: string; name: string }> }).data ?? []).filter(
     (b) => b.type === type && b.status !== 'LOCKED'
   )
   const cleared: string[] = []
+  const blockedBy: Array<{ id: string; name: string; status: string }> = []
   for (const b of rows) {
+    if (!(b.name ?? '').startsWith(`${W4_PREFIX}-`)) {
+      blockedBy.push({ id: b.id, name: b.name, status: b.status })
+      continue
+    }
     const res = b.status === 'DRAFT' ? await deleteOpening(page, b.id) : await lockOpening(page, b.id)
     if (res.status < 300) cleared.push(b.id)
   }
-  return cleared
+  return { cleared, blockedBy }
+}
+
+/**
+ * Clear the slot and fail loudly (with the foreign batch named) rather than destroying
+ * someone else's work. Callers use this before every `createOpeningBatchOfType`.
+ */
+export async function requireOpeningBatchSlot(page: Page, type: OpeningBatchType): Promise<SlotClearResult> {
+  const res = await clearOpeningBatchSlot(page, type)
+  if (res.blockedBy.length > 0) {
+    throw new Error(
+      `BLOCKED: the ${type} opening-batch slot is held by a batch this wave did not create — ` +
+        `${res.blockedBy.map((b) => `${b.name} (${b.status}, ${b.id})`).join(', ')}. ` +
+        'Refusing to delete or lock a foreign batch; resolve it manually and re-run.'
+    )
+  }
+  return res
 }
 
 /**
@@ -496,6 +560,27 @@ export async function openingStatus(page: Page): Promise<ApiResult> {
 // ---------------------------------------------------------------------------
 export async function stockMatrix(page: Page, query = ''): Promise<ApiResult> {
   return apiRequest(page, 'GET', `/inventory/stock-matrix${query}`)
+}
+
+/**
+ * Manual stock adjustment — the only web path that REMOVES company-owned quantity without
+ * a document or a batch lot. `new_quantity` is the ABSOLUTE target (`min:0`, 4-dp regex),
+ * and `reason_code` must come from `MovementReason::manualAdjustmentValues()`
+ * (`adjustment_positive`, `adjustment_negative`, `damage`, `write_off`, `opening_balance`).
+ * Used to drive a product to an owned quantity of exactly 0 so the WAC guard's boundary
+ * is genuinely reached.
+ */
+export async function adjustStockTo(
+  page: Page,
+  opts: { productId: string; locationId?: string; newQuantity: string; reasonCode?: string; reason?: string }
+): Promise<ApiResult> {
+  return apiRequest(page, 'POST', '/stock-movements/adjust', {
+    product_id: opts.productId,
+    location_id: opts.locationId ?? WAREHOUSE_LOCATION_ID,
+    new_quantity: opts.newQuantity,
+    reason_code: opts.reasonCode ?? 'adjustment_negative',
+    reason: opts.reason ?? 'W4 campaign adjustment',
+  })
 }
 
 export async function stockMovements(page: Page, query = ''): Promise<ApiResult> {

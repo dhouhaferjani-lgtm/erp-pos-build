@@ -23,7 +23,8 @@ import {
   createW4Product,
   costPrice,
   createOpeningBatchOfType,
-  clearOpeningBatchSlot,
+  requireOpeningBatchSlot,
+
   importOpeningRowsGeneric,
   validateOpening,
   previewOpening,
@@ -53,7 +54,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
     const p2 = await createW4Product(page, 'INV10b')
     const p3 = await createW4Product(page, 'INV10c', { unitId: KG_UNIT_ID })
 
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const batch = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV10') })
     expect(batch.status, JSON.stringify(batch.body)).toBe(201)
     const batchId = batch.id as string
@@ -111,7 +112,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
 
   test('MTP-INV-11 (P0): a second opening for the SAME product+location is refused (enter-once)', async ({ page }) => {
     const p = await createW4Product(page, 'INV11')
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const first = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV11-a') })
     const firstId = first.id as string
     expect((await importOpeningRowsGeneric(page, firstId, [{ product_code: p.sku, location_code: WH, quantity: '5', unit_cost: '4.000' }])).status).toBe(200)
@@ -119,7 +120,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
     expect((await postOpening(page, firstId)).status, 'first opening posts').toBe(200)
     expect(await costPrice(page, p.id)).toBe('4.000000')
 
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const second = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV11-b') })
     const secondId = second.id as string
     let secondPosted = false
@@ -146,7 +147,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
   test('MTP-INV-12 (P1): a malformed row is marked INVALID and EXCLUDED from the batch total', async ({ page }) => {
     const good1 = await createW4Product(page, 'INV12a')
     const good2 = await createW4Product(page, 'INV12b')
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const batch = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV12') })
     const batchId = batch.id as string
     let posted = false
@@ -183,7 +184,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
   test('MTP-INV-13 (P1): unit_cost 0 posts the quantity, contributes 0.000 to the JE, batch stays balanced', async ({ page }) => {
     const zero = await createW4Product(page, 'INV13a')
     const priced = await createW4Product(page, 'INV13b')
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const batch = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV13') })
     const batchId = batch.id as string
 
@@ -217,7 +218,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
 
   test('MTP-INV-14 (P1): unit_cost 5.0001 and quantity 1.00001 are REJECTED by the scale ceilings', async ({ page }) => {
     const p = await createW4Product(page, 'INV14')
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const batch = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV14') })
     const batchId = batch.id as string
     try {
@@ -241,7 +242,7 @@ test.describe('INV — opening balance wizard (INVENTORY)', () => {
 
   test('MTP-INV-15 (P1): a LOCKED batch refuses further posting', async ({ page }) => {
     const p = await createW4Product(page, 'INV15')
-    await clearOpeningBatchSlot(page, 'INVENTORY')
+    await requireOpeningBatchSlot(page, 'INVENTORY')
     const batch = await createOpeningBatchOfType(page, 'INVENTORY', { name: uniq4('INV15') })
     const batchId = batch.id as string
     expect((await importOpeningRowsGeneric(page, batchId, [{ product_code: p.sku, location_code: WH, quantity: '3', unit_cost: '6.000' }])).status).toBe(200)

@@ -15,7 +15,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsRole, apiRequest } from './helpers'
 import { createSupplier, getStockLevels, SHOP1_LOCATION_ID, WAREHOUSE_LOCATION_ID, createStockTransfer, completeStockTransfer } from './w2b-support'
-import { createW4Product, costPrice, poAndReceive, uniq4, mulQtyMoneyTrunc, stockMovements } from './w4-support'
+import { createW4Product, costPrice, poAndReceive, uniq4, mulQtyMoneyTrunc, stockMovements, adjustStockTo } from './w4-support'
 
 let supplierId: string
 
@@ -78,62 +78,125 @@ test.describe('INV — perpetual WAC / stock valuation', () => {
     expect(await costPrice(page, productId)).toBe('10.571428')
   })
 
-  test('MTP-INV-04 (P0): WAC guard — no division-by-zero / NaN / 500 when owned qty reaches 0', async ({ page }) => {
-    // The `newCompanyQty <= 0 ? '0' : blend` guard lives in
-    // WeightedAverageCostService::recordPurchase()/recordReturn(). No API route posts a
-    // NEGATIVE receipt, so the guard's <0 arm is not reachable from the web surface;
-    // what IS reachable is the qty==0 boundary: consume the entire on-hand quantity and
-    // prove the product survives (finite cost string, no NaN, no 500) and that a
-    // subsequent receipt re-blends from the retained cost rather than exploding.
+  test('MTP-INV-04 (P0): WAC guard at the owned-qty == 0 boundary — no div-by-zero, no stale-cost blend', async ({ page }) => {
+    // The guard is `bccomp($newCompanyQty, '0', 4) > 0 ? blend : '0'` in
+    // WeightedAverageCostService::recordPurchase()/recordReturn(). Its `< 0` arm has no
+    // web path (no route posts a NEGATIVE receipt) — see the wave report §6. Its `== 0`
+    // boundary IS reachable and is what this case now genuinely drives: consume the
+    // entire company-owned quantity, then receive again at a different price.
     const { id: productId } = await createW4Product(page, 'INV04')
     const seed = await poAndReceive(page, { supplierId, productId, quantity: '4', unitPrice: '20.000' })
     expect(seed.receiveStatus, JSON.stringify(seed.receiveBody)).toBe(200)
     expect(await costPrice(page, productId)).toBe('20.000000')
 
-    // Drive on-hand to exactly 0 via a full transfer out of the warehouse and back is a
-    // no-op on company-owned qty, so instead consume via a write-off-shaped movement:
-    // an adjustment through the counting/apply path is covered by INV-18. Here we assert
-    // the read-side guard directly: the cost string is always a finite 6-dp decimal.
-    const cost = await costPrice(page, productId)
-    expect(cost).toMatch(/^\d+\.\d{6}$/)
-    expect(Number.isNaN(Number(cost))).toBe(false)
+    // Actually consume to ZERO. A transfer would NOT do it (in-transit and other
+    // locations still count as company-owned, so the WAC basis would be unchanged); the
+    // manual adjustment endpoint is the only web path that removes owned quantity.
+    const toZero = await adjustStockTo(page, { productId, newQuantity: '0', reason: 'MTP-INV-04 drive owned qty to zero' })
+    expect(toZero.status, JSON.stringify(toZero.body)).toBe(201)
 
-    // A second receipt at a different price still blends cleanly (no 500).
+    const zeroLevels = await getStockLevels(page, productId)
+    expect(zeroLevels.reduce((s, l) => s + Number(l.quantity), 0), 'company-owned quantity is exactly 0').toBe(0)
+
+    // At the boundary: the cost is RETAINED, finite, and 6-dp — never NaN, never a 500,
+    // never silently zeroed by the divide.
+    const atZero = await costPrice(page, productId)
+    expect(atZero, 'the last known average survives an empty shelf').toBe('20.000000')
+    expect(atZero).toMatch(/^\d+\.\d{6}$/)
+
+    // Now the boundary behaviour that actually matters for money: with companyQty == 0
+    // the blend basis (`currentValue = 0 x 20.000000`) is ZERO, so the next receipt sets
+    // the average outright instead of averaging against a stale 20.000000.
+    // A naive implementation that kept the old value would give (80.000 + 40.000) / 4 =
+    // 30.000000, and one that averaged the two prices would give 15.000000.
     const more = await poAndReceive(page, { supplierId, productId, quantity: '4', unitPrice: '10.000' })
     expect(more.receiveStatus, JSON.stringify(more.receiveBody)).toBe(200)
-    // (80.000 + 40.000) / 8 = 15.000000
-    expect(await costPrice(page, productId)).toBe('15.000000')
+    expect(await costPrice(page, productId), 'zero owned units => the new receipt price IS the new WAC').toBe('10.000000')
+
+    const afterLevels = await getStockLevels(page, productId)
+    expect(afterLevels.reduce((s, l) => s + Number(l.quantity), 0)).toBe(4)
   })
 
-  test('MTP-INV-05 (P1): recordCostAdjustment no-ops when nothing is owned', async ({ page }) => {
-    // "Nothing owned to capitalize against" — WeightedAverageCostService::
-    // recordCostAdjustment() returns null (no movement, no cost write) when
-    // companyOwnedQuantity() <= 0. Reachable from the web surface via a transfer
-    // carrying transfer_cost on a product with zero owned stock: the transfer itself
-    // must refuse (insufficient stock) BEFORE any cost is capitalized, so the product's
-    // cost is provably unchanged and no adjustment movement exists.
-    const { id: productId } = await createW4Product(page, 'INV05')
-    expect(await costPrice(page, productId)).toBe('0.000000')
+  test('MTP-INV-05 (P1) PARTIAL: nothing is capitalized against a product with zero owned units', async ({ page }) => {
+    // PARTIAL — disclosed, not silently passed (same discipline as MTP-PUR-15).
+    //
+    // The case's assigned subject is `WeightedAverageCostService::recordCostAdjustment()`
+    // returning null when `companyOwnedQuantity() <= 0` ("nothing owned to capitalize
+    // against"). That method is ENTERED from exactly two callers:
+    //   1. StockTransferService on transfer completion (carrying `transfer_cost`), and
+    //   2. LinkedCostApplicationService::apply() from
+    //      ExpenseService (`ExpenseService.php:327`) when an expense is linked to a
+    //      purchase-order additional cost.
+    // Path 1 can never reach the no-op arm: a transfer of a product with zero owned units
+    // is refused BEFORE completion, so `recordCostAdjustment()` is never called. Path 2
+    // CAN reach it (an expense linked to a cost whose product has since been fully
+    // consumed) but needs a full expense + payment-repository + GL chain, which is W-5c's
+    // surface, not W-4's — recorded here so a later wave can close it deliberately.
+    //
+    // What IS provable on this surface, and is asserted below, is the OUTER guard: on
+    // both the never-owned and the driven-to-zero paths, no cost is capitalized and no
+    // adjustment movement is written.
+    test.info().annotations.push({
+      type: 'PARTIAL',
+      description:
+        'The recordCostAdjustment() no-op arm itself is not entered from the transfer path (the transfer is ' +
+        'refused first). The reachable caller is LinkedCostApplicationService via ExpenseService.php:327 ' +
+        '(expense linked to a PO additional cost) — W-5c surface. This case asserts the outer guard only.',
+    })
 
+    // (a) never owned — the transfer is refused before any capitalization.
+    const neverOwned = await createW4Product(page, 'INV05-never')
+    expect(await costPrice(page, neverOwned.id)).toBe('0.000000')
     const tr = await createStockTransfer(page, {
       sourceLocationId: WAREHOUSE_LOCATION_ID,
       destinationLocationId: SHOP1_LOCATION_ID,
-      lines: [{ productId, quantity: '1' }],
+      lines: [{ productId: neverOwned.id, quantity: '1' }],
       transferCost: '30.000',
     })
-    // Either creation refuses outright, or completion does; in both cases nothing is
-    // capitalized onto a product with zero owned units.
-    if (tr.status === 201 && tr.id !== undefined) {
+    let refused = tr.status >= 400
+    if (!refused && tr.id !== undefined) {
       const done = await completeStockTransfer(page, tr.id)
-      expect(done.status, 'a transfer of unowned stock must not complete').toBeGreaterThanOrEqual(400)
-    } else {
-      expect(tr.status, JSON.stringify(tr.body)).toBeGreaterThanOrEqual(400)
+      refused = done.status >= 400
     }
-    expect(await costPrice(page, productId), 'no cost capitalized against zero owned units').toBe('0.000000')
+    expect(refused, 'a transfer of unowned stock must be refused before any cost is capitalized').toBe(true)
+    expect(await costPrice(page, neverOwned.id), 'no cost capitalized against zero owned units').toBe('0.000000')
 
-    const movements = await stockMovements(page, `?product_id=${productId}`)
-    const rows = (movements.body as { data?: Array<{ movement_type: string }> }).data ?? []
-    expect(rows.filter((m) => m.movement_type === 'adjustment').length, 'no adjustment movement written').toBe(0)
+    // (b) OWNED, THEN DRIVEN TO ZERO — the same outer guard must hold once the shelf is
+    //     empty, and crucially the retained 12.000000 average must not be moved by the
+    //     refused freight.
+    const drained = await createW4Product(page, 'INV05-drained')
+    expect((await poAndReceive(page, { supplierId, productId: drained.id, quantity: '3', unitPrice: '12.000' })).receiveStatus).toBe(200)
+    expect(await costPrice(page, drained.id)).toBe('12.000000')
+    expect((await adjustStockTo(page, { productId: drained.id, newQuantity: '0', reason: 'MTP-INV-05 drain' })).status).toBe(201)
+    expect(
+      (await getStockLevels(page, drained.id)).reduce((s, l) => s + Number(l.quantity), 0),
+      'owned quantity is exactly 0'
+    ).toBe(0)
+
+    const tr2 = await createStockTransfer(page, {
+      sourceLocationId: WAREHOUSE_LOCATION_ID,
+      destinationLocationId: SHOP1_LOCATION_ID,
+      lines: [{ productId: drained.id, quantity: '1' }],
+      transferCost: '45.000',
+    })
+    let refused2 = tr2.status >= 400
+    if (!refused2 && tr2.id !== undefined) {
+      refused2 = (await completeStockTransfer(page, tr2.id)).status >= 400
+    }
+    expect(refused2, 'a drained product cannot source a transfer either').toBe(true)
+    expect(await costPrice(page, drained.id), 'the refused freight must not move the retained average').toBe('12.000000')
+
+    // Neither product may carry a cost-adjustment movement: `recordCostAdjustment` writes
+    // a quantity-0 `adjustment` movement whenever it DOES capitalize, so its absence is
+    // positive evidence that nothing was capitalized. (The drain itself is an
+    // `adjustment` movement with a NON-zero quantity, so the two are distinguished by
+    // quantity, not by type.)
+    for (const id of [neverOwned.id, drained.id]) {
+      const movements = await stockMovements(page, `?product_id=${id}`)
+      const rows = (movements.body as { data?: Array<{ movement_type: string; quantity: string }> }).data ?? []
+      const capitalizations = rows.filter((m) => m.movement_type === 'adjustment' && m.quantity === '0.0000')
+      expect(capitalizations.length, `no cost-capitalization movement for ${id}`).toBe(0)
+    }
   })
 
   test('MTP-INV-06 (P0): over-consumption is refused — stock never driven negative, no partial state', async ({ page }) => {
