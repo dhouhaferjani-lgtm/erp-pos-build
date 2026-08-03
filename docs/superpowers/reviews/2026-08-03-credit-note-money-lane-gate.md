@@ -402,3 +402,323 @@ currency. Consistent. No findings.
    over-credit guard … never less [conservative]" are both falsified above.
 
 Nothing merged, nothing pushed. Local `dev` untouched apart from this record (uncommitted).
+
+---
+
+# Re-gate ba7be2ce2
+
+**Scope:** `ba7be2ce2` "credit-note re-gate — never-500 quantization, allocation clamp, discount
+proration, subtotal reconciliation", sitting on top of this record (`8b92088eb`). 4 files:
+`CreditNoteService.php`, `CreditNoteController.php`, `CreditNoteMoneyLaneTest.php` (+7 tests),
+new `tests/Unit/Document/CreditNoteAllocationExhaustiveProbeTest.php`. **No `apps/web` file was
+touched** — the E2E specs are byte-identical to the ones reviewed above.
+
+**Method:** every claimed disposition re-verified against code with file:line, plus my own probes
+re-run from scratch (not the implementer's). Live stack api :8010, `demo-pharmacy-tn`, `W3c-`
+fixtures only. Nothing merged, nothing pushed.
+
+## VERDICT: **APPROVE-WITH-FIXES** — promotable
+
+All three REJECT blockers (A1, B1, D1) are genuinely fixed and independently reproduced as fixed.
+A2, B2, B3, C1 likewise. The C2 stop-on is **correct** and **correctly scoped**. Five new
+non-blocking findings, one of which (N1) must be ticketed before the credit-note GL goes in front
+of a certification reviewer.
+
+| # | Was | Now | Verified by |
+|---|---|---|---|
+| A1 | P0 — HTTP 500 on 1.7–16 % of amounts | **FIXED** — 0 throws, 0 upward drift, worst deviation 1 millime | my probe (172 k checks) + live |
+| A2 | P1 — knob inert, 15.97 % failure | **FIXED** — 15.97 % → 1.775 % inexact, 0 failures | my probe |
+| B1 | P1 — draft 24.400 vs confirm 22.020 | **FIXED** — 22.020 == 22.020 == 22.020 | live |
+| B2 | P1 — `subtotal + tax ≠ total` persisted | **FIXED** — reconciles on every probed path | live |
+| B3 | P2 — standalone 31.168 → 31.169 | **FIXED** — 31.169 == 31.169 == 31.169 | live |
+| C1 | P2 — negative `discount_amount` | **FIXED** — 0 negatives in 26 fresh CN lines | DB |
+| D1 | P1 — `balance_due = −0.600` | **FIXED** — floors at 0.000; both guard directions correct | live |
+| C2 | P3 — display | **STOPPED-ON, correctly** — but re-rate P2, gates the PDF surface | adjudicated below |
+| **N1** | — | **NEW P2** — GL AR vs AR subledger diverge by the clamped residue | live + DB |
+| **N2** | — | **NEW P2** — quantization is API-only; the web UI never shows it | grep |
+| **N3** | — | **NEW P3** — deviation can be 1.000 TND, not 1 millime, on a duty-bearing invoice | live |
+| **N4/N5** | — | **NEW P3** — per-CN (not cumulative) qty ceiling; N+1 in the headroom guard | code read |
+
+---
+
+## A1 — never-500 quantization: **VERIFIED FIXED**
+
+`allocateGroupExactly()` (`CreditNoteService.php:301-457`) no longer has a `throw` anywhere. It
+tracks `$bestFloor` across the whole bounded search (`:364-365`, `:449-452`) and returns it with
+`exact => false` (`:456`). The floor is recorded only when
+`actualInclusive <= targetInclusive` (`:449`), so an upward drift is structurally impossible.
+`actualNet` is now summed from what was really materialised (`:437-441`) rather than assumed equal
+to `candidateNet` — necessary once a line can hit a ceiling, and correct.
+`CreditNoteController.php:209-221` adds a `\RuntimeException` → 422 catch as defense-in-depth.
+
+**My own probe, re-run from scratch** (`<scratchpad>/probe_alloc2.php` — rewritten for the new
+return shape; asserts no-throw, no-overshoot, non-negative discount, line-net sum == reported net):
+
+| Shape (19 %) | Range | Checked | throw | over target | negative disc | worst deviation |
+|---|---|---|---|---|---|---|
+| synthetic 1 × 1.000 (no-lines fallback) | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+| 1 real line 1 × 99.000 | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+| 2 real lines (MTP-DOC-16 fixture) | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+| 2 real lines, first zero-priced (A2) | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+| 1 real line 1000 × 0.010 (tiny unit price) | 0.001–11.900 | 11 900 | **0** | **0** | **0** | **0.001** |
+| 2 real lines @ 7 % | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+| 2 real lines @ 13 % | 0.001–20.000 | 20 000 | **0** | **0** | **0** | **0.001** |
+
+172 000 independent checks, zero violations, deviation never more than one millime.
+
+**My three original 500 repros, live, on fresh `W3c-` invoices:**
+
+```
+INV-2026-0535 (1 × 99.000 @19%, total 118.810)
+  amount=20.085  HTTP=201  total=20.684  requested=20.085 credited=20.084
+  amount=0.093   HTTP=201  total=0.692   requested=0.093  credited=0.092
+  amount=50.000  HTTP=201  total=50.600  (exact — no requested/credited keys emitted)
+INV-2026-0536 (100.000 @19% + 50.000 @7%, total 173.500)
+  amount=41.117  HTTP=201  total=41.716  requested=41.117 credited=41.116
+```
+
+All three: 201, exactly 1 millime down, both figures surfaced, `credited + 0.600 duty == total`
+byte-exact. Exactly the disposition claimed.
+
+**The implementer's `CreditNoteAllocationExhaustiveProbeTest` runs green** (447 560 checks across
+118.810 + 268.750 + 60.000 millime sweeps; 14 tests / 86 assertions with the money-lane file).
+Two honest limitations worth recording, neither of which changes the verdict because my own probe
+covers both:
+- its fixture `DocumentLine`s have no `product_id`, so `maxQty` resolves to the
+  `'999999999999.0000'` synthetic sentinel (`:327`) — **the quantity-ceiling branch is never
+  exercised** by it. My `single_real`/`multi`/`zero_first`/`tiny_price` modes set `product_id` and
+  do exercise it, clean.
+- its deviation tolerance is `0.010` (`CreditNoteAllocationExhaustiveProbeTest.php:114`), 10× looser
+  than the 0.001 actually achieved. Tightening it to `0.001` would make the guarantee falsifiable
+  at the strength it really holds.
+
+## A2 — sub-tick knob on the first surviving line: **VERIFIED FIXED**
+
+`$deltaSlotClaimed` (`:387`, `:404-411`) hands the knob to the first line that survives the
+`targetNet <= 0` / `unitPrice <= 0` filters rather than literal index 0. My zero-priced-first probe
+went from **15.97 % hard failures → 1.775 % inexact-but-floored, 0 failures** — the knob is live on
+that shape now, and the residual inexact rate matches the single-line baseline exactly, which is
+the expected result.
+
+## B1/B2/B3 — draft == confirm == posted: **VERIFIED FIXED**
+
+The structural fix is the right one: `applyConfirmEquivalentTotals()` (`:94-107`) calls
+`TaxCalculationService::calculateDocumentTaxes()` — literally `confirm()`'s own call
+(`CreditNoteController.php:285`) — and persists all three columns. Both hand-rolled parallel
+accumulation loops are deleted; all three creation paths now route through it (`:881`, `:1060`,
+`:1212`). There is no second implementation of the money math left to drift. Consuming `totalTax`
+(rather than `documentTaxTotal` only) is safe here for the reason the docblock gives and I
+re-verified: STEP 1's UNCONFIGURED fallback (`TaxCalculationService.php:161-189`) honours an
+explicit line rate with no matching config, so nothing can be silently re-zeroed.
+`confirm()` now rewrites `subtotal` (`CreditNoteController.php:294`).
+
+**Live:**
+
+```
+B1  INV-2026-0539 (10 × 10.000, discount_percent 10, @19%; sub 90.000 / total 108.100)
+    line-based credit of qty 2:
+      create   total=22.020  sub=18.000  tax=4.020   (sub+tax == total)
+      confirm  total=22.020  sub=18.000  tax=4.020
+      post     total=22.020                          ← was 24.400 → 22.020
+B1b INV-2026-0540 (10 × 10.000, flat discount_amount 50.000, @19%; sub 50.000 / total 60.500)
+    line-based credit of qty 1:
+      create/confirm/post  total=6.550  sub=5.000    ← discount prorated 50.000 × 1/10 = 5.000,
+                                                       never copied wholesale, net never negative
+B3  standalone 2 × 14.285 @7%:
+      create/confirm/post  total=31.169 sub=28.570 tax=2.599   ← was 31.168 → 31.169
+```
+
+`discount_amount` proration is at `:1021-1030` (ratio at scale 10, applied at currency scale);
+`discount_percent` correctly left un-prorated. Carry-over **R1 is closed for the credit-note
+paths** (the conversion/invoice paths it also named are out of this lane's scope).
+
+## C1 — no negative `discount_amount`: **VERIFIED FIXED**
+
+`materializeNativePrecisionLine()` (`:469-555`) bumps the quantity *up* (analytic tick count `:511`
+plus a bounded `$safety < 20` correction loop `:521-530`) until `gross3 >= targetNet`, and when a
+ceiling is hit first it takes the RULING-A floor with `discountAmount = '0'` (`:537-544`) rather
+than going negative. Live DB check over all 26 credit-note lines created by my probes in the last
+30 minutes: **0 negative `discount_amount`, 0 non-positive quantities.** The documents API's own
+`CreateDocumentRequest.php:130` `min:0` contract is now respected by the system's own output.
+
+## D1 / RULING B — over-credit: **VERIFIED FIXED, both directions**
+
+Two independent mechanisms, as claimed:
+1. `remainingCreditHeadroom()` (`:136-161`) sums each prior CN's **duty-exclusive** amount
+   (`total − that CN's own documentTaxTotal`, `:150-153`) so stamps never compound across notes.
+   Status-blind (drafts still reserve headroom → MTP-DOC-18 semantics preserved).
+2. `allocateCreditNote()` clamps at the invoice's current `balance_due`, floored at 0
+   (`:1267-1277`), under the existing `lockForUpdate()` on a freshly-read invoice row (`:1256-1260`)
+   — so the clamp is race-safe.
+
+**Live, my original repro:** INV-2026-0537 total 120.000, `amount=120.000` →
+credited 119.000, CN total 119.600, confirm 119.600, post 119.600, **`balance_due = 0.400`** —
+never negative. (Was `−0.600`.)
+
+**Both guard directions, live** (INV-2026-0538, total 120.000):
+
+```
+cn1 amount=40.000                      → 201, total 40.600
+cn2 amount=80.000 (== exact remaining) → 201, total 80.600   ← the legitimate full credit-out is
+                                                                ACCEPTED (it was the case that
+                                                                would have been wrongly refused
+                                                                under a naive tightening)
+cn3 amount=0.001  (genuine over-credit)→ 422 "Total credit notes would exceed invoice total"
+```
+
+That is precisely the both-directions behaviour my original review said needed a ruling. RULING B
+answers it coherently.
+
+**Note (not a defect):** crediting a *fully paid* invoice is already refused upstream —
+`Document.status` flips to `paid` on full payment, so `isPosted()` fails (`:802`, live: 422
+"Credit notes can only be created for posted invoices"). The clamp therefore cannot destroy a
+legitimate post-payment credit through this endpoint. Verified, pre-existing, out of scope.
+
+---
+
+## New findings
+
+### N1 — P2: the clamp desynchronises the AR subledger from the AR control account
+
+The clamp caps `credit_note_allocations.amount`, but `GeneralLedgerService::createFromCreditNote()`
+(`GeneralLedgerService.php:252-260`) still credits Accounts Receivable by the **full, unclamped**
+`$creditNote->total`. When the clamp fires, the two ledgers disagree about the same number.
+
+**Live repro** (INV-2026-0541, total 120.000, unpaid):
+
+```
+cn1 amount=119.000 → total 119.600, posted → balance_due 0.400   (allocation 119.600, no clamp)
+cn2 amount=1.000   → total 1.600,   posted → balance_due 0.000   (allocation CLAMPED to 0.400)
+```
+
+```sql
+document_number | cn_total | allocated | unallocated_residue
+CN-2026-0065    |  119.600 |   119.600 |               0.000
+CN-2026-0066    |    1.600 |     0.400 |               1.200
+```
+
+```
+GL entry for CN-2026-0066
+  411  Clients                            credit 1.600   ← full CN total
+  707  Ventes de marchandises             debit  0.841
+  4457 TVA collectée                      debit  0.159
+  4375 État - Droit de timbre à reverser  debit  0.600
+```
+
+Net effect on this invoice: AR **subledger** says 0.000 outstanding; AR **control account** has been
+credited 121.200 against a 120.000 debit — i.e. −1.200. Before `ba7be2ce2` the two agreed (both
+went negative); the clamp moves the imbalance out of `balance_due`, where it corrupted
+`payment_status` and AR aging, and into the GL, where nothing reconciles it.
+
+This is a strictly better failure mode than the original `−0.600` (no customer-facing figure is
+wrong, both numbers are recorded and derivable, and it needs ≥2 credit notes on one invoice), which
+is why it is not a blocker. But it is unresolved, and the clamp test
+(`CreditNoteMoneyLaneTest.php:487-491`) asserts the residue exists without asserting anything about
+the GL side. The underlying question my original review raised is still open and RULING B only
+answered half of it: **does the credit note's own stamp duty reduce what the customer owes?** The GL
+says yes (it credits AR by it, symmetrically with how the invoice's own stamp is debited to AR); the
+headroom guard and the clamp say no. Pick one and make both sides agree — either the CN's duty
+consumes headroom (then the clamp never fires) or AR must be allowed to carry it.
+**Must be ticketed and resolved before the credit-note GL is signed off for certification.**
+
+### N2 — P2: RULING A's "surfaced" is met at the API only; the operator sees nothing
+
+`requested_amount` / `credited_amount` are stamped as in-memory-only attributes
+(`CreditNoteService.php:892-895`) and emitted by `formatCreditNote()`
+(`CreditNoteController.php:435-448`). The mechanism is sound — not persisted, not mass-assigned,
+and no `save()` runs on the model afterwards (the live 201s prove it).
+
+But `grep -rn "credited_amount|requested_amount" apps/web/src apps/web/e2e` returns **no
+credit-note reference at all** (the only hits are an unrelated `RecordDepositModal`). A cashier who
+types 20.085 into the credit-note modal gets a 20.084 credit note and **no notice whatsoever**. The
+ruling's own wording is "never a silent upward drift" — it is not silent to an API client, but it is
+silent to the human. Small FE follow-up: render the two figures when they differ. Not a backend
+defect; the backend half of RULING A is met.
+
+### N3 — P3: the deviation is not always "1 millime"
+
+On an invoice that carries its own document duty, the reachable ceiling is the *line-inclusive*
+value, not `invoice.total`. Live: INV-2026-0537 total 120.000 (100.000 net + 19.000 VAT + 1.000
+STAMP_TAX_INVOICE); requesting the full 120.000 credits **119.000** — a **1.000 TND** floor, 1000×
+the millime figure quoted everywhere in the commit message. It is correct (you cannot credit the
+invoice's own stamp through a line allocation), downward, and surfaced — but the
+`CreditNoteAllocationExhaustiveProbeTest` probes a single rate group in isolation and so never sees
+it, and its `> 0.010` tolerance would have flagged it if it did. Either document the ceiling in the
+ruling or add an invoice-path case that asserts the 1.000 floor deliberately.
+
+### N4 — P3: the quantity ceiling is per-credit-note, not cumulative
+
+`maxQty` is the source line's **full** quantity (`:327`), so N successive amount-based credit notes
+can each fabricate up to the full sold quantity; cumulative fabricated units can exceed units sold.
+Money stays bounded by the headroom guard, and credit-note posting still creates no stock movement
+(re-verified: no `DocumentType::CreditNote` reference under `app/Modules/Inventory/`), so there is no
+inventory impact today. It would become one the moment credit-note restock is wired.
+
+### N5 — P3: N+1 in the headroom guard
+
+`remainingCreditHeadroom()` (`:144-155`) eager-loads every prior credit note *with lines* and runs
+`calculateDocumentTaxes()` once per note — each of which issues its own `TaxConfiguration` query.
+Linear in the number of prior credit notes, on the hot create path.
+
+### Carried forward unchanged
+`largestRemainderAllocate()`'s negative-shortfall branch (`:242-250`) still silently skips a tick
+removal when `bases[idx] < tick`. Still unreachable for non-negative inputs. Still worth an assert
+or a deletion.
+
+---
+
+## C2 adjudication — the stop-on is CORRECT, and the residual IS a display ticket
+
+**On the stop:** correct, and correctly reasoned. Constraining the fabricated quantity to the
+product unit's `decimal_places` cannot work, for a reason that is structural rather than empirical:
+on a whole-unit product the set of reachable line nets collapses to the lattice
+`{k × unit_price}`, and an arbitrary requested money amount is simply not on that lattice. Checked
+independently against the MTP-DOC-16 fixture (10 × 12.500 + 4 × 25.000 @ 19 %): the largest lattice
+net reaching at most a 100.000 inclusive target is 75.000 → 89.250 inclusive, a **10.750 TND** floor.
+(I could not reproduce the commit's exact 74.975 figure, which presumably reflects a different
+flooring in the reverted implementation — but the order of magnitude is real and the conclusion is
+unchanged.) A 10–25 TND deviation is categorically worse than the 1-millime contract RULING A
+establishes, and it would break this same re-gate's own tests. **Stopping was right**, and it
+matches the mitigation my original review recommended verbatim ("the mitigation is presentational
+… rather than a change to the search"). Recording the analysis in the `allocateGroupExactly()`
+docblock (`:277-294`) rather than a commit message alone is the right disposition.
+
+**On the scoping:** yes, DISPLAY, not money — with one correction to the rating. The money columns
+are exact and reconcile (`subtotal + tax_amount == total`, `line_total` exact, allocations exact,
+GL balanced); the quantity is a derived allocation artifact, not a physical count; nothing consumes
+it. So it is not a money defect. But it is not merely cosmetic either: on the credit-note PDF a
+0.4244 quantity on a `decimal_places = 0` Piece unit renders as `0 pc × 99.000 = 42.017`, so an
+auditor recomputing the line from the printed document cannot reproduce its own total. That is a
+**fiscal-document-presentation** defect, and on a certification path I would rate it **P2, not P3**,
+and have it gate the credit-note print/PDF surface (`resources/views/documents/templates/credit_note.blade.php`)
+— not this merge. The right fix remains: show the credited amount, and suppress or annotate the
+synthetic quantity on amount-based credit-note lines.
+
+---
+
+## Regression sweep — clean
+
+| Check | Result |
+|---|---|
+| `CreditNoteAllocationExhaustiveProbeTest` + `CreditNoteMoneyLaneTest` | **OK, 14 tests / 86 assertions** (7 new tests, one per finding) |
+| `CreditNoteServiceTest`, `CreditNoteIntegrationTest`, `CreditNoteAllocationTest`, `CreditNoteTenantIsolationTest`, `Types/CreditNoteDocumentTest`, `TaxSnapshotCreditNoteTest`, `CreditNoteGLIntegrationTest`, `InvoiceAndCreditNoteGLIntegrationTest` | **OK, 68 tests / 294 assertions**, 3 pre-existing skips, **0 regressions** |
+| `tests/Feature/Document/IngressPrecisionTest` | **13 errors — baseline unchanged**, same pre-existing `ArgumentCountError` |
+| `pint --test` (4 changed files) | pass |
+| `phpstan analyse` (2 changed app files) | `[OK] No errors` |
+| MTP-DOC-16 fixture values | 100.000 / 150.000 / 200.000 / 268.750 all still **exact** (`exact=true`) → `'100.600'` assertion holds |
+| MTP-DOC-19, MTP-IDEM-03 | `apps/web` untouched by this commit; both still assert relationally — unaffected |
+| Original "Also-found" list | negative discount → fixed; `min:0` contract → satisfied; stale subtotal → fixed; C2 → adjudicated above; A3 dead branch → carried forward |
+
+## Required follow-ups (none merge-blocking)
+
+1. **N1** — ruling on whether the CN's own duty reduces AR, then reconcile
+   `GeneralLedgerService::createFromCreditNote()` with `allocateCreditNote()`'s clamp. **Ticket
+   before certification sign-off on credit-note GL.**
+2. **N2** — surface `requested_amount` / `credited_amount` in the web credit-note create flow.
+3. **C2** — credit-note template: show credited amount, suppress/annotate the synthetic quantity (P2).
+4. **N3** — document or test the invoice-level ceiling (a 1.000 TND floor is reachable and correct).
+5. Tighten `CreditNoteAllocationExhaustiveProbeTest` to `0.001` and give its fixture lines a
+   `product_id` so the `maxQty` branch is covered by the repo's own probe, not only mine.
+6. **N4 / N5 / A3** — backlog.
+
+Nothing merged, nothing pushed. Local `dev` untouched apart from this record (uncommitted).
