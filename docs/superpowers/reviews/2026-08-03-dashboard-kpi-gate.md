@@ -798,3 +798,119 @@ credit notes; the `paid`-with-`balance_due` data anomaly (already ticketed separ
 `paymentsReceived` onto `sumColumnAsString`; the `received`-can-go-negative labelling question.
 
 **No merge, no push performed. Working tree left clean.**
+
+---
+
+# Final confirm
+
+**Date:** 2026-08-03 · **Scope:** erp `e11afb740` + erp-mobile `fix/dashboard-stats-string-shape`
+@ `2c25da7` (Taxation-agent files ignored) · **Mode:** read-only, own probes and own revert.
+
+## VERDICT: **PROMOTABLE**
+
+N1 is fixed exactly as prescribed and the fix is proven three ways: the `whereExists` subquery
+(`DashboardController.php:156-168`) admits a `Refund` row only when its `original_payment_id`
+resolves to a payment still `Completed`, so `partialRefund()`'s shape (original untouched at
+`PaymentRefundService.php:350-352`) still nets while `refundPayment()`'s shape (original flipped
+to `Reversed` at `:213-216`) contributes exactly zero — no `payment_type` heuristic, an explicit
+join on the linking column; my own revert probe (collapsing it back to the unconditional
+`whereIn(... Refund)`) drives both new tests red with precisely the double-netted deltas
+(`'300.000'`→`'100.000'`, `'1350.000'`→`'1050.000'`), and the live tenant now reports
+`payments.received = 63315.979`, an exact match to `66765.979 gross − 3450.000 partials`, with the
+`−12650.000` of full refunds correctly excluded; the two new tests pin both shapes independently
+plus a combined case, and the pre-existing L4 test was repaired rather than dropped (it never set
+`original_payment_id`, which is why it never exercised the defect). The mobile branch closes N2 —
+simulated verbatim against a first-month payload, `change: null` renders `'—'` with **no** arrow
+and a muted tone (never `"null %"`, never a green ↑), the sign check is a string `startsWith('-')`
+rather than numeric coercion, `typecheck` is clean and both touched suites pass 17/17 with the old
+`typeof … 'number'` contract assertions inverted and a null-passthrough case added; the branch is
+correctly local-only (not pushed, no remote ref). Both docs are now accurate: the coordination
+record retracts its "verified non-breaking" blanket claim with the exact `String(null)` reasoning
+and names the prepared mobile commit, and the ticket's SECOND AMENDMENT marks the superseded L4
+netting and records the N1 ruling with the live arithmetic. **Promote the ERP change; the mobile
+commit still needs the owner's push/release, and until it ships the deployed app shows `"null %"`
+for first-month tenants — that is now documented rather than unknown.**
+
+## Verification runs
+
+| Check | Result |
+|---|---|
+| `phpunit tests/Feature/Dashboard/DashboardStatsTest.php` | **15/15**, 40 assertions |
+| `phpstan analyse app/Modules/Dashboard` (level 8) | **No errors** |
+| N1 red check (own revert to unconditional `Refund` inclusion) | **both new tests red**, correct deltas |
+| Live `GET /dashboard/stats` vs direct SQL | **`received = 63315.979`** — exact |
+| erp-mobile `npm run typecheck` | **clean** |
+| erp-mobile `jest` (2 touched suites) | **17/17** |
+| First-month payload simulated against branch code | `{icon: NONE, tone: muted, text: "—"}` |
+| erp-mobile branch pushed? | **no remote ref** — local only, as stated |
+
+Working tree restored after the revert probe; only the concurrent Taxation agent's files remain
+modified. No merge, no push.
+
+### Detail — N1 shape
+
+```php
+// DashboardController.php:156-168
+->where(function (Builder $query) use ($incomingPaymentTypes, $companyId): void {
+    $query->whereIn('payment_type', $incomingPaymentTypes)
+        ->orWhere(function (Builder $refundQuery) use ($companyId): void {
+            $refundQuery->where('payment_type', PaymentType::Refund->value)
+                ->whereExists(function (QueryBuilder $originalQuery) use ($companyId): void {
+                    $originalQuery->selectRaw('1')->from('payments as original_payment')
+                        ->whereColumn('original_payment.id', 'payments.original_payment_id')
+                        ->where('original_payment.company_id', $companyId)
+                        ->where('original_payment.status', PaymentStatus::Completed->value);
+                });
+        });
+})
+```
+
+Matches the prescription. `Refund` was removed from the type-list predicate (`:148-153`) so it can
+enter only through the guarded branch. The subquery is company-scoped as well as status-scoped, so
+a cross-company `original_payment_id` cannot rescue a refund row.
+
+**Orphan-refund edge (checked, non-issue):** the `EXISTS` also drops any refund with a null or
+dangling `original_payment_id`. Every refund-writing path sets it —
+`PaymentRefundService.php:170` (full), `:330` (partial), `:1229` (POS) — and the live tenant has
+**0** such rows. Noting it only so a future standalone-refund feature knows it must revisit this
+predicate.
+
+**Live arithmetic (demo-pharmacy-tn, current month):**
+
+| Component | Value (TND) |
+|---|---|
+| Gross Completed non-refund incoming | 66,765.979 |
+| 21 partial refunds (original still `completed`) — **netted** | −3,450.000 |
+| 17 full refunds (original `reversed`) — **excluded** | (−12,650.000 not applied) |
+| **Expected** | **63,315.979** |
+| **API `payments.received`** | **`63315.979`** ✅ |
+
+`payments.pending` remains `31018.322`, still an exact match to `SUM(balance_due)` over Posted∪Paid.
+
+### Detail — N2 mobile, simulated verbatim from `2c25da7`
+
+| `revenue.change` | icon | tone | text |
+|---|---|---|---|
+| `null` (first-month tenant) | **NONE** | muted | **`—`** |
+| `"25.00"` | TrendingUp | success | `+25,00 %` |
+| `"-10.50"` | TrendingDown | danger | `-10,50 %` |
+| `"0.00"` | TrendingUp | success | `0,00 %` |
+
+`formatPercent` (`src/lib/format.ts:20-38`) returns `'—'` on `null` before any string work;
+`index.tsx:58-65` derives `hasRevenueChange`/`changePositive` from explicit null checks and
+`startsWith('-')`, and gates the icon on `hasRevenueChange`. `dashboardApi.ts:11-27` types
+`current`/`previous` as `string` and `change` as `string | null` with the stale JSDoc rewritten.
+
+**One cosmetic cross-client divergence (not blocking, not new to this round):** the backend's
+`CurrencyScale::bcround` can emit `"-0.00"` for a tiny negative ratio. Web normalises it via
+big.js (TrendingUp, `0%`); mobile's `startsWith('-')` yields TrendingDown + `-0,00 %`. Harmless,
+sub-0.005 % magnitude; worth a line in the mobile follow-up if anyone touches that helper again.
+
+### Carry-overs (unchanged, all correctly recorded as not-implemented)
+
+L2 bucket-guard tests (`Cancelled` / posted credit note / pending clamp); L3 multi-currency mixing
++ scale resolver; revenue gross of credit notes; the `paid`-with-`balance_due` data anomaly
+(separately ticketed); folding `paymentsReceived` onto `sumColumnAsString()`; the
+`received`-can-go-negative labelling question.
+
+**No merge, no push performed.**
