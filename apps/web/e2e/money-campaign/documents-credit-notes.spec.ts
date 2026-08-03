@@ -83,15 +83,16 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     const cn1 = await createCreditNoteFromInvoice(page, invoiceId, { amount: '100.000', reason: 'Product Return' })
     expect(cn1.ok, `credit note create failed: ${JSON.stringify(cn1.data)}`).toBeTruthy()
     // Stored POSITIVE (no negation).
-    // TRIPWIRE (T-B, docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md,
-    // finding 3): this amount-based DRAFT credit note carries NO 0.600
-    // STAMP_CREDIT_NOTE — total equals the raw submitted amount exactly, with
-    // no document-level tax applied at Draft (mirrors the invoice-side W1b
-    // defect 2 the stamp fix already covers for invoices, but T-B shows
-    // credit notes were never wired into that fix). When T-B lands this
-    // becomes '100.600' and MTP-DOC-18's remaining-amount arithmetic below
-    // shifts accordingly — update both together, deliberately, not silently.
-    expect(cn1.data.total).toBe('100.000')
+    // FIXED (2026-08-03, credit-note money lane, root-cause of orchestrator
+    // smoke finding #1 -- the 50.174 drift -- + ticket
+    // 2026-08-02-credit-note-draft-stamp-and-scale4-totals.md finding 3):
+    // this amount-based DRAFT credit note now carries its own 0.600
+    // STAMP_CREDIT_NOTE, folded in the same way the invoice-side stamp fix
+    // covers invoices (`CreditNoteService::foldDocumentLevelTaxes()`) --
+    // total is amount + 0.600 = '100.600', and equals the post-confirmation
+    // total exactly (draft == confirmed). MTP-DOC-18's remaining-amount
+    // arithmetic below is updated to match.
+    expect(cn1.data.total).toBe('100.600')
     expect(Number(cn1.data.subtotal)).toBeGreaterThan(0)
     expect(Number(cn1.data.tax_amount)).toBeGreaterThanOrEqual(0)
     expect(cn1.data.status).toBe('draft')
@@ -114,11 +115,13 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     // MTP-DOC-18: even while cn1 is still Draft, a further credit note of
     // 200.000 must be REFUSED — `CreditNoteService::createCreditNote()`'s
     // remaining-amount guard sums `invoice.creditNotes()->sum('total')`
-    // (apps/api/.../CreditNoteService.php:68-71) regardless of credit-note
-    // status, so this check does not depend on cn1 having been posted.
-    // remaining = 268.750 - 100.000 (cn1, uncapped by status) = 168.750 < 200.000.
+    // regardless of credit-note status, so this check does not depend on cn1
+    // having been posted. cn1's total now carries its own 0.600 stamp (see
+    // above), so remaining = 268.750 - 100.600 (cn1, uncapped by status) =
+    // 168.150 < 200.000 -- still refused (verified live post-fix: over-credit
+    // refusal stays correct with the corrected, stamp-inclusive totals).
     const overCredit = await createCreditNoteFromInvoice(page, invoiceId, { amount: '200.000', reason: 'Product Return' })
-    expect(overCredit.ok, 'expected the over-credit (200.000 > remaining 168.750) to be REFUSED, but it succeeded').toBeFalsy()
+    expect(overCredit.ok, 'expected the over-credit (200.000 > remaining 168.150) to be REFUSED, but it succeeded').toBeFalsy()
   })
 
   // A3.4 (NEW MTP-DOC-19, plan §A.3): the post-flow half of MTP-DOC-17 above
@@ -223,21 +226,15 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
     ).not.toBeNull()
     expect(response?.ok(), `line-based credit note refused: ${await response?.text()}`).toBeTruthy()
     const body = (await response?.json()) as { data: Record<string, unknown> }
-    // L1 credited in full: net 2 * 40.000 = 80.000, VAT 19% = 15.200 -> 95.200.
-    // RECONCILED (2026-08-02, W-1 documents-defects lane re-run): the T-B
-    // finding (docs/superpowers/tickets/2026-08-02-credit-note-draft-stamp-and-scale4-totals.md)
-    // predicted `CreditNoteService::createLineBasedCreditNote()`'s raw scale-4
-    // PHP computation (bcmul/bcadd at scale 4, CreditNoteService.php ~275-291,
-    // never explicitly reformatted to currency scale 3) would leak a
-    // '95.2000' total through the API. Live-verified here: it does NOT --
-    // `documents.total` is `decimal(15,3)`, so the database column itself
-    // truncates the raw scale-4 string to scale 3 on write, and the API
-    // response is correctly '95.200'. This assertion was BLOCKED entirely by
-    // the credit-note numbering collision (defect 1, now fixed) in every
-    // prior run, so this is the first live observation of the actual value.
-    // Exact-string assertion kept (not `toBeCloseTo`) so any future
-    // regression to the raw scale-4 value is still falsifiable.
-    expect(body.data.total).toBe('95.200')
+    // L1 credited in full: net 2 * 40.000 = 80.000, VAT 19% = 15.200 -> 95.200
+    // (VAT-inclusive-excl-duty), then the CN's own 0.600 STAMP_CREDIT_NOTE
+    // folds in (2026-08-03 money-lane item 2: `foldDocumentLevelTaxes()`
+    // now runs for the line-based path too) -> 95.800.
+    // `documents.total` is `decimal(15,3)` and `CreditNoteService` now scales
+    // its own intermediates via the resolved currency scale (item 3), so the
+    // API response is exactly '95.800' with no scale-4 leak.
+    expect(body.data.subtotal).toBe('80.000')
+    expect(body.data.total).toBe('95.800')
     expect(body.data.status).toBe('draft')
   })
 
@@ -268,17 +265,14 @@ test.describe('MTP-DOC — credit notes (W1b)', () => {
 
     const result = await submitDocumentCreate(page, '/api/v1/credit-notes')
     expect(result.ok, `standalone credit note refused: ${JSON.stringify(result.data)}`).toBeTruthy()
-    // net 2 * 30.000 = 60.000, VAT 19% = 11.400 -> 71.400.
-    // RECONCILED (2026-08-02, W-1 documents-defects lane re-run — see
-    // MTP-DOC-20 above for the full citation): `CreditNoteService::
-    // createStandaloneCreditNote()` ALSO computes at scale 4
-    // (CreditNoteService.php ~432-439) and writes the raw string straight
-    // through, but `documents.subtotal`/`total` are `decimal(15,3)`, so the
-    // database truncates to scale 3 on write. Live-verified correctly
-    // formatted; was BLOCKED by the numbering collision (defect 1, now
-    // fixed) in every prior run.
+    // net 2 * 30.000 = 60.000, VAT 19% = 11.400 -> 71.400 (VAT-inclusive-excl-
+    // duty), then the CN's own 0.600 STAMP_CREDIT_NOTE folds in (2026-08-03
+    // money-lane item 2: `foldDocumentLevelTaxes()` now runs for the
+    // standalone path too) -> 72.000. `documents.subtotal`/`total` are
+    // `decimal(15,3)` and `CreditNoteService` scales its own intermediates
+    // via the resolved currency scale (item 3), so no scale-4 leak.
     expect(result.data.subtotal).toBe('60.000')
-    expect(result.data.total).toBe('71.400')
+    expect(result.data.total).toBe('72.000')
   })
 
   test('MTP-DOC-23b: the standalone /new form still refuses to submit with no reason', async ({ page }) => {
