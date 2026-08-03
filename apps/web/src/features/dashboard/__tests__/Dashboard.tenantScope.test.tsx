@@ -97,11 +97,14 @@ function wrapper(queryClient: QueryClient) {
 }
 
 function dashboardStats() {
+  // revenue/payments now travel as bc-based decimal strings server-side
+  // (docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+  // ruling 3) — mirror the real wire shape here.
   return {
-    revenue: { current: 100, previous: 90, change: 10 },
+    revenue: { current: '100.000', previous: '90.000', change: '10.00' },
     invoices: { total: 2, pending: 1, overdue: 0 },
     partners: { total: 3, newThisMonth: 1 },
-    payments: { received: 80, pending: 20 },
+    payments: { received: '80.000', pending: '20.000' },
   }
 }
 

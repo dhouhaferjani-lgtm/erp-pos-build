@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Big from 'big.js'
 import { Link, useNavigate } from 'react-router-dom'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useQuery } from '@tanstack/react-query'
@@ -19,7 +20,7 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { formatCurrency } from '../../lib/format'
+import { formatCurrency, formatPercent } from '../../lib/format'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
@@ -30,9 +31,12 @@ import { CashPositionWidget } from '@/features/treasury/components/CashPositionW
 
 interface DashboardStats {
   revenue: {
-    current: number
-    previous: number
-    change: number
+    // Precision rule 19 / docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+    // ruling 3: bc-based decimal strings, not floats. `change` is a
+    // percentage (2dp string), not a currency-scaled amount.
+    current: string
+    previous: string
+    change: string
   }
   invoices: {
     total: number
@@ -44,8 +48,9 @@ interface DashboardStats {
     newThisMonth: number
   }
   payments: {
-    received: number
-    pending: number
+    // Already bc-based decimal strings server-side (sumDecimalStrings/bcsub).
+    received: string
+    pending: string
   }
 }
 
@@ -144,14 +149,22 @@ export function Dashboard() {
   const recentDocuments = documentsData?.data ?? []
   const recentPayments = paymentsData?.data ?? []
 
-  // Format currency using company settings
+  // Format currency using company settings. formatCurrency accepts string |
+  // number directly and formats via big.js (no parseFloat on money — rule 19).
   const formatAmount = (amount: number | string | null | undefined) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : (amount ?? 0)
-    return formatCurrency(isNaN(num) ? 0 : num, {
+    return formatCurrency(amount ?? 0, {
       currency: companyCurrency,
       locale: companyLocale,
     })
   }
+
+  // revenue.change is a percent string (e.g. "25.00" or "-10.50"). Sign/magnitude
+  // are derived with big.js — never parseFloat/Number(...) on this value.
+  const revenueChangeIsNegative = stats?.revenue.change !== undefined
+    && new Big(stats.revenue.change).lt(0)
+  const revenueChangeAbsDisplay = stats?.revenue.change !== undefined
+    ? formatPercent(new Big(stats.revenue.change).abs().toString())
+    : null
   const getDocumentNumberLabel = (documentNumber: string | null) =>
     documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
@@ -227,18 +240,18 @@ export function Dashboard() {
             <div className={`rounded-lg ${colorTokens.intent.success.bgSoft} p-2`}>
               <DollarSign className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
             </div>
-            {stats?.revenue.change !== undefined && (
+            {revenueChangeAbsDisplay !== null && (
               <div
                 className={`flex items-center gap-1 text-sm ${
-                  stats.revenue.change >= 0 ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.danger.text}`
+                  revenueChangeIsNegative ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`
                 }`}
               >
-                {stats.revenue.change >= 0 ? (
-                  <TrendingUp className="h-4 w-4" />
-                ) : (
+                {revenueChangeIsNegative ? (
                   <TrendingDown className="h-4 w-4" />
+                ) : (
+                  <TrendingUp className="h-4 w-4" />
                 )}
-                {Math.abs(stats.revenue.change)}%
+                {revenueChangeAbsDisplay}
               </div>
             )}
           </div>

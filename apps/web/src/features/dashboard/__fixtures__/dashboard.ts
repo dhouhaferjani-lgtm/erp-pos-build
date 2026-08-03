@@ -11,9 +11,12 @@
 
 export interface DashboardStats {
   revenue: {
-    current: number
-    previous: number
-    change: number
+    // Precision rule 19 / docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+    // ruling 3: bc-based decimal strings, not floats. `change` is a
+    // percentage (2dp string), not a currency-scaled amount.
+    current: string
+    previous: string
+    change: string
   }
   invoices: {
     total: number
@@ -25,8 +28,8 @@ export interface DashboardStats {
     newThisMonth: number
   }
   payments: {
-    received: number
-    pending: number
+    received: string
+    pending: string
   }
 }
 
@@ -53,10 +56,10 @@ export function makeDashboardStats(
   overrides: Partial<DashboardStats> = {},
 ): DashboardStats {
   return {
-    revenue: { current: 15000, previous: 12000, change: 25 },
+    revenue: { current: '15000.000', previous: '12000.000', change: '25.00' },
     invoices: { total: 45, pending: 12, overdue: 3 },
     partners: { total: 28, newThisMonth: 5 },
-    payments: { received: 35000, pending: 8000 },
+    payments: { received: '35000.000', pending: '8000.000' },
     ...overrides,
   }
 }
