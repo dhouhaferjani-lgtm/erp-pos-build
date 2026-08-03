@@ -38,7 +38,7 @@ landed + gated + promoted; staging auto-deployed; zero migrations in the batch).
 
 ---
 
-## 2. Vos étapes staging (§A) — le checklist consolidé
+## 2. Your staging steps (§A) — the consolidated checklist
 
 **Document : [`docs/handoff/OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md`](OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md)**
 - §A : post-deploy staging (RolesAndPermissionsSeeder + `permission:cache-reset` REQUIS, sinon
@@ -54,7 +54,7 @@ rapporté avant tout dépôt de déclaration — détail :
 
 ---
 
-## 3. Handover Codex Desktop (POS Tauri, §Z — 64 items)
+## 3. Codex Desktop handover (POS Tauri, §Z — 64 items)
 
 **Document : [`docs/handoff/HANDOVER-codex-pos-desktop-campaign-2026-08-02.md`](HANDOVER-codex-pos-desktop-campaign-2026-08-02.md)**
 Prêt à remettre à Codex tel quel : recette d'environnement (bundle dev, piège de l'app prod,
@@ -63,7 +63,7 @@ d'exécution (Z.1 d'abord — il produit les fixtures SHIFT-1/SHIFT-2 pour §Y).
 
 ---
 
-## 4. Mobile — une action : pousser la branche préparée
+## 4. Mobile — one action: push the prepared branch
 
 Repo `erp-mobile`, branche locale **`fix/dashboard-stats-string-shape`** (commit `2c25da7`,
 typecheck + 17/17 tests verts). À pousser + livrer avec (ou juste après) le deploy backend.
@@ -73,7 +73,7 @@ tenant en premier mois. Détail du contrat :
 
 ---
 
-## 5. Index des enregistrements de cette passe (si besoin de détail)
+## 5. Records index for this pass (if detail is needed)
 
 - Plan de campagne complet : `docs/qa/2026-08-02-full-e2e-campaign-plan.md` (112 flux, vagues W-0..W-11).
 - Résultats campagne (local, gitignored) : `docs/sessions/MONEY-CAMPAIGN-RESULTS.md`.
@@ -90,11 +90,10 @@ tenant en premier mois. Détail du contrat :
 
 ---
 
-## 6. Prochaine session (nouvelle) — quoi lancer
+## 6. Next session (new) — what to launch
 
-Dire simplement : **« Reprends le programme launch — exécute les vagues W-3 à W-8 puis W-X du
-plan docs/qa/2026-08-02-full-e2e-campaign-plan.md »**. La mémoire du programme
-(`project_first_tenant_launch_program.md`) est à jour au commit `cce3491b6` ; les 15 cas de
-rapprochement bancaire sont débloqués par `statement-support.ts` ; la vague W-X (destructive)
-doit tourner SEULE. Après les vagues : votre §A, puis campagne staging, POS §Z (Codex), §Y,
-production.
+Just say: **"Resume the launch program — execute waves W-3 through W-8 then W-X from
+docs/qa/2026-08-02-full-e2e-campaign-plan.md"**. The program memory
+(`project_first_tenant_launch_program.md`) is current to commit `cce3491b6`; the 15
+bank-reconciliation cases are unblocked by `statement-support.ts`; wave W-X (destructive) must
+run ALONE. After the waves: your §A, then the staging campaign, POS §Z (Codex), §Y, production.
