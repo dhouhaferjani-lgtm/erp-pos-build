@@ -201,7 +201,7 @@ test.describe('INV — counting -> discrepancy report -> apply', () => {
     }
   })
 
-  test('MTP-INV-19 (P1): BLOCKED — onboarding opening via counting is not reachable on a bounded scope', async ({ page }) => {
+  test('MTP-INV-19 (P1): BLOCKED — onboarding opening via counting is not reachable on a bounded scope', async () => {
     // The onboarding/opening arm of the counting apply
     // (InventoryCountingService::assertOpeningCostsResolved() + the `openingUnitCost`
     // blend) requires the counting to SEED an item for a product that has no
@@ -235,8 +235,6 @@ test.describe('INV — counting -> discrepancy report -> apply', () => {
         'product. Whole-location scope on this shared tenant would post an opening for the entire catalog.',
     })
     test.skip(true, 'no bounded web path to an onboarding opening count on a shared tenant')
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    void page
   })
 
   test('MTP-INV-20 (P2): a zero-discrepancy count reports 0.000 everywhere, no blanks, no NaN', async ({ page }) => {

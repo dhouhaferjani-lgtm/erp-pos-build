@@ -430,6 +430,14 @@ export async function retireOpeningBatch(page: Page, batchId: string): Promise<n
   const del = await deleteOpening(page, batchId)
   if (del.status < 300) return del.status
   const lock = await lockOpening(page, batchId)
+  if (lock.status < 300) return lock.status
+  // Neither path applied — the batch may already be gone (a previous slot-clear) or
+  // already LOCKED, both of which mean "retired". Re-read before reporting failure so a
+  // cleanup assertion cannot fail on an already-clean slot.
+  const show = await apiRequest(page, 'GET', `/companies/${COMPANY_ID}/opening-batches/${batchId}`)
+  if (show.status === 404) return 200
+  const status = (show.body as { data?: { status?: string } })?.data?.status
+  if (status === 'LOCKED') return 200
   return lock.status
 }
 
