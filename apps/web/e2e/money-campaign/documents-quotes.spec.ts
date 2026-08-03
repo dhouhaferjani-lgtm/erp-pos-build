@@ -38,6 +38,7 @@ import {
   uniqueName,
 } from './w1b-support'
 import { apiRequest } from './helpers'
+import { addMoney } from './treasury-support'
 
 test.describe('MTP-DOC-25..27 — quote create → confirm: totals & VAT (W-3)', () => {
   test.setTimeout(120_000)
@@ -78,9 +79,13 @@ test.describe('MTP-DOC-25..27 — quote create → confirm: totals & VAT (W-3)',
     )
 
     // Aggregate identity (MTP-DOC-02's invariant, re-asserted on the quote
-    // surface): subtotal + tax_amount == total, exact strings.
-    expect(created.data.total).toBe('267.750')
-    expect(`${225.0 + 42.75}`).toBe('267.75') // arithmetic sanity of the fixture itself
+    // surface): subtotal + tax_amount == total, computed FROM THE RESPONSE and
+    // compared as exact strings. `addMoney` is the house integer-millimes
+    // adder (treasury-support.ts) — never a float on money (CLAUDE.md rule 19).
+    expect(
+      addMoney(created.data.subtotal as string, created.data.tax_amount as string),
+      'aggregate identity: subtotal + tax_amount == total',
+    ).toBe(created.data.total as string)
   })
 
   test('MTP-DOC-26 (EDGE, P0): confirming a quote does NOT move the numbers — Draft and Confirmed totals are byte-identical (T-A finding 2 regression guard)', async ({
@@ -186,6 +191,12 @@ test.describe('MTP-DOC-25..27 — quote create → confirm: totals & VAT (W-3)',
       '18.999',
     )
     expect(truncBody.total).toBe('118.998')
+    // Identity from the response, exact strings — the case most at risk of
+    // breaking it, since the VAT leg is the one that gets truncated.
+    expect(
+      addMoney(truncBody.subtotal as string, truncBody.tax_amount as string),
+      'aggregate identity survives single-truncation: subtotal + tax_amount == total',
+    ).toBe(truncBody.total as string)
 
     // Confirming the truncation-vector quote must not re-round it.
     const truncConfirmed = await apiRequest(page, 'POST', `/quotes/${truncBody.id as string}/confirm`)

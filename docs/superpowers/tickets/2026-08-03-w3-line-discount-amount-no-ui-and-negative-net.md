@@ -17,8 +17,8 @@ This ticket is the **product half** of orchestrator ruling **C-6** in
 - validated on write — `lines.*.discount_amount => nullable|numeric|min:0|regex:/^\d+(\.\d{1,3})?$/`
   (`apps/api/app/Modules/Document/Presentation/Requests/CreateDocumentRequest.php:130`);
 - honoured by the canonical line-net calculator —
-  `DocumentLine::computeLineTotal()` (`apps/api/app/Modules/Document/Domain/DocumentLine.php:283-290`)
-  applies it whenever `discount_percent` is null/zero;
+  `DocumentLine::computeLineTotal()` (`apps/api/app/Modules/Document/Domain/DocumentLine.php:272-290`,
+  precedence chain `:282-287`) applies it whenever `discount_percent` is null/zero;
 - read back verbatim by `DocumentLineData`.
 
 But the **only** discount control in the documents UI is a single numeric input bound to
@@ -82,13 +82,17 @@ follow the sign of the base it is levied on.
    compared against the line's own `quantity x unit_price`, so nothing at the HTTP boundary
    rejects an over-discount. (`discount_percent`, by contrast, *is* bounded — `max:100` at
    `:129`.)
-2. `DocumentLine::computeLineTotal()` (`DocumentLine.php:288`) subtracts with a bare
-   `bcsub($subtotal, $discountAmount, $scale)` — no `max(0, ...)` floor:
+2. `DocumentLine::computeLineTotal()` (`DocumentLine.php:272-290`) subtracts with a bare
+   `bcsub($subtotal, $discountAmount, $scale)` — no `max(0, ...)` floor. The unguarded
+   subtraction is **`DocumentLine.php:286`**, inside the percent-vs-amount chain at `:282-287`:
 
    ```php
-   } elseif ($discountAmount !== null && bccomp($discountAmount, '0', $scale) !== 0) {
-       $subtotal = bcsub($subtotal, $discountAmount, $scale);
-   }
+   282   if ($discountPercent !== null && bccomp($discountPercent, '0', 4) !== 0) {
+   283       $discount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $scale);
+   284       $subtotal = bcsub($subtotal, $discount, $scale);
+   285   } elseif ($discountAmount !== null && bccomp($discountAmount, '0', $scale) !== 0) {
+   286       $subtotal = bcsub($subtotal, $discountAmount, $scale);   // <-- no floor
+   287   }
    ```
 
 **Why this matters even though there is no UI path (finding 1).** "No UI control" is not a

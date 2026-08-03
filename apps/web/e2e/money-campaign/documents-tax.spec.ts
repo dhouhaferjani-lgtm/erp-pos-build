@@ -18,6 +18,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAsOwner, createCustomer, createInvoice, confirmInvoice, uniqueName } from './w1b-support'
 import { apiRequest } from './helpers'
+import { addMoney } from './treasury-support'
 
 test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -42,8 +43,15 @@ test.describe('MTP-TAX — VAT decomposition (W1b)', () => {
     const confirmed = await confirmInvoice(page, created.data.id as string)
     expect(confirmed.tax_amount).toBe('1.000')
     expect(confirmed.total).toBe('51.000')
-    // total == subtotal + stamp
-    expect((Number(created.data.subtotal) + Number(confirmed.tax_amount)).toFixed(3)).toBe(confirmed.total)
+    // total == subtotal + stamp.
+    // W-3 review fix M-5: this was `(Number(a) + Number(b)).toFixed(3)` — float
+    // coercion on money inside the money campaign, exactly what CLAUDE.md rule
+    // 19 forbids. Replaced with the house integer-millimes adder
+    // (treasury-support.ts `addMoney`), asserted as an exact string.
+    expect(
+      addMoney(created.data.subtotal as string, confirmed.tax_amount as string),
+      'aggregate identity: subtotal + tax_amount == total',
+    ).toBe(confirmed.total as string)
   })
 
   test('MTP-TAX-08: eco-tax is schema-only — never present in the line response, never in tax_amount', async ({ page }) => {

@@ -13,7 +13,7 @@
  * second control exists anywhere in the documents UI. W1b therefore recorded
  * 02/03/04 as BLOCKED. Per ruling C-6(a) the percent-vs-amount precedence is
  * a REAL backend rule (`DocumentLine::computeLineTotal()`,
- * apps/api/app/Modules/Document/Domain/DocumentLine.php:272-292) that must be
+ * apps/api/app/Modules/Document/Domain/DocumentLine.php:272-290) that must be
  * covered regardless of the UI, so they are now authored through the house
  * `apiRequest` pattern against the same live backend. The product half of the
  * ruling — C-6(b), "is the missing control a UX gap?" — is filed as
@@ -38,6 +38,7 @@ import {
   uniqueName,
 } from './w1b-support'
 import { apiRequest } from './helpers'
+import { addMoney } from './treasury-support'
 
 test.describe('MTP-DSC — line discounts (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -77,7 +78,7 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     //   amount  50.000 -> discount 50.000 -> net  75.000   <- must be IGNORED
     // Getting this precedence backwards silently over-discounts every line
     // that carries both fields (`computeLineTotal()`'s `if percent … elseif
-    // amount` chain, DocumentLine.php:283-289).
+    // amount` chain, DocumentLine.php:282-287).
     const created = await apiRequest(page, 'POST', '/invoices', {
       partner_id: customerId,
       document_date: new Date().toISOString().slice(0, 10),
@@ -176,42 +177,69 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     // ACTUAL: neither. `lines.*.discount_amount` is validated only as
     // `nullable|numeric|min:0|regex:3dp` (CreateDocumentRequest.php:130) — it
     // is never compared against the line's own gross — and
-    // `computeLineTotal()` does a bare `bcsub($subtotal, $discountAmount)`
-    // with no floor (DocumentLine.php:288). So the document is accepted with a
-    // NEGATIVE net, a NEGATIVE VAT, and a negative total that still carries a
-    // POSITIVE 1.000 stamp duty. The assertions below pin TODAY'S behaviour:
-    // when the guard lands, this test goes red on purpose and must be updated
-    // deliberately (to a 422, or to a 0.000 floor).
-    const created = await apiRequest(page, 'POST', '/invoices', {
-      partner_id: customerId,
-      document_date: new Date().toISOString().slice(0, 10),
-      lines: [
-        {
-          description: 'DSC-04 over-discount probe',
-          quantity: '10',
-          unit_price: '12.500',
-          discount_amount: '200.000',
-          tax_rate: '19.00',
-        },
-      ],
-    })
-    expect(
-      created.status,
-      `TRIPWIRE: an over-line discount_amount is ACCEPTED today (expected 422 once guarded) — ${JSON.stringify(created.body)}`,
-    ).toBe(201)
-    const body = (created.body as { data: Record<string, unknown> }).data
+    // `computeLineTotal()` (DocumentLine.php:272-290) does a bare
+    // `bcsub($subtotal, $discountAmount, $scale)` with no floor at
+    // DocumentLine.php:286 (the percent-vs-amount chain is :282-287). So the
+    // document is accepted with a NEGATIVE net, a NEGATIVE VAT, and a negative
+    // total that still carries a POSITIVE 1.000 stamp duty. The assertions
+    // below pin TODAY'S behaviour: when the guard lands, this test goes red on
+    // purpose and must be updated deliberately (to a 422, or to a 0.000 floor).
+    //
+    // CLEANUP (review fix M-3): the probe document is DELETED in the `finally`
+    // below. The tripwire lives in the assertions, not in the row — leaving a
+    // persisted negative-money Draft invoice in the shared demo-pharmacy-tn
+    // tenant would leak into every later wave's reads (e.g.
+    // `UpcomingPaymentsService.php:251` queries Draft-status documents), which
+    // is exactly the shared-tenant contamination the campaign's mutation-safety
+    // rule exists to prevent.
+    let probeInvoiceId: string | null = null
+    try {
+      const created = await apiRequest(page, 'POST', '/invoices', {
+        partner_id: customerId,
+        document_date: new Date().toISOString().slice(0, 10),
+        lines: [
+          {
+            description: 'DSC-04 over-discount probe',
+            quantity: '10',
+            unit_price: '12.500',
+            discount_amount: '200.000',
+            tax_rate: '19.00',
+          },
+        ],
+      })
+      expect(
+        created.status,
+        `TRIPWIRE: an over-line discount_amount is ACCEPTED today (expected 422 once guarded) — ${JSON.stringify(created.body)}`,
+      ).toBe(201)
+      const body = (created.body as { data: Record<string, unknown> }).data
+      probeInvoiceId = body.id as string
 
-    const lines = body.lines as Array<Record<string, unknown>>
-    expect(lines[0].line_total, 'TRIPWIRE: 125.000 - 200.000 = -75.000, not floored at 0.000').toBe('-75.000')
-    expect(body.subtotal, 'TRIPWIRE: negative document subtotal').toBe('-75.000')
-    // VAT on a negative net is itself negative: -75.000 * 0.19 = -14.250.
-    // The document-level stamp duty is a FixedAmount and stays +1.000, so
-    // tax_amount = -14.250 + 1.000 = -13.250.
-    expect(body.tax_amount, 'TRIPWIRE: negative line VAT plus a still-positive 1.000 stamp').toBe('-13.250')
-    expect(body.total, 'TRIPWIRE: -75.000 + -13.250 = -88.250').toBe('-88.250')
-    // The aggregate identity still holds even in this nonsensical state — the
-    // arithmetic is self-consistent, the INPUT is what is unguarded.
-    expect(body.total).toBe('-88.250')
+      const lines = body.lines as Array<Record<string, unknown>>
+      expect(lines[0].line_total, 'TRIPWIRE: 125.000 - 200.000 = -75.000, not floored at 0.000').toBe('-75.000')
+      expect(body.subtotal, 'TRIPWIRE: negative document subtotal').toBe('-75.000')
+      // VAT on a negative net is itself negative: -75.000 * 0.19 = -14.250.
+      // The document-level stamp duty is a FixedAmount and stays +1.000, so
+      // tax_amount = -14.250 + 1.000 = -13.250.
+      expect(body.tax_amount, 'TRIPWIRE: negative line VAT plus a still-positive 1.000 stamp').toBe('-13.250')
+      expect(body.total, 'TRIPWIRE: -75.000 + -13.250 = -88.250').toBe('-88.250')
+      // The aggregate identity still holds even in this nonsensical state — the
+      // arithmetic is self-consistent, the INPUT is what is unguarded. Computed
+      // from the response with the house integer-millimes adder (review fix
+      // M-2 — this used to be a duplicate `total` assertion, which proved
+      // nothing); `addMoney` is sign-correct, so it exercises the negative path.
+      expect(
+        addMoney(body.subtotal as string, body.tax_amount as string),
+        'aggregate identity survives the negative state: subtotal + tax_amount == total',
+      ).toBe(body.total as string)
+    } finally {
+      if (probeInvoiceId !== null) {
+        const deleted = await apiRequest(page, 'DELETE', `/invoices/${probeInvoiceId}`)
+        expect(
+          deleted.status,
+          `failed to clean up the negative-money probe invoice ${probeInvoiceId}: ${deleted.status} ${JSON.stringify(deleted.body)}`,
+        ).toBeLessThan(300)
+      }
+    }
   })
 
   test('MTP-DSC-05: discount_percent ceilings — 100.01 (>max) and 10.001 (>2dp) both rejected', async ({ page }) => {
@@ -243,6 +271,59 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     } else {
       expect(afterExtraDp).not.toBe('10.001')
     }
+
+    // --- server-path probe (REQUIRED, review fix I-2) ---
+    // The two branches above are UI-shape-dependent: a browser-native
+    // number input with max="100" may clamp or reject the keystroke, in which
+    // case the else-branch (`inputValue() !== '100.01'`) passes WITHOUT the
+    // server rule ever being exercised — a tautology dressed up as a
+    // rejection. The verdict "both rejected" must be true of the BACKEND
+    // regardless of which branch the widget takes, so both ceilings are also
+    // POSTed directly (same C-6(a) API-driven pattern as DSC-02..04) and the
+    // 422 + the exact failing field asserted.
+    const probeCustomerId = await createCustomer(page, uniqueName('DSC05-api'))
+    const today = new Date().toISOString().slice(0, 10)
+    const probe = async (discountPercent: string): Promise<{ status: number; body: unknown }> =>
+      apiRequest(page, 'POST', '/invoices', {
+        partner_id: probeCustomerId,
+        document_date: today,
+        lines: [
+          {
+            description: `DSC-05 server probe ${discountPercent}`,
+            quantity: '1',
+            unit_price: '20.000',
+            discount_percent: discountPercent,
+            tax_rate: '19.00',
+          },
+        ],
+      })
+
+    // `max:100` — CreateDocumentRequest.php:129
+    const overMax = await probe('100.01')
+    expect(
+      overMax.status,
+      `server MUST reject discount_percent=100.01 (max:100) — got ${overMax.status} ${JSON.stringify(overMax.body)}`,
+    ).toBe(422)
+    expect(JSON.stringify(overMax.body), 'the 422 must name lines.0.discount_percent').toContain(
+      'lines.0.discount_percent',
+    )
+
+    // 2-dp regex ceiling — same rule, `regex:/^\d+(\.\d{1,2})?$/`
+    const extraDp = await probe('10.001')
+    expect(
+      extraDp.status,
+      `server MUST reject discount_percent=10.001 (3dp, ceiling is 2dp) — got ${extraDp.status} ${JSON.stringify(extraDp.body)}`,
+    ).toBe(422)
+    expect(JSON.stringify(extraDp.body), 'the 422 must name lines.0.discount_percent').toContain(
+      'lines.0.discount_percent',
+    )
+
+    // Control: the same payload at a LEGAL 2-dp percent succeeds, proving the
+    // two 422s above are the ceiling firing and not an unrelated payload fault.
+    const legal = await probe('10.00')
+    expect(legal.status, `control payload must be accepted: ${JSON.stringify(legal.body)}`).toBe(201)
+    const legalBody = (legal.body as { data: Record<string, unknown> }).data
+    expect((legalBody.lines as Array<Record<string, unknown>>)[0].line_total).toBe('18.000')
   })
 
   test('MTP-DSC-06: no whole-document discount field exists anywhere in the invoice create UI', async ({ page }) => {
