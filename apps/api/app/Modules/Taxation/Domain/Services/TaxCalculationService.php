@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\DTOs\CalculatedTax;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
@@ -17,6 +18,7 @@ use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Support\Collection;
 
 class TaxCalculationService
 {
@@ -95,63 +97,126 @@ class TaxCalculationService
         // Group lines by their tax rate to find which rates are actually used
         $linesByRate = $document->lines->groupBy('tax_rate');
 
+        // Pass 1: pre-discount base per rate bucket. Each line is truncated
+        // to the CURRENCY scale individually, then summed (bcadd of
+        // already-scaled values is lossless) -- the same method
+        // calculateSubtotal() uses, NOT a scale+1 accumulator rounded once.
+        // This guarantees Σ(preDiscountBase) across every bucket is
+        // byte-identical to the document's pre-discount line total, so the
+        // post-discount bucket bases (below) sum EXACTLY to $subtotal —
+        // 2026-08-03 gate V4 (a scale+1-then-round-once accumulator drifts
+        // under sub-scale truncation; verified lossless by the gate probe).
+        //
+        // A rate group is included whenever the line carries an EXPLICIT
+        // rate, including an explicit 0% (exempt) rate — 2026-08-03 gate V3:
+        // exempt turnover must still land in the declaration's base_0
+        // bracket. Only a genuinely absent tax_rate (NULL — no rate was
+        // ever set on the line) is skipped; that is not a taxable/exempt
+        // supply the declaration can classify.
+        // Each bucket ALSO keeps the pre-existing high-precision tax
+        // accumulator (scale+1 per-line tax, summed, rounded ONCE) —
+        // TaxCalculationScalingTest's gold case (1000 sub-scale lines whose
+        // individual net truncates to 0.000 but whose true tax total is
+        // 0.361): truncating the BASE per line first (as the preDiscountBase
+        // above does, for V4's declared-base invariant) and then multiplying
+        // by rate would reintroduce that catastrophic truncation for tax
+        // itself. So the undiscounted tax stays on the untruncated
+        // accumulator; only a bucket that actually absorbs a discount share
+        // (below) is recomputed from its (currency-scale) discounted base.
+        /** @var array<string, array{rateFraction: numeric-string, lines: Collection<int, DocumentLine>, preDiscountBase: numeric-string, taxAccumulator: numeric-string}> $rateGroups */
+        $rateGroups = [];
+        /** @var array<string, numeric-string> $preDiscountBaseByRate */
+        $preDiscountBaseByRate = [];
+        /** @var numeric-string $totalPreDiscountBase */
+        $totalPreDiscountBase = '0';
+
         foreach ($linesByRate as $rate => $linesWithRate) {
             $rateStr = (string) $rate;
-            if ($rateStr === '' || $rateStr === '0' || $rateStr === '0.00') {
-                continue; // Skip lines with no tax
+            if ($rateStr === '') {
+                continue; // No tax_rate at all (NULL) — not classifiable.
             }
 
+            /** @var numeric-string $rateFraction */
+            $rateFraction = bcdiv($rateStr, '100', 6);
+            /** @var numeric-string $preDiscountBase */
+            $preDiscountBase = '0';
+            /** @var numeric-string $taxAccumulator */
+            $taxAccumulator = '0';
+            foreach ($linesWithRate as $line) {
+                // Tax base is the NET line (gross − line discount). Money =
+                // qty(scale 4) × unitPrice with the discount applied; a
+                // scale+1 intermediate keeps the 4th quantity decimal alive
+                // through the multiply.
+                $lineSubtotal = $line->calculateTotal($scale + 1);
+                // preDiscountBase: each line rounded to the currency
+                // boundary before summing (matches calculateSubtotal()).
+                $preDiscountBase = bcadd($preDiscountBase, CurrencyScale::bcformat($lineSubtotal, $scale), $scale);
+                // taxAccumulator: each line's tax kept at scale+1 and summed
+                // UNROUNDED — rounded once, below, at the currency boundary.
+                $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
+                $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
+            }
+
+            $rateGroups[$rateStr] = [
+                'rateFraction' => $rateFraction,
+                'lines' => $linesWithRate,
+                'preDiscountBase' => $preDiscountBase,
+                'taxAccumulator' => $taxAccumulator,
+            ];
+            $preDiscountBaseByRate[$rateStr] = $preDiscountBase;
+            $totalPreDiscountBase = bcadd($totalPreDiscountBase, $preDiscountBase, $scale);
+        }
+
+        // V1 (2026-08-03 gate, P0 regression fix): a document-level discount
+        // must reduce the base EVERY rate bucket is taxed on, not just the
+        // aggregate subtotal — otherwise VAT is charged on the pre-discount
+        // base (legally wrong) and, worse, the snapshotted tax_base no
+        // longer even ties to the discounted subtotal. Prorate
+        // $document->discount_amount across buckets proportional to each
+        // bucket's pre-discount share, using a largest-remainder allocation
+        // at currency scale so Σ(shares) == discount_amount EXACTLY.
+        /** @var numeric-string $discountAmount */
+        $discountAmount = (string) ($document->discount_amount ?? '0');
+        $discountShares = $this->prorateDiscount($preDiscountBaseByRate, $discountAmount, $totalPreDiscountBase, $scale);
+
+        foreach ($rateGroups as $rateStr => $group) {
+            $linesWithRate = $group['lines'];
+
             // Find the ONE tax configuration that matches this rate
-            $matchingConfig = $applicableTaxes->first(function ($cfg) use ($rate) {
+            $matchingConfig = $applicableTaxes->first(function ($cfg) use ($rateStr) {
                 /** @var numeric-string $cfgRate */
                 $cfgRate = (string) $cfg->percentage_rate;
                 /** @var numeric-string $lineRate */
-                $lineRate = (string) $rate;
+                $lineRate = $rateStr;
 
                 return $cfg->applies_to === TaxApplicationLevel::LineItems
                     && bccomp($cfgRate, $lineRate, 2) === 0;
             });
 
-            // Calculate tax for all lines with this rate.
-            //
-            // Precision: quantity is stored at scale 4. bcmul(qty, unitPrice)
-            // is MONEY, so the qty×price intermediate and the ×rate
-            // intermediate both run at scale()+1 — keeping the 4th quantity
-            // decimal alive through both multiplies. The per-rate tax is
-            // accumulated at scale()+1 and rounded ONCE at the currency
-            // boundary, instead of truncating each line's tax to the
-            // boundary scale first (which discarded sub-boundary fractions).
-            //
-            // This runs REGARDLESS of whether a TaxConfiguration row matched
-            // (see the ORCHESTRATOR RULING below) -- an explicit line rate
-            // is always honoured at the currency-rounding level identical to
-            // the matched-config path.
-            /** @var numeric-string $rateFraction */
-            $rateFraction = bcdiv((string) $rate, '100', 6);
-            /** @var numeric-string $taxAccumulator */
-            $taxAccumulator = '0';
-            // Per-rate taxable base: the NET total of ONLY the lines carrying
-            // this rate, not the whole-document subtotal. Accumulated at
-            // scale+1 alongside the tax itself and rounded ONCE, symmetric
-            // with $taxAccumulator, so Σ(rateBase) across every LINE_ITEMS
-            // rate group == $subtotal exactly whenever every line carries a
-            // taxed (non-zero) rate. Fixes the VAT-declaration base
-            // overstatement: this row's tax_base must be the base ACTUALLY
-            // taxed at this rate, not Σ every line regardless of rate.
-            /** @var numeric-string $rateBaseAccumulator */
-            $rateBaseAccumulator = '0';
-            foreach ($linesWithRate as $line) {
-                // Tax base is the NET line (gross − line discount), computed
-                // at scale+1 to keep the 4th quantity decimal alive. For a
-                // line with no discount calculateTotal() == bcmul(qty, price,
-                // scale+1), so undiscounted lines are byte-identical.
-                $lineSubtotal = $line->calculateTotal($scale + 1);
-                $rateBaseAccumulator = bcadd($rateBaseAccumulator, $lineSubtotal, $scale + 1);
-                $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
-                $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
+            // The base ACTUALLY taxed at this rate: the bucket's pre-discount
+            // net, minus this bucket's proportional share of the
+            // document-level discount.
+            $discountShare = $discountShares[$rateStr] ?? '0';
+            $rateBase = bcsub($group['preDiscountBase'], $discountShare, $scale);
+
+            if (bccomp($discountShare, '0', $scale) === 0) {
+                // No discount landed on this bucket: keep the undiscounted,
+                // high-precision tax (scale+1 per-line accumulation, rounded
+                // ONCE) so pathological sub-scale-heavy documents
+                // (TaxCalculationScalingTest) are unaffected by V4's
+                // currency-scale base truncation.
+                $taxAmount = CurrencyScale::bcformat($group['taxAccumulator'], $scale);
+            } else {
+                // A discount was prorated into this bucket: recompute tax as
+                // a single clean multiply of the (now currency-scale)
+                // discounted base by the already-resolved rate fraction, so
+                // base × rate == amount holds as an exact identity
+                // (2026-08-03 gate V1: the pre-fix code let base and amount
+                // drift apart under a discount, making the defect internally
+                // "consistent" and invisible -- both stayed pre-discount and
+                // therefore still agreed with each other).
+                $taxAmount = CurrencyScale::bcformat(bcmul($rateBase, $group['rateFraction'], $scale + 1), $scale);
             }
-            $taxAmount = CurrencyScale::bcformat($taxAccumulator, $scale);
-            $rateBase = CurrencyScale::bcformat($rateBaseAccumulator, $scale);
 
             $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, $scale);
 
@@ -183,7 +248,9 @@ class TaxCalculationService
                 // InvoiceController::store() and CopiesDocumentData::
                 // recalculateTotals() already use for drafts) instead of
                 // contributing zero, so confirm() stays consistent with the
-                // draft it is confirming.
+                // draft it is confirming. This also covers an explicit 0%
+                // rate with no matching TVA_EXEMPT-style config (V3): the
+                // base-only row is still emitted, at zero tax.
                 $calculatedTaxes[] = new CalculatedTax(
                     configurationId: '',
                     code: 'UNCONFIGURED',
@@ -274,6 +341,85 @@ class TaxCalculationService
         }
 
         return $subtotal;
+    }
+
+    /**
+     * Prorate a document-level discount across rate buckets, proportional to
+     * each bucket's pre-discount base share, using a largest-remainder
+     * allocation at currency scale.
+     *
+     * A naive proportional divide (discount × bucketBase / totalBase,
+     * truncated per bucket) loses up to (bucketCount − 1) smallest currency
+     * units to truncation, so Σ(shares) would fall short of $discountAmount
+     * and Σ(postDiscountBase) would NOT tie to the discounted subtotal. This
+     * floors every bucket's raw share first, then hands the leftover
+     * smallest-currency-units — one each — to the buckets with the largest
+     * fractional remainder, until the shares sum to $discountAmount exactly.
+     *
+     * @param  array<string, numeric-string>  $preDiscountBaseByRate
+     * @param  numeric-string  $discountAmount
+     * @param  numeric-string  $totalPreDiscountBase
+     * @return array<string, numeric-string> Keyed by the same rate string as $preDiscountBaseByRate.
+     */
+    private function prorateDiscount(
+        array $preDiscountBaseByRate,
+        string $discountAmount,
+        string $totalPreDiscountBase,
+        int $scale,
+    ): array {
+        /** @var array<string, numeric-string> $shares */
+        $shares = [];
+        foreach (array_keys($preDiscountBaseByRate) as $rateStr) {
+            $shares[$rateStr] = '0';
+        }
+
+        if (bccomp($discountAmount, '0', $scale) <= 0 || bccomp($totalPreDiscountBase, '0', $scale) <= 0) {
+            return $shares;
+        }
+
+        /** @var numeric-string $unit */
+        $unit = bcdiv('1', bcpow('10', (string) $scale), $scale);
+        /** @var numeric-string $flooredTotal */
+        $flooredTotal = '0';
+        /** @var array<string, numeric-string> $remainders */
+        $remainders = [];
+
+        foreach ($preDiscountBaseByRate as $rateStr => $base) {
+            // High-precision proportional share, then truncate to the
+            // currency scale (floor, since every operand is non-negative).
+            /** @var numeric-string $rawShare */
+            $rawShare = bcdiv(
+                bcmul($discountAmount, $base, $scale + 4),
+                $totalPreDiscountBase,
+                $scale + 4,
+            );
+            $floored = CurrencyScale::bcformat($rawShare, $scale);
+            $shares[$rateStr] = $floored;
+            $flooredTotal = bcadd($flooredTotal, $floored, $scale);
+            $remainders[$rateStr] = bcsub($rawShare, $floored, $scale + 4);
+        }
+
+        /** @var numeric-string $deficitAmount */
+        $deficitAmount = bcsub($discountAmount, $flooredTotal, $scale);
+        // Not a currency amount -- a whole COUNT of smallest-currency-units
+        // still owed to some bucket after flooring; 0 decimal places is
+        // correct by definition, not a monetary scale.
+        // precision-ok: unit-count division, not a monetary amount
+        $deficitUnits = (int) bcdiv($deficitAmount, $unit, 0);
+
+        if ($deficitUnits > 0) {
+            uasort($remainders, static fn (string $a, string $b): int => bccomp($b, $a, $scale + 4));
+            $i = 0;
+            foreach (array_keys($remainders) as $rateStr) {
+                if ($i >= $deficitUnits) {
+                    break;
+                }
+                $shares[$rateStr] = bcadd($shares[$rateStr], $unit, $scale);
+                $i++;
+            }
+        }
+
+        return $shares;
     }
 
     /**

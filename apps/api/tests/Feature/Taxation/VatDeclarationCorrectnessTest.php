@@ -226,6 +226,66 @@ class VatDeclarationCorrectnessTest extends TestCase
         $this->assertSame('500.000', $declaredBase);
     }
 
+    /**
+     * V3 (2026-08-03 gate, P1): a line with an EXPLICIT 0% (exempt) rate was
+     * `continue`d out of the STEP 1 loop entirely, so no document_tax_details
+     * row was ever written for it — the DGI declaration's base_0 bracket was
+     * structurally always empty, even though TN has an active TVA_EXEMPT
+     * config (percentage_rate 0.00, applies_to LINE_ITEMS). Gate's exact
+     * probe: a 50.000 exempt line alongside a 19% line "vanishes" from the
+     * declaration entirely. Deactivate the stamp so the aggregation isn't
+     * also exercising DEFECT 2 (separately covered above).
+     */
+    public function test_exempt_zero_rated_turnover_reaches_the_declared_base_0_bracket(): void
+    {
+        TaxConfiguration::where('country_code', 'TN')
+            ->where('is_stamp_duty', true)
+            ->update(['is_active' => false]);
+
+        $invoice = $this->createTaxInvoice('2026-03-15');
+        $this->addLine($invoice, unitPrice: '100.000', taxRate: '19.00');
+        $this->addLine($invoice, unitPrice: '50.000', taxRate: '0.00');
+        $invoice->load('lines');
+
+        $result = $this->service->calculateDocumentTaxes($invoice);
+        $this->service->snapshotTaxDetails($invoice, $result);
+
+        $this->assertSame('150.000', $result->subtotal);
+
+        $exemptDetail = DocumentTaxDetail::where('document_id', $invoice->id)
+            ->where('tax_rate', '0.00')
+            ->first();
+        $this->assertNotNull($exemptDetail, 'The 50.000 exempt line must snapshot a base-only row, not vanish');
+        $this->assertSame('50.000', $exemptDetail->tax_base);
+        $this->assertSame('0.000', $exemptDetail->tax_amount);
+        $this->assertFalse($exemptDetail->is_stamp_duty);
+
+        $repository = app(VatDataRepositoryInterface::class);
+        $aggregations = $repository->aggregateByRateAndDirection(
+            $this->company->id,
+            '2026-03-01',
+            '2026-03-31',
+        );
+
+        $byRate = [];
+        foreach ($aggregations as $aggregation) {
+            $byRate[$aggregation->taxRate] = $aggregation;
+        }
+
+        $this->assertArrayHasKey('0.00', $byRate, 'The gate\'s vanishing 50.000 exempt line must now land in the base_0 bracket');
+        $this->assertSame('50.000', $byRate['0.00']->baseAmount);
+        $this->assertSame('0.000', $byRate['0.00']->vatAmount);
+
+        $this->assertArrayHasKey('19.00', $byRate);
+        $this->assertSame('100.000', $byRate['19.00']->baseAmount);
+
+        // TunisiaVatStrategy::mapToDeclaration() maps '0.00' -> base_0/vat_0
+        // -- confirm the aggregation shape it consumes is populated.
+        $strategy = app(TunisiaVatStrategy::class);
+        $expectedRates = $strategy->getExpectedRates();
+        $this->assertContains('0.00', $expectedRates);
+    }
+
     private function createTaxInvoice(string $documentDate): Document
     {
         $number = 'INV-'.now()->format('Y').'-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
