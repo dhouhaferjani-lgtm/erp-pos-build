@@ -11,6 +11,19 @@ use Illuminate\Support\Facades\DB;
 
 class EloquentVatDataRepository implements VatDataRepositoryInterface
 {
+    /**
+     * V2 (2026-08-03 gate, P0): credit notes must REDUCE the declared OUTPUT
+     * base/VAT, not add to it. document_tax_details rows for a credit note
+     * are stored POSITIVE (CreditNoteService::materializeLinesFromAllocation()
+     * writes positive quantities/unit prices) -- ORCHESTRATOR RULING:
+     * negate at AGGREGATION, not storage, so the immutable-snapshot
+     * convention is preserved (a document_tax_details row always reads as
+     * "this much base/tax on this document", never sign-overloaded) and
+     * every credit-note row already written before this fix becomes correct
+     * automatically the next time this query runs -- no backfill needed for
+     * this specific defect (unlike V4/tax_base and V5/is_stamp_duty, which
+     * ARE baked into the stored row and DO need V6's backfill).
+     */
     public function aggregateByRateAndDirection(string $companyId, string $dateFrom, string $dateTo): array
     {
         // Document-based VAT aggregation
@@ -35,8 +48,8 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
                     WHEN d.type = 'expense' THEN 'INPUT'
                 END as direction,
                 dtd.tax_rate,
-                SUM(dtd.tax_base) as base_amount,
-                SUM(dtd.tax_amount) as vat_amount,
+                SUM(CASE WHEN d.type = 'credit_note' THEN -dtd.tax_base ELSE dtd.tax_base END) as base_amount,
+                SUM(CASE WHEN d.type = 'credit_note' THEN -dtd.tax_amount ELSE dtd.tax_amount END) as vat_amount,
                 COUNT(DISTINCT d.id) as document_count,
                 COALESCE(tc.is_recoverable, true) as is_recoverable,
                 tc.id as tax_configuration_id
