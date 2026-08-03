@@ -206,6 +206,19 @@ class CreditNoteController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 422);
+        } catch (\RuntimeException $e) {
+            // RULING A (2026-08-03 re-gate): the money-allocation search
+            // (CreditNoteService::allocateGroupExactly()) no longer throws --
+            // it always quantizes to the nearest reachable amount and
+            // returns 2xx. This catch is defense-in-depth only, so ANY
+            // unexpected internal failure surfaces as a clean 422 instead of
+            // an uncaught 500 leaking an internal exception message.
+            return response()->json([
+                'error' => [
+                    'code' => 'ALLOCATION_ERROR',
+                    'message' => 'Unable to create the credit note.',
+                ],
+            ], 422);
         }
     }
 
@@ -271,8 +284,14 @@ class CreditNoteController extends Controller
                 // Calculate and snapshot taxes for immutable audit trail
                 $taxResult = $this->taxCalculationService->calculateDocumentTaxes($lockedDocument);
 
-                // Update document with calculated totals
+                // Update document with calculated totals. B2 (2026-08-03
+                // re-gate): subtotal must be rewritten alongside tax_amount/
+                // total -- leaving it stale meant a persisted fiscal document
+                // where subtotal + tax_amount != total whenever the
+                // recomputed subtotal differed from the one stored at draft
+                // time (e.g. the line-based discount bug, B1).
                 $lockedDocument->update([
+                    'subtotal' => $taxResult->subtotal,
                     'tax_amount' => $taxResult->totalTax,
                     'total' => $taxResult->total,
                 ]);
@@ -391,7 +410,7 @@ class CreditNoteController extends Controller
      */
     private function formatCreditNote(Document $creditNote): array
     {
-        return [
+        $data = [
             'id' => $creditNote->id,
             'document_number' => $creditNote->document_number,
             'document_date' => $creditNote->document_date->toIso8601String(),
@@ -413,5 +432,21 @@ class CreditNoteController extends Controller
             'status' => $creditNote->status->value,
             'created_at' => $creditNote->created_at?->toIso8601String(),
         ];
+
+        // RULING A (2026-08-03 re-gate): when the amount-based allocation
+        // search could not reach the operator's requested amount exactly (a
+        // genuine truncation "hole"), CreditNoteService::createCreditNote()
+        // stamps these two IN-MEMORY-ONLY attributes on the just-created
+        // model so the immediate create response exposes both the request
+        // and what was actually credited -- never a silent upward drift.
+        // Not persisted: a subsequent GET/show re-fetches a fresh model
+        // without them, since the quantization is a create-time event.
+        $requestedAmount = $creditNote->getAttribute('requested_amount');
+        if ($requestedAmount !== null) {
+            $data['requested_amount'] = $requestedAmount;
+            $data['credited_amount'] = $creditNote->getAttribute('credited_amount');
+        }
+
+        return $data;
     }
 }
