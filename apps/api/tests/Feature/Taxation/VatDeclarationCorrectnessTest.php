@@ -14,15 +14,18 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Taxation\Infrastructure\Strategies\TunisiaVatStrategy;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -32,10 +35,10 @@ use Tests\TestCase;
  * F4/F5).
  *
  * Exercises the FULL producer→consumer chain: TaxCalculationService snapshots
- * document_tax_details, EloquentVatDataRepository (the real VAT-declaration
- * consumer) reads them back. A producer-only unit test cannot catch a defect
- * where the producer is "fixed" but a consumer still relies on the old
- * (wrong) semantics — this class proves both sides agree.
+ * document_tax_details, TunisiaVatStrategy + EloquentVatDataRepository (the
+ * two real declaration consumers) read them back. A producer-only unit test
+ * cannot catch a defect where the producer is "fixed" but a consumer still
+ * relies on the old (wrong) semantics — this class proves both sides agree.
  */
 class VatDeclarationCorrectnessTest extends TestCase
 {
@@ -84,6 +87,72 @@ class VatDeclarationCorrectnessTest extends TestCase
         $this->seed(TunisiaTaxConfigurationSeeder::class);
 
         $this->service = app(TaxCalculationService::class);
+    }
+
+    /**
+     * DEFECT 2: snapshotTaxDetails() never wrote is_stamp_duty, so a TN
+     * invoice's stamp landed in document_tax_details indistinguishable from
+     * a genuine rate-0 VAT line. TunisiaVatStrategy::getSpecialLineItems()
+     * (which filters is_stamp_duty=true) reported ZERO stamp collected,
+     * while EloquentVatDataRepository (which filters is_stamp_duty=false)
+     * folded the 1.000 TND stamp into output VAT as a spurious rate-0.00
+     * bracket. Both axes must be correct once the flag is snapshotted.
+     */
+    public function test_tn_invoice_stamp_duty_is_snapshotted_and_excluded_from_output_vat(): void
+    {
+        $invoice = $this->createTaxInvoice('2026-03-10');
+        $this->addLine($invoice, unitPrice: '100.000', taxRate: '19.00');
+        $invoice->load('lines');
+
+        $result = $this->service->calculateDocumentTaxes($invoice);
+        $this->service->snapshotTaxDetails($invoice, $result);
+
+        $details = DocumentTaxDetail::where('document_id', $invoice->id)
+            ->orderBy('sequence_order')
+            ->get();
+
+        $this->assertCount(2, $details, 'Expected one VAT row + one stamp row');
+
+        $stamp = $details->firstWhere('is_stamp_duty', true);
+        $vat = $details->firstWhere('is_stamp_duty', false);
+
+        $this->assertNotNull($stamp, 'Stamp duty row must be flagged is_stamp_duty=true once snapshotted');
+        $this->assertSame('STAMP_TAX_INVOICE', $stamp->tax_code);
+        $this->assertSame('1.000', $stamp->tax_amount);
+
+        $this->assertNotNull($vat);
+        $this->assertSame('19.00', $vat->tax_rate);
+        $this->assertSame('100.000', $vat->tax_base);
+        $this->assertSame('19.000', $vat->tax_amount);
+
+        // Consumer 1: TunisiaVatStrategy must now REPORT the stamp (it was
+        // reporting zero while is_stamp_duty was never written).
+        $strategy = app(TunisiaVatStrategy::class);
+        $specialItems = $strategy->getSpecialLineItems(
+            $this->company->id,
+            Carbon::parse('2026-03-01'),
+            Carbon::parse('2026-03-31'),
+        );
+        $this->assertSame(1, $specialItems['stamp_duty_count']);
+        $this->assertSame('1.000', $specialItems['stamp_duty_total']);
+
+        // Consumer 2: EloquentVatDataRepository must EXCLUDE the stamp from
+        // the output-VAT rate breakdown (it was folding it in as rate 0.00).
+        $repository = app(VatDataRepositoryInterface::class);
+        $aggregations = $repository->aggregateByRateAndDirection(
+            $this->company->id,
+            '2026-03-01',
+            '2026-03-31',
+        );
+
+        $this->assertCount(1, $aggregations, 'Only the 19% VAT bucket should reach the declaration, not the stamp');
+        $this->assertSame('19.00', $aggregations[0]->taxRate);
+        $this->assertSame('100.000', $aggregations[0]->baseAmount);
+        $this->assertSame('19.000', $aggregations[0]->vatAmount);
+
+        foreach ($aggregations as $aggregation) {
+            $this->assertNotSame('0.00', $aggregation->taxRate, 'Stamp duty must never surface as a rate-0.00 output-VAT bracket');
+        }
     }
 
     /**

@@ -345,6 +345,7 @@ class TaxCalculationService
                 'tax_fixed_amount' => $tax->fixedAmount ?? '0',
                 'tax_base' => $tax->base,
                 'tax_amount' => $tax->amount,
+                'is_stamp_duty' => $tax->isStampDuty,
                 'created_at' => now(),
             ]);
         }
