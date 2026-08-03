@@ -35,6 +35,7 @@ export type TreRole = keyof typeof CREDENTIALS
 export interface Session {
   token: string
   userId: string
+  tenantId: string
   companyId: string
   permissions: string[]
 }
@@ -91,6 +92,7 @@ export async function login(request: APIRequestContext, role: TreRole): Promise<
   return {
     token: body.token,
     userId: body.user.id,
+    tenantId: body.user.tenantId,
     companyId,
     permissions: body.user.permissions,
   }
