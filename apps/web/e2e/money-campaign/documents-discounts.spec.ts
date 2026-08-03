@@ -1,20 +1,30 @@
 /**
- * MONEY TEST CAMPAIGN — agent W1b — §B `DSC` discounts (MTP-DSC-01, 05, 06).
+ * MONEY TEST CAMPAIGN — §B `DSC` line discounts (MTP-DSC-01..06).
  *
- * BLOCKED (no UI path — documented, not silently skipped): MTP-DSC-02
- * (discount_percent + discount_amount precedence) and MTP-DSC-03/04
- * (discount_amount-only line discount). The DocumentLineEditor's Discount
- * column is a SINGLE input bound only to `discount_percent`
- * (`apps/web/src/features/documents/components/DocumentLineEditor.tsx:744-764`
- * — `onChange` always sets `discount_amount: null`); there is no second field
- * anywhere in the UI to set `discount_amount`, so a percent+amount precedence
- * test cannot be authored through the web interface at all. This mirrors
- * MTP-DSC-06's own documented absence (whole-document discount) — same class
- * of gap, different field.
+ * MTP-DSC-01, 05, 06 authored by agent W1b (UI-driven).
+ * MTP-DSC-02, 03, 04 authored by agent W-3 (API-driven) — see below.
  *
- * MTP-DSC-07..18 (promotions/coupons/vouchers) are out of this pass's time
- * budget — they need dedicated Promotions/Coupons/Vouchers admin setup this
- * pass did not reach.
+ * WHY 02/03/04 ARE API-DRIVEN (orchestrator ruling C-6(a),
+ * docs/qa/2026-08-02-full-e2e-campaign-plan.md §C): there is NO UI path for
+ * `discount_amount` at all. The DocumentLineEditor's Discount column is a
+ * SINGLE input bound only to `discount_percent`
+ * (`apps/web/src/features/documents/components/DocumentLineEditor.tsx:748-764`
+ * — its `onChange` unconditionally sets `discount_amount: null`), and no
+ * second control exists anywhere in the documents UI. W1b therefore recorded
+ * 02/03/04 as BLOCKED. Per ruling C-6(a) the percent-vs-amount precedence is
+ * a REAL backend rule (`DocumentLine::computeLineTotal()`,
+ * apps/api/app/Modules/Document/Domain/DocumentLine.php:272-292) that must be
+ * covered regardless of the UI, so they are now authored through the house
+ * `apiRequest` pattern against the same live backend. The product half of the
+ * ruling — C-6(b), "is the missing control a UX gap?" — is filed as
+ * `docs/superpowers/tickets/2026-08-03-w3-line-discount-amount-no-ui-and-negative-net.md`.
+ *
+ * Precision contract (CLAUDE.md rule 19): every money assertion is an exact
+ * decimal STRING at the TND currency scale (3).
+ *
+ * MTP-DSC-07..18 (promotions/coupons/vouchers) remain out of scope — they
+ * need the dedicated Promotions/Coupons/Vouchers admin fixture of debt item
+ * C-5.
  */
 import { test, expect } from '@playwright/test'
 import {
@@ -27,6 +37,7 @@ import {
   submitDocumentCreate,
   uniqueName,
 } from './w1b-support'
+import { apiRequest } from './helpers'
 
 test.describe('MTP-DSC — line discounts (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -52,6 +63,155 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     const confirmed = await confirmInvoice(page, created.data.id as string)
     expect(confirmed.tax_amount).toBe('22.375')
     expect(confirmed.total).toBe('134.875')
+  })
+
+  test('MTP-DSC-02 (EDGE, P0): discount_percent + discount_amount on the SAME line — PERCENT WINS (net 112.500, not 75.000)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    const customerName = uniqueName('DSC02')
+    const customerId = await createCustomer(page, customerName)
+
+    // qty 10 @ 12.500 = 125.000 gross.
+    //   percent 10.00  -> discount 12.500 -> net 112.500   <- MUST WIN
+    //   amount  50.000 -> discount 50.000 -> net  75.000   <- must be IGNORED
+    // Getting this precedence backwards silently over-discounts every line
+    // that carries both fields (`computeLineTotal()`'s `if percent … elseif
+    // amount` chain, DocumentLine.php:283-289).
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          description: 'DSC-02 percent-vs-amount precedence',
+          quantity: '10',
+          unit_price: '12.500',
+          discount_percent: '10.00',
+          discount_amount: '50.000',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201)
+    const body = (created.body as { data: Record<string, unknown> }).data
+
+    const lines = body.lines as Array<Record<string, unknown>>
+    expect(lines).toHaveLength(1)
+    expect(lines[0].line_total, 'percent (10% of 125.000) wins over the flat 50.000 amount').toBe('112.500')
+    // Both raw fields are still persisted verbatim — precedence is applied at
+    // calculation time, the ignored field is NOT nulled out on the way in.
+    expect(lines[0].discount_percent).toBe('10.00')
+    expect(lines[0].discount_amount).toBe('50.000')
+
+    expect(body.subtotal).toBe('112.500')
+    // VAT 112.500 * 0.19 = 21.375, + 1.000 stamp = 22.375
+    expect(body.tax_amount).toBe('22.375')
+    expect(body.total, 'identical to MTP-DSC-01 — the amount field changed nothing').toBe('134.875')
+
+    // ...and confirm() (which re-runs TaxCalculationService from scratch) must
+    // reach the same precedence decision, not silently flip to the amount.
+    const confirmed = await apiRequest(page, 'POST', `/invoices/${body.id as string}/confirm`)
+    expect(confirmed.status, `confirm failed: ${JSON.stringify(confirmed.body)}`).toBe(200)
+    const confirmedBody = (confirmed.body as { data: Record<string, unknown> }).data
+    expect(confirmedBody.subtotal).toBe('112.500')
+    expect(confirmedBody.tax_amount).toBe('22.375')
+    expect(confirmedBody.total).toBe('134.875')
+  })
+
+  test('MTP-DSC-03 (HAPPY, P1): absolute discount_amount with no percent — net 100.000, VAT 19.000, total 120.000', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    const customerName = uniqueName('DSC03')
+    const customerId = await createCustomer(page, customerName)
+
+    // qty 10 @ 12.500 = 125.000 gross, flat 25.000 off -> net 100.000.
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          description: 'DSC-03 flat amount discount',
+          quantity: '10',
+          unit_price: '12.500',
+          discount_amount: '25.000',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201)
+    const body = (created.body as { data: Record<string, unknown> }).data
+
+    const lines = body.lines as Array<Record<string, unknown>>
+    expect(lines[0].line_total).toBe('100.000')
+    expect(lines[0].discount_percent, 'percent left unset — the elseif branch is the one that fires').toBeNull()
+    expect(lines[0].discount_amount).toBe('25.000')
+
+    expect(body.subtotal).toBe('100.000')
+    // VAT 100.000 * 0.19 = 19.000, + 1.000 stamp = 20.000
+    expect(body.tax_amount).toBe('20.000')
+    expect(body.total).toBe('120.000')
+
+    const confirmed = await apiRequest(page, 'POST', `/invoices/${body.id as string}/confirm`)
+    expect(confirmed.status, `confirm failed: ${JSON.stringify(confirmed.body)}`).toBe(200)
+    const confirmedBody = (confirmed.body as { data: Record<string, unknown> }).data
+    expect(confirmedBody.subtotal).toBe('100.000')
+    expect(confirmedBody.tax_amount).toBe('20.000')
+    expect(confirmedBody.total).toBe('120.000')
+  })
+
+  test('MTP-DSC-04 (EDGE, P1): discount_amount ABOVE the line subtotal — TRIPWIRE, the line net goes NEGATIVE instead of being refused or floored at 0.000', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    const customerName = uniqueName('DSC04')
+    const customerId = await createCustomer(page, customerName)
+
+    // qty 10 @ 12.500 = 125.000 gross, flat 200.000 off.
+    // Plan expectation: "Refused, or the line net floors at 0.000 — never
+    // negative. Record actual."
+    //
+    // FINDING / TRIPWIRE (W-3, 2026-08-03) —
+    //   docs/superpowers/tickets/2026-08-03-w3-line-discount-amount-no-ui-and-negative-net.md
+    // ACTUAL: neither. `lines.*.discount_amount` is validated only as
+    // `nullable|numeric|min:0|regex:3dp` (CreateDocumentRequest.php:130) — it
+    // is never compared against the line's own gross — and
+    // `computeLineTotal()` does a bare `bcsub($subtotal, $discountAmount)`
+    // with no floor (DocumentLine.php:288). So the document is accepted with a
+    // NEGATIVE net, a NEGATIVE VAT, and a negative total that still carries a
+    // POSITIVE 1.000 stamp duty. The assertions below pin TODAY'S behaviour:
+    // when the guard lands, this test goes red on purpose and must be updated
+    // deliberately (to a 422, or to a 0.000 floor).
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          description: 'DSC-04 over-discount probe',
+          quantity: '10',
+          unit_price: '12.500',
+          discount_amount: '200.000',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(
+      created.status,
+      `TRIPWIRE: an over-line discount_amount is ACCEPTED today (expected 422 once guarded) — ${JSON.stringify(created.body)}`,
+    ).toBe(201)
+    const body = (created.body as { data: Record<string, unknown> }).data
+
+    const lines = body.lines as Array<Record<string, unknown>>
+    expect(lines[0].line_total, 'TRIPWIRE: 125.000 - 200.000 = -75.000, not floored at 0.000').toBe('-75.000')
+    expect(body.subtotal, 'TRIPWIRE: negative document subtotal').toBe('-75.000')
+    // VAT on a negative net is itself negative: -75.000 * 0.19 = -14.250.
+    // The document-level stamp duty is a FixedAmount and stays +1.000, so
+    // tax_amount = -14.250 + 1.000 = -13.250.
+    expect(body.tax_amount, 'TRIPWIRE: negative line VAT plus a still-positive 1.000 stamp').toBe('-13.250')
+    expect(body.total, 'TRIPWIRE: -75.000 + -13.250 = -88.250').toBe('-88.250')
+    // The aggregate identity still holds even in this nonsensical state — the
+    // arithmetic is self-consistent, the INPUT is what is unguarded.
+    expect(body.total).toBe('-88.250')
   })
 
   test('MTP-DSC-05: discount_percent ceilings — 100.01 (>max) and 10.001 (>2dp) both rejected', async ({ page }) => {

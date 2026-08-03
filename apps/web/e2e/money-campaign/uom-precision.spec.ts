@@ -143,4 +143,57 @@ test.describe('MTP-UOM — fractional-unit quantity display precision (W-2)', ()
     expect(body.data.lines[0].quantity).toBe('2.7500')
     expect(body.data.lines[0].quantity_decimals).toBe(3)
   })
+
+  // -------------------------------------------------------------------------
+  // W-3 addition (2026-08-03). MTP-UOM-04 above covers the DISPLAY half of
+  // `MTP-DOC-15` ("quantity displays at the unit's precision"). The plan's
+  // case has a SECOND, money-side half that was never asserted: "line net =
+  // 2.500 x unit_price **truncated at the currency scale**". That half is the
+  // one the precision contract (CLAUDE.md rule 19) actually governs, so it
+  // gets its own case here — reusing this file's existing kg (3dp) fixture
+  // rather than building a duplicate one.
+  // -------------------------------------------------------------------------
+  test('MTP-DOC-15 (EDGE, P2): a 3dp-unit line at qty 2.500 x 33.333 truncates the NET at the currency scale (83.332, not the half-up 83.333) and the VAT once on top', async ({
+    page,
+  }) => {
+    const { id: productId } = await createProduct(page, {
+      name: uniq('DOC15-kg'),
+      sku: uniq('DOC15'),
+      unitId: KG_UNIT_ID,
+    })
+    const customerId = await createCustomer(page, uniq('DOC15'))
+
+    // 2.500 kg @ 33.333 TND/kg.
+    //   gross = bcmul('2.5000','33.333',3) = 83.3325 -> TRUNCATED to 83.332
+    //   (half-up would give 83.333 — that is the failure signature).
+    //   VAT   = 83.332 * 0.19 = 15.83308, accumulated at scale+1 (15.8330)
+    //           then truncated ONCE to 15.833.
+    //   stamp = 1.000 (invoice, TN)  ->  tax_amount 16.833, total 100.165
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          product_id: productId,
+          description: 'MTP-DOC-15 fractional-unit truncation vector',
+          quantity: '2.500',
+          unit_price: '33.333',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(created.status, `create -> ${created.status} ${JSON.stringify(created.body)}`).toBe(201)
+    const body = (created.body as { data: Record<string, unknown> }).data
+    const line = (body.lines as Array<Record<string, unknown>>)[0]
+
+    // Display contract: the unit's precision (3), not the storage scale (4).
+    expect(line.quantity, 'stored at the canonical scale-4').toBe('2.5000')
+    expect(line.quantity_decimals, 'DISPLAYED at the kg unit\'s 3 decimal places').toBe(3)
+
+    // Money contract: truncation, never half-up rounding.
+    expect(line.line_total, 'bcmul truncates: 83.3325 -> 83.332, NOT 83.333').toBe('83.332')
+    expect(body.subtotal).toBe('83.332')
+    expect(body.tax_amount, 'VAT truncated once (15.833) + 1.000 stamp').toBe('16.833')
+    expect(body.total).toBe('100.165')
+  })
 })
