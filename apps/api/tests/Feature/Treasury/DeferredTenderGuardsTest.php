@@ -21,6 +21,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\OutboundInstrumentService;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
@@ -81,7 +82,23 @@ final class DeferredTenderGuardsTest extends TestCase
         ]);
     }
 
-    public function test_supplier_traite_keeps_cash_payment_shape_and_registers_outbound_instrument(): void
+    /**
+     * REWRITTEN (2026-08-02 minor-followups ticket, dev-hygiene section):
+     * this test was stale, not a bug. `9ae7db934` (2026-07-18) deliberately
+     * moved supplier deferred tenders to portfolio-ISSUANCE at creation
+     * (Dr 401 SupplierPayable / Cr portfolio account e.g. 403 Effets à
+     * payer — `GeneralLedgerService::createOutboundInstrumentIssueEntry()`,
+     * `source_type='instrument'`) with the cash movement + bank-leg GL
+     * entry deferred to `OutboundInstrumentService::clear()` — see
+     * `DeferredSupplierPaymentTest::
+     * test_deferred_supplier_cheque_posts_one_issue_entry_no_bank_line_and_no_movement()`
+     * for the sibling coverage this test never got updated to match. This
+     * test now asserts the CURRENT settlement-time design end to end: zero
+     * `repository_movements` and an unchanged bank balance at creation, then
+     * drives `OutboundInstrumentService::clear()` and asserts the movement
+     * + balance change land THERE instead.
+     */
+    public function test_supplier_traite_settles_at_clear_not_at_creation(): void
     {
         $invoice = $this->supplierInvoice('50.000');
         $method = $this->method(InstrumentKind::Effet);
@@ -100,18 +117,47 @@ final class DeferredTenderGuardsTest extends TestCase
         $payment = Payment::query()->whereKey((string) $response->json('data.id'))->firstOrFail();
         $instrument = PaymentInstrument::query()->where('payment_id', $payment->id)->sole();
         $this->assertSame('outbound', $instrument->direction->value);
-        $this->assertDatabaseCount('repository_movements', 1);
-        $this->assertSame('150.000', $this->bank->fresh()?->balance);
-        $entry = JournalEntry::query()->with('lines')->findOrFail($payment->journal_entry_id);
+        $this->assertSame(InstrumentStatus::Received, $instrument->status);
+
+        // Creation time: no cash has moved yet — the instrument was only
+        // ISSUED into the portfolio, not settled.
+        $this->assertDatabaseCount('repository_movements', 0);
+        $this->assertSame('200.000', $this->bank->fresh()?->balance);
+
         $supplierPayableId = Account::findByPurposeOrFail(
             $this->company->id,
             SystemAccountPurpose::SupplierPayable,
         )->id;
-        $this->assertSame(1, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
-        $this->assertSame(0, JournalEntry::query()->whereIn('source_type', ['instrument', 'instrument_remittance'])->count());
+        $entry = JournalEntry::query()->with('lines.account')->findOrFail($payment->journal_entry_id);
+        $this->assertSame('instrument', $entry->source_type);
+        $this->assertSame($instrument->id, $entry->source_id);
         $this->assertCount(2, $entry->lines);
         $this->assertSame('50.000', $entry->lines->firstWhere('account_id', $supplierPayableId)?->debit);
-        $this->assertSame('50.000', $entry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->credit);
+        $this->assertSame('50.000', $entry->lines->firstWhere('account.code', '403')?->credit, 'credit lands on the Effets à payer portfolio account, not the bank');
+        $this->assertSame(0, $entry->lines->where('account_id', $this->bank->gl_account_id)->count());
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'instrument')->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+
+        // Drive OutboundInstrumentService::clear() — the movement + bank GL
+        // land HERE, not at creation.
+        app(OutboundInstrumentService::class)->clear(
+            instrumentId: $instrument->id,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: $this->user->id,
+        );
+
+        $this->assertSame(InstrumentStatus::Cleared, $instrument->fresh()?->status);
+        $this->assertDatabaseCount('repository_movements', 1);
+        $this->assertSame('150.000', $this->bank->fresh()?->balance);
+        $clearingEntry = JournalEntry::query()
+            ->with('lines.account')
+            ->where('source_type', 'instrument')
+            ->where('source_id', $instrument->id)
+            ->where('id', '!=', $entry->id)
+            ->sole();
+        $this->assertSame('50.000', $clearingEntry->lines->firstWhere('account.code', '403')?->debit);
+        $this->assertSame('50.000', $clearingEntry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->credit);
     }
 
     public function test_all_four_side_doors_reject_maturity_methods(): void
