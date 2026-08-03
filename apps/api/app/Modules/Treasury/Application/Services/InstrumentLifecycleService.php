@@ -48,6 +48,7 @@ use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 final readonly class InstrumentLifecycleService implements InstrumentReversalCancellerInterface
@@ -664,38 +665,72 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      *
      * N2 fix (2026-08-02 minor-followups ticket): the `DB::transactionLevel()`
      * guard below only proves SOME transaction is open — it is inert under
-     * `RefreshDatabase` (level is always >= 1 in tests) and does nothing to
-     * stop this port cancelling a `Received` instrument whose payment is
-     * still `Completed` and not actually being reversed by anyone; that was
-     * prevented only by convention (the sole caller flips the payment to
-     * `Reversed` in the SAME transaction right after this call returns — so
-     * at call time the payment is ALWAYS `Completed` by design). Assert that
-     * precondition explicitly: the linked payment must exist and be
-     * `Completed` (`PaymentStatus::canReverse()`); anything else (already
-     * `Reversed`/`Failed`/`Pending`, or no linked payment at all) means this
-     * call is not part of a legitimate in-flight reversal.
+     * `RefreshDatabase` (level is always >= 1 in tests) and, ON ITS OWN,
+     * does nothing to stop this port cancelling a `Received` instrument
+     * whose payment is still `Completed` and not actually being reversed by
+     * anyone. Assert that the instrument's linked payment is `Completed`
+     * (`PaymentStatus::canReverse()`) — anything else (already `Reversed`/
+     * `Pending`, or no linked payment at all) throws. **2026-08-03 gate
+     * finding H1: this status check ALONE is not the fix** — see H1 below,
+     * which is the check that actually closes the hole.
      *
      * N3 fix (same ticket): scope the instrument lookup by tenant/company —
      * cheap insurance against a future caller passing a cross-tenant or
      * cross-company instrument id (currently safe only via db-per-tenant
-     * connection isolation + the single internal caller).
+     * connection isolation + the single internal caller). A scope miss is
+     * translated from the ORM's `ModelNotFoundException` to a
+     * `\DomainException` (M2, same gate) so the controller's catch-`\Exception`
+     * 422 never leaks an internal model class name / raw id.
+     *
+     * H1 fix (2026-08-03 gate finding, fix round 2 — REQUIRED, N2 alone left
+     * this reachable): `$instrument->payment()->first()` resolves the
+     * instrument's OWN linked payment (`payment_instruments.payment_id`) —
+     * NOT necessarily the payment the caller is reversing. `payments.
+     * instrument_id` is a separate, one-way FK: `PaymentController::store()`
+     * lets an ordinary (non-deferred) payment P2 be created with
+     * `instrument_id` pointing at a DIFFERENT payment P1's `Received`
+     * instrument, with no ownership check and no back-link write outside the
+     * deferred-customer branch. Before this fix, reversing P2 would resolve
+     * P1's instrument via the relation, find P1's status `Completed`, and
+     * cancel P1's instrument (posting P1's AR-restoring GL entry) while P1
+     * itself stayed `Completed` — a real divergence, reachable through the
+     * public API, not a theoretical one. The caller now MUST pass the id of
+     * the payment it is actually reversing (`$paymentId`), and this method
+     * asserts `$instrument->payment_id === $paymentId` BEFORE the status
+     * check (identity has to hold before status is even meaningful).
      */
-    public function cancelForPaymentReversal(string $instrumentId, string $tenantId, string $companyId, ?string $userId, string $reason): void
+    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): void
     {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('cancelForPaymentReversal() must be called inside an open DB transaction (the caller\'s payment-reversal transaction) — it does not open its own, so the instrument cancellation and the caller\'s payment-status flip must commit or roll back together.');
         }
 
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->lockForUpdate()
-            ->findOrFail($instrumentId);
+        try {
+            $instrument = PaymentInstrument::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->findOrFail($instrumentId);
+        } catch (ModelNotFoundException) {
+            // M2 fix (2026-08-03 gate): never let the ORM's not-found
+            // exception (internal model class name + raw uuid) reach
+            // PaymentRefundController's catch-\Exception 422 verbatim.
+            throw new DomainException('Instrument not found in the given tenant/company scope.');
+        }
         if ($instrument->direction === InstrumentDirection::Outbound) {
             throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
         }
         if ($instrument->status !== InstrumentStatus::Received) {
             throw new DomainException('Only a received instrument can be cancelled via an atomic payment reversal.');
+        }
+
+        // H1 fix — identity BEFORE status: the instrument's own linked
+        // payment must BE the payment being reversed, not merely resolve to
+        // *some* Completed payment.
+        if ($instrument->payment_id !== $paymentId) {
+            throw new DomainException(
+                'cancelForPaymentReversal() refused: instrument is not linked to the payment being reversed.'
+            );
         }
 
         $payment = $instrument->payment()->first();

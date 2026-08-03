@@ -52,21 +52,38 @@ interface InstrumentReversalCancellerInterface
      * N2 hardening (2026-08-02 minor-followups ticket): the tx-level guard
      * above is unverifiable under `RefreshDatabase` (level is always >= 1 in
      * tests) and only proves SOME transaction is open, not that THIS call is
-     * part of an in-flight reversal — without a further check the port could
-     * cancel a `Received` instrument whose payment is still `Completed` and
-     * never being reversed at all, prevented previously only by convention
-     * (the sole caller flips the payment status right after this call
-     * returns). Implementations MUST assert a real, testable domain
-     * precondition: the instrument's linked payment must exist and be
-     * `Completed` (`PaymentStatus::canReverse()`) — anything else (already
-     * `Reversed`/`Failed`/`Pending`, or no linked payment) throws
-     * `\DomainException`.
+     * part of an in-flight reversal. Implementations MUST assert the
+     * instrument's linked payment exists and is `Completed`
+     * (`PaymentStatus::canReverse()`) — anything else (already
+     * `Reversed`/`Pending`, or no linked payment) throws `\DomainException`.
+     * **On its own this check is NOT sufficient** — see H1 below.
      *
      * N3 hardening (same ticket): implementations MUST scope the instrument
      * lookup by `tenant_id`/`company_id` — cheap insurance against a future
      * caller passing a cross-tenant/cross-company instrument id.
      *
+     * H1 hardening (2026-08-03 gate finding, fix round 2 — N2/N3 alone did
+     * NOT close this): the instrument's linked payment (resolved via the
+     * `belongsTo` relation on `payment_instruments.payment_id`) is NOT
+     * necessarily the SAME payment the caller is reversing — `payments.
+     * instrument_id` is a separate, one-way, unvalidated FK a second payment
+     * can point at an instrument it does not own (`PaymentController::store()`
+     * accepts `instrument_id` on an immediate/non-maturity payment with no
+     * ownership check outside the deferred-customer branch, and never writes
+     * the back-link). Without an identity check, reversing that SECOND
+     * payment cancels the FIRST payment's instrument while the first payment
+     * itself is untouched (stays `Completed`) — a real, publicly-reachable
+     * GL-vs-subledger divergence, not merely a theoretical one. Implementations
+     * MUST accept the id of the payment actually being reversed and assert
+     * `$instrument->payment_id === $paymentId`, throwing `\DomainException`
+     * on any mismatch (including a `null` `payment_id`) BEFORE the status
+     * check — identity is meaningless to check status against a payment that
+     * isn't the one being reversed.
+     *
      * @param  string  $instrumentId  Treasury `payment_instruments.id` (UUID).
+     * @param  string  $paymentId  `payments.id` of the payment actually being
+     *                             reversed — MUST equal the instrument's own
+     *                             `payment_id` (H1).
      * @param  string  $tenantId  Tenant scope for the instrument lookup (N3).
      * @param  string  $companyId  Company scope for the instrument lookup (N3).
      * @param  string|null  $userId  Actor recorded on the GL entry / audit event.
@@ -74,9 +91,13 @@ interface InstrumentReversalCancellerInterface
      *                          `InstrumentEvent` row.
      *
      * @throws \DomainException When the instrument is outbound, not currently
-     *                          `Received`, or its linked payment is not
-     *                          `Completed` (N2).
+     *                          `Received`, is not linked to `$paymentId` (H1),
+     *                          its linked payment is not `Completed` (N2), or
+     *                          the instrument does not resolve in the given
+     *                          `$tenantId`/`$companyId` scope (N3/M2 — the
+     *                          scope miss is translated from the ORM's
+     *                          not-found exception, never leaked raw).
      * @throws \LogicException When called outside an open DB transaction.
      */
-    public function cancelForPaymentReversal(string $instrumentId, string $tenantId, string $companyId, ?string $userId, string $reason): void;
+    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): void;
 }

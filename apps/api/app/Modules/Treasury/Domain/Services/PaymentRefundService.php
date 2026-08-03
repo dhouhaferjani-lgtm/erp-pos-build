@@ -614,6 +614,17 @@ class PaymentRefundService
      *
      * This method is idempotent: calling it on an already-reversed payment
      * will return without error.
+     *
+     * M1 ruling (2026-08-03 gate finding): only a `Completed` payment can be
+     * reversed — a `Failed` payment never completed in the first place, so
+     * there is nothing to reverse (`PaymentStatus::canReverse()` is
+     * `Completed`-only, and the atomic instrument-cancellation port asserts
+     * the same). This method previously advertised `Failed` as acceptable
+     * here (the guard below used to also allow `PaymentStatus::Failed`) but
+     * nothing ever set that status on a Treasury payment via any writer
+     * (repo-wide: the only reference to `PaymentStatus::Failed` was this
+     * line) — the advertisement was legacy/aspirational, not load-bearing.
+     * Fixed to match the actual, intentional rule.
      */
     public function reversePayment(
         Payment $payment,
@@ -625,8 +636,8 @@ class PaymentRefundService
             return;
         }
 
-        if (! in_array($payment->status, [PaymentStatus::Completed, PaymentStatus::Failed], true)) {
-            throw new \RuntimeException('Only completed or failed payments can be reversed');
+        if ($payment->status !== PaymentStatus::Completed) {
+            throw new \RuntimeException('Only completed payments can be reversed');
         }
 
         DB::transaction(function () use ($payment, $reason, $userId): void {
@@ -793,6 +804,16 @@ class PaymentRefundService
      * `lockForUpdate()`'d Payment. ONLY `reversePayment()` may call this —
      * `refundPayment()`/`partialRefund()` use
      * `assertInstrumentSettledForCashUndo()`.
+     *
+     * H1 fix (2026-08-03 gate finding): `$payment->instrument()->first()`
+     * resolves via `payments.instrument_id` — a separate, unvalidated FK a
+     * DIFFERENT payment can also point at (`PaymentController::store()`
+     * lets an ordinary payment reference another payment's instrument with
+     * no ownership check). `$payment->id` is passed to the port below so it
+     * can assert the instrument is actually LINKED BACK to `$payment`
+     * (`payment_instruments.payment_id === $payment->id`) before touching
+     * anything — reversing a payment that merely REFERENCES someone else's
+     * instrument must refuse, not cancel that other payment's instrument.
      */
     private function resolveInstrumentForReversal(Payment $payment, ?string $userId, string $reason): void
     {
@@ -804,6 +825,7 @@ class PaymentRefundService
         if ($instrument->status === InstrumentStatus::Received) {
             $this->instrumentReversalCanceller->cancelForPaymentReversal(
                 $instrument->id,
+                $payment->id,
                 $payment->tenant_id,
                 $payment->company_id,
                 $userId,
