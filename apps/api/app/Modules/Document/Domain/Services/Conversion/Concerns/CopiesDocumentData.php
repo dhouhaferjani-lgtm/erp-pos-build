@@ -288,7 +288,14 @@ trait CopiesDocumentData
      */
     protected function recalculateTotals(Document $document): void
     {
-        $scale = $this->scaleResolver->getScale($document->currency);
+        // R2 (2026-08-03 F2/F3 re-gate carry-over): a blank currency must NOT
+        // be passed through to the resolver -- the ISO 4217 map would
+        // silently compute at the PG-default scale 2 instead of the
+        // company's true scale. Same guard as TaxCalculationService::scaleFor().
+        $currency = $document->currency;
+        $scale = $currency !== ''
+            ? $this->scaleResolver->getScale($currency)
+            : $this->scaleResolver->getScaleSafe(null, 3);
 
         $subtotal = '0';
         $lineTaxAmount = '0';
