@@ -340,6 +340,14 @@ final class ExpenseService
                     PostingMode::SynchronousInTransaction,
                 );
 
+                // V5 (2026-08-03 gate): the LinkedCost branch used to write NO
+                // DocumentTaxDetail at all, so a linked-cost expense's input
+                // VAT never reached the declaration. ExpenseMetadata carries
+                // vat_rate/vat_deductible_percent regardless of expense_kind,
+                // so the same writer applies here -- it is a no-op when the
+                // linked cost carries no VAT (vat_amount null or zero).
+                $this->writeDeductibleVatSnapshot($expense, $metadata);
+
                 // The capitalization entry above already CREDITS Cash in the GL, so
                 // this movement records ONLY the treasury balance decrement + links to
                 // that same capitalization JE — it must NOT re-post cash. This REPLACES
@@ -375,32 +383,7 @@ final class ExpenseService
                 // movement port takes the repository row lock below.
                 $entry = $this->glService->createFromExpense($expense, $user, PostingMode::SynchronousInTransaction);
 
-                $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
-                $scale = $this->scaleResolver->getScale((string) $expense->currency);
-                if ($vatAmount !== null && bccomp($vatAmount, '0', $scale) === 1) {
-                    $deductiblePercent = (string) ($metadata->vat_deductible_percent ?? '100.00');
-                    $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
-                    $vatRate = $metadata?->vat_rate;
-                    $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
-                    $taxBase = (string) ($expense->subtotal ?? '0');
-
-                    DocumentTaxDetail::query()->firstOrCreate(
-                        [
-                            'document_id' => $expense->id,
-                            'tax_type' => TaxType::Percentage->value,
-                            'tax_name' => $taxName,
-                            'tax_rate' => $vatRate,
-                            'tax_base' => $taxBase,
-                            'tax_amount' => $deductibleVat,
-                        ],
-                        [
-                            'sequence_order' => 1,
-                            'tax_code' => null,
-                            'tax_fixed_amount' => null,
-                            'is_stamp_duty' => false,
-                        ],
-                    );
-                }
+                $this->writeDeductibleVatSnapshot($expense, $metadata);
 
                 // Move treasury cash ONLY for a PAID expense linked to a payment
                 // repository. This REPLACES the old inline outflow: the write port
@@ -438,6 +421,97 @@ final class ExpenseService
 
             return $freshExpense;
         });
+    }
+
+    /**
+     * Snapshot the expense's deductible input VAT to document_tax_details --
+     * the ONLY writer on the declaration's INPUT side that does not go
+     * through TaxCalculationService::snapshotTaxDetails() (that service
+     * computes tax from lines; an expense's VAT is a single attested
+     * document-level figure, not derived from line rates).
+     *
+     * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md):
+     * - tax_base used to be the WHOLE expense subtotal while tax_amount was
+     *   only the DEDUCTIBLE share -- base × rate != amount for any
+     *   partially-deductible expense, so SUM(base) and SUM(vat_amount) sat
+     *   on different footings in the declaration. Fixed by making tax_base
+     *   the DEDUCTIBLE-PROPORTION base: the same proportion of the subtotal
+     *   as was claimed of the VAT (ExpenseVatSplit::deductible() applied to
+     *   the subtotal, not just the VAT amount -- same bcmul/bcdiv/bcround
+     *   shape, one shared rounding convention). At 100% deductible this is
+     *   the subtotal unchanged; at partial deductibility it shrinks with
+     *   the claimed VAT, so base × rate reproduces tax_amount whenever
+     *   vat_amount was itself subtotal × rate (an invoice whose face VAT
+     *   was computed straightforwardly -- the common case).
+     *   FLAG for owner/expert-comptable, both on the mechanics and the
+     *   declaration mapping: (1) vat_amount/vat_rate/subtotal are
+     *   INDEPENDENTLY ATTESTED fields on an expense (OCR/manual entry, not
+     *   computed by TaxCalculationService from lines), so base × rate ==
+     *   tax_amount is not a data-model invariant the way it is on the
+     *   sales side -- it holds for the common straightforward case, not by
+     *   construction for every possible attested input; (2) this reports
+     *   the DEDUCTIBLE-PROPORTION base (e.g. 80.000 on a 100.000 subtotal
+     *   at 80% deductible), not the full transaction face value (100.000).
+     *   Either convention is defensible for an INPUT declaration box; if
+     *   the DGI form expects the full transaction value instead, that is a
+     *   declaration-mapping decision, not a data-correctness one.
+     * - `firstOrCreate` (keyed on document_id + every value column) let a
+     *   changed subtotal/VAT before a re-post create a SECOND row while the
+     *   stale first row survived, double-counting input VAT. Fixed with a
+     *   scoped delete-then-create, keyed on `sequence_order = 1` (this
+     *   writer's own stable slot) rather than a blanket per-document
+     *   delete, so an unrelated document_tax_details row manually attached
+     *   to the same expense (a different sequence_order) is left alone --
+     *   see ExpenseVatPostingTest::test_unrelated_percentage_detail_does_not_absorb_the_expense_tva_snapshot.
+     * - Runs on BOTH branches of post() now (Generic AND LinkedCost) -- the
+     *   LinkedCost branch used to write nothing at all, so a linked-cost
+     *   expense's input VAT never reached the declaration. This is a no-op
+     *   when the expense carries no positive VAT amount.
+     */
+    private function writeDeductibleVatSnapshot(Document $expense, ?ExpenseMetadata $metadata): void
+    {
+        $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
+        $scale = $this->scaleResolver->getScale((string) $expense->currency);
+
+        if ($vatAmount === null || bccomp($vatAmount, '0', $scale) !== 1) {
+            return;
+        }
+
+        $rawDeductiblePercent = $metadata !== null ? $metadata->vat_deductible_percent : null;
+        $deductiblePercent = (string) ($rawDeductiblePercent ?? '100.00');
+        $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
+        $vatRate = $metadata?->vat_rate;
+        $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
+
+        // The DEDUCTIBLE-PROPORTION base: the same proportion of the
+        // subtotal as was claimed of the VAT, using the identical
+        // bcmul/bcdiv/bcround shape as ExpenseVatSplit::deductible() so the
+        // two share one rounding convention. At 100% deductible this is
+        // just the subtotal unchanged; at partial deductibility it shrinks
+        // with the claimed VAT, so base × rate reproduces tax_amount
+        // exactly whenever vat_amount was itself subtotal × rate (the
+        // common case for an invoice whose face VAT was computed
+        // straightforwardly) -- see the class docblock on
+        // writeDeductibleVatSnapshot() for the flagged alternative.
+        $subtotal = (string) ($expense->subtotal ?? '0');
+        $taxBase = ExpenseVatSplit::deductible($subtotal, $deductiblePercent, $scale);
+
+        DocumentTaxDetail::where('document_id', $expense->id)
+            ->where('sequence_order', 1)
+            ->delete();
+
+        DocumentTaxDetail::create([
+            'document_id' => $expense->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_type' => TaxType::Percentage->value,
+            'tax_name' => $taxName,
+            'tax_rate' => $vatRate,
+            'tax_fixed_amount' => null,
+            'tax_base' => $taxBase,
+            'tax_amount' => $deductibleVat,
+            'is_stamp_duty' => false,
+        ]);
     }
 
     /**

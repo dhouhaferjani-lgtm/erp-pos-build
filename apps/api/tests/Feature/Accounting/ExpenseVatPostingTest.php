@@ -108,8 +108,17 @@ final class ExpenseVatPostingTest extends TestCase
         $this->assertSame(TaxType::Percentage, $detail->tax_type);
         $this->assertSame('TVA 19.00%', $detail->tax_name);
         $this->assertSame('19.00', $detail->tax_rate);
-        $this->assertSame('100.000', $detail->tax_base);
+        // V5 (2026-08-03 gate): tax_base is the DEDUCTIBLE-proportion base
+        // (80.000 = 100.000 subtotal × 80% deductible), derived from
+        // tax_amount/rate so base × rate == tax_amount holds exactly --
+        // not the whole (pre-deductibility) subtotal.
+        $this->assertSame('80.000', $detail->tax_base);
         $this->assertSame('15.200', $detail->tax_amount);
+        $this->assertSame(
+            $detail->tax_amount,
+            bcmul($detail->tax_base, bcdiv($detail->tax_rate, '100', 6), 3),
+            'base × rate == tax_amount identity must hold exactly',
+        );
         $this->assertFalse($detail->is_stamp_duty);
     }
 
@@ -155,7 +164,8 @@ final class ExpenseVatPostingTest extends TestCase
         $this->assertSame('19.00', $tvaDetail->tax_rate);
         $this->assertSame($vatLine->debit, $tvaDetail->tax_amount);
         $this->assertSame('15.200', $tvaDetail->tax_amount);
-        $this->assertSame('100.000', $tvaDetail->tax_base);
+        // Deductible-proportion base (V5) — see the sibling test above.
+        $this->assertSame('80.000', $tvaDetail->tax_base);
 
         try {
             $this->service->post($posted, $this->user);

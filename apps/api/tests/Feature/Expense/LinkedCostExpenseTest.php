@@ -30,6 +30,9 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
+use App\Modules\Taxation\Domain\Enums\TaxType;
+use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -293,6 +296,74 @@ final class LinkedCostExpenseTest extends TestCase
             ->postJson("/api/v1/expenses/{$expense->id}/reverse")
             ->assertStatus(422)
             ->assertJsonPath('code', 'ALREADY_REVERSED');
+    }
+
+    /**
+     * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md):
+     * ExpenseService::post()'s LinkedCost branch used to write NO
+     * DocumentTaxDetail row at all, so a linked-cost expense's input VAT
+     * could never reach the declaration. `assertVatInvariants()` currently
+     * forbids VAT fields on a linked-cost expense AT CREATION time
+     * ("landed-cost capitalization consumes the full amount") -- so this
+     * simulates the ExpenseMetadata shape a future policy change or legacy
+     * record could carry, by writing vat_rate/vat_deductible_percent onto
+     * an already-created linked-cost expense's metadata directly, to prove
+     * the LinkedCost branch's writer fires (mirrors the Generic branch
+     * exactly) rather than remaining permanently dead code.
+     */
+    public function test_linked_cost_expense_snapshots_input_vat_when_metadata_carries_a_rate(): void
+    {
+        [$po, $supplierInvoice] = $this->receivedPoWithSupplierInvoice('10.0000', '10.000');
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => RepositoryType::CashRegister,
+            'balance' => '500.000',
+        ]);
+
+        $expense = $this->createLinkedExpense($po, $supplierInvoice, $repo);
+        // 100.000 total, 19% VAT -> subtotal 84.034 / tax_amount 15.966.
+        $expense->update([
+            'subtotal' => '84.034',
+            'tax_amount' => '15.966',
+        ]);
+        $expense->expenseMetadata()->update([
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '100.00',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/expenses/{$expense->id}/post")
+            ->assertOk();
+
+        $detail = DocumentTaxDetail::query()->where('document_id', $expense->id)->first();
+        $this->assertNotNull($detail, 'LinkedCost branch must snapshot input VAT when metadata carries a rate');
+        $this->assertSame(TaxType::Percentage, $detail->tax_type);
+        $this->assertSame('19.00', $detail->tax_rate);
+        $this->assertSame('15.966', $detail->tax_amount);
+        $this->assertFalse($detail->is_stamp_duty);
+        /** @var numeric-string $detailBase */
+        $detailBase = (string) $detail->tax_base;
+        /** @var numeric-string $detailRate */
+        $detailRate = (string) $detail->tax_rate;
+        $this->assertSame(
+            $detail->tax_amount,
+            bcmul($detailBase, bcdiv($detailRate, '100', 6), 3),
+            'base × rate == tax_amount identity must hold on the LinkedCost branch too',
+        );
+
+        // The declaration's INPUT side must now see this expense's VAT.
+        $repository = app(VatDataRepositoryInterface::class);
+        $aggregations = $repository->aggregateByRateAndDirection(
+            $this->company->id,
+            now()->startOfMonth()->toDateString(),
+            now()->endOfMonth()->toDateString(),
+        );
+        $inputBucket = collect($aggregations)->first(fn ($a) => $a->direction === 'INPUT' && $a->taxRate === '19.00');
+        $this->assertNotNull($inputBucket, 'Declaration INPUT side must be non-zero for a linked-cost expense carrying VAT');
+        $this->assertSame('15.966', $inputBucket->vatAmount);
     }
 
     /**
