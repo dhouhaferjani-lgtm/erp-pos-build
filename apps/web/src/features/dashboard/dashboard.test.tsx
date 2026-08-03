@@ -169,4 +169,35 @@ describe('Dashboard', () => {
       expect(screen.getByRole('link', { name: /new quote/i })).toBeInTheDocument()
     })
   })
+
+  // AMENDED ruling M2 (2026-08-03 gate): revenue.change is null when there is
+  // no meaningful previous-period baseline (e.g. a tenant's first month).
+  // Render no arrow icon, just an em-dash — mirrors ExpenseAnalyticsPage's
+  // mom_delta_percent tile convention.
+  it('renders no arrow and an em-dash when revenue.change is null', async () => {
+    mockApi.get.mockImplementation((url: string) => {
+      if (url.includes('/dashboard/stats')) {
+        return Promise.resolve({
+          data: {
+            data: makeDashboardStats({
+              revenue: { current: '5000.000', previous: '0.000', change: null },
+            }),
+          },
+        })
+      }
+      if (url.includes('/documents') || url.includes('/payments')) {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    const { container } = renderWithProviders(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText('—')).toBeInTheDocument()
+    })
+
+    expect(container.querySelector('.lucide-trending-up')).not.toBeInTheDocument()
+    expect(container.querySelector('.lucide-trending-down')).not.toBeInTheDocument()
+  })
 })

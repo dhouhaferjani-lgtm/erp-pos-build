@@ -13,10 +13,11 @@ export interface DashboardStats {
   revenue: {
     // Precision rule 19 / docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
     // ruling 3: bc-based decimal strings, not floats. `change` is a
-    // percentage (2dp string), not a currency-scaled amount.
+    // percentage (2dp string), not a currency-scaled amount — AMENDED
+    // ruling (M2, 2026-08-03 gate): null with no previous-period baseline.
     current: string
     previous: string
-    change: string
+    change: string | null
   }
   invoices: {
     total: number

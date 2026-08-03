@@ -24,6 +24,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -31,6 +32,15 @@ use Tests\TestCase;
 final class DashboardStatsTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        // M1 (2026-08-03 gate): several tests freeze the clock to pin a specific
+        // month-boundary window — never leak a frozen "now" into later tests.
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
 
     /**
      * @return array{0: Tenant, 1: Company, 2: User, 3: Partner}
@@ -319,34 +329,71 @@ final class DashboardStatsTest extends TestCase
     }
 
     /**
-     * Ruling 2: paymentsPending is derived from the same Posted∪Paid base as
-     * revenue, minus paymentsReceived — consistent with ruling 1.
+     * AMENDED ruling 3 (2026-08-03 gate H1): pending = SUM(balance_due) over the
+     * Posted∪Paid base — NOT paymentsReceived-derived (that subtracted a
+     * month-scoped paymentsReceived from an all-time invoice base, which is
+     * arithmetically invalid and roughly doubled the figure). A still-open
+     * Posted invoice contributes its full balance_due; a fully-settled Paid
+     * invoice (balance_due already driven to 0 by treasury allocations)
+     * contributes nothing, even though its `total` is still in the revenue
+     * base.
      */
-    public function test_payments_pending_derived_from_posted_and_paid_invoice_base(): void
+    public function test_payments_pending_is_sum_of_balance_due_over_posted_and_paid_base(): void
     {
         [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
 
         $this->createInvoice($tenant, $company, $partner, [
             'status' => DocumentStatus::Posted,
             'total' => '100.000',
+            'balance_due' => '100.000',
         ]);
         $this->createInvoice($tenant, $company, $partner, [
             'status' => DocumentStatus::Paid,
             'total' => '50.000',
+            'balance_due' => '0.000',
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/dashboard/stats');
 
         $response->assertOk()
-            ->assertJsonPath('data.payments.pending', '150.000');
+            ->assertJsonPath('data.payments.pending', '100.000');
     }
 
     /**
-     * Ruling 3 (precision rule 19): revenue.current/previous/change travel as
-     * bc-based decimal strings, never PHP floats/ints on the wire.
+     * H1: a fully-settled invoice from a PRIOR month contributes exactly 0 to
+     * pending, regardless of when it was created — pending is deliberately
+     * all-time (not month-scoped), unlike revenue. This is the case that
+     * would have silently regressed under the old
+     * "all-time invoiced - this-month-receipts" formula (the settled
+     * invoice's lifetime total would have inflated the minuend with nothing
+     * to offset it).
      */
-    public function test_revenue_values_are_scale_3_strings_not_floats(): void
+    public function test_payments_pending_excludes_settled_prior_month_paid_invoice(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Paid,
+            'total' => '250.000',
+            'balance_due' => '0.000',
+            'document_date' => now()->subMonthNoOverflow(),
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.payments.pending', '0.000');
+    }
+
+    /**
+     * Ruling 3 (precision rule 19): revenue.current/previous travel as
+     * bc-based decimal strings, never PHP floats/ints on the wire. With no
+     * previous-month invoice, previous is the string "0.000" and — per the
+     * AMENDED M2 ruling below — change is null, not a string.
+     */
+    public function test_revenue_current_and_previous_are_scale_3_strings_not_floats(): void
     {
         [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
 
@@ -362,27 +409,33 @@ final class DashboardStatsTest extends TestCase
 
         $this->assertIsString($response->json('data.revenue.current'));
         $this->assertIsString($response->json('data.revenue.previous'));
-        $this->assertIsString($response->json('data.revenue.change'));
         $this->assertSame('100.000', $response->json('data.revenue.current'));
         $this->assertSame('0.000', $response->json('data.revenue.previous'));
+        $this->assertNull($response->json('data.revenue.change'));
     }
 
     /**
-     * Ruling 3: change stays a percentage, represented as a 2dp string.
+     * Ruling 3: change stays a percentage, represented as a 2dp string when
+     * there IS a meaningful previous-period baseline. Clock frozen mid-month
+     * (M1, 2026-08-03 gate) so this test is not date-dependent — a plain
+     * `now()->subMonth()` around a short-month boundary would otherwise
+     * collapse the previous-month window onto the current month.
      */
     public function test_revenue_change_is_a_two_decimal_percent_string(): void
     {
+        Carbon::setTestNow('2026-06-15 10:00:00');
+
         [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
 
         $this->createInvoice($tenant, $company, $partner, [
             'status' => DocumentStatus::Posted,
             'total' => '125.000',
-            'document_date' => now(),
+            'document_date' => Carbon::now(),
         ]);
         $this->createInvoice($tenant, $company, $partner, [
             'status' => DocumentStatus::Paid,
             'total' => '100.000',
-            'document_date' => now()->subMonth(),
+            'document_date' => Carbon::now()->subMonthNoOverflow(),
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -390,5 +443,145 @@ final class DashboardStatsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.revenue.change', '25.00');
+    }
+
+    /**
+     * M1 (2026-08-03 gate) — CI landmine / real month-end KPI defect: on a day
+     * whose day-of-month doesn't exist in the previous month (May 31 -> "Apr
+     * 31"), a plain subMonth() overflows and the previous-month window
+     * collapses onto the current month, silently zeroing revenue.previous
+     * and collapsing revenue.change to "0.00" even though a real
+     * previous-month invoice exists.
+     */
+    public function test_revenue_previous_month_window_does_not_overflow_at_month_end_boundary(): void
+    {
+        Carbon::setTestNow('2026-05-31 12:00:00');
+
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Posted,
+            'total' => '125.000',
+            'document_date' => Carbon::now(),
+        ]);
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Paid,
+            'total' => '100.000',
+            'document_date' => Carbon::parse('2026-04-15'),
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.revenue.current', '125.000')
+            ->assertJsonPath('data.revenue.previous', '100.000')
+            ->assertJsonPath('data.revenue.change', '25.00');
+    }
+
+    /**
+     * AMENDED ruling (2026-08-03 gate M2): revenue.change is null — not
+     * "0.00" — when there is no previous-period invoice at all, mirroring
+     * ExpenseAnalyticsService::generate()'s `!== 0` guard/null convention so
+     * the web tile can suppress a meaningless "0%" badge (e.g. a brand-new
+     * tenant's first month).
+     */
+    public function test_revenue_change_is_null_when_previous_revenue_is_zero(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Posted,
+            'total' => '100.000',
+            'document_date' => now(),
+        ]);
+        // No previous-month invoice at all.
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.revenue.change', null);
+    }
+
+    /**
+     * AMENDED ruling (2026-08-03 gate M2): a negative previous-period revenue
+     * (data anomaly / rebate scenario) also yields null — the old `> 0` guard
+     * silently reported "0.00" (no change) instead, which is a wrong answer,
+     * not merely an absent one.
+     */
+    public function test_revenue_change_is_null_when_previous_revenue_is_negative(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Posted,
+            'total' => '100.000',
+            'document_date' => now(),
+        ]);
+        $this->createInvoice($tenant, $company, $partner, [
+            'status' => DocumentStatus::Posted,
+            'total' => '-50.000',
+            'balance_due' => '-50.000',
+            'document_date' => now()->subMonthNoOverflow(),
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.revenue.change', null);
+    }
+
+    /**
+     * L4 (2026-08-03 gate, in-scope per the original ticket's own premise
+     * that "refunds move the dashboard the wrong way"): a completed REFUND
+     * this month must net against paymentsReceived. Refund `Payment` rows
+     * always carry a NEGATIVE `amount` by convention
+     * (PaymentRefundService::refundPayment/partialRefund/the proration
+     * writer), so a completed refund reduces the reported received figure.
+     */
+    public function test_payments_received_nets_completed_refund_this_month(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $method = PaymentMethod::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'BANK',
+            'name' => 'Bank Transfer',
+            'is_physical' => false,
+            'is_active' => true,
+        ]);
+
+        Payment::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $method->id,
+            'amount' => '200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+        ]);
+
+        Payment::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $method->id,
+            'amount' => '-80.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Refund,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.payments.received', '120.000');
     }
 }

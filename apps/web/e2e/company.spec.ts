@@ -66,10 +66,13 @@ test.describe('Company Switcher', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            revenue: { current: 15000, previous: 12000, change: 25 },
+            // Wire shape (docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+            // ruling 3): revenue.current/previous/change are bc-based decimal strings, not
+            // JSON numbers — payments.received/pending were already strings.
+            revenue: { current: '15000.000', previous: '12000.000', change: '25.00' },
             invoices: { total: 45, pending: 12, overdue: 3 },
             partners: { total: 28, newThisMonth: 5 },
-            payments: { received: 35000, pending: 8000 },
+            payments: { received: '35000.000', pending: '8000.000' },
           },
         }),
       })
@@ -180,10 +183,13 @@ test.describe('Company Switcher', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            revenue: { current: 15000, previous: 12000, change: 25 },
+            // Wire shape (docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+            // ruling 3): revenue.current/previous/change are bc-based decimal strings, not
+            // JSON numbers — payments.received/pending were already strings.
+            revenue: { current: '15000.000', previous: '12000.000', change: '25.00' },
             invoices: { total: 45, pending: 12, overdue: 3 },
             partners: { total: 28, newThisMonth: 5 },
-            payments: { received: 35000, pending: 8000 },
+            payments: { received: '35000.000', pending: '8000.000' },
           },
         }),
       })
@@ -403,10 +409,13 @@ test.describe('Company Onboarding', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            revenue: { current: 15000, previous: 12000, change: 25 },
+            // Wire shape (docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
+            // ruling 3): revenue.current/previous/change are bc-based decimal strings, not
+            // JSON numbers — payments.received/pending were already strings.
+            revenue: { current: '15000.000', previous: '12000.000', change: '25.00' },
             invoices: { total: 45, pending: 12, overdue: 3 },
             partners: { total: 28, newThisMonth: 5 },
-            payments: { received: 35000, pending: 8000 },
+            payments: { received: '35000.000', pending: '8000.000' },
           },
         }),
       })

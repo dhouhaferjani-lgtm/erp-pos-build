@@ -33,10 +33,14 @@ interface DashboardStats {
   revenue: {
     // Precision rule 19 / docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md
     // ruling 3: bc-based decimal strings, not floats. `change` is a
-    // percentage (2dp string), not a currency-scaled amount.
+    // percentage (2dp string), not a currency-scaled amount — AMENDED
+    // ruling (M2, 2026-08-03 gate): null when there is no meaningful
+    // previous-period baseline (previous revenue <= 0), e.g. a tenant's
+    // first month. Render no arrow + an em-dash on null (see
+    // ExpenseAnalyticsPage's mom_delta_percent tile for the same convention).
     current: string
     previous: string
-    change: string
+    change: string | null
   }
   invoices: {
     total: number
@@ -158,13 +162,18 @@ export function Dashboard() {
     })
   }
 
-  // revenue.change is a percent string (e.g. "25.00" or "-10.50"). Sign/magnitude
-  // are derived with big.js — never parseFloat/Number(...) on this value.
-  const revenueChangeIsNegative = stats?.revenue.change !== undefined
-    && new Big(stats.revenue.change).lt(0)
-  const revenueChangeAbsDisplay = stats?.revenue.change !== undefined
-    ? formatPercent(new Big(stats.revenue.change).abs().toString())
-    : null
+  // revenue.change is a percent string (e.g. "25.00" or "-10.50"), or `null`
+  // when there is no meaningful previous-period baseline (AMENDED ruling M2,
+  // 2026-08-03 gate — mirrors ExpenseAnalyticsPage's mom_delta_percent tile:
+  // no arrow icon, just an em-dash). Sign/magnitude are derived with big.js —
+  // never parseFloat/Number(...) on this value.
+  const revenueChange = stats?.revenue.change
+  const revenueChangeIsNegative = typeof revenueChange === 'string' && new Big(revenueChange).lt(0)
+  const revenueChangeDisplay = revenueChange === undefined
+    ? null
+    : revenueChange === null
+      ? '—'
+      : formatPercent(new Big(revenueChange).abs().toString())
   const getDocumentNumberLabel = (documentNumber: string | null) =>
     documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
@@ -240,18 +249,22 @@ export function Dashboard() {
             <div className={`rounded-lg ${colorTokens.intent.success.bgSoft} p-2`}>
               <DollarSign className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
             </div>
-            {revenueChangeAbsDisplay !== null && (
+            {revenueChangeDisplay !== null && (
               <div
                 className={`flex items-center gap-1 text-sm ${
-                  revenueChangeIsNegative ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`
+                  revenueChange === null
+                    ? colorTokens.text.subtle
+                    : revenueChangeIsNegative ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`
                 }`}
               >
-                {revenueChangeIsNegative ? (
-                  <TrendingDown className="h-4 w-4" />
-                ) : (
-                  <TrendingUp className="h-4 w-4" />
+                {revenueChange !== null && (
+                  revenueChangeIsNegative ? (
+                    <TrendingDown className="h-4 w-4" />
+                  ) : (
+                    <TrendingUp className="h-4 w-4" />
+                  )
                 )}
-                {revenueChangeAbsDisplay}
+                {revenueChangeDisplay}
               </div>
             )}
           </div>
