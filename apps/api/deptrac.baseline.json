@@ -1,10 +1,10 @@
 {
-    "generated_at": "2026-07-31",
+    "generated_at": "2026-08-03",
     "note": "Regenerate with: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json --update-baseline",
-    "total": 97,
+    "total": 98,
     "categories": {
         "ModuleApplication on ModuleInfrastructure": 21,
-        "ModuleDomain on ModuleApplication": 34,
+        "ModuleDomain on ModuleApplication": 35,
         "ModuleInfrastructure on ModulePresentation": 1,
         "SharedContracts on ModuleApplication": 17,
         "SharedContracts on ModuleDomain": 22,
