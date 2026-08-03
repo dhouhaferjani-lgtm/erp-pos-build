@@ -240,23 +240,36 @@ test.describe('INV — counting -> discrepancy report -> apply', () => {
     // PARTIAL — which guard fired, disclosed rather than glossed.
     //
     // The plan names the `negative_at_apply` arm
-    // (ApplyStockAdjustmentsOnCountingCompleted.php:259-262). That arm is SHADOWED on
-    // every construction this surface allows: `applyReplay()` runs the basket-window
-    // pre-check FIRST (:224-230), and making the correction exceed the remaining stock
-    // REQUIRES moving stock between count and apply — which is exactly what the
-    // basket-window guard detects. Verified live: with the default 15-minute window AND
-    // with `ambiguity_window_minutes: 0`, the recorded reason is `basket_window` both
-    // times. Both arms have the same money contract (nothing posted, line flagged for
-    // review, stock never negative), which is what is asserted above.
-    expect(reasons, 'the pre-apply guard is what holds the line on this construction').toContain('basket_window')
+    // (ApplyStockAdjustmentsOnCountingCompleted.php:259-262). THIS construction does not
+    // reach it: `applyReplay()` runs the basket-window pre-check first (:224-230) and it
+    // matches, so the line is held there instead.
+    //
+    // NOT a structural impossibility (corrected after review N-1 — the earlier claim that
+    // the arm was "shadowed on every construction" was an overclaim).
+    // `MovementReplayService::hasMovementNear()` is a SYMMETRIC +/-window with
+    // second-granularity boundaries (:194-200, `boundary()`:232-234) around
+    // `final_qty_as_of` (the count-submission instant), and
+    // `ambiguity_window_minutes` accepts `min:0`. So a window-0 counting whose
+    // stock-consuming movement lands MORE THAN ONE SECOND after the count submission
+    // should fall outside the basket window and reach `negative_at_apply`. The window-0
+    // attempt made here landed inside the same second, which is why it still reported
+    // `basket_window`.
+    //
+    // CLOSABLE IN A FOLLOW-UP: `ambiguity_window_minutes: 0` + an explicit spacing delay
+    // between the count submission and the consuming movement. Not authored this round.
+    // Both arms carry the same money contract (nothing posted, line flagged for review,
+    // stock never negative), which is what is asserted above.
+    expect(reasons, 'the pre-apply guard is what holds the line on THIS construction').toContain('basket_window')
     test.info().annotations.push({
       type: 'PARTIAL',
       description:
-        'The specific `negative_at_apply` flag arm is unreachable from the web surface: the basket-window ' +
-        'pre-check (ApplyStockAdjustmentsOnCountingCompleted.php:224-230) fires first for any scenario in ' +
-        'which stock moves between count and apply, and that movement is what makes the correction exceed ' +
-        'remaining stock in the first place. Confirmed with ambiguity_window_minutes 15 and 0. The money ' +
-        'contract (nothing posted, no negative stock, line held for review) IS asserted.',
+        'The `negative_at_apply` arm is NOT EXERCISED by this construction — the basket-window pre-check ' +
+        '(ApplyStockAdjustmentsOnCountingCompleted.php:224-230) matches first. It is reachable, not ' +
+        'structurally shadowed: hasMovementNear() is a symmetric +/-window at second granularity around the ' +
+        'count-submission instant and ambiguity_window_minutes accepts 0, so a window-0 counting with the ' +
+        'consuming movement spaced >1s after the count should reach it. Closable in a follow-up; not ' +
+        'authored this round. The money contract (nothing posted, no negative stock, line held for review) ' +
+        'IS asserted here.',
     })
   })
 

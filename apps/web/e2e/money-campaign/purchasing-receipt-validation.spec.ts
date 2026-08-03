@@ -119,12 +119,19 @@ test.describe('PUR — money / quantity validation ceilings (23..27)', () => {
     // zero-value line is ACCEPTED — legitimate for free/sample goods.
     expect(res.status, JSON.stringify(res.body)).toBe(201)
     const data = (res.body as { data: { subtotal: string; total: string; tax_amount: string; id: string } }).data
-    // The plan's real requirement: the total must not become NaN/blank.
-    expect(data.subtotal).toBe('0.000')
-    expect(data.tax_amount).toBe('0.000')
-    expect(data.total).toBe('0.000')
-    for (const v of [data.subtotal, data.tax_amount, data.total]) {
-      expect(v).toMatch(/^-?\d+\.\d{3}$/)
+    try {
+      // The plan's real requirement: the total must not become NaN/blank.
+      expect(data.subtotal).toBe('0.000')
+      expect(data.tax_amount).toBe('0.000')
+      expect(data.total).toBe('0.000')
+      for (const v of [data.subtotal, data.tax_amount, data.total]) {
+        expect(v).toMatch(/^-?\d+\.\d{3}$/)
+      }
+    } finally {
+      // The zero-value PO is a disposition PROBE, not a commitment under test — retire it
+      // so it does not accumulate one live draft per run.
+      const del = await apiRequest(page, 'DELETE', `/purchase-orders/${data.id}`)
+      expect(del.status, `zero-value probe PO cleanup: ${JSON.stringify(del.body)}`).toBeLessThan(300)
     }
   })
 

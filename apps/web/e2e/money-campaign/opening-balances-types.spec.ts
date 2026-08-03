@@ -29,6 +29,7 @@ import {
   W4_GL_CREDIT_ACCOUNT_CODE,
   createOpeningBatchOfType,
   requireOpeningBatchSlot,
+  clearOpeningBatchSlot,
 
   importOpeningRowsGeneric,
   validateOpening,
@@ -392,8 +393,12 @@ test.describe('OPB — opening balances, non-inventory types', () => {
       expect(glShape.status, JSON.stringify(glShape.body)).toBe(422)
     } finally {
       expect(await retireOpeningBatch(page, firstId), 'cleanup of the slot-guard batch').toBeLessThan(300)
+      // NON-THROWING on purpose (review N-4): `requireOpeningBatchSlot()` THROWS when a
+      // foreign batch holds the slot. Inside a finally that would replace the original
+      // assertion failure with the slot error and hide why the case really failed. The
+      // best-effort variant is correct here; the throwing one guards the SETUP paths.
       for (const t of ['AR_OPEN_ITEMS', 'AP_OPEN_ITEMS'] as OpeningBatchType[]) {
-        await requireOpeningBatchSlot(page, t)
+        await clearOpeningBatchSlot(page, t)
       }
     }
   })

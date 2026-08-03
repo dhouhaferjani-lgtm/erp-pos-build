@@ -84,10 +84,18 @@ test.describe('PUR — bonus / free goods (14..16)', () => {
       ],
     })
     expect(ok.status, 'gate OPEN for TN: free_quantity accepted').toBe(201)
-    const po = await getPurchaseOrder(page, (ok.body as { data: { id: string } }).data.id)
-    const lines = po.lines as Array<{ free_quantity: string; quantity: string }>
-    expect(lines[0].quantity).toBe('5.0000')
-    expect(lines[0].free_quantity, 'free qty persisted at the canonical 4-dp quantity scale').toBe('1.0000')
+    const probePoId = (ok.body as { data: { id: string } }).data.id
+    try {
+      const po = await getPurchaseOrder(page, probePoId)
+      const lines = po.lines as Array<{ free_quantity: string; quantity: string }>
+      expect(lines[0].quantity).toBe('5.0000')
+      expect(lines[0].free_quantity, 'free qty persisted at the canonical 4-dp quantity scale').toBe('1.0000')
+    } finally {
+      // This PO is a gate PROBE, not a commitment under test — retire it so it does not
+      // accumulate one live 17.850 draft per run in W-6's open-commitment reads.
+      const del = await apiRequest(page, 'DELETE', `/purchase-orders/${probePoId}`)
+      expect(del.status, `bonus-gate probe PO cleanup: ${JSON.stringify(del.body)}`).toBeLessThan(300)
+    }
 
     test.info().annotations.push({
       type: 'PARTIAL',
