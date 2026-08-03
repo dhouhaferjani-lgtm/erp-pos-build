@@ -40,53 +40,53 @@ landed + gated + promoted; staging auto-deployed; zero migrations in the batch).
 
 ## 2. Your staging steps (§A) — the consolidated checklist
 
-**Document : [`docs/handoff/OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md`](OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md)**
-- §A : post-deploy staging (RolesAndPermissionsSeeder + `permission:cache-reset` REQUIS, sinon
-  403 sur les nouvelles routes fiscales) — note : les lanes de ce week-end n'ajoutent AUCUNE
-  permission nouvelle, donc pas de reseed supplémentaire pour elles.
-- §B : initiales sur la gate sheet (E-10 déjà tranché). §C : awareness. §D : campagnes.
-  §E : re-run fiscal final + séquence d'enablement. §F : tickets parkés.
+**Document: [`docs/handoff/OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md`](OWNER-CHECKLIST-CONSOLIDATED-2026-08-01.md)**
+- §A: staging post-deploy (RolesAndPermissionsSeeder + `permission:cache-reset` REQUIRED, else
+  403 on the new fiscal routes) — note: this weekend's lanes introduce ZERO new permissions, so
+  no additional reseed is needed for them.
+- §B: gate-sheet initials (E-10 already decided). §C: awareness items. §D: campaigns.
+  §E: final fiscal re-run + enablement sequence. §F: parked tickets.
 
-**Nouvel item runbook PRÉ-DÉCLARATION (à ajouter à votre passage §A/§E) :** après
-`php artisan vat:backfill-tax-details --apply` sur un tenant, résoudre CHAQUE document « skipped »
-rapporté avant tout dépôt de déclaration — détail :
+**New PRE-FILING runbook item (add to your §A/§E pass):** after
+`php artisan vat:backfill-tax-details --apply` on a tenant, resolve EVERY reported "skipped"
+document before any VAT declaration is filed — detail:
 [`docs/superpowers/tickets/2026-08-03-vat-regate-carryovers.md`](../superpowers/tickets/2026-08-03-vat-regate-carryovers.md) (§N2).
 
 ---
 
 ## 3. Codex Desktop handover (POS Tauri, §Z — 64 items)
 
-**Document : [`docs/handoff/HANDOVER-codex-pos-desktop-campaign-2026-08-02.md`](HANDOVER-codex-pos-desktop-campaign-2026-08-02.md)**
-Prêt à remettre à Codex tel quel : recette d'environnement (bundle dev, piège de l'app prod,
-overlay Wispr), gate migrations device v60–67, deltas post-treasury, contrat d'évidence, ordre
-d'exécution (Z.1 d'abord — il produit les fixtures SHIFT-1/SHIFT-2 pour §Y).
+**Document: [`docs/handoff/HANDOVER-codex-pos-desktop-campaign-2026-08-02.md`](HANDOVER-codex-pos-desktop-campaign-2026-08-02.md)**
+Ready to hand to Codex verbatim: environment recipe (dev bundle, prod-app trap, Wispr overlay),
+device-migrations gate v60–67, post-treasury behaviour deltas, evidence contract, execution
+order (Z.1 first — it authors the SHIFT-1/SHIFT-2 fixtures §Y consumes).
 
 ---
 
 ## 4. Mobile — one action: push the prepared branch
 
-Repo `erp-mobile`, branche locale **`fix/dashboard-stats-string-shape`** (commit `2c25da7`,
-typecheck + 17/17 tests verts). À pousser + livrer avec (ou juste après) le deploy backend.
-Tant qu'elle n'est pas livrée : « null % » cosmétique sur l'onglet dashboard mobile pour un
-tenant en premier mois. Détail du contrat :
+Repo `erp-mobile`, local branch **`fix/dashboard-stats-string-shape`** (commit `2c25da7`,
+typecheck + 17/17 tests green). Push + release it with (or right after) the backend deploy.
+Until it ships: cosmetic "null %" on the mobile dashboard tab for a first-month tenant.
+Contract detail:
 [`docs/superpowers/coordination/2026-08-03-dashboard-stats-api-shape-change.md`](../superpowers/coordination/2026-08-03-dashboard-stats-api-shape-change.md).
 
 ---
 
 ## 5. Records index for this pass (if detail is needed)
 
-- Plan de campagne complet : `docs/qa/2026-08-02-full-e2e-campaign-plan.md` (112 flux, vagues W-0..W-11).
-- Résultats campagne (local, gitignored) : `docs/sessions/MONEY-CAMPAIGN-RESULTS.md`.
-- Reviews (toutes dans `docs/superpowers/reviews/`) : `2026-08-02-documents-fixlane-gate.md`,
+- Full campaign plan: `docs/qa/2026-08-02-full-e2e-campaign-plan.md` (112 flows, waves W-0..W-11).
+- Campaign results (local, gitignored): `docs/sessions/MONEY-CAMPAIGN-RESULTS.md`.
+- Review records (all in `docs/superpowers/reviews/`): `2026-08-02-documents-fixlane-gate.md`,
   `2026-08-02-authz-fixlane-gate.md`, `2026-08-02-fe-batch-gate.md`,
   `2026-08-03-credit-note-money-lane-gate.md`, `2026-08-03-dashboard-kpi-gate.md`,
   `2026-08-03-vat-declaration-gate.md`, `2026-08-03-hardening-batch-gate.md`.
-- Tickets ouverts (tous dans `docs/superpowers/tickets/`, préfixes `2026-08-02-*`/`2026-08-03-*`) —
-  les plus importants : `2026-08-03-credit-note-regate-carryovers.md` (Q1),
-  `2026-08-03-vat-regate-carryovers.md` (runbook pré-déclaration),
+- Open tickets (all in `docs/superpowers/tickets/`, prefixes `2026-08-02-*`/`2026-08-03-*`) —
+  the most important: `2026-08-03-credit-note-regate-carryovers.md` (Q1),
+  `2026-08-03-vat-regate-carryovers.md` (pre-filing runbook),
   `2026-08-03-paid-with-unreconciled-balance-investigation.md`,
-  `2026-08-02-authz-gate-followups.md` (m6 route morte marges, F2 DTO scindé),
-  `2026-08-03-f2f3-regate-carryovers.md` (R1 unification arrondi, R5 permission confirm avoir).
+  `2026-08-02-authz-gate-followups.md` (m6 dead margins route, F2 scoped DTO),
+  `2026-08-03-f2f3-regate-carryovers.md` (R1 rounding unification, R5 credit-note confirm permission).
 
 ---
 
