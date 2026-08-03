@@ -90,7 +90,28 @@ Contract detail:
 
 ---
 
-## 6. Next session (new) — what to launch
+## 6. Manual-testing documents for the team
+
+- **`docs/qa/smoke-test-fr.csv`** — the team-facing manual smoke sheet, **in French**, 70
+  numbered cases in spreadsheet format with fill-in columns (Résultat obtenu / Statut / Gravité /
+  Commentaire / Capture). Covers the back-office web app end-to-end: login/session, company &
+  locations, through documents, robustness, i18n, printing. This is the one to hand to testers.
+- **`docs/qa/2026-04-28-izipos-q2-release-smoke-protocol.md`** (+ companion `.csv`, 37 cases) —
+  POS **desktop** (Tauri) release smoke protocol, tester-facing prose + scenario table.
+- **`docs/qa/desktop-protocols/`** — reusable per-feature desktop protocols for non-developer
+  testers: `README.md` (catalog + run order), `TEMPLATE.md`, and `01-customer-account-deposit.md`
+  (the only one written so far; most catalog entries are still ⬜ outstanding).
+- `docs/testing/` — two older feature-specific manuals (fiscal-period auto-lock, receipt
+  printing).
+
+⚠️ Staleness note: all of these pre-date the July–August work (treasury instruments/refund
+chain, credit-note fixes, settings gating, dashboard KPIs). They're still valid as base
+coverage, but a refresh pass adding the new surfaces to `smoke-test-fr.csv` is worth
+dispatching before the team's staging run — ask for it in the next session.
+
+---
+
+## 7. Next session (new) — what to launch
 
 Just say: **"Resume the launch program — execute waves W-3 through W-8 then W-X from
 docs/qa/2026-08-02-full-e2e-campaign-plan.md"**. The program memory
