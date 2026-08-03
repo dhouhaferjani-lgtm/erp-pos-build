@@ -35,22 +35,40 @@ class DashboardController extends Controller
         $previousMonthStart = Carbon::now()->subMonth()->startOfMonth();
         $previousMonthEnd = Carbon::now()->subMonth()->endOfMonth();
 
-        // Revenue calculation (posted invoices)
-        $currentRevenue = Document::where('company_id', $companyId)
-            ->where('type', DocumentType::Invoice)
-            ->where('status', DocumentStatus::Posted)
-            ->where('document_date', '>=', $currentMonthStart)
-            ->sum('total');
+        // Revenue calculation. Ruling (docs/superpowers/tickets/2026-08-02-dashboard-stats-status-buckets-and-float-sum.md):
+        // revenue = whereIn(status, [Posted, Paid]) — a Paid invoice is still revenue, and a
+        // refund's Paid -> Posted revert must NOT move revenue since both statuses are already
+        // in the base. Summed via bc (precision rule 19) instead of SQL sum('total'), which
+        // returns a PHP float.
+        $revenueStatuses = [DocumentStatus::Posted, DocumentStatus::Paid];
 
-        $previousRevenue = Document::where('company_id', $companyId)
-            ->where('type', DocumentType::Invoice)
-            ->where('status', DocumentStatus::Posted)
-            ->whereBetween('document_date', [$previousMonthStart, $previousMonthEnd])
-            ->sum('total');
+        $currentRevenue = $this->sumDecimalStrings(
+            Document::where('company_id', $companyId)
+                ->where('type', DocumentType::Invoice)
+                ->whereIn('status', $revenueStatuses)
+                ->where('document_date', '>=', $currentMonthStart)
+                ->pluck('total')
+                ->all()
+        );
 
-        $revenueChange = $previousRevenue > 0
-            ? round((($currentRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
-            : 0;
+        $previousRevenue = $this->sumDecimalStrings(
+            Document::where('company_id', $companyId)
+                ->where('type', DocumentType::Invoice)
+                ->whereIn('status', $revenueStatuses)
+                ->whereBetween('document_date', [$previousMonthStart, $previousMonthEnd])
+                ->pluck('total')
+                ->all()
+        );
+
+        // change stays a percentage, represented as a 2dp bc string (ruling 3).
+        $revenueChange = '0.00';
+
+        if (bccomp($previousRevenue, '0', 3) > 0) {
+            $intermediateScale = 10;
+            $delta = bcsub($currentRevenue, $previousRevenue, $intermediateScale);
+            $ratio = bcdiv($delta, $previousRevenue, $intermediateScale);
+            $revenueChange = CurrencyScale::bcround(bcmul($ratio, '100', $intermediateScale), 2);
+        }
 
         // Invoice stats
         $totalInvoices = Document::where('company_id', $companyId)
@@ -62,6 +80,10 @@ class DashboardController extends Controller
             ->whereIn('status', [DocumentStatus::Draft, DocumentStatus::Confirmed])
             ->count();
 
+        // Overdue deliberately stays Posted-only (NOT whereIn([Posted, Paid]) like revenue
+        // above) — a Paid invoice past its due date is settled, not overdue. Corollary: a
+        // refund reverting Paid -> Posted CAN legitimately re-enter this bucket if the
+        // invoice is past due — that is correct business reality, not a regression.
         $overdueInvoices = Document::where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
@@ -100,15 +122,17 @@ class DashboardController extends Controller
                         ->all()
                 );
 
-                $postedInvoiceTotal = $this->sumDecimalStrings(
+                // Ruling 2: paymentsPending is derived from the same Posted∪Paid base as
+                // revenue above, minus paymentsReceived — kept consistent with ruling 1.
+                $invoiceRevenueBaseTotal = $this->sumDecimalStrings(
                     Document::where('company_id', $companyId)
                         ->where('type', DocumentType::Invoice)
-                        ->where('status', DocumentStatus::Posted)
+                        ->whereIn('status', $revenueStatuses)
                         ->pluck('total')
                         ->all()
                 );
 
-                $paymentsPending = bcsub($postedInvoiceTotal, $paymentsReceived, 3);
+                $paymentsPending = bcsub($invoiceRevenueBaseTotal, $paymentsReceived, 3);
 
                 if (bccomp($paymentsPending, '0', 3) < 0) {
                     $paymentsPending = '0.000';
@@ -121,8 +145,8 @@ class DashboardController extends Controller
         return response()->json([
             'data' => [
                 'revenue' => [
-                    'current' => (float) $currentRevenue,
-                    'previous' => (float) $previousRevenue,
+                    'current' => $currentRevenue,
+                    'previous' => $previousRevenue,
                     'change' => $revenueChange,
                 ],
                 'invoices' => [
