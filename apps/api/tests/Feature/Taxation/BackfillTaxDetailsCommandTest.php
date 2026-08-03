@@ -235,6 +235,72 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->assertSame('57.000', $detail->tax_amount);
     }
 
+    /**
+     * N1 (2026-08-03 re-gate): a total-only guard is not sufficient. Live
+     * example on demo-pharmacy-tn, INV-2026-0029: a LINELESS document whose
+     * stored header is already internally inconsistent (subtotal 250.000 +
+     * tax_amount 1.000 = 251.000 != stored total 1.000), yet the
+     * RECOMPUTED total (0.000 subtotal from zero lines + 1.000 stamp =
+     * 1.000) happens to coincide with the stored total by accident. A
+     * total-only comparison would have let this document through and
+     * rewritten its tax details while its broken header stood unexamined.
+     */
+    public function test_skips_a_lineless_document_whose_stored_header_is_already_inconsistent(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'INV-2026-0029',
+            'document_date' => '2026-01-20',
+            'currency' => 'TND',
+            // Broken header, verbatim from the live tenant: subtotal +
+            // tax_amount (251.000) != total (1.000).
+            'subtotal' => '250.000',
+            'tax_amount' => '1.000',
+            'total' => '1.000',
+            'fiscal_hash' => hash('sha256', 'backfill-lineless-INV-2026-0029'),
+            'chain_sequence' => 1,
+        ]);
+        // No DocumentLine rows at all -- lineless.
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 99,
+            'tax_code' => 'STAMP_TAX_INVOICE',
+            'tax_name' => 'Timbre Fiscal - Facture',
+            'tax_type' => 'FIXED_AMOUNT',
+            'tax_rate' => '0.00',
+            'tax_base' => '0.000',
+            'tax_amount' => '1.000',
+            'is_stamp_duty' => true,
+            'created_at' => now(),
+        ]);
+
+        Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('SKIPPED INV-2026-0029 (', $output);
+        $this->assertStringContainsString(
+            'stored subtotal 250.000 + tax_amount 1.000 != stored total 1.000 (header already inconsistent)',
+            $output,
+        );
+        // calculateSubtotal() over zero lines returns the raw seed '0'
+        // (never formatted to scale, since there's nothing to bcadd).
+        $this->assertStringContainsString('recomputed subtotal 0 != stored subtotal 250.000', $output);
+        // The total-only check would NOT have fired on its own -- both are
+        // 1.000. Confirms the new checks are what caught this document.
+        $this->assertStringNotContainsString('stored total 1.000 != recomputed', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $document->id)->firstOrFail();
+        // Untouched.
+        $this->assertSame('0.000', $detail->tax_base);
+        $this->assertTrue((bool) $detail->is_stamp_duty);
+    }
+
     private function createLegacyInvoice(): Document
     {
         $document = Document::create([

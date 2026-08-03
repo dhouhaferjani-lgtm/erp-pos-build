@@ -37,6 +37,19 @@ use Illuminate\Support\Facades\Schema;
  * a real value change, and touching its tax details silently would be
  * exactly the kind of retroactive rewrite the ruling does NOT permit).
  *
+ * N1 (2026-08-03 re-gate): comparing `total` alone is not sufficient — a
+ * document whose header is ALREADY internally inconsistent can still pass
+ * that single check by coincidence. Live example on this tenant,
+ * INV-2026-0029: zero lines, stored subtotal=250.000, tax_amount=1.000,
+ * total=1.000 (subtotal + tax_amount = 251.000 != total — the stored
+ * header itself doesn't add up). Recomputed from zero lines: subtotal
+ * 0.000, tax 1.000 (stamp only), total 1.000 — which MATCHES the stored
+ * total by coincidence, so a total-only guard would have rewritten this
+ * document's tax details while leaving its already-broken header alone.
+ * Two more checks now gate every document: the STORED header itself must
+ * already be self-consistent (subtotal + tax_amount == total), and the
+ * RECOMPUTED subtotal must match the STORED subtotal, not just the total.
+ *
  * Contract:
  * - DRY-RUN BY DEFAULT. Pass --apply to actually write. Never wired into a
  *   deploy step or scheduler — owner-executed only, one tenant/company at a
@@ -94,7 +107,7 @@ final class BackfillTaxDetailsCommand extends Command
 
         $scanned = 0;
         $touched = 0;
-        /** @var list<array{id: string, number: string, stored_total: string, recomputed_total: string}> $skipped */
+        /** @var list<array{id: string, number: string, reason: string}> $skipped */
         $skipped = [];
         /** @var array<string, array{rate: string, is_stamp_duty: bool, base: numeric-string, tax: numeric-string, count: int}> $simulatedAfter */
         $simulatedAfter = [];
@@ -103,18 +116,54 @@ final class BackfillTaxDetailsCommand extends Command
             $scanned++;
             $result = $this->taxCalculationService->calculateDocumentTaxes($document);
 
-            // INVARIANT GUARD -- see class docblock. Compare against the
-            // ALREADY-SIGNED stored total; never write when they disagree.
+            // INVARIANT GUARD -- see class docblock (N1). Three checks,
+            // ALL must pass before a document is touched:
+            /** @var numeric-string $storedSubtotal */
+            $storedSubtotal = (string) ($document->subtotal ?? '0');
+            /** @var numeric-string $storedTaxAmount */
+            $storedTaxAmount = (string) ($document->tax_amount ?? '0');
             /** @var numeric-string $storedTotal */
             $storedTotal = (string) ($document->total ?? '0');
+            /** @var numeric-string $recomputedSubtotal */
+            $recomputedSubtotal = $result->subtotal;
             /** @var numeric-string $recomputedTotal */
             $recomputedTotal = $result->total;
-            if (bccomp($recomputedTotal, $storedTotal, 3) !== 0) {
+
+            // 1) The STORED header must already be self-consistent -- a
+            // document whose subtotal + tax_amount doesn't even equal its
+            // own stored total is not a candidate for a labeling fix at
+            // all, regardless of what total-only comparison (3) would say.
+            $headerConsistent = bccomp(bcadd($storedSubtotal, $storedTaxAmount, 3), $storedTotal, 3) === 0;
+            // 2) The RECOMPUTED subtotal must match the STORED subtotal --
+            // catches a lineless/detached document whose recomputed TOTAL
+            // happens to coincide with the stored total by accident (the
+            // subtotal component tells a different story).
+            $subtotalMatches = bccomp($recomputedSubtotal, $storedSubtotal, 3) === 0;
+            // 3) The original guard: recomputed total vs the ALREADY-SIGNED
+            // stored total.
+            $totalMatches = bccomp($recomputedTotal, $storedTotal, 3) === 0;
+
+            if (! $headerConsistent || ! $subtotalMatches || ! $totalMatches) {
+                $reasons = [];
+                if (! $headerConsistent) {
+                    $reasons[] = sprintf(
+                        'stored subtotal %s + tax_amount %s != stored total %s (header already inconsistent)',
+                        $storedSubtotal,
+                        $storedTaxAmount,
+                        $storedTotal,
+                    );
+                }
+                if (! $subtotalMatches) {
+                    $reasons[] = sprintf('recomputed subtotal %s != stored subtotal %s', $recomputedSubtotal, $storedSubtotal);
+                }
+                if (! $totalMatches) {
+                    $reasons[] = sprintf('stored total %s != recomputed %s', $storedTotal, $recomputedTotal);
+                }
+
                 $skipped[] = [
                     'id' => (string) $document->id,
                     'number' => (string) $document->document_number,
-                    'stored_total' => $storedTotal,
-                    'recomputed_total' => $recomputedTotal,
+                    'reason' => implode('; ', $reasons),
                 ];
 
                 // Left untouched -- fold its EXISTING (unmodified) rows
@@ -150,7 +199,7 @@ final class BackfillTaxDetailsCommand extends Command
         }
 
         $this->line(sprintf(
-            'Scanned %d document(s). %s %d. Skipped (signed total would change) %d.',
+            'Scanned %d document(s). %s %d. Skipped (header/subtotal/total invariant failed) %d.',
             $scanned,
             $apply ? 'Rewrote' : 'Would rewrite',
             $touched,
@@ -159,11 +208,10 @@ final class BackfillTaxDetailsCommand extends Command
 
         foreach ($skipped as $row) {
             $this->warn(sprintf(
-                '  SKIPPED %s (%s): stored total %s != recomputed %s -- needs manual review, NOT backfilled',
+                '  SKIPPED %s (%s): %s -- needs manual review, NOT backfilled',
                 $row['number'],
                 $row['id'],
-                $row['stored_total'],
-                $row['recomputed_total'],
+                $row['reason'],
             ));
         }
 
