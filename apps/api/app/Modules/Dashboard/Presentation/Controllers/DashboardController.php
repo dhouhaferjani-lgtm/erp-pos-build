@@ -15,6 +15,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -129,18 +130,22 @@ class DashboardController extends Controller
 
         if (class_exists(Payment::class)) {
             try {
-                // L4 (2026-08-03 gate, in-scope per the ticket's own "refunds move the
-                // dashboard the wrong way" premise): completed REFUNDS this month must net
-                // against paymentsReceived. Refund `Payment` rows always carry a NEGATIVE
-                // `amount` by convention (PaymentRefundService::refundPayment/partialRefund/
-                // the proration writer — 'amount' => bcmul($original, '-1', $scale)), so
-                // including PaymentType::Refund alongside the incoming types and summing
-                // nets them automatically — no sign-flipping needed here.
-                $receivedPaymentTypes = array_values(array_map(
+                // AMENDED ruling (2026-08-03 gate N1 — supersedes the original L4 fix, which
+                // double-subtracted every FULL refund). A FULL refund flips the ORIGINAL
+                // payment to PaymentStatus::Reversed (PaymentRefundService::refundPayment():
+                // $original->update(['status' => PaymentStatus::Reversed, ...])), which the
+                // status=Completed filter below already excludes from this sum — so admitting
+                // every Refund row unconditionally (the L4 fix) subtracted the reversal a
+                // SECOND time. partialRefund() leaves the original Completed, so ONLY that
+                // shape's negative refund row is a real, un-double-counted adjustment.
+                // received = Completed non-refund incoming payments + Completed refund rows
+                // WHOSE ORIGINAL PAYMENT IS STILL Completed — enforced via an explicit EXISTS
+                // subquery on original_payment_id (no payment_type-only heuristic).
+                $incomingPaymentTypes = array_values(array_map(
                     static fn (PaymentType $type): string => $type->value,
                     array_filter(
                         PaymentType::cases(),
-                        static fn (PaymentType $type): bool => $type->isIncoming() || $type === PaymentType::Refund
+                        static fn (PaymentType $type): bool => $type->isIncoming()
                     )
                 ));
 
@@ -148,8 +153,20 @@ class DashboardController extends Controller
                     Payment::query()
                         ->where('company_id', $companyId)
                         ->where('status', PaymentStatus::Completed->value)
-                        ->whereIn('payment_type', $receivedPaymentTypes)
                         ->where('payment_date', '>=', $currentMonthStart->toDateString())
+                        ->where(function (Builder $query) use ($incomingPaymentTypes, $companyId): void {
+                            $query->whereIn('payment_type', $incomingPaymentTypes)
+                                ->orWhere(function (Builder $refundQuery) use ($companyId): void {
+                                    $refundQuery->where('payment_type', PaymentType::Refund->value)
+                                        ->whereExists(function (QueryBuilder $originalQuery) use ($companyId): void {
+                                            $originalQuery->selectRaw('1')
+                                                ->from('payments as original_payment')
+                                                ->whereColumn('original_payment.id', 'payments.original_payment_id')
+                                                ->where('original_payment.company_id', $companyId)
+                                                ->where('original_payment.status', PaymentStatus::Completed->value);
+                                        });
+                                });
+                        })
                         ->pluck('amount')
                         ->all()
                 );

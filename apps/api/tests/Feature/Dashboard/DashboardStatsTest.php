@@ -117,6 +117,24 @@ final class DashboardStatsTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createPayment(Tenant $tenant, Company $company, Partner $partner, PaymentMethod $method, array $overrides = []): Payment
+    {
+        return Payment::create(array_merge([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $method->id,
+            'amount' => '100.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+        ], $overrides));
+    }
+
     public function test_payments_received_counts_completed_current_month_incoming_payments_by_payment_date(): void
     {
         $tenant = Tenant::create([
@@ -534,14 +552,14 @@ final class DashboardStatsTest extends TestCase
     }
 
     /**
-     * L4 (2026-08-03 gate, in-scope per the original ticket's own premise
-     * that "refunds move the dashboard the wrong way"): a completed REFUND
-     * this month must net against paymentsReceived. Refund `Payment` rows
-     * always carry a NEGATIVE `amount` by convention
-     * (PaymentRefundService::refundPayment/partialRefund/the proration
-     * writer), so a completed refund reduces the reported received figure.
+     * AMENDED ruling (2026-08-03 gate N1 — supersedes the original L4 test,
+     * which never linked the refund to an original payment and therefore
+     * never exercised the double-netting defect at all): a PARTIAL refund
+     * leaves the original payment `Completed`
+     * (PaymentRefundService::partialRefund() only touches `notes`), so the
+     * negative refund row IS the only expression of the refund and must net.
      */
-    public function test_payments_received_nets_completed_refund_this_month(): void
+    public function test_payments_received_nets_completed_partial_refund_whose_original_stays_completed(): void
     {
         [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
 
@@ -554,28 +572,17 @@ final class DashboardStatsTest extends TestCase
             'is_active' => true,
         ]);
 
-        Payment::create([
-            'tenant_id' => $tenant->id,
-            'company_id' => $company->id,
-            'partner_id' => $partner->id,
-            'payment_method_id' => $method->id,
+        $original = $this->createPayment($tenant, $company, $partner, $method, [
             'amount' => '200.000',
-            'currency' => 'TND',
-            'payment_date' => now()->toDateString(),
             'status' => PaymentStatus::Completed,
             'payment_type' => PaymentType::DocumentPayment,
         ]);
 
-        Payment::create([
-            'tenant_id' => $tenant->id,
-            'company_id' => $company->id,
-            'partner_id' => $partner->id,
-            'payment_method_id' => $method->id,
+        $this->createPayment($tenant, $company, $partner, $method, [
             'amount' => '-80.000',
-            'currency' => 'TND',
-            'payment_date' => now()->toDateString(),
             'status' => PaymentStatus::Completed,
             'payment_type' => PaymentType::Refund,
+            'original_payment_id' => $original->id,
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -583,5 +590,120 @@ final class DashboardStatsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.payments.received', '120.000');
+    }
+
+    /**
+     * N1 (HIGH, 2026-08-03 gate) — the defect this round fixes: a FULL
+     * refund flips the ORIGINAL payment to `PaymentStatus::Reversed`
+     * (PaymentRefundService::refundPayment()), which the status=Completed
+     * filter already excludes from `received`. The negative refund row must
+     * ALSO be excluded (its original is no longer Completed) — otherwise the
+     * reversal is subtracted a second time, silently understating `received`
+     * by the full refunded amount even though the original never contributed
+     * anything in the first place.
+     */
+    public function test_payments_received_excludes_full_refund_whose_original_was_reversed(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $method = PaymentMethod::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'BANK',
+            'name' => 'Bank Transfer',
+            'is_physical' => false,
+            'is_active' => true,
+        ]);
+
+        // Unrelated, untouched incoming payment this month.
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '300.000',
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+        ]);
+
+        // Original payment that was FULLY refunded -> reversed by
+        // PaymentRefundService::refundPayment(). Already excluded by the
+        // status=Completed filter, same as before this ticket's changes.
+        $original = $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '200.000',
+            'status' => PaymentStatus::Reversed,
+            'payment_type' => PaymentType::DocumentPayment,
+        ]);
+
+        // The refund row itself: Completed, negative amount, linked via
+        // original_payment_id to the now-Reversed original.
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '-200.000',
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Refund,
+            'original_payment_id' => $original->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        // The full-refund pair contributes exactly 0 — NOT -200.000 (double-netted)
+        // and NOT +200.000 (as if the refund never happened).
+        $response->assertOk()
+            ->assertJsonPath('data.payments.received', '300.000');
+    }
+
+    /**
+     * N1: combined shape mirroring the gate re-check's live-tenant arithmetic
+     * (gross completed incoming - partial refunds [net] - full refunds [0,
+     * not double-counted] = correct received). Both refund shapes present in
+     * the same month, asserted together so a regression in either direction
+     * (double-netting full refunds again, or failing to net partials) shows
+     * up as a single wrong total.
+     */
+    public function test_payments_received_nets_partial_refunds_but_not_full_refunds_together(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $method = PaymentMethod::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'BANK',
+            'name' => 'Bank Transfer',
+            'is_physical' => false,
+            'is_active' => true,
+        ]);
+
+        // Gross completed incoming this month, untouched by any refund.
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '1000.000',
+        ]);
+
+        // Partial refund: original stays Completed, refund row nets.
+        $partialOriginal = $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '500.000',
+        ]);
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '-150.000',
+            'payment_type' => PaymentType::Refund,
+            'original_payment_id' => $partialOriginal->id,
+        ]);
+
+        // Full refund: original reversed, refund row must contribute 0 (not -300.000).
+        $fullOriginal = $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '300.000',
+            'status' => PaymentStatus::Reversed,
+        ]);
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '-300.000',
+            'payment_type' => PaymentType::Refund,
+            'original_payment_id' => $fullOriginal->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        // 1000.000 (gross) + 500.000 (partial's original, still Completed)
+        // - 150.000 (partial refund, nets) = 1350.000. The Reversed original
+        // (300.000) and its refund (-300.000) are BOTH excluded — net 0, not
+        // a further -300.000.
+        $response->assertOk()
+            ->assertJsonPath('data.payments.received', '1350.000');
     }
 }

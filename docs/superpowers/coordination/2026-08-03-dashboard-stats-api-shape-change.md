@@ -29,25 +29,37 @@ against this endpoint: the underlying bucket definitions changed —
   derived from `payments.received` at all.
 - Overdue-invoice count stays `Posted`-only (a paid invoice past due is settled, not overdue).
 
-See the ticket for the full rationale, the H1/M1/M2/L4 defects found in the first implementation
-pass and how they were fixed, and the live-tenant verification numbers.
+See the ticket for the full rationale, the H1/M1/M2/M4/L1/L4/N1/N2 defects found across the
+implementation and two gate/re-check rounds and how they were fixed, and the live-tenant
+verification numbers (including the exact-match `payments.received = 63315.979` cross-check
+after the N1 fix).
 
 ## Who is affected
 
 - **Web** (`apps/web/src/features/dashboard/Dashboard.tsx`) — already updated in this change
   (same commit series). Confirmed the only production web consumer via repo-wide grep.
-- **`erp-mobile`** (`app/(app)/index.tsx`, `src/features/dashboard/`) — **NOT updated by this
-  change** (out of scope for the ERP-repo task that produced it). See the ticket's § MOBILE
-  FOLLOW-UP for the exact files/lines that need a manual mobile-side PR. Mobile DTOs are
-  hand-written (no codegen), so this does not propagate automatically.
-- **Runtime impact on the currently-deployed mobile app**: verified non-breaking (no
-  `TypeError`, no white screen) — mobile's `formatMoney`/`Amount` already accept `string |
-  number`, and the `>=`/`formatPercent(number)` call sites work today via JS's implicit
-  string-to-number coercion. The type-correctness fix is not an emergency mobile release; it
-  should land soon so a future mobile change doesn't reintroduce float arithmetic against a value
-  that now travels as a string (or crash on a `null` `change` it doesn't expect).
+- **`erp-mobile`** (`app/(app)/index.tsx`, `src/features/dashboard/`) — fix **PREPARED as a local
+  commit**, not yet pushed or released: repo `/Users/houssamr/Projects/syneriva/erp-mobile`,
+  branch **`fix/dashboard-stats-string-shape`**, commit `2c25da7` (based on `main` @ `5a90341`).
+  The owner reviews/pushes/releases this commit — it was not merged or pushed from this task. See
+  the ticket's § MOBILE FOLLOW-UP for the line-by-line record of what it changes. Mobile DTOs are
+  hand-written (no codegen), so nothing here propagates automatically without that commit.
+- **Runtime impact on the currently-deployed (pre-fix) mobile app — CORRECTED 2026-08-03 (gate
+  re-check N2):** the original version of this note said "verified non-breaking (no `TypeError`,
+  no white screen)" and is **no longer accurate as a blanket statement**. That was true for the
+  value domain evaluated at the time (a `revenue.change` that was always a string), but
+  `revenue.change` can now also be `null` (the AMENDED M2 ruling) — a value the deployed mobile
+  client has never seen. Simulating the deployed code against `null`: `String(null)` → `"null"`,
+  and `(null ?? 0) >= 0` → `true`, so the deployed app renders a **green ↑ "null %"** for any
+  tenant with no previous-period revenue (e.g. first-month tenants) — not a crash, but a visible,
+  user-facing regression from the prior `"0 %"`. This is exactly what the prepared mobile commit
+  above fixes (renders `'—'`, no arrow, on `null`). Still true and unaffected by this correction:
+  no `TypeError`, no white screen, for every value the deployed app WAS already handling
+  (`formatMoney`/`Amount` already accept `string | number`; the sign-check/`formatPercent`
+  call sites tolerate a numeric string via JS's implicit coercion).
 
 ## Status
 
 Backend + web shipped (ERP repo, branch `dev`, local — not yet promoted to `origin/dev`).
-Mobile-side PR not started; tracked as a manual follow-up in the ticket referenced above.
+Mobile fix prepared as a local commit (`2c25da7` on `fix/dashboard-stats-string-shape`, erp-mobile
+repo) — not pushed; owner reviews/pushes/releases.

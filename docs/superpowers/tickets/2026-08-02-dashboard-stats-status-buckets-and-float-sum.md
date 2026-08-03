@@ -128,6 +128,8 @@ fix-round commit, not the original `ebf5becfb`.
   convention (`PaymentRefundService::refundPayment`/`partialRefund`/the proration writer), so
   including `Refund` alongside the incoming payment types in the `paymentsReceived` sum nets them
   automatically — no sign-flipping needed. Test: `test_payments_received_nets_completed_refund_this_month`.
+  **⚠️ SUPERSEDED — see § SECOND AMENDMENT (N1) below: this unconditional netting was itself a
+  new HIGH defect, double-subtracting every FULL refund.**
 - **M4 (cheap perf) — all three Document-side sums now use SQL `SUM(...)::text` instead of
   `pluck()`.** `pluck()` on a `decimal:*`-cast column hydrates a full Eloquent model per row
   (gate-measured 283-587ms per call on 522 invoices); `SUM(...)::text` (mirroring the existing
@@ -146,7 +148,76 @@ type='invoice' AND status IN ('posted','paid')` — exact match to the API respo
 verified correct; the live figure differs from the gate's own snapshot value because this is a
 shared, concurrently-mutating dev tenant (see verification report for the exact numbers and cross-check).
 
+## SECOND AMENDMENT (2026-08-03, N1/N2 re-check fix round)
+
+Re-check gate (same review doc, `docs/superpowers/reviews/2026-08-03-dashboard-kpi-gate.md`
+§ "Re-check 423ea53e2", `137db9d7f`) on the AMENDMENTS-round commit: **NOT-PROMOTABLE**. H1, M1,
+M2, M4, L1 all independently re-verified as genuinely fixed. But the L4 refund-netting fix (above)
+introduced a **new HIGH defect (N1)**: it double-subtracted every FULL refund. Fixed below.
+
+- **N1 (HIGH, blocking) — refund netting double-subtracted FULL refunds.** A FULL refund flips
+  the ORIGINAL payment to `PaymentStatus::Reversed`
+  (`PaymentRefundService::refundPayment():213-216` — `$original->update(['status' =>
+  PaymentStatus::Reversed, ...])`), which the `status=Completed` filter already excludes from
+  `paymentsReceived`. The L4 fix admitted every `PaymentType::Refund` row unconditionally,
+  regardless of whether its original was reversed — so for a full refund, the reversal was
+  subtracted a **second time** (once implicitly, by the original simply no longer being
+  `Completed`; once explicitly, by the negative refund row). `partialRefund()` leaves the
+  original `Completed`, so that shape was — and remains — correctly netted; only full refunds
+  were broken. **ORCHESTRATOR RULING: `received` = Completed payments (non-refund incoming
+  types) + Completed refund rows WHOSE ORIGINAL PAYMENT IS STILL Completed** (i.e. partials
+  only). Implemented via an explicit `whereExists` subquery joining `payments AS
+  original_payment` on `original_payment_id`, requiring `original_payment.status = 'completed'`
+  — no `payment_type`-only heuristic (`DashboardController.php`, the `paymentsReceived` block).
+  Tests (both refund shapes, red-checked against the N1-broken code before the fix — see
+  verification report): `test_payments_received_nets_completed_partial_refund_whose_original_stays_completed`
+  (partial → nets, unchanged), `test_payments_received_excludes_full_refund_whose_original_was_reversed`
+  (full → contributes exactly `0`, not a further negative), and
+  `test_payments_received_nets_partial_refunds_but_not_full_refunds_together` (both shapes in the
+  same month, combined arithmetic, mirroring the gate re-check's live-tenant shape:
+  gross − partials = net, full refunds contribute `0`).
+
+  Live probe on demo-pharmacy-tn: `payments.received` = **`63315.979`**, an exact match to the
+  gate re-check's independently-computed expectation. Direct SQL cross-check: gross Completed
+  non-refund incoming this month = `66765.979`; Completed refunds whose original is still
+  `completed` (partials, correctly netted) = `-3450.000`; Completed refunds whose original is
+  `reversed` (full refunds, correctly excluded — would have been `-12650.000` of double-netting
+  under the L4 code) = excluded. `66765.979 - 3450.000 = 63315.979` ✅.
+
+- **N2 (MEDIUM) — mobile follow-up completeness: the M2 `null` ruling makes the deployed mobile
+  app render the literal string `"null %"`.** The gate re-check simulated
+  `erp-mobile/src/lib/format.ts:20-23` and `app/(app)/index.tsx:58` against a `null`
+  `revenue.change` and found: `String(null)` → `"null"`, and `(null ?? 0) >= 0` → `true`, so the
+  deployed app would show a **green ↑ "null %"** for exactly the first-month tenants M2 exists to
+  serve — not a crash, but a visible regression on the prior `"0 %"`. **The
+  `docs/superpowers/coordination/...` "verified non-breaking" wording undersold this** (true for
+  the pre-N2 value domain, stale once `null` became a real wire value) — corrected below and in
+  that doc.
+
+  **Mobile fix PREPARED as a local commit** (per orchestrator instruction — the erp-mobile repo is
+  out of scope for direct promotion from this ERP-repo task; the owner reviews/pushes/releases
+  it): repo `/Users/houssamr/Projects/syneriva/erp-mobile`, branch **`fix/dashboard-stats-string-shape`**,
+  commit `2c25da7`, based on `main` at `5a90341`. Changes: `dashboardApi.ts` (`revenue.current`/
+  `previous` → `string`, `change` → `string | null`; JSDoc rewritten), `format.ts`
+  (`formatPercent` widened to `string | number | null`, returns `'—'` on `null` — matching the
+  app's existing missing-value convention, e.g. `app/(app)/expenses/[id].tsx`'s `?? '—'`
+  fallback — sign derived via a string leading-`-` check, never numeric coercion),
+  `index.tsx:58` (string-safe sign check + explicit null guard: no arrow icon, muted em-dash, not
+  `(null ?? 0) >= 0`'s misleading green "up"), and both test files
+  (`dashboardApi.test.ts:20,52-53` + a new null-passthrough case; `format.test.ts:8` + new
+  `formatPercent` string/null cases). `npm run typecheck` clean; `jest` scoped to the two touched
+  suites: 17/17 pass. **Not pushed.**
+
+Backend tests: 15 total in `DashboardStatsTest.php` (13 from the first AMENDMENTS round, plus the
+L4 test replaced by 2 N1 tests + 1 combined N1 test = +2 net). PHPStan L8 clean, Pint clean.
+
 ## MOBILE FOLLOW-UP (erp-mobile team: read this before touching the dashboard tab)
+
+**STATUS UPDATE (2026-08-03, N1/N2 round): the fix described below has been PREPARED as a local
+commit — `2c25da7` on branch `fix/dashboard-stats-string-shape` in
+`/Users/houssamr/Projects/syneriva/erp-mobile` (based on `main` @ `5a90341`), NOT pushed. The
+line-by-line list below is now a historical record of what was needed / what the commit did,
+rather than an outstanding to-do — read it to review the commit, not to re-derive the fix.**
 
 This ERP backend change (`GET /dashboard/stats`) is a published-API shape change:
 `revenue.current` and `revenue.previous` flip from JSON numbers to decimal STRINGS, and
@@ -164,12 +235,15 @@ now logged there too:
 canonical short-form contract record; this ticket section remains the detailed line-by-line
 punch list.
 
-Confirmed by reading `erp-mobile` directly (read-only; NOT modified per this task's scope — the
-task instructions explicitly forbid touching the mobile repo). The original version of this
-section also claimed, in item 5, that "no [mobile] change needed" beyond items 1-4 — that blanket
-claim was **wrong** (2026-08-03 gate, M3/D.2): it omitted an entire test file that pins the OLD
-`number` contract and will not fail on the shape change (nothing will flag it for the mobile
-team without this list). Corrected list follows:
+Originally confirmed by reading `erp-mobile` read-only (NOT modified in the first two rounds — the
+task instructions at that time explicitly forbade touching the mobile repo). The original version
+of this section also claimed, in item 5, that "no [mobile] change needed" beyond items 1-4 — that
+blanket claim was **wrong** (2026-08-03 gate, M3/D.2): it omitted an entire test file that pins
+the OLD `number` contract and will not fail on the shape change (nothing will flag it for the
+mobile team without this list). **Superseded by the N2 round (§ SECOND AMENDMENT above): every
+item below has since been implemented and committed** — `2c25da7` on
+`fix/dashboard-stats-string-shape`, not pushed. Corrected list follows (now a record of what the
+commit did, not an outstanding to-do):
 
 1. **`erp-mobile/src/features/dashboard/api/dashboardApi.ts:11-15`** — `DashboardStats.revenue`
    fields (`current`, `previous`) are typed `number` and must become `string`; `change` must
