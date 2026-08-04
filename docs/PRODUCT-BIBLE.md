@@ -303,7 +303,7 @@ Automated gates above + founder manual verification of critical flows (Playwrigh
 | TD-005 | Hardcoded FE permissions map (`usePermissions.ts`) | Open | Medium |
 | TD-006 | Category margin override commented out (lives on unmerged branch) | Open | Medium |
 | TD-007 | `'XXX'` currency fallback (1 site, `ZReportSyncController.php:431`) | Open | Low |
-| TD-008 | DailyExpiryCheck sysadmin alert TODO (company alerts done) | Open | Low |
+| TD-008 | **DailyExpiryCheck sysadmin alert TODO — RESOLVED 2026-08-04.** The `DailyExpiryCheck` job class (and both its TODOs) is deleted; the sweep is now the `batch-expiry:daily-check` TenantScopedCommand, scheduled in-process with an `->onFailure()` `Log::error` hook (`routes/console.php`) that IS the sysadmin alert. Company-admin alerts unchanged. | Resolved | Closed |
 | TD-009 | Residual `(float)` boundary casts (mostly fixed; PHPStan guard added) | Mostly resolved | Low |
 | TD-010 | Cross-module `Domain/` imports / circular deps (deptrac now exists) | Open, guarded | Medium |
 | TD-011 | **CustomerAdvance GL-line bug** surfaced by `tests/Feature/Partner/RecordCustomerDepositTest.php` (overflow deposit must post a customer-advance credit line via `SystemAccountPurpose::CustomerAdvance`) — reported 2026-07-04. **Unverified (not test-run)** per laptop constraint; test + `RecordCustomerDepositService` confirmed present. | Open | **High (money correctness)** |

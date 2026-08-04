@@ -216,6 +216,8 @@ Pre-existing skips + 1 new (stamp duty draft — see M3). Worth a triage to deci
 
 `apps/api/app/Modules/BatchExpiry/Jobs/DailyExpiryCheck.php:64,196` — `// TODO: Send notifications` / `// TODO: Send alert to system administrators`. Job collects state but never notifies. Pre-dev. Backlog.
 
+**RESOLVED 2026-08-04.** Both TODOs are gone with the class. `DailyExpiryCheck` was converted to the `batch-expiry:daily-check` TenantScopedCommand (`apps/api/app/Modules/BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php`) and deleted; company-admin critical-expiry notifications ship, and the sysadmin alert is the schedule's `->onFailure()` `Log::error` hook in `apps/api/routes/console.php`.
+
 ### L8. Unbatched `Company::all()` in 2026-03-24 backfill
 
 **Status:** Done (session1, commit `539045bb`). `Company::all()` replaced with `Company::query()->chunk(50, ...)`; per-company logic extracted to `backfillCompany()`. Idempotency preserved (each branch short-circuits when target state already reached).

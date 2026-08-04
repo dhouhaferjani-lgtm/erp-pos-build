@@ -1,8 +1,6 @@
 <?php
 
 use App\Modules\Accounting\Presentation\Console\CheckSubledgerReconciliationCommand;
-use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
-use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
 use App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders;
 use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
 use Illuminate\Foundation\Inspiring;
@@ -74,15 +72,42 @@ Schedule::command('expenses:generate-recurring')
     ->dailyAt('05:30')
     ->withoutOverlapping();
 
-// Schedule: Expire old stock reservations every 15 minutes
-Schedule::job(ExpireReservationsJob::class)
+// Schedule: Expire old stock reservations every 15 minutes.
+//
+// Was `Schedule::job(ExpireReservationsJob::class)` until 2026-08-04. That queue
+// job ran the sweep from CENTRAL context, so under database-per-tenant every
+// tick died with `relation "stock_reservations" does not exist` (4,211 central
+// failed_jobs rows). `inventory:expire-reservations` iterates tenants
+// explicitly via TenantScopedCommand::forEachTenant().
+//
+// Run in-process (no runInBackground()) so the scheduler observes the exit code
+// and the onFailure hook below actually fires. withoutOverlapping(30) caps the
+// mutex at 30 minutes — two ticks — instead of the bare 1440-minute default,
+// which would silently skip a full day of sweeps after one crashed run.
+Schedule::command('inventory:expire-reservations')
     ->everyFifteenMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping(30)
+    ->onFailure(function (): void {
+        Log::error('inventory:expire-reservations exited non-zero — one or more tenants failed their stock-reservation expiry sweep (expired reservations stay ACTIVE and their reserved quantity stays locked out of available stock until a later run succeeds). Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
+    });
 
-// Schedule: Check for expired batches daily at 1:30 AM
-Schedule::job(DailyExpiryCheck::class)
+// Schedule: Check for expired batches daily at 1:30 AM.
+//
+// Was `Schedule::job(DailyExpiryCheck::class)` until 2026-08-04. That queue job
+// queried product_batches from CENTRAL context, so under database-per-tenant it
+// failed every night and retried to MaxAttemptsExceeded.
+// `batch-expiry:daily-check` iterates tenants explicitly via
+// TenantScopedCommand::forEachTenant().
+//
+// Run in-process (no runInBackground()) so the scheduler observes the exit code
+// and the onFailure hook below actually fires — this hook is also the sysadmin
+// alert that the deleted job's `failed()` method only ever left as a TODO.
+Schedule::command('batch-expiry:daily-check')
     ->dailyAt('01:30')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->onFailure(function (): void {
+        Log::error('batch-expiry:daily-check exited non-zero — one or more tenants failed their nightly batch expiry sweep. For those tenants, expired batches were NOT flagged is_expired (FEFO can still pick them) and admins got NO critical-expiry (7-day) alert. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
+    });
 
 // Schedule: Poll platform for pending enrichment status updates
 Schedule::command('enrichment:check-pending')

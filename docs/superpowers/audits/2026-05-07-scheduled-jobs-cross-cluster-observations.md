@@ -264,6 +264,18 @@ The `api.scheduled-jobs` cluster closes against:
 - 6 cat-(b) annotations (DailyExpiryCheck, ProcessEnrichmentWebhookJob,
   ExpireReservationsJob, GenerateImageVariants, ReconcileListingsJob,
   SyncSellerListingsJob).
+  - **2026-08-04 addendum.** `DailyExpiryCheck` and `ExpireReservationsJob` were
+    converted to `TenantScopedCommand`s (`batch-expiry:daily-check`,
+    `inventory:expire-reservations`) and DELETED — their cat-(b) justification
+    assumed row-level tenancy and broke at the 2026-05-28 database-per-tenant
+    flip. `ReconcileListingsJob` / `SyncSellerListingsJob` KEEP the cat-(b) tag
+    but their justification text was rewritten: the two `marketplace:delta-sync`
+    / `marketplace:reconcile` scheduler CLOSURES that used to fan them out from
+    central context are now `TenantScopedCommand`s, so both jobs are dispatched
+    under initialized tenancy and QueueTenancyBootstrapper stamps the tenant
+    onto the payload. Finding B (BindsTenantContext hardening on the two
+    marketplace jobs) remains open and is now the only defence-in-depth gap
+    left on that pair.
 - 1 deferral fixture entry (DispatchAppointmentReminder, locked at
   `api.console-commands.002`).
 - New architecture test `QueueJobTenantContextTest` over the `Jobs/`

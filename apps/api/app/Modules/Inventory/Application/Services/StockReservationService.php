@@ -369,7 +369,10 @@ class StockReservationService implements InventoryReservationServiceInterface, R
      * - Marks them as released with ReleaseReason::Expired
      * - Dispatches ReservationExpired events
      *
-     * Called by scheduled job ExpireReservationsJob.
+     * Called by the scheduled `inventory:expire-reservations` command
+     * (App\Modules\Inventory\Infrastructure\Commands\ExpireStockReservationsCommand),
+     * once per tenant inside that tenant's database connection. Replaced the
+     * central-context ExpireReservationsJob queue job on 2026-08-04.
      */
     public function expireReservations(): int
     {

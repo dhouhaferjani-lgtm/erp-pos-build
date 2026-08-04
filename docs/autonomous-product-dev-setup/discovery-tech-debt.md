@@ -15,7 +15,7 @@ The 5 CRITICAL issues and key IMPORTANT items were re-checked against current co
 |---|-------|---------------------|----------|
 | 1 | Float arithmetic on money | **MOSTLY FIXED — downgrade from CRITICAL** | `Billing/.../Money.php` now `public string $amount`, `final readonly`, all ops via bcmath/`CurrencyScale`. `ReceiptReturnService:529` fixed (now bcmath). LandedCost ~15→**2** casts, both return-type boundary casts on bcmath results; WAC/MarginService residual casts are return-type only. New PHPStan guard `ForbidFloatCastOnDecimalProperty`. |
 | 2 | 'XXX' currency fallback | **NARROWED — still present at 1 site** | Only `ZReportSyncController.php:431` remains (company-lookup-fails fallback). The payment-method fallback (doc's 262/361) is gone. |
-| 3 | DailyExpiryCheck notifications | **PARTIAL** | Company-admin notifications now implemented (`notifyCompaniesOfCriticalBatches`, DailyExpiryCheck.php:71/134). Only the **sysadmin alert** is still a no-op TODO (line 219). |
+| 3 | DailyExpiryCheck notifications | **RESOLVED 2026-08-04** | Company-admin notifications were already implemented (`notifyCompaniesOfCriticalBatches`). The residual sysadmin-alert TODO is gone with the class: `DailyExpiryCheck` is deleted and the sweep is now the `batch-expiry:daily-check` TenantScopedCommand (`BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php`), scheduled in-process with an `->onFailure()` `Log::error` sysadmin alert in `routes/console.php`. |
 | 4 | Hierarchy balance calc broken | **STILL PRESENT** | 3× `// TODO: Fix hierarchy balance calculation` at `ReportsController.php:275, 430, 581` (line refs drifted from doc's 143/298/449). |
 | 5 | Missing COGS entry creation | **FIXED for invoices — POS path still open** | Invoice COGS posted via `Inventory/Listeners/PostCOGSOnInvoice.php` (registered `InventoryServiceProvider.php:50`). The cited test TODO is stale leftover. **BUT** POS-sale COGS is still NOT posted (POS bypasses the invoice flow) — see flow-analysis Top-5 #1. |
 
@@ -61,6 +61,12 @@ Additionally, the following services cast decimal strings to `(float)` for money
 When payment method currency is not transmitted in the sync payload, the code falls back to `'XXX'` (ISO 4217 "no currency"). If the company lookup also fails, `'XXX'` is persisted. This corrupts financial records.
 
 ### 3. TODO: Missing Notifications in DailyExpiryCheck
+
+> **RESOLVED 2026-08-04.** Both TODOs are gone with the class. `DailyExpiryCheck`
+> is deleted; the sweep is the `batch-expiry:daily-check` TenantScopedCommand
+> (`apps/api/app/Modules/BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php`).
+> Company-admin alerts ship as before; the sysadmin alert is the schedule's
+> `->onFailure()` `Log::error` hook in `apps/api/routes/console.php`.
 
 **File:** `apps/api/app/Modules/BatchExpiry/Jobs/DailyExpiryCheck.php:64,196`
 
