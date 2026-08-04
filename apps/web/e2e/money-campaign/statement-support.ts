@@ -607,6 +607,12 @@ export async function uploadStatementPreview(
   return { previewToken: data.preview_token, acceptedLineCount: data.accepted_line_count }
 }
 
+/**
+ * `overrides` (W-5b extension): `MTP-TRE-43` dates its statement line 6 days
+ * back to fall outside the profile's 5-day matching window, so it needs a
+ * `period_start` that actually covers the line. Callers that pass nothing get
+ * the pre-existing same-day period.
+ */
 export async function confirmStatement(
   request: APIRequestContext,
   session: Session,
@@ -615,6 +621,7 @@ export async function confirmStatement(
   previewToken: string,
   opening: string,
   closing: string,
+  overrides: Record<string, unknown> = {},
 ): Promise<string> {
   const res = await request.post(`${API_BASE}/bank-statements`, {
     headers: authHeaders(session),
@@ -625,6 +632,7 @@ export async function confirmStatement(
       period_end: TODAY,
       opening_balance: opening,
       closing_balance: closing,
+      ...overrides,
     },
   })
   await expectOk(res, 'statement confirm')

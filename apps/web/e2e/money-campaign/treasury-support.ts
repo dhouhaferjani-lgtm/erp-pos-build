@@ -24,10 +24,19 @@ import { expect } from '@playwright/test'
 export const PREFIX = 'W2a'
 export const API_BASE = 'http://127.0.0.1:8010/api/v1'
 
+// accountant / viewer / technician were added by W-5b (2026-08-04) to match
+// `helpers.ts`'s ROLE_CREDENTIALS — `MTP-TRE-47/48` need the accountant, who is
+// the only seeded principal holding bank-statements.reconcile WITHOUT
+// bank-statements.reopen. Purely additive: the three original entries are
+// unchanged, so every existing `login(request, 'owner'|'manager'|'cashier')`
+// call is untouched.
 export const CREDENTIALS = {
   owner: { email: 'owner@pharmabio.tn', password: 'password' },
   manager: { email: 'manager@pharmabio.tn', password: 'password' },
   cashier: { email: 'cashier@pharmabio.tn', password: 'password' },
+  accountant: { email: 'accountant@pharmabio.tn', password: 'password' },
+  viewer: { email: 'viewer@pharmabio.tn', password: 'password' },
+  technician: { email: 'technician@pharmabio.tn', password: 'password' },
 } as const
 
 export type TreRole = keyof typeof CREDENTIALS
