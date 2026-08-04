@@ -248,10 +248,20 @@ export async function ensureCardRoutingMethod(
   return { id, code: created.code }
 }
 
+/**
+ * `overrides` (W-5b extension, brief: "extend it if a case needs another
+ * statement variant"): `MTP-TRE-39` needs the SAME data under a
+ * `debit_credit_columns` profile and `MTP-TRE-40` needs a European
+ * `decimal_format: 'comma'` profile. Callers that pass nothing get the exact
+ * profile the C-2 fixture has always created — the default object below is
+ * byte-for-byte the pre-existing body, so `buildReconciliationFixture()` and
+ * `statement-support.smoke.spec.ts` are unaffected.
+ */
 export async function createParserProfile(
   request: APIRequestContext,
   session: Session,
   repositoryId: string,
+  overrides: Record<string, unknown> = {},
 ): Promise<string> {
   const res = await request.post(`${API_BASE}/statement-import-profiles`, {
     headers: authHeaders(session),
@@ -272,10 +282,45 @@ export async function createParserProfile(
       direction_convention: 'signed_amount',
       header_rows: 0,
       matching_window_days: 5,
+      ...overrides,
     },
   })
   await expectOk(res, 'parser profile create')
   return String(((await jsonData(res)) as { id: string }).id)
+}
+
+/**
+ * Raw preview call (W-5b extension): `uploadStatementPreview()` above returns
+ * only the preview token + accepted count, but `MTP-TRE-36..40` assert the
+ * WHOLE classification envelope (`duplicate_fingerprint_count`,
+ * `dropped_zero_amount_rows`, `unparseable_rows`, and each parsed line's
+ * signed direction/amount). This returns it verbatim, and — unlike
+ * `uploadStatementPreview()` — does NOT assert 2xx, so a case can assert a
+ * refusal status (`MTP-TRE-37`'s duplicate-file 422).
+ */
+export async function uploadStatementPreviewRaw(
+  request: APIRequestContext,
+  session: Session,
+  repositoryId: string,
+  profileId: string,
+  csv: string,
+  filename: string,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await request.post(`${API_BASE}/bank-statements/upload`, {
+    headers: { Authorization: `Bearer ${session.token}`, Accept: 'application/json' },
+    multipart: {
+      payment_repository_id: repositoryId,
+      parser_profile_id: profileId,
+      file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from(csv) },
+    },
+  })
+  let parsed: Record<string, unknown> = {}
+  try {
+    parsed = (await res.json()) as Record<string, unknown>
+  } catch {
+    parsed = {}
+  }
+  return { status: res.status(), body: parsed }
 }
 
 /** Tier 1 candidate: a manual repository adjustment (count-variance
