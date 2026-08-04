@@ -158,4 +158,24 @@ class SpreadsheetParserServiceTest extends TestCase
 
         $this->assertSame('Café', $result['rows'][1]['name']);
     }
+
+    public function test_mixed_encoding_rows_convert_per_value_without_corrupting_valid_utf8_rows(): void
+    {
+        // Row 1 is already valid UTF-8 ("Café"); row 2 is raw CP1252 bytes
+        // ("Crème" with 0xE8 for "è" etc). A whole-file encoding check would
+        // see the file as "not valid UTF-8" (because of row 2) and re-decode
+        // EVERYTHING as CP1252, mangling the already-correct "Café" into
+        // "CafÃ©". Per-value conversion must leave row 1 untouched while
+        // still fixing row 2.
+        $cp1252Name = mb_convert_encoding('Crème', 'Windows-1252', 'UTF-8');
+        $content = "name,sku\nCafé,C-1\n{$cp1252Name},C-2\n";
+        $path = $this->makeCsv($content);
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame('Café', $result['rows'][1]['name']);
+        $this->assertSame('Crème', $result['rows'][2]['name']);
+        $this->assertTrue(mb_check_encoding($result['rows'][1]['name'], 'UTF-8'));
+        $this->assertTrue(mb_check_encoding($result['rows'][2]['name'], 'UTF-8'));
+    }
 }
