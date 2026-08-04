@@ -125,7 +125,6 @@ export interface AccountRow {
 export const W6_ACCOUNTS = {
   debit: { code: 'W6GL1', name: 'W6 campaign GL debit', type: 'asset' },
   credit: { code: 'W6GL2', name: 'W6 campaign GL credit', type: 'liability' },
-  revenue: { code: 'W6PL1', name: 'W6 campaign P&L revenue', type: 'revenue' },
   expense: { code: 'W6PL2', name: 'W6 campaign P&L expense', type: 'expense' },
   /** The `MTP-GL-20` chart-of-accounts CRUD subject. Never posted to. */
   coa: { code: 'W6COA', name: 'W6 campaign CoA subject', type: 'asset' },
