@@ -210,19 +210,27 @@ The contra side sits on the repository GL accounts (`512` etc.).
 
 The first version of this section only excluded `repository_adjustment` entries, which **silently
 missed the fixture expenses**: `MTP-TRE-44`'s `create_expense` action and `MTP-TRE-41c`'s outbound
-cheque both create real expense documents through `statement-support.ts`
-(`issueTier3OutboundCheque` / `CreateExpenseHandler`), and their JEs carry no `W5b` marker at all.
+cheque both create real expense documents (`CreateExpenseHandler` / `issueTier3OutboundCheque`).
 
-**9 posted expense journal entries** identified by vendor `C-2 fixture vendor *` / receipt
-`C2-RCPT-*`:
+They post under **two different vendor patterns**, and the first measurement of this section caught
+only one of them — so the figures below are the corrected, complete set (**15 entries**, not 9):
 
-| Account | Name | Debit | Credit |
+| Fixture | Vendor pattern | Entries | Accounts |
 |---|---|---|---|
-| `613` | Locations | **334.125** | 0.000 |
-| `401` | Fournisseurs | 0.000 | **334.125** |
+| `MTP-TRE-41c` outbound cheque (`37.125` each) | `C-2 fixture vendor *`, receipt `C2-RCPT-*` | 9 | `613` Dr **334.125** / `401` Cr **334.125** |
+| `MTP-TRE-44` create-from-line (`42.750` each) | **`W5b TRE-44 vendor *`** | 6 | `613` Dr **256.500** / `512` Cr **256.500** |
+| **Combined** | | **15** | **`613` Dr 590.625**, `401` Cr **334.125**, `512` Cr **256.500** |
 
-So the fixtures also inflate a P&L expense account (`613`) and a supplier payable (`401`) — not just
-the tolerance accounts.
+Two things worth noting:
+
+- The `W5b TRE-44 vendor *` entries carry **no `C-2` marker**, so a rule keyed only on
+  `C-2 fixture vendor` / `C2-RCPT-` misses them entirely — that is exactly what happened here.
+- The two fixtures hit **different credit sides**: TRE-41c's cheque expense stays **unpaid**, so it
+  credits the supplier payable `401`; TRE-44's create-from-line expense is **paid on creation** (the
+  handler requires a resulting repository movement), so it credits the bank account `512`.
+
+So the fixtures inflate a P&L expense account (`613`), a supplier payable (`401`) **and** a bank GL
+account (`512`) — not just the tolerance accounts.
 
 ### 9.3 The exclusion rule W-6 must apply
 
@@ -239,9 +247,9 @@ predicate instead:
    (TRE-44's `create_expense` fixtures post under `W5b TRE-44 vendor *` at `42.750` each) or whose
    receipt matches `C2-RCPT-`.
 
-A W-6 case that asserts an absolute `6580`, `7580`, `613` or `401` balance, or that aggregates
-repository balances without an `is_active` filter, will fail for reasons that have nothing to do
-with the product.
+A W-6 case that asserts an absolute `6580`, `7580`, `613`, `401` **or `512`** balance, or that
+aggregates repository balances without an `is_active` filter, will fail for reasons that have
+nothing to do with the product.
 
 ### 9.4 Wave-close counts
 
