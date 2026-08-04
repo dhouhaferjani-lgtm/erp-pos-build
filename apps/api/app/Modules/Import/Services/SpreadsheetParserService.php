@@ -39,14 +39,30 @@ final class SpreadsheetParserService
      * BOM (written by Excel "CSV UTF-8"), and streams rows through fgetcsv
      * so quoted fields with embedded newlines parse correctly.
      *
+     * Excel on Windows exports CSVs as Windows-1252 (CP1252), not UTF-8, in
+     * many French/European locales. If the raw file content is not valid
+     * UTF-8, it is transparently converted from Windows-1252 before parsing
+     * so downstream consumers always receive valid UTF-8 strings.
+     *
      * @return array{headers: array<string>, rows: array<int, array<string, mixed>>}
      */
     private function parseCsv(string $filePath): array
     {
-        $handle = fopen($filePath, 'rb');
+        $content = file_get_contents($filePath);
+        if ($content === false) {
+            throw new \RuntimeException('Failed to read CSV file');
+        }
+
+        if (! mb_check_encoding($content, 'UTF-8')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
+        }
+
+        $handle = fopen('php://temp', 'r+b');
         if ($handle === false) {
             throw new \RuntimeException('Failed to read CSV file');
         }
+        fwrite($handle, $content);
+        rewind($handle);
 
         try {
             $bom = fread($handle, 3);

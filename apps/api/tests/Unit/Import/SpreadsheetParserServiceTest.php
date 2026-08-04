@@ -131,4 +131,28 @@ class SpreadsheetParserServiceTest extends TestCase
 
         $this->assertSame('', $result['rows'][1]['barcode']);
     }
+
+    public function test_parses_cp1252_encoded_csv_by_converting_to_utf8(): void
+    {
+        $accentedName = "Crème solaire à l'abricot é è ç";
+        $cp1252Name = mb_convert_encoding($accentedName, 'Windows-1252', 'UTF-8');
+        $content = "name;sku;type\n{$cp1252Name};SKU-1;\"Home; Garden\"\n";
+        $path = $this->makeCsv($content);
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame(['name', 'sku', 'type'], $result['headers']);
+        $this->assertSame($accentedName, $result['rows'][1]['name']);
+        $this->assertTrue(mb_check_encoding($result['rows'][1]['name'], 'UTF-8'));
+        $this->assertSame('Home; Garden', $result['rows'][1]['type']);
+    }
+
+    public function test_utf8_file_with_accented_characters_is_not_double_converted(): void
+    {
+        $path = $this->makeCsv("name,sku\nCafé,C-1\n");
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame('Café', $result['rows'][1]['name']);
+    }
 }
