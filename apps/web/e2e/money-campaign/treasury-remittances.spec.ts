@@ -6,6 +6,14 @@
  * real backend, no mocks. Money is compared as EXACT decimal strings computed with
  * integer millime arithmetic (`treasury-support.ts` `addMoney`) — never a float.
  *
+ * CONCURRENCY — THIS FILE ASSUMES `--workers=1` (N-5). `MTP-TRE-33` asserts
+ * EXACT BANK-01 balance DELTAS around the per-line clear/bounce (`+594.050`,
+ * `-11.900`). BANK-01 is a SHARED seeded repository, so any concurrently
+ * running case that moves money through it would corrupt those deltas. The
+ * campaign's mandated invocation is
+ * `--project=chromium --workers=1`; do not parallelise this file, and do not
+ * convert the deltas to absolute balances (they drift across the campaign).
+ *
  * FIXTURE CHOICE — standalone instruments, not payment-carried ones.
  * `treasury-instruments.spec.ts` (W2a, MTP-TRE-17..27) builds each cheque through
  * invoice -> confirm -> post -> POST /payments with an inline `instrument`, because
@@ -48,6 +56,7 @@ import {
   type Session,
 } from './treasury-support'
 import { loginAsRole } from './helpers'
+import { CLEANUP_THREW, isCleanupSuccess } from './statement-support'
 
 let owner: Session
 let bankRepoId: string
@@ -156,11 +165,17 @@ function sumLines(lines: SlipLine[]): string {
  * `received` with `remittance_id: null`. There is no DELETE route for the slip
  * itself, so the (now empty) slip row is what genuinely cannot be retired.
  *
- * NEVER THROWS — it returns the observed statuses. A cleanup `expect` inside a
- * `finally` would REPLACE an in-flight exception from the try block (JS
- * semantics: a throw in `finally` discards the original), silently turning a
- * real assertion failure into a cleanup failure. Callers therefore assert these
- * statuses only on the path where the case body already succeeded (M-1).
+ * NEVER THROWS — it returns the observed statuses, using `CLEANUP_THREW` (599)
+ * when a call threw rather than answering. A cleanup `expect` inside a `finally`
+ * would REPLACE an in-flight exception from the try block (JS semantics: a throw
+ * in `finally` discards the original), silently turning a real assertion failure
+ * into a cleanup failure. Callers therefore assert these statuses only on the
+ * path where the case body already succeeded (M-1).
+ *
+ * The sentinel is 599, NOT -1: fix round 1 used -1 while every gate read
+ * `status < 300`, and `-1 < 300` is TRUE — so a throwing cleanup passed silently
+ * and the fixture leaked with no signal (fix round 2, N-1). Gates below check
+ * 2xx explicitly.
  */
 async function releaseDraftLines(
   request: APIRequestContext,
@@ -178,13 +193,17 @@ async function releaseDraftLines(
     }
     return statuses
   } catch {
-    return [-1]
+    return [CLEANUP_THREW]
   }
 }
 
-/** Runs `body`, then always releases every draft slip in `slipIds`. The cleanup
- * statuses are asserted ONLY when `body` succeeded, so cleanup can never mask a
- * real failure (M-1) and junk can never be stranded on the passing path. */
+/** Runs `body`, then always releases every draft slip in `slipIds`.
+ *
+ * The release itself ALWAYS RUNS. Its statuses are asserted only when `body`
+ * succeeded — that gating is what stops a cleanup problem from REPLACING the
+ * case's own failure (M-1); the `finally` alone would do the opposite. The
+ * assertion checks 2xx explicitly so a thrown cleanup (`CLEANUP_THREW`) fails
+ * loudly instead of slipping through a `< 300` comparison (N-1). */
 async function withDraftCleanup(
   request: APIRequestContext,
   slipIds: () => string[],
@@ -201,7 +220,7 @@ async function withDraftCleanup(
     }
     if (bodySucceeded) {
       expect(
-        statuses.every((status) => status < 300),
+        statuses.every(isCleanupSuccess),
         `draft-line cleanup statuses: ${JSON.stringify(statuses)}`,
       ).toBe(true)
     }
@@ -263,6 +282,7 @@ test.describe('MTP-TRE — remittances / bordereaux (W-5b §E.3)', () => {
 
   test('MTP-TRE-29 (P0): remit deposits every instrument and closes composition', async ({ request }) => {
     const slip = await createDraftSlip(request)
+    await withDraftCleanup(request, () => [slip.id], async () => {
     const instrumentIds: string[] = []
     for (const amount of ['120.500', '80.250', '99.250']) {
       const instrumentId = await receiveInstrument(request, amount, uniqueName('T29'))
@@ -299,6 +319,7 @@ test.describe('MTP-TRE — remittances / bordereaux (W-5b §E.3)', () => {
     // The total is unchanged by the refusal.
     const afterRemit = await readSlip(request, slip.id)
     expect(sumLines(afterRemit.lines)).toBe('300.000')
+    })
   })
 
   test('MTP-TRE-30 (P1): 20 x 10.005 totals exactly 200.100 — no float artefact', async ({
@@ -380,6 +401,7 @@ test.describe('MTP-TRE — remittances / bordereaux (W-5b §E.3)', () => {
 
   test('MTP-TRE-32 (P1): a remitted slip refuses both add and remove', async ({ request }) => {
     const slip = await createDraftSlip(request)
+    await withDraftCleanup(request, () => [slip.id], async () => {
     const first = await receiveInstrument(request, '55.500', uniqueName('T32a'))
     const second = await receiveInstrument(request, '44.500', uniqueName('T32b'))
     for (const instrumentId of [first, second]) {
@@ -408,12 +430,14 @@ test.describe('MTP-TRE — remittances / bordereaux (W-5b §E.3)', () => {
     const afterAttempts = await readSlip(request, slip.id)
     expect(afterAttempts.lines).toHaveLength(2)
     expect(sumLines(afterAttempts.lines), 'total untouched by the refused mutations').toBe('100.000')
+    })
   })
 
   test('MTP-TRE-33 (P1): per-line clear and bounce leave the slip total unchanged', async ({
     request,
   }) => {
     const slip = await createDraftSlip(request)
+    await withDraftCleanup(request, () => [slip.id], async () => {
     const toClear = await receiveInstrument(request, '600.000', uniqueName('T33clear'))
     const toBounce = await receiveInstrument(request, '400.000', uniqueName('T33bounce'))
     for (const instrumentId of [toClear, toBounce]) {
@@ -472,6 +496,7 @@ test.describe('MTP-TRE — remittances / bordereaux (W-5b §E.3)', () => {
       sumLines(afterOutcomes.lines),
       'the bordereau total is the face value of its lines — outcomes and fees never move it',
     ).toBe(totalBefore)
+    })
   })
 
   test('MTP-TRE-34 (P1): a user without instruments.remit gets 403 and no remittance screen', async ({

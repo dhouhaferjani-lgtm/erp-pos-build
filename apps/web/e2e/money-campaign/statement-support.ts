@@ -640,8 +640,23 @@ export async function confirmStatement(
 }
 
 /**
+ * Sentinel returned when a cleanup call THREW (network/transport failure) rather
+ * than answering with a status. It is deliberately >= 300 and outside the real
+ * HTTP range: fix round 1 used `-1`, and every caller gated on `status < 300`,
+ * so `-1 < 300` was TRUE and a throwing cleanup passed silently while the
+ * fixture leaked with no signal — the exact inversion of the M-1 masking bug
+ * (fix round 2, N-1). Callers must gate on 2xx, never on `< 300` alone.
+ */
+export const CLEANUP_THREW = 599
+
+/** True only for a real 2xx. Never write `status < 300` for a cleanup gate. */
+export function isCleanupSuccess(status: number): boolean {
+  return status >= 200 && status < 300
+}
+
+/**
  * Fixture retirement (W-5b fix round 1, I-2a/I-2b). NEITHER HELPER THROWS —
- * each returns the observed HTTP status. A cleanup `expect` inside a `finally`
+ * each returns the observed HTTP status, or `CLEANUP_THREW`. A cleanup `expect` inside a `finally`
  * would REPLACE an in-flight exception from the test body (JS discards the
  * original when `finally` throws), so callers must assert these statuses only
  * on the path where the body already succeeded.
@@ -662,14 +677,14 @@ export async function retireParserProfile(
     const deleted = await request.delete(`${API_BASE}/statement-import-profiles/${profileId}`, {
       headers: authHeaders(session),
     })
-    if (deleted.status() < 300) return deleted.status()
+    if (isCleanupSuccess(deleted.status())) return deleted.status()
     const deactivated = await request.patch(`${API_BASE}/statement-import-profiles/${profileId}`, {
       headers: authHeaders(session),
       data: { is_active: false },
     })
     return deactivated.status()
   } catch {
-    return -1
+    return CLEANUP_THREW
   }
 }
 
@@ -690,7 +705,7 @@ export async function deactivateRepository(
     })
     return res.status()
   } catch {
-    return -1
+    return CLEANUP_THREW
   }
 }
 
