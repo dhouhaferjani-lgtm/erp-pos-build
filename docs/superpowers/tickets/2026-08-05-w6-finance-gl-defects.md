@@ -11,8 +11,9 @@ forces this ticket to be revisited.
 
 | # | Sev | Surface | Summary |
 |---|---|---|---|
-| **D1** | **P0 — LAUNCH BLOCKING** | trial balance, balance sheet | The general ledger **does not balance**. Credits exceed debits by exactly `19.000`. One posted, hash-chained invoice entry is internally unbalanced, and `AccountingService::createInvoiceGLEntries()` has **no double-entry guard at all** |
-| **D2** | **P0 — LAUNCH BLOCKING** | aged receivables | A posted, wholly unpaid invoice is **invisible** to `/finance/aged-receivables`. Nothing on the invoice create/confirm/post path writes the persisted `documents.balance_due` the report filters on. **163 posted invoices totalling `57 732.410` TND are missing from the report**, whose grand total reads `31 892.422` |
+| **D1a** | **P1 — must fix before launch** (re-graded, fix round 1) | invoice GL posting | `AccountingService::createInvoiceGLEntries()` has **no double-entry guard at all** and auto-posts straight into the hash chain. Defence-in-depth: the one route-in that ever fired is CLOSED, so this is not demonstrated-live-P0 — but an unguarded auto-posting path into an immutable ledger must not ship |
+| **D1b** | **P1 — evidence hygiene** | trial balance, balance sheet | The ledger is out of balance by exactly `19.000` and **cannot be edited back** (immutable, 915 entries chain off it). The unbalanced entry is **the campaign's own `MTP-DOC-06` probe**, not seeded or customer data. Needs a forward correcting entry or an annotation on the evidence pack |
+| **D2** | **P0 — LAUNCH BLOCKING** | aged receivables | A posted, wholly unpaid invoice is **invisible** to `/finance/aged-receivables`. `documents.balance_due` is a **PostgreSQL trigger cache fired by `payment_allocations` DML only**, so a never-allocated document stays `NULL` forever. **As of run 3 (2026-08-05): 165 posted invoices totalling `59 532.410` TND missing**, against a reported grand total of `32 892.422`. Both numbers GROW per campaign run |
 | **D3** | P2 | trial balance | Empty-period trial-balance totals render at **scale 2** (`'0.00'`), not the report scale 4 every other report uses |
 | **D4** | **P0** | aged receivables + aged payables | The aging buckets are **sign-inverted**. Every overdue invoice is reported as *Current* — nothing has ever aged out of Current on this tenant — while a not-yet-due invoice would be aged as if late |
 | **D5** | P1 | all `/finance/*` reports | `reports.view` and `ledger.view` are granted to **no seeded role except `admin`**, while the matching front-end routes are gated on `accounts.view`. The accountant, manager and viewer are all let onto pages whose API then answers **403** |
@@ -24,32 +25,23 @@ forces this ticket to be revisited.
 
 ---
 
-## D1 — the general ledger does not balance (P0, launch-blocking)
+## D1 — the invoice GL path is unguarded, and one probe entry left the ledger `19.000` out of balance
 
-**Symptom, measured live 2026-08-05 on `demo-pharmacy-tn`:**
+> **RE-GRADED in fix round 1.** The wave originally filed this as a single
+> demonstrated-live P0. The reviewer ran the trigger predicate over the whole
+> invoice population and the result splits the finding in two, with a materially
+> different escalation: **D1a** (the missing guard) is a **P1 must-fix-before-
+> launch defence-in-depth** item, not a live P0, because the only route-in that
+> ever fired is closed; **D1b** (the stranded `19.000`) is a **P1 evidence-
+> hygiene** item on *campaign test money*, not on seeded or customer data.
+> The three facts that drive the re-grade are stated below and must not be
+> dropped from any escalation summary.
 
-```
-GET /api/v1/reports/trial-balance
-  total_debit  433001.8120
-  total_credit 433020.8120
-  is_balanced  false            <- credits over debits by exactly 19.000
-
-GET /api/v1/reports/balance-sheet
-  total_assets      228728.3860
-  total_liabilities  37824.6970
-  total_equity      190922.6890   -> L+E = 228747.3860
-  is_balanced       false          <- the SAME 19.000
-```
-
-The money-test-plan is explicit for `MTP-GL-08`: *"Σ debits == Σ credits exactly
-at scale 3. Any non-zero difference is launch-blocking."*
-
-**The culprit — one entry, verified against the tenant DB and re-proved through
-the API by the spec:**
+### Fact 1 — the unbalanced entry is the campaign's own probe
 
 ```
 journal_entries.entry_number = INV-20260802000000-019fc2b7da2b734c86a0d01b4cd5294a
-  source_type 'Document', description 'Invoice INV-2026-0320', status posted
+  chain_sequence 495, source_type 'Document', description 'Invoice INV-2026-0320', status posted
 
   411  Clients                 Dr 100.000    "AR from Invoice INV-2026-0320"
   707  Ventes de marchandises  Cr 100.000    "Revenue from Invoice INV-2026-0320 - Line 1"
@@ -58,42 +50,104 @@ journal_entries.entry_number = INV-20260802000000-019fc2b7da2b734c86a0d01b4cd529
                                Dr 100.000 / Cr 119.000   ->  -19.000
 ```
 
-The document itself says `subtotal 100.000 / tax_amount 0.000 / total 100.000`,
-on a single line priced `2 × 50.000` carrying `tax_rate 19.00`.
+The document is `INV-2026-0320` on partner **`DOC06-probe`**, created
+`2026-08-02 13:43:11`. That partner is **this campaign's own `MTP-DOC-06`
+fixture** (`apps/web/e2e/money-campaign/documents-lifecycle.spec.ts:155`,
+`uniqueName('DOC06')`). It is **campaign test money — not seeded data, not
+customer data.** It was minted through the confirm-zeroes-VAT defect that
+`7258a409f` closed **the same day**
+(`docs/superpowers/tickets/2026-08-02-confirm-zeroes-vat-unconfigured-rates.md`,
+CLOSED): the document header was written `tax_amount 0.000` while its line kept
+`tax_rate 19.00`.
 
-**Root cause (live on HEAD, independent of the historical data):**
-`apps/api/app/Modules/Accounting/Application/Services/AccountingService.php`
-`createInvoiceGLEntries()`
+### Fact 2 — the known route-in is CLOSED; the truncation bias runs positive
 
-1. `:152-155` debits AR with the **header** `$invoice->total`.
-2. `:158-176` credits revenue with **each line's** `line_total`.
-3. `:180-193` credits VAT from `groupTaxByRate($invoice->lines)` — which at
+The trigger predicate — *residual = `total − Σline_total − Σ(line_total ×
+tax_rate/100)`*, negative meaning "the credit side over-runs the AR debit" — run
+over **every posted invoice on the tenant**:
+
+```sql
+with per_doc as (
+  select d.id, d.total,
+         coalesce(sum(dl.line_total),0)                                       as rev,
+         coalesce(sum(round(dl.line_total * coalesce(dl.tax_rate,0)/100,3)),0) as vat
+  from documents d left join document_lines dl on dl.document_id = d.id
+  where d.type='invoice' and d.status='posted' and d.deleted_at is null
+  group by d.id, d.total)
+select count(*)                                        as total_posted,      -- 274
+       count(*) filter (where total-rev-vat < 0)        as negative_residual, -- 1
+       count(*) filter (where total-rev-vat = 0)        as zero_residual,     -- 0
+       count(*) filter (where total-rev-vat > 0)        as positive_residual  -- 273
+from per_doc;
+```
+
+**Exactly one** negative residual across 274 posted invoices — the `DOC06-probe`
+document above. The other 273 are **positive**, which is the benign direction:
+a positive residual is absorbed by the stamp-duty leg
+(`AccountingService.php:203-214`), and the `bcmul` truncation in
+`groupTaxByRate()` biases the recomputed VAT *down*, so the residual it produces
+is positive by construction. The defect only bites when the header `tax_amount`
+is *smaller* than the recomputed line tax — which is precisely what the closed
+confirm-zeroes-VAT bug did, and nothing else on HEAD does.
+
+**Consequence for the grade:** the guard is real and still missing, but it is
+**not currently reachable through any known path**. It is a
+**must-fix-before-launch defence-in-depth** item (P1), not a live P0.
+
+### Fact 3 — chain integrity is intact, and the GL chain is not the E-7 chain
+
+- `GeneralLedgerHashService::serializeForHashing()`
+  (`apps/api/app/Modules/Accounting/Application/Services/GeneralLedgerHashService.php:70-91`)
+  hashes `entry_number|entry_date|company_id|Σdebit|Σcredit`, so the unbalanced
+  totals *are* inside the hash.
+- But `verifyChain()` (`:99-138`) checks only three things: contiguous
+  `chain_sequence`, `previous_hash` linkage, and hash recomputation. It **never
+  asserts `Σdebit == Σcredit`.** An unbalanced entry therefore passes chain
+  verification.
+- Verified live: **1 410 entries, `fiscal_hash` non-null, `chain_sequence`
+  contiguous `1..1410`, no gaps or duplicates.** The chain passes today.
+- The GL hash chain is **distinct from the document / POS fiscal chain**, so
+  **E-7 Z-EOD evidence is untouched** by this finding.
+
+### D1a — the missing guard (P1, must fix before launch)
+
+Root cause, `apps/api/app/Modules/Accounting/Application/Services/AccountingService.php`
+`createInvoiceGLEntries()` (line cites corrected in fix round 1):
+
+1. `:147-154` debits AR with the **header** `$invoice->total`.
+2. `:156-177` credits revenue with **each line's** `line_total`.
+3. `:179-194` credits VAT from `groupTaxByRate($invoice->lines)` — which at
    `:465-488` **RECOMPUTES** tax as `line_total × tax_rate / 100`, ignoring the
    authoritative `tax_amount` on both the header and the line.
-4. `:206-215` computes the stamp-duty residual `total − revenue − lineVAT` and
+4. `:203-214` computes the stamp-duty residual `total − revenue − lineVAT` and
    posts it **only `if (bccomp($stampDuty,'0',…) > 0)`** — so a **negative**
    residual is silently discarded rather than refused.
-5. `:114-126` creates the entry with `'status' => JournalEntryStatus::Posted`
-   directly, and `:220-224` seals it into the fiscal hash chain. **No
+5. `:115-126` creates the entry with `'status' => JournalEntryStatus::Posted`
+   directly, and `:216-223` seals it into the fiscal hash chain. **No
    `DoubleEntryValidator` call exists anywhere on this path** — unlike the
-   manual route, which is guarded at
-   `JournalEntryController::store():72-88` (`UNBALANCED_ENTRY` / `INVALID_LINE`).
+   manual route, which is guarded at `JournalEntryController::store():72-88`
+   (`UNBALANCED_ENTRY` / `INVALID_LINE`).
 
-So any divergence between the header `tax_amount` and the recomputed line tax
-mints a permanently unbalanced, hash-chained entry. The specific divergence that
-produced `INV-2026-0320` was the (now **CLOSED**) confirm-zeroes-VAT defect —
-`docs/superpowers/tickets/2026-08-02-confirm-zeroes-vat-unconfigured-rates.md`,
-fixed by `7258a409f` — but that fix closed one *route in*, not the hole itself.
+**Fix:** `createInvoiceGLEntries()` — and its credit-note sibling on the same
+service, which repeats the pattern at `:351` — must refuse to persist an entry
+whose Σdebits ≠ Σcredits rather than dropping the residual. A negative residual
+is a bug, never a rounding artefact. Consider also having `verifyChain()` assert
+the balance invariant, so a future unbalanced entry is caught by the compliance
+tooling rather than by a QA campaign.
 
-**Two separable follow-ups, both needed:**
+### D1b — the stranded `19.000` (P1, evidence hygiene)
 
-- **Guard:** `createInvoiceGLEntries()` (and its credit-note / expense siblings
-  on the same service) must refuse to persist an entry whose Σdebits ≠ Σcredits,
-  rather than dropping the residual. A negative residual is a bug, never a
-  rounding artefact.
-- **Data:** the stranded entry cannot be edited (it is chained). Repair needs a
-  deliberate, documented correcting entry — and the tenant's trial balance
-  cannot be presented to an accountant until it is made.
+The entry is immutable and **915 entries chain off it**, so it cannot be edited
+or removed. Two acceptable dispositions, and the choice is the accountant's:
+
+- **A forward correcting entry** — the accountant chooses the absorbing account
+  (the `19.000` was credited to `4457 TVA collectée` against no debit).
+- **Or annotate the evidence pack** as campaign contamination, since the money
+  is a QA probe on `DOC06-probe` rather than a real receivable.
+
+Until one of the two is done, `demo-pharmacy-tn`'s trial balance and balance
+sheet **cannot be presented to an accountant** — see the E-7 note in the
+results file.
 
 **Tripwires:** `finance-reports.spec.ts` `MTP-GL-08` (gap `19.0000`, culprit's
 three legs re-derived through `GET /ledger`), `MTP-GL-15` (same gap on the
@@ -109,40 +163,64 @@ correctly balanced entry leaves the gap untouched).
 `outstanding_amount 900.000`. `GET /reports/aged-receivables` does **not list
 the customer at all**, and its `grand_total` does not move by a millime.
 
-**Root cause:**
+**Root cause — `documents.balance_due` is a PostgreSQL TRIGGER CACHE, not a
+PHP-maintained column** (deepened in fix round 1; the first version of this
+ticket looked for a PHP writer and therefore mis-stated the fix surface):
 
 - `AgedReceivablesService::getOutstandingInvoices():146-151` filters on the
   **persisted column**: `->where('balance_due', '>', 0)`, and
   `calculateCustomerAging():193` reads `$invoice->balance_due` for the amount.
-- **Nothing on the invoice create → confirm → post path ever writes that
-  column.** It is written only by converters
-  (`CopiesDocumentData:87`, `SalesOrderToInvoiceConverter:386`), AR/AP openings
-  (`ArApOpeningService:309/321`), POS account charges
-  (`POSAccountChargeDraftService:65/167`) and treasury settlement
-  (`InstrumentLifecycleService:545`, `OutboundInstrumentService:680`,
-  `MultiPaymentService:137`, `CloseInvoiceWithToleranceService:117`,
-  `VendorRefundService:149`). A directly-created invoice keeps `balance_due =
-  NULL` forever unless someone pays it.
-- The document API **masks** this: `DocumentData::fromModel():167-177` computes
+- That column is maintained **entirely in the database**. Migration
+  `database/migrations/tenant/2026_01_08_214145_add_balance_due_cache_trigger.php:57-58`
+  installs
+
+  ```sql
+  CREATE TRIGGER payment_allocation_balance_update
+  AFTER INSERT OR UPDATE OR DELETE ON payment_allocations …
+  ```
+
+  and its sibling
+  `2026_01_10_100001_add_credit_note_allocation_trigger.php:18-19` does the same
+  `AFTER INSERT OR UPDATE OR DELETE ON credit_note_allocations`. **Both fire on
+  ALLOCATION DML only.** `Document.php:698-702` states the design explicitly:
+  *"This is the SOURCE OF TRUTH — computed from allocations. The balance_due
+  column is a CACHED value maintained by PostgreSQL trigger."*
+- Therefore a document that has **never been allocated against** has no trigger
+  event to fire and its `balance_due` stays `NULL` **forever, regardless of what
+  any PHP code does**. Posting an invoice creates no allocation row, so no
+  ordinary receivable is ever cached.
+- The document API **masks** it: `DocumentData::fromModel():167-177` computes
   `balance_due` from `outstanding_amount` for payment-tracked types and never
   reads the persisted column. So the invoice looks open everywhere except the
   one report that matters.
 
-**Blast radius, measured on `demo-pharmacy-tn` 2026-08-05:**
+**This means the fix is NOT "call a PHP setter on the post path".** It is either
+(a) extend trigger coverage so a document is cached at creation/post as well as
+on allocation DML, or (b) make the aged reports read `outstanding_amount` — the
+declared source of truth — the way `DocumentData` already does. (b) is the
+smaller change and removes a cache from the critical path entirely.
+
+**W-1's D9 (`f670d37bf`, full-refund status revert) is NOT implicated.** Refund
+and payment both write allocation rows, which is exactly why paid-then-refunded
+invoices *do* appear on the report — that behaviour is correct and is what
+`MTP-GL-26` asserts.
+
+**Blast radius — AS OF RUN 3 (2026-08-05). These numbers GROW with every
+campaign run; treat them as a magnitude, never as a fixture constant:**
 
 ```sql
-select count(*) filter (where balance_due is null)          as null_bd,       -- 163
+select count(*) filter (where balance_due is null)          as null_bd,       -- 165
        count(*) filter (where balance_due is not null
-                          and balance_due > 0)              as positive_bd,   -- 105
-       coalesce(sum(total) filter (where balance_due is null),0)              -- 57 732.410
+                          and balance_due > 0)              as positive_bd,   -- 107
+       coalesce(sum(total) filter (where balance_due is null),0)              -- 59 532.410
 from documents
 where type='invoice' and status='posted' and deleted_at is null;
 ```
 
-`/finance/aged-receivables` currently reports a grand total of `31 892.422`
-while **`57 732.410` of posted receivables is invisible to it** — the report
-under-states open AR by roughly two thirds. The same persisted column drives
-`AgedPayablesService`.
+`/finance/aged-receivables` reported a grand total of `32 892.422` at the same
+moment, so **`59 532.410` of posted receivables was invisible to it** — the
+report under-states open AR by roughly two thirds. The same persisted column
+drives `AgedPayablesService`.
 
 A pay-then-refund round trip is presently the *only* way an ordinary invoice
 ever appears on the aging report, because the refund path is what finally
@@ -184,7 +262,9 @@ is reported in **Current**, and across the entire report
 total_days_30 + total_days_60 + total_days_90 + total_over_90 == 0.0000
 ```
 
-with `grand_total 31 892.422` sitting wholly in `total_current`.
+with the whole grand total sitting in `total_current` (`32 892.422` as of run 3,
+2026-08-05 — a magnitude that grows per campaign run, not a fixture constant).
+The zero above is the durable assertion; the grand total is context only.
 
 **Root cause:**
 `AgedReceivablesService::calculateCustomerAging():196-200`
@@ -257,6 +337,14 @@ which all three roles hold — so `RequirePermission` lets them in and the page
 then fails its fetch. `/finance/ledger` is gated on `journal.view` for the same
 mismatch.
 
+**The front end is not even internally consistent** (added in fix round 1):
+`apps/web/src/routes/index.tsx:1940` gates `/finance/cash-movements` on
+**`reports.view`** — the API-matching permission — while the five sibling
+finance reports two blocks below it are gated on `accounts.view`. So one
+`/finance/*` report route already agrees with the API and blocks non-admins at
+the door, and five do not. Whichever way the ruling goes, these six routes must
+end up on the same rule.
+
 Two symptoms fall out of the same grant:
 
 - The **accountant cannot read a single financial report** — the persona whose
@@ -265,9 +353,19 @@ Two symptoms fall out of the same grant:
   `FinanceHubPage`'s `treasuryOverview` entry declares `permission: 'reports.view'`
   (`FinanceHubPage.tsx:44-50`).
 
-**Needs an owner ruling**, not a blind fix: either grant `reports.view` /
-`ledger.view` to `accountant` (and probably `manager`), or retire them in favour
-of the `reports.financial` / `reports.operational` split the roles already use.
+**Needs an owner ruling**, not a blind fix. The brief for that ruling:
+
+1. Either grant `reports.view` / `ledger.view` to `accountant` (and probably
+   `manager`), **or** retire them in favour of the `reports.financial` /
+   `reports.operational` split the roles already carry.
+2. Decide which of the two existing FE conventions wins — `reports.view`
+   (`cash-movements`, `routes/index.tsx:1940`) or `accounts.view` (the five
+   finance reports) — and align all six routes plus `/finance/ledger` to it.
+3. Decide whether the finance hub's `treasuryOverview` card
+   (`FinanceHubPage.tsx:44-50`, `permission: 'reports.view'`) should be visible
+   to the accountant; today it is admin-only, which is a consequence of (1)
+   rather than a deliberate choice.
+
 Either way the FE and API gates must be made to agree.
 
 **Tripwires:** `finance-permissions.spec.ts` `MTP-GL-23` (seven 403s + the FE
@@ -309,9 +407,10 @@ orders with `autoGeneratedReceivedPurchaseOrdersWithAccrual()` only. Its own
 docblock (`:140-142`) states the intent: *"Normal received POs are deliberately
 excluded so the report does not surface phantom payables."* Live consequence:
 `Medis Distribution SARL` holds one draft, two **confirmed** and one normally
-**received** PO on this tenant and appears nowhere on aged payables; the report
-grand total is `210.000` against a `401 Fournisseurs` credit balance of
-`6 089.904`. Do not reconcile one against the other.
+**received** PO on this tenant and appears nowhere on aged payables; as of run 3
+(2026-08-05) the report grand total was `210.000` against a `401 Fournisseurs`
+credit balance of `6 089.904` — both magnitudes move with sibling waves. Do not
+reconcile one against the other.
 
 **R2 — the journal-entry balance indicator is misleading by design.**
 `JournalEntryForm.tsx:51-53` computes `parseFloat`-based totals and
@@ -341,14 +440,21 @@ stable shape on a tenant six waves have written to.
 
 ## Fix-order recommendation
 
-1. **D1 guard** — no code path may persist an unbalanced journal entry. This is
-   the one that lets silent corruption into a hash-chained ledger.
-2. **D2** — write `balance_due` on the invoice post path (or make the aged
-   reports read `outstanding_amount` the way `DocumentData` already does).
-   Without it the AR aging report is not merely wrong, it is empty of most
-   receivables.
-3. **D4** — one-line sign fix in two services, plus tests at the 30/31/60/61/
-   90/91-day boundaries the plan specifies.
-4. **D1 data repair** — a documented correcting entry for the `19.000`.
-5. **D5** — owner ruling on the permission model, then align FE and API gates.
-6. **D6**, **D3** — rendering/scale fixes.
+Re-ordered in fix round 1 to match the re-graded severities.
+
+1. **D2 (P0)** — make the aged reports read `outstanding_amount`, or extend the
+   trigger's coverage beyond allocation DML. Until this lands, the AR aging
+   report is not merely wrong, it is empty of most receivables — and it is the
+   only P0 left after the D1 re-grade.
+2. **D4 (P0)** — one-line sign fix in two services, plus tests at the
+   30/31/60/61/90/91-day boundaries the plan specifies.
+3. **D1a (P1, must fix before launch)** — no code path may persist an unbalanced
+   journal entry. Not currently reachable, but it is the guard that stops silent
+   corruption from entering an immutable, hash-chained ledger; consider adding
+   the same invariant to `verifyChain()`.
+4. **D1b (P1)** — accountant's choice: a forward correcting entry for the
+   `19.000`, or an annotation recording it as campaign contamination. Must be
+   settled BEFORE the fiscal evidence run, not during it.
+5. **D5 (P1)** — owner ruling on the permission model (three questions above),
+   then align all six `/finance/*` report routes and the hub card.
+6. **D6 (P1)**, **D3 (P2)** — rendering / scale fixes.
