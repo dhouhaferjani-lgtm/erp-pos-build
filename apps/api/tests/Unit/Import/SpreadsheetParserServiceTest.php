@@ -135,15 +135,18 @@ class SpreadsheetParserServiceTest extends TestCase
     public function test_parses_cp1252_encoded_csv_by_converting_to_utf8(): void
     {
         $accentedName = "Crème solaire à l'abricot é è ç";
+        $accentedHeader = 'désignation';
+        $cp1252Header = mb_convert_encoding($accentedHeader, 'Windows-1252', 'UTF-8');
         $cp1252Name = mb_convert_encoding($accentedName, 'Windows-1252', 'UTF-8');
-        $content = "name;sku;type\n{$cp1252Name};SKU-1;\"Home; Garden\"\n";
+        $content = "{$cp1252Header};sku;type\n{$cp1252Name};SKU-1;\"Home; Garden\"\n";
         $path = $this->makeCsv($content);
 
         $result = $this->parser->parse($path);
 
-        $this->assertSame(['name', 'sku', 'type'], $result['headers']);
-        $this->assertSame($accentedName, $result['rows'][1]['name']);
-        $this->assertTrue(mb_check_encoding($result['rows'][1]['name'], 'UTF-8'));
+        $this->assertSame([$accentedHeader, 'sku', 'type'], $result['headers']);
+        $this->assertTrue(mb_check_encoding($result['headers'][0], 'UTF-8'));
+        $this->assertSame($accentedName, $result['rows'][1][$accentedHeader]);
+        $this->assertTrue(mb_check_encoding($result['rows'][1][$accentedHeader], 'UTF-8'));
         $this->assertSame('Home; Garden', $result['rows'][1]['type']);
     }
 
