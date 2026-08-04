@@ -39,6 +39,14 @@ final class SpreadsheetParserService
      * BOM (written by Excel "CSV UTF-8"), and streams rows through fgetcsv
      * so quoted fields with embedded newlines parse correctly.
      *
+     * Excel on Windows exports CSVs as Windows-1252 (CP1252), not UTF-8, in
+     * many French/European locales. Each header and each cell value is
+     * checked independently and converted from Windows-1252 to UTF-8 only
+     * when it is not already valid UTF-8 — a whole-file check would treat a
+     * single stray CP1252 byte anywhere in the file as reason to re-decode
+     * every other, already-correct UTF-8 value, corrupting it (e.g. "Café"
+     * would become "CafÃ©"). Per-value conversion avoids that.
+     *
      * @return array{headers: array<string>, rows: array<int, array<string, mixed>>}
      */
     private function parseCsv(string $filePath): array
@@ -62,7 +70,7 @@ final class SpreadsheetParserService
             $delimiter = $this->detectDelimiter($headerLine);
             $rawHeaders = str_getcsv(rtrim($headerLine, "\r\n"), $delimiter, '"', '');
             /** @var array<string> $headers */
-            $headers = array_map(fn (?string $h) => strtolower(trim($h ?? '')), $rawHeaders);
+            $headers = array_map(fn (?string $h) => strtolower(trim($this->toUtf8($h ?? ''))), $rawHeaders);
 
             $rows = [];
             $rowNumber = 0;
@@ -70,7 +78,7 @@ final class SpreadsheetParserService
             while (($values = fgetcsv($handle, null, $delimiter, '"', '')) !== false) {
                 /** @var array<string> $values */
                 $values = array_map(
-                    fn (?string $v) => rtrim($v ?? '', "\r"),
+                    fn (?string $v) => $this->toUtf8(rtrim($v ?? '', "\r")),
                     $values
                 );
 
@@ -97,6 +105,23 @@ final class SpreadsheetParserService
         } finally {
             fclose($handle);
         }
+    }
+
+    /**
+     * Convert a single CSV value to UTF-8 if it is not already valid UTF-8.
+     *
+     * Applied per-value (header or cell) rather than to the whole file so
+     * that a stray Windows-1252 byte in one field cannot cause an
+     * already-valid UTF-8 value elsewhere in the file to be re-decoded and
+     * corrupted.
+     */
+    private function toUtf8(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
     }
 
     /**

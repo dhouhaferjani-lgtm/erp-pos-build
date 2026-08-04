@@ -131,4 +131,51 @@ class SpreadsheetParserServiceTest extends TestCase
 
         $this->assertSame('', $result['rows'][1]['barcode']);
     }
+
+    public function test_parses_cp1252_encoded_csv_by_converting_to_utf8(): void
+    {
+        $accentedName = "Crème solaire à l'abricot é è ç";
+        $accentedHeader = 'désignation';
+        $cp1252Header = mb_convert_encoding($accentedHeader, 'Windows-1252', 'UTF-8');
+        $cp1252Name = mb_convert_encoding($accentedName, 'Windows-1252', 'UTF-8');
+        $content = "{$cp1252Header};sku;type\n{$cp1252Name};SKU-1;\"Home; Garden\"\n";
+        $path = $this->makeCsv($content);
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame([$accentedHeader, 'sku', 'type'], $result['headers']);
+        $this->assertTrue(mb_check_encoding($result['headers'][0], 'UTF-8'));
+        $this->assertSame($accentedName, $result['rows'][1][$accentedHeader]);
+        $this->assertTrue(mb_check_encoding($result['rows'][1][$accentedHeader], 'UTF-8'));
+        $this->assertSame('Home; Garden', $result['rows'][1]['type']);
+    }
+
+    public function test_utf8_file_with_accented_characters_is_not_double_converted(): void
+    {
+        $path = $this->makeCsv("name,sku\nCafé,C-1\n");
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame('Café', $result['rows'][1]['name']);
+    }
+
+    public function test_mixed_encoding_rows_convert_per_value_without_corrupting_valid_utf8_rows(): void
+    {
+        // Row 1 is already valid UTF-8 ("Café"); row 2 is raw CP1252 bytes
+        // ("Crème" with 0xE8 for "è" etc). A whole-file encoding check would
+        // see the file as "not valid UTF-8" (because of row 2) and re-decode
+        // EVERYTHING as CP1252, mangling the already-correct "Café" into
+        // "CafÃ©". Per-value conversion must leave row 1 untouched while
+        // still fixing row 2.
+        $cp1252Name = mb_convert_encoding('Crème', 'Windows-1252', 'UTF-8');
+        $content = "name,sku\nCafé,C-1\n{$cp1252Name},C-2\n";
+        $path = $this->makeCsv($content);
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame('Café', $result['rows'][1]['name']);
+        $this->assertSame('Crème', $result['rows'][2]['name']);
+        $this->assertTrue(mb_check_encoding($result['rows'][1]['name'], 'UTF-8'));
+        $this->assertTrue(mb_check_encoding($result['rows'][2]['name'], 'UTF-8'));
+    }
 }

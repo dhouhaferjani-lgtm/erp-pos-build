@@ -343,6 +343,26 @@ class MigrationWizardTest extends TestCase
         }
     }
 
+    public function test_api_parses_headers_from_cp1252_encoded_csv(): void
+    {
+        $accentedHeader = 'désignation';
+        $accentedValue = "Crème solaire à l'abricot é è ç";
+        $cp1252Header = mb_convert_encoding($accentedHeader, 'Windows-1252', 'UTF-8');
+        $cp1252Value = mb_convert_encoding($accentedValue, 'Windows-1252', 'UTF-8');
+        $content = "{$cp1252Header};sku\n{$cp1252Value};P-1\n";
+
+        $file = UploadedFile::fake()->createWithContent(
+            'produits.csv',
+            $content
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->post('/api/v1/migration-wizard/parse-headers', ['file' => $file], ['Accept' => 'application/json']);
+
+        $response->assertOk()
+            ->assertJson(['data' => ['headers' => [$accentedHeader, 'sku'], 'row_count' => 1]]);
+    }
+
     public function test_api_parse_headers_rejects_unsupported_file_type(): void
     {
         $file = UploadedFile::fake()->createWithContent(
