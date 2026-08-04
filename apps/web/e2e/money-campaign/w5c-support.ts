@@ -397,8 +397,22 @@ export const CROSS_TENANT_SKIP_REASON =
  *      tenant), only on THIS tenant's own read model through the API.
  */
 export function generateRecurringExpenses(): string {
-  return execSync('php artisan expenses:generate-recurring', {
-    cwd: API_DIR,
-    encoding: 'utf-8',
-  }).trim()
+  try {
+    return execSync('php artisan expenses:generate-recurring', {
+      cwd: API_DIR,
+      encoding: 'utf-8',
+    }).trim()
+  } catch (error) {
+    // The command exits FAILURE when ANY tenant's templates error — it iterates
+    // every tenant (blast-radius note above), so another tenant's broken
+    // template would otherwise red THIS tenant's case through the exit code
+    // (fix round 2, N-2). A run that executed and produced output is returned
+    // for the caller's tenant-scoped API assertions; only genuine spawn
+    // failures (php missing, wrong cwd) still throw.
+    const e = error as { status?: number | null; stdout?: string | Buffer }
+    if (typeof e.status === 'number' && e.stdout !== undefined) {
+      return String(e.stdout).trim()
+    }
+    throw error
+  }
 }

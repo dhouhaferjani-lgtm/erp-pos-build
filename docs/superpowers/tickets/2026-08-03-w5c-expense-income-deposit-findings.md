@@ -96,17 +96,23 @@ projection row per orphan.)*
    receipt it cannot project.
 3. Decide separately what to do with the receipts already orphaned on staging/local (see §3).
 
-### Tripwire
+### Tripwire *(rewritten fix round 1, review I-2/M-4 — supersedes the two-probe description)*
 
-`income-deposits.spec.ts` → `MTP-DEP-03`, block "FINDING W5C-D1". Asserts, as GREEN:
-`{method: 500, repository: 500}`, the `Synchronous projection run failed for fiscal_event_id=`
-message, `CASH-01` unchanged, **history grows by 2**, and the exact `30.000` history vs `10.000`
-credit divergence. When the fix lands, the statuses become 422 and the history stops growing — the
-tripwire goes red and must be rewritten to the fixed behaviour.
+`income-deposits.spec.ts` → `MTP-DEP-03`, block "FINDING W5C-D1", **env-gated behind
+`MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1`** (skipped-with-annotation otherwise, so it can never mint
+orphans unattended on a chain that is E-7 evidence). Asserts, as GREEN: ONE probe (unknown
+`payment_method_code`) → `500` + the `Synchronous projection run failed for fiscal_event_id=`
+message; the sealed event id is extracted from that message and the orphan history row is matched
+**by `fiscal_event_id` and its distinct `11.111` amount** (not by position); `CASH-01` unchanged;
+**history grows by 1**; `21.111` of receipts on record vs `10.000` of real credit. When the fix
+lands the status becomes 422 and the history stops growing — the tripwire goes red and must be
+rewritten to the fixed behaviour. *(The former unknown-`repository_id` twin probe was dropped —
+same ordering hole, second permanent orphan for no extra evidence; its live observation is
+preserved in the table above.)*
 
-> **Note for whoever fixes this:** the tripwire deliberately CREATES two orphan receipts per run
-> against a throwaway `W5C-DEP03-*` customer. That is the cost of pinning the defect. Fix D1 and the
-> cost disappears.
+> **Note for whoever fixes this:** the tripwire deliberately CREATES one orphan receipt per
+> opted-in run against a throwaway `W5C-DEP03-*` customer. That is the cost of pinning the defect.
+> Fix D1 and the cost disappears.
 
 ---
 

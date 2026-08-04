@@ -666,8 +666,31 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
         page.getByText(vendorName, { exact: false }).first(),
         'the cashier really is looking at THIS expense detail page (anchor for the absence checks below)',
       ).toBeVisible({ timeout: 15_000 })
-      await expect(page.getByRole('button', { name: /^(post|comptabiliser|valider)$/i })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: /^(pay|payer|régler)$/i })).toHaveCount(0)
+      // Real accessible names (fix round 2, N-1): the Post button's label is
+      // t('expenses:postExpense') = "Post Expense" / "Comptabiliser la Dépense" —
+      // the old anchored /^post$/i matched NOBODY's button, cashier or owner.
+      const postButton = /post expense|comptabiliser la dépense/i
+      await expect(
+        page.getByRole('button', { name: postButton }),
+        'the cashier (no expenses.post) is offered no Post button'
+      ).toHaveCount(0)
+      // The Pay button renders only for POSTED expenses (ExpenseDetailPage
+      // isPosted gate), so its absence on this draft is structural, not a
+      // permission proof — the API-layer 403 above carries the pay assertion
+      // (fix round 2, N-1). No locator check is made for it here.
+
+      // Differential proof the locator is real: the OWNER sees Post on the very
+      // same page (fix round 2, N-1) — so the cashier's zero-count above cannot
+      // be a wrong-label artifact.
+      await loginAsRole(page, 'owner')
+      await page.goto(`/expenses/${expenseId}/view`)
+      await expect(page.getByText(vendorName, { exact: false }).first()).toBeVisible({
+        timeout: 15_000,
+      })
+      await expect(
+        page.getByRole('button', { name: postButton }).first(),
+        'the owner (expenses.post) IS offered Post on the same draft — the locator finds real buttons'
+      ).toBeVisible({ timeout: 10_000 })
       caseSucceeded = true
     } finally {
       // The cashier lacks expenses.delete — retire as owner.
