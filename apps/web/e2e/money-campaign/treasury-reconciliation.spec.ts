@@ -6,6 +6,15 @@
  * real backend, no mocks. Money is compared as EXACT decimal strings (integer
  * millime arithmetic from `treasury-support.ts`) — never a float.
  *
+ * CONCURRENCY — THIS FILE ASSUMES `--workers=1` (N-5). `MTP-TRE-41b` proves the
+ * Tier-2 rule "UNIQUE remaining amount inside the window", which is a property of
+ * the whole repository, not of the line: a second movement of `777.321` on the
+ * same repository inside the window would legitimately suppress the suggestion
+ * and the case would fail for a reason that is not a defect. Each case takes its
+ * own repository AND retires it afterwards, which is what keeps that uniqueness
+ * true across re-runs — but only under the campaign's mandated
+ * `--project=chromium --workers=1`. Do not parallelise this file.
+ *
  * FIXTURE: reuses `statement-support.ts` per ruling C-2 (`discoverOrProvisionRepository`,
  * `createParserProfile`, `uploadStatementPreview`, `confirmStatement`). It deliberately
  * does NOT call `buildReconciliationFixture()`: that builder authors its Tier-4
@@ -27,6 +36,7 @@ import {
   confirmStatement,
   createParserProfile,
   deactivateRepository,
+  isCleanupSuccess,
   discoverOrProvisionRepository,
   getChequeMethod,
   issueTier3OutboundCheque,
@@ -258,8 +268,10 @@ test.describe('MTP-TRE — reconciliation workspace (W-5b §E.4)', () => {
     // Only assert the retirement when the case itself passed, so a cleanup
     // status can never be confused with the case's verdict (M-1).
     if (testInfo.status === testInfo.expectedStatus) {
+      // 2xx ONLY — never `< 300`: the CLEANUP_THREW sentinel and any error
+      // status must both fail this gate (fix round 2, N-1).
       expect(
-        statuses.every((status) => status < 300),
+        statuses.every(isCleanupSuccess),
         `fixture retirement statuses: ${JSON.stringify(statuses)}`,
       ).toBe(true)
     }

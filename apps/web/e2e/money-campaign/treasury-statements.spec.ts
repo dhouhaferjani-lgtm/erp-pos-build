@@ -27,6 +27,7 @@ import {
   confirmStatement,
   createParserProfile,
   deactivateRepository,
+  isCleanupSuccess,
   discoverOrProvisionRepository,
   retireParserProfile,
   uploadStatementPreview,
@@ -126,8 +127,10 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
       statuses.push(await deactivateRepository(request, owner, repositoryId))
     }
     if (testInfo.status === testInfo.expectedStatus) {
+      // 2xx ONLY — never `< 300`: the CLEANUP_THREW sentinel and any error
+      // status must both fail this gate (fix round 2, N-1).
       expect(
-        statuses.every((status) => status < 300),
+        statuses.every(isCleanupSuccess),
         `fixture retirement statuses: ${JSON.stringify(statuses)}`,
       ).toBe(true)
     }
