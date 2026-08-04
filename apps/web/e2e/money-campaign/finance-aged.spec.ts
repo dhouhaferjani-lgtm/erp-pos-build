@@ -262,26 +262,43 @@ test.describe('GL — aged receivables and aged payables', () => {
     // never reaches this report at all.)
     const ar = await agedReceivables(request, owner)
 
-    // Candidates: aged-AR lines whose partner has EXACTLY ONE outstanding
-    // posted invoice, so the line's bucket is unambiguously that invoice's.
-    const singles: Array<{ name: string; daysOverdue: number; amount: string; bucket: string }> = []
+    // Candidates: aged-AR lines whose partner holds EXACTLY ONE outstanding
+    // posted invoice AND whose invoice is a `HIST-INV-*` historical — so the
+    // line's bucket is unambiguously that invoice's, and the fixture selected
+    // is the one the narrative and the ticket actually name.
+    //
+    // FIX ROUND 1: selection used to key on the `W4-W4AP-Partner-` PARTNER
+    // prefix while the comment and the ticket both cited the `HIST-INV-*`
+    // DOCUMENTS. Both were true of the same rows, but the code and the story
+    // have to name the same thing, so the document number is now the selector.
+    const singles: Array<{
+      name: string
+      documentNumber: string
+      daysOverdue: number
+      amount: string
+      bucket: string
+    }> = []
     for (const line of ar.lines) {
-      if (!(line.customer_name ?? '').startsWith('W4-W4AP-Partner-')) continue
       const res = await get(request, owner, `/invoices?partner_id=${line.customer_id}`)
       const invoices = (res.data as unknown as Array<{
         status: string
+        document_number: string
         due_date: string | null
         document_date: string
         total: string
       }>).filter((i) => i.status === 'posted')
       if (invoices.length !== 1) continue
-      const reference = invoices[0]!.due_date ?? invoices[0]!.document_date
+      const invoice = invoices[0]!
+      if (!invoice.document_number.startsWith('HIST-INV-')) continue
+      const reference = invoice.due_date ?? invoice.document_date
       const daysOverdue = Math.round(
         (Date.parse(`${TODAY}T00:00:00Z`) - Date.parse(`${reference}T00:00:00Z`)) / 86_400_000,
       )
+      if (daysOverdue <= 30) continue
       const occupied = occupiedBuckets(line)
       singles.push({
         name: line.customer_name!,
+        documentNumber: invoice.document_number,
         daysOverdue,
         amount: norm4(line.total),
         bucket: occupied[0] ?? 'none',
@@ -291,7 +308,8 @@ test.describe('GL — aged receivables and aged payables', () => {
 
     expect(
       singles.length,
-      'the W-4 AR/AP historicals are the read-only boundary fixtures this case needs',
+      'the `HIST-INV-*` historicals W-4 left behind are the read-only boundary fixtures this case '
+        + 'needs — each on a partner holding exactly one posted invoice, more than 30 days overdue',
     ).toBeGreaterThan(0)
 
     // --- VERDICT: FAIL (P0). TRIPWIRE, GREEN: pins TODAY's behaviour.
@@ -314,15 +332,18 @@ test.describe('GL — aged receivables and aged payables', () => {
       ).toBeGreaterThan(30)
       expect(
         single.bucket,
-        `TRIPWIRE D4: ${single.name} is ${single.daysOverdue} days overdue (${single.amount}) `
-          + 'and is STILL reported as Current',
+        `TRIPWIRE D4: ${single.documentNumber} (${single.name}) is ${single.daysOverdue} days `
+          + `overdue for ${single.amount} and is STILL reported as Current`,
       ).toBe('current')
     }
 
     test.info().annotations.push({
       type: 'recorded-buckets',
       description: singles
-        .map((s) => `${s.name}: ${s.daysOverdue}d overdue, ${s.amount} -> bucket "${s.bucket}"`)
+        .map(
+          (s) =>
+            `${s.documentNumber} (${s.name}): ${s.daysOverdue}d overdue, ${s.amount} -> bucket "${s.bucket}"`,
+        )
         .join('; '),
     })
 

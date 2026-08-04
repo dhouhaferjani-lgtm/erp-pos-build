@@ -37,6 +37,26 @@ function digitsOf(rendered: string): string {
   return rendered.replace(/\D/g, '')
 }
 
+/**
+ * The digit strings of the two 2-decimal representations bracketing a scale-4
+ * money string — i.e. `floor` and `ceil` at 2dp. Exact BigInt arithmetic, no
+ * float anywhere (CLAUDE.md rule 19).
+ *
+ * A renderer that rounds is guaranteed to land on one of the two, whatever its
+ * tie-break policy, and a renderer showing a DIFFERENT number lands on neither.
+ * `'228728.3860'` -> `['22872838', '22872839']`.
+ */
+function truncate2dpNeighbours(scale4: string): [string, string] {
+  const negative = scale4.trimStart().startsWith('-')
+  const [intPart, fracPart = ''] = scale4.replace('-', '').split('.')
+  const hundredths = BigInt(intPart) * 100n + BigInt((fracPart + '0000').slice(0, 2))
+  const remainder = BigInt((fracPart + '0000').slice(2, 4))
+  const lower = hundredths
+  const upper = remainder === 0n ? hundredths : hundredths + 1n
+  const render = (v: bigint): string => `${negative ? '-' : ''}${v.toString()}`.replace(/\D/g, '')
+  return [render(lower), render(upper)]
+}
+
 test.describe('GL — finance permission denials and money tiles', () => {
   test.setTimeout(120_000)
 
@@ -244,12 +264,20 @@ test.describe('GL — finance permission denials and money tiles', () => {
     ).toMatch(/,\d{2}$/)
 
     // The underlying number is still the right one — this is a rendering
-    // defect, not a data defect. Compare only the integer part, which the
-    // 3dp -> 2dp squeeze cannot change.
-    const assetsInteger = digitsOf(totalAssets.split(',')[0]!)
-    expect(assetsInteger, 'the widget shows the finance-summary total_assets').toBe(
-      digitsOf(summary.total_assets.split('.')[0]!),
-    )
+    // defect, not a data defect.
+    //
+    // FIX ROUND 1: the earlier version compared only the INTEGER part, which
+    // silently breaks on a carry (`…728.996` renders `228 729,00`, so the
+    // integer parts differ by one and the assertion fails for the wrong
+    // reason). Compare the WHOLE rendered figure against the two 2dp
+    // neighbours of the API value instead — exact under BigInt, immune to the
+    // carry, and immune to whichever way `Number.toFixed()` breaks a tie
+    // (`lib/format.ts:43` rounds through `toFixed`, whose half-way behaviour
+    // is binary-float dependent).
+    expect(
+      truncate2dpNeighbours(summary.total_assets),
+      'the widget shows the finance-summary total_assets, rendered at EUR`s 2 decimals',
+    ).toContain(digitsOf(totalAssets))
 
     for (const label of [
       'Total Liabilities',

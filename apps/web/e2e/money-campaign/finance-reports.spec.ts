@@ -322,6 +322,12 @@ test.describe('GL — trial balance, balance sheet, P&L and ledger', () => {
       owner,
       `account_id=${drAccount.id}&date_from=2026-01-01&date_to=2026-12-31&per_page=1`,
     )
+    //
+    // FIX ROUND 1: this block used to be silently skipped when the account had
+    // a single page, so R3 could vacuate without any signal. The account is now
+    // ASSERTED to be multi-page at per_page=1 (`MTP-GL-01` and `MTP-GL-09` each
+    // post a leg to it, so >= 2 rows always exist by the time this runs), and
+    // the else-branch annotates the vacuity instead of hiding it.
     if (small.meta.last_page > 1) {
       expect(
         norm4(small.data.total_debits),
@@ -336,6 +342,17 @@ test.describe('GL — trial balance, balance sheet, P&L and ledger', () => {
         norm4(second.data.opening_balance),
         'the running balance DOES carry across pages',
       ).toBe(norm4(small.data.closing_balance))
+    } else {
+      test.info().annotations.push({
+        type: 'VACUOUS',
+        description:
+          `R3 (page-scoped ledger totals) was NOT exercised: ${W6_ACCOUNTS.debit.code} has only `
+          + `${small.meta.total} ledger row(s) in the window, so per_page=1 still yields one page.`,
+      })
+      expect(
+        small.meta.total,
+        'the only legitimate reason to skip the R3 block is a single-row account',
+      ).toBeLessThanOrEqual(1)
     }
   })
 
