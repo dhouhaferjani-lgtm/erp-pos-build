@@ -134,9 +134,13 @@ RUN mkdir -p \
     && chown -R www:www storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
-# Create log directory for nginx
-RUN mkdir -p /var/log/nginx && \
-    chown -R www:www /var/log/nginx
+# Create log + client-body/proxy temp directories for nginx.
+# nginx workers run as `www` (see docker/nginx/nginx.conf) but Alpine's nginx
+# package ships /var/lib/nginx owned by nginx:nginx (tmp is mode 700), so any
+# request body larger than client_body_buffer_size (128k) failed to spool to
+# disk and nginx returned a bare 500 — breaking file imports & image uploads.
+RUN mkdir -p /var/log/nginx /var/lib/nginx/tmp && \
+    chown -R www:www /var/log/nginx /var/lib/nginx
 
 # -----------------------------------------------------------------------------
 # Target: api (default) — nginx + php-fpm via Supervisor
