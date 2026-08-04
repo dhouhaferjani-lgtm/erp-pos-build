@@ -68,17 +68,11 @@ final class ExpireStockReservationsCommandTest extends TestCase
         $this->assertNull($fixtureA['active']->refresh()->released_at);
         $this->assertNull($fixtureB['active']->refresh()->released_at);
 
-        // 5.0000 reserved minus the 3.0000 expired reservation.
-        $this->assertEqualsWithDelta(
-            2.0,
-            (float) $fixtureA['stockLevel']->refresh()->reserved,
-            0.0001,
-        );
-        $this->assertEqualsWithDelta(
-            2.0,
-            (float) $fixtureB['stockLevel']->refresh()->reserved,
-            0.0001,
-        );
+        // 5.0000 reserved minus the 3.0000 expired reservation. Compared with
+        // bccomp on the raw string (rule 19): never route a quantity through a
+        // float to assert on it.
+        $this->assertReservedQuantity('2.0000', $fixtureA['stockLevel']);
+        $this->assertReservedQuantity('2.0000', $fixtureB['stockLevel']);
     }
 
     /**
@@ -95,17 +89,28 @@ final class ExpireStockReservationsCommandTest extends TestCase
         $fixture = $this->createReservationFixture($tenant, 'I');
 
         Artisan::call('inventory:expire-reservations');
-        $reservedAfterFirst = (float) $fixture['stockLevel']->refresh()->reserved;
+        $reservedAfterFirst = (string) $fixture['stockLevel']->refresh()->reserved;
 
         $exitCode = Artisan::call('inventory:expire-reservations');
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('No reservations to expire.', $output);
-        $this->assertEqualsWithDelta(
-            $reservedAfterFirst,
-            (float) $fixture['stockLevel']->refresh()->reserved,
-            0.0001,
+        $this->assertReservedQuantity($reservedAfterFirst, $fixture['stockLevel']);
+    }
+
+    /**
+     * Assert a `stock_levels.reserved` value without ever casting it to float
+     * (rule 19 — quantities are decimal(N,4) strings end to end).
+     */
+    private function assertReservedQuantity(string $expected, StockLevel $stockLevel): void
+    {
+        $actual = (string) $stockLevel->refresh()->reserved;
+
+        $this->assertSame(
+            0,
+            bccomp($expected, $actual, 4),
+            "Expected stock_levels.reserved to be {$expected}, got {$actual}.",
         );
     }
 

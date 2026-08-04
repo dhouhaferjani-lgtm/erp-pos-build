@@ -48,7 +48,7 @@ final class MarketplaceScheduledCommandsTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_delta_sync_dispatches_one_job_per_active_seller_only(): void
+    public function test_delta_sync_dispatches_one_job_per_active_seller_per_tenant(): void
     {
         Queue::fake();
 
@@ -58,16 +58,16 @@ final class MarketplaceScheduledCommandsTest extends TestCase
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('Dispatched 2 marketplace delta-sync job(s).', $output);
+        $this->assertStringContainsString('Dispatched 4 marketplace delta-sync job(s).', $output);
 
-        Queue::assertPushed(SyncSellerListingsJob::class, 2);
+        Queue::assertPushed(SyncSellerListingsJob::class, 4);
         $this->assertSame(
-            [$fixture['activeA']->id, $fixture['activeB']->id],
+            $fixture['expectedDispatchedIds'],
             $this->dispatchedSellerIds(SyncSellerListingsJob::class),
         );
     }
 
-    public function test_reconcile_dispatches_one_job_per_active_seller_only(): void
+    public function test_reconcile_dispatches_one_job_per_active_seller_per_tenant(): void
     {
         Queue::fake();
 
@@ -77,11 +77,11 @@ final class MarketplaceScheduledCommandsTest extends TestCase
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('Dispatched 2 marketplace reconciliation job(s).', $output);
+        $this->assertStringContainsString('Dispatched 4 marketplace reconciliation job(s).', $output);
 
-        Queue::assertPushed(ReconcileListingsJob::class, 2);
+        Queue::assertPushed(ReconcileListingsJob::class, 4);
         $this->assertSame(
-            [$fixture['activeA']->id, $fixture['activeB']->id],
+            $fixture['expectedDispatchedIds'],
             $this->dispatchedSellerIds(ReconcileListingsJob::class),
         );
     }
@@ -113,12 +113,23 @@ final class MarketplaceScheduledCommandsTest extends TestCase
     }
 
     /**
-     * db-per-tenant probe (plan amendment A5): without this, a command that
-     * skipped `forEachTenant()` would still pass every other assertion in this
-     * file — and the per-seller jobs would be dispatched from central context,
-     * so QueueTenancyBootstrapper would stamp no tenant onto the payload.
-     * Modeled on
+     * db-per-tenant probe (plan amendment A5), modeled on
      * tests/Feature/Accounting/SubledgerReconciliationCommandTest.php:38-64.
+     *
+     * SCOPE — read before trusting this test: it exercises a PROBE SUBCLASS,
+     * not MarketplaceDeltaSyncCommand / MarketplaceReconcileCommand. It pins
+     * the CONTRACT the two commands rely on — that `forEachTenant()` opens each
+     * tenant, exposes it to the closure, and ends the context afterwards, which
+     * is what makes QueueTenancyBootstrapper stamp the tenant onto every
+     * per-seller payload. It CANNOT detect a command that stopped calling
+     * `forEachTenant()`. The behavioural guard for that is the 2-tenant
+     * dispatch-count fixture in {@see self::createSellers()}.
+     *
+     * The real commands cannot be driven under `db_per_tenant=true` in this
+     * suite: TenancyServiceProvider would then run BootstrapTenancy and swap
+     * the connection to a per-tenant SQLite database that does not exist, so
+     * the seller query inside the closure would throw and be swallowed by
+     * forEachTenant()'s continue-on-throw contract.
      */
     public function test_for_each_tenant_enters_and_ends_tenant_context_in_db_per_tenant_mode(): void
     {
@@ -194,49 +205,77 @@ final class MarketplaceScheduledCommandsTest extends TestCase
     }
 
     /**
-     * A SINGLE tenant owning three companies (marketplace_sellers is UNIQUE on
-     * (tenant_id, company_id), so one seller per company). One tenant keeps the
-     * dispatch counts exact: the seller query is intentionally not tenant-
-     * filtered (nullable tenant_id — see the command docblocks), so under the
-     * suite's legacy row-level mode a second tenant would re-fan-out the same
-     * sellers on its own pass.
+     * TWO tenants and TWO active sellers — this fixture is the behavioural
+     * guard that the commands still iterate tenants.
      *
-     * @return array{activeA: MarketplaceSeller, activeB: MarketplaceSeller, suspended: MarketplaceSeller}
+     * The dispatch arithmetic, under the suite's legacy row-level mode
+     * (`tenancy_resolver.db_per_tenant=false`, forced by phpunit.xml): every
+     * tenant pass shares ONE database and the seller query is deliberately not
+     * tenant-filtered, so each of the 2 tenant passes sees BOTH active sellers
+     * → 2 tenants x 2 active sellers = 4 dispatches. Delete `forEachTenant()`
+     * from either command and the body runs once → 2 dispatches → RED. (Under
+     * database-per-tenant, which is what ships, each pass sees only its own
+     * tenant's database, so the same code dispatches 1 job per active seller.)
+     *
+     * Fixture shape:
+     *   - tenant A owns a SUSPENDED erp_tenant seller (proves `active()`
+     *     filters, and keeps tenant A a real iteration slot);
+     *   - tenant B owns an ACTIVE erp_tenant seller (the "second tenant owns
+     *     its own seller" leg);
+     *   - one ACTIVE EXTERNAL seller with `tenant_id => null`. This is the row
+     *     that justifies NOT adding `->where('tenant_id', $tenant->id)` to the
+     *     seller query: `marketplace_sellers.tenant_id` is nullable and such a
+     *     predicate would silently drop this seller in every mode.
+     *
+     * `marketplace_sellers_tenant_company_unique` is a PARTIAL unique index on
+     * (tenant_id, company_id) `WHERE seller_type = 'erp_tenant'` — so each
+     * erp_tenant seller gets its own company, and the external seller (which
+     * carries no tenant/company at all) is exempt.
+     *
+     * @return array{activeExternal: MarketplaceSeller, activeTenantB: MarketplaceSeller, suspended: MarketplaceSeller, expectedDispatchedIds: list<string>}
      */
     private function createSellers(): array
     {
-        $tenant = $this->createTenant('marketplace-sellers');
+        $tenantA = $this->createTenant('marketplace-sellers-a');
+        $tenantB = $this->createTenant('marketplace-sellers-b');
 
-        $companyOne = $this->createCompany($tenant, '1');
-        $companyTwo = $this->createCompany($tenant, '2');
-        $companyThree = $this->createCompany($tenant, '3');
+        $companyA = $this->createCompany($tenantA, 'A');
+        $companyB = $this->createCompany($tenantB, 'B');
 
-        $activeA = MarketplaceSeller::factory()->create([
-            'tenant_id' => $tenant->id,
-            'company_id' => $companyOne->id,
-            'seller_status' => SellerStatus::Active,
-            'display_name' => 'Active Seller A',
-        ]);
-        $activeB = MarketplaceSeller::factory()->create([
-            'tenant_id' => $tenant->id,
-            'company_id' => $companyTwo->id,
-            'seller_status' => SellerStatus::Active,
-            'display_name' => 'Active Seller B',
-        ]);
         $suspended = MarketplaceSeller::factory()->create([
-            'tenant_id' => $tenant->id,
-            'company_id' => $companyThree->id,
+            'tenant_id' => $tenantA->id,
+            'company_id' => $companyA->id,
             'seller_status' => SellerStatus::Suspended,
-            'display_name' => 'Suspended Seller',
+            'display_name' => 'Suspended Seller (tenant A)',
         ]);
 
-        $ids = [$activeA->id, $activeB->id];
-        sort($ids);
+        $activeTenantB = MarketplaceSeller::factory()->create([
+            'tenant_id' => $tenantB->id,
+            'company_id' => $companyB->id,
+            'seller_status' => SellerStatus::Active,
+            'display_name' => 'Active Seller (tenant B)',
+        ]);
+
+        $activeExternal = MarketplaceSeller::factory()->external()->create([
+            'seller_status' => SellerStatus::Active,
+            'display_name' => 'Active External Seller (no tenant)',
+        ]);
+        $this->assertNull($activeExternal->tenant_id);
+
+        // Each active seller is dispatched once per tenant pass (2 tenants).
+        $expected = [
+            $activeTenantB->id,
+            $activeTenantB->id,
+            $activeExternal->id,
+            $activeExternal->id,
+        ];
+        sort($expected);
 
         return [
-            'activeA' => $ids[0] === $activeA->id ? $activeA : $activeB,
-            'activeB' => $ids[0] === $activeA->id ? $activeB : $activeA,
+            'activeExternal' => $activeExternal,
+            'activeTenantB' => $activeTenantB,
             'suspended' => $suspended,
+            'expectedDispatchedIds' => array_values($expected),
         ];
     }
 }

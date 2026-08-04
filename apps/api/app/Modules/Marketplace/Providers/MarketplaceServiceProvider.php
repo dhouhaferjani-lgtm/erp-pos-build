@@ -41,8 +41,16 @@ class MarketplaceServiceProvider extends ServiceProvider
         // fan-out was silently dead. Both now run as TenantScopedCommands that
         // iterate tenants explicitly, at the SAME config-driven cadence.
         //
-        // In-process (no runInBackground()) so the scheduler observes the exit
-        // code and the onFailure hooks below actually fire.
+        // In-process (no runInBackground()). onFailure() is NOT lost by
+        // backgrounding — a background event's forked process re-invokes
+        // `schedule:finish`, which calls Event::finish() ->
+        // callAfterCallbacks() gated on the child's exit code. Foreground is
+        // chosen because the exit code is observed inline in the scheduler
+        // process, so failure signalling does not depend on the forked child
+        // surviving long enough to re-invoke `schedule:finish` (a killed child
+        // leaves the after-callbacks uncalled and its overlap mutex to expire
+        // on its own timer). Trade-off, accepted: delta-sync runs on a
+        // 15-minute cadence, so a slow fan-out serialises that scheduler tick.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $intervalMinutes = (int) config('marketplace.sync.delta_interval_minutes', 15);
             $reconcileHour = (int) config('marketplace.sync.reconciliation_hour', 3);

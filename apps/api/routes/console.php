@@ -80,10 +80,24 @@ Schedule::command('expenses:generate-recurring')
 // failed_jobs rows). `inventory:expire-reservations` iterates tenants
 // explicitly via TenantScopedCommand::forEachTenant().
 //
-// Run in-process (no runInBackground()) so the scheduler observes the exit code
-// and the onFailure hook below actually fires. withoutOverlapping(30) caps the
-// mutex at 30 minutes — two ticks — instead of the bare 1440-minute default,
-// which would silently skip a full day of sweeps after one crashed run.
+// Run in-process (no runInBackground()).
+//
+// NOTE — do NOT justify this with "onFailure() would not fire": it fires in
+// BOTH modes. A background event's forked process re-invokes `schedule:finish`,
+// whose handle() calls Event::finish() -> callAfterCallbacks() with the child's
+// exit code, and onFailure() is exactly such an after-callback gated on
+// `exitCode !== 0` (Event.php:706-718, ScheduleFinishCommand.php:41-49).
+// The real reasons for foreground here: the exit code is observed inline in the
+// scheduler process, so failure signalling does not depend on the forked child
+// surviving long enough to re-invoke `schedule:finish` — a child that is killed
+// (OOM, deploy restart, reboot) leaves the after-callbacks uncalled AND its
+// overlap mutex to expire on its own timer.
+// Trade-off, accepted: a slow sweep serialises this 15-minute scheduler tick
+// until it finishes.
+//
+// withoutOverlapping(30) caps that mutex at 30 minutes — two ticks — instead of
+// the bare 1440-minute default, which would silently skip a full day of sweeps
+// after one crashed run.
 Schedule::command('inventory:expire-reservations')
     ->everyFifteenMinutes()
     ->withoutOverlapping(30)
@@ -99,8 +113,12 @@ Schedule::command('inventory:expire-reservations')
 // `batch-expiry:daily-check` iterates tenants explicitly via
 // TenantScopedCommand::forEachTenant().
 //
-// Run in-process (no runInBackground()) so the scheduler observes the exit code
-// and the onFailure hook below actually fires — this hook is also the sysadmin
+// Run in-process (no runInBackground()) for the same reason as the entry above:
+// onFailure() WOULD still fire when backgrounded (schedule:finish ->
+// Event::finish() -> callAfterCallbacks(), exit-code gated), but foreground
+// observes the exit code inline instead of relying on the forked child living
+// long enough to re-invoke `schedule:finish`. This runs once a night at 01:30,
+// so serialising that tick costs nothing. The hook below is also the sysadmin
 // alert that the deleted job's `failed()` method only ever left as a TODO.
 Schedule::command('batch-expiry:daily-check')
     ->dailyAt('01:30')
