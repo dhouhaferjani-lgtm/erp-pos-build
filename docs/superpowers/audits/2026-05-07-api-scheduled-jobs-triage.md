@@ -133,6 +133,16 @@ request-scoped context as #1. Add `string $tenantId` constructor arg.
 
 ### #3 — `DailyExpiryCheck` → cat-(b)
 
+> **2026-08-04 addendum — converted to `TenantScopedCommand`.** The cat-(b)
+> classification below was written for row-level tenancy and was invalidated by
+> the 2026-05-28 database-per-tenant flip: a "global" sweep run from central
+> context finds no `product_batches` table at all and failed nightly to
+> MaxAttemptsExceeded on staging. `DailyExpiryCheck` is DELETED; the sweep now
+> runs as `batch-expiry:daily-check`
+> (`App\Modules\BatchExpiry\Infrastructure\Commands\BatchExpiryDailyCheckCommand`),
+> which iterates tenants via `forEachTenant()` and adds an explicit `tenant_id`
+> predicate to every batch query. History below kept as written.
+
 **Why cat-(b).** Registered in `routes/console.php:33` —
 `Schedule::job(DailyExpiryCheck::class)->dailyAt('01:30')->withoutOverlapping();`.
 This is a **system-wide daily sweep** by design. `markExpiredBatches()`
@@ -210,6 +220,17 @@ mis-route. This is a contract-with-the-platform concern surfaced in the
 audit but belongs to a future PlatformIntegration cluster.
 
 ### #6 — `ExpireReservationsJob` → cat-(b)
+
+> **2026-08-04 addendum — converted to `TenantScopedCommand`.** The cat-(b)
+> classification below was written for row-level tenancy and was invalidated by
+> the 2026-05-28 database-per-tenant flip: the central database has no
+> `stock_reservations` table, so every 15-minute tick failed
+> (`SQLSTATE[42P01]`, 4,211 central `failed_jobs` rows between 2026-07-03 and
+> 2026-08-04). `ExpireReservationsJob` is DELETED; the sweep now runs as
+> `inventory:expire-reservations`
+> (`App\Modules\Inventory\Infrastructure\Commands\ExpireStockReservationsCommand`),
+> which calls `StockReservationService::expireReservations()` once per tenant
+> inside that tenant's own connection. History below kept as written.
 
 **Why cat-(b).** Registered in `routes/console.php:28` —
 `Schedule::job(ExpireReservationsJob::class)->everyFifteenMinutes()->withoutOverlapping();`.

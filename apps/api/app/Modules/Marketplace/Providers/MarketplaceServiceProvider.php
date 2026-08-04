@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Marketplace\Providers;
 
-use App\Modules\Marketplace\Domain\Models\MarketplaceSeller;
-use App\Modules\Marketplace\Infrastructure\Jobs\ReconcileListingsJob;
-use App\Modules\Marketplace\Infrastructure\Jobs\SyncSellerListingsJob;
+use App\Modules\Marketplace\Infrastructure\Commands\MarketplaceDeltaSyncCommand;
+use App\Modules\Marketplace\Infrastructure\Commands\MarketplaceReconcileCommand;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 
 class MarketplaceServiceProvider extends ServiceProvider
@@ -24,22 +24,50 @@ class MarketplaceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
 
-        // Schedule delta sync and reconciliation
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                MarketplaceDeltaSyncCommand::class,
+                MarketplaceReconcileCommand::class,
+            ]);
+        }
+
+        // Schedule delta sync and reconciliation.
+        //
+        // Until 2026-08-04 these were two `$schedule->call(closure)`
+        // registrations that ran `MarketplaceSeller::active()` inside the
+        // scheduler's CENTRAL container. Under database-per-tenant that query
+        // throws before any job is dispatched, and because it fails in the
+        // scheduler process (not a worker) it never reaches `failed_jobs` — the
+        // fan-out was silently dead. Both now run as TenantScopedCommands that
+        // iterate tenants explicitly, at the SAME config-driven cadence.
+        //
+        // In-process (no runInBackground()). onFailure() is NOT lost by
+        // backgrounding — a background event's forked process re-invokes
+        // `schedule:finish`, which calls Event::finish() ->
+        // callAfterCallbacks() gated on the child's exit code. Foreground is
+        // chosen because the exit code is observed inline in the scheduler
+        // process, so failure signalling does not depend on the forked child
+        // surviving long enough to re-invoke `schedule:finish` (a killed child
+        // leaves the after-callbacks uncalled and its overlap mutex to expire
+        // on its own timer). Trade-off, accepted: delta-sync runs on a
+        // 15-minute cadence, so a slow fan-out serialises that scheduler tick.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $intervalMinutes = (int) config('marketplace.sync.delta_interval_minutes', 15);
             $reconcileHour = (int) config('marketplace.sync.reconciliation_hour', 3);
 
-            $schedule->call(function (): void {
-                MarketplaceSeller::active()->each(function (MarketplaceSeller $seller): void {
-                    SyncSellerListingsJob::dispatch($seller->id);
+            $schedule->command('marketplace:delta-sync')
+                ->cron("*/{$intervalMinutes} * * * *")
+                ->withoutOverlapping(30)
+                ->onFailure(function (): void {
+                    Log::error('marketplace:delta-sync exited non-zero — one or more tenants failed to fan out their per-seller listing delta sync, so those sellers\' marketplace listings are stale until a later tick succeeds. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
                 });
-            })->cron("*/{$intervalMinutes} * * * *")->name('marketplace:delta-sync');
 
-            $schedule->call(function (): void {
-                MarketplaceSeller::active()->each(function (MarketplaceSeller $seller): void {
-                    ReconcileListingsJob::dispatch($seller->id);
+            $schedule->command('marketplace:reconcile')
+                ->dailyAt(sprintf('%02d:00', $reconcileHour))
+                ->withoutOverlapping()
+                ->onFailure(function (): void {
+                    Log::error('marketplace:reconcile exited non-zero — one or more tenants failed to fan out their nightly full listing reconciliation, so listings whose source products were deactivated or deleted may remain live on the marketplace. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
                 });
-            })->dailyAt(sprintf('%02d:00', $reconcileHour))->name('marketplace:reconcile');
         });
     }
 }

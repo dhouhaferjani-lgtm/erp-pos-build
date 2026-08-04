@@ -820,6 +820,14 @@ public function test_membership_must_be_active(): void  // inactive membership i
 
 - [ ] **Step 3: Implement** (mirror `DailyExpiryCheck.php:165-174`'s QUERY SHAPE — team = TENANT id, membership filter, `->permission()` — and ADDITIONALLY flush the registrar, which the exemplar does not do; the flush is spec fix L3-3, not part of the mirror — plan-review L6. Registrar methods verified in vendor: `PermissionRegistrar.php:106/114/140`):
 
+  > **2026-08-04 addendum — exemplar moved.** `BatchExpiry/Jobs/DailyExpiryCheck.php` is
+  > deleted (converted to a `TenantScopedCommand`). Read the query shape at
+  > `apps/api/app/Modules/BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php`
+  > → `notifyCompaniesOfCriticalBatches()`. The "the exemplar does not do the flush" caveat
+  > above is now stale: that block calls `forgetCachedPermissions()` right after
+  > `setPermissionsTeamId()` and constructor-injects `PermissionRegistrar`, so it matches
+  > the shipped `TreasuryAlertRecipients` shape exactly.
+
 ```php
 final class TreasuryAlertRecipients
 {

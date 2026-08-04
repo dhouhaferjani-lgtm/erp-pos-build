@@ -15,6 +15,7 @@ use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\TransferLineQueryService;
 use App\Modules\Inventory\Application\Services\VariantStockReaderService;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Infrastructure\Commands\ExpireStockReservationsCommand;
 use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
@@ -59,6 +60,12 @@ class InventoryServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
         $this->registerEventListeners();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ExpireStockReservationsCommand::class,
+            ]);
+        }
     }
 
     /**

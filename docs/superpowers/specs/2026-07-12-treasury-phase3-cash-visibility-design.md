@@ -154,6 +154,13 @@ New slim module `app/Modules/Notification/` (Presentation only — the domain is
 - `TreasuryAlertNotification` (Treasury module, `implements ShouldQueue` **NO** — sent synchronously inside the console commands to keep rule-20 surface minimal; sending N database rows is cheap). `via() = ['database']`. Payload: `{alert_type, company_id, company_name, severity, headline params (repository code / counts / window), deep_link}`. Deep links: drift → `/treasury/repositories/{id}`, portfolio drift → `/finance/overview`, maturity → `/treasury/instruments?maturing=1`.
 - `ReconcileTreasuryCommand::freezeAndAlert()` + `alertPortfolioDrift()` and `InstrumentMaturityAlertsCommand`: after the existing audit_events write, resolve recipients and `Notification::send($users, new TreasuryAlertNotification(...))`, each wrapped in its own try/catch exactly like the existing alert channels (a notification failure must never abort the run or suppress the freeze — extends the existing `treasury.reconcile.alert_failed` pattern).
 - **Recipient resolution — mirror `DailyExpiryCheck.php:165-174` EXACTLY (L3-1 BLOCKER, L3-2 BLOCKER, L3-3 HIGH):**
+  > **2026-08-04 addendum — exemplar moved.** `BatchExpiry/Jobs/DailyExpiryCheck.php` was
+  > deleted when the job was converted to a `TenantScopedCommand`. The live exemplar for
+  > this query shape is now
+  > `apps/api/app/Modules/BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php`
+  > → `notifyCompaniesOfCriticalBatches()`. Note the mirror is no longer partial: that
+  > block now ALSO calls `forgetCachedPermissions()` (point 3 below) and constructor-injects
+  > `PermissionRegistrar` instead of using `app()`. Text below kept as written.
   1. **Team = TENANT id, never company id:** `config/permission.php:99` sets `team_foreign_key = 'tenant_id'` — the Spatie team IS the tenant. `setPermissionsTeamId($tenant->id)` before querying, restore in a `finally`. (Setting the company id — Rev 1's wording — matches zero pivot rows: alerts silently delivered to NOBODY.)
   2. **Company-membership filter is mandatory:** permission scoping is tenant-wide, so `->permission('treasury.manage')` alone returns every holder across ALL companies of the tenant — a cross-company disclosure (payload carries company name, repo code, drift reason, balances). Query shape: `User::where('tenant_id', $tenant->id)->whereHas('companyMemberships', fn($q) => $q->where('company_id', $company->id)->where('status','active'))->permission('treasury.manage')->get()`. This filter is also the invariant that makes D-7's company-less inbox leak-free: every stored notification belongs to a company its recipient is a member of.
   3. **Flush the Spatie registrar per tenant iteration:** `app(PermissionRegistrar::class)->forgetCachedPermissions()` right after `setPermissionsTeamId`, before any permission query — `forEachTenant` swaps only the DB connection in one process, and the registrar memoizes permission UUIDs from the FIRST tenant (the known tenant-blind cache bug, memory `project_spatie_permission_cache_tenant_blind`); without the flush every tenant after the first resolves recipients with the wrong permission UUID.
@@ -292,7 +299,7 @@ Full review: `docs/superpowers/specs/reviews/2026-07-12-treasury-phase3-adversar
 | L2-6 | LOW | Report=Accounting axis vs widget=Treasury axis documented as intended (§7.2) |
 | L2-7 | LOW | Flows/`grand_total` dual-source note + `occurred_at` pinned as window column (§8.1) |
 | L2-8 | LOW | PageHeader multi-action composition + route-reachability note (§5.5) |
-| L3-1 | BLOCKER | Recipient resolution: team = TENANT id (never company), set/restore in finally, mirror `DailyExpiryCheck.php:165-174` (§6.3) |
+| L3-1 | BLOCKER | Recipient resolution: team = TENANT id (never company), set/restore in finally, mirror `DailyExpiryCheck.php:165-174` (§6.3) — **2026-08-04: exemplar moved to `BatchExpiry/Infrastructure/Commands/BatchExpiryDailyCheckCommand.php::notifyCompaniesOfCriticalBatches()`; the old job class is deleted** |
 | L3-2 | BLOCKER | Active-company-membership filter mandatory in recipient query; deny-direction test required (§6.3, §10); underwrites D-7 |
 | L3-3 | HIGH | `forgetCachedPermissions()` per tenant iteration; ≥2-tenant delivery test (§6.3, §10) |
 | L3-4 | MEDIUM | `->whereUuid('id')` route constraint; malformed-id 404 test (§6.2, §10) |

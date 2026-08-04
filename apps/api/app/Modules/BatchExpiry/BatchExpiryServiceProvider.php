@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\BatchExpiry;
 
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
+use App\Modules\BatchExpiry\Infrastructure\Commands\BatchExpiryDailyCheckCommand;
 use App\Modules\BatchExpiry\Infrastructure\Persistence\BatchRepository;
 use Illuminate\Support\ServiceProvider;
 
@@ -26,5 +27,11 @@ class BatchExpiryServiceProvider extends ServiceProvider
 
         // Load migrations
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BatchExpiryDailyCheckCommand::class,
+            ]);
+        }
     }
 }

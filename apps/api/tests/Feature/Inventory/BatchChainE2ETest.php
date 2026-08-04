@@ -7,7 +7,6 @@ namespace Tests\Feature\Inventory;
 use App\Enums\Vertical;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
-use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
 use App\Modules\BatchExpiry\Notifications\CriticalBatchExpiryNotification;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -40,6 +39,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\PermissionRegistrar;
@@ -251,7 +251,10 @@ final class BatchChainE2ETest extends TestCase
         Notification::fake();
         app(PermissionRegistrar::class)->setPermissionsTeamId('original-team-id');
 
-        app(DailyExpiryCheck::class)->handle();
+        // Was `app(DailyExpiryCheck::class)->handle()` until 2026-08-04; the
+        // job is deleted and its sweep now runs per tenant from the
+        // `batch-expiry:daily-check` TenantScopedCommand.
+        $this->assertSame(0, Artisan::call('batch-expiry:daily-check'));
 
         Notification::assertSentTo($this->user, CriticalBatchExpiryNotification::class);
         $this->assertFalse($batch->refresh()->is_expired);
@@ -259,7 +262,7 @@ final class BatchChainE2ETest extends TestCase
 
         $this->travelTo('2026-05-26 08:00:00');
 
-        app(DailyExpiryCheck::class)->handle();
+        $this->assertSame(0, Artisan::call('batch-expiry:daily-check'));
 
         $this->assertTrue($batch->refresh()->is_expired);
     }
