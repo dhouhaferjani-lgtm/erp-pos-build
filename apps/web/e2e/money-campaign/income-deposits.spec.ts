@@ -28,12 +28,21 @@
  * partner it creates itself (`W5C-DEP*`), so the money it moves is attributable and
  * excludable by a single predicate. `MTP-TRE-76`'s income is POSTED on purpose (that
  * is the case), so it is permanent, deliberate, documented money.
+ *
+ * ⚠️ `MTP-DEP-03`'s D1 TRIPWIRE BLOCK IS ENV-GATED (fix round 1, I-2). It
+ * deliberately mints a PERMANENTLY-UNDELETABLE sealed `DEPOSIT_RECEIPT` — one per
+ * run, down from two — because that IS the defect it pins. It is skipped unless
+ * `MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1`, so it can never run unattended against a
+ * tenant whose hash chain is E-7 evidence. The rest of `MTP-DEP-03` (amount
+ * ceilings, the customer-only gate, the trailing-zero allowance) always runs.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import { login, get, post, addMoney, subMoney, type Session } from './treasury-support'
 import {
+  ALLOW_CROSS_TENANT_SIDE_EFFECTS,
   CASH_METHOD_CODE,
   CASH_REPOSITORY_CODE,
+  CROSS_TENANT_SKIP_REASON,
   TODAY,
   accountsByPurpose,
   createIncome,
@@ -97,7 +106,16 @@ async function depositHistory(
 test.describe('MTP-TRE/DEP — income and partner deposits (W-5c §B.5 rows 72, 74)', () => {
   test.describe.configure({ timeout: 180_000 })
 
-  test.beforeAll(async ({ request }) => {
+  test.beforeAll(async ({ request }, workerInfo) => {
+    // Runtime precondition, not a convention (fix round 1, M-2): every case here
+    // asserts exact deltas on the SHARED seeded CASH-01, and the Playwright config
+    // default off-CI is parallel.
+    expect(
+      workerInfo.config.workers,
+      'this file asserts exact deltas on the SHARED seeded CASH-01 repository — '
+        + 'run it as `--project=chromium --workers=1`',
+    ).toBe(1)
+
     owner = await login(request, 'owner')
     cashRepoId = await repositoryIdByCode(request, owner, CASH_REPOSITORY_CODE)
     accounts = await accountsByPurpose(request, owner)
@@ -388,65 +406,91 @@ test.describe('MTP-TRE/DEP — income and partner deposits (W-5c §B.5 rows 72, 
     ).toEqual({ status: 422, code: 'PARTNER_NOT_CUSTOMER' })
 
     // --- FINDING W5C-D1 (TRIPWIRE, GREEN: pins TODAY's behaviour, not the fix) ---
+    //
     // `RecordDepositRequest` validates `payment_method_code` as a bare
     // `string|max:64` and `repository_id` as a bare `uuid` — NEITHER carries an
     // existence check, unlike every other treasury FormRequest (which use
     // `ScopedExists::tenantAndCompany`). `RecordCustomerDepositService::record()`
     // AUTHORS AND SEALS the `DEPOSIT_RECEIPT` fiscal event FIRST, then runs the
-    // projection pipeline — which is where the unknown reference finally blows up.
-    // Net effect, verified live 2026-08-04: a plain client input error returns a
-    // 500, AND the sealed receipt survives in the customer's deposit history while
-    // no money ever moved and no credit was granted. The history therefore
-    // OVER-STATES what the customer paid.
-    const beforeOrphans = await repositoryBalance(request, owner, cashRepoId)
-    const historyBeforeOrphans = await depositHistory(request, partnerId)
+    // projection pipeline — which is where the unresolvable reference finally
+    // blows up (`TreasuryDepositBridge` resolves the method and the repository,
+    // both filtered on `is_active = true`). Net effect, verified live 2026-08-04:
+    // a plain client input error returns a 500, AND the sealed receipt survives in
+    // the customer's deposit history while no money ever moved and no credit was
+    // granted. The history therefore OVER-STATES what the customer paid.
+    //
+    // ENV-GATED (fix round 1, I-2). Every run of this block mints a
+    // PERMANENTLY-UNDELETABLE sealed fiscal event — a deliberate, self-inflicted
+    // copy of the defect. It must never run unattended against a tenant whose hash
+    // chain is E-7 evidence (the staging rehearsal). Opt in explicitly.
+    //
+    // ONE probe, not two (fix round 1, I-2i): the unknown-`payment_method_code`
+    // path proves the ordering hole on its own and is the one that also asserts
+    // the message. The former unknown-`repository_id` twin exercised the same
+    // author-then-project sequence for a second sealed orphan per run — pure
+    // accumulation for no extra evidence. It is recorded in the ticket instead.
+    if (!ALLOW_CROSS_TENANT_SIDE_EFFECTS) {
+      test.info().annotations.push({ type: 'skipped-block', description: CROSS_TENANT_SKIP_REASON })
+    } else {
+      const beforeOrphan = await repositoryBalance(request, owner, cashRepoId)
+      const historyBeforeOrphan = await depositHistory(request, partnerId)
 
-    const unknownMethod = await recordDeposit(request, partnerId, {
-      amount: '10.000',
-      payment_method_code: uniq('NOSUCHMETHOD').slice(0, 60),
-    })
-    const unknownRepository = await recordDeposit(request, partnerId, {
-      amount: '10.000',
-      repository_id: '00000000-0000-0000-0000-000000000000',
-    })
-    expect(
-      { method: unknownMethod.status, repository: unknownRepository.status },
-      'TRIPWIRE D1: an unknown method code / repository id is a 500, not a 422 validation refusal',
-    ).toEqual({ method: 500, repository: 500 })
-    expect(
-      String((unknownMethod.data as { message?: string }).message ?? ''),
-      'TRIPWIRE D1: the fiscal event was already authored — the failure is downstream, in the projection run',
-    ).toContain('Synchronous projection run failed for fiscal_event_id=')
+      // A DISTINCT amount from the accepted `10.000` above (fix round 1, M-4), so
+      // the orphan row is identifiable by value and not merely by position — the
+      // previous `slice(0, 2)` sum only worked because every receipt happened to
+      // be `10.000`, which would have passed against the wrong rows.
+      const orphanAmount = '11.111'
+      const unknownMethod = await recordDeposit(request, partnerId, {
+        amount: orphanAmount,
+        payment_method_code: uniq('NOSUCHMETHOD').slice(0, 60),
+      })
+      expect(
+        unknownMethod.status,
+        'TRIPWIRE D1: an unknown method code is a 500, not a 422 validation refusal',
+      ).toBe(500)
+      const failure = String((unknownMethod.data as { message?: string }).message ?? '')
+      expect(
+        failure,
+        'TRIPWIRE D1: the fiscal event was already authored — the failure is downstream, in the projection run',
+      ).toContain('Synchronous projection run failed for fiscal_event_id=')
 
-    expect(
-      await repositoryBalance(request, owner, cashRepoId),
-      'TRIPWIRE D1: no money moved for either orphan',
-    ).toBe(beforeOrphans)
+      // The sealed event id, straight out of the failure message — the strongest
+      // available proof that the row now in the history IS the orphaned receipt
+      // and not some neighbouring row (fix round 1, M-4).
+      const orphanEventId = /fiscal_event_id=([0-9a-f-]{36})/.exec(failure)?.[1]
+      expect(orphanEventId, `the failure names the sealed event: ${failure}`).toBeTruthy()
 
-    const historyAfterOrphans = await depositHistory(request, partnerId)
-    expect(
-      historyAfterOrphans.length - historyBeforeOrphans.length,
-      'TRIPWIRE D1: yet BOTH failed deposits are recorded in the customer deposit history',
-    ).toBe(2)
-    expect(
-      historyAfterOrphans
-        .slice(0, 2)
-        .map((row) => row.amount)
-        .reduce((sum, amount) => addMoney(sum, amount), '0.000'),
-      'TRIPWIRE D1: the history over-states receipts by exactly the two orphaned 10.000 deposits',
-    ).toBe('20.000')
+      expect(
+        await repositoryBalance(request, owner, cashRepoId),
+        'TRIPWIRE D1: no money moved',
+      ).toBe(beforeOrphan)
 
-    const partner = await get(request, owner, `/partners/${partnerId}`)
-    expect(partner.ok).toBeTruthy()
-    expect(
-      String(partner.data.credit_balance),
-      'TRIPWIRE D1: the credit balance reflects ONLY the single deposit that really landed '
-        + "(the accepted '10.0000'), so the deposit history (3 receipts, 30.000) and the customer's "
-        + 'actual credit (10.000) disagree by exactly the two orphans',
-    ).toBe('10.000')
-    expect(
-      historyAfterOrphans.map((row) => row.amount).reduce((sum, amount) => addMoney(sum, amount), '0.000'),
-      'TRIPWIRE D1: 30.000 of receipts on the record against 10.000 of real credit',
-    ).toBe('30.000')
+      const historyAfterOrphan = await depositHistory(request, partnerId)
+      expect(
+        historyAfterOrphan.length - historyBeforeOrphan.length,
+        'TRIPWIRE D1: yet the failed deposit IS recorded in the customer deposit history',
+      ).toBe(1)
+      const orphanRow = historyAfterOrphan.find((row) => row.fiscal_event_id === orphanEventId)
+      expect(
+        orphanRow,
+        `TRIPWIRE D1: the history carries the very event the 500 named (${orphanEventId})`,
+      ).toBeTruthy()
+      expect(
+        orphanRow!.amount,
+        'TRIPWIRE D1: at its full face value, as though the customer had really paid it',
+      ).toBe(orphanAmount)
+
+      const partner = await get(request, owner, `/partners/${partnerId}`)
+      expect(partner.ok).toBeTruthy()
+      expect(
+        String(partner.data.credit_balance),
+        "TRIPWIRE D1: the credit balance reflects ONLY the deposit that really landed (the accepted '10.0000')",
+      ).toBe('10.000')
+      expect(
+        historyAfterOrphan.map((row) => row.amount).reduce((sum, amount) => addMoney(sum, amount), '0.000'),
+        'TRIPWIRE D1: 21.111 of receipts on the record against 10.000 of real credit — '
+          + 'the customer-facing history over-states what was received by exactly the orphan',
+      ).toBe(addMoney('10.000', orphanAmount))
+    }
   })
 })
