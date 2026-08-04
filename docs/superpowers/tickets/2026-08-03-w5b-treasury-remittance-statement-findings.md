@@ -3,7 +3,7 @@
 **Raised:** 2026-08-04 · **Wave:** W-5b of the pre-launch full-E2E money campaign
 **Specs:** `apps/web/e2e/money-campaign/treasury-remittances.spec.ts`,
 `treasury-statements.spec.ts`, `treasury-reconciliation.spec.ts`, `treasury-repositories.spec.ts`
-**Verdict summary:** 32 authored cases — **31 PASS, 0 FAIL, 1 BLOCKED**. **No money defect was
+**Verdict summary:** 34 authored cases — **33 PASS, 0 FAIL, 1 BLOCKED**. **No money defect was
 found.** Every exact-decimal assertion held: remittance totals, statement parsing at scale 3,
 reconciliation's exact-`bccomp` matching, transfer/adjustment balances, GL balance.
 
@@ -54,8 +54,12 @@ but a cash register cannot physically hold negative cash, so a mistyped transfer
 an impossible till. `MTP-TRE-57`'s control leg shows the same for adjustments (`-12.500` from a
 zero-balance repository, HTTP 201).
 
-This is pinned GREEN by `MTP-TRE-53`, which asserts the exact resulting balance either way — if a
-guard is added, the case flips to the refusal branch and still passes, so the pin is safe.
+**`MTP-TRE-53` is now a GREEN TRIPWIRE** pinning this exact behaviour — `{status: 201, balance:
+'-400.000'}`. (Its first revision asserted "refused OR negative" in an if/else, which would have
+passed under every possible product behaviour forever; that is a recorded actual, not a tripwire —
+corrected in fix round 1, I-5.) **If the ruling below ships, this case flips RED on purpose**: that
+is the signal, not a flake. The case comment carries the verbatim replacement assertion
+(`{status: 422, balance: '100.000'}`, and delete the restore-transfer).
 
 **Owner ruling wanted before launch:** should `cash_register` / `safe` repositories refuse a
 transfer or adjustment that would take the balance below zero (bank accounts legitimately can go
@@ -134,22 +138,63 @@ it needs the multi-currency tenant of campaign fixture debt **C-9** (`demo-garag
 GL-linked, has no reconciliation checkpoint and holds no open statement — and **creates a new one**
 when none qualifies. Every case that confirms a statement permanently disqualifies its repository
 (an open statement, or a checkpoint once completed), so each subsequent call provisions another.
-After W-5b (32 cases, some files re-run), `demo-pharmacy-tn` holds **60 payment repositories, 32 of
-them `C2-STMT-*`**, all active.
 
 Consequences:
 
 - `payment_repositories` has **no DELETE route**, so they can only be deactivated, never removed.
 - While active they appear in every repository picker, the treasury dashboard and the cash-position
   widget — the same "pollutes a list a human reads" problem as the fixture terminals.
-- Discovery is O(repositories) with a paginated statement fetch per candidate, so each new run is
-  slower than the last: by the end of this wave a single `discoverOrProvisionRepository()` call took
-  visibly longer than the case it was setting up.
+- Discovery is O(repositories) with a paginated statement fetch per candidate, so each run is slower
+  than the last: by the end of the first W-5b pass a single `discoverOrProvisionRepository()` call
+  took visibly longer than the case it was setting up.
 
-**Recommendations:** (a) have the fixture deactivate a repository once it has consumed it, (b) reuse
-one dedicated fixture repository per run rather than per statement where the case allows it, and/or
-(c) add a `payment-repositories` DELETE (or an admin purge) for repositories with no movements.
+**Fixed on the test side in fix round 1 (I-2):** all four W-5b specs now retire every profile and
+every self-provisioned `C2-STMT-*`/`W5B-*` repository in an `afterEach`/`finally`, and a one-shot
+sweep retired the accumulated backlog. **The product-side recommendation stands:** add a
+`payment-repositories` DELETE (or an admin purge) for repositories with no movements — the retired
+rows are undeletable forever.
 
-W-5b deactivated every repository IT provisioned directly (`W5B-*`, 20 of them, verified 0 active),
-but deliberately did not touch `C2-STMT-*` repositories — they are `statement-support.ts`'s to
-manage, and deactivating them from a case would race any sibling agent using the same fixture.
+---
+
+## 8. Post-cleanup state of `demo-pharmacy-tn` (fix round 1, I-2 / M-10)
+
+Measured live after the sweep, not estimated:
+
+| Object | Before sweep | After sweep |
+|---|---|---|
+| Payment repositories (total) | 86 | 86 (no DELETE route exists) |
+| — **active** | 42 | **8** — exactly the seeded set: `BANK-01/02/03`, `CASH-01/02`, `SAFE-01`, `VIRT-01`, `W2A-NOGL-01` |
+| — `C2-STMT-*` active | 34 | **0** (52 total, all retired) |
+| — `W5B-*` active | 0 | **0** (26 total, all retired) |
+| Statement import profiles | 61 | **53**, all `is_active:false` — 8 deleted outright, 53 statement-bound and therefore undeletable by the API ("deactivate it instead") |
+| Draft remittance slips holding instruments | 40 slips / 161 lines | **0 lines held** — every instrument released back to `received` |
+
+`CASH-01` is back at exactly `53143.660`, its pre-wave baseline (the `MTP-TRE-50` transfer was
+reversed in-case). **What genuinely cannot be cleaned:** the 86 repository rows and 53 profile rows
+themselves (no delete path), the 40 now-empty draft slip rows (no DELETE route for a slip), and the
+retired fixture balances itemised in §9.
+
+---
+
+## 9. (I-3) Fabricated balances left in the trial balance — W-6 MUST read this
+
+**Do NOT unwind these.** Every fixture adjustment posted a REAL balanced journal entry
+(`RepositoryAdjustmentController.php:110-121`); reversing them would post more entries, not fewer,
+and would double the noise W-6 has to reconcile. They are disclosed instead.
+
+W-5b's fixture adjustments produced **87 `repository_adjustment` journal entries**, all posted, with
+these exact tolerance-account totals:
+
+| Account | Name | Debit | Credit | Net | Lines |
+|---|---|---|---|---|---|
+| `6580` | Écart de règlement (charges) | **2 051.268** | 0.000 | **+2 051.268** | 17 |
+| `7580` | Écart de règlement (produits) | 0.000 | **30 361.414** | **−30 361.414** | 70 |
+
+The contra side sits on the repository GL accounts (`512` etc.). **64 retired fixture repositories
+carry a non-zero balance totalling `29 017.396` TND** — deactivated, invisible in pickers, but still
+summed by any report that aggregates repository balances without an `is_active` filter.
+
+**W-6 action:** either exclude `C2-STMT-*` / `W5B-*` repositories and `repository_adjustment`
+entries whose description matches `W5b|W5B|C2-STMT` from trial-balance assertions, or subtract the
+totals above. A W-6 case that asserts an absolute `6580`/`7580` balance without doing so will fail
+for reasons that have nothing to do with the product.
