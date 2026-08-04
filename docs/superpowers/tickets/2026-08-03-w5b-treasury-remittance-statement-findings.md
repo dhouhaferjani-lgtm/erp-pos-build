@@ -235,7 +235,8 @@ predicate instead:
    `code LIKE 'C2-STMT-%' OR code LIKE 'W5B-%'`.
 2. **Adjustment JEs** — exclude `source_type = 'repository_adjustment'` whose `description` matches
    `W5b|W5B|C2-STMT`.
-3. **Expense JEs** — exclude entries whose description/vendor matches `C-2 fixture vendor` or whose
+3. **Expense JEs** — exclude entries whose description/vendor matches `C-2 fixture vendor` or `W5b`
+   (TRE-44's `create_expense` fixtures post under `W5b TRE-44 vendor *` at `42.750` each) or whose
    receipt matches `C2-RCPT-`.
 
 A W-6 case that asserts an absolute `6580`, `7580`, `613` or `401` balance, or that aggregates
