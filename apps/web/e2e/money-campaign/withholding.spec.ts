@@ -119,7 +119,7 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     cashMethodId = methods.find((m) => m.code === 'CASH')!.id
   })
 
-  test('MTP-WHT-01: a withheld payment surfaces on the certificates LIST with the fraction rate and exact money', async ({
+  test('MTP-WHT-01: withheld payment exact on the API list — TRIPWIRE(#4): the LIST PAGE renders empty today (double-unwrap)', async ({
     request,
     page,
   }) => {
@@ -172,15 +172,19 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // ---- UI read surface: /treasury/withholding-certificates ----
     await loginAsRole(page, 'owner')
     const listSettled = page.waitForResponse(
-      (r) => r.url().includes('/withholding/certificates') && r.request().method() === 'GET'
+      (r) => /\/withholding\/certificates(\?|$)/.test(r.url()) && r.request().method() === 'GET'
     )
     await page.goto('/treasury/withholding-certificates')
     await expect(
       page.getByRole('heading', { name: 'Withholding Certificates', level: 1 })
     ).toBeVisible({ timeout: 20_000 })
     // Wait for the list query to settle so the empty state below cannot be the
-    // loading skeleton's trivial absence-of-rows.
-    await listSettled
+    // loading skeleton's trivial absence-of-rows — and assert the request
+    // SUCCEEDED, so the tripwire pins the double-unwrap specifically: a failing
+    // list query (403/500) also renders the empty state and must NOT keep this
+    // tripwire green.
+    const listResponse = await listSettled
+    expect(listResponse.status(), 'the list query itself must succeed (200)').toBe(200)
 
     // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #4):
     // the page is PERMANENTLY EMPTY. `fetchWithholdingCertificates()`

@@ -103,8 +103,7 @@ other. `certificateNumber` on a tracking row is free text typed by a human in th
 
 ---
 
-## #3 — P1: withholding-certificate routes carry **no authorization middleware at all**
-## (and the sibling withholding **rules** group is ungated too)
+## #3 — P1: withholding-certificate routes carry **no authorization middleware at all** *(and the sibling withholding **rules** group is ungated too)*
 
 **Where:** `apps/api/app/Modules/Taxation/routes.php:48-59` (certificates group), **plus**
 `routes.php:38-45` (withholding **rules** group — see scope note below). Compare the
@@ -181,7 +180,8 @@ below. Rules group: add route-level `can:` middleware (matching the
 **Where:** `apps/web/src/features/withholding/api/withholdingApi.ts:29-49`
 (`fetchWithholdingCertificates`) + `apps/web/src/features/withholding/WithholdingCertificatesList.tsx:80`.
 
-**Tripwire:** `MTP-WHT-01` (the row-visibility assertion).
+**Tripwire:** `MTP-WHT-01` (settled 200 list response + empty state visible + zero rows —
+flips red when the unwrap fix makes the row render).
 
 ### What happens
 
@@ -280,7 +280,7 @@ key 'actions (en-US)' returned an object instead of string.
 such as `common:actions.edit` — whichever the sibling list screens use.
 
 **Scope widening (task review M5, 2026-08-04):** the identical misuse exists at **10 sites
-across 6 features** — `WithholdingCertificatesList.tsx:185`,
+across 5 feature directories** — `WithholdingCertificatesList.tsx:185`,
 `SalesWithholdingTrackingPage.tsx:145`, `WithholdingRulesPage.tsx:117`,
 `CouponListPage.tsx:165`, `PromotionListPage.tsx:147`, `VoucherListPage.tsx:206`, plus 4
 parapharmacy screens. Fix once, globally, not per-screen.
