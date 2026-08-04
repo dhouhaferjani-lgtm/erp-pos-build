@@ -59,7 +59,12 @@ GET /partners/{id}            -> credit_balance 10.000
 
 **The deposit history says the customer paid 30.000; the customer's actual credit is 10.000.** The two
 orphaned receipts moved no money (`CASH-01` unchanged), granted no credit, and can never succeed on
-retry — their references do not exist — so the queued retry rows churn forever.
+retry — their references do not exist. *(Correction, fix round 1 / review I-4: the retry rows do NOT
+churn forever — `ProjectionInvariantViolationException` extends plain `RuntimeException`, not
+`NonRetryableProjectionException`, so `ApplyFiscalEventProjectionJob` retries 5× with backoff
+(~21 min) and then `failed()` flips the row to `DeadLettered`, which is terminal. The permanent
+artifacts are: the sealed chain event, the `pos_deposit_receipts` row, and one dead-lettered
+projection row per orphan.)*
 
 ### Why this matters before launch
 
@@ -70,6 +75,15 @@ retry — their references do not exist — so the queued retry rows churn forev
   is permanent.
 - It is a **500**, so it is indistinguishable from an outage in monitoring, and the client gets no
   actionable message.
+- **Reachable by routine ops, not just malformed clients** (review escalation, 2026-08-04): both
+  `TreasuryDepositBridge` resolvers filter `is_active = true` while the FormRequest checks nothing —
+  so **deactivating a payment method or repository while a back-office user has the deposit dialog
+  open** produces a sealed orphan + 500. This materially raises the real-world likelihood.
+- **Fiscal-gate status (orchestrator, 2026-08-04): PRE-ENABLE BLOCKER.** The orphan IS hash-chained
+  (valid link, false payload). It does NOT corrupt chain structure or Z/EOD aggregates (verified:
+  `DEPOSIT_RECEIPT` writes only `pos_deposit_receipts`, which Z/X/EOD never aggregate), so no
+  re-seal is needed — but the sealed legal record permanently attests receipts that never occurred.
+  Fix before enable; then a documented decision on receipts already orphaned locally/on staging.
 
 ### Suggested fix (NOT applied — this wave changes no product code)
 
