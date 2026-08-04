@@ -184,20 +184,27 @@ export async function repositoryIdByCode(
 }
 
 /**
- * The ids on page 1 of `GET /payments` (newest-first). Used to assert the plan's
- * "**No** `Payment` entity created" caveat for the expense path: a freshly created
- * payment would appear at the head of this page, so an UNCHANGED list across an
- * expense post+pay is direct evidence that none was created. Depends on
- * `--workers=1` (declared in every spec header that calls it) — the index carries
- * no `meta.total`, so this is the strongest read the API exposes.
+ * EVERY payment id for the session's company, SORTED.
+ *
+ * `PaymentController::index` branches on the `page` parameter: **without** `page`
+ * it takes the `->get()` branch and returns the WHOLE company payment set (no
+ * pagination, no `meta`); **with** `?page=` it paginates and does carry
+ * `meta.total`. This helper deliberately omits `page`, so the comparison it feeds
+ * is a FULL-SET comparison — not a "page 1 didn't change" heuristic. That is what
+ * makes the plan's "**No** `Payment` entity created" caveat (§B.5 row 71)
+ * assertable exactly: any new payment row anywhere in the set changes the result.
+ *
+ * SORTED because the index orders by `payment_date` DESC with no tiebreaker, and
+ * that column is date-only — two payments on the same date may come back in either
+ * order between two reads, which would flake an ordered comparison.
  */
-export async function paymentIdsPage1(
+export async function allPaymentIds(
   request: APIRequestContext,
   session: Session,
 ): Promise<string[]> {
-  const res = await get(request, session, '/payments?per_page=100')
+  const res = await get(request, session, '/payments')
   expect(res.ok, `payments index -> ${res.status}`).toBeTruthy()
-  return (res.data as unknown as Array<{ id: string }>).map((p) => p.id)
+  return (res.data as unknown as Array<{ id: string }>).map((p) => p.id).sort()
 }
 
 export async function paymentMethodIdByCode(
@@ -349,15 +356,45 @@ export async function retireRecurrenceTemplate(
 const API_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../api')
 
 /**
+ * Env gate for the two cases in this wave that mutate state OUTSIDE the tenant
+ * they can clean up, or that mint permanently-undeletable fiscal artefacts:
+ *
+ *   - `MTP-TRE-75` drives `expenses:generate-recurring`, which iterates EVERY
+ *     tenant (see {@link generateRecurringExpenses});
+ *   - `MTP-DEP-03`'s D1 tripwire seals a `DEPOSIT_RECEIPT` fiscal event that has
+ *     no delete route, by design.
+ *
+ * Neither may run unattended against a tenant whose hash chain is E-7 evidence
+ * (the staging rehearsal). Set `MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1` to opt in,
+ * knowing what it costs.
+ */
+export const ALLOW_CROSS_TENANT_SIDE_EFFECTS =
+  process.env.MONEY_CAMPAIGN_ALLOW_CROSS_TENANT === '1'
+
+export const CROSS_TENANT_SKIP_REASON =
+  'Skipped: this case mutates state outside the tenant it can clean up, or mints a '
+  + 'permanently-undeletable sealed fiscal event. Set MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1 to run it. '
+  + 'NEVER set it against a tenant whose hash chain is E-7 evidence.'
+
+/**
  * `expenses:generate-recurring` is a SCHEDULED CONSOLE COMMAND — there is no API
  * route that materializes a due recurrence template (`Expense/routes.php` exposes
  * CRUD + pause/resume only). `MTP-TRE-75` asserts the generated instance's amount,
  * so the command has to be driven directly; shelling out from a spec is the same
  * mechanism `w2b-support.ts` established for `psql` reads.
  *
- * Read-model note: the command is tenant-wide, but at authoring time
- * `GET /expense-recurrences` returned an EMPTY list for this tenant, so the only
- * templates it can act on are the ones the case itself created and retires.
+ * ⚠️ CROSS-TENANT BLAST RADIUS (W-5c fix round 1, I-1). The command extends
+ * `TenantScopedCommand` and takes **no `--tenant` option**: `executeCommand()`
+ * calls `forEachTenant(...)` and materializes due templates for EVERY tenant on
+ * the box (izipos, coffee-shop, …), resolving a fallback admin per tenant when
+ * the template's creator is unavailable. A caller running this against
+ * `demo-pharmacy-tn` therefore also generates draft expenses in OTHER tenants —
+ * documents this suite is tenant-scoped and can never retire.
+ *
+ * Two consequences the caller MUST respect:
+ *   1. gate the call on {@link ALLOW_CROSS_TENANT_SIDE_EFFECTS};
+ *   2. never assert on the command's aggregate output (`'N error(s)'` counts every
+ *      tenant), only on THIS tenant's own read model through the API.
  */
 export function generateRecurringExpenses(): string {
   return execSync('php artisan expenses:generate-recurring', {

@@ -41,7 +41,7 @@ import {
   getExpense,
   ledgerLinesFor,
   movementsFor,
-  paymentIdsPage1,
+  allPaymentIds,
   paymentMethodIdByCode,
   postExpense,
   payExpense,
@@ -61,7 +61,18 @@ let accounts: Record<string, { id: string; code: string; name: string }>
 test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
   test.describe.configure({ timeout: 180_000 })
 
-  test.beforeAll(async ({ request }) => {
+  test.beforeAll(async ({ request }, workerInfo) => {
+    // The `--workers=1` requirement in this file's header is a RUNTIME
+    // precondition, not a convention (fix round 1, M-2): the Playwright config
+    // default off-CI is parallel, so a plain `pnpm exec playwright test <file>`
+    // would silently interleave the CASH-01 delta cases and produce a confident,
+    // wrong verdict. Fail loudly instead.
+    expect(
+      workerInfo.config.workers,
+      'this file asserts exact deltas on the SHARED seeded CASH-01 repository — '
+        + 'run it as `--project=chromium --workers=1`',
+    ).toBe(1)
+
     owner = await login(request, 'owner')
     cashRepoId = await repositoryIdByCode(request, owner, CASH_REPOSITORY_CODE)
     bankRepoId = await repositoryIdByCode(request, owner, BANK_REPOSITORY_CODE)
@@ -114,7 +125,7 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
 
     // --- MTP-TRE-61: post books Dr expense + Dr deductible VAT / Cr AP, no cash ---
     const cashBeforePost = await repositoryBalance(request, owner, cashRepoId)
-    const paymentsBefore = await paymentIdsPage1(request, owner)
+    const paymentsBefore = await allPaymentIds(request, owner)
     const posted = await postExpense(request, owner, expenseId)
     expect(posted.status, `post -> ${posted.status} ${JSON.stringify(posted.data)}`).toBe(200)
     expect(posted.data.status, 'posted').toBe('posted')
@@ -231,11 +242,12 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
     // The plan's "**No** `Payment` entity created" caveat (§B.5 row 71): the whole
     // post -> pay -> replay chain moved 119.000 of real money without producing a
     // single `payments` row, so any report that counts payments under-counts
-    // expense spend. Page 1 of the payments index is newest-first, so an unchanged
-    // id list is direct evidence (this file runs `--workers=1`).
+    // expense spend. `allPaymentIds` omits `page`, which puts
+    // PaymentController::index on its `->get()` branch: this is a comparison of
+    // the COMPLETE company payment set, sorted, not a page-1 heuristic.
     expect(
-      await paymentIdsPage1(request, owner),
-      'post + pay + replay created NO Payment entity',
+      await allPaymentIds(request, owner),
+      'post + pay + replay created NO Payment entity — the whole payment set is unchanged',
     ).toEqual(paymentsBefore)
   })
 
@@ -612,8 +624,9 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
     ).toBe(false)
 
     let caseSucceeded = false
+    const vendorName = uniq('TRE77')
     const created = await createExpense(request, cashier, {
-      vendor_name: uniq('TRE77'),
+      vendor_name: vendorName,
       total: '25.000',
       is_paid: false,
     })
@@ -635,8 +648,24 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
       expect((await getExpense(request, owner, expenseId)).status, 'still a draft').toBe('draft')
 
       // Both layers (plan §I.4): the FE must not offer the actions either.
+      //
+      // The two absence checks are ANCHORED on a positive first (fix round 1, M-1):
+      // `toHaveCount(0)` passes just as happily on a blank page, a 403 shell or a
+      // route that redirected, so without proof the detail page actually RENDERED
+      // this expense the gate assertion proves nothing.
+      // ROUTE (found by M-1's anchor): the expense DETAIL page — the one carrying
+      // the Post/Pay buttons — is `/expenses/:id/view`. `/expenses/:id` is the
+      // EDIT FORM (routes/index.tsx). Before the anchor existed, the two
+      // `toHaveCount(0)` checks were passing against the form page, which has no
+      // Post/Pay buttons for anyone — proving nothing about the permission gate.
       await loginAsRole(page, 'cashier')
-      await page.goto(`/expenses/${expenseId}`)
+      await page.goto(`/expenses/${expenseId}/view`)
+      await expect(
+        // `.first()`: the detail page renders the vendor twice (PageHeader
+        // subtitle + the vendor `<dd>` in the summary list).
+        page.getByText(vendorName, { exact: false }).first(),
+        'the cashier really is looking at THIS expense detail page (anchor for the absence checks below)',
+      ).toBeVisible({ timeout: 15_000 })
       await expect(page.getByRole('button', { name: /^(post|comptabiliser|valider)$/i })).toHaveCount(0)
       await expect(page.getByRole('button', { name: /^(pay|payer|régler)$/i })).toHaveCount(0)
       caseSucceeded = true
