@@ -184,25 +184,73 @@ retired fixture balances itemised in §9.
 
 ---
 
-## 9. (I-3) Fabricated balances left in the trial balance — W-6 MUST read this
+## 9. (I-3) Fabricated data left in the ledgers — W-6 MUST read this
 
-**Do NOT unwind these.** Every fixture adjustment posted a REAL balanced journal entry
+**Do NOT unwind.** Every fixture adjustment posted a REAL balanced journal entry
 (`RepositoryAdjustmentController.php:110-121`); reversing them would post more entries, not fewer,
 and would double the noise W-6 has to reconcile. They are disclosed instead.
 
-W-5b's fixture adjustments produced **87 `repository_adjustment` journal entries**, all posted, with
-these exact tolerance-account totals:
+**Measured at WAVE CLOSE (2026-08-04), after the final full re-run.** Earlier drafts of this section
+quoted mid-wave snapshots (87 JEs / 64 repos / 29 017.396 TND); those were stale the moment another
+run happened. **These totals grow with every re-run of the W-5b specs — treat the EXCLUSION RULE in
+§9.3 as the durable answer and re-measure if you need a number.**
+
+### 9.1 Adjustment journal entries — the tolerance accounts
+
+**127 posted `repository_adjustment` journal entries** whose description matches `W5b|W5B|C2-STMT`:
 
 | Account | Name | Debit | Credit | Net | Lines |
 |---|---|---|---|---|---|
-| `6580` | Écart de règlement (charges) | **2 051.268** | 0.000 | **+2 051.268** | 17 |
-| `7580` | Écart de règlement (produits) | 0.000 | **30 361.414** | **−30 361.414** | 70 |
+| `6580` | Écart de règlement (charges) | **3 058.152** | 0.000 | **+3 058.152** | 24 |
+| `7580` | Écart de règlement (produits) | 0.000 | **47 157.442** | **−47 157.442** | 103 |
 
-The contra side sits on the repository GL accounts (`512` etc.). **64 retired fixture repositories
-carry a non-zero balance totalling `29 017.396` TND** — deactivated, invisible in pickers, but still
-summed by any report that aggregates repository balances without an `is_active` filter.
+The contra side sits on the repository GL accounts (`512` etc.).
 
-**W-6 action:** either exclude `C2-STMT-*` / `W5B-*` repositories and `repository_adjustment`
-entries whose description matches `W5b|W5B|C2-STMT` from trial-balance assertions, or subtract the
-totals above. A W-6 case that asserts an absolute `6580`/`7580` balance without doing so will fail
-for reasons that have nothing to do with the product.
+### 9.2 Expense journal entries — MISSED by the original rule
+
+The first version of this section only excluded `repository_adjustment` entries, which **silently
+missed the fixture expenses**: `MTP-TRE-44`'s `create_expense` action and `MTP-TRE-41c`'s outbound
+cheque both create real expense documents through `statement-support.ts`
+(`issueTier3OutboundCheque` / `CreateExpenseHandler`), and their JEs carry no `W5b` marker at all.
+
+**9 posted expense journal entries** identified by vendor `C-2 fixture vendor *` / receipt
+`C2-RCPT-*`:
+
+| Account | Name | Debit | Credit |
+|---|---|---|---|
+| `613` | Locations | **334.125** | 0.000 |
+| `401` | Fournisseurs | 0.000 | **334.125** |
+
+So the fixtures also inflate a P&L expense account (`613`) and a supplier payable (`401`) — not just
+the tolerance accounts.
+
+### 9.3 The exclusion rule W-6 must apply
+
+**Do not "subtract the totals above"** — they are a snapshot and go stale on the next run. Exclude by
+predicate instead:
+
+1. **Repositories** — the cleanest filter: every fixture repository is now `is_active = false` and
+   every one of the 8 active repositories is seeded (`BANK-01/02/03`, `CASH-01/02`, `SAFE-01`,
+   `VIRT-01`, `W2A-NOGL-01`). **Filter `payment_repositories.is_active = true`**, or exclude
+   `code LIKE 'C2-STMT-%' OR code LIKE 'W5B-%'`.
+2. **Adjustment JEs** — exclude `source_type = 'repository_adjustment'` whose `description` matches
+   `W5b|W5B|C2-STMT`.
+3. **Expense JEs** — exclude entries whose description/vendor matches `C-2 fixture vendor` or whose
+   receipt matches `C2-RCPT-`.
+
+A W-6 case that asserts an absolute `6580`, `7580`, `613` or `401` balance, or that aggregates
+repository balances without an `is_active` filter, will fail for reasons that have nothing to do
+with the product.
+
+### 9.4 Wave-close counts
+
+| Object | At wave close |
+|---|---|
+| Payment repositories | **130 rows**, **8 active** — exactly the seeded set; 122 fixture rows, **0 active** |
+| Fixture repositories carrying a non-zero balance | **96**, totalling **43 634.290 TND** (inactive, but still summed by any unfiltered aggregate) |
+| Statement import profiles | **81 rows**, **0 active** |
+| Instruments held by draft remittance slips | **0** |
+
+Row totals keep growing because neither repositories nor referenced profiles have a delete path —
+that is the product-side recommendation in §7. The rows are inert (nothing appears in a picker) but
+they are not removable.
