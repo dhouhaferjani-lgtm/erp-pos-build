@@ -69,3 +69,12 @@ None fixed here (money-campaign agent scope is spec/ticket-only). Recommend fold
 whichever lane next touches `PaymentMethodController`; #2 into the next pricing-module lane (flag
 as correctness-risk, not just cosmetic); #3 into the treasury/POS UI hardening backlog alongside
 the existing refund-idempotency pattern it should mirror.
+
+## Addendum 2026-08-04 — C2-STMT fixture terminals pollute the terminal-claim list
+
+The statement-support fixture (C-2 extraction) provisions `C2-STMT-terminal-*` terminals that now
+appear in the real POS terminal-claim screen alongside the shop terminals (4+ observed on
+demo-pharmacy-tn). Beyond UI noise, extra ACTIVE terminals can break the
+`fiscal:enable-v4-refund-authoring` preflight ("exactly 1 active Physical terminal"). Fix: the
+fixture should create terminals deactivated/non-physical, or clean them up in teardown; add a
+cleanup sweep for existing litter before the enablement step.
