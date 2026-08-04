@@ -13,6 +13,12 @@
  * exact absolute balances of repositories this file provisions itself, which is
  * strictly stronger than an absolute assertion against a shared, drifting balance.
  *
+ * CONCURRENCY — THIS FILE ASSUMES `--workers=1` (N-5). `MTP-TRE-50` asserts exact
+ * DELTAS on the SHARED seeded CASH-01/BANK-01 pair and restores them; a
+ * concurrently running case moving money through either would corrupt both the
+ * deltas and the restore assertion. Run only as
+ * `--project=chromium --workers=1`.
+ *
  * Junk hygiene: every repository this file provisions carries a `W5B-` code and is
  * DEACTIVATED (`PATCH is_active:false`) in a `finally` at the end of its case.
  * `payment_repositories` has no DELETE route, so deactivation is the only retire
@@ -40,11 +46,15 @@ import {
   type Session,
 } from './treasury-support'
 import { loginAsRole } from './helpers'
+import { CLEANUP_THREW, isCleanupSuccess } from './statement-support'
 
 /** MTP-TRE-56's precondition: an ACTIVE repository with no linked GL account.
  * Seeded by W-2a's treasury campaign slice; pinned by code so the case can never
  * silently retarget a different repository (M-6). */
 const NO_GL_REPOSITORY_CODE = 'W2A-NOGL-01'
+
+/** MTP-TRE-52's precondition: the seeded `virtual` bucket, pinned by code (N-4). */
+const VIRTUAL_REPOSITORY_CODE = 'VIRT-01'
 
 let owner: Session
 let cashRepoId: string
@@ -135,14 +145,15 @@ async function provisionRepository(
  * `finally` REPLACES the in-flight exception (JS discards the original), so an
  * unconditional `expect` here would silently convert a real assertion failure
  * into a cleanup failure and hide the actual defect (fix round 1, M-1). The
- * retirement itself always RUNS; only its assertion is gated.
+ * retirement itself always RUNS; only its assertion is gated. The throw
+ * sentinel is `CLEANUP_THREW` (599), never `-1` — see N-1.
  */
 async function retireRepository(
   request: APIRequestContext,
   repositoryId: string,
   assertResult: boolean,
 ): Promise<void> {
-  let status = -1
+  let status = CLEANUP_THREW
   let body: unknown = null
   try {
     const retired = await patch(request, owner, `/payment-repositories/${repositoryId}`, {
@@ -154,7 +165,12 @@ async function retireRepository(
     body = String(error)
   }
   if (assertResult) {
-    expect(status, `retire fixture repository -> ${status} ${JSON.stringify(body)}`).toBeLessThan(300)
+    // 2xx ONLY — never `< 300`: the previous `-1` sentinel satisfied `< 300`,
+    // so a throwing cleanup passed silently and leaked the fixture (N-1).
+    expect(
+      isCleanupSuccess(status),
+      `retire fixture repository -> ${status} ${JSON.stringify(body)}`,
+    ).toBe(true)
   }
 }
 
@@ -193,7 +209,18 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     const repos = await getRepositories(request, owner)
     cashRepoId = repos.find((r) => r.code === 'CASH-01')!.id
     bankRepoId = repos.find((r) => r.code === 'BANK-01')!.id
-    virtualRepoId = repos.find((r) => r.code === 'VIRT-01')!.id
+    // MTP-TRE-52's precondition, pinned by code with the same recreate-hint as
+    // the GL-less fixture below (N-4) — a bare `find()!` two lines from a pinned
+    // one is exactly the inconsistency that lets a case silently retarget.
+    const virtual = repos.find((r) => r.code === VIRTUAL_REPOSITORY_CODE)
+    expect(
+      virtual,
+      `MTP-TRE-52 requires the virtual repository '${VIRTUAL_REPOSITORY_CODE}'. `
+        + `Repositories present: ${repos.map((r) => r.code).join(', ')}. `
+        + "Recreate it with POST /payment-repositories {type: 'virtual'} if it was retired.",
+    ).toBeTruthy()
+    expect(virtual!.type, `${VIRTUAL_REPOSITORY_CODE} must be a virtual bucket`).toBe('virtual')
+    virtualRepoId = virtual!.id
     bankGlAccountId = repos.find((r) => r.code === 'BANK-01')!.gl_account_id!
 
     // MTP-TRE-56 needs a repository with NO linked GL account. Pin it BY CODE
