@@ -169,6 +169,14 @@ Measured live after the sweep, not estimated:
 | Statement import profiles | 61 | **53**, all `is_active:false` — 8 deleted outright, 53 statement-bound and therefore undeletable by the API ("deactivate it instead") |
 | Draft remittance slips holding instruments | 40 slips / 161 lines | **0 lines held** — every instrument released back to `received` |
 
+**Verified durable, not one-off:** a full 34-case re-run AFTER the sweep provisioned 22 further
+repositories and 6 further profiles and auto-retired **every one** — active repositories stayed at
+exactly the 8 seeded codes and active profiles at **0**. Row TOTALS still grow per run (108
+repositories / 67 profiles at time of writing) because neither object has a delete path once it is
+referenced; that residue is the product-side recommendation above, and it is now inert (nothing
+appears in a picker, and `discoverOrProvisionRepository` skips inactive rows — the combined suite
+went from **5.9m to 3.4m** once the backlog was retired).
+
 `CASH-01` is back at exactly `53143.660`, its pre-wave baseline (the `MTP-TRE-50` transfer was
 reversed in-case). **What genuinely cannot be cleaned:** the 86 repository rows and 53 profile rows
 themselves (no delete path), the 40 now-empty draft slip rows (no DELETE route for a slip), and the
