@@ -6,9 +6,12 @@
 case definitions `docs/qa/2026-08-01-money-test-plan.md` §E.7 `MTP-WHT-01..05`).
 **Discovered by:** live runs against the local stack (web :5173 / api :8010, tenant
 `demo-pharmacy-tn`). **No product code was changed.** Every item below is TRIPWIRED by a
-spec assertion in `apps/web/e2e/money-campaign/withholding.spec.ts` that carries the plan's
-EXPECTED behaviour (so it is red today and goes green when the fix lands), except the two
-minors explicitly marked "no tripwire".
+GREEN spec assertion in `apps/web/e2e/money-campaign/withholding.spec.ts` that pins TODAY'S
+defective behaviour (campaign convention — the fix flips the tripwire red and forces a
+deliberate spec update; the expected post-fix values are stated in each tripwire's comment),
+except the two minors explicitly marked "no tripwire". *(Fix round 1, 2026-08-04: the three
+tripwires originally asserted the expected behaviour and were permanently red; flipped to
+the green convention per orchestrator ruling.)*
 
 Consolidated per the wave's hard rule 3 (one ticket file for the wave).
 
@@ -101,10 +104,13 @@ other. `certificateNumber` on a tracking row is free text typed by a human in th
 ---
 
 ## #3 — P1: withholding-certificate routes carry **no authorization middleware at all**
+## (and the sibling withholding **rules** group is ungated too)
 
-**Where:** `apps/api/app/Modules/Taxation/routes.php:47-59`. Compare the neighbouring
-`sales-withholding` group (`:62-69`), which correctly carries `can:invoices.view` /
-`can:invoices.update`, and the `taxation/configurations` group (`:20-32`).
+**Where:** `apps/api/app/Modules/Taxation/routes.php:48-59` (certificates group), **plus**
+`routes.php:38-45` (withholding **rules** group — see scope note below). Compare the
+neighbouring `sales-withholding` group (`:62-69`), which correctly carries
+`can:invoices.view` / `can:invoices.update`, and the `taxation/configurations` group
+(`:20-32`).
 
 **Tripwire:** `MTP-WHT-05`.
 
@@ -145,11 +151,28 @@ A POS cashier can fabricate, sign and "file" a tax document. Within-tenant privi
 escalation, not cross-tenant — tenant scoping itself is correct
 (`requireTenantScopedCertificate()`).
 
+### Scope widening (task review I2, 2026-08-04)
+
+The sibling **withholding rules** group (`routes.php:38-45`) is also ungated and MUST be
+covered by the same fix lane, or it stays open after a certificates-only fix:
+
+- `deactivate` (`routes.php:43`) and `destroy` (`routes.php:44`) have **no authorization at
+  all** — bare `string $id` parameters, company scoping only
+  (`WithholdingTaxRuleController.php:117`, `:132`). Any authenticated tenant user can
+  deactivate or delete a withholding **tax rate rule**.
+- `store` / `update` are saved only by FormRequest `authorize()`
+  (`CreateWithholdingRuleRequest.php:16`, `UpdateWithholdingRuleRequest.php:16` →
+  `taxation.withholding_rules.manage`) — no route-level gate, i.e. one accidental
+  `return true` away from the same hole.
+
 ### Suggested fix
 
-Add `can:withholding.view` to the read routes, `can:withholding.create` to `store`,
-`can:withholding.update` to `issue` / `void` / `submitTEJ`, `can:withholding.delete` to
-`destroy` — mirroring the `sales-withholding` group two lines below.
+Certificates group: add `can:withholding.view` to the read routes, `can:withholding.create`
+to `store`, `can:withholding.update` to `issue` / `void` / `submitTEJ`,
+`can:withholding.delete` to `destroy` — mirroring the `sales-withholding` group two lines
+below. Rules group: add route-level `can:` middleware (matching the
+`taxation.withholding_rules.manage` permission the FormRequests already reference) to ALL of
+`:38-45`, including `deactivate` and `destroy`.
 
 ---
 
@@ -231,14 +254,18 @@ SQLSTATE[23503]: Foreign key violation: … violates foreign key constraint
 ```
 
 Two problems: (a) the 500 payload leaks the connection name, host, port, tenant database name
-and the raw SQL — the same class of leak as the M2 "leaky 422" already fixed in the treasury
-hardening gate; (b) a payment-linked draft certificate is **undeletable through the API at
-all**, which is why `MTP-WHT-04`'s cleanup retires its junk certificate by **voiding** it
-instead. Should be a 409/422 with a code such as `CERTIFICATE_LINKED_TO_PAYMENT`.
+and the raw SQL — **qualification (task review I3, 2026-08-04): the leak only occurs with
+`APP_DEBUG=true` (`config/app.php:42`; the local stack has it true, staging/production should
+have it false — verify).** The unconditional parts are the raw 500 itself and the
+undeletability; the disclosure half is debug-gated, so severity on staging/prod is lower than
+the treasury-gate "leaky 422" this originally compared itself to. (b) a payment-linked draft
+certificate is **undeletable through the API at all**, which is why `MTP-WHT-04`'s cleanup
+retires its junk certificate by **voiding** it instead. Should be a 409/422 with a code such
+as `CERTIFICATE_LINKED_TO_PAYMENT`.
 
 ---
 
-## #7 — P3 (minor, **no tripwire**): `common:actions` resolves to an object in the list header
+## #7 — P3 (minor, **no tripwire**): `common:actions` resolves to an object — **10 sites, 6 features**
 
 `WithholdingCertificatesList.tsx:185` renders `{t('common:actions')}` as the screen-reader
 label of the actions column, but `apps/web/src/locales/*/common.json` defines `actions` as an
@@ -251,3 +278,9 @@ key 'actions (en-US)' returned an object instead of string.
 
 (Captured verbatim in the page snapshot.) The correct key is `common:actionsLabel` or a leaf
 such as `common:actions.edit` — whichever the sibling list screens use.
+
+**Scope widening (task review M5, 2026-08-04):** the identical misuse exists at **10 sites
+across 6 features** — `WithholdingCertificatesList.tsx:185`,
+`SalesWithholdingTrackingPage.tsx:145`, `WithholdingRulesPage.tsx:117`,
+`CouponListPage.tsx:165`, `PromotionListPage.tsx:147`, `VoucherListPage.tsx:206`, plus 4
+parapharmacy screens. Fix once, globally, not per-screen.

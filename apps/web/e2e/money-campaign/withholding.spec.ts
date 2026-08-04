@@ -171,15 +171,19 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
 
     // ---- UI read surface: /treasury/withholding-certificates ----
     await loginAsRole(page, 'owner')
+    const listSettled = page.waitForResponse(
+      (r) => r.url().includes('/withholding/certificates') && r.request().method() === 'GET'
+    )
     await page.goto('/treasury/withholding-certificates')
     await expect(
       page.getByRole('heading', { name: 'Withholding Certificates', level: 1 })
     ).toBeVisible({ timeout: 20_000 })
+    // Wait for the list query to settle so the empty state below cannot be the
+    // loading skeleton's trivial absence-of-rows.
+    await listSettled
 
     // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #4):
-    // the page is PERMANENTLY EMPTY — it renders "No withholding certificates
-    // found" no matter how many rows the API returns (verified above: the same
-    // request returns exactly one). `fetchWithholdingCertificates()`
+    // the page is PERMANENTLY EMPTY. `fetchWithholdingCertificates()`
     // (features/withholding/api/withholdingApi.ts:48) returns `apiGet(url)`, and
     // `apiGet` already unwraps `response.data.data` (lib/api.ts:225-228) — so it
     // resolves to the certificate ARRAY, not the `{data, meta, links}` envelope its
@@ -188,20 +192,19 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // `undefined` -> always `[]`. Convention 14 (docs/conventions/01-API-RESPONSES.md)
     // double-unwrap.
     //
-    // The row assertion below IS the tripwire (an empty-state assertion is not
-    // usable: the empty state only mounts after the query settles, so it is
-    // trivially "hidden" during the loading skeleton). It goes green when the
-    // unwrap is corrected.
-    const row = page.locator('tr', { hasText: cert.certificate_number })
+    // TRIPWIRE (#4) — GREEN today, pinning the DEFECT: the API returned exactly one
+    // row for this partner (asserted above), yet the settled page renders its empty
+    // state and no row for the certificate. When the unwrap fix lands this goes RED;
+    // the deliberate update is to assert the row IS visible and renders gross
+    // 1,000.000 / withheld 15.000 / rate 1.50% at scale 3.
     await expect(
-      row,
-      'TRIPWIRE: the certificate the API just returned must render on the list page (double-unwrap makes the list permanently empty today)'
+      page.getByText(/no withholding certificates/i),
+      'TRIPWIRE (#4): the list renders its empty state while the API holds >= 1 certificate'
     ).toBeVisible({ timeout: 15_000 })
-    await expect(row).toContainText(GROSS_1000_RE) // gross at scale 3
-    await expect(row).toContainText('15.000') // withheld at scale 3
-    await expect(row, 'list renders the rate as the percentage projection, not the raw fraction').toContainText(
-      /1\.50?%/
-    )
+    await expect(
+      page.locator('tr', { hasText: cert.certificate_number }),
+      'TRIPWIRE (#4): the certificate row must NOT render today (double-unwrap)'
+    ).toHaveCount(0)
   })
 
   test('MTP-WHT-02: certificate DETAIL renders gross/rate/withheld/net at their scales and net == gross - withheld', async ({
@@ -281,7 +284,8 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     request,
     page,
   }) => {
-    const customerId = await createCustomer(request, owner, uniqueName('WHT03'))
+    const customerName = uniqueName('WHT03')
+    const customerId = await createCustomer(request, owner, customerName)
     const RATE = '0.0150'
     const grossValues = ['1000.000', '2500.000', '750.000']
 
@@ -352,19 +356,24 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     ).toHaveLength(0)
 
     // ---- UI read surface: /treasury/sales-withholding-tracking ----
+    // Tracking rows accumulate across runs and have no delete endpoint, so every
+    // assertion anchors on THIS run's customer — a bare amount match (15.000 /
+    // 37.500 / 11.250 recur every run) would pass on a previous run's stale rows.
     await loginAsRole(page, 'owner')
     await page.goto('/treasury/sales-withholding-tracking')
     const table = page.locator('table').last()
     await expect(table).toBeVisible({ timeout: 20_000 })
+    const runRows = table.locator('tr', { hasText: customerName })
+    await expect(runRows, "exactly this run's three rows render for the customer").toHaveCount(3)
     for (const withheldValue of expectedPerRow) {
       await expect(
-        table,
-        `tracking table renders withheld ${withheldValue} at scale 3`
-      ).toContainText(withheldValue)
+        runRows.filter({ hasText: withheldValue }),
+        `THIS run's row renders withheld ${withheldValue} at scale 3`
+      ).toHaveCount(1)
     }
   })
 
-  test('MTP-WHT-04: withholding_rate = 0 creates NO certificate and the payment settles at full gross', async ({
+  test('MTP-WHT-04: withholding_rate = 0 settles at full gross — TRIPWIRE(#1): a 0.000 certificate is manufactured today', async ({
     request,
   }) => {
     const customerId = await createCustomer(request, owner, uniqueName('WHT04'))
@@ -392,23 +401,25 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // read and the delete, so the probe can never be stranded.
     const certificates = await certificatesForPartner(request, owner, customerId)
     const observed = certificates.map((c) => `${c.certificate_number}:${c.withholding_amount}`)
-    if (certificates.length > 0) {
-      // A 0.000-withheld draft is junk, not money — the tenant must not be left
-      // holding a live fictitious tax document.
-      //
-      // Retired by VOIDING, not deleting: `DELETE /withholding/certificates/{id}`
-      // on a payment-linked certificate hits
-      // `payments_withholding_certificate_id_foreign` and escapes
-      // `WithholdingCertificateController::destroy()` (which catches only
-      // \DomainException) as a raw 500 that leaks the SQL, host, port and tenant
-      // database name — ticket #6. Void is the only working retire path here.
-      const retired = await post(
-        request,
-        owner,
-        `/withholding/certificates/${certificates[0]!.id}/void`,
-        { reason: 'W5a MTP-WHT-04 zero-rate junk certificate retired' }
-      )
-      expect(retired.status, 'junk zero-rate certificate retired (voided)').toBeLessThan(300)
+    // A 0.000-withheld draft is junk, not money — the tenant must not be left
+    // holding a live fictitious tax document. EVERY observed certificate is
+    // retired, not just the first.
+    //
+    // Retired by VOIDING, not deleting: `DELETE /withholding/certificates/{id}`
+    // on a payment-linked certificate hits
+    // `payments_withholding_certificate_id_foreign` and escapes
+    // `WithholdingCertificateController::destroy()` (which catches only
+    // \DomainException) as a raw 500 that (APP_DEBUG=true) leaks the SQL, host,
+    // port and tenant database name — ticket #6. Void is the only working retire
+    // path here.
+    for (const junk of certificates) {
+      const retired = await post(request, owner, `/withholding/certificates/${junk.id}/void`, {
+        reason: 'W5a MTP-WHT-04 zero-rate junk certificate retired',
+      })
+      expect(
+        retired.status,
+        `junk zero-rate certificate ${junk.certificate_number} retired (voided)`
+      ).toBeLessThan(300)
     }
 
     // "…payment settles at full gross" — true independently of the certificate
@@ -423,12 +434,16 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // today a zero rate still manufactures a draft certificate for 0.000 withheld,
     // because PaymentController::store():916-940 branches on `withholding_enabled`
     // alone and `WithholdingCalculation::calculate()` has no zero-rate guard.
-    // TRIPWIRE — this assertion is the plan's expected behaviour and goes green
-    // when the guard lands.
-    expect(observed, 'MTP-WHT-04: a zero withholding rate must create NO certificate').toEqual([])
+    // TRIPWIRE (#1) — GREEN today, pinning the DEFECT: exactly one zero-amount
+    // certificate is manufactured. When the guard lands this goes RED; the
+    // deliberate update is the plan's expected behaviour, `toEqual([])`.
+    expect(
+      observed,
+      'TRIPWIRE (#1): a zero withholding rate manufactures exactly one 0.000 certificate today'
+    ).toEqual([expect.stringMatching(/:0\.000$/)])
   })
 
-  test('MTP-WHT-05: a user without withholding.create/update can still create and edit certificates (expected 403)', async ({
+  test('MTP-WHT-05: TRIPWIRE(#3) — a user without withholding.* can read/create/edit certificates today (routes ungated)', async ({
     request,
   }) => {
     const cashier = await login(request, 'cashier')
@@ -485,16 +500,19 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     }
 
     // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #3).
-    // TRIPWIRE — asserted as ONE object so the failure reports all three observed
-    // statuses at once instead of stopping at the first. `read` is the extra
-    // finding (the FE-only `withholding.view` gate); `create` and `edit` are the
-    // plan's MTP-WHT-05 proper. `edit` returning 422 rather than 403 is itself the
-    // proof: the request reached FormRequest validation with no authorization gate
-    // in front of it. Goes green when `can:withholding.*` middleware lands on
-    // Modules/Taxation/routes.php:48-59.
+    // The plan's MTP-WHT-05 specifies the create/edit probes only; the read probe
+    // is a W-5a extension recording the FE-only `withholding.view` gate.
+    // TRIPWIRE (#3) — GREEN today, pinning the DEFECT: no `can:` middleware
+    // anywhere on Modules/Taxation/routes.php:48-59, so read is served (200),
+    // create succeeds (201), and the deliberately-invalid void reaches FormRequest
+    // validation (422 — authorization never refused it; a `can:` gate would have
+    // 403'd BEFORE validation ran). Asserted as ONE object so a partial fix
+    // reports all three observed statuses at once. When `can:withholding.*`
+    // middleware lands this goes RED; the deliberate update is
+    // `{ read: 403, create: 403, edit: 403 }`.
     expect(
       { read: readProbe.status, create: created.status, edit: editStatus },
-      'MTP-WHT-05: create/edit (and read) of a withholding certificate without withholding.create/update/view must all be 403'
-    ).toEqual({ read: 403, create: 403, edit: 403 })
+      'TRIPWIRE (#3): certificate routes are unprotected today — read 200 / create 201 / edit(void) 422'
+    ).toEqual({ read: 200, create: 201, edit: 422 })
   })
 })
