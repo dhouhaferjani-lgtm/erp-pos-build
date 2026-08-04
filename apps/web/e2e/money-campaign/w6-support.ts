@@ -15,11 +15,31 @@
  *     or (b) a DELTA captured immediately around this wave's own mutation, or
  *     (c) a scale-free INVARIANT (Σdebits == Σcredits; Σbuckets == total).
  *
- * W-6 lands every journal entry it posts on its OWN dedicated accounts
- * (`W6GL1`/`W6GL2`/`W6PL1`/`W6PL2`/`W6COA`, created idempotently by
- * {@link ensureAccount}) so a successor wave can subtract this wave exactly.
+ * W-6 lands every journal entry it AUTHORS DIRECTLY on its own dedicated
+ * accounts (`W6GL1`/`W6GL2`/`W6PL2`/`W6COA`, created idempotently by
+ * {@link ensureAccount}).
+ *
+ * ⚠️ THAT IS NOT THE WHOLE GL FOOTPRINT (fix round 1, review I-1). Posting a
+ * W-6 fixture INVOICE makes the product author a second entry this wave does
+ * not name: `AccountingService::createInvoiceGLEntries()` writes
+ * `Dr 411 / Cr 707 / Cr 4375` with `description = 'Invoice INV-2026-xxxx'`,
+ * hash-chained, matching NO `W6-%` predicate. It is in fact the LARGEST GL
+ * footprint the wave leaves. A successor must exclude W-6 by joining through
+ * the PARTNER (`partners.name LIKE 'W6-%'`), never by the entry description
+ * alone — see the W-6 "State left behind" table in
+ * `docs/sessions/MONEY-CAMPAIGN-RESULTS.md`.
+ *
  * Nothing `W4`-prefixed is read destructively and nothing `W4`/`W5b`/`W5C`
  * prefixed is mutated.
+ *
+ * NO CLEANUP HELPERS LIVE HERE, deliberately (fix round 1, review "dead code").
+ * This wave has nothing it can retire in a `finally`: `MTP-GL-02..07` and
+ * `MTP-GL-21/22` are refusals that persist nothing, `MTP-GL-10/11/13/14/16/17/19/28`
+ * are read-only, `MTP-GL-20/23` stop at DRAFT entries that every report filters
+ * out, and everything else is a POSTED journal entry or a POSTED invoice —
+ * neither of which has a delete route at all. The one out-of-band probe this
+ * wave made (`W6-probe-partner`, used to confirm that a backdated invoice is
+ * accepted) was deleted through `DELETE /partners/{id}` at authoring time.
  */
 import type { APIRequestContext, Page } from '@playwright/test'
 import { expect } from '@playwright/test'
@@ -119,8 +139,13 @@ export interface AccountRow {
  * W-6's dedicated GL landing zone. Same pattern (and same rationale) as W-4's
  * `W4GL1`/`W4GL2`: every journal entry this wave POSTS is permanent — there is
  * no delete route for a journal entry — so it must land somewhere a successor
- * can isolate. `accounts` has no delete route either, so these five rows are
+ * can isolate. `accounts` has no delete route either, so these four rows are
  * created ONCE and reused by every later run.
+ *
+ * These cover only the entries the wave authors DIRECTLY. The invoice-posting
+ * entries the product authors underneath `MTP-GL-12`/`-14`/`-26` land on the
+ * seeded `411`/`707`/`4375` and are isolable only through the partner — see the
+ * file header.
  */
 export const W6_ACCOUNTS = {
   debit: { code: 'W6GL1', name: 'W6 campaign GL debit', type: 'asset' },
@@ -487,59 +512,6 @@ export async function createPostedInvoiceDated(
   expect(posted.balance_due).toBe(targetTotal)
 
   return { id: invoiceId, total: posted.total, documentNumber: posted.document_number }
-}
-
-// ---------------------------------------------------------------------------
-// Cleanup (2xx-gated — NEVER `status < 300`, see statement-support.ts)
-// ---------------------------------------------------------------------------
-
-/**
- * Sentinel for a cleanup that THREW rather than answering with a status.
- * Deliberately >= 300 and outside the real HTTP range so a `< 300` gate can
- * never pass it silently (`statement-support.ts` fix round 2 / N-1).
- */
-export const CLEANUP_THREW = 599
-
-/** True only for a real 2xx. Never write `status < 300` for a cleanup gate. */
-export function isCleanupSuccess(status: number): boolean {
-  return status >= 200 && status < 300
-}
-
-/**
- * Retires a DRAFT invoice. Does NOT throw — returns the observed status, or
- * {@link CLEANUP_THREW}. A cleanup `expect` inside a `finally` would REPLACE an
- * in-flight exception from the test body, so callers assert these statuses only
- * on the path where the body already succeeded.
- *
- * `DELETE /documents/{id}` does not exist (405); `DELETE /invoices/{id}` is the
- * real route, and it refuses anything past draft.
- */
-export async function retireDraftInvoice(
-  request: APIRequestContext,
-  session: Session,
-  invoiceId: string,
-): Promise<number> {
-  try {
-    const res = await request.delete(`${API_BASE}/invoices/${invoiceId}`, { headers: authHeaders(session) })
-    return res.status()
-  } catch {
-    return CLEANUP_THREW
-  }
-}
-
-/** Retires a partner. Does NOT throw. A partner carrying posted documents is
- * not deletable — that refusal is reported, never swallowed into "success". */
-export async function retirePartner(
-  request: APIRequestContext,
-  session: Session,
-  partnerId: string,
-): Promise<number> {
-  try {
-    const res = await request.delete(`${API_BASE}/partners/${partnerId}`, { headers: authHeaders(session) })
-    return res.status()
-  } catch {
-    return CLEANUP_THREW
-  }
 }
 
 // ---------------------------------------------------------------------------
