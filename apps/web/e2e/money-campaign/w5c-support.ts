@@ -406,12 +406,16 @@ export function generateRecurringExpenses(): string {
     // The command exits FAILURE when ANY tenant's templates error — it iterates
     // every tenant (blast-radius note above), so another tenant's broken
     // template would otherwise red THIS tenant's case through the exit code
-    // (fix round 2, N-2). A run that executed and produced output is returned
-    // for the caller's tenant-scoped API assertions; only genuine spawn
-    // failures (php missing, wrong cwd) still throw.
+    // (fix round 2, N-2). Swallow ONLY when the command genuinely completed:
+    // GenerateRecurringExpensesCommand unconditionally prints its
+    // "checked N company(ies)" summary before returning, so its presence in
+    // stdout is the completion proof. A missing `php` (shell 127, empty stdout)
+    // or a PHP bootstrap fatal (255) lacks it and still throws (re-review round
+    // 2: `status` alone can't tell those apart from a per-tenant failure).
     const e = error as { status?: number | null; stdout?: string | Buffer }
-    if (typeof e.status === 'number' && e.stdout !== undefined) {
-      return String(e.stdout).trim()
+    const stdout = e.stdout === undefined ? '' : String(e.stdout)
+    if (typeof e.status === 'number' && /checked \d+ compan(y|ies)/i.test(stdout)) {
+      return stdout.trim()
     }
     throw error
   }
