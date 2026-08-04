@@ -639,6 +639,61 @@ export async function confirmStatement(
   return String(((await jsonData(res)) as { id: string }).id)
 }
 
+/**
+ * Fixture retirement (W-5b fix round 1, I-2a/I-2b). NEITHER HELPER THROWS —
+ * each returns the observed HTTP status. A cleanup `expect` inside a `finally`
+ * would REPLACE an in-flight exception from the test body (JS discards the
+ * original when `finally` throws), so callers must assert these statuses only
+ * on the path where the body already succeeded.
+ */
+
+/**
+ * Retires a parser profile. `DELETE /statement-import-profiles/{id}` refuses a
+ * profile that an imported statement references ("deactivate it instead",
+ * StatementProfileController::destroy), so this falls back to
+ * `PATCH is_active:false` — the retire path the API itself prescribes.
+ */
+export async function retireParserProfile(
+  request: APIRequestContext,
+  session: Session,
+  profileId: string,
+): Promise<number> {
+  try {
+    const deleted = await request.delete(`${API_BASE}/statement-import-profiles/${profileId}`, {
+      headers: authHeaders(session),
+    })
+    if (deleted.status() < 300) return deleted.status()
+    const deactivated = await request.patch(`${API_BASE}/statement-import-profiles/${profileId}`, {
+      headers: authHeaders(session),
+      data: { is_active: false },
+    })
+    return deactivated.status()
+  } catch {
+    return -1
+  }
+}
+
+/**
+ * Deactivates a fixture repository. `payment_repositories` has NO delete route,
+ * so deactivation is the only retire path; it also removes the repository from
+ * every picker and from `discoverOrProvisionRepository`'s candidate scan.
+ */
+export async function deactivateRepository(
+  request: APIRequestContext,
+  session: Session,
+  repositoryId: string,
+): Promise<number> {
+  try {
+    const res = await request.patch(`${API_BASE}/payment-repositories/${repositoryId}`, {
+      headers: authHeaders(session),
+      data: { is_active: false },
+    })
+    return res.status()
+  } catch {
+    return -1
+  }
+}
+
 function toMillimes(value: string): bigint {
   const [whole = '0', fraction = ''] = value.split('.')
   const negative = whole.startsWith('-')

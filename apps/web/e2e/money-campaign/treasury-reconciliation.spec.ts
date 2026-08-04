@@ -26,7 +26,11 @@ import { login, get, post, del, addMoney, subMoney, TODAY, type Session } from '
 import {
   confirmStatement,
   createParserProfile,
+  deactivateRepository,
   discoverOrProvisionRepository,
+  getChequeMethod,
+  issueTier3OutboundCheque,
+  retireParserProfile,
   uploadStatementPreview,
   uniq,
   type BankRepository,
@@ -68,6 +72,7 @@ interface StatementRow {
 interface BuiltStatement {
   repository: BankRepository
   statementId: string
+  profileId: string
   opening: string
   closing: string
   lines: StatementLine[]
@@ -119,6 +124,7 @@ async function buildStatement(
   profileOverrides: Record<string, unknown> = {},
 ): Promise<BuiltStatement> {
   const profileId = await createParserProfile(request, owner, repository.id, profileOverrides)
+  fixtures.profileIds.push(profileId)
   const fileLabel = uniq('stmt')
   const csv = [
     'Date,Amount,Reference,Transaction ID,Label',
@@ -158,22 +164,54 @@ async function buildStatement(
   )
   const statement = await readStatement(request, statementId)
   expect(statement.lines).toHaveLength(rows.length)
-  return { repository, statementId, opening, closing, lines: statement.lines }
+  return { repository, statementId, profileId, opening, closing, lines: statement.lines }
+}
+
+/**
+ * Fixture retirement (fix round 1, I-2a/I-2b). Every profile and every
+ * self-provisioned `C2-STMT-*` repository this file creates is retired after
+ * its case: profiles via DELETE (or `is_active:false` when a statement
+ * references them — the fallback the API itself prescribes), repositories via
+ * `is_active:false` (no DELETE route exists). Retiring a consumed repository
+ * also keeps it out of `discoverOrProvisionRepository`'s O(repositories)
+ * candidate scan, which is what made each successive run slower.
+ *
+ * Retirement runs in `afterEach`, NOT in a `finally`: a throwing cleanup
+ * inside `finally` REPLACES the in-flight exception (JS discards the original),
+ * whereas Playwright reports an afterEach failure ALONGSIDE the test's own
+ * error. The assertion is additionally gated on the test having passed, so a
+ * cleanup problem can never be mistaken for the case's verdict (M-1).
+ *
+ * Balances created by the Tier-1/2 adjustment candidates are NOT unwound —
+ * each is backed by a real balanced GL entry on the 6xxx/7xxx tolerance
+ * accounts, so reversing them would post more entries, not fewer. They are
+ * disclosed by exact amount in the wave ledger instead.
+ */
+interface CaseFixtures {
+  profileIds: string[]
+  repositoryIds: string[]
+}
+
+let fixtures: CaseFixtures = { profileIds: [], repositoryIds: [] }
+
+interface Suggestion {
+  tier: number
+  kind: string
+  movement_ids: string[]
+  amount: string
+  reason_code: string | null
+  action_type: string | null
+  target_type: string | null
+  target_id: string | null
 }
 
 async function suggestionsFor(
   request: APIRequestContext,
   lineId: string,
-): Promise<Array<{ tier: number; kind: string; movement_ids: string[]; amount: string; reason_code: string | null }>> {
+): Promise<Suggestion[]> {
   const res = await get(request, owner, `/bank-statement-lines/${lineId}/suggestions`)
   expect(res.ok, `suggestions -> ${res.status} ${JSON.stringify(res.data)}`).toBeTruthy()
-  return res.data as unknown as Array<{
-    tier: number
-    kind: string
-    movement_ids: string[]
-    amount: string
-    reason_code: string | null
-  }>
+  return res.data as unknown as Suggestion[]
 }
 
 async function allocate(
@@ -191,6 +229,10 @@ async function allocate(
 
 async function freshRepository(request: APIRequestContext): Promise<BankRepository> {
   const { repository } = await discoverOrProvisionRepository(request, owner)
+  // Only retire what this wave provisioned. A SEEDED repository (BANK-0x) that
+  // discovery happened to pick must never be deactivated — it belongs to the
+  // tenant, not to the fixture.
+  if (repository.code.startsWith('C2-STMT-')) fixtures.repositoryIds.push(repository.id)
   return repository
 }
 
@@ -199,6 +241,28 @@ test.describe('MTP-TRE — reconciliation workspace (W-5b §E.4)', () => {
 
   test.beforeAll(async ({ request }) => {
     owner = await login(request, 'owner')
+  })
+
+  test.beforeEach(() => {
+    fixtures = { profileIds: [], repositoryIds: [] }
+  })
+
+  test.afterEach(async ({ request }, testInfo) => {
+    const statuses: number[] = []
+    for (const profileId of fixtures.profileIds) {
+      statuses.push(await retireParserProfile(request, owner, profileId))
+    }
+    for (const repositoryId of fixtures.repositoryIds) {
+      statuses.push(await deactivateRepository(request, owner, repositoryId))
+    }
+    // Only assert the retirement when the case itself passed, so a cleanup
+    // status can never be confused with the case's verdict (M-1).
+    if (testInfo.status === testInfo.expectedStatus) {
+      expect(
+        statuses.every((status) => status < 300),
+        `fixture retirement statuses: ${JSON.stringify(statuses)}`,
+      ).toBe(true)
+    }
   })
 
   test('MTP-TRE-41 (P0): an exact same-amount movement is suggested and allocates once', async ({
@@ -239,6 +303,101 @@ test.describe('MTP-TRE — reconciliation workspace (W-5b §E.4)', () => {
     expect(repeat.status, 'a movement cannot be allocated twice to the same line').toBe(422)
     const afterRepeat = await readStatement(request, built.statementId)
     expect(afterRepeat.lines[0]!.allocations).toHaveLength(1)
+  })
+
+  test('MTP-TRE-41b (P1, I-4): Tier 2 — a unique amount inside the window is suggested without a reference', async ({
+    request,
+  }) => {
+    const repository = await freshRepository(request)
+    // Deliberately UNRELATED texts: Tier 1 needs a reference match, so keeping
+    // the movement's notes out of the line text is what forces Tier 2 to be the
+    // only thing that can fire. The amount is deliberately odd so it is unique
+    // among the repository's movements inside the window.
+    const movementReference = uniq('T41bMOV')
+    const lineReference = uniq('T41bLINE')
+    const movementId = await adjustment(request, repository.id, 'in', '777.321', movementReference)
+    const built = await buildStatement(request, repository, [
+      { amount: '777.321', reference: lineReference, label: `W5b TRE-41b ${lineReference}` },
+    ])
+    const line = built.lines[0]!
+    expect(line.amount).toBe('777.321')
+
+    const suggestions = await suggestionsFor(request, line.id)
+    const unique = suggestions.find((s) => s.movement_ids.includes(movementId))
+    expect(unique, `the unique in-window amount is suggested: ${JSON.stringify(suggestions)}`).toBeTruthy()
+    expect(unique!.tier, 'no reference match, so this is Tier 2 — not Tier 1').toBe(2)
+    expect(unique!.reason_code).toBe('unique_amount_window')
+    expect(unique!.amount, 'suggested at the exact remaining line amount').toBe('777.321')
+    expect(
+      suggestions.filter((s) => s.tier === 1),
+      'Tier 1 must NOT fire — the reference deliberately does not match',
+    ).toHaveLength(0)
+
+    const accepted = await allocate(request, owner, line.id, movementId, unique!.amount)
+    expect(accepted.status, `accept Tier 2 -> ${JSON.stringify(accepted.data)}`).toBeLessThan(300)
+    const after = await readStatement(request, built.statementId)
+    expect(after.lines[0]!.match_status).toBe('matched')
+    expect(after.lines[0]!.allocations[0]!.matched_amount, 'allocated at the exact amount').toBe('777.321')
+  })
+
+  test('MTP-TRE-41c (P1, I-4): Tier 3 — an outbound cheque is offered as an `outbound_clear` action', async ({
+    request,
+  }) => {
+    const repository = await freshRepository(request)
+    const chequeMethodId = await getChequeMethod(request, owner)
+    const reference = uniq('T41c')
+    // A REAL outbound instrument: expense -> post -> pay by cheque drawn on this
+    // repository. Reachable with no POS terminal, which is why Tier 3 is in
+    // scope here while Tier 4 (acquirer-fee card settlement) stays deferred —
+    // Tier 4's only fixture recipe creates a dedicated terminal per build and
+    // threatens the 1-active-terminal enable preflight
+    // (docs/superpowers/tickets/2026-08-02-w2-wave-minor-findings.md).
+    const instrumentId = await issueTier3OutboundCheque(
+      request,
+      owner,
+      repository.id,
+      chequeMethodId,
+      '37.125',
+      reference,
+    )
+    // The bank debit the cheque will produce when it clears.
+    const built = await buildStatement(request, repository, [
+      { amount: '-37.125', reference, label: `W5b TRE-41c ${reference}` },
+    ])
+    const line = built.lines[0]!
+    expect(line.direction, 'an issued cheque leaves the bank').toBe('out')
+    expect(line.amount).toBe('37.125')
+
+    const suggestions = await suggestionsFor(request, line.id)
+    const instrumentSuggestion = suggestions.find((s) => s.target_id === instrumentId)
+    expect(
+      instrumentSuggestion,
+      `the pending outbound instrument is suggested: ${JSON.stringify(suggestions)}`,
+    ).toBeTruthy()
+    expect(instrumentSuggestion!.tier, 'instrument matching is Tier 3').toBe(3)
+    expect(instrumentSuggestion!.kind, 'Tier 3 resolves through an ACTION, not a movement').toBe('action')
+    expect(instrumentSuggestion!.action_type).toBe('outbound_clear')
+    expect(instrumentSuggestion!.target_type).toBe('payment_instrument')
+    expect(instrumentSuggestion!.amount, 'offered at the exact line amount').toBe('37.125')
+
+    const executed = await post(request, owner, `/bank-statement-lines/${line.id}/actions`, {
+      action: 'outbound_clear',
+      params: { instrument_id: instrumentId },
+    })
+    expect(executed.status, `outbound_clear -> ${JSON.stringify(executed.data)}`).toBeLessThan(300)
+
+    const after = await readStatement(request, built.statementId)
+    const resolved = after.lines[0]!
+    expect(resolved.match_status, 'clearing an instrument MATCHES the line').toBe('matched')
+    expect(resolved.executions, 'exactly one execution recorded').toHaveLength(1)
+    expect(resolved.executions[0]!.action_type).toBe('outbound_clear')
+    expect(resolved.executions[0]!.target_id).toBe(instrumentId)
+    expect(resolved.allocations, 'the clearing produced exactly one allocated movement').toHaveLength(1)
+    expect(resolved.allocations[0]!.matched_amount, 'allocated at the exact line amount').toBe('37.125')
+
+    // The instrument itself is now cleared.
+    const instrument = await get(request, owner, `/payment-instruments/${instrumentId}`)
+    expect(instrument.data.status, 'the outbound cheque is cleared').toBe('cleared')
   })
 
   test('MTP-TRE-42 (P0): a one-millime difference is never matched — no amount tolerance', async ({
