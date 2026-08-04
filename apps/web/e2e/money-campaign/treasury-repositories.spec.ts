@@ -14,11 +14,18 @@
  * strictly stronger than an absolute assertion against a shared, drifting balance.
  *
  * Junk hygiene: every repository this file provisions carries a `W5B-` code and is
- * DEACTIVATED (`PATCH is_active:false`, asserted `< 300`) at the end of its case.
+ * DEACTIVATED (`PATCH is_active:false`) in a `finally` at the end of its case.
  * `payment_repositories` has no DELETE route, so deactivation is the only retire
  * path. The single transfer between the two SEEDED repositories (`MTP-TRE-50`) is
  * reversed in the same case, and both balances are asserted back to their exact
  * baselines — no drift is left behind.
+ *
+ * The retirement ALWAYS RUNS but its `expect` is GATED on the case body having
+ * succeeded (`caseSucceeded`). This is not belt-and-braces: a throw inside a
+ * `finally` REPLACES the in-flight exception — JS discards the original — so an
+ * unconditional cleanup assertion would convert a real money-assertion failure
+ * into a cleanup failure and hide the defect entirely. Gating is what makes the
+ * cleanup unable to mask; the `finally` alone would do the opposite (M-1).
  */
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import {
@@ -33,6 +40,11 @@ import {
   type Session,
 } from './treasury-support'
 import { loginAsRole } from './helpers'
+
+/** MTP-TRE-56's precondition: an ACTIVE repository with no linked GL account.
+ * Seeded by W-2a's treasury campaign slice; pinned by code so the case can never
+ * silently retarget a different repository (M-6). */
+const NO_GL_REPOSITORY_CODE = 'W2A-NOGL-01'
 
 let owner: Session
 let cashRepoId: string
@@ -116,12 +128,34 @@ async function provisionRepository(
   return String(created.data.id)
 }
 
-/** `payment_repositories` has no DELETE route — deactivation is the retire path. */
-async function retireRepository(request: APIRequestContext, repositoryId: string): Promise<void> {
-  const retired = await patch(request, owner, `/payment-repositories/${repositoryId}`, {
-    is_active: false,
-  })
-  expect(retired.status, `retire fixture repository -> ${JSON.stringify(retired.data)}`).toBeLessThan(300)
+/**
+ * `payment_repositories` has no DELETE route — deactivation is the retire path.
+ *
+ * `assertResult` MUST be false when the case body threw. A throw inside a
+ * `finally` REPLACES the in-flight exception (JS discards the original), so an
+ * unconditional `expect` here would silently convert a real assertion failure
+ * into a cleanup failure and hide the actual defect (fix round 1, M-1). The
+ * retirement itself always RUNS; only its assertion is gated.
+ */
+async function retireRepository(
+  request: APIRequestContext,
+  repositoryId: string,
+  assertResult: boolean,
+): Promise<void> {
+  let status = -1
+  let body: unknown = null
+  try {
+    const retired = await patch(request, owner, `/payment-repositories/${repositoryId}`, {
+      is_active: false,
+    })
+    status = retired.status
+    body = retired.data
+  } catch (error) {
+    body = String(error)
+  }
+  if (assertResult) {
+    expect(status, `retire fixture repository -> ${status} ${JSON.stringify(body)}`).toBeLessThan(300)
+  }
 }
 
 async function adjust(
@@ -159,9 +193,24 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     const repos = await getRepositories(request, owner)
     cashRepoId = repos.find((r) => r.code === 'CASH-01')!.id
     bankRepoId = repos.find((r) => r.code === 'BANK-01')!.id
-    virtualRepoId = repos.find((r) => r.type === 'virtual')!.id
-    noGlRepoId = repos.find((r) => r.gl_account_id === null && r.is_active)!.id
+    virtualRepoId = repos.find((r) => r.code === 'VIRT-01')!.id
     bankGlAccountId = repos.find((r) => r.code === 'BANK-01')!.gl_account_id!
+
+    // MTP-TRE-56 needs a repository with NO linked GL account. Pin it BY CODE
+    // (fix round 1, M-6): a bare `find(r => r.gl_account_id === null)!` bound to
+    // whatever GL-less repository happened to exist — today a W-2a leftover — so
+    // the case would silently retarget, or crash with a bare TypeError, the
+    // moment that fixture changed. Fail with a message that says what to create.
+    const noGl = repos.find((r) => r.code === NO_GL_REPOSITORY_CODE)
+    expect(
+      noGl,
+      `MTP-TRE-56 requires the GL-less fixture repository '${NO_GL_REPOSITORY_CODE}'. `
+        + `Repositories present: ${repos.map((r) => r.code).join(', ')}. `
+        + 'Recreate it with POST /payment-repositories (no gl_account_id) if it was retired.',
+    ).toBeTruthy()
+    expect(noGl!.gl_account_id, `${NO_GL_REPOSITORY_CODE} must have NO linked GL account`).toBeNull()
+    expect(noGl!.is_active, `${NO_GL_REPOSITORY_CODE} must be active`).toBe(true)
+    noGlRepoId = noGl!.id
   })
 
   test('MTP-TRE-50 (P0): a transfer moves exactly the amount, as two legs on one balanced GL entry', async ({
@@ -290,8 +339,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     ).toHaveCount(0)
   })
 
-  test('MTP-TRE-53 (P1): transferring more than the balance — recorded actual', async ({ request }) => {
+  test('MTP-TRE-53 (P1): TRIPWIRE(item 2) — transferring more than the balance is ACCEPTED and goes negative', async ({ request }) => {
     const repositoryId = await provisionRepository(request, 'cash_register', 'T53')
+    let caseSucceeded = false
     try {
       const seeded = await adjust(request, owner, repositoryId, {
         direction: 'in',
@@ -311,44 +361,50 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
         uniqueName('T53'),
       )
       const after = await balanceOf(request, repositoryId)
-      // The plan asks for the ACTUAL to be recorded, not a chosen expectation.
-      test.info().annotations.push({
-        type: 'RECORDED ACTUAL',
-        description:
-          `Transferring 500.000 out of a repository holding exactly 100.000 -> HTTP ` +
-          `${overdraw.status}; balance after = ${after}. There is NO sufficient-funds guard: ` +
-          'RepositoryTransferService/TreasuryMovementService validate currency, GL linkage, ' +
-          'repository type, frozen state and self-transfer — never the balance. Overdraw is ' +
-          'permitted by design and the negative balance is recorded, rendered signed at ' +
-          'scale 3, and visible in the append-only movements ledger.',
-      })
 
-      if (overdraw.status >= 300) {
-        expect(after, 'refused: the balance is untouched').toBe('100.000')
-      } else {
-        // RECORDED ACTUAL: overdraw is permitted and the balance goes negative.
-        // It must then render correctly as a signed scale-3 figure and be
-        // visible in the movements ledger.
-        expect(after, '100.000 - 500.000').toBe('-400.000')
-        expect(after).toMatch(/^-\d+\.\d{3}$/)
-        const ledger = await movements(request, repositoryId)
-        expect(ledger[0]!.direction).toBe('out')
-        expect(ledger[0]!.amount).toBe('500.000')
-        expect(ledger[0]!.balance_after, 'the negative balance is recorded, not clamped').toBe('-400.000')
-        // Put the money back so the retired fixture does not carry a negative.
-        const restored = await transfer(
-          request,
-          owner,
-          bankRepoId,
-          repositoryId,
-          '500.000',
-          `${uniqueName('T53')}-undo`,
-        )
-        expect(restored.status).toBeLessThan(300)
-        expect(await balanceOf(request, repositoryId)).toBe('100.000')
-      }
+      // TRIPWIRE (ticket item 2) — GREEN today, pinning TODAY'S OBSERVED
+      // BEHAVIOUR: transferring 500.000 out of a repository holding exactly
+      // 100.000 is ACCEPTED (HTTP 201) and drives the balance to -400.000.
+      // Nothing in the transfer path checks funds — RepositoryTransferService
+      // and TreasuryMovementService validate currency, GL linkage, repository
+      // type, frozen state and self-transfer, never the balance.
+      //
+      // An earlier revision asserted "refused OR negative" in an if/else, which
+      // would have passed under EVERY possible product behaviour forever — that
+      // is a recorded actual, not a tripwire (fix round 1, I-5).
+      //
+      // EXPECTED UPDATE once the owner rules on ticket item 2: if a
+      // sufficient-funds guard lands for cash_register/safe, this case flips RED
+      // and must be DELIBERATELY rewritten to
+      //     expect({ status: overdraw.status, balance: after })
+      //       .toEqual({ status: 422, balance: '100.000' })
+      // and the restore-transfer below deleted (nothing will have moved). A red
+      // failure here is the SIGNAL that the ruling shipped, not a flake.
+      expect(
+        { status: overdraw.status, balance: after },
+        'TRIPWIRE (ticket item 2): overdraw is accepted and the balance goes negative',
+      ).toEqual({ status: 201, balance: '-400.000' })
+      expect(after, 'the negative balance renders signed at scale 3').toMatch(/^-\d+\.\d{3}$/)
+
+      const ledger = await movements(request, repositoryId)
+      expect(ledger[0]!.direction).toBe('out')
+      expect(ledger[0]!.amount).toBe('500.000')
+      expect(ledger[0]!.balance_after, 'the negative balance is recorded, not clamped').toBe('-400.000')
+
+      // Put the money back so the retired fixture does not carry a negative.
+      const restored = await transfer(
+        request,
+        owner,
+        bankRepoId,
+        repositoryId,
+        '500.000',
+        `${uniqueName('T53')}-undo`,
+      )
+      expect(restored.status).toBeLessThan(300)
+      expect(await balanceOf(request, repositoryId)).toBe('100.000')
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 
@@ -356,6 +412,7 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     request,
   }) => {
     const repositoryId = await provisionRepository(request, 'cash_register', 'T54')
+    let caseSucceeded = false
     try {
       const seed = await adjust(request, owner, repositoryId, {
         direction: 'in',
@@ -409,8 +466,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
       ).toBe(true)
       expect(credited.credit, 'Cr the repository account 12.500').toBe('12.500')
       expect(credited.account_code, 'the repository GL account is credited').toBe('512')
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 
@@ -418,6 +476,7 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     request,
   }) => {
     const repositoryId = await provisionRepository(request, 'cash_register', 'T55')
+    let caseSucceeded = false
     try {
       const seed = await adjust(request, owner, repositoryId, {
         direction: 'in',
@@ -462,8 +521,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
         credited.account_code.startsWith('6'),
         'the Income purpose is used, NOT the expense purpose',
       ).toBe(false)
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 
@@ -494,6 +554,7 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
 
   test('MTP-TRE-57 (P1): reason_text is required on an adjustment', async ({ request }) => {
     const repositoryId = await provisionRepository(request, 'cash_register', 'T57')
+    let caseSucceeded = false
     try {
       const missing = await adjust(request, owner, repositoryId, {
         direction: 'out',
@@ -523,8 +584,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
       })
       expect(accepted.status, `control -> ${JSON.stringify(accepted.data)}`).toBeLessThan(300)
       expect(accepted.data.balance_after).toBe('-12.500')
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 
@@ -533,6 +595,7 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
     page,
   }) => {
     const repositoryId = await provisionRepository(request, 'bank_account', 'T58')
+    let caseSucceeded = false
     try {
       const steps: Array<{ direction: 'in' | 'out'; amount: string }> = [
         { direction: 'in', amount: '1000.000' },
@@ -600,8 +663,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
         page.getByRole('button', { name: /delete|supprimer|edit|modifier/i }),
         'an append-only ledger exposes no mutate affordance',
       ).toHaveCount(0)
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 
@@ -619,6 +683,7 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
         'role would make the case literal (campaign fixture debt C-3).',
     })
     const repositoryId = await provisionRepository(request, 'cash_register', 'T59')
+    let caseSucceeded = false
     try {
       const viewer = await login(request, 'viewer')
       expect(viewer.permissions, 'precondition: viewer can read repositories').toContain(
@@ -645,8 +710,9 @@ test.describe('MTP-TRE — repositories, transfers and adjustments (W-5b §E.5)'
 
       expect(await balanceOf(request, repositoryId), 'the refused writes moved nothing').toBe('0.000')
       expect(await movements(request, repositoryId)).toHaveLength(0)
+      caseSucceeded = true
     } finally {
-      await retireRepository(request, repositoryId)
+      await retireRepository(request, repositoryId, caseSucceeded)
     }
   })
 })
