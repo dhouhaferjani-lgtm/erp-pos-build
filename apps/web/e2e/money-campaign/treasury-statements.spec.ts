@@ -26,7 +26,9 @@ import { login, get, addMoney, TODAY, type Session } from './treasury-support'
 import {
   confirmStatement,
   createParserProfile,
+  deactivateRepository,
   discoverOrProvisionRepository,
+  retireParserProfile,
   uploadStatementPreview,
   uploadStatementPreviewRaw,
   uniq,
@@ -74,9 +76,34 @@ async function repositoryBalance(request: APIRequestContext, repositoryId: strin
   return String(res.data.balance)
 }
 
+/**
+ * Fixture retirement (fix round 1, I-2a/I-2b) — profiles via DELETE, falling
+ * back to `is_active:false` when a statement references them (the path the API
+ * itself prescribes); self-provisioned `C2-STMT-*` repositories via
+ * `is_active:false` (no DELETE route exists). A SEEDED repository that
+ * discovery happened to pick is never deactivated.
+ *
+ * Retirement runs in `afterEach`, NOT in a `finally`: a throwing cleanup inside
+ * `finally` REPLACES the in-flight exception, whereas Playwright reports an
+ * afterEach failure ALONGSIDE the test's own error. The assertion is gated on
+ * the test having passed, so cleanup can never be mistaken for the verdict (M-1).
+ */
+let fixtures: { profileIds: string[]; repositoryIds: string[] } = { profileIds: [], repositoryIds: [] }
+
 async function freshRepository(request: APIRequestContext): Promise<BankRepository> {
   const { repository } = await discoverOrProvisionRepository(request, owner)
+  if (repository.code.startsWith('C2-STMT-')) fixtures.repositoryIds.push(repository.id)
   return repository
+}
+
+async function trackedProfile(
+  request: APIRequestContext,
+  repositoryId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const profileId = await createParserProfile(request, owner, repositoryId, overrides)
+  fixtures.profileIds.push(profileId)
+  return profileId
 }
 
 test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
@@ -86,11 +113,31 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
     owner = await login(request, 'owner')
   })
 
+  test.beforeEach(() => {
+    fixtures = { profileIds: [], repositoryIds: [] }
+  })
+
+  test.afterEach(async ({ request }, testInfo) => {
+    const statuses: number[] = []
+    for (const profileId of fixtures.profileIds) {
+      statuses.push(await retireParserProfile(request, owner, profileId))
+    }
+    for (const repositoryId of fixtures.repositoryIds) {
+      statuses.push(await deactivateRepository(request, owner, repositoryId))
+    }
+    if (testInfo.status === testInfo.expectedStatus) {
+      expect(
+        statuses.every((status) => status < 300),
+        `fixture retirement statuses: ${JSON.stringify(statuses)}`,
+      ).toBe(true)
+    }
+  })
+
   test('MTP-TRE-36 (P0): a clean 5-line CSV previews 5/0/0/0 and confirms with exact balances', async ({
     request,
   }) => {
     const repository = await freshRepository(request)
-    const profileId = await createParserProfile(request, owner, repository.id)
+    const profileId = await trackedProfile(request, repository.id)
     const label = uniq('T36')
     const amounts = ['120.500', '-45.250', '1000.000', '-0.125', '33.375']
     const csv = signedCsv(
@@ -157,7 +204,7 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
     request,
   }) => {
     const repository = await freshRepository(request)
-    const profileId = await createParserProfile(request, owner, repository.id)
+    const profileId = await trackedProfile(request, repository.id)
     const label = uniq('T37')
     const rows = [
       { amount: '210.000', reference: `${label}-A`, label: 'W5b TRE-37 A' },
@@ -230,7 +277,7 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
     request,
   }) => {
     const repository = await freshRepository(request)
-    const profileId = await createParserProfile(request, owner, repository.id)
+    const profileId = await trackedProfile(request, repository.id)
     const label = uniq('T38')
     // Row 2 = good, row 3 = zero amount, row 4 = malformed value date
     // (31/31/2026 is not a real date under `d/m/Y`), row 5 = good.
@@ -296,8 +343,8 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
   }) => {
     const repository = await freshRepository(request)
     const label = uniq('T39')
-    const signedProfileId = await createParserProfile(request, owner, repository.id)
-    const debitCreditProfileId = await createParserProfile(request, owner, repository.id, {
+    const signedProfileId = await trackedProfile(request, repository.id)
+    const debitCreditProfileId = await trackedProfile(request, repository.id, {
       column_map: {
         value_date: 'Date',
         debit: 'Debit',
@@ -369,7 +416,7 @@ test.describe('MTP-TRE — bank statement import (W-5b §E.4)', () => {
   test('MTP-TRE-40 (P1): a European decimal_format parses 1.234,56 to 1234.560', async ({ request }) => {
     const repository = await freshRepository(request)
     const label = uniq('T40')
-    const profileId = await createParserProfile(request, owner, repository.id, {
+    const profileId = await trackedProfile(request, repository.id, {
       decimal_format: 'comma',
     })
     // Semicolon-delimited, because the amounts themselves contain commas.
