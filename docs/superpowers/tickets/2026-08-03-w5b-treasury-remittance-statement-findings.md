@@ -7,7 +7,7 @@
 found.** Every exact-decimal assertion held: remittance totals, statement parsing at scale 3,
 reconciliation's exact-`bccomp` matching, transfer/adjustment balances, GL balance.
 
-This ticket records the items that are **not** money defects but that an owner or a follow-up wave
+This ticket records the seven items that are **not** money defects but that an owner or a follow-up wave
 must rule on. None of them warrants a red test, so none carries a tripwire; the behaviours that are
 launch-relevant are already pinned GREEN by the cases named below.
 
@@ -122,3 +122,34 @@ The guard itself is real: `TreasuryMovementService::transfer` throws `CurrencyMi
 (extends `DomainException` → 422) when either locked repository's currency differs from the intent,
 and `TransferCashModal.tsx:99-101` filters the destination picker to the source currency. Exercising
 it needs the multi-currency tenant of campaign fixture debt **C-9** (`demo-garage`, FR/EUR + TN/TND).
+
+---
+
+## 7. (P2) `statement-support.ts` provisions unbounded, undeletable `C2-STMT-*` repositories
+
+**Test-infrastructure finding, same class as the C2-STMT terminal item in
+`docs/superpowers/tickets/2026-08-02-w2-wave-minor-findings.md`.**
+
+`discoverOrProvisionRepository()` returns the first `bank_account` repository that is active,
+GL-linked, has no reconciliation checkpoint and holds no open statement — and **creates a new one**
+when none qualifies. Every case that confirms a statement permanently disqualifies its repository
+(an open statement, or a checkpoint once completed), so each subsequent call provisions another.
+After W-5b (32 cases, some files re-run), `demo-pharmacy-tn` holds **60 payment repositories, 32 of
+them `C2-STMT-*`**, all active.
+
+Consequences:
+
+- `payment_repositories` has **no DELETE route**, so they can only be deactivated, never removed.
+- While active they appear in every repository picker, the treasury dashboard and the cash-position
+  widget — the same "pollutes a list a human reads" problem as the fixture terminals.
+- Discovery is O(repositories) with a paginated statement fetch per candidate, so each new run is
+  slower than the last: by the end of this wave a single `discoverOrProvisionRepository()` call took
+  visibly longer than the case it was setting up.
+
+**Recommendations:** (a) have the fixture deactivate a repository once it has consumed it, (b) reuse
+one dedicated fixture repository per run rather than per statement where the case allows it, and/or
+(c) add a `payment-repositories` DELETE (or an admin purge) for repositories with no movements.
+
+W-5b deactivated every repository IT provisioned directly (`W5B-*`, 20 of them, verified 0 active),
+but deliberately did not touch `C2-STMT-*` repositories — they are `statement-support.ts`'s to
+manage, and deactivating them from a case would race any sibling agent using the same fixture.
