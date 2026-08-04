@@ -19,6 +19,17 @@
  * The invariants are asserted with exact decimal-string arithmetic; no absolute
  * total is pinned.
  *
+ * ⚠️ CROSS-TENANT BLAST RADIUS — `MTP-TRE-75` ONLY (fix round 1, I-1). It drives
+ * `expenses:generate-recurring`, which extends `TenantScopedCommand` and takes NO
+ * `--tenant` option: `executeCommand()` calls `forEachTenant(...)` and materializes
+ * every DUE recurrence template for EVERY tenant on the box (izipos, coffee-shop,
+ * …), resolving a fallback admin per tenant when the template's creator is
+ * unavailable. Draft expenses generated in those other tenants are NOT cleaned up
+ * by this suite — it is tenant-scoped to `demo-pharmacy-tn` and cannot see them.
+ * The case is therefore SKIPPED unless `MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1`, and
+ * it asserts ONLY on this tenant's own read model — never on the command's
+ * aggregate stdout, whose error count spans every tenant.
+ *
  * The Σ share_percent rule is NOT "== 100". `ExpenseAnalyticsService::byCategory()`
  * rounds each category's share INDEPENDENTLY to 2 dp (`CurrencyScale::bcround(...,
  * 2)`) with no largest-remainder redistribution, so the sum may miss 100 by up to
@@ -29,6 +40,8 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import { login, get, post, addMoney, subMoney, toMillimes, type Session } from './treasury-support'
 import { isCleanupSuccess } from './statement-support'
 import {
+  ALLOW_CROSS_TENANT_SIDE_EFFECTS,
+  CROSS_TENANT_SKIP_REASON,
   generateRecurringExpenses,
   retireDraftExpense,
   retireRecurrenceTemplate,
@@ -77,7 +90,15 @@ function sumPercent(values: string[]): string {
 test.describe('MTP-TRE — expense analytics and recurrence (W-5c §B.5 row 71)', () => {
   test.describe.configure({ timeout: 180_000 })
 
-  test.beforeAll(async ({ request }) => {
+  test.beforeAll(async ({ request }, workerInfo) => {
+    // Runtime precondition, not a convention (fix round 1, M-2): the Playwright
+    // config default off-CI is parallel, and `MTP-TRE-73` reads a tenant-wide
+    // aggregate across two calls.
+    expect(
+      workerInfo.config.workers,
+      'MTP-TRE-73 reconciles a SHARED tenant-wide aggregate — run as `--project=chromium --workers=1`',
+    ).toBe(1)
+
     owner = await login(request, 'owner')
   })
 
@@ -182,6 +203,12 @@ test.describe('MTP-TRE — expense analytics and recurrence (W-5c §B.5 row 71)'
   test('MTP-TRE-75 (P1): generated recurring instances carry the configured amount exactly, with no drift', async ({
     request,
   }) => {
+    // ENV-GATED (fix round 1, I-1c). `expenses:generate-recurring` iterates EVERY
+    // tenant on the box; this case therefore materializes draft expenses in
+    // tenants it cannot clean up. Opt in explicitly, and NEVER against a tenant
+    // whose hash chain is E-7 evidence.
+    test.skip(!ALLOW_CROSS_TENANT_SIDE_EFFECTS, CROSS_TENANT_SKIP_REASON)
+
     let caseSucceeded = false
     const vendor = uniq('TRE75-vendor')
     // 333.333 is deliberately a full-precision scale-3 amount: any float round-trip
@@ -213,10 +240,16 @@ test.describe('MTP-TRE — expense analytics and recurrence (W-5c §B.5 row 71)'
 
       // `expenses:generate-recurring` is a scheduled console command; there is no
       // API route that materializes a due template (see w5c-support.ts).
+      //
+      // Its stdout is IGNORED on purpose (fix round 1, I-1b). The command reports
+      // an AGGREGATE across every tenant on the box, so the previous
+      // `expect(thirdRun).toContain('0 error(s)')` made an unrelated tenant's
+      // broken template a red `MTP-TRE-75` — a false failure attributed to
+      // recurrence-amount drift. The only signal this case may trust is THIS
+      // tenant's own read model, asserted through the API below.
       generateRecurringExpenses()
       generateRecurringExpenses()
-      const thirdRun = generateRecurringExpenses()
-      expect(thirdRun, 'the command reports a clean sweep').toContain('0 error(s)')
+      generateRecurringExpenses()
 
       const listed = await get(request, owner, `/expenses?search=${encodeURIComponent(vendor)}&per_page=50`)
       expect(listed.ok, `expense search -> ${listed.status}`).toBeTruthy()
