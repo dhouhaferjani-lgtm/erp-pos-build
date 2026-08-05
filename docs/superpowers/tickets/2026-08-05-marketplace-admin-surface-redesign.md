@@ -28,15 +28,42 @@ tenant admin: `database/seeders/RolesAndPermissionsSeeder.php` creates the
 (`permissionNames()`), so the ability is present in every tenant database.
 
 Net effect, with the module enabled: **any tenant admin can create, edit and
-suspend marketplace sellers, and can name another tenant's `tenant_id` /
+suspend marketplace seller records, and can name another tenant's `tenant_id` /
 `company_id` when creating one.** The `#[CrossTenantRoute]` attribute documents
 the fleet-wide intent; nothing enforces that only the fleet operator invokes it.
 
+### How far that reaches is TENANCY-MODE DEPENDENT — read this before quoting the finding
+
+The controller has no tenant predicate, but the *connection* underneath it does,
+so the blast radius differs per mode (corrected 2026-08-05 after adversarial
+review; the earlier unqualified "reads/writes every tenant's sellers" phrasing
+was wrong for the shipped topology):
+
+- **database-per-tenant (`TENANCY_DB_PER_TENANT=true` — the live mode):**
+  `marketplace_sellers|listings|orders` are per-tenant tables
+  (`database/migrations/tenant/2026_03_10_400000..400002`) and
+  `MarketplaceSeller` pins no `$connection` and carries no global scope
+  (`Domain/Models/MarketplaceSeller.php:50-77`), so every query runs inside the
+  caller's OWN tenant database. No cross-tenant read or write actually occurs —
+  the same fact that makes the guard swap impossible (next section).
+  **The real residual here is attribution spoofing:** `store()`
+  (`Presentation/Controllers/MarketplaceSellerController.php:42-50`) accepts an
+  arbitrary `tenant_id` / `company_id` in the body, so a tenant admin can plant
+  seller rows attributed to *another* tenant inside their own DB. Those rows are
+  inert today — and become fleet-visible the moment option 1(a) below (promote
+  the registry to a central table) is executed, or any sync/aggregation job
+  hoists per-tenant rows into a shared view.
+- **legacy row-level mode (`config/tenancy_resolver.php:30`,
+  `TENANCY_DB_PER_TENANT` defaults **false**):** all tenants share one database,
+  so the missing predicate IS a live fleet-wide read/write of every tenant's
+  seller rows, exactly as the bullets above describe.
+
 Related, same route file, lower severity: `marketplace.browse` (listings index /
 show / price-comparison, `:16-26`) is also seeded to **all** roles, so every
-authenticated user of every tenant could read the cross-tenant listing catalog.
-That one is cross-tenant *by design* (anonymised listings), so it is a product
-question rather than a defect — but it is part of what the flag currently closes.
+authenticated user of every tenant could read the listing catalog reachable from
+their connection. Cross-tenant browsing is the module's *design intent*
+(anonymised listings), so it is a product question rather than a defect — but it
+is part of what the flag currently closes.
 
 ## Why the obvious fix does not work
 
@@ -68,6 +95,13 @@ decision about where marketplace seller identity actually lives.
    (`TenantScopedCommand::forEachTenant`-style) to compose the fleet view. Option
    (b) makes list/paginate across the fleet awkward and is the reason this is a
    design task, not a patch.
+   **Carry the spoofed-attribution residual into this decision:** today `store()`
+   lets a tenant admin write seller rows bearing another tenant's `tenant_id` /
+   `company_id` into their own tenant DB (see the mode-dependence note above).
+   Option (a) promotes exactly those rows into the fleet-wide registry, so
+   promotion MUST be preceded by (i) removing `tenant_id` / `company_id` from the
+   request body for tenant-scoped callers, and (ii) an audit/quarantine pass over
+   existing rows whose `tenant_id` differs from the owning database's tenant.
 2. **Who is the actor?** If it is the fleet operator, the surface belongs under
    the super-admin routes (`routes/api.php` super-admin group + `super_admin`
    middleware), and `marketplace.admin` should stop being a tenant permission
@@ -93,9 +127,23 @@ decision about where marketplace seller identity actually lives.
   `catalog-carts.marketplace-checkout` endpoint in the Cart module.
 - Console command **registration** stays unconditional so an operator can still
   run a reconciliation by hand while the module is dark.
-- Pinned by `tests/Feature/Security/MarketplaceFlagGatingTest.php` (closed state)
-  and `tests/Feature/Security/MarketplaceFlagEnabledTest.php` (open state — every
-  `can:` gate still attached).
+- The Cart → Marketplace **application** path is closed too (added 2026-08-05
+  after adversarial review, finding I-1): `catalog-carts.items.store` stays
+  registered for procurement, but with the flag off its payload rejects
+  `source=marketplace` and `marketplace_listing_id` with a 422 at the validation
+  layer, so `CartService::addItem()` can no longer reach
+  `MarketplaceListing::findOrFail()` / `MarketplaceOrderService::reserveForCart()`
+  (which would create a stock reservation and consume the anti-abuse counter
+  while the module is dark).
+- Pinned by `tests/Feature/Security/MarketplaceFlagGatingTest.php` (closed state),
+  `tests/Feature/Security/MarketplaceCartItemGatingTest.php` (closed cart path),
+  `tests/Feature/Security/MarketplaceFlagEnabledTest.php` (open state — every
+  `can:` gate still attached) and
+  `tests/Feature/Security/MarketplaceFlagEnabledAuthorizationTest.php` (open
+  state — the `can:marketplace.browse` gate actually denies a role without the
+  permission, and the cart marketplace path works again).
+- The whole `tests/Feature/Security` directory now runs in CI (`backend-test`
+  job, `ci.yml`); before 2026-08-05 it ran in no gate at all.
 - No client consumes these endpoints today: `apps/web`, `apps/pos` and
   `apps/mobile` contain zero references to `api/v1/marketplace` or
   `marketplace-checkout`, so the flag has no user-visible effect.
@@ -114,7 +162,25 @@ every file under `app/` to a PSR-4 class name and calls `is_subclass_of()` on it
 which makes Composer's autoloader `include` `…/Presentation/routes.php`. Verified
 2026-08-05 with a backtrace taken from inside the routes file
 (`ClassLoader::loadClass` ← `is_subclass_of` ← `DiscoverEventHandlers:67` ←
-`EventSourcingServiceProvider::packageBooted`). Consequence: **a condition around
-`loadRoutesFrom()` in a service provider is NOT a route gate** — the guard has to
-be inside the routes file itself. This applies to every module in `app/Modules/`,
-not just Marketplace.
+`EventSourcingServiceProvider::packageBooted`). Consequence: **under a
+non-authoritative autoloader a condition around `loadRoutesFrom()` in a service
+provider is NOT a route gate** — the guard has to be inside the routes file
+itself. The mechanism is generic to every module in `app/Modules/`, not just
+Marketplace.
+
+**But it is autoloader-dependent — do NOT model production from it** (corrected
+2026-08-05 after adversarial review). The probe can only reach a class-less
+routes file through Composer's **PSR-4 fallback**:
+
+- **dev / CI** (`composer install`, non-authoritative): fallback is live, the
+  routes file IS included, the in-file guard is load-bearing.
+- **production image**: `apps/api/Dockerfile` runs
+  `composer dump-autoload --optimize --classmap-authoritative`, and
+  `vendor/composer/ClassLoader::findFile()` returns `false` immediately when
+  `classMapAuthoritative` is set. A routes file declares no class, so it is not
+  in the classmap and the fallback never runs — discovery cannot include it, and
+  the **provider condition is the gate**.
+
+Both guards are therefore required, and a CI guard written for this pattern must
+assert both (in-file early return *and* provider condition), not just the
+in-file one.

@@ -31,6 +31,19 @@ use Illuminate\Support\Facades\Route;
 | condition alone is NOT a gate. (Same reason the Cart module's
 | marketplace-checkout route is guarded inline.)
 |
+| SCOPE OF THAT TRAP — it is autoloader-dependent, do not generalise it to prod:
+| the discovery probe can only `include` a class-less routes file through
+| Composer's PSR-4 FALLBACK, i.e. under a non-authoritative autoloader (local
+| dev, CI, `composer install` without --classmap-authoritative). The production
+| image is built `composer dump-autoload --optimize --classmap-authoritative`
+| (apps/api/Dockerfile), and vendor/composer/ClassLoader::findFile() returns
+| false immediately when classMapAuthoritative is set — a routes file declares
+| no class, so it is not in the classmap and the fallback never runs. In the
+| production image this file is therefore NEVER included by discovery and the
+| provider condition IS the gate; in dev/CI this early return is the gate.
+| Both guards are required. Whoever writes the CI guard for this pattern must
+| model both worlds.
+|
 | Once past this guard, access is governed by the per-route `can:` permissions.
 */
 if (! (bool) config('marketplace.enabled', false)) {

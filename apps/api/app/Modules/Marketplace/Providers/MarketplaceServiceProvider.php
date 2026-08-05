@@ -62,12 +62,23 @@ class MarketplaceServiceProvider extends ServiceProvider
         | Once inside the flag, access remains governed by per-route `can:`.
         |
         | NOTE: the route-registration half of this condition is deliberately
-        | DUPLICATED at the top of ../Presentation/routes.php, and that copy is
-        | the load-bearing one — spatie/laravel-event-sourcing's projector
-        | auto-discovery `include`s every file under app() as a side effect of
-        | its PSR-4 `is_subclass_of()` probe, so the routes file registers itself
-        | even when this provider never calls loadRoutesFrom(). See the comment
-        | block in that file for the verified backtrace.
+        | DUPLICATED at the top of ../Presentation/routes.php, because
+        | spatie/laravel-event-sourcing's projector auto-discovery `include`s
+        | every file under app() as a side effect of its PSR-4
+        | `is_subclass_of()` probe, so the routes file can register itself even
+        | when this provider never calls loadRoutesFrom(). See the comment block
+        | in that file for the verified backtrace.
+        |
+        | Which of the two guards is load-bearing depends on the AUTOLOADER, and
+        | both are required:
+        |   - dev/CI (non-authoritative autoloader): the discovery probe reaches
+        |     Composer's PSR-4 fallback and includes the class-less routes file,
+        |     so the copy inside routes.php is the gate;
+        |   - production image (built with `composer dump-autoload --optimize
+        |     --classmap-authoritative`, apps/api/Dockerfile): ClassLoader
+        |     ::findFile() short-circuits to false for anything absent from the
+        |     classmap, so the routes file is never included by discovery and
+        |     THIS condition is the gate.
         */
         $marketplaceEnabled = (bool) config('marketplace.enabled', false);
 
