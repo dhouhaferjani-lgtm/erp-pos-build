@@ -152,10 +152,29 @@ Schedule::command('batch-expiry:daily-check')
         Log::error('batch-expiry:daily-check exited non-zero — one or more tenants failed their nightly batch expiry sweep. For those tenants, expired batches were NOT flagged is_expired (FEFO can still pick them) and admins got NO critical-expiry (7-day) alert. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
     });
 
-// Schedule: Poll platform for pending enrichment status updates
+// Schedule: Poll platform for pending enrichment status updates.
+//
+// Two independent faults, both fixed 2026-08-05:
+//   1. The command was never REGISTERED (it lives outside app/Console/Commands,
+//      which is the only path Laravel auto-discovers), so this entry has been
+//      shelling out to a non-existent artisan command. `Schedule::command()`
+//      takes an unvalidated string, so `schedule:list` happily printed it.
+//   2. Its pending-submission query is `Product::query()` — a TENANT table read
+//      from the scheduler's CENTRAL connection since the 2026-05-28 flip. It is
+//      now a TenantScopedCommand iterating via forEachTenant().
+//
+// withoutOverlapping(30) caps the mutex at two ticks instead of the bare
+// 1440-minute default, exactly as inventory:expire-reservations does — one
+// crashed run must not silence the poller for a day. That matters more here
+// than elsewhere: this poller is the enrichment WEBHOOK's fallback path, so a
+// silenced poller means enrichment results that missed the webhook are never
+// picked up at all.
 Schedule::command('enrichment:check-pending')
     ->everyFifteenMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping(30)
+    ->onFailure(function (): void {
+        Log::error('enrichment:check-pending exited non-zero — one or more tenants failed to poll the platform for pending enrichment submissions. For those tenants, products stay stuck in Pending/Enriching: the enriched payload is never fetched, no enrichment_results row is created and nothing reaches the operator review queue. This command is also the enrichment webhook fallback, so a persistent failure means results that missed the webhook are lost until it recovers. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
+    });
 
 // Schedule: Partner subledger/control-account reconciliation alert daily at 2:30 AM
 Schedule::command(CheckSubledgerReconciliationCommand::class)
