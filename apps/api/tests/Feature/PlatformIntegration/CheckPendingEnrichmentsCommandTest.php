@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\PlatformIntegration;
 
+use App\Console\Concerns\WarnsOnTenantScopeDrift;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -141,6 +142,32 @@ final class CheckPendingEnrichmentsCommandTest extends TestCase
         $this->assertArrayHasKey('enrichment:check-pending', Artisan::all());
     }
 
+    /**
+     * N-6. The drift probes are additional QUERIES, so they must be inert in
+     * exactly the mode where their answer would be meaningless: under
+     * `tenancy_resolver.db_per_tenant=false` one database holds the whole
+     * fleet, and an unfiltered count there is the fleet's count by definition.
+     * {@see WarnsOnTenantScopeDrift} takes CLOSURES for
+     * that reason; this pins that the poller passes them as closures and does
+     * not evaluate them at the call site.
+     */
+    public function test_the_drift_probes_are_never_issued_in_compat_mode(): void
+    {
+        $spy = $this->bindQuerySpy();
+
+        $this->createTenant('enrichment-probe-inert-a');
+        $this->createTenant('enrichment-probe-inert-b');
+
+        $this->assertSame(0, Artisan::call('enrichment:check-pending'));
+
+        $this->assertSame(2, $spy->calls, 'The poll itself must still run once per tenant.');
+        $this->assertSame(
+            0,
+            $spy->probeCalls,
+            'A drift probe under compat mode would count every other tenant\'s rows and warn about all of them.',
+        );
+    }
+
     public function test_the_command_is_registered_with_the_scheduler(): void
     {
         $exitCode = Artisan::call('schedule:list');
@@ -195,6 +222,14 @@ final class RecordingEnrichmentQuery implements EnrichmentQueryInterface
     public array $staleMinutes = [];
 
     /**
+     * N-6: the drift probes must stay UNCALLED under the compat mode this
+     * suite runs in — the connection legitimately holds the whole fleet there,
+     * so a delta would be pure noise and the counting queries are not worth
+     * issuing.
+     */
+    public int $probeCalls = 0;
+
+    /**
      * @return Collection<int, PendingEnrichmentDTO>
      */
     public function findPendingEnrichments(string $tenantId, int $limit, int $staleMinutes): Collection
@@ -206,5 +241,29 @@ final class RecordingEnrichmentQuery implements EnrichmentQueryInterface
 
         /** @var Collection<int, PendingEnrichmentDTO> */
         return new Collection;
+    }
+
+    public function countPendingEnrichmentsOnConnection(int $staleMinutes): int
+    {
+        $this->probeCalls++;
+
+        return 0;
+    }
+
+    public function countPendingEnrichmentsForTenant(string $tenantId, int $staleMinutes): int
+    {
+        $this->probeCalls++;
+
+        return 0;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function findPendingEnrichmentIdsOutsideTenant(string $tenantId, int $staleMinutes, int $limit): array
+    {
+        $this->probeCalls++;
+
+        return [];
     }
 }

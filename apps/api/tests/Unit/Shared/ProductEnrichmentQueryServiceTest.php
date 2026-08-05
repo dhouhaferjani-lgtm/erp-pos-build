@@ -253,6 +253,119 @@ class ProductEnrichmentQueryServiceTest extends TestCase
         );
     }
 
+    /**
+     * N-6 (2026-08-05 re-gate). B2 gave this query the `tenant_id` predicate
+     * its two sibling conversions already had, but not the R1 drift SIGNAL that
+     * came with them: `products.tenant_id` can drift exactly like
+     * `companies.tenant_id`, and a drifted product then leaves the enrichment
+     * polling window silently — its submission is never re-checked and no log
+     * line anywhere says why.
+     *
+     * The probe pair has to be coherent to be usable: the unfiltered count and
+     * the matched count must apply the SAME pending window, differing only in
+     * the tenant predicate. Otherwise every ordinary row outside the window
+     * would register as drift and the signal would be noise.
+     */
+    public function test_the_drift_probe_measures_the_same_window_as_the_poller_minus_the_tenant_predicate(): void
+    {
+        $otherTenant = $this->createOtherTenant('drift-enrichment-query', 'TAX-DRIFT');
+
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'enrichment_status' => EnrichmentStatus::Pending,
+            'platform_submission_id' => (string) Str::uuid(),
+            'updated_at' => now()->subMinutes(15),
+        ]);
+
+        $drifted = Product::factory()->create([
+            'tenant_id' => $otherTenant['tenant']->id,
+            'company_id' => $otherTenant['company']->id,
+            'enrichment_status' => EnrichmentStatus::Pending,
+            'platform_submission_id' => (string) Str::uuid(),
+            'updated_at' => now()->subMinutes(15),
+        ]);
+
+        // Outside the polling window on every axis the poller cares about, so
+        // outside the probe too — a fresh submission must never read as drift.
+        Product::factory()->create([
+            'tenant_id' => $otherTenant['tenant']->id,
+            'company_id' => $otherTenant['company']->id,
+            'enrichment_status' => EnrichmentStatus::Pending,
+            'platform_submission_id' => (string) Str::uuid(),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+        Product::factory()->create([
+            'tenant_id' => $otherTenant['tenant']->id,
+            'company_id' => $otherTenant['company']->id,
+            'enrichment_status' => EnrichmentStatus::Completed,
+            'platform_submission_id' => (string) Str::uuid(),
+            'updated_at' => now()->subMinutes(15),
+        ]);
+
+        $this->assertSame(2, $this->service->countPendingEnrichmentsOnConnection(staleMinutes: 10));
+        $this->assertSame(
+            1,
+            $this->service->countPendingEnrichmentsForTenant($this->tenant->id, staleMinutes: 10),
+        );
+        $this->assertSame(
+            [$drifted->id],
+            $this->service->findPendingEnrichmentIdsOutsideTenant($this->tenant->id, staleMinutes: 10, limit: 20),
+        );
+    }
+
+    /**
+     * The id probe is the expensive half, so it is capped by the caller — and
+     * the cap has to hold, because drift can be fleet-sized.
+     */
+    public function test_the_drift_id_probe_respects_its_cap(): void
+    {
+        $otherTenant = $this->createOtherTenant('capped-enrichment-query', 'TAX-CAP');
+
+        for ($i = 0; $i < 4; $i++) {
+            Product::factory()->create([
+                'tenant_id' => $otherTenant['tenant']->id,
+                'company_id' => $otherTenant['company']->id,
+                'enrichment_status' => EnrichmentStatus::Pending,
+                'platform_submission_id' => (string) Str::uuid(),
+                'updated_at' => now()->subMinutes(15),
+            ]);
+        }
+
+        $this->assertCount(
+            2,
+            $this->service->findPendingEnrichmentIdsOutsideTenant($this->tenant->id, staleMinutes: 10, limit: 2),
+        );
+    }
+
+    /**
+     * @return array{tenant: Tenant, company: Company}
+     */
+    private function createOtherTenant(string $slug, string $taxId): array
+    {
+        $tenant = Tenant::create([
+            'name' => 'Other '.$slug,
+            'slug' => $slug,
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
+        ]);
+
+        $company = Company::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Other Company '.$slug,
+            'legal_name' => 'Other Company '.$slug.' LLC',
+            'tax_id' => $taxId,
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        return ['tenant' => $tenant, 'company' => $company];
+    }
+
     public function test_respects_limit(): void
     {
         for ($i = 0; $i < 5; $i++) {

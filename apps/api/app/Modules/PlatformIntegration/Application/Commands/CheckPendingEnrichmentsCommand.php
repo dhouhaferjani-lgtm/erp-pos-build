@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Application\Commands;
 
+use App\Console\Concerns\WarnsOnTenantScopeDrift;
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
@@ -54,6 +55,17 @@ use Illuminate\Support\Facades\Log;
  */
 final class CheckPendingEnrichmentsCommand extends TenantScopedCommand
 {
+    use WarnsOnTenantScopeDrift;
+
+    /** Per-tenant polling budget. */
+    private const PER_TENANT_LIMIT = 50;
+
+    /** How long a submission must sit untouched before it is re-polled. */
+    private const STALE_MINUTES = 10;
+
+    /** Cap on drifted ids collected for the R1 warning. */
+    private const MAX_REPORTED_DRIFT_IDS = 20;
+
     /**
      * @var string
      */
@@ -78,10 +90,36 @@ final class CheckPendingEnrichmentsCommand extends TenantScopedCommand
         $updatedCount = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (&$checked, &$updatedCount): int {
+            // R1 signal, added by N-6 (2026-08-05 re-gate). B2 gave this query
+            // the tenant predicate its two sibling conversions carry but not
+            // the drift WARNING that came with them, so a drifted
+            // `products.tenant_id` left the polling window in silence — and
+            // this poller is the enrichment webhook's safety net, so nothing
+            // downstream picks the submission up either. Deliberately NOT
+            // gated on (unlike `channels:reconcile`, N-2): polling is additive
+            // and destroys nothing, so the honest response to drift is to warn
+            // and still poll every product that IS correctly stamped.
+            $this->warnOnTenantScopeDrift(
+                'products (pending enrichment)',
+                $tenant,
+                fn (): int => $this->enrichmentQuery->countPendingEnrichmentsOnConnection(
+                    staleMinutes: self::STALE_MINUTES,
+                ),
+                fn (): int => $this->enrichmentQuery->countPendingEnrichmentsForTenant(
+                    tenantId: $tenant->id,
+                    staleMinutes: self::STALE_MINUTES,
+                ),
+                fn (): array => $this->enrichmentQuery->findPendingEnrichmentIdsOutsideTenant(
+                    tenantId: $tenant->id,
+                    staleMinutes: self::STALE_MINUTES,
+                    limit: self::MAX_REPORTED_DRIFT_IDS,
+                ),
+            );
+
             $pendingProducts = $this->enrichmentQuery->findPendingEnrichments(
                 tenantId: $tenant->id,
-                limit: 50,
-                staleMinutes: 10,
+                limit: self::PER_TENANT_LIMIT,
+                staleMinutes: self::STALE_MINUTES,
             );
 
             if ($pendingProducts->isEmpty()) {

@@ -31,4 +31,46 @@ interface EnrichmentQueryInterface
      * @return Collection<int, PendingEnrichmentDTO>
      */
     public function findPendingEnrichments(string $tenantId, int $limit, int $staleMinutes): Collection;
+
+    /**
+     * DRIFT PROBE — every pending submission visible ON THIS CONNECTION,
+     * ignoring `tenant_id` entirely and ignoring the polling budget.
+     *
+     * N-6 (2026-08-05 re-gate). B2 gave the poller the tenant predicate its two
+     * sibling conversions carry, but not the R1 drift SIGNAL that came with
+     * them. `products.tenant_id` drifts exactly like `companies.tenant_id` — a
+     * tenant database restored from another tenant's dump, a seeder default, a
+     * mis-provisioned tenant — and a drifted product then leaves the polling
+     * window SILENTLY: its submission is never re-checked and, because this
+     * poller is the enrichment webhook's safety net, nothing else will pick it
+     * up either.
+     *
+     * Meaningful only under database-per-tenant, where "this connection" IS
+     * "this tenant". Under the compat mode the connection legitimately holds
+     * the whole fleet, which is why the `WarnsOnTenantScopeDrift` console
+     * concern never calls this there. It is a probe, NOT a read path — nothing may poll, enqueue or
+     * mutate off its result.
+     */
+    public function countPendingEnrichmentsOnConnection(int $staleMinutes): int;
+
+    /**
+     * DRIFT PROBE — the same window as {@see self::countPendingEnrichmentsOnConnection()},
+     * narrowed by the tenant predicate and still unbudgeted.
+     *
+     * The pair must differ ONLY in the `tenant_id` predicate: a probe that
+     * applied the polling `limit`, or a different staleness window, would
+     * report ordinary backlog as drift and make the signal noise.
+     */
+    public function countPendingEnrichmentsForTenant(string $tenantId, int $staleMinutes): int;
+
+    /**
+     * DRIFT PROBE — ids the tenant predicate excluded, capped by the caller
+     * because drift can be fleet-sized.
+     *
+     * Only ever called once a delta is known to exist, so the expensive half of
+     * the probe stays off the healthy path.
+     *
+     * @return list<string>
+     */
+    public function findPendingEnrichmentIdsOutsideTenant(string $tenantId, int $staleMinutes, int $limit): array;
 }
