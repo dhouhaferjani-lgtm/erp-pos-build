@@ -4,25 +4,49 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\TenantScopedCommand;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
-use Illuminate\Console\Command;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * @cross-tenant-by-design One-shot data migration that walks the entire ParapharmacyProductMetadata table to normalize JSONB fields into pivot tables; pivot rows are anchored on each source row's own product_id.
+ * Tenant-isolation: cat-(a-per-tenant-iter) behind an EXPLICIT scope,
+ * converted 2026-08-05 (cat-(b) wave 2).
+ *
+ * The annotation said the one-shot migration "walks the entire
+ * ParapharmacyProductMetadata table". That table and every pivot it writes
+ * (`product_ingredient`, `key_component_product`, `health_claim_product`,
+ * `certification_product` and their `*_translations`) are TENANT tables, so
+ * after the 2026-05-28 database-per-tenant flip the walk raised 42P01 on the
+ * console's CENTRAL connection and migrated nothing.
+ *
+ * A JSONB→pivot migration that silently skips a tenant leaves that tenant's
+ * parapharmacy data permanently un-normalized, so the scope must be named:
+ * `--tenant=<uuid>` or `--all-tenants`.
+ *
+ * `parapharmacy_product_metadata` carries no `tenant_id` of its own — it
+ * anchors on `product_id` — so the compatibility-mode predicate is a subquery
+ * against the tenant's products. `--limit` becomes a PER-TENANT cap, which is
+ * the only reading that survives iteration.
+ *
+ * The normalization LOGIC is untouched.
  */
-class MigrateParapharmacyDataCommand extends Command
+final class MigrateParapharmacyDataCommand extends TenantScopedCommand
 {
     protected $signature = 'parapharmacy:migrate-data
+                          {--tenant= : Tenant UUID to migrate (required unless --all-tenants)}
+                          {--all-tenants : Deliberate fleet-wide run over every reachable tenant}
                           {--dry-run : Run without making changes}
-                          {--limit= : Limit number of products to migrate}';
+                          {--limit= : Limit number of products to migrate per tenant}';
 
-    protected $description = 'Migrate parapharmacy JSONB data to normalized tables';
+    protected $description = 'Migrate parapharmacy JSONB data to normalized tables (per tenant)';
 
     private int $migratedCount = 0;
 
@@ -30,40 +54,70 @@ class MigrateParapharmacyDataCommand extends Command
 
     private int $errorCount = 0;
 
-    public function handle(): int
+    public function __construct(CompanyContext $companyContext)
     {
-        $dryRun = $this->option('dry-run');
-        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
+        parent::__construct($companyContext);
+    }
+
+    protected function executeCommand(): int
+    {
+        $dryRun = $this->option('dry-run') === true;
+        $limitOption = $this->option('limit');
+        $limit = is_string($limitOption) && $limitOption !== '' ? (int) $limitOption : null;
 
         $this->info('Starting parapharmacy data migration...');
         if ($dryRun) {
             $this->warn('DRY RUN MODE - No changes will be saved');
         }
 
-        $query = ParapharmacyProductMetadata::query()
-            ->whereNotNull('active_ingredients')
-            ->orWhereNotNull('key_components')
-            ->orWhereNotNull('health_claims')
-            ->orWhereNotNull('certifications');
+        $exit = $this->forEachExplicitlySelectedTenant(
+            $this->stringOption('tenant'),
+            $this->option('all-tenants') === true,
+            function (Tenant $tenant) use ($dryRun, $limit): int {
+                // The metadata table has no tenant_id; it anchors on product_id.
+                // Redundant under database-per-tenant, load-bearing in
+                // single-schema compatibility mode.
+                $query = ParapharmacyProductMetadata::query()
+                    ->whereIn(
+                        'product_id',
+                        Product::query()->select('id')->where('tenant_id', $tenant->id),
+                    )
+                    ->where(fn ($inner) => $inner
+                        ->whereNotNull('active_ingredients')
+                        ->orWhereNotNull('key_components')
+                        ->orWhereNotNull('health_claims')
+                        ->orWhereNotNull('certifications'));
 
-        if ($limit) {
-            $query->limit($limit);
-        }
-
-        $total = $query->count();
-        $this->info("Found {$total} products with JSONB data to migrate");
-
-        $query->chunk(100, function ($metadataRecords) use ($dryRun) {
-            foreach ($metadataRecords as $metadata) {
-                try {
-                    $this->migrateProduct($metadata, $dryRun);
-                    $this->migratedCount++;
-                } catch (\Exception $e) {
-                    $this->error("Error migrating product {$metadata->product_id}: {$e->getMessage()}");
-                    $this->errorCount++;
+                if ($limit !== null) {
+                    $query->limit($limit);
                 }
-            }
-        });
+
+                $total = $query->count();
+                $this->info(sprintf(
+                    'TENANT %s (%s): found %d product(s) with JSONB data to migrate',
+                    $tenant->id,
+                    $tenant->slug,
+                    $total,
+                ));
+
+                $tenantExit = self::SUCCESS;
+
+                $query->chunk(100, function ($metadataRecords) use ($dryRun, &$tenantExit) {
+                    foreach ($metadataRecords as $metadata) {
+                        try {
+                            $this->migrateProduct($metadata, $dryRun);
+                            $this->migratedCount++;
+                        } catch (\Exception $e) {
+                            $this->error("Error migrating product {$metadata->product_id}: {$e->getMessage()}");
+                            $this->errorCount++;
+                            $tenantExit = self::FAILURE;
+                        }
+                    }
+                });
+
+                return $tenantExit;
+            },
+        );
 
         $this->newLine();
         $this->info('Migration Summary:');
@@ -76,7 +130,18 @@ class MigrateParapharmacyDataCommand extends Command
             ]
         );
 
+        if ($exit !== self::SUCCESS) {
+            return $exit;
+        }
+
         return $this->errorCount > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function stringOption(string $name): ?string
+    {
+        $value = $this->option($name);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function migrateProduct(ParapharmacyProductMetadata $metadata, bool $dryRun): void

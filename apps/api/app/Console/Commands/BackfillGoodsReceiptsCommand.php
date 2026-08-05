@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -14,66 +16,109 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\CurrencyScale;
-use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * @cross-tenant-by-design Iterates companies fleet-wide unless --company narrows scope; synthesizes receipt ledger rows from historical stock movements.
+ * Tenant-isolation: cat-(a-per-tenant-iter) behind an EXPLICIT scope,
+ * converted 2026-08-05 (cat-(b) wave 2).
+ *
+ * `Company::query()` at the top of the command ran on the console's CENTRAL
+ * connection. `companies`, `goods_receipt_lines` and `stock_movements` are all
+ * TENANT tables, so after the 2026-05-28 database-per-tenant flip the backfill
+ * raised 42P01 and synthesized nothing.
+ *
+ * A one-shot ledger backfill that silently skips a tenant leaves a permanent
+ * hole in the GR/IR ledger, so the scope must be named: `--tenant=<uuid>` or
+ * `--all-tenants`. `--company` remains an in-tenant narrowing filter.
+ *
+ * The receipt-synthesis LOGIC is untouched.
  */
-final class BackfillGoodsReceiptsCommand extends Command
+final class BackfillGoodsReceiptsCommand extends TenantScopedCommand
 {
     protected $signature = 'procurement:backfill-goods-receipts
+        {--tenant= : Tenant UUID to backfill (required unless --all-tenants)}
+        {--all-tenants : Deliberate fleet-wide run over every reachable tenant}
         {--company= : Specific company UUID to backfill}
         {--dry-run : Count eligible movements without writing receipt rows}';
 
     protected $description = 'Backfill goods_receipts and goods_receipt_lines from historical purchase stock movements';
 
     public function __construct(
+        CompanyContext $companyContext,
         private readonly DocumentNumberingService $numberingService,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    protected function executeCommand(): int
     {
         $dryRun = (bool) $this->option('dry-run');
-        $companyId = $this->option('company');
-        $companies = Company::query()
-            ->when(is_string($companyId) && $companyId !== '', fn ($query) => $query->where('id', $companyId))
-            ->orderBy('id')
-            ->get();
-
-        if ($companies->isEmpty()) {
-            $this->error('No companies found.');
-
-            return self::FAILURE;
-        }
+        $companyFilter = $this->stringOption('company');
 
         if ($dryRun) {
             $this->warn('Dry run: no receipt rows will be written.');
         }
 
+        $companiesSeen = 0;
         $eligibleMovements = 0;
         $createdReceipts = 0;
         $createdLines = 0;
         $skippedUnmappableGroups = 0;
 
-        foreach ($companies as $company) {
-            $movements = $this->eligibleMovements((string) $company->id);
-            $eligibleMovements += $movements->count();
+        $exit = $this->forEachExplicitlySelectedTenant(
+            $this->stringOption('tenant'),
+            $this->option('all-tenants') === true,
+            function (Tenant $tenant) use (
+                $dryRun,
+                $companyFilter,
+                &$companiesSeen,
+                &$eligibleMovements,
+                &$createdReceipts,
+                &$createdLines,
+                &$skippedUnmappableGroups,
+            ): int {
+                // The explicit tenant_id predicate is redundant under
+                // database-per-tenant and load-bearing in single-schema
+                // compatibility mode.
+                $companies = Company::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->when($companyFilter !== null, fn ($query) => $query->where('id', $companyFilter))
+                    ->orderBy('id')
+                    ->get();
 
-            if ($dryRun || $movements->isEmpty()) {
-                continue;
-            }
+                $companiesSeen += $companies->count();
 
-            [$receipts, $lines, $skipped] = $this->backfillCompany($company, $movements);
-            $createdReceipts += $receipts;
-            $createdLines += $lines;
-            $skippedUnmappableGroups += $skipped;
+                foreach ($companies as $company) {
+                    $movements = $this->eligibleMovements((string) $company->id);
+                    $eligibleMovements += $movements->count();
+
+                    if ($dryRun || $movements->isEmpty()) {
+                        continue;
+                    }
+
+                    [$receipts, $lines, $skipped] = $this->backfillCompany($company, $movements);
+                    $createdReceipts += $receipts;
+                    $createdLines += $lines;
+                    $skippedUnmappableGroups += $skipped;
+                }
+
+                return self::SUCCESS;
+            },
+        );
+
+        if ($exit !== self::SUCCESS) {
+            return $exit;
+        }
+
+        if ($companiesSeen === 0) {
+            $this->error('No companies found.');
+
+            return self::FAILURE;
         }
 
         $this->info("Eligible movements: {$eligibleMovements}");
@@ -82,6 +127,13 @@ final class BackfillGoodsReceiptsCommand extends Command
         $this->info("Skipped unmappable groups: {$skippedUnmappableGroups}");
 
         return self::SUCCESS;
+    }
+
+    private function stringOption(string $name): ?string
+    {
+        $value = $this->option($name);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**
