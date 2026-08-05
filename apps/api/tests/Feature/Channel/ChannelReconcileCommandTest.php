@@ -7,6 +7,7 @@ namespace Tests\Feature\Channel;
 use App\Modules\Channel\Application\Jobs\ChannelReconciliationJob;
 use App\Modules\Channel\Domain\Enums\ChannelConnectionStatus;
 use App\Modules\Channel\Domain\Models\Channel;
+use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -122,6 +123,87 @@ final class ChannelReconcileCommandTest extends TestCase
 
         Queue::assertPushed(ChannelReconciliationJob::class, 1);
         $this->assertSame([$reachable->id], $this->dispatchedValues('channelId'));
+    }
+
+    /**
+     * R2 (2026-08-05 review). `ChannelWebhookDirectoryRegistrar::forget()` is
+     * wired to the Eloquent `deleted` event ONLY, so a channel removed by raw
+     * SQL, a `truncate`, or a tenant database restored to a pre-channel
+     * snapshot leaves its central pointer behind forever. That row is not
+     * inert: ChannelWebhookController binds tenancy — a full database switch —
+     * BEFORE it discovers the channel row is gone, so every stale pointer sells
+     * an anonymous caller exactly the cost the fail-closed design exists to
+     * avoid. The nightly sweep is the only place that already reads every
+     * channel of every tenant, so it is where the prune belongs.
+     */
+    public function test_the_sweep_prunes_a_pointer_whose_channel_no_longer_exists_in_the_tenant(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->createTenant('channel-recon-prune');
+        $live = $this->createChannel($this->createCompany($tenant, 'LIVE'), 'live');
+
+        // A channel deleted outside Eloquent: the observer never fired, so the
+        // pointer survived.
+        $ghostId = (string) Str::uuid();
+        ChannelWebhookDirectoryEntry::query()->create([
+            'channel_id' => $ghostId,
+            'tenant_id' => $tenant->id,
+        ]);
+
+        $this->assertSame(0, Artisan::call('channels:reconcile'));
+
+        $this->assertNull(
+            ChannelWebhookDirectoryEntry::query()->find($ghostId),
+            'A pointer whose channel is absent from the owning tenant must be pruned.',
+        );
+        $this->assertNotNull(
+            ChannelWebhookDirectoryEntry::query()->find($live->id),
+            'The prune must never touch a pointer whose channel is still there.',
+        );
+    }
+
+    /**
+     * The deprovisioning half of R2: a tenant's pointers survive the tenant
+     * itself, and no per-tenant slot ever opens for a row that is gone from the
+     * central directory — so that leg cannot live inside the iteration.
+     */
+    public function test_the_sweep_prunes_pointers_whose_tenant_is_gone_from_the_directory(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->createTenant('channel-recon-prune-tenant');
+        $live = $this->createChannel($this->createCompany($tenant, 'KEEP'), 'keep');
+
+        $orphanId = (string) Str::uuid();
+        ChannelWebhookDirectoryEntry::query()->create([
+            'channel_id' => $orphanId,
+            'tenant_id' => (string) Str::uuid(),
+        ]);
+
+        $this->assertSame(0, Artisan::call('channels:reconcile'));
+
+        $this->assertNull(ChannelWebhookDirectoryEntry::query()->find($orphanId));
+        $this->assertNotNull(ChannelWebhookDirectoryEntry::query()->find($live->id));
+    }
+
+    /**
+     * A tenant that owns channels but none registered yet must not have the
+     * prune mistake its own live channels for stale rows — the self-heal
+     * `register()` runs first, so by prune time the pointer set is complete.
+     */
+    public function test_the_sweep_does_not_prune_the_pointers_it_just_backfilled(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->createTenant('channel-recon-prune-heal');
+        $channel = $this->createChannel($this->createCompany($tenant, 'HEAL'), 'heal');
+
+        ChannelWebhookDirectoryEntry::query()->whereKey($channel->id)->delete();
+
+        $this->assertSame(0, Artisan::call('channels:reconcile'));
+
+        $this->assertNotNull(ChannelWebhookDirectoryEntry::query()->find($channel->id));
     }
 
     public function test_it_dispatches_nothing_when_no_channel_exists(): void
