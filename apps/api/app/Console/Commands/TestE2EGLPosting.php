@@ -19,7 +19,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
 
 /**
- * @cross-tenant-by-design Manual dev/test command that uses Tenant::first() / Company::first() to seed fixtures; not intended for production runs.
+ * @cross-tenant-by-design Manual dev/test command only. `Tenant::first()` resolves from the CENTRAL directory but
+ *   `Company::first()` does NOT — `companies` is a TENANT table — so post-2026-05-28 (database-per-tenant) it must
+ *   be run as `php artisan tenants:run …`; a bare run raises 42P01. Never for production.
  */
 final class TestE2EGLPosting extends Command
 {

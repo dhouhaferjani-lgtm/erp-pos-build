@@ -16,7 +16,9 @@ use App\Modules\Product\Domain\Product;
 use Illuminate\Console\Command;
 
 /**
- * @cross-tenant-by-design Manual dev/test command that resolves test fixtures via Company::where('name', ...); not intended for production runs.
+ * @cross-tenant-by-design Manual dev/test command only. It resolves fixtures via `Company::where('name', …)`, and
+ *   `companies` is a TENANT table, so post-2026-05-28 (database-per-tenant) it must be run as
+ *   `php artisan tenants:run …`; a bare run raises 42P01 on the CENTRAL connection. Never for production.
  */
 class TestTaxRecoverability extends Command
 {

@@ -12,7 +12,9 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
- * @cross-tenant-by-design Single tenant connection per invocation; fleet-wide operation is an external operator loop.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `goods_receipt_lines` is a TENANT table, so post-2026-05-28
+ *   (database-per-tenant) each invocation reports on ONLY the tenant database bound around it. A fleet-wide pass is
+ *   an external `tenants:run` loop, not something this command does; a bare run raises 42P01 on CENTRAL.
  */
 final class GrirDriftReportCommand extends Command
 {

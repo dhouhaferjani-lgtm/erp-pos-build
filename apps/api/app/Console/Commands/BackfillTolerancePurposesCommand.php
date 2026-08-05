@@ -69,7 +69,9 @@ use Illuminate\Support\Str;
  *   #     before finishing (e.g. the Schema guard tripped) and is a FAILURE:
  *   test "$(grep -c 'TOLERANCE-PURPOSE BACKFILL FAILURES:' /tmp/tolerance-backfill.log)" -eq "$TENANT_COUNT"
  *
- * @cross-tenant-by-design Runs inside the per-tenant DB bound by tenants:run; iterates only that tenant's companies.
+ * @cross-tenant-by-design NOT cross-tenant in practice: every table it touches is a TENANT table, so post-2026-05-28
+ *   (database-per-tenant) it reads ONLY the tenant database `tenants:run` binds around it, and a bare run on the
+ *   CENTRAL connection raises 42P01. Invoke exclusively via `php artisan tenants:run …`.
  */
 final class BackfillTolerancePurposesCommand extends Command
 {

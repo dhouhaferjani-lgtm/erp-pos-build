@@ -16,7 +16,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * @cross-tenant-by-design Single tenant connection per invocation; fleet-wide operation is an external operator loop.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `documents` is a TENANT table, so post-2026-05-28
+ *   (database-per-tenant) each invocation touches ONLY the tenant database bound around it. A fleet-wide pass is an
+ *   external `tenants:run` loop, not something this command does; a bare run raises 42P01 on CENTRAL.
  *
  * Tenant-scoped rematch for the currently bootstrapped tenant connection.
  *

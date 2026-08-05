@@ -62,7 +62,9 @@ use InvalidArgumentException;
  * never be stored: the resolver fail-closes silently, so the operator would
  * believe rounding is on while the device never rounds.
  *
- * @cross-tenant-by-design Runs inside the per-tenant DB bound by tenants:run; iterates only that tenant's companies.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and `country_payment_settings` are TENANT tables,
+ *   so post-2026-05-28 (database-per-tenant) it reads ONLY the tenant database `tenants:run` binds around it, and a
+ *   bare run on the CENTRAL connection raises 42P01. Invoke exclusively via `php artisan tenants:run …`.
  */
 final class ConfigureCashRoundingCommand extends Command
 {

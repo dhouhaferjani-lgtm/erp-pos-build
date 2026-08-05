@@ -50,7 +50,10 @@ use Throwable;
  *   transaction; cheap column compare). A second apply is command-level idempotent:
  *   zero creations.
  *
- * @cross-tenant-by-design Backfill run per tenant via `tenants:run`; iterates every company of the bound tenant to re-run chart provisioning.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and the chart tables are TENANT tables, so
+ *   post-2026-05-28 (database-per-tenant) this command reads ONLY the tenant database `tenants:run` binds around it.
+ *   `php artisan charts:seed` on its own runs on the CENTRAL connection and raises 42P01. Invoke exclusively as
+ *   `php artisan tenants:run charts:seed`.
  */
 final class SeedChartsCommand extends Command
 {

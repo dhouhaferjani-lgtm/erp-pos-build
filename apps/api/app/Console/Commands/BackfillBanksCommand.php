@@ -57,7 +57,10 @@ use Throwable;
  * `db:seed --class=BanksSeeder`, which silently no-ops because the container resolves
  * the seeder's `?Company` parameter to an empty Company (checklist §2 trap).
  *
- * @cross-tenant-by-design Backfill run per tenant via `tenants:run`; iterates every company of the bound tenant to seed the shared bank directory.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and `banks` are TENANT tables, so post-2026-05-28
+ *   (database-per-tenant) this command reads ONLY the tenant database `tenants:run` binds around it. A bare
+ *   `php artisan banks:backfill` runs on the CENTRAL connection and raises 42P01. Invoke exclusively as
+ *   `php artisan tenants:run banks:backfill`.
  */
 final class BackfillBanksCommand extends Command
 {

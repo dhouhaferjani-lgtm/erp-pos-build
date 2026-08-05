@@ -18,9 +18,10 @@ use Illuminate\Console\Command;
  * Safe to re-run: already-Auto rows are never queried.
  * Eligibility: cost_price > 0 AND sale_price == computeAutoPrice() at money scale.
  *
- * @cross-tenant-by-design Maintenance command operating on the current tenant
- *   DB connection; per-tenant invocation is handled by the caller (scheduled
- *   task, console loop over tenants, etc.) — out of scope for this command.
+ * @cross-tenant-by-design NOT cross-tenant in practice: `products` is a TENANT table, so post-2026-05-28
+ *   (database-per-tenant) this command mutates ONLY the tenant database bound around it. There is no scheduled
+ *   caller and no console loop — the 2026-08-05 cat-(b) re-sweep found the "handled by the caller" claim had no
+ *   live invocation behind it. Invoke as `php artisan tenants:run …`; a bare run raises 42P01 on CENTRAL.
  */
 class BackfillPricingModeCommand extends Command
 {
