@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test'
+import { type Browser, type BrowserContext, type Page, expect } from '@playwright/test'
 
 /**
  * Shared helpers for the pre-launch MONEY TEST CAMPAIGN (docs/qa/2026-08-01-money-test-plan.md).
@@ -145,6 +145,90 @@ export async function apiRequest(
     },
     { method, path, body }
   )
+}
+
+// ---------------------------------------------------------------------------
+// C-13 — concurrency harness (added by W-7, campaign plan §C debt item C-13:
+// "A two-`browser.newContext()` helper in `helpers.ts` + a request-replay
+// helper for simultaneous POSTs. Nothing in the repo does this today.").
+//
+// Two shapes, deliberately kept apart because they answer different questions:
+//
+//  * `withTwoSessions()` — two REAL, fully independent browser contexts (own
+//    cookie jar, own localStorage, own auth token). This is the only way to
+//    model a STALE EDIT: session B must have loaded the document BEFORE
+//    session A changed it, which requires two separate client states. Use it
+//    for CONC-01 / CONC-06.
+//
+//  * `raceTwo()` — fires two thunks with `Promise.all` and classifies the two
+//    outcomes. For a genuine simultaneous-POST replay this must be driven at
+//    the API layer (two `fetch`es land within microseconds of each other);
+//    driving two BROWSERS through a UI flow serialises on render and proves
+//    nothing about the server's race window. Use it for CONC-02..05.
+// ---------------------------------------------------------------------------
+
+export interface TwoSessions {
+  contextA: BrowserContext
+  contextB: BrowserContext
+  pageA: Page
+  pageB: Page
+}
+
+/**
+ * Opens two independent browser contexts, logs each in (optionally as
+ * different roles), hands both pages to `body`, and ALWAYS closes both
+ * contexts — including when `body` throws, so a failing concurrency case
+ * never leaks a context into the next test.
+ *
+ * Both contexts are created from the SAME `browser` fixture, so nothing here
+ * depends on the worker count; the specs that assert a shared-state delta
+ * carry their own `workers === 1` runtime guard.
+ */
+export async function withTwoSessions<T>(
+  browser: Browser,
+  roles: { a: Role; b: Role },
+  body: (sessions: TwoSessions) => Promise<T>
+): Promise<T> {
+  const contextA = await browser.newContext()
+  const contextB = await browser.newContext()
+  try {
+    const pageA = await contextA.newPage()
+    const pageB = await contextB.newPage()
+    await loginAsRole(pageA, roles.a)
+    await loginAsRole(pageB, roles.b)
+    return await body({ contextA, contextB, pageA, pageB })
+  } finally {
+    await contextA.close()
+    await contextB.close()
+  }
+}
+
+export interface RaceOutcome<T> {
+  /** Both settled results, in submission order. */
+  results: [PromiseSettledResult<T>, PromiseSettledResult<T>]
+  /** The fulfilled values only (a thunk that THREW is not a value). */
+  fulfilled: T[]
+  /** The rejection reasons only. */
+  rejected: unknown[]
+}
+
+/**
+ * Fires two thunks as close to simultaneously as this runtime allows and
+ * returns BOTH outcomes without ever throwing. `Promise.allSettled`, not
+ * `Promise.all`: `all` rejects on the first failure and DISCARDS the other
+ * outcome, which is exactly the observation a concurrency case needs (the
+ * loser's error IS the evidence). Callers assert the money effect
+ * afterwards — "exactly one row", never "the second call failed", because a
+ * duplicate-suppressing product may legitimately answer 200 twice while
+ * writing once.
+ */
+export async function raceTwo<T>(first: () => Promise<T>, second: () => Promise<T>): Promise<RaceOutcome<T>> {
+  const settled = await Promise.allSettled([first(), second()])
+  return {
+    results: settled as [PromiseSettledResult<T>, PromiseSettledResult<T>],
+    fulfilled: settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])),
+    rejected: settled.flatMap((r) => (r.status === 'rejected' ? [r.reason] : [])),
+  }
 }
 
 /** French grouping uses U+202F NARROW NO-BREAK SPACE, not ASCII space (plan §I.3). */
