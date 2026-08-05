@@ -727,11 +727,30 @@ v1's mitigation was *"the next cycle heals it"* — which is exactly wrong for a
   "result": "staged",            // phase 1 value. NEVER "complete" at first write
   "offsite": {
     "object_storage": { "state": "pending", "verified_at": null, "rclone_check_rc": null },
-    "restic":         { "state": "pending", "verified_at": null, "snapshot_id": null,
-                        "restic_check_rc": null }
+    "restic":         { "state": "pending", "verified_at": null,
+                        // v4 §4.4b2 — the PAIR, not one id. `data_snapshot` is written at
+                        // promote (it exists by then); `complete_snapshot` is filled by the
+                        // ATTESTATION, never by the manifest — a snapshot cannot name itself.
+                        "data_snapshot": null,
+                        "restic_check_rc": null,
+                        "restic_inventory_check": "snapshot-scoped",   // restic ls --json $DATA_SNAP
+                        "restic_check_mode": "read-data-subset",       // repository SAMPLE, not scoped
+                        "restic_check_subset": null }                  // e.g. "7/12" — the rotation actually run
   }
 }
 ```
+
+#### 🚨 4.4b0 The cycle integrity chain — three layers, and they must not be circular (v4)
+
+`MANIFEST.json` is **rewritten** at the promote and `ATTESTATION.json` does not exist until after it. A single flat `SHA256SUMS` over `./*` therefore **cannot** cover them: it would be invalidated by the very promote that makes the cycle restorable, and `sha256sum -c SHA256SUMS` — the fail-closed integrity gate at §4.6b step 0b and DR-3 step 7 — would fail on **every good cycle**. The scopes are fixed, and each layer is verified by the one outside it:
+
+| Layer | File | Covers | Written | Verified by |
+|---|---|---|---|---|
+| 1 | `SHA256SUMS` | **the data artefacts ONLY** — every dump, `globals.sql`, `source_metadata.jsonl`, `media-inventory.json`, `media-check.txt`. 🚨 **Explicitly EXCLUDES `MANIFEST.json` and `ATTESTATION.json`** | phase 1, **never rewritten** | `sha256sum -c` at restore |
+| 2 | `MANIFEST.json` | its own `central.sha256` / `tenants[].sha256` / `media.inventory_sha256` per artefact, **plus `sha256sum(SHA256SUMS)`** | phase 1 (`staged`), rewritten at promote (`complete`) | its hash is recorded in layer 3 |
+| 3 | `ATTESTATION.json` | `manifest_sha256` + the restic snapshot pair (§4.4b2 B5) | promote only | the leg itself: the object version on leg A, the snapshot tree on leg B |
+
+**Restore verifies outside-in and fails closed at each step:** read `ATTESTATION.json` → `sha256sum MANIFEST.json` equals its `manifest_sha256` → `result == "complete"` and the leg's `state == "verified"` → `sha256sum -c SHA256SUMS` → **and cross-check the two layers**: every `central.file` / `tenants[].file` appears in `SHA256SUMS` with a **byte-identical** hash to the manifest's. That last cross-check is what a tampered-manifest-only attack fails, and it costs one `jq`/`join`.
 
 #### 🚨 4.4b1 `staged` → `complete` is a TWO-PHASE write (v3, round-2 F7/N2 — BLOCKER)
 
@@ -741,7 +760,7 @@ v2's prose said `result=complete` was written after both uploads; v2's **script 
 
 | Phase | What is written | Where | The cycle is a restore candidate? |
 |---|---|---|---|
-| **1 — STAGE** | `MANIFEST.json` with `"result": "staged"` and both `offsite.*.state = "pending"`; `SHA256SUMS` over every artefact **including** the staged manifest's own siblings | local `$STAGE` only | ❌ **NO** |
+| **1 — STAGE** | `MANIFEST.json` with `"result": "staged"` and both `offsite.*.state = "pending"`; `SHA256SUMS` over **the data artefacts only** — 🚨 **v4: NOT over `MANIFEST.json`, which phase 3 rewrites, and not over `ATTESTATION.json`, which does not exist yet (§4.4b0)** | local `$STAGE` only | ❌ **NO** |
 | **2 — UPLOAD** | the staged cycle is copied to **both** legs. Each leg is then **independently verified**: `rclone check --checksum --one-way` (leg A) and, on leg B, a **snapshot-scoped inventory check** (`restic ls --json "$SNAP"` against the cycle's expected file list) **plus** a repository-level `restic check --read-data-subset` — 🚨 **v4 (round-3 finding 4.2): the `--read-data-subset` run is NOT snapshot-scoped and must not be described as if it were.** **Exit codes are captured, not assumed** | both legs | ❌ still NO |
 | **3 — PROMOTE** | *only if both verifications returned 0*: the manifest is rewritten with `"result": "complete"`, both `offsite.*.state = "verified"`, timestamps and exit codes filled — then **re-published to both legs**. On leg A that is an overwrite of one key. 🚨 **On leg B it is NOT an overwrite — restic snapshots are immutable — so v4 uses the paired-object protocol of §4.4b2, not v3's `restic backup MANIFEST.json`** | local + both legs | ✅ **YES** |
 
@@ -769,7 +788,7 @@ Restoring the first yields all the data with a `staged` marker (§4.4c row 1 **r
 | # | Action | Command | Why |
 |---|---|---|---|
 | **B1** | **Data snapshot** (phase 2, unchanged in substance) | `restic backup --tag "cycle=$TS" --tag "role=data" "$STAGE"` → `$DATA_SNAP` | the immutable full cycle, manifest still `staged`. **Never rewritten** |
-| **B2** | **Verify what B1 actually wrote** — snapshot-scoped | `restic ls --json "$DATA_SNAP"` compared against the cycle's expected file list (the `SHA256SUMS` names), plus a repository `restic check --read-data-subset=<n/t>` | 🚨 round-3 finding 4.2: `--read-data-subset=5%` checks **repository structure and a random 5 % of pack files**; it does **not** read every blob reachable from `$DATA_SNAP`. The `ls` comparison is what proves the snapshot contains the cycle; the subset read is a **repository health sample**, and the manifest records it as exactly that |
+| **B2** | **Verify what B1 actually wrote** — snapshot-scoped | `restic ls --json "$DATA_SNAP"` compared against the cycle's expected file list — 🚨 **v4: that list is the `SHA256SUMS` names PLUS `MANIFEST.json`**, because `SHA256SUMS` deliberately does not cover the marker (§4.4b0); a comparison built from `SHA256SUMS` alone would accept a data snapshot with no manifest in it — plus a repository `restic check --read-data-subset=<n/t>` | 🚨 round-3 finding 4.2: `--read-data-subset=5%` checks **repository structure and a random 5 % of pack files**; it does **not** read every blob reachable from `$DATA_SNAP`. The `ls` comparison is what proves the snapshot contains the cycle; the subset read is a **repository health sample**, and the manifest records it as exactly that |
 | **B3** | **Rewrite the manifest to `complete`** locally, filling in `$DATA_SNAP`, both verification exit codes, and the leg states | `write_manifest "$STAGE" complete …` | the complete marker now **names** the data snapshot it belongs to. This is only possible because the data snapshot already exists — which is why the promote is a second write, not a rewrite |
 | **B4** | **Re-snapshot the WHOLE staged directory**, tagged as the complete generation | `restic backup --tag "cycle=$TS" --tag "role=complete" "$STAGE"` → `$COMPLETE_SNAP` | **dedup makes this near-free** — every file except `MANIFEST.json` is byte-identical to B1, so restic stores one changed blob plus a new tree. The result is a **self-contained snapshot holding the cycle data AND its `complete` marker**, which is precisely what leg B lacked |
 | **B5** | **Write the completion attestation** as its own small snapshot | `restic backup --tag "cycle=$TS" --tag "role=attestation" "$STAGE/ATTESTATION.json"` | `ATTESTATION.json` = `{cycle, data_snapshot, complete_snapshot, manifest_sha256, inventory_sha256, os_check_rc, restic_check_rc, promoted_at}`. It is the **externally-addressable index** O-3b and the restore path read first (a snapshot cannot contain its own ID; naming is always one direction) |
@@ -780,7 +799,7 @@ Restoring the first yields all the data with a `staged` marker (§4.4c row 1 **r
 2. **The pairing is verified before any data is written.** Read the attestation, then assert the named `complete` snapshot exists, carries `role=complete` and the same `cycle` tag, and that the `MANIFEST.json` inside it hashes to `manifest_sha256`. Any mismatch ⇒ **REFUSE**, fall back to the previous cycle, and alert. A `complete` snapshot with no attestation, or an attestation naming a snapshot that is absent, is a **failed promote**, not a restore candidate.
 3. **`role=data` snapshots are never restored from directly** except as a deliberate, recorded operator override for forensic purposes — they always carry a `staged` marker by construction.
 4. **`restic forget` must be tag-aware.** The retention policy (§4.5) is applied so that **a cycle's three snapshots age together**: `restic forget --keep-* … --group-by tags` and a post-condition asserting no cycle survives with a `data` but no `complete` snapshot, or vice versa. 🚨 **A pruning policy that split a pair would silently manufacture the exact defect this protocol removes** — the assertion is part of the script, not a convention.
-5. **The local `$TS` directory keeps `ATTESTATION.json` alongside `MANIFEST.json`**, and both are in `SHA256SUMS`. Leg A stores both as ordinary objects (it has no snapshot semantics and needs none — a key overwrite is sufficient there).
+5. **The local `$TS` directory keeps `ATTESTATION.json` alongside `MANIFEST.json`.** 🚨 **v4 correction: neither is in `SHA256SUMS`, and neither can be** — `SHA256SUMS` is written in phase 1 and the promote rewrites one of them and creates the other. They are covered by the **outside-in chain of §4.4b0** (attestation → `manifest_sha256` → manifest → per-file hashes → `SHA256SUMS`), which is what the restore walks. Leg A stores both as ordinary objects (it has no snapshot semantics and needs none — a key overwrite is sufficient there); leg B binds them through the `role=complete` / `role=attestation` snapshot pair.
 
 **Cost, since "take a second full snapshot" sounds expensive and is not.** B4 re-reads the staged directory but stores only the changed manifest blob and new metadata; the dominant cost is the re-read, bounded by H-7's 5-minute cycle budget and measured as **H-22**. If that measurement shows B4 pushing the cycle over budget, the fallback — recorded now so it is not invented under pressure — is to stage `MANIFEST.json` in its own subdirectory and snapshot only that subdirectory at B4, accepting that the complete snapshot is then an attestation-with-inventory rather than a self-contained restore candidate, and marking the leg's evidence strength down accordingly in the manifest. **The fallback is a downgrade and must be recorded as a deviation, not adopted silently.**
 
@@ -790,7 +809,9 @@ Before any cluster restore proceeds, the restore script reads `MANIFEST.json` an
 
 | Check | On failure |
 |---|---|
+| 🚨 **v4, and it runs FIRST (§4.4b0):** `ATTESTATION.json` exists for the cycle and `sha256sum(MANIFEST.json)` equals its `manifest_sha256` | **REFUSE.** An absent attestation means the promote never completed; a hash mismatch means the marker was altered after promotion. Neither is a cycle you restore from — fall back to the previous complete cycle and alert |
 | `result == "complete"` **AND** `offsite.<the leg being restored from>.state == "verified"` (v3, §4.4b1) | **REFUSE** — pick the previous complete cycle and say so loudly. A `staged` manifest means the cycle never proved durable success on both legs and is **not** a restore candidate |
+| 🚨 **v4:** every `central.file` / `tenants[].file` appears in `SHA256SUMS` with a hash **byte-identical** to the manifest's | **REFUSE.** The two layers disagreeing means one of them was rewritten independently of the data — which is the only shape a tampered-manifest attack can take once the chain above holds |
 | 🚨 **restic leg only (v4, §4.4b2):** `ATTESTATION.json` for the cycle exists; the `complete_snapshot` it names **exists**, carries `role=complete` + the same `cycle` tag, and its embedded `MANIFEST.json` hashes to `manifest_sha256` | **REFUSE and fall back to the previous cycle.** A `complete` snapshot with no attestation — or an attestation naming an absent snapshot — is a **failed promote**, not a restore candidate. **Never restore `role=data`** except as a recorded forensic override; it carries a `staged` marker by construction |
 | `media.check_result == "ok"` and `media.inventory_sha256` matches `media-inventory.json` (v3, §4.5a1) | **WARN + operator decision** if media is out of scope for this restore; **REFUSE** for DR-3, where media is in scope |
 | every `tenants[].file` exists and its sha256 matches | **REFUSE** for that database; continue only with explicit operator override, recorded |
@@ -849,7 +870,11 @@ MEDIA_SNAP=$(restic backup --json --tag "cycle=$TS" --tag "role=media-mirror" \
              /var/lib/docker/volumes/<miniodata>/_data | jq -r 'select(.message_type=="summary").snapshot_id')
 
 # 6. PHASE 1 — STAGE. integrity + manifest with "result":"staged"        [v3 §4.4b1]
-( cd "$STAGE" && sha256sum ./* > SHA256SUMS )
+# 🚨 v4 (§4.4b0): DATA ARTEFACTS ONLY. `sha256sum ./*` would include MANIFEST.json — which the
+# promote REWRITES — so every promoted cycle would then fail `sha256sum -c` at restore time, i.e.
+# the fail-closed integrity gate would reject exactly the cycles that are good.
+( cd "$STAGE" && sha256sum ./*.dump globals.sql source_metadata.jsonl \
+                            media-inventory.json media-check.txt > SHA256SUMS )
 write_manifest "$STAGE" staged "$MEDIA_RC" "$MEDIA_SNAP"
 [ "$MEDIA_RC" = "0" ] || { alert "media check FAILED — cycle stays staged"; exit 4; }
 
@@ -861,6 +886,7 @@ OS_RC=$(run_rc rclone check "$STAGE" "hos:erp-prod-backups/$TS" --checksum --one
 DATA_SNAP=$(restic backup --json --tag "cycle=$TS" --tag "role=data" "$STAGE" \
             | jq -r 'select(.message_type=="summary").snapshot_id')
 # B2a — SNAPSHOT-SCOPED: does this snapshot actually contain the cycle?  (finding 4.2)
+#        Expected list = the SHA256SUMS names + MANIFEST.json (§4.4b0/§4.4b2 B2).
 LS_RC=$(run_rc verify_snapshot_inventory "$DATA_SNAP" "$STAGE/SHA256SUMS")   # restic ls --json | compare
 # B2b — repository health SAMPLE. NOT snapshot-scoped, and the manifest records it as a sample.
 #        Deterministic rotating subset so every pack is covered over time.
@@ -924,7 +950,8 @@ Non-negotiable properties (items 6–14 are **new in v2**, per Findings 15 and 2
 15. 🚨 **Two-phase completion (v3, §4.4b1).** `write_manifest` takes the completion state as an argument; **no call site passes `complete` before both offsite legs have returned exit 0 from their own verification**. The promote is a separate, idempotent re-publish of the marker to both legs — an object overwrite on leg A, and the §4.4b2 paired-object protocol on leg B.
 16. 🚨 **NEW in v4 (round-3 finding 2.3) — `set -e` and captured exit codes are mutually exclusive unless you wrap.** `set -euo pipefail` is item 1 and stays. But `rclone check …; OS_RC=$?` **never assigns** when the check fails: the shell exits at the failing command, so the alert, the `os=…` diagnostic and the staged-state bookkeeping the design advertises are all unreachable. It fails safe (nothing gets promoted) and it fails **silently**, which is the half that matters. **Every expected-to-fail verification goes through `run_rc`** (or an equivalent `if`/`errexit`-suspending form), and **each failure branch has its own test in the Phase 4 script review** — a branch that has never executed is not a branch.
 17. 🚨 **NEW in v4 — the restic promote is `role=complete` + `role=attestation`, never `restic backup MANIFEST.json`** (§4.4b2). `restic forget` runs `--group-by tags` and is followed by `assert_no_orphaned_cycle_snapshots`, so retention can never leave a cycle with data but no completion marker.
-18. 🚨 **NEW in v4 — verification claims are recorded at their real strength.** The manifest records `restic_check_mode = "read-data-subset"` **with the subset actually used** (`restic_check_subset`, a rotating deterministic `n/12`) and, separately, `restic_inventory_check = "snapshot-scoped"`. **No document may describe `--read-data-subset` as verifying "the new snapshot"** — it samples repository packs (official [restic repository-check documentation](https://restic.readthedocs.io/en/stable/045_working_with_repos.html)). The snapshot-scoped evidence is the `restic ls --json "$DATA_SNAP"` inventory comparison, and the **full** evidence is the §4.8 rehearsal restore, which restores the named snapshot and validates every `SHA256SUMS` entry.
+18. 🚨 **NEW in v4 — `SHA256SUMS` covers the DATA ARTEFACTS ONLY, and the restore walks the chain outside-in (§4.4b0).** This is not a nicety: the promote **rewrites** `MANIFEST.json` and **creates** `ATTESTATION.json`, so a phase-1 `sha256sum ./*` would be invalidated by the promote itself and `sha256sum -c SHA256SUMS` — the fail-closed gate at §4.6b step 0b, DR-3 step 7 and §4.8 step 4 — would **reject every successfully promoted cycle**, i.e. exactly the cycles that are restorable. **Test both directions in the Phase 4 script review: a promoted cycle passes the full chain, and a cycle whose `MANIFEST.json` has been altered by one byte after promotion FAILS at the attestation step.**
+19. 🚨 **NEW in v4 — verification claims are recorded at their real strength.** The manifest records `restic_check_mode = "read-data-subset"` **with the subset actually used** (`restic_check_subset`, a rotating deterministic `n/12`) and, separately, `restic_inventory_check = "snapshot-scoped"`. **No document may describe `--read-data-subset` as verifying "the new snapshot"** — it samples repository packs (official [restic repository-check documentation](https://restic.readthedocs.io/en/stable/045_working_with_repos.html)). The snapshot-scoped evidence is the `restic ls --json "$DATA_SNAP"` inventory comparison, and the **full** evidence is the §4.8 rehearsal restore, which restores the named snapshot and validates every `SHA256SUMS` entry.
 
 ### 4.5 Retention
 
@@ -1226,8 +1253,14 @@ jq -e '.result == "complete"' "$CYCLE/MANIFEST.json"
 jq -e '.offsite.object_storage.state == "verified" and .offsite.restic.state == "verified"' \
    "$CYCLE/MANIFEST.json"      # v3: "staged" is NOT a restore candidate
 
-# 0b. VERIFY INTEGRITY. Never restore an unverified archive.
-( cd "$CYCLE" && sha256sum -c SHA256SUMS )
+# 0b. VERIFY INTEGRITY, OUTSIDE-IN. Never restore an unverified archive.  🚨 v4 §4.4b0
+#     The manifest is NOT in SHA256SUMS (the promote rewrites it) — it is bound by the attestation.
+test "$(sha256sum "$CYCLE/MANIFEST.json" | cut -d' ' -f1)" \
+   = "$(jq -r .manifest_sha256 "$CYCLE/ATTESTATION.json")"      # marker ↔ attestation
+( cd "$CYCLE" && sha256sum -c SHA256SUMS )                      # data artefacts
+# cross-check the two layers: a tampered manifest that lists different hashes fails HERE
+jq -r '.central, .tenants[] | "\(.sha256)  \(.file)"' "$CYCLE/MANIFEST.json" \
+  | sort | diff - <(sed 's#\./##' "$CYCLE/SHA256SUMS" | grep -E '\.dump$' | sort)
 
 # 0c. ENTER THE MODE B FENCE (§4.6a) — stop the backup timer, suspend tenant, terminate+stop worker,
 #     stop scheduler, REVOKE CONNECT, terminate, assert zero sessions.
@@ -1343,7 +1376,7 @@ v1's DR-3 was three claims stacked on nothing:
 | **4b** | **If the lock cannot be obtained from anywhere** (artefact expired *and* both legs unreadable): follow §7.0.2b failure mode 1 — recover the digests from the last archived V-10 output, re-sign a reconstructed lock, and **record the reconstruction as a deviation in the incident log**. Do not improvise digests from tags | §7.0.2b; archived V-10 evidence | ❌ |
 | 5 | Materialise the env file from **1Password** (`op read`), never from anything that lived on the dead box | D-4, D-12 | ❌ |
 | 6 | `docker compose up -d postgres redis minio` | — | ❌ |
-| 7 | Download the last **`complete`** cycle from Object Storage; `sha256sum -c`; validate `MANIFEST.json` — **including `offsite.object_storage.state == "verified"`** (§4.4b1). 🚨 **v4: if restoring from the restic leg instead, select by TAG (`role=complete`), read `ATTESTATION.json` FIRST and verify the pairing — never `restic restore latest`** (§4.4b2) | §4.4b/b1/b2/c | ❌ |
+| 7 | Download the last **`complete`** cycle from Object Storage; walk the **outside-in integrity chain of §4.4b0** (`ATTESTATION.json` → `manifest_sha256` → `sha256sum -c SHA256SUMS` → manifest/SHA256SUMS cross-check — **not a bare `sha256sum -c`**, which does not cover the marker); validate `MANIFEST.json` — **including `offsite.object_storage.state == "verified"`** (§4.4b1). 🚨 **v4: if restoring from the restic leg instead, select by TAG (`role=complete`), read `ATTESTATION.json` FIRST and verify the pairing — never `restic restore latest`** (§4.4b2) | §4.4b/b0/b1/b2/c | ❌ |
 | 8 | Cluster restore per §4.6c steps 1–8 | — | ❌ |
 | 9 | 🚨 **Restore media**: `rclone copy "hos:erp-prod-media" "minio:<bucket>"`, then **verify object-by-object against `media-inventory.json`** — `rclone check minio:<bucket> hos:erp-prod-media --checksum --one-way`, plus a `jq`-driven comparison of every key/hash in the inventory against `rclone lsjson --hash` of the restored bucket. **Aggregate counts are not accepted as evidence** (v3, §4.5a1) | §4.3 L4a/L4a′ | ❌ |
 | 9b | 🚨 **If the restore must reproduce deletions** (e.g. a compliance-driven media purge happened before the incident), restore from the **restic mirror (L4a″)** instead of the append-only prefix — that leg is the one that reflects deletions | §4.3 L4a″ | ❌ |
@@ -1372,7 +1405,7 @@ v1's DR-3 was three claims stacked on nothing:
 | 1. Provision a throwaway tenant on production; confirm the DB is named `izipostenant_<uuid>` (validates §3.2) | `\l` output |
 | 2. Seed it with a known fiscal fixture: ≥ 20 receipts, ≥ 1 Z-report, ≥ 1 document set | pre-restore row counts for `pos_receipts`, `documents`, `audit_events`, `journal_entries`, `fiscal_events` (five fiscal tables, per `2026-05-12-migration-audit-and-rollback.md:20-30`) |
 | 3. Let one hourly cycle run untouched | cron log with wall-clock duration; `SHA256SUMS` |
-| 4. `sha256sum -c` the archive set | verification output |
+| 4. Walk the **full §4.4b0 integrity chain** on that cycle — attestation → `manifest_sha256` → `sha256sum -c SHA256SUMS` → manifest/SHA256SUMS cross-check | verification output for **all four** steps. 🚨 **v4: a bare `sha256sum -c` is no longer sufficient evidence** — it does not cover `MANIFEST.json`, and the marker is the thing a false-completion attack or a half-failed promote corrupts |
 | 5. **Drop the tenant DB** | `DROP DATABASE` confirmed |
 | 6. Restore per §4.6 — serial, with the Timescale pairing | full command transcript |
 | 7. Row counts match step 2 **exactly** | side-by-side diff |
@@ -1916,7 +1949,7 @@ v2 said the permission state "is asserted here", which the re-gate correctly cal
 
 **Ruling — the normative V-11 is the `permissions:verify` COMMAND, and it is a Phase-0 blocker, not a "durable form" to add later.** v3 tried to have it both ways: shell-out SQL as the day-one gate with a command commissioned alongside. The SQL cannot be made correct in a design document without also specifying quoting, tenant-DB-name resolution and exit-code conversion — i.e. without writing the command anyway, in bash, untested. **So it is written in PHP, where it can be tested.**
 
-**V-11 = `php artisan permissions:verify --expect=<file>` — one command, three assertions, one fail-closed exit.** Commissioned at **Phase 0.8a**, contract per §7.4b's cat-(b) shape: per-tenant verdict lines, `--tenant` narrowed **in the directory query**, fail-closed aggregate exit, and a **non-zero exit when the `--tenant` filter matched nothing**.
+**V-11 = `php artisan permissions:verify --expect=<file>` — one command, three assertions, one fail-closed exit.** Commissioned at **Phase 0.8h1**, contract per §7.4b's cat-(b) shape: per-tenant verdict lines, `--tenant` narrowed **in the directory query**, fail-closed aggregate exit, and a **non-zero exit when the `--tenant` filter matched nothing**.
 
 | Assertion | What it checks | Failure |
 |---|---|---|
@@ -1951,7 +1984,7 @@ KEYS=$(docker exec "$REDIS" redis-cli -a "$REDIS_PASSWORD" --scan \
 
 🚨 **That cache is tenant-blind** — one key serves every tenant — which is why a single reset is sufficient *and* why forgetting it 403s every tenant at once.
 
-**Interim posture, stated so nobody improvises one:** until `permissions:verify` lands at Phase 0.8a, **there is no V-11 substitute and no deploy that adds permissions may proceed.** That is a real constraint and it is deliberate — Phase 0.8a is upstream of the first production deploy anyway, so the constraint costs nothing and removes the temptation to paste untested SQL into a release under time pressure.
+**Interim posture, stated so nobody improvises one:** until `permissions:verify` lands at Phase 0.8h1, **there is no V-11 substitute and no deploy that adds permissions may proceed.** That is a real constraint and it is deliberate — Phase 0.8h1 is upstream of the first production deploy anyway, so the constraint costs nothing and removes the temptation to paste untested SQL into a release under time pressure.
 
 #### 🚨 7.4b The fiscal verifier contracts CHANGED — V-suite and runbook references updated (v3)
 
@@ -2129,7 +2162,7 @@ v1's phase order asked for verification before its prerequisites existed:
 
 | # | Step | Who | Evidence |
 |---|---|---|---|
-| 0.1 | Answer **D-1…D-8** and **D-15…D-19** | **[O]** | Decisions recorded in this document's §2/§2.2 with date |
+| 0.1 | Answer **D-1…D-8** and **D-15…D-21** (🚨 v4 adds **D-20** attested lock / no checked-in digests and **D-21** worker `stop_grace_period`; **D-20 gates 0.8b/0.8b1/0.8c** and **D-21 gates 3.3**) | **[O]** | Decisions recorded in this document's §2/§2.2 with date |
 | **0.2** | 🚨 **v3 (round-2 F21): RENUMBERED SO THE ORDER IS UNAMBIGUOUS IN THE TABLE, NOT ONLY IN THE PROSE.** Create the 1Password vault (D-4); **export the CURRENT Dokploy env-encryption keyring and take a panel backup; VERIFY both** (restore-test the keyring against one known secret — a keyring you have never verified is a file, not a backup); record the current panel version and confirm rollback support; execute the §5.6 `/tmp` migration | **[O]** | Vault item count; keyring + panel-backup items dated in 1Password; **a decrypt test transcript**; current version string; `ls /tmp/syneriva-deploy-secrets` → not found |
 | **0.3** | **Upgrade Dokploy Cloud to ≥ v0.29.13** (D-8) — **STRICTLY AFTER 0.2.** Validate afterwards: both existing remote servers reachable **and** existing secrets still decrypt | **[O]** | Panel version string screenshot / API response; server list; one secret read back post-upgrade |
 | 0.4 | Create DNS records per Appendix A, **TTL 300** | **[O]** | `dig +short riserpos.app` / `api.riserpos.app` return the new IP |
