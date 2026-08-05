@@ -10,11 +10,29 @@ use App\Modules\Accounting\Application\DTOs\Reports\PaymentMethodBreakdownData;
 use App\Modules\Accounting\Application\DTOs\Reports\SalesByLocationData;
 use App\Modules\Accounting\Application\DTOs\Reports\TopSkuData;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 final class SalesReportService
 {
     use FormatsReportNumbers;
+
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    /**
+     * Currency scale for every money figure this report emits.
+     *
+     * Resolved from the request's bound company (`CompanyContext`). The safe
+     * variant is used because the owner reports are also reachable from console
+     * contexts where no company is bound; 3 is the safe maximum fallback per
+     * the precision contract.
+     */
+    private function moneyScale(): int
+    {
+        return $this->scaleResolver->getScaleSafe();
+    }
 
     /**
      * @param  list<string>  $companyIds
@@ -54,13 +72,15 @@ final class SalesReportService
             ->orderBy('locations.name')
             ->get();
 
+        $scale = $this->moneyScale();
+
         return array_values($rows->map(fn (object $row): SalesByLocationData => new SalesByLocationData(
             period: (string) $row->period,
             company_id: (string) $row->company_id,
             company_name: (string) $row->company_name,
             location_id: (string) $row->location_id,
             location_name: (string) $row->location_name,
-            gross_sales: $this->decimalString($row->gross_sales),
+            gross_sales: $this->decimalString($row->gross_sales, $scale),
             receipt_count: (int) $row->receipt_count,
         ))->all());
     }
@@ -102,12 +122,17 @@ final class SalesReportService
             ? $query->orderByDesc('quantity')
             : $query->orderByDesc('revenue');
 
+        $scale = $this->moneyScale();
+
         return array_values($query->get()->map(fn (object $row): TopSkuData => new TopSkuData(
             product_id: $row->product_id === null ? null : (string) $row->product_id,
             product_name: (string) $row->product_name,
             sku: $row->sku === null ? null : (string) $row->sku,
-            revenue: $this->decimalString($row->revenue),
-            quantity: $this->decimalString($row->quantity),
+            revenue: $this->decimalString($row->revenue, $scale),
+            // A quantity is unit-scaled, never currency-scaled: the row already
+            // carries the unit's `decimal_places`, which is also what the
+            // client renders with (`quantity_decimals`).
+            quantity: $this->quantityString($row->quantity, (int) $row->quantity_decimals),
             quantity_decimals: (int) $row->quantity_decimals,
         ))->all());
     }
@@ -144,14 +169,31 @@ final class SalesReportService
             ->orderByDesc('revenue')
             ->get();
 
-        $totalRevenue = $rows->sum(fn (object $row): float => (float) $row->revenue);
+        $scale = $this->moneyScale();
+
+        // Money never goes through a float: the share denominator is summed in
+        // bcmath at a derived working scale, and each share is divided at the
+        // same working precision before being rounded once, on emission.
+        $workingScale = $scale + 6;
+        $totalRevenue = $rows->reduce(
+            fn (string $carry, object $row): string => bcadd($carry, $this->numericString($row->revenue), $workingScale),
+            '0',
+        );
+        $hasRevenue = bccomp($totalRevenue, '0', $workingScale) > 0;
 
         return array_values($rows->map(fn (object $row): CategoryRevenueData => new CategoryRevenueData(
             category_id: $row->category_id === null ? null : (int) $row->category_id,
             category_name: (string) $row->category_name,
-            revenue: $this->decimalString($row->revenue),
-            percentage: $this->decimalString($totalRevenue > 0 ? (((float) $row->revenue / $totalRevenue) * 100) : 0),
-            quantity: $this->decimalString($row->quantity),
+            revenue: $this->decimalString($row->revenue, $scale),
+            percentage: $this->percentString(
+                $hasRevenue
+                    ? bcmul(bcdiv($this->numericString($row->revenue), $totalRevenue, $workingScale), '100', $workingScale)
+                    : '0',
+            ),
+            // Categories aggregate across products that may not share a unit, so
+            // there is no single `decimal_places` to render at — fall back to the
+            // canonical quantity storage scale rather than the currency scale.
+            quantity: $this->quantityString($row->quantity, null),
         ))->all());
     }
 
@@ -271,19 +313,37 @@ final class SalesReportService
             return $row;
         });
 
+        $scale = $this->moneyScale();
+        $workingScale = $scale + 6;
+
         // (Minor, treasury-reviewer round 1) Re-sort AFTER netting: the SQL
         // query no longer orders by amount (it can't — netting happens in
         // PHP), and array order is part of the response contract, so the
         // descending sort must run on the NET amount, not the gross sum.
-        $rows = $rows->sortByDesc(fn (object $row): float => (float) $row->amount)->values();
+        // Compared in bcmath, not through a float cast (rule 19).
+        $rows = $rows->sort(
+            fn (object $a, object $b): int => bccomp(
+                $this->numericString($b->amount),
+                $this->numericString($a->amount),
+                $workingScale,
+            ),
+        )->values();
 
-        $total = $rows->sum(fn (object $row): float => (float) $row->amount);
+        $total = $rows->reduce(
+            fn (string $carry, object $row): string => bcadd($carry, $this->numericString($row->amount), $workingScale),
+            '0',
+        );
+        $hasTotal = bccomp($total, '0', $workingScale) > 0;
 
         return array_values($rows->map(fn (object $row): PaymentMethodBreakdownData => new PaymentMethodBreakdownData(
             payment_type: (string) $row->payment_type,
             payment_method_name: (string) $row->payment_method_name,
-            amount: $this->decimalString($row->amount),
-            percentage: number_format($total > 0 ? (((float) $row->amount / $total) * 100) : 0, 2, '.', ''),
+            amount: $this->decimalString($row->amount, $scale),
+            percentage: $this->percentString(
+                $hasTotal
+                    ? bcmul(bcdiv($this->numericString($row->amount), $total, $workingScale), '100', $workingScale)
+                    : '0',
+            ),
             transaction_count: (int) $row->transaction_count,
         ))->all());
     }

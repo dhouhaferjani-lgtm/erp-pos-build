@@ -7,6 +7,8 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Services\AccountHierarchyService;
 use App\Modules\Accounting\Domain\Services\AccountNode;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +53,14 @@ use Illuminate\Support\Facades\DB;
 class TrialBalanceService
 {
     /**
-     * Decimal scale for financial calculations.
+     * Decimal scale for INTERNAL financial calculations.
+     *
+     * This is the working precision the accumulators and comparisons run at —
+     * deliberately finer than any currency scale. It is NOT the emission scale:
+     * every figure leaving this service is rendered at the company's currency
+     * scale by {@see emit()}. (W-8 F-3: the report used to leak three different
+     * scales — the raw DB string, this bcmul scale, and a literal `'0.00'` —
+     * none of them derived from `companies.currency`.)
      */
     private const DECIMAL_SCALE = 4;
 
@@ -64,8 +73,34 @@ class TrialBalanceService
     private const ZERO_THRESHOLD = '0.0001';
 
     public function __construct(
-        private readonly AccountHierarchyService $hierarchyService
+        private readonly AccountHierarchyService $hierarchyService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    /**
+     * The scale every emitted figure is rendered at — the company currency's,
+     * resolved from the bound `CompanyContext` (the trial balance is always
+     * generated for the request's own company). `getScaleSafe()` keeps a console
+     * invocation from throwing; 3 is the safe maximum fallback.
+     */
+    private function emissionScale(): int
+    {
+        return $this->scaleResolver->getScaleSafe();
+    }
+
+    /**
+     * Render an internal working-precision figure at the currency scale.
+     *
+     * Half-away-from-zero at the presentation boundary, so the working scale's
+     * extra digit is rounded rather than silently dropped.
+     *
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    private function emit(string $value, int $scale): string
+    {
+        return CurrencyScale::bcround($value, $scale);
+    }
 
     /**
      * Generate a Trial Balance report for a company.
@@ -124,23 +159,28 @@ class TrialBalanceService
         // Step 3: Load full account models for hierarchy building
         $accounts = $this->loadAccounts($companyId, $accountBalances);
 
+        // The scale every figure in this report is emitted at. Resolved ONCE so
+        // no two fields in one payload can disagree (W-8 F-3).
+        $scale = $this->emissionScale();
+
         // Step 4: Build hierarchy if requested
         if ($includeHierarchy && $accounts->isNotEmpty()) {
-            $lines = $this->buildHierarchicalReport($accounts);
+            $lines = $this->buildHierarchicalReport($accounts, $scale);
         } else {
-            $lines = $this->buildFlatReport($accounts);
+            $lines = $this->buildFlatReport($accounts, $scale);
         }
 
-        // Step 5: Calculate totals
+        // Step 5: Calculate totals (at the internal working precision)
         $totals = $this->calculateTotals($accountBalances);
 
-        // Step 6: Validate accounting equation
+        // Step 6: Validate accounting equation — on the UNROUNDED totals, so the
+        // balance check is never decided by the presentation rounding.
         $isBalanced = $this->validateBalance($totals['total_debit'], $totals['total_credit']);
 
         return [
             'lines' => $lines,
-            'total_debit' => $totals['total_debit'],
-            'total_credit' => $totals['total_credit'],
+            'total_debit' => $this->emit($totals['total_debit'], $scale),
+            'total_credit' => $this->emit($totals['total_credit'], $scale),
             'is_balanced' => $isBalanced,
             'as_of_date' => $asOfDate->toDateString(),
         ];
@@ -273,7 +313,7 @@ class TrialBalanceService
      * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts
      * @return list<array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}>
      */
-    private function buildHierarchicalReport(\Illuminate\Database\Eloquent\Collection $accounts): array
+    private function buildHierarchicalReport(\Illuminate\Database\Eloquent\Collection $accounts, int $scale): array
     {
         // Build hierarchy tree
         $tree = $this->hierarchyService->buildTree($accounts);
@@ -290,7 +330,7 @@ class TrialBalanceService
         $flatTree = $this->hierarchyService->flattenTree($tree);
 
         // Format for API response
-        return array_map(fn ($node) => $this->formatTrialBalanceLine($node), $flatTree);
+        return array_map(fn ($node) => $this->formatTrialBalanceLine($node, $scale), $flatTree);
     }
 
     /**
@@ -298,7 +338,7 @@ class TrialBalanceService
      */
     private function setNodeBalances(AccountNode $node): void
     {
-        $node->balance = $node->account->getAttribute('calculated_balance') ?? '0.00';
+        $node->balance = $node->account->getAttribute('calculated_balance') ?? '0';
 
         foreach ($node->children as $child) {
             $this->setNodeBalances($child);
@@ -314,18 +354,19 @@ class TrialBalanceService
      * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts
      * @return list<array<string, mixed>>
      */
-    private function buildFlatReport(\Illuminate\Database\Eloquent\Collection $accounts): array
+    private function buildFlatReport(\Illuminate\Database\Eloquent\Collection $accounts, int $scale): array
     {
         /** @var list<array<string, mixed>> */
-        return $accounts->map(function (Account $account) {
+        return $accounts->map(function (Account $account) use ($scale) {
             /** @var numeric-string $balance */
-            $balance = (string) ($account->getAttribute('calculated_balance') ?? '0.00');
-            $totalDebit = (string) ($account->getAttribute('total_debit') ?? '0.00');
-            $totalCredit = (string) ($account->getAttribute('total_credit') ?? '0.00');
+            $balance = (string) ($account->getAttribute('calculated_balance') ?? '0');
 
-            // Determine which column to show balance in (debit or credit)
-            $debit = '0.00';
-            $credit = '0.00';
+            // Determine which column to show balance in (debit or credit).
+            // BOTH columns are emitted at the currency scale, including the zero
+            // side — a bare `'0.00'` next to a scale-3 sibling is the W-8 F-3
+            // defect.
+            $debit = '0';
+            $credit = '0';
 
             if (bccomp($balance, '0', self::DECIMAL_SCALE) > 0) {
                 // Positive balance → debit column
@@ -334,14 +375,13 @@ class TrialBalanceService
                 // Negative balance → credit column (show absolute value)
                 $credit = bcmul($balance, '-1', self::DECIMAL_SCALE);
             }
-            // Zero balance → both columns stay 0.00
 
             return [
                 'account_code' => $account->code,
                 'account_name' => $account->name,
                 'account_type' => $account->type->value,
-                'debit' => $debit,
-                'credit' => $credit,
+                'debit' => $this->emit($debit, $scale),
+                'credit' => $this->emit($credit, $scale),
                 'level' => 0,
                 'is_parent' => false,
             ];
@@ -358,13 +398,13 @@ class TrialBalanceService
      *
      * @return array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}
      */
-    private function formatTrialBalanceLine(AccountNode $node): array
+    private function formatTrialBalanceLine(AccountNode $node, int $scale): array
     {
         $balance = $node->balance;
 
         // Determine debit/credit display
-        $debit = '0.00';
-        $credit = '0.00';
+        $debit = '0';
+        $credit = '0';
 
         $comparison = bccomp($balance, '0', self::DECIMAL_SCALE);
 
@@ -380,8 +420,8 @@ class TrialBalanceService
             'account_code' => $node->account->code,
             'account_name' => $node->account->name,
             'account_type' => $node->account->type->value,
-            'debit' => $debit,
-            'credit' => $credit,
+            'debit' => $this->emit($debit, $scale),
+            'credit' => $this->emit($credit, $scale),
             'level' => $node->level,
             'is_parent' => $node->isParent,
         ];
@@ -395,8 +435,8 @@ class TrialBalanceService
      */
     private function calculateTotals(Collection $accountBalances): array
     {
-        $totalDebit = '0.00';
-        $totalCredit = '0.00';
+        $totalDebit = bcadd('0', '0', self::DECIMAL_SCALE);
+        $totalCredit = bcadd('0', '0', self::DECIMAL_SCALE);
 
         foreach ($accountBalances as $account) {
             /** @var numeric-string $acctDebit */

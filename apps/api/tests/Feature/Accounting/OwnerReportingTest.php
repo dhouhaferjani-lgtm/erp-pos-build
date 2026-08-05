@@ -176,10 +176,13 @@ final class OwnerReportingTest extends TestCase
         ]);
 
         $rows = collect($response->json('data'));
-        $this->assertSame('120', $rows->firstWhere('location_id', $this->locationA->id)['gross_sales']);
-        $this->assertSame('80', $rows->firstWhere('location_id', $this->locationB->id)['gross_sales']);
-        $this->assertNull($rows->firstWhere('gross_sales', '999'));
-        $this->assertNull($rows->firstWhere('gross_sales', '777'));
+        // Fix lane L4 (W-7 F-2): report money is emitted at the COMPANY CURRENCY
+        // scale with no zero-trimming. This tenant is EUR, so scale 2 — these
+        // assertions previously read '120' / '80', which pinned the defect.
+        $this->assertSame('120.00', $rows->firstWhere('location_id', $this->locationA->id)['gross_sales']);
+        $this->assertSame('80.00', $rows->firstWhere('location_id', $this->locationB->id)['gross_sales']);
+        $this->assertNull($rows->firstWhere('gross_sales', '999.00'));
+        $this->assertNull($rows->firstWhere('gross_sales', '777.00'));
     }
 
     public function test_sales_by_location_filters_requested_locations(): void
@@ -350,7 +353,8 @@ final class OwnerReportingTest extends TestCase
         ]);
 
         $cash = collect($response->json('data'))->firstWhere('payment_type', 'cash');
-        $this->assertSame('60', $cash['amount']);
+        // Fix lane L4 (W-7 F-2): EUR company → scale 2, never trimmed to '60'.
+        $this->assertSame('60.00', $cash['amount']);
         $this->assertSame('60.00', $cash['percentage']);
     }
 
@@ -444,7 +448,9 @@ final class OwnerReportingTest extends TestCase
                 ],
             ],
         ]);
-        $response->assertJsonPath('data.0.variance', '-5');
+        // Fix lane L4 (W-7 F-2): the cash variance is emitted at the currency
+        // scale (EUR → 2), not rtrimmed to '-5'.
+        $response->assertJsonPath('data.0.variance', '-5.00');
         $response->assertJsonPath('data.0.variance_severity', 'critical');
     }
 
@@ -468,12 +474,12 @@ final class OwnerReportingTest extends TestCase
 
         $tenOclock = $rows->firstWhere('period', '2026-07-03 10:00');
         $this->assertNotNull($tenOclock);
-        $this->assertSame('80', $tenOclock['gross_sales']);
+        $this->assertSame('80.00', $tenOclock['gross_sales']);
         $this->assertSame(2, $tenOclock['receipt_count']);
 
         $onePm = $rows->firstWhere('period', '2026-07-03 13:00');
         $this->assertNotNull($onePm);
-        $this->assertSame('20', $onePm['gross_sales']);
+        $this->assertSame('20.00', $onePm['gross_sales']);
 
         // Every hour period must be parseable by the FE rollup regex: (?:T|\s|^)(\d{2}):
         foreach ($rows as $row) {

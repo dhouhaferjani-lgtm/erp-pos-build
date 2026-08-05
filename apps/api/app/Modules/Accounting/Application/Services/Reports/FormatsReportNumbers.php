@@ -4,12 +4,109 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Application\Services\Reports;
 
+use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
+
+/**
+ * Number emission for the owner-report layer.
+ *
+ * These rows come off `DB::table()` as `stdClass`, so neither the Eloquent
+ * decimal casts nor the `ForbidFloatCastOnDecimalProperty` PHPStan rule sees
+ * them — the correctness of every money figure on the owner dashboard rests on
+ * this trait alone.
+ *
+ * History (W-7 F-2, same family as W-6 D6 / W-8 F-3; fix lane L4): the previous
+ * single helper did `rtrim(number_format((float) $value, 2, '.', ''), '0')`,
+ * which
+ *   1. cast money to `float` — CLAUDE.md rule 19, never;
+ *   2. hardcoded scale 2, so a TND millime was truncated before the string was
+ *      even built; and
+ *   3. trimmed the zeros, emitting `300.000` as `"300"` and `181.100` as
+ *      `"181.1"`.
+ * It was also used for QUANTITIES, which are unit-scaled, never currency-scaled.
+ *
+ * The replacement splits the three kinds of number the reports emit, and each
+ * one takes its scale from the value's OWN domain:
+ *   - money    → the company currency scale (caller-resolved, never defaulted);
+ *   - quantity → the product unit's `decimal_places`;
+ *   - percent  → a fixed 2 dp (a percent is not a currency).
+ */
 trait FormatsReportNumbers
 {
-    private function decimalString(string|int|float|null $value, int $scale = 2): string
-    {
-        $number = number_format((float) ($value ?? 0), $scale, '.', '');
+    /** A percentage is not currency-scaled — see the precision contract. */
+    private const REPORT_PERCENT_SCALE = 2;
 
-        return rtrim(rtrim($number, '0'), '.') ?: '0';
+    /**
+     * Emit a MONEY figure at the caller-resolved currency scale.
+     *
+     * $scale has NO default on purpose: a defaulted scale is exactly how this
+     * layer became currency-blind. Callers resolve it once per report from
+     * `CurrencyScaleResolverInterface`.
+     *
+     * Rounds half-away-from-zero (the presentation-boundary helper) rather than
+     * truncating, so a stored scale-4 figure — `pos_shifts.expected_cash` is
+     * `decimal(16,4)` — renders to the currency scale without silently dropping
+     * its last digit.
+     *
+     * @return numeric-string
+     */
+    private function decimalString(string|int|float|null $value, int $scale): string
+    {
+        return CurrencyScale::bcround($this->numericString($value), $scale);
+    }
+
+    /**
+     * Emit a QUANTITY at the product unit's precision.
+     *
+     * Quantities live at `decimal(N,4)` and are displayed at the unit's
+     * `decimal_places` (see `QuantityScale::formatForUnit`). Passing one through
+     * the money helper renders `12.5000` as `12.50` on a EUR tenant — the
+     * rule-19 violation W-7 F-2 filed against `StockAlertReportService` and
+     * `SalesReportService`.
+     *
+     * @param  int|null  $decimalPlaces  the unit's `decimal_places`; null (a
+     *                                   mixed-unit aggregate) falls back to the
+     *                                   canonical storage scale.
+     * @return numeric-string
+     */
+    private function quantityString(string|int|float|null $value, ?int $decimalPlaces): string
+    {
+        return QuantityScale::formatForUnit($this->numericString($value), $decimalPlaces);
+    }
+
+    /**
+     * Emit a PERCENTAGE at a fixed 2 dp — independent of the currency.
+     *
+     * @return numeric-string
+     */
+    private function percentString(string|int|float|null $value): string
+    {
+        return CurrencyScale::bcround($this->numericString($value), self::REPORT_PERCENT_SCALE);
+    }
+
+    /**
+     * Normalise a raw `stdClass` column into a well-formed numeric string
+     * WITHOUT a float round-trip.
+     *
+     * A float argument (only ever a PHP-side computation, never a DB column) is
+     * routed through `CurrencyScale::bcformat`, which is scientific-notation
+     * safe; `(string) 1e-5` would yield `"1.0E-5"`, which bcmath cannot parse.
+     *
+     * @return numeric-string
+     */
+    private function numericString(string|int|float|null $value): string
+    {
+        if ($value === null) {
+            return '0';
+        }
+
+        if (is_float($value)) {
+            return CurrencyScale::bcformat($value, QuantityScale::SCALE);
+        }
+
+        $trimmed = trim((string) $value);
+
+        /** @var numeric-string */
+        return is_numeric($trimmed) ? $trimmed : '0';
     }
 }

@@ -6,11 +6,16 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 
 use App\Modules\Accounting\Application\DTOs\Reports\CashReconciliationData;
 use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 final class CashRegisterReportService
 {
     use FormatsReportNumbers;
+
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
 
     /**
      * @param  list<string>  $companyIds
@@ -51,6 +56,11 @@ final class CashRegisterReportService
             ->orderBy('pos_shifts.closed_at')
             ->get();
 
+        // Cash reconciliation is the launch-critical Z/EOD surface: its figures
+        // must land on the company's currency scale (TND keeps the millime),
+        // never on a hardcoded scale 2.
+        $scale = $this->scaleResolver->getScaleSafe();
+
         return array_values($rows->map(fn (object $row): CashReconciliationData => new CashReconciliationData(
             date: (string) $row->date,
             location_id: (string) $row->location_id,
@@ -58,35 +68,61 @@ final class CashRegisterReportService
             terminal_id: (string) $row->terminal_id,
             terminal_name: (string) $row->terminal_name,
             shift_id: (string) $row->shift_id,
-            expected_cash: $this->decimalString($row->expected_cash),
-            counted_cash: $this->decimalString($row->counted_cash),
-            variance: $this->decimalString($row->variance),
+            expected_cash: $this->decimalString($row->expected_cash, $scale),
+            counted_cash: $this->decimalString($row->counted_cash, $scale),
+            variance: $this->decimalString($row->variance, $scale),
             variance_severity: $this->varianceSeverity(
-                variance: (float) $row->variance,
-                overSoft: (float) $row->over_soft,
-                overHard: (float) $row->over_hard,
-                underSoft: (float) $row->under_soft,
-                underHard: (float) $row->under_hard,
+                variance: $this->numericString($row->variance),
+                overSoft: $this->numericString($row->over_soft),
+                overHard: $this->numericString($row->over_hard),
+                underSoft: $this->numericString($row->under_soft),
+                underHard: $this->numericString($row->under_hard),
+                scale: $scale,
             ),
         ))->all());
     }
 
-    private function varianceSeverity(float $variance, float $overSoft, float $overHard, float $underSoft, float $underHard): string
-    {
-        $absolute = abs($variance);
+    /**
+     * Classify a cash variance against the company's soft/hard thresholds.
+     *
+     * Compared in bcmath, not through a float cast: `pos_shifts.variance` is
+     * `decimal(16,4)` and the `company_fraud_settings.cash_variance_*` bounds are
+     * `decimal(N,4)`, so the comparison runs at a scale strictly finer than both
+     * (the currency scale plus the quantity storage scale) and cannot be tipped
+     * by an IEEE-754 representation error at the threshold boundary.
+     *
+     * @param  numeric-string  $variance
+     * @param  numeric-string  $overSoft
+     * @param  numeric-string  $overHard
+     * @param  numeric-string  $underSoft
+     * @param  numeric-string  $underHard
+     */
+    private function varianceSeverity(
+        string $variance,
+        string $overSoft,
+        string $overHard,
+        string $underSoft,
+        string $underHard,
+        int $scale,
+    ): string {
+        $comparisonScale = $scale + 4;
+        $sign = bccomp($variance, '0', $comparisonScale);
 
-        if ($absolute === 0.0) {
+        if ($sign === 0) {
             return 'ok';
         }
 
-        $hard = $variance > 0 ? $overHard : $underHard;
-        $soft = $variance > 0 ? $overSoft : $underSoft;
+        /** @var numeric-string $absolute */
+        $absolute = $sign < 0 ? bcmul($variance, '-1', $comparisonScale) : $variance;
 
-        if ($absolute > $hard) {
+        $hard = $sign > 0 ? $overHard : $underHard;
+        $soft = $sign > 0 ? $overSoft : $underSoft;
+
+        if (bccomp($absolute, $hard, $comparisonScale) > 0) {
             return 'critical';
         }
 
-        if ($absolute > $soft) {
+        if (bccomp($absolute, $soft, $comparisonScale) > 0) {
             return 'warning';
         }
 
