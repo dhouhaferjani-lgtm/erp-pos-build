@@ -6,9 +6,8 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
-import { getDecimals } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
-import { formatNumber, formatPercent } from '@/lib/format'
+import { formatCurrency, formatPercent } from '@/lib/format'
 import { colorClasses } from '@/lib/designTokens'
 
 export interface DocumentTotalsProps {
@@ -50,11 +49,17 @@ export function DocumentTotals({
     enabled: tenantId !== null && companyId !== null && !!documentId,
   })
 
-  // Determine decimal places based on currency
-  const decimals = getDecimals(currency)
-
+  /**
+   * Format against the DOCUMENT's currency — it drives both the scale and the
+   * locale. (W-7 F-7: this used to call `formatNumber(amount, decimals)`, whose
+   * locale was pinned to `en-US`, so the totals panel rendered `1,234.567`
+   * directly beneath line cells rendered `1 234,567` by the currency-locale
+   * formatter. To a French or Tunisian reader that is a 1 000x misread of the
+   * invoice total.) The currency code is appended by the markup below, so it is
+   * suppressed here.
+   */
   const formatAmount = (amount: string | number): string => {
-    return formatNumber(amount, decimals)
+    return formatCurrency(amount, { currency, includeCurrency: false })
   }
 
   if (isLoading) {

@@ -1,6 +1,76 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-import { formatDate, formatPercent, formatPercentage } from './format'
+import { useCompanyStore, type Company } from '@/stores/companyStore'
+import { formatCurrency, formatDate, formatNumber, formatPercent, formatPercentage } from './format'
+
+/** fr-TN / fr-FR group with U+202F (narrow no-break space), not an ASCII space. */
+const NNBSP = ' '
+
+function seedCompany(currency: string, locale: string): void {
+  const company: Company = {
+    id: 'co-1',
+    name: 'Test Co',
+    legalName: 'Test Co SARL',
+    taxId: null,
+    countryCode: currency === 'TND' ? 'TN' : 'FR',
+    currency,
+    locale,
+    timezone: 'UTC',
+  }
+  useCompanyStore.setState({ currentCompanyId: company.id, companies: [company] })
+}
+
+/**
+ * W-6 D6 / W-7 F-7 (fix lane L4): the money formatters used to be
+ * CURRENCY-BLIND. `formatCurrency` defaulted `currency` to a hardcoded `'EUR'`,
+ * so six tiles on a Tunisian company rendered `228 728,39 EUR` beside siblings
+ * that correctly rendered `228 728,386 TND`; and `formatNumber` pinned its
+ * locale to `'en-US'`, so the document totals panel rendered `1,234.567` under a
+ * `fr-TN` page — a 1 000x misread to a French or Tunisian reader.
+ *
+ * The contract these tests pin: the CURRENCY drives both the scale and the
+ * locale. Never the UI language, never a hardcoded default.
+ */
+describe('currency-driven formatting', () => {
+  afterEach(() => {
+    useCompanyStore.setState({ currentCompanyId: null, companies: [] })
+  })
+
+  it('derives scale and locale from an explicitly passed currency', () => {
+    expect(formatCurrency('1000', { currency: 'TND' })).toBe(`1${NNBSP}000,000 TND`)
+    expect(formatCurrency('1000', { currency: 'EUR' })).toBe(`1${NNBSP}000,00 EUR`)
+    expect(formatCurrency('1000', { currency: 'USD' })).toBe('USD 1,000.00')
+  })
+
+  it('defaults to the ACTIVE COMPANY currency, not a hardcoded EUR', () => {
+    seedCompany('TND', 'fr_TN')
+
+    expect(formatCurrency('228728.386')).toBe(`228${NNBSP}728,386 TND`)
+  })
+
+  it('still falls back to EUR when no company is selected', () => {
+    expect(formatCurrency('1000')).toBe(`1${NNBSP}000,00 EUR`)
+  })
+
+  it('defaults formatNumber to the active company currency locale, not en-US', () => {
+    seedCompany('TND', 'fr_TN')
+
+    expect(formatNumber('1234.567', 3)).toBe(`1${NNBSP}234,567`)
+  })
+
+  it('honours an explicitly passed locale on formatNumber', () => {
+    seedCompany('TND', 'fr_TN')
+
+    expect(formatNumber('1234.567', 3, 'en-US')).toBe('1,234.567')
+  })
+
+  it('falls back to the SAME currency as formatCurrency when no company is selected', () => {
+    // Both helpers must resolve from one source, or a page renders two decimal
+    // conventions side by side — which is F-7 itself.
+    expect(formatNumber('1234.567', 3)).toBe(`1${NNBSP}234,567`)
+    expect(formatCurrency('1234.567', { includeCurrency: false })).toBe(`1${NNBSP}234,57`)
+  })
+})
 
 describe('formatPercent', () => {
   it('trims percent values to at most two decimal places without fixed zeros', () => {

@@ -41,13 +41,23 @@ vi.mock('@/stores/authStore', () => ({
   ),
 }))
 
-vi.mock('@/stores/companyStore', () => ({
-  useCompanyStore: Object.assign(
-    (selector: (state: { currentCompanyId: string }) => unknown) =>
-      selector({ currentCompanyId: 'company-1' }),
-    { getState: () => ({ currentCompanyId: 'company-1' }) },
-  ),
-}))
+// Keep this stub faithful to the real store's public surface: `lib/format`
+// resolves the default currency through `getCurrentCompany()`, so a stub that
+// omits it makes every money format throw.
+vi.mock('@/stores/companyStore', () => {
+  const state = {
+    currentCompanyId: 'company-1',
+    companies: [],
+    getCurrentCompany: () => null,
+  }
+
+  return {
+    useCompanyStore: Object.assign(
+      (selector: (s: typeof state) => unknown) => selector(state),
+      { getState: () => state },
+    ),
+  }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

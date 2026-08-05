@@ -95,7 +95,10 @@ describe('ToleranceSettingsDisplay', () => {
 
     expect(screen.getByText('Payment Tolerance')).toBeInTheDocument()
     expect(screen.getByText('Tolerance enabled')).toBeInTheDocument()
-    expect(screen.getByText('Threshold: 0.5% / 0.50 max')).toBeInTheDocument()
+    // Fix lane L4 (W-7 F-7): the amount is formatted against the company
+    // CURRENCY's locale, not a hardcoded en-US. No company is seeded here, so
+    // the EUR fallback applies -> fr-FR comma decimal.
+    expect(screen.getByText('Threshold: 0.5% / 0,50 max')).toBeInTheDocument()
     expect(screen.getByText('System default')).toBeInTheDocument()
   })
 
@@ -136,7 +139,7 @@ describe('ToleranceSettingsDisplay', () => {
 
     render(<ToleranceSettingsDisplay />, { wrapper })
 
-    expect(screen.getByText('Threshold: 1% / 10.00 max')).toBeInTheDocument()
+    expect(screen.getByText('Threshold: 1% / 10,00 max')).toBeInTheDocument()
     expect(screen.getByText('Country default')).toBeInTheDocument()
   })
 

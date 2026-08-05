@@ -1,17 +1,26 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useFinanceSummary } from '../hooks/useFinanceSummary'
-import { formatCurrency } from '@/lib/format'
+import { useCurrency } from '@/hooks/useCurrency'
+import { bccomp } from '@/lib/decimal'
 import { textColors, borderColors } from '@/lib/designTokens'
 
-/** Pick the signed-amount tone token (success when >= 0, error otherwise). */
+/**
+ * Pick the signed-amount tone token (success when >= 0, error otherwise).
+ * Compared in bcmath, not `parseFloat` — this is money (precision contract).
+ */
 function netIncomeToneClass(value: string | null | undefined): string {
-  return parseFloat(value ?? '0') >= 0 ? textColors.success : textColors.error
+  return bccomp(value ?? '0', '0') >= 0 ? textColors.success : textColors.error
 }
 
 export function FinanceWidget() {
   const { t } = useTranslation(['finance', 'common'])
   const { data, isLoading } = useFinanceSummary()
+  // W-6 D6: every tile used to call `formatCurrency(value)` with NO options, and
+  // the helper defaulted to EUR — so a Tunisian company's six tiles rendered as
+  // euros at 2 decimals, beside four sibling StatCards rendering TND at 3.
+  // Format through the company-bound formatter, the way that sibling does.
+  const { format: formatMoney } = useCurrency()
 
   if (isLoading) {
     return (
@@ -39,7 +48,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.totalAssets')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${textColors.primary}`}>
-            {formatCurrency(data?.total_assets ?? '0')}
+            {formatMoney(data?.total_assets ?? '0')}
           </div>
         </div>
 
@@ -47,7 +56,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.totalLiabilities')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${textColors.primary}`}>
-            {formatCurrency(data?.total_liabilities ?? '0')}
+            {formatMoney(data?.total_liabilities ?? '0')}
           </div>
         </div>
 
@@ -55,7 +64,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.netIncomeMtd')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${netIncomeToneClass(data?.net_income_mtd)}`}>
-            {formatCurrency(data?.net_income_mtd ?? '0')}
+            {formatMoney(data?.net_income_mtd ?? '0')}
           </div>
         </div>
 
@@ -63,7 +72,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.netIncomeYtd')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${netIncomeToneClass(data?.net_income_ytd)}`}>
-            {formatCurrency(data?.net_income_ytd ?? '0')}
+            {formatMoney(data?.net_income_ytd ?? '0')}
           </div>
         </div>
 
@@ -71,7 +80,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.accountsReceivable')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${textColors.brand}`}>
-            {formatCurrency(data?.accounts_receivable ?? '0')}
+            {formatMoney(data?.accounts_receivable ?? '0')}
           </div>
         </div>
 
@@ -79,7 +88,7 @@ export function FinanceWidget() {
         <div className={`rounded border ${borderColors.light} p-4`}>
           <div className={`text-sm ${textColors.tertiary}`}>{t('finance:widget.accountsPayable')}</div>
           <div className={`mt-1 text-right text-2xl font-bold tabular-nums ${textColors.warningDark}`}>
-            {formatCurrency(data?.accounts_payable ?? '0')}
+            {formatMoney(data?.accounts_payable ?? '0')}
           </div>
         </div>
       </div>

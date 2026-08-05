@@ -4,8 +4,34 @@
  */
 
 import Big from 'big.js'
+import { useCompanyStore } from '@/stores/companyStore'
 import { getDecimals, getLocale } from './currencyMeta'
 import i18n from './i18n'
+
+/**
+ * Last-resort currency when no company is selected (logged-out shells, unit
+ * tests). Never reached on a real page — every authenticated view has a company.
+ */
+const FALLBACK_CURRENCY = 'EUR'
+
+/**
+ * The currency every un-parameterised money format resolves against.
+ *
+ * W-6 D6: `formatCurrency` used to default to a hardcoded `'EUR'`, so the six
+ * FinanceWidget tiles on a Tunisian company rendered `228 728,39 EUR` next to
+ * four sibling StatCards rendering `228 728,386 TND` — two currencies in one
+ * viewport, from the same numbers. The default now follows the ACTIVE COMPANY,
+ * so a call site that forgets to pass a currency degrades to "the company's
+ * currency" rather than to "euros".
+ *
+ * Read imperatively (not via the hook) because these helpers are also called
+ * from non-React code; zustand's `getState()` is the supported escape hatch.
+ * Passing an explicit `currency` — the ENTITY's currency, e.g. the document's
+ * rather than the company's — always wins and is the preferred call shape.
+ */
+function activeCurrency(): string {
+  return useCompanyStore.getState().getCurrentCompany()?.currency ?? FALLBACK_CURRENCY
+}
 
 export interface CurrencyFormatOptions {
   currency?: string
@@ -65,16 +91,18 @@ function currencyAppearsBeforeNumber(locale: string, currency: string): boolean 
 }
 
 /**
- * Format a number as currency
- * Defaults to EUR/fr-FR but can be customized per country.
- * When no fraction digit options are provided, uses per-currency defaults
- * (e.g. TND=3, EUR=2).
+ * Format a number as currency.
+ *
+ * The CURRENCY drives everything: the scale (TND=3, EUR=2, …) and the locale
+ * (TND→fr-TN, EUR→fr-FR, …). Not the UI language, and not a hardcoded default —
+ * pass the entity's currency whenever you have one; otherwise the active
+ * company's currency is used (see {@link activeCurrency}).
  */
 export function formatCurrency(
   amount: string | number,
   options?: CurrencyFormatOptions
 ): string {
-  const currency = options?.currency ?? 'EUR'
+  const currency = options?.currency ?? activeCurrency()
   const defaultDecimals = getDecimals(currency)
   const locale = options?.locale ?? getLocale(currency)
   const minimumFractionDigits = options?.minimumFractionDigits ?? defaultDecimals
@@ -110,14 +138,25 @@ export function formatEUR(amount: string | number): string {
 }
 
 /**
- * Format number without currency symbol
+ * Format a money amount without the currency code appended.
+ *
+ * W-7 F-7: this helper used to pin `locale` to `'en-US'`, so the document
+ * totals panel rendered `1,234.567` directly beneath line cells rendered
+ * `1 234,567` by the currency-locale formatter — and to a French or Tunisian
+ * reader the first shape reads as one million. The default now resolves the
+ * same way `formatCurrency` does, so the two helpers can never disagree on the
+ * same page. It fires in EVERY UI language: this is currency-driven, not
+ * language-driven.
+ *
+ * Callers that know the entity's currency should pass its locale explicitly —
+ * or better, use `formatCurrency(value, { currency, includeCurrency: false })`.
  */
 export function formatNumber(
   value: string | number,
   decimals: number = 2,
-  locale: string = 'en-US'
+  locale?: string
 ): string {
-  return formatDecimalAmount(value, locale, decimals)
+  return formatDecimalAmount(value, locale ?? getLocale(activeCurrency()), decimals)
 }
 
 /**
