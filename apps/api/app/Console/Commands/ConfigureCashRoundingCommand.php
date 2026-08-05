@@ -63,8 +63,12 @@ use InvalidArgumentException;
  * believe rounding is on while the device never rounds.
  *
  * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and `country_payment_settings` are TENANT tables,
- *   so post-2026-05-28 (database-per-tenant) it reads ONLY the tenant database `tenants:run` binds around it, and a
- *   bare run on the CENTRAL connection raises 42P01. Invoke exclusively via `php artisan tenants:run …`.
+ *   so post-2026-05-28 (database-per-tenant) it reads ONLY the tenant database `tenants:run` binds around it. A bare
+ *   run on the CENTRAL connection is stopped BEFORE any query by the fail-closed table/column guard that opens
+ *   `handle()` (:102-113), which returns FAILURE with an operator message — and, per the gate recipe above, ABSENCE of
+ *   the verify token is itself the failure signal. (Corrected 2026-08-05, wave-2 tenancy review R4: the annotation
+ *   previously claimed a bare run "raises 42P01", which the guard makes impossible.) Invoke exclusively via
+ *   `php artisan tenants:run …`.
  */
 final class ConfigureCashRoundingCommand extends Command
 {

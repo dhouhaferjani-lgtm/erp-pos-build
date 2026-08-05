@@ -52,8 +52,11 @@ use Throwable;
  *
  * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and the chart tables are TENANT tables, so
  *   post-2026-05-28 (database-per-tenant) this command reads ONLY the tenant database `tenants:run` binds around it.
- *   `php artisan charts:seed` on its own runs on the CENTRAL connection and raises 42P01. Invoke exclusively as
- *   `php artisan tenants:run charts:seed`.
+ *   `php artisan accounting:seed-charts` on its own runs on the CENTRAL connection where neither table exists — and is
+ *   stopped BEFORE any query by the fail-closed `Schema::hasTable('companies') || Schema::hasTable('accounts')` guard
+ *   that opens `handle()` (:74-80), which returns FAILURE with an operator message. (Corrected 2026-08-05, wave-2
+ *   tenancy review R4: the annotation previously claimed a bare run "raises 42P01", which the guard makes impossible.)
+ *   Invoke exclusively as `php artisan tenants:run accounting:seed-charts`.
  */
 final class SeedChartsCommand extends Command
 {

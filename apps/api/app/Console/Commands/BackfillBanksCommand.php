@@ -59,8 +59,11 @@ use Throwable;
  *
  * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and `banks` are TENANT tables, so post-2026-05-28
  *   (database-per-tenant) this command reads ONLY the tenant database `tenants:run` binds around it. A bare
- *   `php artisan banks:backfill` runs on the CENTRAL connection and raises 42P01. Invoke exclusively as
- *   `php artisan tenants:run banks:backfill`.
+ *   `php artisan treasury:backfill-banks` runs on the CENTRAL connection where neither table exists — and is stopped
+ *   BEFORE any query by the fail-closed `Schema::hasTable('companies') || Schema::hasTable('banks')` guard that opens
+ *   `handle()` (:81-87), which returns FAILURE with an operator message. (Corrected 2026-08-05, wave-2 tenancy review
+ *   R4: the annotation previously claimed a bare run "raises 42P01", which the guard makes impossible.) Invoke
+ *   exclusively as `php artisan tenants:run treasury:backfill-banks`.
  */
 final class BackfillBanksCommand extends Command
 {
