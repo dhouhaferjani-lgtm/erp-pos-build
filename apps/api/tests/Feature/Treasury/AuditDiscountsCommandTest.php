@@ -86,7 +86,7 @@ final class AuditDiscountsCommandTest extends TestCase
     public function test_command_succeeds_on_clean_dataset(): void
     {
         /** @var PendingCommand $cmd */
-        $cmd = $this->artisan('tolerance:audit-discounts');
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $this->company->tenant_id]);
         $cmd->expectsOutputToContain('no violations')->assertExitCode(0);
     }
 
@@ -106,7 +106,7 @@ final class AuditDiscountsCommandTest extends TestCase
         ]);
 
         /** @var PendingCommand $cmd */
-        $cmd = $this->artisan('tolerance:audit-discounts');
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $this->company->tenant_id]);
         $cmd->expectsOutputToContain('LINE')->assertExitCode(1);
     }
 
@@ -125,7 +125,7 @@ final class AuditDiscountsCommandTest extends TestCase
         ]);
 
         /** @var PendingCommand $cmd */
-        $cmd = $this->artisan('tolerance:audit-discounts', ['--dry-run' => true]);
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $this->company->tenant_id, '--dry-run' => true]);
         $cmd->expectsOutputToContain('LINE')->assertExitCode(0);
     }
 
@@ -135,7 +135,7 @@ final class AuditDiscountsCommandTest extends TestCase
         $invoice->update(['discount_amount' => '0.20']);
 
         /** @var PendingCommand $cmd */
-        $cmd = $this->artisan('tolerance:audit-discounts');
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $this->company->tenant_id]);
         $cmd->expectsOutputToContain('HEADER')->assertExitCode(1);
     }
 
@@ -174,8 +174,77 @@ final class AuditDiscountsCommandTest extends TestCase
         ]);
 
         /** @var PendingCommand $cmd */
-        $cmd = $this->artisan('tolerance:audit-discounts');
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $this->company->tenant_id]);
         $cmd->expectsOutputToContain('no violations')->assertExitCode(0);
+    }
+
+    // =================================================================
+    // Explicit-scope contract (cat-(b) wave 2, 2026-08-05)
+    // =================================================================
+
+    public function test_command_refuses_to_run_without_an_explicit_scope(): void
+    {
+        /** @var PendingCommand $cmd */
+        $cmd = $this->artisan('tolerance:audit-discounts');
+        $cmd->expectsOutputToContain('Refusing to run without an explicit scope')->assertExitCode(2);
+    }
+
+    public function test_command_fails_loudly_for_a_tenant_absent_from_the_directory(): void
+    {
+        /** @var PendingCommand $cmd */
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => '00000000-0000-0000-0000-000000000000']);
+        $cmd->expectsOutputToContain('not found in the central tenant directory')
+            ->doesntExpectOutputToContain('no violations')
+            ->assertFailed();
+    }
+
+    /**
+     * A violation in one tenant must not be attributed to another. Before the
+     * conversion the sweep had no tenant predicate at all.
+     */
+    public function test_violations_are_scoped_to_the_named_tenant(): void
+    {
+        $invoice = $this->seedInvoice();
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Service line',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'discount_amount' => '0.20',
+            'tax_rate' => '20.00',
+            'line_total' => '100.00',
+        ]);
+
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+
+        /** @var PendingCommand $cmd */
+        $cmd = $this->artisan('tolerance:audit-discounts', ['--tenant' => $otherTenant->id]);
+        $cmd->expectsOutputToContain('no violations')->assertExitCode(0);
+    }
+
+    public function test_all_tenants_still_reaches_every_tenants_violations(): void
+    {
+        $invoice = $this->seedInvoice();
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Service line',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'discount_amount' => '0.20',
+            'tax_rate' => '20.00',
+            'line_total' => '100.00',
+        ]);
+
+        /** @var PendingCommand $fleet */
+        $fleet = $this->artisan('tolerance:audit-discounts', ['--all-tenants' => true]);
+        $fleet->expectsOutputToContain('LINE')->assertExitCode(1);
     }
 
     private function seedInvoice(): Document
