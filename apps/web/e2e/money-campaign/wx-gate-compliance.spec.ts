@@ -90,7 +90,12 @@ test.describe.serial('W-X §F web-POS demo gate + compliance/terminals (non-demo
     // is_demo is a central directory flag not exposed in the tenant auth payload
     // (known open item: POS hub visibility for non-demo tenants is UX, the 403 is
     // the enforcement).
-    expect(body, 'is_demo not surfaced in /auth/me (hiding is UX; 403 is enforcement)').not.toMatch(/"is_demo"\s*:\s*true/)
+    // NOTE: this is a RECORD case, not an enforcement gate. The assertion below
+    // deliberately only rules out `"is_demo": true`, so it would ALSO pass on a
+    // tenant that exposed `is_demo: false` — that is intentional (the point is
+    // "not surfaced as true / hub-hiding is UX"), not a demo-gate check. The real
+    // enforcement is GATE-01/02's server-side 403; do not read this as one.
+    expect(body, 'is_demo not surfaced as true in /auth/me (hiding is UX; 403 is enforcement)').not.toMatch(/"is_demo"\s*:\s*true/)
     test.info().annotations.push({
       type: 'note',
       description: 'is_demo not present in /auth/me; POS hub hiding for non-demo tenants is an open UX item. Enforcement remains the server-side 403 (GATE-01/02).',

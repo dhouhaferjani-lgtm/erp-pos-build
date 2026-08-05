@@ -10,13 +10,15 @@ The tax-configuration write endpoints are all gated by
 (`apps/api/app/Modules/Taxation/routes.php:23-31` — store / update / delete /
 reorder). That permission is **never created in tenant databases**:
 
-- It is defined only in the **inert legacy** `database/seeders/PermissionSeeder.php`
-  (`:121`, `:225`, granted there to a `Accountant` role that RolesAndPermissionsSeeder
-  does not use).
-- The **canonical** `database/seeders/RolesAndPermissionsSeeder.php` — the one that
-  actually seeds tenants (see MEMORY) — contains **zero** references to `taxation.*`.
-  Its `admin` role syncs `Permission::all()` (`:473`), but "all" is only the
-  permissions that seeder itself created.
+- It IS defined in `database/seeders/PermissionSeeder.php` (`:121`, `:225`, granted
+  there to an `Accountant` role) — but `PermissionSeeder` is **not inert**: it is
+  invoked by `ProductionSeeder.php:68`. `ProductionSeeder`/`PermissionSeeder` is the
+  **central-DB / registration bootstrap** path, NOT the per-tenant provisioning path.
+- **Per-tenant provisioning uses ONLY `RolesAndPermissionsSeeder`** — invoked by
+  `TenantInitializationService.php:177-178`, which never calls `PermissionSeeder`. And
+  `RolesAndPermissionsSeeder` contains **zero** references to `taxation.*`. Its `admin`
+  role syncs `Permission::all()` (`:473`), but "all" is only the permissions that seeder
+  itself created — so `taxation.tax_configurations.manage` is absent in every tenant DB.
 
 Live proof on `demo-pharmacy-tn`:
 
@@ -43,11 +45,14 @@ turn a stamp on/off or add a rate through the app.
 
 ## Fix
 
-Add the `taxation.tax_configurations.manage` permission to
+Fix the **per-tenant** seeder — `RolesAndPermissionsSeeder` (the one
+`TenantInitializationService.php:177-178` runs), NOT `PermissionSeeder`/`ProductionSeeder`
+(central bootstrap): add `taxation.tax_configurations.manage` to
 `RolesAndPermissionsSeeder::permissionNames()` and grant it to the roles that should
-manage fiscal config (at minimum `admin`; per the legacy seeder's intent, also an
-accountant role). Then `permission:cache-reset` tenant-wide. A deploy adding this
-permission MUST run `tenants:run permission:cache-reset` (tenant-blind Spatie cache).
+manage fiscal config (at minimum `admin`; per `PermissionSeeder`'s intent, also the
+`accountant`/`Accountant` role). Then reseed + `permission:cache-reset` tenant-wide. A
+deploy adding this permission MUST run a tenant-wide `permission:cache-reset` (tenant-blind
+Spatie cache).
 
 ## Companion, distinct finding (same case family, already ticketed elsewhere)
 
