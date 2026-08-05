@@ -145,12 +145,106 @@ final class VerifyPosChainCommandTest extends TestCase
             ->expectsOutputToContain('FAILED');
     }
 
-    public function test_command_reports_terminal_not_found(): void
+    /**
+     * Fail-closed contract (2026-08-05 cat-(b) conversion). This used to exit
+     * **0** with a "not found" line — a launch verifier reporting success for
+     * a chain it never read.
+     */
+    public function test_command_fails_when_the_terminal_filter_matches_nothing(): void
     {
         $fakeId = '00000000-0000-0000-0000-000000000000';
 
         $this->artisan('pos:verify-chains', ['--terminal' => $fakeId])
-            ->assertExitCode(0)
-            ->expectsOutputToContain('not found');
+            ->expectsOutputToContain('matched no terminal in any reachable tenant')
+            ->assertExitCode(1);
+    }
+
+    public function test_command_fails_when_the_company_filter_matches_nothing(): void
+    {
+        $this->artisan('pos:verify-chains', ['--company' => '00000000-0000-0000-0000-000000000000'])
+            ->expectsOutputToContain('matched no terminal in any reachable tenant')
+            ->assertExitCode(1);
+    }
+
+    // =================================================================
+    // Per-tenant iteration (cat-(b) wave 2)
+    // =================================================================
+
+    /**
+     * The E-7 evidence requirement: a fleet run must attribute every verdict
+     * to a tenant, and one broken tenant must fail the aggregate even when
+     * another tenant is clean.
+     */
+    public function test_a_broken_chain_in_one_tenant_fails_the_fleet_run_with_per_tenant_verdicts(): void
+    {
+        $brokenTerminal = $this->createTerminalInNewTenant();
+        $this->breakReceiptChainOn($brokenTerminal);
+
+        $this->artisan('pos:verify-chains', ['--type' => 'receipts'])
+            ->expectsOutputToContain(sprintf('TENANT %s (', $this->tenant->id))
+            ->expectsOutputToContain(sprintf('TENANT %s (%s): chain verification FAILED', $brokenTerminal->tenant_id, $brokenTerminal->company->tenant->slug))
+            ->assertExitCode(1);
+    }
+
+    public function test_tenant_filter_narrows_the_run_to_one_tenant(): void
+    {
+        $brokenTerminal = $this->createTerminalInNewTenant();
+        $this->breakReceiptChainOn($brokenTerminal);
+
+        // The clean tenant passes even though a broken chain exists elsewhere.
+        $this->artisan('pos:verify-chains', ['--tenant' => $this->tenant->id, '--type' => 'receipts'])
+            ->expectsOutputToContain('All chains verified successfully')
+            ->assertExitCode(0);
+    }
+
+    public function test_an_unknown_tenant_filter_fails_loudly(): void
+    {
+        $this->artisan('pos:verify-chains', ['--tenant' => '00000000-0000-0000-0000-000000000000'])
+            ->expectsOutputToContain('not found in the central tenant directory')
+            ->assertFailed();
+    }
+
+    private function createTerminalInNewTenant(): Terminal
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $location = Location::factory()->create(['company_id' => $company->id]);
+
+        return Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'is_active' => true,
+            'code' => 'OTHTEN',
+        ]);
+    }
+
+    private function breakReceiptChainOn(Terminal $terminal): void
+    {
+        $cashier = User::factory()->create(['tenant_id' => $terminal->tenant_id]);
+
+        Receipt::factory()->create([
+            'tenant_id' => $terminal->tenant_id,
+            'company_id' => $terminal->company_id,
+            'location_id' => $terminal->location_id,
+            'terminal_id' => $terminal->id,
+            'chain_sequence' => 1,
+            'previous_hash' => null,
+            'fiscal_hash' => hash('sha256', 'valid-first'),
+            'is_voided' => false,
+            'cashier_id' => $cashier->id,
+        ]);
+
+        Receipt::factory()->create([
+            'tenant_id' => $terminal->tenant_id,
+            'company_id' => $terminal->company_id,
+            'location_id' => $terminal->location_id,
+            'terminal_id' => $terminal->id,
+            'chain_sequence' => 2,
+            'previous_hash' => 'wrong-previous-hash',
+            'fiscal_hash' => hash('sha256', 'broken'),
+            'is_voided' => false,
+            'cashier_id' => $cashier->id,
+        ]);
     }
 }

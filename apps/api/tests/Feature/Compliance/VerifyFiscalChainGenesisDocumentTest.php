@@ -167,6 +167,111 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $this->assertStringContainsString('ALL CHAINS VALID', $output, 'Empty chain output must contain success banner');
     }
 
+    // =================================================================
+    // Per-tenant iteration (cat-(b) wave 2, 2026-08-05)
+    //
+    // `fiscal:verify-chains` used to open with `Company::all()` on the
+    // console's CENTRAL connection. `companies` is a TENANT table, so after
+    // the database-per-tenant flip a bare fleet run raised 42P01 and a
+    // `--company` run matched nothing. These lock in the replacement: iterate
+    // the tenant directory, attribute every verdict, and fail the aggregate if
+    // ANY tenant is broken.
+    // =================================================================
+
+    public function test_fleet_run_attributes_verdicts_per_tenant_and_fails_if_any_tenant_is_broken(): void
+    {
+        [$cleanTenant, $cleanCompany, $cleanPartner] = $this->makeTenantCompanyPartner('fleet-clean-co');
+        $this->postingService->post($this->createConfirmedInvoice($cleanTenant, $cleanCompany, $cleanPartner, 'INV-FC-0001'));
+
+        [$brokenTenant, $brokenCompany, $brokenPartner] = $this->makeTenantCompanyPartner('fleet-broken-co');
+        $broken = $this->postingService->post($this->createConfirmedInvoice($brokenTenant, $brokenCompany, $brokenPartner, 'INV-FB-0001'));
+        $this->tamperWithTotal((string) $broken->id);
+
+        [$exit, $output] = $this->runVerifyWith([]);
+
+        $this->assertSame(1, $exit, 'A broken chain in one tenant must fail the fleet run. Output: '.$output);
+        $this->assertStringContainsString(
+            sprintf('TENANT %s (fleet-clean-co): ALL CHAINS VALID', $cleanTenant->id),
+            $output,
+            'The clean tenant must carry its own attributable PASS verdict',
+        );
+        $this->assertStringContainsString(
+            sprintf('TENANT %s (fleet-broken-co): 1 CHAIN(S) INVALID', $brokenTenant->id),
+            $output,
+            'The broken tenant must carry its own attributable FAIL verdict',
+        );
+    }
+
+    public function test_tenant_filter_narrows_verification_to_one_tenant(): void
+    {
+        [$cleanTenant, $cleanCompany, $cleanPartner] = $this->makeTenantCompanyPartner('narrow-clean-co');
+        $this->postingService->post($this->createConfirmedInvoice($cleanTenant, $cleanCompany, $cleanPartner, 'INV-NC-0001'));
+
+        [$brokenTenant, $brokenCompany, $brokenPartner] = $this->makeTenantCompanyPartner('narrow-broken-co');
+        $broken = $this->postingService->post($this->createConfirmedInvoice($brokenTenant, $brokenCompany, $brokenPartner, 'INV-NB-0001'));
+        $this->tamperWithTotal((string) $broken->id);
+
+        [$exit, $output] = $this->runVerifyWith(['--tenant' => $cleanTenant->id]);
+
+        $this->assertSame(0, $exit, 'The clean tenant must pass in isolation. Output: '.$output);
+        $this->assertStringNotContainsString($brokenTenant->id, $output, 'The filtered-out tenant must not be verified');
+    }
+
+    public function test_unknown_tenant_filter_fails_instead_of_reporting_all_chains_valid(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('unknown-filter-co');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-UF-0001'));
+
+        [$exit, $output] = $this->runVerifyWith(['--tenant' => '00000000-0000-0000-0000-000000000000']);
+
+        $this->assertNotSame(0, $exit, 'An unknown --tenant must not exit 0. Output: '.$output);
+        $this->assertStringContainsString('not found in the central tenant directory', $output);
+    }
+
+    public function test_unknown_company_filter_fails_instead_of_reporting_all_chains_valid(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('unknown-company-co');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-UC-0001'));
+
+        [$exit, $output] = $this->runVerifyWith(['--company' => '00000000-0000-0000-0000-000000000000']);
+
+        $this->assertSame(1, $exit, 'A company no reachable tenant owns must fail. Output: '.$output);
+        $this->assertStringContainsString('No companies found.', $output);
+        $this->assertStringNotContainsString('ALL CHAINS VALID', $output);
+    }
+
+    /**
+     * Post-seal mutation performed straight against the row, bypassing the
+     * application layer. On PostgreSQL the immutability trigger blocks even a
+     * raw UPDATE on a sealed row, so it is disabled for the injection.
+     */
+    private function tamperWithTotal(string $documentId): void
+    {
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE documents DISABLE TRIGGER trg_document_immutability');
+        }
+
+        DB::table('documents')->where('id', $documentId)->update(['total' => '999999.99']);
+
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE documents ENABLE TRIGGER trg_document_immutability');
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $options
+     * @return array{0: int, 1: string}
+     */
+    private function runVerifyWith(array $options): array
+    {
+        /** @var ConsoleKernel $kernel */
+        $kernel = $this->app->make(ConsoleKernel::class);
+        $exit = $kernel->call('fiscal:verify-chains', $options);
+
+        return [$exit, $kernel->output()];
+    }
+
     /**
      * Run the fiscal:verify-chains artisan command scoped to a single company.
      *

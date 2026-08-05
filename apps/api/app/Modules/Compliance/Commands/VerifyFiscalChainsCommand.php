@@ -4,23 +4,49 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Commands;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
 
 /**
- * @cross-tenant-by-design Iterates Company::all() to verify fiscal hash chain integrity; CI/audit-grade fleet-wide check for NF525 compliance.
+ * `fiscal:verify-chains` — document-side (invoice / credit-note) fiscal hash
+ * chain verifier. Named as a launch verifier in
+ * `docs/handoff/DISPATCH-PLAN-v4-first-tenant-2026-07-31.md:130` and step D.1
+ * of `docs/qa/2026-05-12-first-tenant-smoke.md`.
+ *
+ * Tenant-isolation: cat-(a-per-tenant-iter), converted 2026-08-05.
+ *
+ * Before the conversion the command opened with `Company::all()` on the
+ * console's CENTRAL connection. `companies` is a TENANT table, so after the
+ * 2026-05-28 database-per-tenant flip a bare fleet run raised 42P01 and a
+ * `--company=<uuid>` run returned an empty set — i.e. the NF525 verifier the
+ * launch program leans on could not verify anything at all.
+ *
+ * The verification LOGIC is untouched: same seed handling, same per-document
+ * link + rehash checks, same `--type` narrowing. Only the context changed —
+ * companies are now enumerated inside each tenant's own database.
+ *
+ * **Evidence shape.** Every verdict names the tenant it belongs to
+ * (`TENANT <id> (<slug>): …`) because the output is filed as E-7 evidence,
+ * and the aggregate exit is non-zero if ANY tenant reports a broken chain.
+ * `--company` remains an in-tenant narrowing filter, but a company that no
+ * reachable tenant owns is now a loud failure rather than a clean
+ * "No companies found." — the historic message is kept, the exit code it
+ * carried (FAILURE) is unchanged.
  */
-class VerifyFiscalChainsCommand extends Command
+final class VerifyFiscalChainsCommand extends TenantScopedCommand
 {
     /**
      * @var string
      */
     protected $signature = 'fiscal:verify-chains
+                            {--tenant= : Specific tenant UUID to verify (default: every tenant)}
                             {--company= : Specific company ID to verify}
                             {--type= : Document type to verify (invoice, credit_note)}
                             {--fix : Attempt to fix broken chains (dangerous)}';
@@ -28,81 +54,125 @@ class VerifyFiscalChainsCommand extends Command
     /**
      * @var string
      */
-    protected $description = 'Verify the integrity of fiscal hash chains';
+    protected $description = 'Verify the integrity of fiscal hash chains, per tenant';
 
     public function __construct(
-        private readonly FiscalHashService $hashService
+        CompanyContext $companyContext,
+        private readonly FiscalHashService $hashService,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    protected function executeCommand(): int
     {
         $this->info('Starting fiscal chain verification...');
         $this->newLine();
 
-        $companyId = $this->option('company');
-        $documentType = $this->option('type');
+        $companyFilter = $this->stringOption('company');
+        $documentType = $this->stringOption('type');
 
-        /** @var Collection<int, Company> $companies */
-        $companies = $companyId
-            ? Company::where('id', $companyId)->get()
-            : Company::all();
-
-        if ($companies->isEmpty()) {
-            $this->error('No companies found.');
-
-            return Command::FAILURE;
-        }
-
-        $overallValid = true;
+        $companiesVerified = 0;
         $totalDocuments = 0;
         $invalidChains = 0;
 
-        foreach ($companies as $company) {
-            /** @var Company $company */
-            $this->info("Verifying company: {$company->name} ({$company->id})");
+        $exit = $this->forEachTenantFiltered(
+            $this->stringOption('tenant'),
+            function (Tenant $tenant) use (
+                $companyFilter,
+                $documentType,
+                &$companiesVerified,
+                &$totalDocuments,
+                &$invalidChains,
+            ): int {
+                // The explicit tenant_id predicate is redundant under
+                // database-per-tenant and load-bearing in single-schema
+                // compatibility mode, where one shared database holds every
+                // tenant's companies.
+                $companies = Company::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->when($companyFilter !== null, fn ($query) => $query->where('id', $companyFilter))
+                    ->get();
 
-            /** @var string|null $typeOption */
-            $typeOption = $documentType;
-            $types = $typeOption
-                ? [DocumentType::from($typeOption)]
-                : [DocumentType::Invoice, DocumentType::CreditNote];
-
-            foreach ($types as $type) {
-                $result = $this->verifyChainForCompanyAndType($company->id, $type, $company->fiscal_chain_seed);
-
-                $totalDocuments += $result['count'];
-
-                if (! $result['valid']) {
-                    $overallValid = false;
-                    $invalidChains++;
-                    $this->error("  ✗ {$type->value}: INVALID at sequence {$result['failed_at']}");
-
-                    if ($result['details']) {
-                        $this->warn("    → {$result['details']}");
-                    }
-                } else {
-                    $this->info("  ✓ {$type->value}: Valid ({$result['count']} documents)");
+                if ($companies->isEmpty()) {
+                    return self::SUCCESS;
                 }
-            }
 
-            $this->newLine();
+                $tenantInvalidChains = 0;
+
+                foreach ($companies as $company) {
+                    $companiesVerified++;
+                    $this->info("Verifying company: {$company->name} ({$company->id})");
+
+                    $types = $documentType !== null
+                        ? [DocumentType::from($documentType)]
+                        : [DocumentType::Invoice, DocumentType::CreditNote];
+
+                    foreach ($types as $type) {
+                        $result = $this->verifyChainForCompanyAndType(
+                            (string) $company->id,
+                            $type,
+                            $company->fiscal_chain_seed,
+                        );
+
+                        $totalDocuments += $result['count'];
+
+                        if (! $result['valid']) {
+                            $tenantInvalidChains++;
+                            $this->error("  ✗ {$type->value}: INVALID at sequence {$result['failed_at']}");
+
+                            if ($result['details']) {
+                                $this->warn("    → {$result['details']}");
+                            }
+                        } else {
+                            $this->info("  ✓ {$type->value}: Valid ({$result['count']} documents)");
+                        }
+                    }
+
+                    $this->newLine();
+                }
+
+                $invalidChains += $tenantInvalidChains;
+
+                if ($tenantInvalidChains > 0) {
+                    $this->error(sprintf(
+                        'TENANT %s (%s): %d CHAIN(S) INVALID ✗',
+                        $tenant->id,
+                        $tenant->slug,
+                        $tenantInvalidChains,
+                    ));
+
+                    return self::FAILURE;
+                }
+
+                $this->info(sprintf('TENANT %s (%s): ALL CHAINS VALID ✓', $tenant->id, $tenant->slug));
+
+                return self::SUCCESS;
+            },
+        );
+
+        if ($companiesVerified === 0) {
+            // Historic message and exit code preserved. What changed is that
+            // it can no longer be produced by "the console cannot see the
+            // companies table" — every reachable tenant was opened and asked.
+            $this->error('No companies found.');
+
+            return $exit === Command::SUCCESS ? Command::FAILURE : $exit;
         }
 
         $this->newLine();
         $this->info('Verification Summary:');
+        $this->info("  Companies verified: {$companiesVerified}");
         $this->info("  Total documents verified: {$totalDocuments}");
 
-        if ($overallValid) {
+        if ($invalidChains === 0) {
             $this->info('  Status: ALL CHAINS VALID ✓');
 
-            return Command::SUCCESS;
+            return $exit;
         }
 
         $this->error("  Status: {$invalidChains} CHAIN(S) INVALID ✗");
 
-        return Command::FAILURE;
+        return $exit === Command::SUCCESS ? Command::FAILURE : $exit;
     }
 
     /**
@@ -169,5 +239,12 @@ class VerifyFiscalChainsCommand extends Command
             'failed_at' => null,
             'details' => null,
         ];
+    }
+
+    private function stringOption(string $name): ?string
+    {
+        $value = $this->option($name);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }
