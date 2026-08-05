@@ -217,8 +217,13 @@ export function viewScopeKey(companyId: string, userId: string): string {
 
 /**
  * Sets the persisted view scope for the CURRENTLY logged-in principal and
- * reloads so the store re-hydrates from it. Returns the key it wrote, so a
- * caller can restore it.
+ * returns the key it wrote.
+ *
+ * M7 (review fix round 1): this helper does NOT reload — an earlier docstring
+ * claimed it did. `viewScopeStore.ts` hydrates from this key on FIRST LOAD
+ * (its module-scope `syncForCompany` runs when `previousCompanyId === null`),
+ * so the caller must navigate (`page.goto(...)`) after calling this for the
+ * new scope to take effect. Every call site here does exactly that.
  */
 export async function applyViewScope(page: Page, scope: ViewScope): Promise<string> {
   const key = await page.evaluate((next) => {

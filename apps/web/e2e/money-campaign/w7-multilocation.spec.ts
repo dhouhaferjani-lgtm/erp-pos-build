@@ -451,39 +451,55 @@ test.describe('MLC — multi-location money scoping', () => {
       return (res.body as { data?: Array<Record<string, unknown>> }).data ?? []
     }
 
-    const all = await read('')
+    // M6 (review fix round 1): the unscoped payload is read TWICE, before and
+    // after the scoped reads, and a scoped payload counts as "unchanged" if it
+    // matches EITHER snapshot. A single before-read would make this tripwire
+    // fragile on a shared stack: any sibling write landing between the reads
+    // would break equality and report a scoping fix that never happened.
+    const allBefore = await read('')
     const scopedTunis1 = await read(`?location_ids[]=${tunis1}`)
     const scopedTunis2 = await read(`?location_ids[]=${tunis2}`)
     const scopedWarehouse = await read(`?location_ids[]=${warehouse}`)
+    const allAfter = await read('')
 
-    expect(all.length, 'cash movements exist to scope').toBeGreaterThan(0)
+    expect(allBefore.length, 'cash movements exist to scope').toBeGreaterThan(0)
 
     // ── FINDING F-3 (P1, TRIPWIRE, GREEN: pins TODAY's behaviour) ──────────
     // The plan's expectation for this case is "cash figures RE-SCOPE; Σ across
     // all locations == the 'All' figure". The second half holds trivially and
     // the first half does not hold at all: three mutually exclusive
     // single-location scopes — including a warehouse that has never seen a POS
-    // receipt — return byte-identical payloads to the unscoped read. The
-    // `location_ids[]` parameter the FE sends
-    // (features/finance/hooks/… -> `location_ids: effectiveLocationIds`) is
-    // accepted and then dropped. Nothing here LEAKS across tenants or
+    // receipt — return payloads identical to the unscoped read. The
+    // `location_ids[]` parameter is accepted and then dropped.
+    //
+    // C1 (review fix round 1) — SCOPE OF THE DEFECT, CORRECTED. An earlier
+    // version of this comment (and of the ticket) claimed "the parameter the
+    // FE sends". It does not: `features/finance/hooks/useCashMovementsReport.ts`
+    // has NO location field on `CashMovementsFilters` at all, keys its query
+    // with `tenantScopedKey` rather than `locationScopedKey`, and
+    // `CashMovementsReportPage.tsx` never imports `useViewScope` — contrast
+    // `useAgedReceivables.ts:12-13`, which does all three. So NEITHER LAYER
+    // implements location scoping here: the parameter below is one this TEST
+    // sends, the server ignores it, and a fix has to span the backend query,
+    // the hook's filters and its query key. Nothing LEAKS across tenants or
     // companies — this is an unimplemented filter, not an isolation hole —
-    // but a multi-shop owner reading `/finance/cash-movements` under a
-    // single-shop scope is shown the whole company's cash and told it is one
-    // shop's.
+    // but the TopBar still offers a location scope on this page, so a
+    // multi-shop owner is shown the whole company's cash under a single-shop
+    // selection.
     const fingerprint = (rows: Array<Record<string, unknown>>): string => JSON.stringify(rows)
+    const unscopedFingerprints = [fingerprint(allBefore), fingerprint(allAfter)]
     expect(
-      fingerprint(scopedTunis1),
+      unscopedFingerprints,
       'TRIPWIRE F-3: a Tunis-Lac-only scope returns the SAME payload as no scope at all',
-    ).toBe(fingerprint(all))
+    ).toContain(fingerprint(scopedTunis1))
     expect(
-      fingerprint(scopedTunis2),
+      unscopedFingerprints,
       'TRIPWIRE F-3: …and so does a Tunis-Centre-only scope',
-    ).toBe(fingerprint(all))
+    ).toContain(fingerprint(scopedTunis2))
     expect(
-      fingerprint(scopedWarehouse),
+      unscopedFingerprints,
       'TRIPWIRE F-3: …and so does a NON-POS warehouse scope, which can hold no POS cash at all',
-    ).toBe(fingerprint(all))
+    ).toContain(fingerprint(scopedWarehouse))
 
     // The additive half of the plan's expectation, stated as the (vacuous but
     // recorded) truth it currently is: Σ over the shops == the All figure
@@ -491,9 +507,9 @@ test.describe('MLC — multi-location money scoping', () => {
     const total = (rows: Array<Record<string, unknown>>): string =>
       sumMoney(rows.map((r) => toScale3(String(r.amount ?? '0'))))
     expect(
-      total(scopedTunis1),
+      [total(allBefore), total(allAfter)],
       'each scope reports the same grand total as All (the arithmetic identity is vacuous today)',
-    ).toBe(total(all))
+    ).toContain(total(scopedTunis1))
 
     // UI: the page renders under a single-shop scope without erroring — the
     // figures are simply not scoped.
