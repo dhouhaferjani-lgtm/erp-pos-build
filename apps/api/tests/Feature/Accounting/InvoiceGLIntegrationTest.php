@@ -6,9 +6,10 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\GlResidualRefusal;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -29,7 +30,9 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -75,7 +78,7 @@ class InvoiceGLIntegrationTest extends TestCase
 
     private Account $vatCollectedAccount;
 
-    private Account $salesStampDutyAccount;
+    private Account $roundingIncomeAccount;
 
     private Product $product1;
 
@@ -159,56 +162,25 @@ class InvoiceGLIntegrationTest extends TestCase
             'is_default' => true,
         ]);
 
-        // Create Chart of Accounts with SystemAccountPurpose
-        $this->receivableAccount = Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '411',
-            'name' => 'Clients - Accounts Receivable',
-            'type' => AccountType::Asset,
-            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
-            'is_active' => true,
-        ]);
+        // Gate finding I-7 — the chart is the REAL FranceChartOfAccountsSeeder
+        // output, not a hand-rolled one. The previous fixture hand-seeded a
+        // `SalesStampDutyPayable` account that the PCG seeder never produces, so
+        // the entire FR/Generic behaviour of the residual guard was unexercised
+        // and a green run proved nothing about it.
+        (new FranceChartOfAccountsSeeder)->run($this->company->id, $this->tenant->id);
 
-        $this->productRevenueAccount = Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '707',
-            'name' => 'Vente de marchandises',
-            'type' => AccountType::Revenue,
-            'system_purpose' => SystemAccountPurpose::ProductRevenue,
-            'is_active' => true,
-        ]);
+        $this->receivableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::CustomerReceivable);
+        $this->productRevenueAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::ProductRevenue);
+        $this->serviceRevenueAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::ServiceRevenue);
+        $this->vatCollectedAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::VatCollected);
+        $this->roundingIncomeAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SalesRoundingDifferenceIncome);
 
-        $this->serviceRevenueAccount = Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '706',
-            'name' => 'Prestations de services',
-            'type' => AccountType::Revenue,
-            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
-            'is_active' => true,
-        ]);
-
-        $this->vatCollectedAccount = Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '44571',
-            'name' => 'TVA collectée',
-            'type' => AccountType::Liability,
-            'system_purpose' => SystemAccountPurpose::VatCollected,
-            'is_active' => true,
-        ]);
-
-        $this->salesStampDutyAccount = Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '4375',
-            'name' => 'Droit de timbre à reverser',
-            'type' => AccountType::Liability,
-            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
-            'is_active' => true,
-        ]);
+        // The PCG has no timbre: a French chart must NOT carry a sales stamp-duty
+        // account, which is precisely why it needs a rounding-difference account.
+        $this->assertNull(
+            Account::findByPurpose($this->company->id, SystemAccountPurpose::SalesStampDutyPayable),
+            'FranceChartOfAccountsSeeder must not seed a sales stamp-duty account.'
+        );
 
         // Create test products
         $this->product1 = Product::create([
@@ -545,124 +517,292 @@ class InvoiceGLIntegrationTest extends TestCase
     }
 
     /**
-     * Test: collected sales stamp duty (timbre) is credited to the dedicated
-     * 4375 liability — not lumped into VAT, not dropped — and the entry balances.
+     * W-6 D1a, the reviewer's CONCRETE case (gate C-2) — an ordinary two-line
+     * French invoice whose only imbalance is per-line tax truncation must POST.
      *
-     * Bug #5A: previously the AR debit carried the timbre (in `total`) but no
-     * credit leg covered it, so every TN invoice posted an unbalanced JE.
+     * `groupTaxByRate()` truncates each line's tax at the currency scale, while
+     * `TaxCalculationService` accumulates at scale+1 and truncates once per rate
+     * bucket. Two lines of net `12.13` at 20% EUR (scale 2):
+     *
+     *   GL:     trunc2(2.426) = 2.42  x2  = 4.84
+     *   header: trunc2(4.852)          = 4.85
+     *   total 29.11  vs  Σcr 24.26 + 4.84 = 29.10   ->  residual +0.01
+     *
+     * Before the narrowing, this hard-failed on any chart without a 4375 account —
+     * i.e. every French invoice with an odd number of truncating lines. Now the
+     * 0.01 is booked to the PCG 758 rounding-difference account and the entry
+     * balances.
      */
-    public function test_invoice_gl_credits_collected_stamp_duty_to_4375_and_balances(): void
+    public function test_a_two_line_french_invoice_with_a_tax_truncation_residual_posts(): void
     {
-        // 1 line: 100 @ 20% VAT = 20 VAT, plus a 1.000 document-level timbre.
         $invoice = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'type' => DocumentType::Invoice,
-            'document_number' => 'INV-STAMP-'.uniqid(),
+            'document_number' => 'INV-ROUND-'.uniqid(),
             'partner_id' => $this->customer->id,
             'document_date' => now(),
             'status' => DocumentStatus::Posted,
-            'subtotal' => '100.000',
-            'tax_amount' => '21.000',  // 20 VAT + 1 timbre
-            'total' => '121.000',      // 100 + 21
-            'balance_due' => '121.000',
+            'subtotal' => '24.26',
+            // Header tax: the per-BUCKET truncation, trunc2(12.13 * 2 * 0.20) = 4.85.
+            'tax_amount' => '4.85',
+            'total' => '29.11',
+            'balance_due' => '29.11',
             'currency' => 'EUR',
+        ]);
+        foreach ([1, 2] as $lineNumber) {
+            DocumentLine::create([
+                'id' => Str::uuid()->toString(),
+                'document_id' => $invoice->id,
+                'product_id' => $this->product1->id,
+                'line_number' => $lineNumber,
+                'description' => 'Truncating line '.$lineNumber,
+                'quantity' => '1',
+                'unit_price' => '12.13',
+                'tax_rate' => '20.00',
+                'line_total' => '12.13',
+            ]);
+        }
+        $invoice = $invoice->fresh(['lines']);
+
+        // Pre-flight agrees: this document is postable.
+        $this->accountingService->assertDocumentGlIsPostable($invoice);
+
+        $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        $roundingLine = $lines->firstWhere('account_id', $this->roundingIncomeAccount->id);
+        $this->assertNotNull($roundingLine, 'the truncation residual must be credited to the rounding-difference account');
+        $this->assertSame(0, bccomp((string) $roundingLine->credit, '0.01', 2));
+        $this->assertSame(0, bccomp((string) $roundingLine->debit, '0', 2));
+
+        $debits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->debit, 2), '0');
+        $credits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->credit, 2), '0');
+        $this->assertSame(0, bccomp($debits, $credits, 2), 'entry must balance');
+        $this->assertSame(0, bccomp($debits, '29.11', 2));
+    }
+
+    /**
+     * W-6 D1a — a POSITIVE residual larger than per-line truncation can explain,
+     * on a chart with no document-level charge account, is REFUSED rather than
+     * buried in the rounding account.
+     *
+     * The `1.00` here is a timbre-shaped document-level charge. The PCG has no
+     * timbre, so on a French chart it is unexplained money and must not be
+     * silently absorbed. (On the Tunisian chart the same shape books to 4375 —
+     * asserted in the TN case below.)
+     */
+    public function test_a_positive_residual_beyond_rounding_tolerance_is_refused_on_a_chart_without_a_timbre_account(): void
+    {
+        $invoice = $this->documentWithResidual('INV-BIGRESID-', '100.00', '1', '120.00');
+
+        try {
+            $this->accountingService->assertDocumentGlIsPostable($invoice);
+            $this->fail('a positive residual beyond rounding tolerance must be refused pre-seal');
+        } catch (UnpostableDocumentGlException $e) {
+            $this->assertSame(GlResidualRefusal::ResidualExceedsRoundingTolerance, $e->refusal);
+        }
+    }
+
+    /**
+     * W-6 D1a — the Tunisian chart keeps its existing behaviour EXACTLY: the
+     * document-level timbre is credited to the dedicated 4375 liability, not
+     * lumped into VAT, not dropped, and at any size.
+     *
+     * Bug #5A: previously the AR debit carried the timbre (in `total`) with no
+     * credit leg, so every TN invoice posted an unbalanced JE. This is the
+     * regression guard for that fix under the narrowed residual rules.
+     */
+    public function test_the_tunisian_chart_still_credits_the_timbre_to_4375_and_balances(): void
+    {
+        [$company, $partner, $product] = $this->tunisianFixture();
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-TN-STAMP-'.uniqid(),
+            'partner_id' => $partner->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '21.000',  // 20 VAT + 1.000 timbre
+            'total' => '121.000',
+            'balance_due' => '121.000',
+            'currency' => 'TND',
         ]);
         DocumentLine::create([
             'id' => Str::uuid()->toString(),
             'document_id' => $invoice->id,
-            'product_id' => $this->product1->id,
+            'product_id' => $product->id,
             'line_number' => 1,
             'description' => 'Product with VAT + timbre',
             'quantity' => '1',
-            'unit_price' => '100.00',
+            'unit_price' => '100.000',
             'tax_rate' => '20.00',
             'line_total' => '100.000',
         ]);
         $invoice = $invoice->fresh(['lines']);
 
+        $stampAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::SalesStampDutyPayable);
+        $vatAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::VatCollected);
+
+        $this->accountingService->assertDocumentGlIsPostable($invoice);
         $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
         $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
 
-        // Stamp duty credited to 4375 (the timbre, = total − revenue − VAT).
-        $stampLine = $lines->firstWhere('account_id', $this->salesStampDutyAccount->id);
-        $this->assertNotNull($stampLine, 'Collected stamp duty must be credited to the sales stamp-duty account (4375)');
-        $this->assertEquals('0.000', $stampLine->debit);
-        $this->assertEquals('1.000', $stampLine->credit);
+        $stampLine = $lines->firstWhere('account_id', $stampAccount->id);
+        $this->assertNotNull($stampLine, 'the timbre must reach 4375, at any size');
+        $this->assertSame(0, bccomp((string) $stampLine->credit, '1', 3));
 
-        // VAT unchanged (line VAT only, on 4457).
-        $vat = $lines->where('account_id', $this->vatCollectedAccount->id)->sum(fn ($l) => (float) $l->credit);
-        $this->assertEquals(20.00, $vat);
+        $vat = $lines->where('account_id', $vatAccount->id)
+            ->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->credit, 3), '0');
+        $this->assertSame(0, bccomp($vat, '20', 3), 'VAT stays line VAT only');
 
-        // Entry balances.
-        $debits = $lines->sum(fn ($l) => (float) $l->debit);
-        $credits = $lines->sum(fn ($l) => (float) $l->credit);
-        $this->assertEquals($debits, $credits, 'Journal entry must balance');
-        $this->assertEquals(121.00, $debits);
+        $debits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->debit, 3), '0');
+        $credits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->credit, 3), '0');
+        $this->assertSame(0, bccomp($debits, $credits, 3));
+        $this->assertSame(0, bccomp($debits, '121', 3));
     }
 
     /**
-     * W-6 D1a — `createInvoiceGLEntries()` must REFUSE to persist an entry whose
-     * Sigma(debits) != Sigma(credits), instead of silently dropping the residual
-     * into an immutable, hash-chained ledger.
+     * W-6 D1a — a NEGATIVE residual is refused BEFORE the document is sealed.
      *
-     * Shape reproduced: the `MTP-DOC-06` probe document — header `total` 100.000
-     * (its `tax_amount` was zeroed by the confirm-zeroes-VAT defect closed in
-     * `7258a409f`) while its line still carries `tax_rate 19.00`. The posting
-     * therefore debits AR 100.000 and credits 100.000 revenue + 19.000 VAT, a
-     * NEGATIVE residual of -19.000 that the stamp-duty leg discards because it
-     * only fires on a POSITIVE residual.
+     * Shape reproduced: the `MTP-DOC-06` probe — header `total` 100.00 (its
+     * `tax_amount` was zeroed by the confirm-zeroes-VAT defect closed in
+     * `7258a409f`) while its line still carries `tax_rate 20.00`. The posting
+     * would debit AR 100.00 and credit 100.00 revenue + 20.00 VAT, a NEGATIVE
+     * residual of -20.00 that no absorbing account may take: the header
+     * understates its own lines, which is a bug, never a rounding artefact.
      *
-     * Ticket: docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md (D1a).
+     * Gate C-1: this must be a pre-flight refusal (`UnpostableDocumentGlException`,
+     * 422 BUSINESS_ERROR) so the document is never sealed — see
+     * `DocumentGlPreflightTest` for the end-to-end proof through
+     * `DocumentPostingService`.
+     */
+    public function test_a_negative_residual_is_refused_by_the_preflight(): void
+    {
+        $invoice = $this->documentWithResidual('INV-UNBAL-', '100.00', '20.00', '100.00');
+
+        try {
+            $this->accountingService->assertDocumentGlIsPostable($invoice);
+            $this->fail('a negative residual must be refused pre-seal');
+        } catch (UnpostableDocumentGlException $e) {
+            $this->assertSame(GlResidualRefusal::NegativeResidual, $e->refusal);
+            $this->assertStringContainsString($invoice->document_number, $e->getMessage());
+        }
+    }
+
+    /**
+     * W-6 D1a — defence in depth. If the pre-flight is ever bypassed (a caller
+     * that writes the GL directly), the posting itself still refuses and rolls
+     * back: no journal entry, no consumed chain sequence.
      */
     public function test_invoice_gl_refuses_to_post_an_unbalanced_entry(): void
     {
         $entriesBefore = JournalEntry::query()->count();
-
-        // Header total understates the line tax: 100.000 total vs 100.000 revenue
-        // + 19.000 line VAT => residual -19.000.
-        $invoice = Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'type' => DocumentType::Invoice,
-            'document_number' => 'INV-UNBAL-'.uniqid(),
-            'partner_id' => $this->customer->id,
-            'document_date' => now(),
-            'status' => DocumentStatus::Posted,
-            'subtotal' => '100.000',
-            'tax_amount' => '0.000',
-            'total' => '100.000',
-            'balance_due' => '100.000',
-            'currency' => 'EUR',
-        ]);
-        DocumentLine::create([
-            'id' => Str::uuid()->toString(),
-            'document_id' => $invoice->id,
-            'product_id' => $this->product1->id,
-            'line_number' => 1,
-            'description' => 'Line whose tax_rate the header does not carry',
-            'quantity' => '1',
-            'unit_price' => '100.00',
-            'tax_rate' => '19.00',
-            'line_total' => '100.000',
-        ]);
-        $invoice = $invoice->fresh(['lines']);
+        $invoice = $this->documentWithResidual('INV-UNBAL-DD-', '100.00', '20.00', '100.00');
 
         try {
             $this->accountingService->createInvoiceGLEntries($invoice);
             $this->fail('createInvoiceGLEntries() must refuse an unbalanced entry, not post it.');
         } catch (UnbalancedJournalEntryException $e) {
+            // Deliberately NOT UnpostableDocumentGlException: reaching the posting
+            // means the seal already happened, so a 422 would be a lie. This stays
+            // an unmapped RuntimeException — a 500 plus an alert (gate I-6).
             $this->assertStringContainsString($invoice->document_number, $e->getMessage());
         }
 
-        // Fail CLOSED: the transaction rolled back — no entry, no lines, nothing
-        // sealed into the hash chain.
+        // Fail CLOSED: nothing sealed into the hash chain.
         $this->assertSame($entriesBefore, JournalEntry::query()->count());
         $this->assertSame(
             0,
             JournalEntry::query()->where('source_id', $invoice->id)->count(),
             'No journal entry may survive for an unbalanced invoice posting.'
         );
+    }
+
+    /**
+     * Build a single-line EUR invoice with a known residual.
+     *
+     * `total − line_total − trunc(line_total x rate)` is the residual under test.
+     */
+    private function documentWithResidual(
+        string $numberPrefix,
+        string $lineTotal,
+        string $taxRate,
+        string $total,
+    ): Document {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => $numberPrefix.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => $lineTotal,
+            'tax_amount' => bcsub($total, $lineTotal, 2),
+            'total' => $total,
+            'balance_due' => $total,
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $invoice->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Residual probe line',
+            'quantity' => '1',
+            'unit_price' => $lineTotal,
+            'tax_rate' => $taxRate,
+            'line_total' => $lineTotal,
+        ]);
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
+    }
+
+    /**
+     * A second company on the REAL Tunisian chart, for the timbre case.
+     *
+     * @return array{0: Company, 1: Partner, 2: Product}
+     */
+    private function tunisianFixture(): array
+    {
+        $company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'TN GL Test Company',
+            'legal_name' => 'TN GL Test Company SARL',
+            'tax_id' => 'TAX-TN-GL-'.uniqid(),
+            'country_code' => 'TN',
+            'locale' => 'fr_FR',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+        (new TunisiaChartOfAccountsSeeder)->run($company->id, $this->tenant->id);
+
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'name' => 'TN Customer',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'sku' => 'TNPROD-'.uniqid(),
+            'name' => 'TN Product',
+            'type' => ProductType::Part,
+            'cost_price' => '50.000',
+            'selling_price' => '100.000',
+            'is_active' => true,
+        ]);
+
+        return [$company, $partner, $product];
     }
 
     // ==================== HELPER METHODS ====================

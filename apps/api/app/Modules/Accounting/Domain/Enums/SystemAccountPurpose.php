@@ -83,6 +83,18 @@ enum SystemAccountPurpose: string
     case PurchaseStampDuty = 'purchase_stamp_duty';                // Timbre fiscal on domestic purchase documents
     case SalesStampDutyPayable = 'sales_stamp_duty_payable';       // 4375 — droit de timbre collected on sales, remittable to the State (liability)
 
+    // Sales invoice/credit-note tax-rounding difference (W-6 D1a).
+    // A sales document debits AR with the HEADER total and credits the LINES'
+    // revenue + a RECOMPUTED per-line VAT. Because per-line truncation sums to no
+    // more than the per-bucket truncation the header used, the header can exceed
+    // the GL credits by up to one unit of the last place per line. On the Tunisian
+    // chart that residual rides in `SalesStampDutyPayable` alongside the genuine
+    // timbre; charts with no timbre concept (FR/Generic) need a home of their own
+    // or the entry cannot balance. PCG 658/758 "charges/produits divers de gestion
+    // courante" is the conventional pair for such écarts.
+    case SalesRoundingDifferenceIncome = 'sales_rounding_difference_income';   // 7581 — invoice residual (credit)
+    case SalesRoundingDifferenceExpense = 'sales_rounding_difference_expense'; // 6581 — credit-note residual (debit)
+
     /**
      * Get human-readable label for display.
      */
@@ -128,6 +140,8 @@ enum SystemAccountPurpose: string
             self::GoodsReceivedNotInvoiced => 'Goods Received Not Invoiced (GR-IR)',
             self::PurchaseStampDuty => 'Purchase Stamp Duty (Timbre)',
             self::SalesStampDutyPayable => 'Sales Stamp Duty Payable (Timbre à reverser)',
+            self::SalesRoundingDifferenceIncome => 'Sales Rounding Difference (Income)',
+            self::SalesRoundingDifferenceExpense => 'Sales Rounding Difference (Expense)',
         };
     }
 
@@ -170,13 +184,14 @@ enum SystemAccountPurpose: string
 
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::PurchasePriceVarianceIncome, self::RealizedFxGain,
-            self::VoucherBreakageIncome => AccountType::Revenue,
+            self::VoucherBreakageIncome, self::SalesRoundingDifferenceIncome => AccountType::Revenue,
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
             self::PaymentToleranceExpense, self::PurchasePriceVarianceExpense, self::SalesReturn, self::RefundWriteOff, self::RealizedFxLoss,
             self::SalesDiscount, self::SalesReturnsClearing,
             self::MarketingGoodwillExpense, self::RoundingLossExpense,
+            self::SalesRoundingDifferenceExpense,
             self::PurchaseStampDuty => AccountType::Expense,
 
             self::RetainedEarnings, self::OpeningBalanceEquity => AccountType::Equity,

@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Application\Services;
 
+use App\Modules\Accounting\Application\DTOs\DocumentGlResidualPlan;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\GlResidualRefusal;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\DoubleEntryValidator;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
@@ -26,7 +31,7 @@ use Illuminate\Support\Facades\Log;
  *
  * Exposes accounting functionality to other modules through the AccountingServiceInterface.
  */
-final class AccountingService implements AccountingServiceInterface
+final class AccountingService implements AccountingServiceInterface, DocumentGlPreflightInterface
 {
     public function __construct(
         private readonly GeneralLedgerHashService $hashService,
@@ -35,30 +40,204 @@ final class AccountingService implements AccountingServiceInterface
         private readonly DoubleEntryValidator $doubleEntryValidator,
     ) {}
 
-    private function scale(): int
+    /**
+     * The scale to do a DOCUMENT's GL arithmetic at.
+     *
+     * CLAUDE.md rule 19: pass the ENTITY's currency, never a bare no-arg
+     * `getScale()`. The document-sourced GL paths run from a post-commit listener
+     * that would become queued the moment anyone makes it `ShouldQueue`, and a
+     * no-arg resolve throws with no bound `CompanyContext` (gate finding N-8).
+     */
+    private function documentScale(Document $document): int
     {
-        return $this->scaleResolver->getScale();
+        return $this->scaleResolver->getScaleSafe($document->currency, 3);
     }
 
     /**
-     * W-6 D1a — refuse to seal a journal entry whose Sigma(debits) != Sigma(credits).
+     * W-6 D1a — the balance PRE-FLIGHT, called BEFORE a document is sealed.
      *
-     * The document-sourced GL paths auto-post: they create the entry as `Posted`
-     * and hash-chain it in the same transaction, and `verifyChain()` never asserts
-     * the balance invariant, so an unbalanced entry is immutable AND invisible to
-     * the compliance tooling. Called after every line is written and BEFORE the
-     * fiscal hash is computed, so the throw rolls the whole transaction back.
+     * Gate finding C-1: asserting balance from inside the post-commit listener
+     * meant a refusal left the document `Posted` + hash-chained with no GL at all,
+     * unrecoverable because `DocumentPostingService::post()` returns early on an
+     * already-posted document so `InvoicePosted` never re-fires. Running the same
+     * arithmetic inside the posting transaction turns that into a clean 422 on an
+     * UNSEALED document.
      *
-     * Comparison is bcmath at the currency scale via the same `DoubleEntryValidator`
-     * that guards the manual route (`JournalEntryController::store()` /
-     * `UNBALANCED_ENTRY`) — never a float. `isBalanced()` also rejects a
-     * degenerate single-line entry, which a document posting can never legitimately
-     * produce (AR leg + at least one revenue leg).
+     * @throws UnpostableDocumentGlException
+     */
+    public function assertDocumentGlIsPostable(Document $document): void
+    {
+        if (! in_array($document->type, [DocumentType::Invoice, DocumentType::CreditNote], true)) {
+            return;
+        }
+
+        $plan = $this->residualPlan($document, $this->documentScale($document));
+
+        if ($plan->refusal !== null) {
+            throw UnpostableDocumentGlException::forDocument(
+                $plan->refusal,
+                $document->document_number ?? $document->id,
+                $plan->residual,
+            );
+        }
+    }
+
+    /**
+     * Compute — from the document alone — what the GL posting will look like and
+     * whether it can balance.
+     *
+     * Used TWICE on purpose: by the pre-flight above (inside the posting
+     * transaction, before the seal) and by the two posting methods (in the
+     * post-commit listener). Deriving the numbers separately is how the two could
+     * drift, which is exactly the class of defect D1a is.
+     *
+     * `residual = total − Σline_total − Σ(positive per-rate recomputed VAT)`.
+     *
+     * Verdict (orchestrator ruling, 2026-08-05):
+     * - `residual < 0` → REFUSE. The credit side over-runs the AR debit; the header
+     *   understates its own lines. Never a rounding artefact.
+     * - `residual > 0` → book it to an absorbing account.
+     *   - `SalesStampDutyPayable` when the chart defines it (Tunisia): ANY positive
+     *     residual, unchanged behaviour — the timbre is a real document-level
+     *     charge and is legitimately far larger than rounding.
+     *   - otherwise the `SalesRoundingDifference*` account, but only up to what
+     *     per-line tax truncation can explain: one unit of the last place per line.
+     *     A chart with no document-level charge concept has no honest reason for a
+     *     bigger gap, and burying real money in a rounding account would be worse
+     *     than refusing.
+     *   - no absorbing account at all → REFUSE rather than silently drop it.
+     * - `residual == 0` → nothing to book.
+     */
+    private function residualPlan(Document $document, int $scale): DocumentGlResidualPlan
+    {
+        // A document with NO lines has no revenue side at all: the posting writes a
+        // lone AR leg and `residual == total`, which is not a rounding artefact and
+        // not the D1a defect either — it is a separate, PRE-EXISTING broken shape.
+        // It is unreachable through the documented API (`CreateDocumentRequest`
+        // requires `lines` min:1) and survives only in legacy/test fixtures, so this
+        // lane deliberately leaves its behaviour untouched rather than change ~35
+        // call sites under a merge gate. Ticketed:
+        // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md
+        if ($document->lines->isEmpty()) {
+            /** @var numeric-string $total */
+            $total = (string) ($document->total ?? '0');
+
+            return new DocumentGlResidualPlan('0', '0', $total, [], null, null, false);
+        }
+
+        /** @var numeric-string $revenue */
+        $revenue = '0';
+        foreach ($document->lines as $line) {
+            /** @var numeric-string $lineTotal */
+            $lineTotal = $line->line_total ?? '0';
+            $revenue = bcadd($revenue, $lineTotal, $scale);
+        }
+
+        $taxByRate = $this->groupTaxByRate($document->lines, $scale);
+
+        /** @var numeric-string $vat */
+        $vat = '0';
+        foreach ($taxByRate as $amount) {
+            // Mirror the posting: only a POSITIVE bucket becomes a VAT leg.
+            if (bccomp($amount, '0', $scale) > 0) {
+                $vat = bcadd($vat, $amount, $scale);
+            }
+        }
+
+        /** @var numeric-string $documentTotal */
+        $documentTotal = (string) ($document->total ?? '0');
+        /** @var numeric-string $residual */
+        $residual = bcsub($documentTotal, bcadd($revenue, $vat, $scale), $scale);
+
+        $comparison = bccomp($residual, '0', $scale);
+
+        if ($comparison === 0) {
+            return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, null, null);
+        }
+
+        if ($comparison < 0) {
+            return new DocumentGlResidualPlan(
+                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::NegativeResidual,
+            );
+        }
+
+        $stampDutyAccount = Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable);
+        if ($stampDutyAccount !== null) {
+            return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, $stampDutyAccount, null);
+        }
+
+        $roundingPurpose = $document->type === DocumentType::CreditNote
+            ? SystemAccountPurpose::SalesRoundingDifferenceExpense
+            : SystemAccountPurpose::SalesRoundingDifferenceIncome;
+        $roundingAccount = Account::findByPurpose($document->company_id, $roundingPurpose);
+
+        if ($roundingAccount === null) {
+            return new DocumentGlResidualPlan(
+                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::NoAbsorbingAccount,
+            );
+        }
+
+        if (bccomp($residual, $this->roundingTolerance($document, $scale), $scale) > 0) {
+            return new DocumentGlResidualPlan(
+                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::ResidualExceedsRoundingTolerance,
+            );
+        }
+
+        return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, $roundingAccount, null);
+    }
+
+    /**
+     * How large a POSITIVE residual per-line tax truncation alone can produce:
+     * one unit of the last place per line.
+     *
+     * `groupTaxByRate()` truncates each line's tax (`bcmul(..., $scale)`), while
+     * `TaxCalculationService` accumulates at `scale+1` and truncates once per rate
+     * bucket. Since `Σ trunc(xᵢ) <= trunc(Σ xᵢ)`, the header tax can exceed the GL
+     * VAT by at most one ULP per line.
+     *
+     * @return numeric-string
+     */
+    private function roundingTolerance(Document $document, int $scale): string
+    {
+        $lineCount = $document->lines->count();
+
+        /** @var numeric-string $ulp */
+        $ulp = bcdiv('1', bcpow('10', (string) $scale), $scale);
+
+        /** @var numeric-string $tolerance */
+        $tolerance = bcmul((string) $lineCount, $ulp, $scale);
+
+        return $tolerance;
+    }
+
+    /**
+     * Defence in depth — refuse to seal a journal entry whose Σdebits != Σcredits.
+     *
+     * Runs after every leg is written and BEFORE the fiscal hash is computed, so
+     * the throw rolls the journal-entry transaction back. With the pre-flight in
+     * `DocumentPostingService` this is unreachable by construction: it can only
+     * fire on a true bug (a leg written that the plan did not predict), and by then
+     * the document IS already sealed — which is why it stays an unmapped
+     * `RuntimeException` (a 500 + alert), never a 422.
+     *
+     * Uses `isSumBalanced()` — Σdr == Σcr and nothing else — rather than
+     * `isBalanced()`, whose `count($lines) < 2` clause is a second, unadvertised
+     * rejection rule that a zero-line or zero-total document would trip (gate
+     * finding I-5). The scale is the document's, not a no-arg context resolve.
      *
      * @throws UnbalancedJournalEntryException
      */
-    private function assertBalanced(JournalEntry $entry, string $entryType, ?string $documentNumber): void
-    {
+    private function assertLegsBalance(
+        JournalEntry $entry,
+        string $entryType,
+        Document $document,
+        int $scale,
+        DocumentGlResidualPlan $plan,
+    ): void {
+        if (! $plan->balanceAssertable) {
+            return;
+        }
+
         /** @var array<int, array{debit: string, credit: string}> $lines */
         $lines = $entry->lines
             ->map(static fn (JournalLine $line): array => [
@@ -68,7 +247,7 @@ final class AccountingService implements AccountingServiceInterface
             ->values()
             ->all();
 
-        if ($this->doubleEntryValidator->isBalanced($lines)) {
+        if ($this->doubleEntryValidator->isSumBalanced($lines, $scale)) {
             return;
         }
 
@@ -81,13 +260,13 @@ final class AccountingService implements AccountingServiceInterface
             $debit = $line['debit'];
             /** @var numeric-string $credit */
             $credit = $line['credit'];
-            $totalDebits = bcadd($totalDebits, $debit, $this->scale());
-            $totalCredits = bcadd($totalCredits, $credit, $this->scale());
+            $totalDebits = bcadd($totalDebits, $debit, $scale);
+            $totalCredits = bcadd($totalCredits, $credit, $scale);
         }
 
         throw UnbalancedJournalEntryException::forSourceDocument(
             $entryType,
-            $documentNumber ?? $entry->entry_number,
+            $document->document_number ?? $entry->entry_number,
             $totalDebits,
             $totalCredits,
         );
@@ -161,7 +340,10 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createInvoiceGLEntries(Document $invoice): string
     {
-        $entryId = DB::transaction(function () use ($invoice): string {
+        $scale = $this->documentScale($invoice);
+        $plan = $this->residualPlan($invoice, $scale);
+
+        $entryId = DB::transaction(function () use ($invoice, $scale, $plan): string {
             $entryNumber = $this->sourceEntryNumber('INV', $invoice);
 
             // Get hash chain data BEFORE creating entry
@@ -210,8 +392,6 @@ final class AccountingService implements AccountingServiceInterface
             ]);
 
             // 2. Create Revenue credit lines (one per invoice line)
-            /** @var numeric-string $revenueCredited */
-            $revenueCredited = '0';
             foreach ($invoice->lines as $line) {
                 // Determine revenue account based on product/service type
                 $revenueAccount = $this->getRevenueAccountForLine(
@@ -229,15 +409,11 @@ final class AccountingService implements AccountingServiceInterface
                     'credit' => $lineTotal,
                     'description' => 'Revenue from Invoice '.$invoice->document_number.' - Line '.$line->line_number,
                 ]);
-                $revenueCredited = bcadd($revenueCredited, $lineTotal, $this->scale());
             }
 
             // 3. Create VAT credit lines (grouped by tax rate)
-            /** @var numeric-string $vatCredited */
-            $vatCredited = '0';
-            $taxByRate = $this->groupTaxByRate($invoice->lines);
-            foreach ($taxByRate as $rate => $amount) {
-                if (bccomp($amount, '0', $this->scale()) > 0) {
+            foreach ($plan->taxByRate as $rate => $amount) {
+                if (bccomp($amount, '0', $scale) > 0) {
                     JournalLine::create([
                         'journal_entry_id' => $entry->id,
                         'account_id' => $vatCollectedAccount->id,
@@ -245,27 +421,25 @@ final class AccountingService implements AccountingServiceInterface
                         'credit' => $amount,
                         'description' => 'VAT '.$rate.'% from Invoice '.$invoice->document_number,
                     ]);
-                    $vatCredited = bcadd($vatCredited, $amount, $this->scale());
                 }
             }
 
-            // 3b. Document-level stamp duty (Tunisian timbre / droit de timbre) is
-            // the residual of total − revenue − line VAT. It rides in the AR debit
-            // (invoice total) but is NOT a line VAT and must NOT be lumped into the
-            // VAT account; credit it to the dedicated collected-stamp-duty liability
-            // (4375) so it is remitted to the State. Without this leg the AR debit
-            // carried the timbre uncredited and every TN invoice posted an
-            // unbalanced journal entry (bug #5A).
-            /** @var numeric-string $stampDuty */
-            $stampDuty = bcsub((string) ($invoice->total ?? '0'), bcadd($revenueCredited, $vatCredited, $this->scale()), $this->scale());
-            $stampDutyAccount = Account::findByPurpose($invoice->company_id, SystemAccountPurpose::SalesStampDutyPayable);
-            if (bccomp($stampDuty, '0', $this->scale()) > 0 && $stampDutyAccount !== null) {
+            // 3b. The residual — total − revenue − line VAT — rides in the AR debit
+            // and needs a credit leg or the entry cannot balance. It carries the
+            // document-level Tunisian timbre (which must reach the dedicated 4375
+            // liability, never the VAT account, so it is remitted to the State) and,
+            // on every chart, the per-line tax truncation difference. `residualPlan()`
+            // decided where it goes; a residual it refused never reaches here because
+            // `DocumentPostingService` pre-flighted the same plan before sealing.
+            if ($plan->absorbingAccount !== null) {
+                $isStampDuty = $plan->absorbingAccount->system_purpose === SystemAccountPurpose::SalesStampDutyPayable;
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
-                    'account_id' => $stampDutyAccount->id,
+                    'account_id' => $plan->absorbingAccount->id,
                     'debit' => '0',
-                    'credit' => $stampDuty,
-                    'description' => 'Stamp duty (timbre) from Invoice '.$invoice->document_number,
+                    'credit' => $plan->residual,
+                    'description' => ($isStampDuty ? 'Stamp duty (timbre)' : 'Tax rounding difference')
+                        .' from Invoice '.$invoice->document_number,
                 ]);
             }
 
@@ -275,15 +449,13 @@ final class AccountingService implements AccountingServiceInterface
                 throw new \RuntimeException('Failed to reload journal entry after creation');
             }
 
-            // 4a. W-6 D1a — double-entry guard. This entry was created `Posted` and
-            // is sealed into the GL hash chain on the next line; `verifyChain()`
-            // checks linkage and hash recomputation but NEVER the balance
-            // invariant, so an unbalanced entry would pass compliance verification
-            // forever. Step 3b only credits a POSITIVE residual, so a header total
-            // that under-runs the recomputed line tax silently discarded the
-            // difference. Fail CLOSED: throwing aborts the surrounding transaction,
-            // so nothing persists and no chain sequence is consumed.
-            $this->assertBalanced($freshEntry, 'invoice', $invoice->document_number);
+            // 4a. W-6 D1a — defence in depth. The entry was created `Posted` and is
+            // hash-chained on the next line; `verifyChain()` checks linkage and hash
+            // recomputation but NEVER the balance invariant, so an unbalanced entry
+            // would pass compliance verification forever. `DocumentPostingService`
+            // already refused this document pre-seal if the plan said it could not
+            // balance, so this can only fire on a true bug.
+            $this->assertLegsBalance($freshEntry, 'invoice', $invoice, $scale, $plan);
 
             $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
             $entry->update(['fiscal_hash' => $hash]);
@@ -294,7 +466,7 @@ final class AccountingService implements AccountingServiceInterface
                 throw new \RuntimeException('Failed to reload journal entry after hash update');
             }
 
-            $this->dispatchJournalEntryCreatedEvent($entry, 'invoice');
+            $this->dispatchJournalEntryCreatedEvent($entry, 'invoice', $scale);
 
             return $entry->id;
         });
@@ -320,7 +492,10 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createCreditNoteGLEntries(Document $creditNote): string
     {
-        $entryId = DB::transaction(function () use ($creditNote): string {
+        $scale = $this->documentScale($creditNote);
+        $plan = $this->residualPlan($creditNote, $scale);
+
+        $entryId = DB::transaction(function () use ($creditNote, $scale, $plan): string {
             $entryNumber = $this->sourceEntryNumber('CN', $creditNote);
 
             // Get hash chain data BEFORE creating entry
@@ -369,8 +544,6 @@ final class AccountingService implements AccountingServiceInterface
             ]);
 
             // 2. Create Revenue debit lines (one per credit note line) - REVERSED from invoice
-            /** @var numeric-string $revenueDebited */
-            $revenueDebited = '0';
             foreach ($creditNote->lines as $line) {
                 // Determine revenue account based on product/service type
                 $revenueAccount = $this->getRevenueAccountForLine(
@@ -388,15 +561,11 @@ final class AccountingService implements AccountingServiceInterface
                     'credit' => '0',
                     'description' => 'Revenue reversal from Credit Note '.$creditNote->document_number.' - Line '.$line->line_number,
                 ]);
-                $revenueDebited = bcadd($revenueDebited, $lineTotal, $this->scale());
             }
 
             // 3. Create VAT debit lines (grouped by tax rate) - REVERSED from invoice
-            /** @var numeric-string $vatDebited */
-            $vatDebited = '0';
-            $taxByRate = $this->groupTaxByRate($creditNote->lines);
-            foreach ($taxByRate as $rate => $amount) {
-                if (bccomp($amount, '0', $this->scale()) > 0) {
+            foreach ($plan->taxByRate as $rate => $amount) {
+                if (bccomp($amount, '0', $scale) > 0) {
                     JournalLine::create([
                         'journal_entry_id' => $entry->id,
                         'account_id' => $vatCollectedAccount->id,
@@ -404,25 +573,24 @@ final class AccountingService implements AccountingServiceInterface
                         'credit' => '0',
                         'description' => 'VAT reversal '.$rate.'% from Credit Note '.$creditNote->document_number,
                     ]);
-                    $vatDebited = bcadd($vatDebited, $amount, $this->scale());
                 }
             }
 
-            // 3b. Reverse the collected stamp duty (timbre): the residual of
-            // total − revenue − line VAT rides in the AR credit and must be
-            // debited back out of the collected-stamp-duty liability (4375),
-            // mirroring the invoice posting (bug #5A). Without it the credit note
-            // posts an unbalanced reversal.
-            /** @var numeric-string $stampDuty */
-            $stampDuty = bcsub((string) ($creditNote->total ?? '0'), bcadd($revenueDebited, $vatDebited, $this->scale()), $this->scale());
-            $stampDutyAccount = Account::findByPurpose($creditNote->company_id, SystemAccountPurpose::SalesStampDutyPayable);
-            if (bccomp($stampDuty, '0', $this->scale()) > 0 && $stampDutyAccount !== null) {
+            // 3b. Reverse the residual out: total − revenue − line VAT rides in the
+            // AR credit and needs a debit leg, mirroring the invoice posting. On the
+            // Tunisian chart that is the collected timbre going back out of the 4375
+            // liability; elsewhere it is the tax-rounding difference. `residualPlan()`
+            // chose the account and `DocumentPostingService` pre-flighted the verdict
+            // before the credit note was sealed.
+            if ($plan->absorbingAccount !== null) {
+                $isStampDuty = $plan->absorbingAccount->system_purpose === SystemAccountPurpose::SalesStampDutyPayable;
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
-                    'account_id' => $stampDutyAccount->id,
-                    'debit' => $stampDuty,
+                    'account_id' => $plan->absorbingAccount->id,
+                    'debit' => $plan->residual,
                     'credit' => '0',
-                    'description' => 'Stamp duty (timbre) reversal from Credit Note '.$creditNote->document_number,
+                    'description' => ($isStampDuty ? 'Stamp duty (timbre) reversal' : 'Tax rounding difference reversal')
+                        .' from Credit Note '.$creditNote->document_number,
                 ]);
             }
 
@@ -432,11 +600,10 @@ final class AccountingService implements AccountingServiceInterface
                 throw new \RuntimeException('Failed to reload journal entry after creation');
             }
 
-            // 4a. W-6 D1a (credit-note sibling) — the reversal repeats the invoice
-            // pattern line-for-line, so it carries the same guard for the same
-            // reason: an unbalanced entry sealed into the immutable GL hash chain
-            // is invisible to `verifyChain()` and cannot be edited back out.
-            $this->assertBalanced($freshEntry, 'credit note', $creditNote->document_number);
+            // 4a. W-6 D1a (credit-note sibling) — defence in depth, same reason as
+            // the invoice path: an unbalanced entry sealed into the immutable GL
+            // hash chain is invisible to `verifyChain()` and cannot be edited out.
+            $this->assertLegsBalance($freshEntry, 'credit note', $creditNote, $scale, $plan);
 
             $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
             $entry->update(['fiscal_hash' => $hash]);
@@ -447,7 +614,7 @@ final class AccountingService implements AccountingServiceInterface
                 throw new \RuntimeException('Failed to reload journal entry after hash update');
             }
 
-            $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note');
+            $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note', $scale);
 
             return $entry->id;
         });
@@ -531,10 +698,17 @@ final class AccountingService implements AccountingServiceInterface
     /**
      * Group invoice lines by tax rate and calculate total tax for each rate.
      *
+     * The per-line `bcmul` TRUNCATES at $scale, while the header's own tax was
+     * accumulated at scale+1 and truncated once per rate bucket
+     * (`TaxCalculationService`). Since `Σ trunc(xᵢ) <= trunc(Σ xᵢ)`, this
+     * recomputation is biased DOWN relative to the header — which is why the
+     * document residual runs positive and needs an absorbing account. See
+     * {@see residualPlan()}.
+     *
      * @param  Collection<int, DocumentLine>  $lines
      * @return array<numeric-string, numeric-string> Tax rate => Total tax amount
      */
-    private function groupTaxByRate($lines): array
+    private function groupTaxByRate($lines, int $scale): array
     {
         $taxByRate = [];
 
@@ -545,7 +719,7 @@ final class AccountingService implements AccountingServiceInterface
             $taxAmount = bcmul(
                 $line->line_total,
                 bcdiv($taxRate, '100', 4),
-                $this->scale()
+                $scale
             );
 
             // Add to the rate's total
@@ -553,7 +727,7 @@ final class AccountingService implements AccountingServiceInterface
                 $taxByRate[$taxRate] = '0';
             }
 
-            $taxByRate[$taxRate] = bcadd($taxByRate[$taxRate], $taxAmount, $this->scale());
+            $taxByRate[$taxRate] = bcadd($taxByRate[$taxRate], $taxAmount, $scale);
         }
 
         return $taxByRate;
@@ -565,15 +739,15 @@ final class AccountingService implements AccountingServiceInterface
      * @param  JournalEntry  $entry  The journal entry (with lines loaded)
      * @param  string  $entryType  The type of entry (invoice, credit_note, etc.)
      */
-    private function dispatchJournalEntryCreatedEvent(JournalEntry $entry, string $entryType): void
+    private function dispatchJournalEntryCreatedEvent(JournalEntry $entry, string $entryType, int $scale): void
     {
         // Calculate total debits and credits from lines
         $totalDebit = '0';
         $totalCredit = '0';
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
-            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
+            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
         }
 
         event(new JournalEntryCreated(

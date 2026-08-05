@@ -266,6 +266,16 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
                 'system_purpose' => SystemAccountPurpose::RefundWriteOff->value, 'is_system' => true],
             ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
+            // W-6 D1a — sales tax-rounding difference. PCG 658 "Charges diverses de
+            // gestion courante" is the conventional home for an écart d'arrondi on
+            // billing; 7581 below is its income counterpart. A sales document debits
+            // AR with the header total and credits the lines' revenue + a recomputed
+            // per-line VAT; per-line truncation can leave the header up to one unit
+            // of the last place per line above the GL credits. The Tunisian chart
+            // absorbs that in 4375 alongside the timbre — the PCG has no timbre, so
+            // without this pair a two-line French invoice cannot balance.
+            ['code' => '6581', 'name' => 'Écart d\'arrondi sur facturation (charges)', 'type' => 'expense', 'parent_code' => '65',
+                'system_purpose' => SystemAccountPurpose::SalesRoundingDifferenceExpense->value, 'is_system' => true],
             ['code' => '66', 'name' => 'Charges financières', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '661', 'name' => 'Charges d\'intérêts', 'type' => 'expense', 'parent_code' => '66'],
             ['code' => '67', 'name' => 'Charges exceptionnelles', 'type' => 'expense', 'parent_code' => '6'],
@@ -296,6 +306,11 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
                 'system_purpose' => SystemAccountPurpose::SalesReturn->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
+            // W-6 D1a — see 6581 above. PCG 758 "Produits divers de gestion courante";
+            // this is the leg a sales INVOICE credits when its header total exceeds
+            // revenue + recomputed line VAT by a tax-truncation residual.
+            ['code' => '7581', 'name' => 'Écart d\'arrondi sur facturation (produits)', 'type' => 'revenue', 'parent_code' => '75',
+                'system_purpose' => SystemAccountPurpose::SalesRoundingDifferenceIncome->value, 'is_system' => true],
 
             // Voucher accounting — EU Directive 2016/1065 MPV layer (non-taxable; Phase 1)
             ['code' => '7091', 'name' => 'Remboursements clients - Virements bons d\'achat', 'type' => 'expense', 'parent_code' => '70',

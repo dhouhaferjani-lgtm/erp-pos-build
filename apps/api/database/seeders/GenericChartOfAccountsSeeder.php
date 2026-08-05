@@ -183,6 +183,14 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceExpense->value, 'is_system' => true],
             ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
+            // W-6 D1a — sales tax-rounding difference (mirrors PCG 658/758; see
+            // FranceChartOfAccountsSeeder). A sales document debits AR with the
+            // header total and credits the lines' revenue + a recomputed per-line
+            // VAT; per-line truncation can leave the header up to one unit of the
+            // last place per line above the GL credits. Without an absorbing
+            // account the entry cannot balance and the posting is refused.
+            ['code' => '6581', 'name' => 'Sales Rounding Difference (Expense)', 'type' => 'expense', 'parent_code' => '6000',
+                'system_purpose' => SystemAccountPurpose::SalesRoundingDifferenceExpense->value, 'is_system' => true],
             ['code' => '6660', 'name' => 'Realized FX Loss', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::RealizedFxLoss->value, 'is_system' => true],
             // v3-refund-chain-integration spec §5.3 — invalid_refund
@@ -203,6 +211,9 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Payment Tolerance Income', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
+            // W-6 D1a — see 6581 above; the leg a sales INVOICE credits.
+            ['code' => '7581', 'name' => 'Sales Rounding Difference (Income)', 'type' => 'revenue', 'parent_code' => '7000',
+                'system_purpose' => SystemAccountPurpose::SalesRoundingDifferenceIncome->value, 'is_system' => true],
             ['code' => '7585', 'name' => 'Écart sur prix d\'achat', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceIncome->value, 'is_system' => true],
             ['code' => '7660', 'name' => 'Realized FX Gain', 'type' => 'revenue', 'parent_code' => '7000',

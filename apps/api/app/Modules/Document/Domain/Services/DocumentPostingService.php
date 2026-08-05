@@ -19,6 +19,7 @@ use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,7 @@ final class DocumentPostingService
         private readonly FiscalHashService $hashService,
         private readonly ReservationReleaserInterface $reservationReleaser,
         private readonly ReceiptLineGuardInterface $receiptLineGuard,
+        private readonly DocumentGlPreflightInterface $glPreflight,
     ) {}
 
     /**
@@ -88,6 +90,18 @@ final class DocumentPostingService
             }
 
             if ($requiresFiscalChain) {
+                // W-6 D1a / gate C-1 — ask Accounting whether this document's GL
+                // entry can balance BEFORE sealing it. The GL itself is written by
+                // InvoicePostedListener, which dispatchPostedEvent() defers to
+                // DB::afterCommit(...) so a listener failure cannot roll back the
+                // fiscal chain. That same ordering means a refusal raised in the
+                // listener arrives when the document is already Posted + hash-chained,
+                // and post() returns early on an already-posted document so the event
+                // never re-fires: the document would be stranded with no GL at all.
+                // Refusing here is a clean 422 on an UNSEALED document, inside this
+                // transaction. The listener keeps its own assertion as defence in depth.
+                $this->glPreflight->assertDocumentGlIsPostable($document);
+
                 $this->postWithFiscalChain($document);
             } else {
                 $document->update(['status' => DocumentStatus::Posted]);

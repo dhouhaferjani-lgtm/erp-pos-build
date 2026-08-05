@@ -55,11 +55,15 @@ import {
  * that would have absorbed it is guarded `> 0`, so the NEGATIVE residual was
  * silently dropped and a permanently unbalanced entry was sealed into the chain.
  *
- * **D1a (the missing guard) is FIXED — fix lane L1.** `createInvoiceGLEntries()`
- * and `createCreditNoteGLEntries()` now run `DoubleEntryValidator::isBalanced()`
- * over the created lines BEFORE the fiscal hash is computed and throw
- * `UnbalancedJournalEntryException` on imbalance, which rolls the whole posting
- * back — no new unbalanced entry can enter the ledger through the document path.
+ * **D1a (the missing guard) is FIXED — fix lane L1, round 2.** The verdict is
+ * reached BEFORE the document is sealed: `DocumentPostingService::post()` asks
+ * `DocumentGlPreflightInterface` inside its own transaction, so a document whose
+ * GL cannot balance is a 422 on an UNSEALED document and nothing is stranded.
+ * A NEGATIVE residual (the shape below) is always refused; a POSITIVE one is
+ * booked to an absorbing account — 4375 on the Tunisian chart, the new PCG
+ * 658/758 rounding-difference pair elsewhere — so ordinary per-line tax
+ * truncation still posts. `createInvoiceGLEntries()` / `createCreditNoteGLEntries()`
+ * keep a Σdr==Σcr assertion as defence in depth.
  *
  * **D1b (this stranded `19.000`) is NOT a code fix and is still here.** The entry
  * is immutable and 915 entries chain off it; it needs a forward correcting entry
@@ -103,8 +107,10 @@ test.describe('GL — trial balance, balance sheet, P&L and ledger', () => {
     // D1b, the stranded entry, which is data and not code. The test goes RED
     // when D1b is settled (forward correcting entry / annotation) and forces the
     // ticket to be revisited. It also goes RED if a NEW unbalanced entry appears
-    // — which the D1a guard now prevents on the document path, so that would be
-    // a new root cause and itself a new P0.
+    // — which the D1a pre-flight now prevents for any document WITH lines, so
+    // that would be a new root cause and itself a new P0. (A lineless document
+    // can still post a one-legged entry; that is a separate, pre-existing shape,
+    // ticketed as 2026-08-05-lineless-document-gl-posting.md.)
     const gap = sub4(tb.total_credit, tb.total_debit)
     expect(
       tb.is_balanced,
