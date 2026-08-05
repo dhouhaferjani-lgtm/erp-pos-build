@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -598,6 +599,70 @@ class InvoiceGLIntegrationTest extends TestCase
         $credits = $lines->sum(fn ($l) => (float) $l->credit);
         $this->assertEquals($debits, $credits, 'Journal entry must balance');
         $this->assertEquals(121.00, $debits);
+    }
+
+    /**
+     * W-6 D1a — `createInvoiceGLEntries()` must REFUSE to persist an entry whose
+     * Sigma(debits) != Sigma(credits), instead of silently dropping the residual
+     * into an immutable, hash-chained ledger.
+     *
+     * Shape reproduced: the `MTP-DOC-06` probe document — header `total` 100.000
+     * (its `tax_amount` was zeroed by the confirm-zeroes-VAT defect closed in
+     * `7258a409f`) while its line still carries `tax_rate 19.00`. The posting
+     * therefore debits AR 100.000 and credits 100.000 revenue + 19.000 VAT, a
+     * NEGATIVE residual of -19.000 that the stamp-duty leg discards because it
+     * only fires on a POSITIVE residual.
+     *
+     * Ticket: docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md (D1a).
+     */
+    public function test_invoice_gl_refuses_to_post_an_unbalanced_entry(): void
+    {
+        $entriesBefore = JournalEntry::query()->count();
+
+        // Header total understates the line tax: 100.000 total vs 100.000 revenue
+        // + 19.000 line VAT => residual -19.000.
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-UNBAL-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'balance_due' => '100.000',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $invoice->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Line whose tax_rate the header does not carry',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.000',
+        ]);
+        $invoice = $invoice->fresh(['lines']);
+
+        try {
+            $this->accountingService->createInvoiceGLEntries($invoice);
+            $this->fail('createInvoiceGLEntries() must refuse an unbalanced entry, not post it.');
+        } catch (UnbalancedJournalEntryException $e) {
+            $this->assertStringContainsString($invoice->document_number, $e->getMessage());
+        }
+
+        // Fail CLOSED: the transaction rolled back — no entry, no lines, nothing
+        // sealed into the hash chain.
+        $this->assertSame($entriesBefore, JournalEntry::query()->count());
+        $this->assertSame(
+            0,
+            JournalEntry::query()->where('source_id', $invoice->id)->count(),
+            'No journal entry may survive for an unbalanced invoice posting.'
+        );
     }
 
     // ==================== HELPER METHODS ====================

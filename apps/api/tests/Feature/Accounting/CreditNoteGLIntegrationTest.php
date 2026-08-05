@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -655,6 +656,62 @@ class CreditNoteGLIntegrationTest extends TestCase
         $credits = $lines->sum(fn ($l) => (float) $l->credit);
         $this->assertEquals($debits, $credits, 'Credit note reversal must balance');
         $this->assertEquals(121.00, $credits);
+    }
+
+    /**
+     * W-6 D1a (credit-note sibling) — `createCreditNoteGLEntries()` repeats the
+     * invoice pattern and must refuse an unbalanced reversal for the same reason:
+     * a negative residual is a bug, never a rounding artefact, and the entry is
+     * sealed into the immutable GL hash chain the moment it is written.
+     *
+     * Ticket: docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md (D1a).
+     */
+    public function test_credit_note_gl_refuses_to_post_an_unbalanced_entry(): void
+    {
+        $entriesBefore = JournalEntry::query()->count();
+
+        // Header total understates the line tax: 100.000 total credited to AR vs
+        // 100.000 revenue + 19.000 VAT debited => residual -19.000.
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'document_number' => 'CN-UNBAL-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'balance_due' => '100.000',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $creditNote->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Line whose tax_rate the header does not carry',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.000',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+
+        try {
+            $this->accountingService->createCreditNoteGLEntries($creditNote);
+            $this->fail('createCreditNoteGLEntries() must refuse an unbalanced entry, not post it.');
+        } catch (UnbalancedJournalEntryException $e) {
+            $this->assertStringContainsString($creditNote->document_number, $e->getMessage());
+        }
+
+        $this->assertSame($entriesBefore, JournalEntry::query()->count());
+        $this->assertSame(
+            0,
+            JournalEntry::query()->where('source_id', $creditNote->id)->count(),
+            'No journal entry may survive for an unbalanced credit-note posting.'
+        );
     }
 
     // ==================== HELPER METHODS ====================

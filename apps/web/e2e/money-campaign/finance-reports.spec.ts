@@ -50,11 +50,23 @@ import {
  *
  * `INV-2026-0320` is a posted invoice whose header says `tax_amount 0.000`
  * / `total 100.000`, while `AccountingService::createInvoiceGLEntries()`
- * RECOMPUTES VAT from the LINE's `tax_rate` (`groupTaxByRate():473-477`) and
- * credits `19.000` that the AR debit (the header `total`) never carried. The
- * residual leg that would have absorbed it is guarded `> 0`
- * (`AccountingService.php:206-215`), so the NEGATIVE residual is silently
- * dropped and a permanently unbalanced entry is sealed into the fiscal chain.
+ * RECOMPUTES VAT from the LINE's `tax_rate` (`groupTaxByRate()`) and credits
+ * `19.000` that the AR debit (the header `total`) never carried. The residual leg
+ * that would have absorbed it is guarded `> 0`, so the NEGATIVE residual was
+ * silently dropped and a permanently unbalanced entry was sealed into the chain.
+ *
+ * **D1a (the missing guard) is FIXED — fix lane L1.** `createInvoiceGLEntries()`
+ * and `createCreditNoteGLEntries()` now run `DoubleEntryValidator::isBalanced()`
+ * over the created lines BEFORE the fiscal hash is computed and throw
+ * `UnbalancedJournalEntryException` on imbalance, which rolls the whole posting
+ * back — no new unbalanced entry can enter the ledger through the document path.
+ *
+ * **D1b (this stranded `19.000`) is NOT a code fix and is still here.** The entry
+ * is immutable and 915 entries chain off it; it needs a forward correcting entry
+ * or an evidence-pack annotation (the accountant's call). So the three assertions
+ * below stay GREEN after the D1a fix — by design. They go RED only when D1b is
+ * settled, or when a NEW unbalanced entry appears (which the D1a guard now makes
+ * impossible through the document path, so it would be a new root cause).
  */
 const D1_INVOICE_NUMBER = 'INV-2026-0320'
 const D1_GAP = '19.0000'
@@ -87,10 +99,12 @@ test.describe('GL — trial balance, balance sheet, P&L and ledger', () => {
 
     // --- VERDICT: FAIL. The plan is explicit: "Any non-zero difference is
     // launch-blocking." This assertion is a GREEN TRIPWIRE — it pins TODAY's
-    // broken state, NOT the fix. When the hole is repaired (both the stranded
-    // entry and the missing guard) this test goes RED and forces the ticket to
-    // be revisited. It also goes RED if a NEW unbalanced entry appears, which
-    // is itself a new P0.
+    // broken state, NOT the fix. D1a (the missing guard) is fixed; this hole is
+    // D1b, the stranded entry, which is data and not code. The test goes RED
+    // when D1b is settled (forward correcting entry / annotation) and forces the
+    // ticket to be revisited. It also goes RED if a NEW unbalanced entry appears
+    // — which the D1a guard now prevents on the document path, so that would be
+    // a new root cause and itself a new P0.
     const gap = sub4(tb.total_credit, tb.total_debit)
     expect(
       tb.is_balanced,

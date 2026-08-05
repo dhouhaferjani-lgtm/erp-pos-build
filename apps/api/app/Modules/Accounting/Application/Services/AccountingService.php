@@ -8,8 +8,10 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Accounting\Domain\Services\DoubleEntryValidator;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Shared\Contracts\AccountingServiceInterface;
@@ -30,11 +32,65 @@ final class AccountingService implements AccountingServiceInterface
         private readonly GeneralLedgerHashService $hashService,
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly DoubleEntryValidator $doubleEntryValidator,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * W-6 D1a — refuse to seal a journal entry whose Sigma(debits) != Sigma(credits).
+     *
+     * The document-sourced GL paths auto-post: they create the entry as `Posted`
+     * and hash-chain it in the same transaction, and `verifyChain()` never asserts
+     * the balance invariant, so an unbalanced entry is immutable AND invisible to
+     * the compliance tooling. Called after every line is written and BEFORE the
+     * fiscal hash is computed, so the throw rolls the whole transaction back.
+     *
+     * Comparison is bcmath at the currency scale via the same `DoubleEntryValidator`
+     * that guards the manual route (`JournalEntryController::store()` /
+     * `UNBALANCED_ENTRY`) — never a float. `isBalanced()` also rejects a
+     * degenerate single-line entry, which a document posting can never legitimately
+     * produce (AR leg + at least one revenue leg).
+     *
+     * @throws UnbalancedJournalEntryException
+     */
+    private function assertBalanced(JournalEntry $entry, string $entryType, ?string $documentNumber): void
+    {
+        /** @var array<int, array{debit: string, credit: string}> $lines */
+        $lines = $entry->lines
+            ->map(static fn (JournalLine $line): array => [
+                'debit' => (string) $line->debit,
+                'credit' => (string) $line->credit,
+            ])
+            ->values()
+            ->all();
+
+        if ($this->doubleEntryValidator->isBalanced($lines)) {
+            return;
+        }
+
+        /** @var numeric-string $totalDebits */
+        $totalDebits = '0';
+        /** @var numeric-string $totalCredits */
+        $totalCredits = '0';
+        foreach ($lines as $line) {
+            /** @var numeric-string $debit */
+            $debit = $line['debit'];
+            /** @var numeric-string $credit */
+            $credit = $line['credit'];
+            $totalDebits = bcadd($totalDebits, $debit, $this->scale());
+            $totalCredits = bcadd($totalCredits, $credit, $this->scale());
+        }
+
+        throw UnbalancedJournalEntryException::forSourceDocument(
+            $entryType,
+            $documentNumber ?? $entry->entry_number,
+            $totalDebits,
+            $totalCredits,
+        );
     }
 
     /**
@@ -219,6 +275,16 @@ final class AccountingService implements AccountingServiceInterface
                 throw new \RuntimeException('Failed to reload journal entry after creation');
             }
 
+            // 4a. W-6 D1a — double-entry guard. This entry was created `Posted` and
+            // is sealed into the GL hash chain on the next line; `verifyChain()`
+            // checks linkage and hash recomputation but NEVER the balance
+            // invariant, so an unbalanced entry would pass compliance verification
+            // forever. Step 3b only credits a POSITIVE residual, so a header total
+            // that under-runs the recomputed line tax silently discarded the
+            // difference. Fail CLOSED: throwing aborts the surrounding transaction,
+            // so nothing persists and no chain sequence is consumed.
+            $this->assertBalanced($freshEntry, 'invoice', $invoice->document_number);
+
             $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
             $entry->update(['fiscal_hash' => $hash]);
 
@@ -365,6 +431,12 @@ final class AccountingService implements AccountingServiceInterface
             if ($freshEntry === null) {
                 throw new \RuntimeException('Failed to reload journal entry after creation');
             }
+
+            // 4a. W-6 D1a (credit-note sibling) — the reversal repeats the invoice
+            // pattern line-for-line, so it carries the same guard for the same
+            // reason: an unbalanced entry sealed into the immutable GL hash chain
+            // is invisible to `verifyChain()` and cannot be edited back out.
+            $this->assertBalanced($freshEntry, 'credit note', $creditNote->document_number);
 
             $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
             $entry->update(['fiscal_hash' => $hash]);
