@@ -7,9 +7,11 @@ namespace App\Modules\Partner\Application\Services;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionDispatcher;
 use App\Modules\Partner\Application\DTOs\RecordCustomerDepositResult;
+use App\Modules\Partner\Application\Exceptions\UnresolvableDepositReferenceException;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\Services\VirtualAdminFiscalEventService;
 use App\Modules\Treasury\Application\Services\DepositAllocationSummaryService;
+use App\Modules\Treasury\Application\Services\DepositReferenceResolutionService;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\ConnectionInterface;
 use RuntimeException;
@@ -41,6 +43,7 @@ final class RecordCustomerDepositService
         private readonly FiscalEventProjectionDispatcher $projectionDispatcher,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly DepositAllocationSummaryService $allocationSummary,
+        private readonly DepositReferenceResolutionService $referenceResolution,
     ) {}
 
     public function record(
@@ -55,6 +58,23 @@ final class RecordCustomerDepositService
     ): RecordCustomerDepositResult {
         if (! $partner->isCustomer()) {
             throw new RuntimeException('partner_not_customer:partner_id='.$partner->id);
+        }
+
+        // W-5c D1 — resolve the Treasury references the projection will need BEFORE
+        // authoring anything. A DEPOSIT_RECEIPT is sealed into the hash chain the
+        // instant it is authored and there is no delete route by design, so a
+        // reference that cannot resolve MUST abort here: discovering it during the
+        // (post-commit) projection run leaves a permanent orphan receipt that
+        // over-states the customer's deposit history while moving no money.
+        // `RecordDepositRequest` carries the same predicates, so an HTTP caller
+        // gets a 422 and never reaches this guard — it exists for any internal
+        // caller that bypasses the FormRequest.
+        if (! $this->referenceResolution->activePaymentMethodExists($partner->tenant_id, $partner->company_id, $methodCode)) {
+            throw UnresolvableDepositReferenceException::paymentMethod($methodCode, $partner->company_id);
+        }
+
+        if (! $this->referenceResolution->activeRepositoryExists($partner->tenant_id, $partner->company_id, $repositoryId)) {
+            throw UnresolvableDepositReferenceException::repository($repositoryId, $partner->company_id);
         }
 
         $scale = CurrencyScale::for($currencyCode);

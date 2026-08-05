@@ -29,20 +29,17 @@
  * excludable by a single predicate. `MTP-TRE-76`'s income is POSTED on purpose (that
  * is the case), so it is permanent, deliberate, documented money.
  *
- * ⚠️ `MTP-DEP-03`'s D1 TRIPWIRE BLOCK IS ENV-GATED (fix round 1, I-2). It
- * deliberately mints a PERMANENTLY-UNDELETABLE sealed `DEPOSIT_RECEIPT` — one per
- * run, down from two — because that IS the defect it pins. It is skipped unless
- * `MONEY_CAMPAIGN_ALLOW_CROSS_TENANT=1`, so it can never run unattended against a
- * tenant whose hash chain is E-7 evidence. The rest of `MTP-DEP-03` (amount
- * ceilings, the customer-only gate, the trailing-zero allowance) always runs.
+ * `MTP-DEP-03`'s D1 block was ENV-GATED while the defect was open, because pinning
+ * it required minting a PERMANENTLY-UNDELETABLE sealed `DEPOSIT_RECEIPT` per run.
+ * D1 is FIXED (fix lane L1), the block is flipped to the expected 422-at-the-
+ * boundary behaviour, and it mints nothing — so the gate is gone and the block
+ * always runs, safely, even against a tenant whose hash chain is E-7 evidence.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import { login, get, post, addMoney, subMoney, type Session } from './treasury-support'
 import {
-  ALLOW_CROSS_TENANT_SIDE_EFFECTS,
   CASH_METHOD_CODE,
   CASH_REPOSITORY_CODE,
-  CROSS_TENANT_SKIP_REASON,
   TODAY,
   accountsByPurpose,
   createIncome,
@@ -405,92 +402,76 @@ test.describe('MTP-TRE/DEP — income and partner deposits (W-5c §B.5 rows 72, 
       'a deposit against a supplier account is refused',
     ).toEqual({ status: 422, code: 'PARTNER_NOT_CUSTOMER' })
 
-    // --- FINDING W5C-D1 (TRIPWIRE, GREEN: pins TODAY's behaviour, not the fix) ---
+    // --- FINDING W5C-D1 (FIXED — flipped to the EXPECTED behaviour, fix lane L1) ---
     //
-    // `RecordDepositRequest` validates `payment_method_code` as a bare
-    // `string|max:64` and `repository_id` as a bare `uuid` — NEITHER carries an
-    // existence check, unlike every other treasury FormRequest (which use
-    // `ScopedExists::tenantAndCompany`). `RecordCustomerDepositService::record()`
-    // AUTHORS AND SEALS the `DEPOSIT_RECEIPT` fiscal event FIRST, then runs the
-    // projection pipeline — which is where the unresolvable reference finally
-    // blows up (`TreasuryDepositBridge` resolves the method and the repository,
-    // both filtered on `is_active = true`). Net effect, verified live 2026-08-04:
-    // a plain client input error returns a 500, AND the sealed receipt survives in
-    // the customer's deposit history while no money ever moved and no credit was
-    // granted. The history therefore OVER-STATES what the customer paid.
+    // WAS: `RecordDepositRequest` validated `payment_method_code` as a bare
+    // `string|max:64` and `repository_id` as a bare `uuid` — NEITHER carried an
+    // existence check, and `RecordCustomerDepositService::record()` AUTHORED AND
+    // SEALED the `DEPOSIT_RECEIPT` fiscal event BEFORE the projection pipeline
+    // resolved either reference. A plain client input error therefore returned a
+    // 500 AND left a permanently-undeletable sealed receipt in the customer's
+    // deposit history, over-stating what the customer had paid.
     //
-    // ENV-GATED (fix round 1, I-2). Every run of this block mints a
-    // PERMANENTLY-UNDELETABLE sealed fiscal event — a deliberate, self-inflicted
-    // copy of the defect. It must never run unattended against a tenant whose hash
-    // chain is E-7 evidence (the staging rehearsal). Opt in explicitly.
+    // NOW: both fields carry `ScopedExists::tenantAndCompany(...)->where('is_active',
+    // true)` — the SAME predicate `TreasuryDepositBridge` resolves on — so a bad
+    // reference is a 422 at the boundary, before anything is authored. The service
+    // resolves both references before `appendDepositReceipt(...)` as well, so a
+    // caller that bypasses the FormRequest still cannot seal an unprojectable
+    // receipt.
     //
-    // ONE probe, not two (fix round 1, I-2i): the unknown-`payment_method_code`
-    // path proves the ordering hole on its own and is the one that also asserts
-    // the message. The former unknown-`repository_id` twin exercised the same
-    // author-then-project sequence for a second sealed orphan per run — pure
-    // accumulation for no extra evidence. It is recorded in the ticket instead.
-    if (!ALLOW_CROSS_TENANT_SIDE_EFFECTS) {
-      test.info().annotations.push({ type: 'skipped-block', description: CROSS_TENANT_SKIP_REASON })
-    } else {
-      const beforeOrphan = await repositoryBalance(request, owner, cashRepoId)
-      const historyBeforeOrphan = await depositHistory(request, partnerId)
+    // The env gate is GONE with the defect: this block no longer mints an orphan,
+    // so it is safe to run unattended against a chain that is E-7 evidence — and
+    // the previously-dropped unknown-`repository_id` twin probe is restored for
+    // the same reason.
+    const beforeRefusal = await repositoryBalance(request, owner, cashRepoId)
+    const historyBeforeRefusal = await depositHistory(request, partnerId)
 
-      // A DISTINCT amount from the accepted `10.000` above (fix round 1, M-4), so
-      // the orphan row is identifiable by value and not merely by position — the
-      // previous `slice(0, 2)` sum only worked because every receipt happened to
-      // be `10.000`, which would have passed against the wrong rows.
-      const orphanAmount = '11.111'
-      const unknownMethod = await recordDeposit(request, partnerId, {
-        amount: orphanAmount,
-        payment_method_code: uniq('NOSUCHMETHOD').slice(0, 60),
-      })
-      expect(
-        unknownMethod.status,
-        'TRIPWIRE D1: an unknown method code is a 500, not a 422 validation refusal',
-      ).toBe(500)
-      const failure = String((unknownMethod.data as { message?: string }).message ?? '')
-      expect(
-        failure,
-        'TRIPWIRE D1: the fiscal event was already authored — the failure is downstream, in the projection run',
-      ).toContain('Synchronous projection run failed for fiscal_event_id=')
+    const unknownMethod = await recordDeposit(request, partnerId, {
+      amount: '11.111',
+      payment_method_code: uniq('NOSUCHMETHOD').slice(0, 60),
+    })
+    expect(
+      { status: unknownMethod.status, code: (unknownMethod.data as { code?: string }).code },
+      'FIXED D1: an unknown method code is refused at the boundary as a 422 validation error, not a 500',
+    ).toEqual({ status: 422, code: 'VALIDATION_ERROR' })
+    expect(
+      Object.keys((unknownMethod.data as { errors?: Record<string, unknown> }).errors ?? {}),
+      'FIXED D1: and the refusal names the offending field',
+    ).toContain('payment_method_code')
 
-      // The sealed event id, straight out of the failure message — the strongest
-      // available proof that the row now in the history IS the orphaned receipt
-      // and not some neighbouring row (fix round 1, M-4).
-      const orphanEventId = /fiscal_event_id=([0-9a-f-]{36})/.exec(failure)?.[1]
-      expect(orphanEventId, `the failure names the sealed event: ${failure}`).toBeTruthy()
+    const unknownRepository = await recordDeposit(request, partnerId, {
+      amount: '11.111',
+      repository_id: '00000000-0000-0000-0000-000000000000',
+    })
+    expect(
+      { status: unknownRepository.status, code: (unknownRepository.data as { code?: string }).code },
+      'FIXED D1: the repository leg of the same ordering hole is refused identically',
+    ).toEqual({ status: 422, code: 'VALIDATION_ERROR' })
+    expect(
+      Object.keys((unknownRepository.data as { errors?: Record<string, unknown> }).errors ?? {}),
+      'FIXED D1: naming `repository_id`',
+    ).toContain('repository_id')
 
-      expect(
-        await repositoryBalance(request, owner, cashRepoId),
-        'TRIPWIRE D1: no money moved',
-      ).toBe(beforeOrphan)
+    expect(
+      await repositoryBalance(request, owner, cashRepoId),
+      'FIXED D1: no money moved (unchanged from before the fix)',
+    ).toBe(beforeRefusal)
 
-      const historyAfterOrphan = await depositHistory(request, partnerId)
-      expect(
-        historyAfterOrphan.length - historyBeforeOrphan.length,
-        'TRIPWIRE D1: yet the failed deposit IS recorded in the customer deposit history',
-      ).toBe(1)
-      const orphanRow = historyAfterOrphan.find((row) => row.fiscal_event_id === orphanEventId)
-      expect(
-        orphanRow,
-        `TRIPWIRE D1: the history carries the very event the 500 named (${orphanEventId})`,
-      ).toBeTruthy()
-      expect(
-        orphanRow!.amount,
-        'TRIPWIRE D1: at its full face value, as though the customer had really paid it',
-      ).toBe(orphanAmount)
+    const historyAfterRefusal = await depositHistory(request, partnerId)
+    expect(
+      historyAfterRefusal.length - historyBeforeRefusal.length,
+      'FIXED D1: and — the fix — NO receipt was sealed, so the deposit history did not grow',
+    ).toBe(0)
 
-      const partner = await get(request, owner, `/partners/${partnerId}`)
-      expect(partner.ok).toBeTruthy()
-      expect(
-        String(partner.data.credit_balance),
-        "TRIPWIRE D1: the credit balance reflects ONLY the deposit that really landed (the accepted '10.0000')",
-      ).toBe('10.000')
-      expect(
-        historyAfterOrphan.map((row) => row.amount).reduce((sum, amount) => addMoney(sum, amount), '0.000'),
-        'TRIPWIRE D1: 21.111 of receipts on the record against 10.000 of real credit — '
-          + 'the customer-facing history over-states what was received by exactly the orphan',
-      ).toBe(addMoney('10.000', orphanAmount))
-    }
+    const partner = await get(request, owner, `/partners/${partnerId}`)
+    expect(partner.ok).toBeTruthy()
+    expect(
+      String(partner.data.credit_balance),
+      "FIXED D1: the credit balance still reflects only the deposit that really landed (the accepted '10.0000')",
+    ).toBe('10.000')
+    expect(
+      historyAfterRefusal.map((row) => row.amount).reduce((sum, amount) => addMoney(sum, amount), '0.000'),
+      'FIXED D1: receipts on record now equal the real credit exactly — the over-statement is gone',
+    ).toBe('10.000')
   })
 })

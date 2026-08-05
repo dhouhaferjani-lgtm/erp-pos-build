@@ -16,6 +16,8 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Application\Exceptions\UnresolvableDepositReferenceException;
+use App\Modules\Partner\Application\Services\RecordCustomerDepositService;
 use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -31,6 +33,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Phase 5 full-flow — POST/GET /api/v1/partners/{partner}/deposits.
@@ -50,6 +53,7 @@ use Tests\TestCase;
  */
 final class RecordCustomerDepositTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -247,6 +251,147 @@ final class RecordCustomerDepositTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'PARTNER_NOT_CUSTOMER');
         $this->assertSame(0, FiscalEvent::query()->where('event_type', FiscalEventType::DEPOSIT_RECEIPT)->count());
+    }
+
+    /**
+     * W-5c D1 — an unknown `payment_method_code` must 422 at the boundary, BEFORE
+     * the DEPOSIT_RECEIPT is authored. Previously the fiscal event was sealed into
+     * the hash chain first and the Treasury bridge only discovered the dangling
+     * reference during the (post-commit) synchronous projection run, leaving a
+     * permanent, undeletable orphan receipt that over-states the customer's
+     * deposit history plus a 500.
+     *
+     * Ticket: docs/superpowers/tickets/2026-08-03-w5c-expense-income-deposit-findings.md (D1).
+     */
+    public function test_post_returns_422_for_an_unknown_payment_method_code_without_sealing_a_receipt(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'NOSUCHMETHOD-W5C-D1',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertApiValidationErrors($response, ['payment_method_code']);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * W-5c D1 — the same ordering hole on `repository_id`: a syntactically valid
+     * UUID that belongs to no repository (or to another company) must 422 before
+     * anything is authored.
+     */
+    public function test_post_returns_422_for_an_unknown_repository_id_without_sealing_a_receipt(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => '00000000-0000-0000-0000-000000000000',
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertApiValidationErrors($response, ['repository_id']);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * W-5c D1 (review escalation) — reachable by ROUTINE ops, not just malformed
+     * clients: both Treasury bridge resolvers filter `is_active = true`, so
+     * deactivating a payment method while a back-office user has the deposit
+     * dialog open used to seal an orphan. The boundary check must carry the same
+     * `is_active` predicate the bridge does.
+     */
+    public function test_post_returns_422_for_a_deactivated_payment_method_without_sealing_a_receipt(): void
+    {
+        PaymentMethod::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', 'CASH')
+            ->update(['is_active' => false]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertApiValidationErrors($response, ['payment_method_code']);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * W-5c D1 (review escalation, repository leg) — same for a repository
+     * deactivated between dialog-open and submit.
+     */
+    public function test_post_returns_422_for_a_deactivated_repository_without_sealing_a_receipt(): void
+    {
+        $this->repository->update(['is_active' => false]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertApiValidationErrors($response, ['repository_id']);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * W-5c D1, belt-and-braces leg — a caller that BYPASSES the FormRequest (any
+     * future internal caller of the application service) must still be unable to
+     * seal a receipt it cannot project. The references are resolved BEFORE
+     * `appendDepositReceipt(...)`, so the throw leaves no fiscal event behind.
+     */
+    public function test_service_refuses_to_seal_a_receipt_for_an_unresolvable_reference(): void
+    {
+        $service = app(RecordCustomerDepositService::class);
+
+        try {
+            $service->record(
+                partner: $this->customer,
+                actorUserId: $this->user->id,
+                actorName: $this->user->name,
+                currencyCode: 'TND',
+                amount: '11.111',
+                methodCode: 'NOSUCHMETHOD-W5C-D1',
+                repositoryId: $this->repository->id,
+                notes: null,
+            );
+            $this->fail('record() must refuse an unresolvable payment method before authoring the receipt.');
+        } catch (UnresolvableDepositReferenceException $e) {
+            $this->assertStringContainsString('NOSUCHMETHOD-W5C-D1', $e->getMessage());
+        }
+
+        $this->assertNoDepositWasSealed();
+    }
+
+    private function assertNoDepositWasSealed(): void
+    {
+        $this->assertSame(
+            0,
+            FiscalEvent::query()->where('event_type', FiscalEventType::DEPOSIT_RECEIPT)->count(),
+            'No DEPOSIT_RECEIPT may be sealed into the hash chain for an unresolvable reference.'
+        );
+        $this->assertSame(0, DB::table('pos_deposit_receipts')->count());
+        $this->assertSame(0, DB::table('payments')->count());
     }
 
     public function test_post_requires_the_payments_create_permission(): void
