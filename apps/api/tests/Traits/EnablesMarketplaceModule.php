@@ -18,9 +18,10 @@ namespace Tests\Traits;
  *
  * The variable is removed again the moment the application exists (the value is
  * already materialised inside the config repository at that point), so it can
- * never leak into another test class sharing the same PHP process.
- *
- * @phpstan-ignore-next-line trait is only used by Illuminate TestCase subclasses
+ * never leak into another test class sharing the same PHP process — the
+ * `finally` is load-bearing: a throw inside `refreshApplication()` (a bad
+ * migration, a boot-time exception) would otherwise leave
+ * `MARKETPLACE_ENABLED=true` set for every later class in the same process.
  */
 trait EnablesMarketplaceModule
 {
@@ -28,9 +29,11 @@ trait EnablesMarketplaceModule
     {
         self::setMarketplaceEnabledEnv('true');
 
-        parent::refreshApplication();
-
-        self::clearMarketplaceEnabledEnv();
+        try {
+            parent::refreshApplication();
+        } finally {
+            self::clearMarketplaceEnabledEnv();
+        }
     }
 
     private static function setMarketplaceEnabledEnv(string $value): void
