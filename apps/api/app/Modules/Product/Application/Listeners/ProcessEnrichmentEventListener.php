@@ -13,6 +13,7 @@ use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Events\EnrichmentResultReadyEvent;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 final class ProcessEnrichmentEventListener
 {
@@ -23,6 +24,32 @@ final class ProcessEnrichmentEventListener
 
     public function handle(EnrichmentWebhookReceived $event): void
     {
+        // FAIL CLOSED before the first tenant-table read (2026-08-05 cat-(b)
+        // conversion). Every query below hits TENANT tables (`products`,
+        // `enrichment_results`), and both callers are supposed to have bound a
+        // tenant first: ProcessEnrichmentWebhookJob rebinds from its payload
+        // anchor, and CheckPendingEnrichmentsCommand dispatches from inside
+        // forEachTenant(). If neither did, the read lands on CENTRAL and raises
+        // a bare `QueryException` (42P01) — which the `catch
+        // (ModelNotFoundException)` below deliberately does NOT catch, so the
+        // job died with a stack trace that named a missing relation rather than
+        // the actual fault. That is precisely how this listener stayed broken
+        // and unexplained after the 2026-05-28 flip.
+        //
+        // The catch is deliberately NOT widened to QueryException: a query
+        // fault is an infra fault that must fail loud and be retried, not be
+        // silently reinterpreted as "unknown tracking id". The guard names the
+        // real cause instead.
+        if ((bool) config('tenancy_resolver.db_per_tenant', false) && ! tenancy()->initialized) {
+            throw new RuntimeException(sprintf(
+                'ProcessEnrichmentEventListener refused to run for tracking id "%s": no tenant is bound, so every '.
+                'lookup below would hit the CENTRAL database where `products` does not exist. The caller must bind '.
+                'the tenant first (ProcessEnrichmentWebhookJob rebinds from its payload anchor; '.
+                'enrichment:check-pending dispatches from inside TenantScopedCommand::forEachTenant()).',
+                $event->trackingId,
+            ));
+        }
+
         // ->sole() throws ModelNotFoundException on zero rows AND
         // MultipleRecordsFoundException on >1 row. The DB UNIQUE
         // constraint added by migration
