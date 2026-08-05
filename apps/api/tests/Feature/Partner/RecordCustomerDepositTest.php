@@ -383,6 +383,147 @@ final class RecordCustomerDepositTest extends TestCase
         $this->assertNoDepositWasSealed();
     }
 
+    /**
+     * Gate finding I-4 (PG 22P02 on a malformed `repository_id`) — REGRESSION
+     * GUARD, not a reproduction: the vector is already closed by the framework.
+     *
+     * `Validator::shouldStopValidating()` indeed does not stop on a failed
+     * non-implicit rule, but `Validator::isValidatable()` calls
+     * `hasNotFailedPreviousRuleIfPresenceRule()`
+     * (`vendor/laravel/framework/src/Illuminate/Validation/Validator.php:902-905`),
+     * which SKIPS `Exists`/`Unique` outright whenever the attribute already
+     * carries a message — its own docblock says "This is to avoid possible
+     * database type comparison errors." So a malformed uuid fails `uuid` and the
+     * `exists` query is never issued, on any driver. `'bail'` is nevertheless
+     * prepended as an explicit, order-independent belt.
+     *
+     * The assertion below is the durable invariant: exactly ONE message on the
+     * attribute proves the `exists` lookup did not run against a value the
+     * native PostgreSQL `uuid` column cannot parse.
+     */
+    public function test_a_malformed_repository_id_bails_before_the_exists_lookup(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => 'not-a-uuid',
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertApiValidationErrors($response, ['repository_id']);
+
+        $messages = $response->json('error.errors.repository_id');
+        $this->assertIsArray($messages);
+        $this->assertCount(
+            1,
+            $messages,
+            'Only the format rule may report: a second message proves the `exists` lookup ran on a '
+            .'malformed uuid, which is a 500 on PostgreSQL. Got: '.json_encode($messages)
+        );
+
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * Gate finding I-3 (currency leg) — the most reachable surviving
+     * seal-before-resolve vector: plain client input, no privilege needed.
+     *
+     * A deposit denominated in a currency the receiving repository does not hold
+     * used to seal the DEPOSIT_RECEIPT and only then blow up in
+     * `TreasuryMovementService`'s currency guard, minting exactly the orphan D1
+     * is about.
+     *
+     * The amount is scale-agnostic (`'11'`) on purpose: a 3-decimal amount would
+     * be refused earlier as `INVALID_AMOUNT` against USD's scale of 2 — also
+     * pre-seal, but it would not exercise the currency guard.
+     */
+    public function test_post_returns_422_for_a_currency_the_repository_does_not_hold(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'USD',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * Gate finding I-4 (repository parity) — `TreasuryDepositBridge::resolveRepository()`
+     * additionally requires `gl_account_id ?? account_id` to be non-null AND to
+     * name an ACTIVE Account. The pre-flight must mirror that, or a repository
+     * whose GL account was deactivated seals a receipt and then fails to project.
+     */
+    public function test_post_returns_422_when_the_repository_gl_account_is_inactive(): void
+    {
+        Account::query()
+            ->whereKey($this->repository->gl_account_id)
+            ->update(['is_active' => false]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * Gate finding I-4 (repository parity, missing-account leg) — a repository
+     * carrying neither `gl_account_id` nor the legacy `account_id` can never
+     * project; refuse before sealing.
+     */
+    public function test_post_returns_422_when_the_repository_has_no_gl_account(): void
+    {
+        $this->repository->forceFill(['gl_account_id' => null, 'account_id' => null])->save();
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * Gate finding I-6 / answer Q2 — the belt-and-braces refusal must reach the
+     * client as a 422 `BUSINESS_ERROR`, not a 500. Nothing is sealed and the
+     * caller's input is at fault, so a 500 would reproduce the very symptom the
+     * D1 ticket calls out ("indistinguishable from an outage in monitoring").
+     */
+    public function test_the_service_refusal_is_a_domain_exception_so_it_maps_to_422(): void
+    {
+        $this->assertTrue(
+            is_subclass_of(UnresolvableDepositReferenceException::class, \DomainException::class),
+            'UnresolvableDepositReferenceException must extend \DomainException so bootstrap/app.php '
+            .'renders it as 422 BUSINESS_ERROR.'
+        );
+    }
+
     private function assertNoDepositWasSealed(): void
     {
         $this->assertSame(

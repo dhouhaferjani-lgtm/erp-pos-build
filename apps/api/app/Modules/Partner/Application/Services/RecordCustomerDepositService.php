@@ -60,21 +60,33 @@ final class RecordCustomerDepositService
             throw new RuntimeException('partner_not_customer:partner_id='.$partner->id);
         }
 
-        // W-5c D1 — resolve the Treasury references the projection will need BEFORE
-        // authoring anything. A DEPOSIT_RECEIPT is sealed into the hash chain the
-        // instant it is authored and there is no delete route by design, so a
-        // reference that cannot resolve MUST abort here: discovering it during the
-        // (post-commit) projection run leaves a permanent orphan receipt that
+        // W-5c D1 — resolve every Treasury reference the projection will need
+        // BEFORE authoring anything. A DEPOSIT_RECEIPT is sealed into the hash
+        // chain the instant it is authored and there is no delete route by design,
+        // so a reference that cannot resolve MUST abort here: discovering it during
+        // the (post-commit) projection run leaves a permanent orphan receipt that
         // over-states the customer's deposit history while moving no money.
-        // `RecordDepositRequest` carries the same predicates, so an HTTP caller
-        // gets a 422 and never reaches this guard — it exists for any internal
-        // caller that bypasses the FormRequest.
-        if (! $this->referenceResolution->activePaymentMethodExists($partner->tenant_id, $partner->company_id, $methodCode)) {
-            throw UnresolvableDepositReferenceException::paymentMethod($methodCode, $partner->company_id);
-        }
+        //
+        // The refusal set is enumerated and kept in parity with the bridge — see
+        // DepositReferenceResolutionService. `RecordDepositRequest` carries the
+        // cheap subset as field-level rules, so an HTTP caller usually gets a
+        // field-scoped 422 first; this is the complete check.
+        $refusal = $this->referenceResolution->refusalFor(
+            tenantId: $partner->tenant_id,
+            companyId: $partner->company_id,
+            methodCode: $methodCode,
+            repositoryId: $repositoryId,
+            currencyCode: $currencyCode,
+        );
 
-        if (! $this->referenceResolution->activeRepositoryExists($partner->tenant_id, $partner->company_id, $repositoryId)) {
-            throw UnresolvableDepositReferenceException::repository($repositoryId, $partner->company_id);
+        if ($refusal !== null) {
+            throw UnresolvableDepositReferenceException::forRefusal(
+                refusal: $refusal,
+                methodCode: $methodCode,
+                repositoryId: $repositoryId,
+                currencyCode: $currencyCode,
+                companyId: $partner->company_id,
+            );
         }
 
         $scale = CurrencyScale::for($currencyCode);
