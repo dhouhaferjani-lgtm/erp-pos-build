@@ -12,11 +12,27 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Schedule: Lock expired fiscal periods daily at 1:00 AM
+// Schedule: Lock expired fiscal periods daily at 1:00 AM.
+//
+// Until 2026-08-05 this command called FiscalPeriodAutoLockService ONCE on the
+// scheduler's connection — CENTRAL under database-per-tenant, where
+// fiscal_periods / fiscal_years do not exist. The resulting 42P01 was swallowed
+// by a catch(\Exception) inside the command AND the exit code was thrown away
+// by runInBackground() with no ->onFailure(), so the nightly auto-lock had been
+// silently dead since the 2026-05-28 flip. It now iterates tenants explicitly
+// via TenantScopedCommand::forEachTenant() and no longer swallows.
+//
+// Run in-process (no runInBackground()) for the reason recorded on the entries
+// below: onFailure() fires in both modes, but foreground observes the exit code
+// inline instead of depending on the forked child surviving long enough to
+// re-invoke `schedule:finish`. Ordering: batch-expiry:daily-check is at 01:30 —
+// keep that gap.
 Schedule::command('fiscal:lock-expired-periods')
     ->dailyAt('01:00')
-    ->withoutOverlapping()
-    ->runInBackground();
+    ->withoutOverlapping(30)
+    ->onFailure(function (): void {
+        Log::error('fiscal:lock-expired-periods exited non-zero — one or more tenants failed their nightly fiscal auto-lock. For those tenants, periods that ended past the country threshold were NOT moved Open -> Closed, ended fiscal years were NOT marked closed, and periods inside closed years were NOT Locked — so postings can still land in a period the law considers shut. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
+    });
 
 // Schedule: Retry exhausted/dead-lettered fiscal projections every 15 minutes
 Schedule::command('fiscal:retry-projections --limit=100')
@@ -24,11 +40,20 @@ Schedule::command('fiscal:retry-projections --limit=100')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Schedule: Fraud pattern detection daily at 2:00 AM
+// Schedule: Fraud pattern detection daily at 2:00 AM.
+//
+// Until 2026-08-05 handle() opened with `Company::all()` OUTSIDE the per-company
+// try/catch. `companies` is a TENANT table, so under database-per-tenant the
+// 42P01 escaped the whole command — and runInBackground() with no ->onFailure()
+// threw the exit code away. `fraud:detect` now iterates tenants explicitly via
+// TenantScopedCommand::forEachTenant() and enumerates companies inside the
+// tenant's own database. Run in-process so the exit code is observed inline.
 Schedule::command('fraud:detect')
     ->dailyAt('02:00')
-    ->withoutOverlapping()
-    ->runInBackground();
+    ->withoutOverlapping(30)
+    ->onFailure(function (): void {
+        Log::error('fraud:detect exited non-zero — one or more tenants (or individual companies) failed their nightly fraud-pattern detection. For those companies no draft-abandonment analysis ran, so NO fraud alerts were raised and no fraud-triggered stock counting was scheduled. Per-company detail is in the application error log ("Fraud detection failed for company", tenant_id + company_id); per-tenant detail is under the TenantScopedCommand::forEachTenant failure entry.');
+    });
 
 // Schedule: Treasury reconciliation (balance/ledger/GL/transfer coherence) —
 // freeze-on-drift, never repair — daily at 2:15 AM.

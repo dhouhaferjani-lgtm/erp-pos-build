@@ -4,51 +4,63 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Application\Services\FiscalPeriodAutoLockService;
-use Illuminate\Console\Command;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Tenant\Domain\Tenant;
 
 /**
- * Command to automatically lock expired fiscal periods and close ended fiscal years.
+ * Automatically lock expired fiscal periods and close ended fiscal years.
  *
- * This command runs daily via Laravel scheduler at 1:00 AM to:
- * - Lock periods that ended more than 1 month ago
- * - Mark fiscal years as closed when they have ended
- * - Lock all periods in closed fiscal years
+ * THREE-STEP AUTO-LOCK PROCESS (unchanged — see FiscalPeriodAutoLockService):
+ * - STEP 1: Lock periods that ended more than the country threshold ago (Open → Closed)
+ * - STEP 2: Mark fiscal years as closed when their end_date has passed
+ * - STEP 3: Lock all periods in closed fiscal years (Open/Closed → Locked)
  *
  * SCHEDULING:
- * - Runs: Daily at 1:00 AM
- * - Overlap prevention: withoutOverlapping()
- * - Background execution: runInBackground()
+ * - Runs: Daily at 1:00 AM (routes/console.php), in-process, withoutOverlapping(),
+ *   with an ->onFailure() Log::error hook.
+ * - `batch-expiry:daily-check` runs at 01:30 — keep that gap.
  *
- * ERROR HANDLING:
- * - Database connection fails → Transaction rolls back, no data changed
- * - Concurrent execution → Laravel prevents overlap, only one runs
- * - Execution timeout → Runs in background, doesn't block other tasks
- * - Partial failure → Transaction ensures all-or-nothing update
+ * Tenant-isolation: cat-(a-per-tenant-iter). `fiscal_periods` and `fiscal_years`
+ * are TENANT tables, and until 2026-08-05 this command called
+ * `FiscalPeriodAutoLockService::lockExpiredPeriods()` ONCE, on whatever
+ * connection the scheduler happened to hold — which under database-per-tenant
+ * (flipped 2026-05-28) is CENTRAL, where neither table exists. Two things then
+ * hid the breakage from every operator signal:
  *
- * MONITORING:
- * - Success: Exit code 0
- * - Failure: Exit code 1 with error message logged
- * - Duration: Typically < 1 second for 1000s of periods
- * - Logs: Check storage/logs/laravel.log for metrics
+ *   1. `handle()` wrapped the call in `catch (\Exception)` and converted the
+ *      42P01 into a FAILURE exit with a console message nobody reads;
+ *   2. the schedule entry used `runInBackground()` with NO `->onFailure()`, so
+ *      that exit code was never observed.
+ *
+ * Result: the nightly auto-lock had been silently dead for months. Periods that
+ * should have been Closed/Locked stayed Open — which in a compliance-oriented
+ * ERP means posting into a period the law considers shut.
+ *
+ * The swallow is GONE. A per-tenant throw now propagates into
+ * {@see TenantScopedCommand::forEachTenant()}, which logs it with the tenant id
+ * and aggregates a non-zero exit while still processing the remaining tenants —
+ * so one broken tenant no longer costs the fleet its nightly lock, and the
+ * failure reaches the scheduler's onFailure() hook.
+ *
+ * **The locking business logic is deliberately untouched.** The service's bulk
+ * updates carry no `tenant_id` predicate and none was added: `fiscal_periods` /
+ * `fiscal_years` have no such column (they are anchored by `company_id`), and
+ * every step is idempotent, so the redundant re-run under legacy row-level mode
+ * (`tenancy_resolver.db_per_tenant=false`, where forEachTenant does not switch
+ * databases) is a no-op after the first pass. Changing the predicates would be
+ * a fiscal-behaviour change, which this conversion is explicitly not.
  *
  * TROUBLESHOOTING:
- * - If periods not locking: Check if companies have correct country_code
- * - If command not running: Verify scheduler cron job is configured
  * - Manual execution: php artisan fiscal:lock-expired-periods
- * - Dry run mode: php artisan fiscal:lock-expired-periods --dry-run
- *
- * Business Rules:
- * - Periods ended >1 month ago: Open → Closed
- * - Fiscal years past end_date: is_closed = true
- * - All periods in closed fiscal years: Open/Closed → Locked
+ * - Preview: php artisan fiscal:lock-expired-periods --dry-run
+ * - Per-tenant failures: application error log, `TenantScopedCommand::forEachTenant`
+ *   entry (tenant_id + exception).
  *
  * @see FiscalPeriodAutoLockService For implementation details
- * @see CountryFiscalRulesProvider For country-specific thresholds
- *
- * @cross-tenant-by-design Daily scheduler that closes/locks expired fiscal periods across all companies via FiscalPeriodAutoLockService.
  */
-final class LockExpiredFiscalPeriodsCommand extends Command
+final class LockExpiredFiscalPeriodsCommand extends TenantScopedCommand
 {
     /**
      * The name and signature of the console command.
@@ -63,12 +75,16 @@ final class LockExpiredFiscalPeriodsCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Lock expired fiscal periods and close ended fiscal years';
+    protected $description = 'Lock expired fiscal periods and close ended fiscal years, per tenant';
 
-    /**
-     * Execute the console command.
-     */
-    public function handle(FiscalPeriodAutoLockService $service): int
+    public function __construct(
+        CompanyContext $companyContext,
+        private readonly FiscalPeriodAutoLockService $autoLockService,
+    ) {
+        parent::__construct($companyContext);
+    }
+
+    protected function executeCommand(): int
     {
         $this->info('Starting fiscal period auto-lock process...');
 
@@ -78,16 +94,22 @@ final class LockExpiredFiscalPeriodsCommand extends Command
             return self::SUCCESS;
         }
 
-        try {
-            $service->lockExpiredPeriods();
-
-            $this->info('✓ Successfully locked expired periods and closed ended fiscal years');
+        $exit = $this->forEachTenant(function (Tenant $tenant): int {
+            // Deliberately NOT wrapped in a try/catch: forEachTenant() logs the
+            // throw with the tenant id, records that tenant as a FAILURE and
+            // continues with the rest of the fleet. Catching here is what turned
+            // a fleet-wide 42P01 into a silent nightly no-op.
+            $this->autoLockService->lockExpiredPeriods();
 
             return self::SUCCESS;
-        } catch (\Exception $e) {
-            $this->error('✗ Failed to lock expired periods: '.$e->getMessage());
+        });
 
-            return self::FAILURE;
+        if ($exit === self::SUCCESS) {
+            $this->info('✓ Successfully locked expired periods and closed ended fiscal years');
+        } else {
+            $this->error('✗ One or more tenants failed the fiscal period auto-lock — see the application error log (TenantScopedCommand::forEachTenant entries) for the tenant ids.');
         }
+
+        return $exit;
     }
 }
