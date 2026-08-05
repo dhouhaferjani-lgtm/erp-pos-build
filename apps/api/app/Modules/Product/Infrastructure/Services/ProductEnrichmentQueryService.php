@@ -13,11 +13,20 @@ use Illuminate\Support\Collection;
 final class ProductEnrichmentQueryService implements EnrichmentQueryInterface
 {
     /**
+     * The `tenant_id` predicate is the same explicit guard the sibling
+     * conversions carry (`DetectFraudPatterns`, `ChannelReconcileCommand`).
+     * Redundant under database-per-tenant, REQUIRED under the compat mode where
+     * every tenant shares one database — see the interface docblock (B2).
+     *
+     * It is applied BEFORE `limit`, so the budget is genuinely per tenant: one
+     * tenant's backlog can no longer consume another's polling slots.
+     *
      * @return Collection<int, PendingEnrichmentDTO>
      */
-    public function findPendingEnrichments(int $limit, int $staleMinutes): Collection
+    public function findPendingEnrichments(string $tenantId, int $limit, int $staleMinutes): Collection
     {
         return Product::query()
+            ->where('tenant_id', $tenantId)
             ->whereIn('enrichment_status', [EnrichmentStatus::Pending, EnrichmentStatus::Enriching])
             ->whereNotNull('platform_submission_id')
             ->where('updated_at', '<', now()->subMinutes($staleMinutes))

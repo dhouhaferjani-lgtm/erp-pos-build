@@ -59,6 +59,39 @@ final class CheckPendingEnrichmentsCommandTest extends TestCase
     }
 
     /**
+     * B2 (2026-08-05 review). The call-count guards above pin only that the
+     * closure runs N times; they cannot go red when the query itself is
+     * fleet-wide, because the spy returns an empty collection and no product
+     * row is ever read. This is the missing half: the ITERATING tenant must be
+     * handed to the query, which is the only thing that scopes it under compat
+     * mode (`db_per_tenant=false` — the suite's mode, where `forEachTenant()`
+     * deliberately does not switch databases). The scoping itself is pinned
+     * against real rows in
+     * tests/Unit/Shared/ProductEnrichmentQueryServiceTest.php.
+     */
+    public function test_the_iterating_tenant_is_passed_to_the_pending_query(): void
+    {
+        $tenantA = $this->createTenant('enrichment-poll-anchor-a');
+        $tenantB = $this->createTenant('enrichment-poll-anchor-b');
+
+        $spy = $this->bindQuerySpy();
+
+        $this->assertSame(0, Artisan::call('enrichment:check-pending'));
+
+        $seen = $spy->tenantIds;
+        sort($seen);
+        $expected = [$tenantA->id, $tenantB->id];
+        sort($expected);
+
+        $this->assertSame(
+            $expected,
+            $seen,
+            'Each pass must poll ONLY the tenant it is iterating — otherwise every tenant re-polls the same '
+            .'50 products under compat mode, N-fold multiplying the outbound platform calls.',
+        );
+    }
+
+    /**
      * The iteration guard. `forEachTenant()` opens a slot per row in the CENTRAL
      * tenant directory; with no tenants there is nothing to poll. The
      * pre-conversion shape issued exactly one fleet-wide `Product::query()`
@@ -152,6 +185,9 @@ final class RecordingEnrichmentQuery implements EnrichmentQueryInterface
 {
     public int $calls = 0;
 
+    /** @var list<string> */
+    public array $tenantIds = [];
+
     /** @var list<int> */
     public array $limits = [];
 
@@ -161,9 +197,10 @@ final class RecordingEnrichmentQuery implements EnrichmentQueryInterface
     /**
      * @return Collection<int, PendingEnrichmentDTO>
      */
-    public function findPendingEnrichments(int $limit, int $staleMinutes): Collection
+    public function findPendingEnrichments(string $tenantId, int $limit, int $staleMinutes): Collection
     {
         $this->calls++;
+        $this->tenantIds[] = $tenantId;
         $this->limits[] = $limit;
         $this->staleMinutes[] = $staleMinutes;
 

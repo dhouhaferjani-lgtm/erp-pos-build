@@ -40,6 +40,17 @@ use Illuminate\Support\Facades\Log;
  * `products` to take 50 rows from). Per tenant is also the semantics an
  * operator expects from a poller: one noisy tenant can no longer starve the
  * rest of the fleet out of its polling slot.
+ *
+ * **CORRECTED 2026-08-05 (wave-1 review, B2).** The paragraph above was false
+ * under the compat mode (`tenancy_resolver.db_per_tenant=false`) this command
+ * still has to survive — and that is the mode the whole test suite runs in.
+ * `forEachTenant()` runs its closure once per tenant against ONE shared
+ * database WITHOUT switching, and `findPendingEnrichments()` was a bare
+ * `Product::query()`, so every tenant's pass polled the same ≤50 rows: the
+ * budget was fleet-wide N times over, not per tenant, and one noisy tenant DID
+ * starve the rest. The iterating tenant is now passed to the query, which
+ * scopes it explicitly — the same guard the sibling conversions
+ * (`DetectFraudPatterns`, `ChannelReconcileCommand`) already carried.
  */
 final class CheckPendingEnrichmentsCommand extends TenantScopedCommand
 {
@@ -67,7 +78,11 @@ final class CheckPendingEnrichmentsCommand extends TenantScopedCommand
         $updatedCount = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (&$checked, &$updatedCount): int {
-            $pendingProducts = $this->enrichmentQuery->findPendingEnrichments(limit: 50, staleMinutes: 10);
+            $pendingProducts = $this->enrichmentQuery->findPendingEnrichments(
+                tenantId: $tenant->id,
+                limit: 50,
+                staleMinutes: 10,
+            );
 
             if ($pendingProducts->isEmpty()) {
                 return self::SUCCESS;
