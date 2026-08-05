@@ -333,3 +333,208 @@ Make `--tenant` bypass the status filter (or fail loudly) in the four repair/bac
 disabling reversible Suspended tenants (B2, R1); replace the status proxy with a
 `databaseExists()` probe (R2); and either make `$tenantId` unserialize-tolerant or extend the
 deploy note to purge pre-existing `failed_jobs` rows for the two job classes (R3).
+
+---
+
+# RE-GATE — fix commit `24dac38ee` (on top of `cb3c67d67` / `fd679a317`)
+
+Date: 2026-08-05 · Reviewer: tenancy-authz-reviewer (adversarial re-gate, code-grounded, read-only)
+Scope: `apps/api`. Every claim below was probed in the working tree, not read off the commit message.
+Paths relative to `apps/erp/apps/api` unless stated.
+
+## VERDICT: spec ✅ (all four blockers closed) + quality **APPROVE-WITH-FIXES**
+
+`24dac38ee` genuinely closes B1, B2, R1, R2, R3 and M3, and the tests it ships are non-vacuous
+and green. It introduces one new fail-open in the probe's error branch (N1) and one test that
+does not pin the property it claims to pin (N2). Both are ~5-line fixes.
+
+## Verification of the original findings
+
+**B1 — CLOSED.** `TenantScopedCommand.php:200-201` resets and `:206`/`:217` record the
+skipped/visited id lists; `:291-313` `failIfTenantFilterUnvisited()` returns `INVALID` for a
+tenant absent from the directory (`:307-312`) and `FAILURE` for one the probe skipped
+(`:297-305`), each with a stderr line. All four in-closure `--tenant` commands call it
+immediately after `forEachTenant()` and return its value before printing their summary:
+`ReconcileTreasuryCommand.php:263-265` (aggregate at `:279-281` still folds `$tenantExit`),
+`RetryFiscalProjectionsCommand.php:153-155`,
+`BackfillRefundCompensationAccountsCommand.php:121-123`,
+`BackfillSealedHashAlgorithmCommand.php:146-148`.
+**No fifth command was missed:** 17 classes extend `TenantScopedCommand`; only those four declare
+`{--tenant=}` *and* route through `forEachTenant()`. The other three `--tenant` carriers are
+cat-(a-singleshot) and use `bindTenantAndCompanyFromOptions()` —
+`EnableV4RefundAuthoringCommand.php:65`, `DisableV4RefundAuthoringCommand.php:106`,
+`ExportNf525JetCommand.php:51`. The false docblock is gone.
+
+**B2 / R1 / R2 — CLOSED.** `forEachTenant()` contains no status logic at all; the only skip is
+`TenantScopedCommand.php:205` `$dbPerTenant && ! $this->tenantDatabaseExists($tenant)`, and
+`tenantDatabaseExists()` (`:326`) calls `$tenant->database()->manager()->databaseExists($tenant->getDatabaseName())`
+— the same shape as `TenancyResolver.php:60`. Skip logs at WARNING (`:208`) and never touches the
+aggregate (`:243-245`).
+
+**Compat-mode bypass — justified, NOT a hole (verified, not taken on trust).** In compat mode the
+probe would return false for *every* tenant (there are no per-tenant databases), so bypassing it is
+required, not a shortcut. And the claim that `initialize()` is a no-op there is true twice over:
+`TenancyServiceProvider.php:49-58` gates `BootstrapTenancy`/`RevertToCentralContext` on
+`tenancy_resolver.db_per_tenant` at fire time, and `TenantScopedCommand.php:223-226` does not even
+call `tenancy()->initialize()` unless `$dbPerTenant`. Probe connection is also correct: stancl's
+`DatabaseConfig::manager()` (`vendor/stancl/tenancy/src/DatabaseConfig.php:149-165`) pins the
+manager to `getTemplateConnectionName()` → `config('tenancy.database.central_connection')`
+(`:100-105`, `config/tenancy.php:50,56`), so the probe reads `pg_database` on **central**, never on
+the swapped default. No wrong-DB read.
+
+**R3 — CLOSED, as the review's option (a).** `SyncSellerListingsJob.php:68` and
+`ReconcileListingsJob.php:80` both declare `public ?string $tenantId = null;` (non-promoted,
+defaulted), constructor still takes `string $tenantId` (`:70-75` / `:82-87`) so new dispatches
+cannot omit it, and `handle()` discards a null anchor with a warning and zero data access
+(`SyncSellerListingsJob.php:79-89`, `ReconcileListingsJob.php:91-101`). The `__serialize()`
+default-omission behaviour is real in this vendor tree
+(`vendor/laravel/framework/src/Illuminate/Queue/SerializesModels.php:44-46`), so payloads do not
+grow, and `__unserialize()`'s skip of absent keys (`:92-94`) now yields the default instead of an
+uninitialized typed property. The proof test is non-vacuous: it asserts the serialized payload
+genuinely lacks the key, then that `last_sync_at` is untouched, tenancy was never initialized, and
+the warning fired (`MarketplaceListingJobsTenantContextTest.php:184-253`).
+
+**M3 — CLOSED in the docblock.** `BindsTenantContext.php:30-40` now frames `where('tenant_id', …)`
+as the consumer's choice with the nullable-column rationale, `:41-50` documents the
+declared-defaulted-property contract, and `:52-61` corrects the null semantics (deletion, not
+suspension). See N3 for the one string that was not updated with it.
+
+**R4 — incidentally green.** `MarketplaceScheduledCommandsTest` now boots with
+`Tests\Traits\EnablesMarketplaceModule` (`:46`) and runs 5/5.
+
+## Test evidence (run, not assumed)
+
+```
+tests/Unit/Console/TenantScopedCommandForEachTenantTest.php        OK 12 tests, 69 assertions
+tests/Feature/Marketplace/MarketplaceListingJobsTenantContextTest.php
+  + tests/Feature/Fiscal/RetryFiscalProjectionsCommandTest.php     OK 14 tests, 57 assertions
+tests/Feature/Marketplace/MarketplaceScheduledCommandsTest.php     OK  5 tests, 24 assertions
+tests/Feature/Inventory/ExpireStockReservationsCommandTest.php
+  + tests/Feature/BatchExpiry/BatchExpiryDailyCheckCommandTest.php OK  7 tests, 42 assertions
+tests/Feature/Accounting/SubledgerReconciliationCommandTest.php    OK  4 tests, 17 assertions
+phpstan (4 changed app files)                                      [OK] No errors
+```
+`database/` was clean before and after every run — the `beforeApplicationDestroyed` cleanup works
+on the normal path.
+
+## NEW findings
+
+### N1 [Important] A throwing probe is treated as "database missing" — an infra fault silently skips the whole fleet at exit 0
+
+`TenantScopedCommand.php:323-337` catches **every** `Throwable` from the probe and returns `false`,
+i.e. "cannot open ⇒ skip", which `:205-215` turns into a WARNING that by design never degrades the
+aggregate (`:243-245`). But the probe cannot distinguish *"pg_database says no"* from *"I could not
+ask"*. Two reachable global faults answer "no" for **every** tenant:
+
+- central connection lost *after* `Tenant::all()` at `:203` materialised the directory — every
+  subsequent `PostgreSQLDatabaseManager::databaseExists()`
+  (`vendor/stancl/tenancy/src/TenantDatabaseManagers/PostgreSQLDatabaseManager.php:41-44`, a
+  `SELECT` on the central connection) throws;
+- driver/config drift — `DatabaseConfig::manager()` throws `DatabaseManagerNotRegisteredException`
+  (`vendor/stancl/tenancy/src/DatabaseConfig.php:155-157`) when the central connection's driver has
+  no registered manager.
+
+Result: 100% of tenants skipped, WARNING-only, **exit SUCCESS**, on every tick — so the ops signal
+wired to these runs never fires (`routes/console.php:56-59` treasury:reconcile `onFailure`,
+`:101-106` inventory:expire-reservations `onFailure`, and the equivalents for batch-expiry /
+marketplace). Cash-drift freeze, fiscal dead-letter recovery and batch-expiry alerts all go dark
+silently. Pre-`cb3c67d67` this same fault surfaced as ERROR + FAILURE.
+
+This also breaks the docblock's own claim at `:315-322` that the probe mirrors `TenancyResolver`:
+the resolver **fails closed** on a throwing probe under db-per-tenant
+(`TenancyResolver.php:81-89` → `TenantUnavailableException` → 503). The command fails open, silently.
+
+*Fix:* separate the two outcomes. A probe that RETURNS false ⇒ skip + WARNING (current, correct).
+A probe that THROWS ⇒ treat as that tenant's FAILURE (log ERROR, `$aggregate = FAILURE`) — it is an
+infra fault, not evidence of a missing database. Cheapest shape: let `tenantDatabaseExists()`
+rethrow (or return a tri-state) and handle it in the loop. Optional belt-and-braces: if
+`skippedTenantIds !== [] && visitedTenantIds === []`, degrade the aggregate.
+
+Note the four `--tenant` commands are already loud in this scenario (they hit the FAILURE branch at
+`:297-305`); the exposure is confined to the ~13 unattended scheduler consumers.
+
+### N2 [Important — test] The status-agnostic contract is only pinned in compat mode, where the probe cannot run
+
+`TenantScopedCommandForEachTenantTest.php:136-171` (`test_lifecycle_status_is_not_a_filter`) never
+sets `tenancy_resolver.db_per_tenant`, so it runs with the flag false and `:205`'s
+`$dbPerTenant && …` short-circuits before any status could be consulted. The db-per-tenant leg,
+`:185-242`, does parameterise status — but only on the tenant that has **no** database
+(`$missing`, `:190`); the openable one is created with the default `TenantStatus::Active`
+(`:189` — `createTenantWithDatabase('has-db-'.$status->value)`, no `$status` argument), despite the
+assertion message at `:215` claiming "regardless of its lifecycle status".
+
+So a regression that reintroduced `if ($dbPerTenant && ! $tenant->isActive()) continue;` — exactly
+B2/R1 — would leave this suite green. The whole point of the fix is unpinned in the mode that ships.
+
+*Fix:* pass `$status` through at `:189` (`createTenantWithDatabase('has-db-'.$status->value, $status)`).
+One argument.
+
+### N3 [Minor] The operator-facing exception string still carries the falsehood M3 removed from the docblock
+
+`BindsTenantContext.php:83` — "The dispatched tenant may have been soft-deleted, **suspended**, or
+never existed" — directly contradicts the corrected docblock 30 lines above (`:52-61`: `Tenant` has
+no SoftDeletes, `find()` applies no status predicate, a suspended tenant resolves normally). This is
+the string an on-call engineer reads out of `failed_jobs`. Fix the message to match: "the central
+`tenants` row is gone (deprovisioned) or never existed".
+
+### N4 [Minor] Provisioned tenant DB files are not gitignored, so an abnormal test exit leaves untracked junk
+
+`tests/Traits/ProvisionsTenantDatabases.php:32-40` `touch()`es `database_path($tenant->getDatabaseName())`
+and unlinks it in `beforeApplicationDestroyed`. The trait docblock (`:25-26`) claims "nothing leaks
+into `database/`" — true only for a normal teardown; a fatal/interrupt leaves the file. The name is
+`prefix + tenant key` = `tenant<uuid>` (`config/tenancy.php:60-61`, `Tenant.php:255-266`) with no
+extension, and `database/.gitignore` only ignores `*.sqlite*` — so a leftover shows up as untracked
+and is committable. Add `tenant*` to `database/.gitignore` (verified clean on the happy path; this
+is the crash path only). No hidden global state otherwise: filenames are UUID-unique so paratest
+processes cannot collide, and the closure is `static` with no `$this` capture.
+
+### N5 [Minor] `TenantScopedCommandForEachTenantTest` duplicates the new trait instead of using it
+
+`:336-345` re-implements `createTenantWithDatabase()` (touch + tearDown unlink at `:302-309`) while
+`Tests\Traits\ProvisionsTenantDatabases` exists for exactly this. Two copies of the same
+SQLite-file-is-a-database assumption will drift. Use the trait.
+
+### N6 [Minor] Other `BindsTenantContext` adopters contradict the trait's new property guidance
+
+`BindsTenantContext.php:41-50` now says a class that was **ever dispatched without** the anchor MUST
+use a declared, defaulted property. `ProcessImportJob.php:64` and `ProcessProductImageImport.php:56`
+gained `public readonly string $tenantId` in `b059bb2c5` (2026-05-07) — the same commit that
+introduced the trait — so pre-2026-05-07 payloads for those classes have the identical
+"un-retryable `failed_jobs` row" exposure R3 described. Same shape at
+`GenerateRenditions.php:61`, `ExtractDocumentJob.php:45`, and the four Channel jobs
+(`IngestChannelOrderJob.php:25`, `DispatchStockChangeToChannelJob.php:38`,
+`ChannelReconciliationJob.php:28`, `DispatchProductToChannelJob.php:29`). Whether any such rows
+still exist ~3 months later is an ops question — **cannot verify from code**. Ticket it; do not
+widen this commit.
+
+### N7 [Minor — residual, not regressed] R5 (log cardinality) was mitigated by scope, not by aggregation
+
+Still one line per skipped tenant per run, now at WARNING. But the skipped population changed from
+"every non-Active tenant" to "every tenant with no database", which should be ~0 in a healthy fleet
+— so the ~415 lines/day/tenant figure no longer applies in practice. Acceptable as-is; revisit only
+if N1's fail-open is left in place (a central outage would then emit `tenants × commands` WARNING
+lines with no failing exit).
+
+## Answers to the re-gate questions
+
+- **Can a throwing probe abort the batch?** No — `:325-336` catches everything, and the loop
+  `continue`s. **Can it mask a transient central outage as skip-everything?** Yes, and that is N1:
+  100% skipped, WARNING level, exit 0, `onFailure` hooks silent. Judgement: **not acceptable** as
+  the default for unattended fiscal/treasury controls, and a regression against the pre-`cb3c67d67`
+  behaviour of erroring. It is a small, well-scoped fix.
+- **Is the compat-mode bypass itself a hole?** No — verified against `TenancyServiceProvider.php:49-58`
+  and `TenantScopedCommand.php:223-226`. In compat mode there is nothing to probe and nothing is
+  initialized; probing there would skip the entire fleet.
+- **Was a fifth `--tenant`-in-closure command missed?** No (enumerated above).
+- **Did the four collateral test wirings weaken anything?** No. The diff for
+  `SubledgerReconciliationCommandTest`, `BatchExpiryDailyCheckCommandTest`,
+  `ExpireStockReservationsCommandTest` and `MarketplaceScheduledCommandsTest` changes only the two
+  `createTenant(...)` lines into `provisionTenantDatabase(createTenant(...))` plus the trait import;
+  every assertion is byte-identical, and all four suites are green. Their probe commands only record
+  tenant ids, so the empty SQLite file is never queried.
+
+## What to fix before merge
+
+Make a throwing `databaseExists()` probe a FAILURE rather than a silent skip (N1), and parameterise
+the openable tenant's status in the db-per-tenant probe test so the status-agnostic contract is
+actually pinned in the shipping mode (N2). N3–N7 can ride the next wave.

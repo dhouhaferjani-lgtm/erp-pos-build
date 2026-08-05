@@ -405,3 +405,147 @@ errors the reviewer saw mid-wave-2 are gone — PHPStan is clean on every change
 `app/` path. `tests/Architecture` stash-baseline **unchanged** — the same 5 pre-existing failures
 before and after (the 2 the reviewer named, plus `AuthLifecycleTest`,
 `ControllerTenantContextTest`, `InventoryCostLockCoverageTest`).
+
+---
+
+## RE-GATE — fix round, 2026-08-05 (reviewer: tenancy-authz-reviewer, read-only)
+
+**Scope:** `cfb9e9280, 686245cdd, 6e5d176bd, e656c0e01, a4e2b5703, 2a248521e, cf4b2c213`.
+Judged against the NAMED COMMITS. Working-tree drift from the concurrent wave-2 session was
+present but touched none of the wave-1 fix paths during the probes
+(`ReceiptHashService.php`, `tests/Traits/ProvisionsTenantDatabases.php` early; later
+`TenantScopedCommand.php` + two Fiscal commands — after the test runs below).
+
+### VERDICT: spec ❌ · quality **CHANGES-REQUESTED** — one new defect, introduced by R2
+
+Every original finding is genuinely addressed and the two "would it go red?" claims were
+verified empirically, not taken on trust. But the R2 prune leg ships a new data-plane
+regression that the fix round's own registrar docblock argues against.
+
+### NEW BLOCKER
+
+**[Important] N-1 — the R2 prune deletes the webhook pointer of any channel whose COMPANY is
+soft-deleted.** `ChannelReconcileCommand.php:94` scopes with
+`whereHas('company', …)`, which applies `Company`'s `SoftDeletes` global scope
+(`app/Modules/Company/Domain/Company.php:127`, `deleted_at` at
+`database/migrations/tenant/2025_11_30_104000_create_companies_table.php:102`). Those channels
+are therefore absent from `$liveChannelIds` (`:143-146`), so
+`ChannelWebhookDirectoryRegistrar::pruneTenant()` (`:108-129`) deletes their pointers.
+**Verified empirically** with a throwaway feature test (create tenant → company → channel,
+`$company->delete()`, `channels:reconcile`): the pointer is gone, the channel row is not.
+This directly contradicts `ChannelWebhookDirectoryRegistrar::register()` (`:47-51`), which does a
+raw `DB::table('companies')` read *specifically* so a soft-deleted company does not lose its
+pointer ("turning that channel's webhooks into a 404 the operator cannot explain"). Consequence:
+permanent fail-closed 404 on that channel's inbound webhooks, and by this round's own R3
+reasoning an external platform that gets a 404 drops the order permanently. Before R2 the pointer
+simply survived — the prune is what destroys it.
+**Fix:** `whereHas('company', fn ($q) => $q->withTrashed()->where('tenant_id', $tenant->id))`
+(enumeration and live-id set), plus a regression test for the soft-deleted-company case.
+
+**[Important] N-2 — the prune is not gated on the drift the same commit teaches us to expect.**
+`warnOnTenantScopeDrift()` RETURNS the dropped-row count
+(`app/Console/Concerns/WarnsOnTenantScopeDrift.php:56-87`), but
+`ChannelReconcileCommand.php:101` discards it. A drifted `companies.tenant_id` therefore both
+warns AND prunes: the pointer written while the column was still correct is deleted, so R1's
+scenario is upgraded from "never reconciled" to "webhooks dead". Skip the per-tenant prune when
+the drift count is non-zero.
+
+### MINOR (new)
+
+* **N-3 — the B1 "byte-identical 404" claim does not hold at the HTTP layer.** A malformed id is
+  rejected by `->whereUuid('channelId')` before the controller, so it renders the router's
+  `{"message":"The route api/v1/webhooks/channels/not-a-uuid could not be found."}` while an
+  unknown UUID renders `{"message":"Unknown channel."}` (both verified live). No existence oracle
+  (malformed-vs-wellformed is caller-knowable), but the disposition wording is wrong: uniformity
+  holds at the registrar/controller layer only.
+* **N-4 — the controller's own `Str::isUuid()` guard is not independently pinned**; the route
+  constraint masks it in every HTTP test. The registrar guard IS genuinely red-on-revert —
+  confirmed by probing that `DB::getRawQueryLog()` does observe `channel_webhook_directory`
+  reads on this connection, so `test_the_directory_lookup_rejects_a_non_uuid_without_querying`
+  is not a vacuous oracle.
+* **N-5 — R1's WIRING is untested.** `WarnsOnTenantScopeDriftTest` exercises the concern with
+  synthetic closures; nothing pins that `ChannelReconcileCommand` / `DetectFraudPatterns` pass
+  the right probe pair — the part most likely to be wrong. Related: under `db_per_tenant=true`
+  the channels probe will emit a FALSE-POSITIVE drift warning for every tenant holding a
+  soft-deleted company (same root cause as N-1).
+* **N-6 — B2 got the predicate but not the R1 signal.** `products.tenant_id` can drift exactly
+  like `companies.tenant_id`; a drifted product now silently leaves the enrichment polling window
+  with no log line, while its two sibling commands warn.
+* **N-7 — `throttle:channel-webhook` is keyed by IP only.** A platform's shared egress IP serving
+  several tenants' channels can exceed 60/min; a 429 to a non-redelivering platform is, by R3's
+  own argument, a dropped order. Fine at pilot scale — worth a monitoring note.
+* **N-8 — B3's verification query is right modulo one legitimate gap:** a channel whose company
+  row is missing gets no pointer (`register()` returns false with a warning), so
+  `count(channel_webhook_directory) < Σ count(channels)` is not always a defect. The residual
+  risk is unchanged and real: the step lives in a ticket, while a push to `origin/dev`
+  auto-deploys the migration to staging.
+
+### VERIFIED CORRECT (probes run, not read)
+
+* **B1** — three layers present: route `->whereUuid` (`Presentation/routes.php:32`), guards in
+  `ChannelWebhookController.php:91` and `ChannelWebhookDirectoryRegistrar.php:181`,
+  `throttle:channel-webhook` 60/min/IP (`AppServiceProvider.php:351`). Route pattern and
+  `Str::isUuid()` use the identical lax RFC regex, so the layers agree. `FirstTenantProductionSecurityTest`
+  really does enforce registration (`requiredRateLimiterProvider` + `test_required_rate_limiter_is_registered`) — green.
+* **B2** — required `string $tenantId` first param on the contract, predicate BEFORE `limit`.
+  Probed the fixture directly: the same query without the predicate returns 2 rows where the
+  scoped one returns 1, so `ProductEnrichmentQueryServiceTest` is genuinely red-on-revert; the
+  command spy records the iterating tenant id.
+* **B3** — runbook attribution is correct: `STAGING-RUNBOOK-first-tenant-2026-07-31.md` states it
+  supersedes `STAGING-DEPLOY-RUNBOOK-2026-07-28.md` ("do not execute it separately") and is gate E-9.
+* **R2** — both safety properties hold as designed: `$channels->get()` completes before the prune
+  (a throw is caught by `forEachTenant()`, tenant fails, nothing deleted), and
+  `pruneDeprovisionedTenants()` expresses the central read as a subquery, so a failing central
+  read raises instead of deleting. `Tenant` is `CentralConnection`-pinned and has no SoftDeletes,
+  so the subquery cannot over-prune.
+* **R4** — 720 on all three daily iterators (`routes/console.php:36,75`,
+  `ChannelServiceProvider.php:82`), 30 kept for `enrichment:check-pending` with the N×50×RTT bound
+  recorded. **R5** — `return $exit === self::SUCCESS ? self::INVALID : $exit;` with the fault
+  injected as an empty `tenancy.database.managers`.
+* **M4** — 16 deleted `private function stringOption` lines = 15 verbatim subclass copies (bodies
+  identical, verified by `uniq -c` on the deletion set) + the base signature change; no remaining
+  `TenantScopedCommand` subclass declares it, so no visibility narrowing. **M7** — no test
+  depended on `'tenant-1'` from `CreatesChannelSchema`; the three consumers are all in
+  `tests/Feature/Channel` and pass.
+* **Regression sweep** — 152 tests green (`tests/Feature/Channel` 52 · `tests/Feature/PlatformIntegration`
+  + `tests/Unit/Console` + `tests/Unit/Jobs` + `DetectFraudPatternsCommandTest` +
+  `FirstTenantProductionSecurityTest` 100). The 5 skips are all pre-existing PostgreSQL-only
+  guards. No test method or assertion was deleted anywhere in the seven commits. PHPStan clean on
+  the six changed non-concurrent app paths.
+
+**What to fix before merge:** `withTrashed()` inside the `whereHas('company', …)` closure in
+`ChannelReconcileCommand` (+ a soft-deleted-company regression test), and gate the per-tenant
+prune on a zero drift count.
+
+---
+
+## FINAL RE-GATE — N-1..N-8 fix round, 2026-08-05 (reviewer: tenancy-authz-reviewer, read-only)
+
+**Scope:** `021cce7ff, f592c6a5a, 7a5fe2847, 32898b1d1, bb59430df, b6793e4c3` (apps/api). Judged against the named commits; 48 directly-changed tests run green on the SQLite/compat suite; db-per-tenant legs run against real provisioned tenant databases.
+
+### VERDICT: spec ✅ · quality **APPROVED** — MERGE-READY
+
+Every N-1..N-8 finding is genuinely addressed. No new defect. The one previously-verified gate reversed by this round (N-3, `->whereUuid` removal) is adjudicated below and the removal is **KEPT**.
+
+### N-3 ADJUDICATION — KEEP THE REMOVAL
+
+The four verification legs all hold:
+
+- **(a) Laravel routing claim is TRUE.** A route whose `where`/`whereUuid` pattern rejects the segment is not matched (`RouteCollection::match()` → `matchAgainstRoutes()`/`$route->matches()`); on no match it throws `NotFoundHttpException` **before** any route-group middleware is gathered (`Router::runRoute()` gathers middleware only for a matched route). `throttle:channel-webhook` is route-group middleware (`routes.php:42`), NOT global — the `api` group carries no global throttle (`RateLimiter::for('api', …)` exists at `AppServiceProvider.php:312` but is not applied to this group), so with the constraint in place a malformed-id flood provably bypassed the limiter. Empirically corroborated: the prior round-2 gate observed the router body `{"message":"The route … could not be found."}` for a malformed id, proving the controller never ran.
+- **(b) The 22P02→500 stays impossible.** Two independent guards, neither dependent on the route: `Str::isUuid($channelId)` in `ChannelWebhookController.php:96` BEFORE the directory resolve at `:101`, and again in `ChannelWebhookDirectoryRegistrar::resolveTenantId()` `:181`. `Channel::query()->find($channelId)` at `:122` and `Tenant::query()->find()` at `:106` are reached only past the `:96` guard / with a stored uuid. No path takes a raw non-uuid into a PG uuid column. The throttle key is IP-only (`AppServiceProvider.php:360-362`), so it touches no uuid column either.
+- **(c) The throttle now covers malformed ids.** `test_a_malformed_channel_id_is_rate_limited_like_any_other` posts 60 malformed then asserts the 61st = 429 — green. The limiter `channel-webhook` is registered (`AppServiceProvider.php:360`); a missing limiter would have thrown, so the 429 pins real registration.
+- **(d) Net security improves, opens nothing meaningful.** For garbage input the controller does NO db query (`test_the_controller_rejects_a_non_uuid_when_invoked_without_the_route_layer` asserts `getRawQueryLog() === []`), issues no `Log` line, throws `NotFoundHttpException('Unknown channel.')`. The malformed 404 body is now byte-identical to the unknown-id 404 (`test_a_malformed_channel_id_answers_the_same_404_bytes_as_an_unknown_one`), removing the router-body existence-distinguishability the round-2 gate flagged. The only new cost is that a malformed flood now consumes the per-IP throttle budget instead of an unbounded router-level 404 — i.e. it is now BOUNDED where before it was not, and the throttle is per-IP so no cross-tenant/cross-IP victim starvation is introduced (the shared-egress-IP case is the pre-existing N-7 limitation, documented at `AppServiceProvider.php:351-359`). **Disposition wording is now accurate** (routes.php:27-40, controller docblock:49-55) — the round-2 "byte-identical" claim that was wrong at the HTTP layer is now true there. No fallback-to-wording-fix needed.
+
+### The rest — all VERIFIED
+
+- **N-1 (FIXED, pinned).** `withTrashed()` in the shared `$ownedByTenant` closure (`ChannelReconcileCommand.php:105`) feeds the enumeration (`:108`), the live-id set (`:186-188`) and the drift probe's `whereDoesntHave` (`:122`) from one definition, so a soft-deleted company's channel stays in `$liveChannelIds` and its pointer survives. Red-on-revert pinned by `test_the_sweep_keeps_the_pointer_of_a_channel_whose_company_is_soft_deleted` + `test_a_channel_whose_company_is_soft_deleted_is_still_reconciled_and_re_registered`.
+- **N-2 (FIXED, pinned).** `$drift = warnOnTenantScopeDrift(...)`; `if ($drift > 0) return SUCCESS` (`:172-183`) skips the prune while registration (`:130-150`, additive-only) still heals. Worst case (all-drifted → empty live-id set → delete-everything) closed by `test_a_drifted_tenant_warns_and_its_pointers_are_left_alone`; over-gating ruled out by control `test_a_clean_tenant_still_prunes_its_stale_pointers`.
+- **N-5 (claim CORRECT; probe-pair test is real).** `DetectFraudPatterns.php:98-105` uses `Company::query()` for all three probes, so the SoftDeletes global scope applies uniformly and a trashed company cannot read as drift — pinned by `test_a_soft_deleted_company_is_not_reported_as_drift`, and the WIRING (the original N-5 gap) is now exercised end-to-end under `db_per_tenant=true` by `test_a_company_whose_tenant_id_drifted_inside_its_own_database_is_warned_about`. The channels false-positive N-5 flagged is closed by N-1's `withTrashed` (probe uses the same closure).
+- **N-6 (correct; deliberately NOT gated).** `ProductEnrichmentQueryService::pendingWindow()` (`:80`) is the single builder behind the read path and all three probes (`:29,44,49,58`), so the probe sides cannot drift from the poll window. The command WARNs but discards the count (`CheckPendingEnrichmentsCommand.php:100-108`) — correct asymmetry with N-2: polling is additive and destroys nothing, so gating would suppress legitimate polls. Pinned by `CheckPendingEnrichmentsDriftDbPerTenantTest`.
+- **N-4/N-7/N-8.** N-4: controller guard independently pinned without the router (`test_the_controller_rejects_a_non_uuid_when_invoked_without_the_route_layer`, asserts zero queries). N-7: IP-keyed-throttle limitation recorded at `AppServiceProvider.php:351-359` with the monitoring trigger. N-8: verification query re-ordered to surface orphan-company channels first (docs).
+
+### Regression
+
+48 directly-changed tests green (246 assertions): `ChannelReconcileCommand{,DbPerTenant}`, `ChannelWebhookTenantResolution`, `DetectFraudPatternsDriftDbPerTenant`, `CheckPendingEnrichments{,DriftDbPerTenant}`, `ProductEnrichmentQueryService`. Full suite NOT run (laptop-crash rule). Exactly ONE test method removed — `test_the_webhook_route_constrains_the_channel_id_to_a_uuid` (the obsolete route-constraint assertion, replaced by three stronger HTTP-layer tests; net assertions increased). Only two EXISTING commands modified (`ChannelReconcileCommand`, `CheckPendingEnrichmentsCommand`, both already `TenantScopedCommand` subclasses) — no new command/job class, so the console-command classification baseline is unchanged.
+
+**Merge-ready.** Deploy still owes the pre-existing B3 step (`tenants:run channels:reconcile` post-migrate) and the N-7 429-monitoring note before a second tenant shares a platform egress IP — both already ticketed, neither a code blocker.
