@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Commands;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,14 +24,33 @@ use Illuminate\Support\Facades\DB;
  * IMPORTANT: This should only be run once, and the results should be verified
  * using the fiscal:verify-chains command afterward.
  *
- * @cross-tenant-by-design One-shot retroactive fiscal-hash backfill across all companies; iterates Company::all() with optional --company narrowing filter.
+ * Tenant-isolation: cat-(a-per-tenant-iter) behind an EXPLICIT scope,
+ * converted 2026-08-05 (cat-(b) wave 2).
+ *
+ * The command used to open with `Company::all()` on the console's CENTRAL
+ * connection and call that the fleet. `companies` is a TENANT table, so after
+ * the 2026-05-28 database-per-tenant flip it raised 42P01 and backfilled
+ * nothing.
+ *
+ * A one-time backfill that silently skips a tenant leaves permanently wrong
+ * fiscal data behind, so the scope must now be named:
+ * `--tenant=<uuid>` for one tenant, or `--all-tenants` for a deliberate fleet
+ * run. Neither (or both) is a usage error and nothing is processed.
+ *
+ * The hashing LOGIC — chronological ordering, chain continuation from the last
+ * hashed document, per-document transaction — is untouched.
+ *
+ * The confirmation prompt is now per tenant (it reports that tenant's document
+ * count, as it always reported the run's count) and `--force` still skips it.
  */
-class BackfillFiscalHashesCommand extends Command
+final class BackfillFiscalHashesCommand extends TenantScopedCommand
 {
     /**
      * @var string
      */
     protected $signature = 'fiscal:backfill
+                            {--tenant= : Tenant UUID to backfill (required unless --all-tenants)}
+                            {--all-tenants : Deliberate fleet-wide run over every reachable tenant}
                             {--company= : Specific company ID to backfill}
                             {--type= : Document type to backfill (invoice, credit_note)}
                             {--dry-run : Preview changes without applying them}
@@ -38,7 +59,7 @@ class BackfillFiscalHashesCommand extends Command
     /**
      * @var string
      */
-    protected $description = 'Backfill fiscal hashes for existing posted documents';
+    protected $description = 'Backfill fiscal hashes for existing posted documents (per tenant)';
 
     /**
      * Document types that require fiscal hash chain.
@@ -51,12 +72,13 @@ class BackfillFiscalHashesCommand extends Command
     ];
 
     public function __construct(
-        private readonly FiscalHashService $hashService
+        CompanyContext $companyContext,
+        private readonly FiscalHashService $hashService,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    protected function executeCommand(): int
     {
         $isDryRun = (bool) $this->option('dry-run');
         $isForced = (bool) $this->option('force');
@@ -64,75 +86,102 @@ class BackfillFiscalHashesCommand extends Command
         $this->info($isDryRun ? 'DRY RUN - No changes will be made' : 'Starting fiscal hash backfill...');
         $this->newLine();
 
-        /** @var string|null $companyId */
-        $companyId = $this->option('company');
+        $companyFilter = $this->stringOption('company');
+        $documentType = $this->stringOption('type');
 
-        /** @var string|null $documentType */
-        $documentType = $this->option('type');
-
-        /** @var Collection<int, Company> $companies */
-        $companies = $companyId
-            ? Company::where('id', $companyId)->get()
-            : Company::all();
-
-        if ($companies->isEmpty()) {
-            $this->error('No companies found.');
-
-            return Command::FAILURE;
-        }
-
-        // Count documents to be processed
-        $totalToProcess = 0;
-        foreach ($companies as $company) {
-            $types = $documentType
-                ? [DocumentType::from($documentType)]
-                : self::FISCAL_DOCUMENT_TYPES;
-
-            foreach ($types as $type) {
-                $count = Document::where('company_id', $company->id)
-                    ->where('type', $type)
-                    ->where('status', DocumentStatus::Posted)
-                    ->whereNull('fiscal_hash')
-                    ->count();
-
-                $totalToProcess += $count;
-            }
-        }
-
-        if ($totalToProcess === 0) {
-            $this->info('No documents require backfill. All posted documents already have fiscal hashes.');
-
-            return Command::SUCCESS;
-        }
-
-        $this->warn("Found {$totalToProcess} document(s) without fiscal hashes.");
-
-        if (! $isDryRun && ! $isForced) {
-            if (! $this->confirm('Do you want to proceed with backfilling?')) {
-                $this->info('Backfill cancelled.');
-
-                return Command::SUCCESS;
-            }
-        }
-
+        $companiesSeen = 0;
         $processedCount = 0;
         $errorCount = 0;
 
-        foreach ($companies as $company) {
-            /** @var Company $company */
-            $this->info("Processing company: {$company->name} ({$company->id})");
+        $exit = $this->forEachExplicitlySelectedTenant(
+            $this->stringOption('tenant'),
+            $this->option('all-tenants') === true,
+            function (Tenant $tenant) use (
+                $companyFilter,
+                $documentType,
+                $isDryRun,
+                $isForced,
+                &$companiesSeen,
+                &$processedCount,
+                &$errorCount,
+            ): int {
+                // The explicit tenant_id predicate is redundant under
+                // database-per-tenant and load-bearing in single-schema
+                // compatibility mode.
+                $companies = Company::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->when($companyFilter !== null, fn ($query) => $query->where('id', $companyFilter))
+                    ->get();
 
-            $types = $documentType
-                ? [DocumentType::from($documentType)]
-                : self::FISCAL_DOCUMENT_TYPES;
+                if ($companies->isEmpty()) {
+                    return Command::SUCCESS;
+                }
 
-            foreach ($types as $type) {
-                $result = $this->backfillForCompanyAndType($company->id, $type, $isDryRun);
-                $processedCount += $result['processed'];
-                $errorCount += $result['errors'];
-            }
+                $companiesSeen += $companies->count();
 
-            $this->newLine();
+                $types = $documentType !== null
+                    ? [DocumentType::from($documentType)]
+                    : self::FISCAL_DOCUMENT_TYPES;
+
+                $tenantToProcess = 0;
+                foreach ($companies as $company) {
+                    foreach ($types as $type) {
+                        $tenantToProcess += Document::where('company_id', $company->id)
+                            ->where('type', $type)
+                            ->where('status', DocumentStatus::Posted)
+                            ->whereNull('fiscal_hash')
+                            ->count();
+                    }
+                }
+
+                if ($tenantToProcess === 0) {
+                    $this->info(sprintf(
+                        'TENANT %s (%s): no documents require backfill.',
+                        $tenant->id,
+                        $tenant->slug,
+                    ));
+
+                    return Command::SUCCESS;
+                }
+
+                $this->warn(sprintf(
+                    'TENANT %s (%s): found %d document(s) without fiscal hashes.',
+                    $tenant->id,
+                    $tenant->slug,
+                    $tenantToProcess,
+                ));
+
+                if (! $isDryRun && ! $isForced && ! $this->confirm('Do you want to proceed with backfilling this tenant?')) {
+                    $this->info('Backfill cancelled for this tenant.');
+
+                    return Command::SUCCESS;
+                }
+
+                foreach ($companies as $company) {
+                    /** @var Company $company */
+                    $this->info("Processing company: {$company->name} ({$company->id})");
+
+                    foreach ($types as $type) {
+                        $result = $this->backfillForCompanyAndType((string) $company->id, $type, $isDryRun);
+                        $processedCount += $result['processed'];
+                        $errorCount += $result['errors'];
+                    }
+
+                    $this->newLine();
+                }
+
+                return Command::SUCCESS;
+            },
+        );
+
+        if ($exit !== Command::SUCCESS) {
+            return $exit;
+        }
+
+        if ($companiesSeen === 0) {
+            $this->error('No companies found.');
+
+            return Command::FAILURE;
         }
 
         $this->newLine();
@@ -153,6 +202,13 @@ class BackfillFiscalHashesCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function stringOption(string $name): ?string
+    {
+        $value = $this->option($name);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**
