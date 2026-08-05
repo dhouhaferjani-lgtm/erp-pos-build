@@ -112,7 +112,7 @@ final class ChannelReconcileCommand extends TenantScopedCommand
             // When it is not, the excluded channel is never reconciled AND
             // never gets a directory pointer, so its webhooks 404 forever. The
             // silence is the bug; say so.
-            $this->warnOnTenantScopeDrift(
+            $drift = $this->warnOnTenantScopeDrift(
                 'channels',
                 $tenant,
                 static fn (): int => Channel::query()->count(),
@@ -154,6 +154,34 @@ final class ChannelReconcileCommand extends TenantScopedCommand
             // the enumeration ABOVE completed: a throw mid-enumeration is
             // caught by forEachTenant() and this tenant's pointers are left
             // alone rather than deleted against a partial channel list.
+            //
+            // GATED ON ZERO DRIFT (N-2, 2026-08-05 re-gate). The probe above
+            // measures precisely "channels this tenant's database holds that
+            // the tenant_id predicate did NOT enumerate", and the prune's whole
+            // input is that enumeration. A non-zero delta therefore means the
+            // live-id set is known-incomplete, and pruning against an
+            // incomplete list deletes pointers for channels that still exist —
+            // in the worst case (every company drifted) the set is EMPTY, which
+            // pruneTenant() reads as "this tenant owns no channel at all" and
+            // answers by deleting every pointer it has. Warning and then
+            // pruning anyway would upgrade R1's "never reconciled" into
+            // "webhooks permanently dead", which is the opposite of what the
+            // signal exists for. Registration above still runs: it can only
+            // ADD pointers, so it is safe under drift and is what heals the
+            // channels the predicate did match.
+            if ($drift > 0) {
+                $this->warn(sprintf(
+                    'Tenant %s: skipping the webhook-directory prune — %d channel(s) in its database were excluded '
+                    .'by the tenant_id predicate, so the live-channel list is incomplete and pruning against it '
+                    .'would delete pointers for channels that still exist. Fix the drifted tenant_id column '
+                    .'(see the logged drift warning) and re-run.',
+                    $tenant->id,
+                    $drift,
+                ));
+
+                return self::SUCCESS;
+            }
+
             /** @var list<string> $liveChannelIds */
             $liveChannelIds = array_values(
                 $channels->map(static fn (Channel $channel): string => (string) $channel->id)->all(),
