@@ -1052,6 +1052,44 @@ fail LOUD when run bare) are a later wave.
 | Enrichment webhook chain | **CONVERTED — audit claim CONFIRMED, staging counter-evidence EXPLAINED** | See below. |
 | `ChannelWebhookController` | **CONVERTED** | Central `channel_webhook_directory` pointer + fail-closed 404. See below. |
 
+### DEPLOY STEP OWED — run `channels:reconcile` right after migrate (B3)
+
+**`php artisan migrate` creates `channel_webhook_directory` EMPTY.** Only the
+`Channel` model observer fills it going forward; every channel that already
+exists gets its pointer from the nightly `channels:reconcile` self-heal at
+03:30. So between the deploy and the first nightly sweep, **every pre-existing
+channel's webhook returns a fail-closed 404**. That is not a regression — those
+callbacks were 500ing on 42P01 before — but it is a window nothing in the
+release documentation closes.
+
+Post-migrate step for the release that carries this migration:
+
+```bash
+php artisan channels:reconcile        # backfills channel_webhook_directory
+```
+
+Notes for whoever runs it:
+
+- It is a `TenantScopedCommand`, so it iterates the central tenant directory
+  itself. Do **not** wrap it in `tenants:run` — that would run it once per
+  tenant, each of which would re-iterate the whole fleet.
+- Exit code is meaningful: non-zero means one or more tenants failed (missing
+  database, mis-migrated `channels` table). `tenants:run` always exits 0, which
+  is the second reason not to wrap it.
+- It is idempotent (`updateOrCreate` per channel) and safe to re-run.
+- Since 2026-08-05 it also PRUNES: pointers whose channel no longer exists in
+  the owning tenant, and pointers whose tenant has left the central directory.
+  A run against a healthy fleet reports `Pruned 0 stale webhook directory
+  pointer(s).`
+- Verify: `SELECT count(*) FROM channel_webhook_directory;` on CENTRAL must
+  equal the sum of `SELECT count(*) FROM channels` across the tenant databases.
+
+**The staging/production runbook entry itself is owed by the release owner** —
+the authoritative runbook (`docs/handoff/STAGING-RUNBOOK-first-tenant-2026-07-31.md`,
+gate E-9) is an owner-executed Phase-E document that this session does not
+edit. Tracked in
+`docs/superpowers/tickets/2026-08-05-channels-reconcile-post-migrate-deploy-step.md`.
+
 ### Beyond the audit: `enrichment:check-pending` was never a registered command
 
 `CheckPendingEnrichmentsCommand` lives in

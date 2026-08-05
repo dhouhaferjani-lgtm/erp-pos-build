@@ -77,6 +77,29 @@ Contract notes:
 
 Tests: `apps/api/tests/Feature/PlatformIntegration/EnrichmentWebhookTenantContextTest.php`.
 
+## Two properties of the contract the platform must know about (2026-08-05 wave-1 review)
+
+**M6 — the ERP treats `tenant_id` as AUTHORITATIVE and does not cross-check it.** Nothing verifies
+that the anchored tenant actually owns the `tracking_id` in the same payload. That is a deliberate
+consequence of the design — the anchor exists precisely because the ERP cannot resolve the tenant
+any other way, so there is nothing to check it against before the database switch. Physical
+isolation contains the blast radius: a wrong anchor selects the wrong tenant database, where the
+tracking id does not exist, and the job lands on the "unknown tracking id"
+`ModelNotFoundException` path rather than writing one tenant's enrichment into another's catalogue.
+The contract obligation is therefore on the platform: **`tenant_id` must be the exact value received
+as `X-Tenant-Id` on the originating submission, never derived, normalized, or defaulted.** A
+platform-side mix-up is not detectable by the ERP; it surfaces only as enrichments that silently
+never arrive.
+
+**The poller's fallback window does NOT cover terminal-status products.** While `tenant_id` is
+absent the ERP discards each webhook and relies on `enrichment:check-pending`, which re-polls
+products that are still `Pending`/`Enriching` with a non-null `platform_submission_id` and
+`updated_at < now()-10min`. A webhook for a product whose LOCAL status is already terminal — a
+re-enrichment echo, or a `Rejected`-after-review — never enters that window and is dropped for
+good. Ordinary results arrive late; those specific events do not arrive at all. This is the one
+case where "delayed, not lost" is inaccurate, and it stops being reachable the moment the platform
+ships the anchor.
+
 ## Bonus: this closes Finding A for free
 
 Finding A of `docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md` is the
