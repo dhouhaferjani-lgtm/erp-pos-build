@@ -33,8 +33,20 @@ use Illuminate\Support\Str;
  *
  * `parapharmacy_product_metadata` carries no `tenant_id` of its own — it
  * anchors on `product_id` — so the compatibility-mode predicate is a subquery
- * against the tenant's products. `--limit` becomes a PER-TENANT cap, which is
- * the only reading that survives iteration.
+ * against the tenant's products. `--limit` is a PER-TENANT cap on the number of
+ * metadata rows processed, which is the only reading that survives iteration.
+ *
+ * **The dictionary tables are NOT tenant-scopable (M7, 2026-08-05 wave-2
+ * tenancy review).** `ingredients`, `key_components`, `health_claims`,
+ * `certifications` and their `*_translations` carry no `tenant_id` column at
+ * all (`database/migrations/tenant/2026_01_08_*`), so the `findOrCreate*`
+ * helpers below read and write a database-wide dictionary. Under
+ * database-per-tenant that database IS the tenant's, so the dictionary is
+ * correctly per-tenant. In single-schema compatibility mode it is shared
+ * fleet-wide and cannot be scoped without a schema change — the
+ * compatibility-mode predicate above covers the metadata SELECTION only, never
+ * the dictionary. Pre-existing; recorded so the claim is not read wider than
+ * it is.
  *
  * The normalization LOGIC is untouched.
  */
@@ -86,13 +98,19 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
                         ->whereNotNull('active_ingredients')
                         ->orWhereNotNull('key_components')
                         ->orWhereNotNull('health_claims')
-                        ->orWhereNotNull('certifications'));
+                        ->orWhereNotNull('certifications'))
+                    ->orderBy('product_id');
 
-                if ($limit !== null) {
-                    $query->limit($limit);
-                }
-
-                $total = $query->count();
+                // M1 (2026-08-05 wave-2 tenancy review): `--limit` was inert.
+                // `->limit($n)` does not cap `count()` — SQL LIMIT on an
+                // aggregate still returns the full count — and `chunk()`
+                // overwrites limit/offset via `forPage()`, so the whole tenant
+                // was processed whatever the operator asked for. The cap is now
+                // applied where it can actually hold: on the number of rows the
+                // chunk callback processes, with the reported total clamped to
+                // match.
+                $available = $query->count();
+                $total = $limit !== null ? min($limit, $available) : $available;
                 $this->info(sprintf(
                     'TENANT %s (%s): found %d product(s) with JSONB data to migrate',
                     $tenant->id,
@@ -101,9 +119,16 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
                 ));
 
                 $tenantExit = self::SUCCESS;
+                $processed = 0;
 
-                $query->chunk(100, function ($metadataRecords) use ($dryRun, &$tenantExit) {
+                $query->chunk(100, function ($metadataRecords) use ($dryRun, $limit, &$tenantExit, &$processed) {
                     foreach ($metadataRecords as $metadata) {
+                        if ($limit !== null && $processed >= $limit) {
+                            return false;
+                        }
+
+                        $processed++;
+
                         try {
                             $this->migrateProduct($metadata, $dryRun);
                             $this->migratedCount++;
@@ -113,6 +138,8 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
                             $tenantExit = self::FAILURE;
                         }
                     }
+
+                    return true;
                 });
 
                 return $tenantExit;
@@ -137,9 +164,20 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
         return $this->errorCount > 0 ? self::FAILURE : self::SUCCESS;
     }
 
+    /**
+     * M3 (2026-08-05 wave-2 tenancy review): `--dry-run` used to roll back by
+     * THROWING inside `DB::transaction()`. The caller catches `\Exception` and
+     * counts it, so a perfectly healthy dry run printed
+     * "Error migrating product … Dry run - rolling back transaction" once per
+     * row, incremented `errorCount` once per row, and — since the wave's
+     * conversion — set that tenant's exit to FAILURE. The rollback is now
+     * explicit: a dry run is the DESIGNED outcome, not an error.
+     */
     private function migrateProduct(ParapharmacyProductMetadata $metadata, bool $dryRun): void
     {
-        DB::transaction(function () use ($metadata, $dryRun) {
+        DB::beginTransaction();
+
+        try {
             // Migrate active ingredients
             if ($metadata->active_ingredients && is_array($metadata->active_ingredients)) {
                 $this->migrateIngredients($metadata, $metadata->active_ingredients, $dryRun);
@@ -159,11 +197,19 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
             if ($metadata->certifications && is_array($metadata->certifications)) {
                 $this->migrateCertifications($metadata, $metadata->certifications, $dryRun);
             }
+        } catch (\Throwable $e) {
+            DB::rollBack();
 
-            if ($dryRun) {
-                throw new \Exception('Dry run - rolling back transaction');
-            }
-        });
+            throw $e;
+        }
+
+        if ($dryRun) {
+            DB::rollBack();
+
+            return;
+        }
+
+        DB::commit();
     }
 
     private function migrateIngredients(ParapharmacyProductMetadata $metadata, array $ingredients, bool $dryRun): void

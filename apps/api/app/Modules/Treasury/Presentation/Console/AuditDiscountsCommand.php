@@ -43,8 +43,14 @@ use Illuminate\Support\Facades\DB;
  * The scope must be named — `--tenant=<uuid>` or `--all-tenants` — because a
  * gate that quietly audits zero tenants and exits 0 is worse than no gate.
  *
- * The tolerance-boundary LOGIC and the exit-code contract (non-zero on
- * violations, always zero with `--dry-run`) are untouched.
+ * The tolerance-boundary LOGIC is untouched. The exit-code contract gained one
+ * case (M4, 2026-08-05 wave-2 tenancy review): a TENANCY failure — an unknown
+ * `--tenant`, a tenant whose database could not be opened, no scope named at
+ * all — is returned BEFORE the `--dry-run` always-zero branch, so `--dry-run`
+ * is now "always zero once the audit actually ran", not "always zero". That is
+ * the correct reading: `--dry-run` exists to stop a VIOLATION COUNT from
+ * failing the run, not to hide the fact that nothing was audited. The
+ * violation-count half is unchanged.
  */
 final class AuditDiscountsCommand extends TenantScopedCommand
 {

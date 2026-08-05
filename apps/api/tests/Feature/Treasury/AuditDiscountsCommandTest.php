@@ -189,6 +189,42 @@ final class AuditDiscountsCommandTest extends TestCase
         $cmd->expectsOutputToContain('Refusing to run without an explicit scope')->assertExitCode(2);
     }
 
+    /**
+     * M6 (2026-08-05 wave-2 tenancy review). The other six explicit-scope
+     * backfills cover this through data providers; this one covered
+     * refusal-without-scope and unknown-tenant but not the both-flags case.
+     * Base-class behaviour, but this command is the one an operator reaches for
+     * under time pressure, so the refusal must be pinned here too.
+     */
+    public function test_tenant_and_all_tenants_are_mutually_exclusive(): void
+    {
+        /** @var PendingCommand $cmd */
+        $cmd = $this->artisan('tolerance:audit-discounts', [
+            '--tenant' => $this->company->tenant_id,
+            '--all-tenants' => true,
+        ]);
+        $cmd->expectsOutputToContain('--tenant and --all-tenants are mutually exclusive. Nothing was processed.')
+            ->doesntExpectOutputToContain('no violations')
+            ->assertExitCode(2);
+    }
+
+    /**
+     * M4's other half: `--dry-run` must not launder a TENANCY failure into a
+     * zero exit. It exists to stop a violation COUNT from failing the run, not
+     * to hide the fact that nothing was audited.
+     */
+    public function test_dry_run_does_not_mask_a_tenancy_failure(): void
+    {
+        /** @var PendingCommand $cmd */
+        $cmd = $this->artisan('tolerance:audit-discounts', [
+            '--tenant' => '00000000-0000-0000-0000-000000000000',
+            '--dry-run' => true,
+        ]);
+        $cmd->expectsOutputToContain('not found in the central tenant directory')
+            ->doesntExpectOutputToContain('no violations')
+            ->assertFailed();
+    }
+
     public function test_command_fails_loudly_for_a_tenant_absent_from_the_directory(): void
     {
         /** @var PendingCommand $cmd */

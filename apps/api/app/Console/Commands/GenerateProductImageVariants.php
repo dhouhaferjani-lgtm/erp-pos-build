@@ -26,14 +26,21 @@ use App\Modules\Tenant\Domain\Tenant;
  * `GenerateRenditions` job still carries the asset's own `tenant_id` and
  * rebinds tenant context in the worker — that was already correct and is
  * unchanged.
+ *
+ * **`--product` removed (M5, 2026-08-05 wave-2 tenancy review).** The option
+ * was declared and never read — also true before the conversion — so
+ * `--product=X --all-tenants` silently regenerated renditions for the whole
+ * fleet. A flag that is read by nothing is worse than an absent one: Symfony
+ * accepts it, so the operator gets no error and no narrowing. Removed rather
+ * than wired, since `media_assets` has no `product_id` of its own and the
+ * narrowing would need a join nobody has asked for.
  */
 final class GenerateProductImageVariants extends TenantScopedCommand
 {
     protected $signature = 'products:generate-image-variants
         {--tenant= : Tenant UUID to process (required unless --all-tenants)}
         {--all-tenants : Deliberate fleet-wide run over every reachable tenant}
-        {--force : Regenerate even if renditions already exist}
-        {--product= : Process only images for a specific product ID}';
+        {--force : Regenerate even if renditions already exist}';
 
     protected $description = 'Generate WebP thumbnail variants for existing product images (per tenant)';
 
