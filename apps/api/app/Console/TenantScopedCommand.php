@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Console\Command;
@@ -28,7 +29,9 @@ use Throwable;
  * `CompanyContext` for the run.
  *
  * **(a-per-tenant-iter)** — scheduler / batch command that iterates every
- * tenant. Subclass calls {@see self::forEachTenant()} from
+ * ACTIVE tenant ({@see TenantStatus::Active}; see
+ * {@see self::forEachTenant()} for why non-active statuses are skipped).
+ * Subclass calls {@see self::forEachTenant()} from
  * {@see self::executeCommand()} and supplies a closure that does the
  * per-tenant work under the bound tenant. The closure receives the
  * {@see Tenant} model and returns an exit code; the base aggregates them.
@@ -145,6 +148,22 @@ abstract class TenantScopedCommand extends Command
      * continue-on-throw rather than an opt-in flag (surveyed 2026-07-09,
      * audit-fix-1).
      *
+     * **Active-only iteration (2026-08-05, staging follow-up A7):** only
+     * tenants whose central `status` is {@see TenantStatus::Active} run the
+     * closure. Every other lifecycle status — Suspended (database preserved
+     * but access cut off at request time by the same check
+     * `ResolveTenancy`/`AuthController` apply), Pending (provisioning never
+     * completed, so the per-tenant database may not exist yet) and Archived —
+     * is SKIPPED with a single INFO log line per tenant per run. Before this
+     * filter, `Tenant::all()` was unfiltered and every scheduler tick called
+     * `tenancy()->initialize()` on a missing/closed database, so the
+     * continue-on-throw handler below emitted an ERROR per tenant per tick:
+     * unactionable alert noise for a deliberate lifecycle state. A skipped
+     * tenant is NOT a failure — it never degrades the aggregate exit code.
+     * Commands that must reach non-active tenants (deprovisioning,
+     * re-provisioning, lifecycle repair) are cat-(a-singleshot) and take an
+     * explicit `--tenant` instead; they never route through here.
+     *
      * @param  callable(Tenant): int  $fn
      */
     protected function forEachTenant(callable $fn): int
@@ -154,6 +173,16 @@ abstract class TenantScopedCommand extends Command
 
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
+            if (! $tenant->isActive()) {
+                Log::info('TenantScopedCommand::forEachTenant skipping non-active tenant.', [
+                    'tenant_id' => $tenant->id,
+                    'tenant_status' => $tenant->status->value,
+                    'command' => static::class,
+                ]);
+
+                continue;
+            }
+
             $initialized = false;
             $exit = self::SUCCESS;
 

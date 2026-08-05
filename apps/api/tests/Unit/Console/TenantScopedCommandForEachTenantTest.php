@@ -11,9 +11,11 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
 use Mockery;
 use Mockery\LegacyMockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -100,12 +102,103 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
         self::assertContains($t2->id, $processed);
     }
 
-    private function createTenant(string $slug): Tenant
+    /**
+     * 2026-08-05 (staging follow-up A7): `forEachTenant()` used to iterate
+     * `Tenant::all()` UNFILTERED. A suspended tenant's database is preserved
+     * but its access is cut off at request time, and an archived/pending one
+     * may have no provisioned database at all — so under db-per-tenant every
+     * scheduler tick fired `tenancy()->initialize()` against a missing/closed
+     * database, and the resulting Throwable was logged at ERROR level by the
+     * continue-on-throw handler. That is unactionable alert noise for a
+     * deliberate lifecycle state.
+     *
+     * Contract now: only {@see TenantStatus::Active} tenants run the closure;
+     * every other status is skipped with a single INFO log per tenant per run
+     * and does NOT degrade the aggregate exit code.
+     *
+     * @return array<string, array{0: TenantStatus, 1: string}>
+     */
+    public static function nonActiveStatusProvider(): array
+    {
+        return [
+            'suspended' => [TenantStatus::Suspended, 'suspended'],
+            'pending' => [TenantStatus::Pending, 'pending'],
+            'archived' => [TenantStatus::Archived, 'archived'],
+        ];
+    }
+
+    #[DataProvider('nonActiveStatusProvider')]
+    public function test_non_active_tenants_are_skipped_and_logged_at_info(TenantStatus $status, string $slugSuffix): void
+    {
+        $active = $this->createTenant('active-tenant-'.$slugSuffix);
+        $skipped = $this->createTenant('skipped-tenant-'.$slugSuffix, $status);
+
+        $processed = [];
+
+        /** @var list<MessageLogged> $records */
+        $records = [];
+        Log::listen(function (MessageLogged $message) use (&$records): void {
+            $records[] = $message;
+        });
+
+        $exit = $this->probeCommand()->runForEachTenant(function (Tenant $tenant) use (&$processed): int {
+            $processed[] = $tenant->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(
+            Command::SUCCESS,
+            $exit,
+            'Skipping a non-active tenant is a deliberate no-op, not a failure — the aggregate must stay SUCCESS.',
+        );
+        self::assertSame([$active->id], $processed);
+
+        $skipLines = array_values(array_filter(
+            $records,
+            static fn (MessageLogged $m): bool => ($m->context['tenant_id'] ?? null) === $skipped->id,
+        ));
+
+        self::assertCount(
+            1,
+            $skipLines,
+            'A skipped tenant must produce exactly ONE log line per run — not one per scheduler retry loop.',
+        );
+        self::assertSame('info', $skipLines[0]->level, 'A deliberate lifecycle state is not an error.');
+        self::assertSame($status->value, $skipLines[0]->context['tenant_status']);
+
+        self::assertSame(
+            [],
+            array_values(array_filter($records, static fn (MessageLogged $m): bool => $m->level === 'error')),
+            'Skipping a non-active tenant must NOT go through the continue-on-throw ERROR path.',
+        );
+    }
+
+    public function test_non_active_tenant_never_initializes_tenancy_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $skipped = $this->createTenant('never-initialized', TenantStatus::Suspended);
+
+        $seen = [];
+
+        $exit = $this->probeCommand()->runForEachTenant(function (Tenant $tenant) use (&$seen): int {
+            $seen[] = $tenant->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::SUCCESS, $exit);
+        self::assertNotContains($skipped->id, $seen);
+        self::assertFalse(tenancy()->initialized);
+    }
+
+    private function createTenant(string $slug, TenantStatus $status = TenantStatus::Active): Tenant
     {
         return Tenant::create([
             'name' => str_replace('-', ' ', ucfirst($slug)),
             'slug' => $slug,
-            'status' => TenantStatus::Active,
+            'status' => $status,
             'plan' => SubscriptionPlan::Professional,
         ]);
     }
