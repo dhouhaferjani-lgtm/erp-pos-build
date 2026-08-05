@@ -280,6 +280,18 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
+      # tests/Feature/Security is the module/flag/permission regression lane:
+      # per-module access control, the marketplace kill-switch (both halves) and
+      # the first-tenant production security contract. It lives under
+      # tests/Feature, so `--testsuite=Unit` above never touched it and the two
+      # pgsql --filter allowlists do not name it — i.e. before this step the
+      # directory ran in NO CI gate at all (found by the 2026-08-05 marketplace
+      # kill-switch review). Whole directory, not a filter list, so new classes
+      # are gated the moment they land. SQLite-only by design: every test in it
+      # is route/permission/config-level and needs no PG-specific behaviour.
+      - name: Security regression suite (module gating + kill-switches)
+        run: ./vendor/bin/phpunit tests/Feature/Security
+
   backend-test-pgsql:
     name: Backend Tests — PG-only invariants (PHPUnit + PostgreSQL)
     runs-on: ubuntu-latest
