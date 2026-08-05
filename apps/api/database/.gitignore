@@ -1,1 +1,10 @@
 *.sqlite*
+
+# Per-tenant SQLite databases: Stancl names them `prefix + tenant key`
+# (config/tenancy.php database.prefix = 'tenant', suffix = ''), i.e.
+# `tenant<uuid>` with NO extension, so `*.sqlite*` above does not cover them.
+# Tests\Traits\ProvisionsTenantDatabases unlinks the file on a normal teardown,
+# but a fatal or an interrupted run leaves an untracked — and therefore
+# committable — leftover. Anchored with a leading slash so it cannot swallow
+# database/migrations/tenant/. 2026-08-05 re-gate, N4.
+/tenant*

@@ -80,8 +80,9 @@ trait BindsTenantContext
         if ($tenant === null) {
             throw new RuntimeException(sprintf(
                 'BindsTenantContext: tenant "%s" not found — cannot rebind queue worker context. '.
-                'Job class: %s. The dispatched tenant may have been soft-deleted, suspended, or never existed; '.
-                'the queue worker is failing the job rather than silently processing under an empty CompanyContext.',
+                'Job class: %s. The central `tenants` row is gone (deprovisioned) or never existed — note that a '.
+                'SUSPENDED tenant resolves normally, so suspension is NOT the cause; the queue worker is failing '.
+                'the job rather than silently processing under an empty CompanyContext.',
                 $this->tenantId,
                 static::class,
             ));
