@@ -36,6 +36,29 @@ export { addMoney, subMoney, TODAY } from './treasury-support'
 
 export const PREFIX = 'WX'
 
+/**
+ * Resilient login: /auth/login is throttled and this exclusive leg runs many
+ * specs back-to-back. Backs off on 429 (and transient non-2xx) instead of
+ * failing the whole suite. Same Session shape as treasury-support's login().
+ */
+export async function loginResilient(
+  request: APIRequestContext,
+  role: TreRole,
+  attempts = 6,
+): Promise<Session> {
+  let lastStatus = 0
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await login(request, role)
+    } catch {
+      lastStatus = 429
+      // linear-ish backoff: 3s, 6s, 9s ... keeps us under the throttle window.
+      await new Promise((r) => setTimeout(r, 3000 * (i + 1)))
+    }
+  }
+  throw new Error(`loginResilient(${role}) exhausted ${attempts} attempts (last ~${lastStatus})`)
+}
+
 /** Uniqueness across re-runs against the live stack. */
 export function uniqueName(label: string): string {
   return `${PREFIX}-${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
