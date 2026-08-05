@@ -18,6 +18,7 @@ use App\Modules\Channel\Domain\Models\Channel;
 use App\Modules\Channel\Domain\Models\ChannelProductMapping;
 use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryEntry;
 use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryRegistrar;
+use App\Modules\Channel\Presentation\Controllers\ChannelWebhookController;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Product\Domain\Product;
@@ -35,6 +36,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use ReflectionProperty;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\TestCase;
 
 /**
@@ -158,23 +160,100 @@ final class ChannelWebhookTenantResolutionTest extends TestCase
     }
 
     /**
-     * Layer 1 of the B1 fix: the route itself refuses a non-UUID segment, so a
-     * malformed id never even enters the middleware stack.
+     * N-3 (2026-08-05 re-gate). B1's layer 1 was `->whereUuid('channelId')` on
+     * the route. It did stop the 22P02, but it also made the malformed case
+     * answer the ROUTER's body (`{"message":"The route … could not be
+     * found."}`) while every other fail-closed case answers
+     * `{"message":"Unknown channel."}` — so the "every 404 on this route is
+     * byte-identical" claim held at the controller layer only.
+     *
+     * A companion catch-all route is not available: `RouteCollection` keys on
+     * method + domain + URI, so a second `POST {channelId}` registration
+     * OVERWRITES the constrained one rather than sitting behind it. The
+     * constraint is therefore dropped and the controller's own `Str::isUuid()`
+     * guard — until now masked by it (N-4) — renders the answer.
+     *
+     * That is a net gain, not a trade: route-group middleware never runs for a
+     * request the ROUTER refuses, so with the constraint in place a
+     * malformed-id flood bypassed `throttle:channel-webhook` altogether. This
+     * test is the proof that it no longer does.
      */
-    public function test_the_webhook_route_constrains_the_channel_id_to_a_uuid(): void
+    public function test_a_malformed_channel_id_is_rate_limited_like_any_other(): void
     {
-        $route = Route::getRoutes()->getByName('channels.webhooks.ingest');
+        Queue::fake();
 
-        $this->assertNotNull($route);
+        for ($i = 0; $i < 60; $i++) {
+            $this->postWebhook('not-a-uuid', ['external_order_id' => 'EXT-RL-BAD'])->assertNotFound();
+        }
 
-        $pattern = $route->wheres['channelId'] ?? null;
+        $this->postWebhook('not-a-uuid', ['external_order_id' => 'EXT-RL-BAD'])->assertStatus(429);
+    }
 
-        $this->assertIsString(
-            $pattern,
-            'The unauthenticated webhook route must constrain {channelId} to a UUID.',
+    /**
+     * The other half of N-3: byte-identical at the HTTP layer, not merely
+     * "both are 404s".
+     */
+    public function test_a_malformed_channel_id_answers_the_same_404_bytes_as_an_unknown_one(): void
+    {
+        Queue::fake();
+
+        $unknown = $this->postWebhook((string) Str::uuid(), []);
+        $malformed = $this->postWebhook('not-a-uuid', []);
+
+        $this->assertSame($unknown->getStatusCode(), $malformed->getStatusCode());
+        $this->assertSame(
+            $unknown->getContent(),
+            $malformed->getContent(),
+            'A malformed channel id and an unknown one must be indistinguishable in the response BODY, not only in '
+            .'the status code.',
         );
-        $this->assertSame(1, preg_match('~^'.$pattern.'$~', (string) Str::uuid()));
-        $this->assertSame(0, preg_match('~^'.$pattern.'$~', 'not-a-uuid'));
+        $this->assertSame(
+            $unknown->headers->get('content-type'),
+            $malformed->headers->get('content-type'),
+        );
+    }
+
+    /**
+     * N-4. The controller's own `Str::isUuid()` guard was never exercised: the
+     * route constraint refused a malformed id before dispatch, so every HTTP
+     * test in this file measured the ROUTE. Invoking the controller directly
+     * bypasses the router entirely, which is also the shape any future caller
+     * takes — a second route, a console re-drive, a copy of this endpoint.
+     *
+     * The guard is redundant WITH {@see ChannelWebhookDirectoryRegistrar::resolveTenantId()},
+     * by design (defence in depth against a uuid-typed column): both answer a
+     * non-UUID with "no tenant" and neither queries. So this pins the
+     * controller's boundary contract — malformed in, `NotFoundHttpException
+     * ('Unknown channel.')` out, nothing read — rather than the single `if`.
+     * The registrar's half is pinned separately by
+     * {@see self::test_the_directory_lookup_rejects_a_non_uuid_without_querying()}.
+     */
+    public function test_the_controller_rejects_a_non_uuid_when_invoked_without_the_route_layer(): void
+    {
+        Queue::fake();
+
+        $controller = app(ChannelWebhookController::class);
+        $request = Request::create(
+            '/api/v1/webhooks/channels/not-a-uuid',
+            'POST',
+            server: ['HTTP_X_CHANNEL_TIMESTAMP' => (string) time()],
+        );
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        try {
+            $controller($request, 'not-a-uuid');
+            $this->fail('The controller must fail closed on a non-UUID channel id.');
+        } catch (NotFoundHttpException $e) {
+            $this->assertSame('Unknown channel.', $e->getMessage());
+        } finally {
+            $queries = DB::getRawQueryLog();
+            DB::disableQueryLog();
+        }
+
+        $this->assertSame([], $queries, 'A non-UUID id must not reach any query, let alone the uuid-typed column.');
+        Queue::assertNothingPushed();
     }
 
     /**

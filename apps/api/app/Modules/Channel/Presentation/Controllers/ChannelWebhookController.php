@@ -84,10 +84,15 @@ final class ChannelWebhookController extends Controller
             throw new HttpException(403, 'Webhook timestamp expired.');
         }
 
-        // The route already constrains {channelId} to a UUID; this repeats it so
-        // the 22P02 guard does not depend on that one line staying there. Same
-        // answer as an unknown channel — a malformed id must not be tellable
-        // apart from an unused one (2026-08-05 review, B1).
+        // THE guard for a malformed id, not a repeat of one (N-3/N-4,
+        // 2026-08-05 re-gate). The route used to carry `->whereUuid(…)`, which
+        // both masked this line and let a malformed-id flood past
+        // `throttle:channel-webhook` — route-group middleware never runs for a
+        // segment the router itself refuses. `channel_webhook_directory
+        // .channel_id` is a PG `uuid` column, so an unguarded id raises 22P02
+        // and, with no QueryException renderer, a 500 on an unauthenticated
+        // route. Same answer as an unknown channel — a malformed id must not be
+        // tellable apart from an unused one (2026-08-05 review, B1).
         if (! Str::isUuid($channelId)) {
             throw new NotFoundHttpException('Unknown channel.');
         }
