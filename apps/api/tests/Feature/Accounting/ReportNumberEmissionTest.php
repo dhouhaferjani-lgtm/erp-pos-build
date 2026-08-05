@@ -297,6 +297,13 @@ final class ReportNumberEmissionTest extends TestCase
 
         // SQLite / PHP-computed shape: the same values as floats must agree,
         // digit for digit, with the string path.
+        //
+        // Domain of validity: the float branch normalises with `number_format` at
+        // MONEY_NORMALISATION_SCALE (4), which is exact for every magnitude below
+        // 1e13 — above that a double can no longer represent 4 decimals and the
+        // two paths would diverge. That ceiling is three orders beyond
+        // `decimal(16,4)`'s own headroom, so it is unreachable for money; the
+        // string branch (the production path on PostgreSQL) has no such limit.
         $this->assertSame('300.001', $formatter->money(300.0005, 3));
         $this->assertSame('777.78', $formatter->money(777.775, 2));
 

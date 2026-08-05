@@ -242,9 +242,15 @@ test('MTP-GL-25: switching company re-scopes the trial balance, and the currency
     eurCredit!.credit,
     'F-3 FIXED: …and its credit at the SAME scale, not the bcmul scale 4',
   ).toMatch(/^-?\d+\.\d{2}$/)
+  // NOTE — this one assertion is NOT a discriminator: EUR's scale is 2, and
+  // `'0.00'` is also the pre-fix hardcoded literal, so the value is
+  // byte-identical before and after the fix. It is kept because the zero side
+  // must still be exactly this; the assertion that actually proves the zero
+  // side became currency-derived is the TND one at the end of this test
+  // (`/^-?\d+\.\d{3}$/`), which the old literal could never satisfy.
   expect(
     eurDebit!.credit,
-    'F-3 FIXED: the ZERO side carries the currency scale too, not a bare "0.00" literal',
+    'F-3: the EUR zero side is 0.00 — same as the old literal, see the TND check below',
   ).toBe('0.00')
   const eurTotals = tb2.data as unknown as { total_debit: string; total_credit: string }
   expect(

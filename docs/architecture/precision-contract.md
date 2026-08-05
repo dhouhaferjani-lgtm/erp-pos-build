@@ -14,7 +14,7 @@
 
 ## Storage tier
 
-- Currency columns are `decimal(N,3)` (the canonical floor — accommodates TND's 3 millièmes). EUR/USD values store fine at scale 3 (`'20.000'` == `20.00`); the 3rd decimal is `0`. Display truncates to `getDecimals(currency)`.
+- Currency columns are `decimal(N,3)` (the canonical floor — accommodates TND's 3 millièmes). EUR/USD values store fine at scale 3 (`'20.000'` == `20.00`); the 3rd decimal is `0`. Display renders at `getDecimals(currency)` — **rounding**, not truncating; see § Emission & display for the ruling and its rationale.
 - Quantity columns are `decimal(N,4)` (parapharmacy fractional sales: `0.5000 kg`, `0.0010`).
 - Eloquent `decimal:N` casts are declared on every money/quantity model property so reads return canonical strings.
 - DECIMAL **widening** is non-destructive on PostgreSQL. **Narrowing** needs a per-column PG pre-check that aborts on data that would truncate (see `widen_*` / the pos_orders scale-3 narrowing migration).
@@ -25,7 +25,7 @@
 - Intermediates compute at `scale + 1` (cart/tax line math) or `scale + 4` (WAC, landed cost), then round **once** at the boundary via `CurrencyScale::bcformat(..., scale)`.
 - `CurrencyScale::bcformat` **truncates** toward zero (`bcadd($v,'0',scale)`). This is the canonical write-boundary behavior. WAC/landed-cost therefore truncate (≤1-millième downward bias on COGS) — *flagged for owner/accountant sign-off; switch to half-up is a localized change if desired.*
 - Receipt/return VAT is computed by the shared `App\Modules\POS\Application\Concerns\RoundsVat` trait so creation and return paths cannot drift.
-- Forbidden: `number_format((float)$v, …)`, `(float)$model->decimalProp`, native `* / + -` on money/quantity.
+- Forbidden: `number_format((float)$v, …)`, `(float)$model->decimalProp`, native `* / + -` on money/quantity. **The forbidden thing is the CAST**, not the function: see the emission-normalisation exemption in § Emission & display for the one place `number_format` is legitimate — a value that ALREADY arrives as a float.
 
 ## Ingress tier (FormRequests / controllers)
 
@@ -57,6 +57,8 @@ JSONB columns bypass Eloquent casts, so producers must pre-canonicalize numeric 
 ## Emission & display
 
 **Presentation-boundary money display ROUNDS half-away-from-zero — `CurrencyScale::bcround($value, $scale)` — and this deliberately differs from the write boundary, which truncates.** For *display*, it supersedes the "Display truncates to `getDecimals(currency)`" line in § Storage tier. Rationale (ruled 2026-08-05, `docs/superpowers/reviews/2026-08-05-l4-api-precision-gate.md` Q4): the POS device rounds this way — `apps/pos/src/lib/currency.ts` formats through `Intl.NumberFormat` (`halfExpand`) and `apps/pos/src/lib/decimal.ts` runs `Big.RM = 1` — so a truncating server would MANUFACTURE a server-vs-device millime disagreement on the Z/EOD cash surface. `bcround`'s own docblock (`app/Shared/Domain/CurrencyScale.php`) already designates it the presentation / GL-posting boundary helper, per NC 01 §62 (carry higher precision at rest, round only at the boundary). Live example: `pos_shifts.expected_cash` is `decimal(16,4)`, so a TND report must render `300.0005` as `300.001`, not `300.000` (`FormatsReportNumbers::decimalString`, `TrialBalanceService::emit`; pinned by `ReportNumberEmissionTest` + `TrialBalanceCurrencyScaleTest`). **Write/canonicalization boundaries are unchanged — they still truncate via `bcformat`**, including the fiscal-hash canonicalization, whose server-vs-device divergence remains the open item flagged in § Frontend.
+
+**Emission-normalisation exemption.** A value that ALREADY arrives as a `float` — a PHP-side computation, or a driver that returns aggregates as float (SQLite's `SUM()`; PostgreSQL returns `numeric` as a *string*, so this branch is dead in production) — is normalised to a numeric string with `number_format($value, MONEY_NORMALISATION_SCALE, '.', '')` *before* the `bcround` above (`FormatsReportNumbers::numericString`, scale 4). This is NOT the forbidden `number_format((float) $v, …)`: there is no cast, the float is the input, and the alternative — `bcformat`, which truncates — silently ate the half (`777.775` is held as `777.77499999999998`, truncating to `777.7749` and rendering `777.77` instead of `777.78`) BEFORE the currency rounding could ever see it. Domain of validity: exact for every magnitude below `1e13`, above which a double can no longer represent 4 decimals — three orders beyond `decimal(16,4)`'s own headroom and unreachable for money. A precision sweep that greps `number_format` will find this call; it is correct, and reverting it reintroduces the truncation bug (pinned by `ReportNumberEmissionTest`).
 
 Quantity has TWO scales: the canonical **storage** scale (`decimal(N,4)`, unit-agnostic) and the **display** scale, which is per-unit — `units.decimal_places` (pieces → `0`, so a whole number; weight → `3`; etc.), rounded with `units.rounding_method`. A quantity surfaced to a human (a rendered cell, an input's prefill/step) must render at the product unit's precision, NOT at raw scale 4 (`'7.0000'` for 7 pieces is wrong). Storage, wire, and internal arithmetic stay scale-4; formatting to the unit happens once, at the emission boundary.
 

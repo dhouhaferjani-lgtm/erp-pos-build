@@ -10,27 +10,44 @@ import i18n from './i18n'
 
 /**
  * Last-resort currency when no company is selected (logged-out shells, unit
- * tests). Never reached on a real page — every authenticated view has a company.
+ * tests). Kept identical to `useCurrency.ts`'s own fallback so the two cannot
+ * drift into disagreeing about the same screen.
  */
 const FALLBACK_CURRENCY = 'EUR'
 
 /**
- * The currency every un-parameterised money format resolves against.
+ * FALLBACK OF LAST RESORT — **always pass the entity's currency instead.**
  *
- * W-6 D6: `formatCurrency` used to default to a hardcoded `'EUR'`, so the six
- * FinanceWidget tiles on a Tunisian company rendered `228 728,39 EUR` next to
- * four sibling StatCards rendering `228 728,386 TND` — two currencies in one
- * viewport, from the same numbers. The default now follows the ACTIVE COMPANY,
- * so a call site that forgets to pass a currency degrades to "the company's
- * currency" rather than to "euros".
+ * ## This is not reactive
  *
- * Read imperatively (not via the hook) because these helpers are also called
- * from non-React code; zustand's `getState()` is the supported escape hatch.
- * Passing an explicit `currency` — the ENTITY's currency, e.g. the document's
- * rather than the company's — always wins and is the preferred call shape.
+ * `getState()` reads the store WITHOUT subscribing, so a component that relies
+ * on this default will **not re-render when the user switches company**: its
+ * money keeps rendering in the previous company's currency until something else
+ * re-renders it. There is no way to fix that from inside a plain function — the
+ * only reactive path is the `useCurrency()` hook (or an explicit `currency`
+ * threaded from a `useCompanyStore` selector). Treat a call site that omits
+ * `currency` as a latent staleness bug, not as a supported shortcut.
+ *
+ * ## Why it exists at all
+ *
+ * W-6 D6: `formatCurrency` used to default to a hardcoded `'EUR'`, and the scale
+ * is derived from the currency — so the six FinanceWidget tiles on a Tunisian
+ * company rendered `228 728,39 EUR` next to four sibling StatCards rendering
+ * `228 728,386 TND`: two currencies in one viewport, from the same numbers. A
+ * hardcoded default is silently WRONG on every non-EUR tenant; the company's
+ * currency is merely possibly-stale. This exists to make the failure mode of a
+ * forgotten `currency` recoverable, not to make omitting it acceptable.
+ *
+ * Every current caller in `src/` passes an explicit currency, so the default is
+ * a safety net rather than a live mechanism — keep it that way.
+ *
+ * The optional-chained read is deliberate: partial `useCompanyStore` test doubles
+ * that omit `getState`/`getCurrentCompany` degrade to the same fallback as a real
+ * store with no company selected, rather than throwing (they are still lying
+ * doubles — see the web follow-ups ticket).
  */
 function activeCurrency(): string {
-  return useCompanyStore.getState().getCurrentCompany()?.currency ?? FALLBACK_CURRENCY
+  return useCompanyStore.getState?.()?.getCurrentCompany?.()?.currency ?? FALLBACK_CURRENCY
 }
 
 export interface CurrencyFormatOptions {

@@ -18,8 +18,20 @@ export function FinanceWidget() {
   const { data, isLoading } = useFinanceSummary()
   // W-6 D6: every tile used to call `formatCurrency(value)` with NO options, and
   // the helper defaulted to EUR — so a Tunisian company's six tiles rendered as
-  // euros at 2 decimals, beside four sibling StatCards rendering TND at 3.
-  // Format through the company-bound formatter, the way that sibling does.
+  // euros at 2 decimals, beside four sibling StatCards on the same viewport
+  // rendering TND at 3.
+  //
+  // `useCurrency()` is the REACTIVE path: it subscribes to the company store, so
+  // the tiles re-render on a company switch. `lib/format`'s company default is a
+  // non-reactive safety net and is not a substitute for this.
+  //
+  // NOT full parity with the StatCards, and deliberately not claimed as such: the
+  // sibling goes through `formatReportCurrency(amount, currentCompany)`
+  // (`features/finance/pages/reportPageUtils.ts`), which resolves the locale from
+  // `company.locale`, while `useCurrency` resolves it from the CURRENCY
+  // (`getLocale(currency)`). The two coincide for every seeded company (all
+  // French locales) and diverge for e.g. an Italian EUR company — one locale
+  // source is still owed; see docs/superpowers/tickets/2026-08-05-l4-web-followups.md.
   const { format: formatMoney } = useCurrency()
 
   if (isLoading) {

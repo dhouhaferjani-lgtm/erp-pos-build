@@ -308,3 +308,148 @@ diff is inside the `FormatsReportNumbers` history docblock (`:19`).
 Replace the false "console contexts" justification in `SalesReportService.php:24-31` / `TrialBalanceService.php:81-86`
 with the real mixed-currency limitation (+ ticket), and add the two rounding tests (`300.0005` → `300.001`,
 `777.775` → `777.78`) that pin the Q4 ruling — everything else can ship as a follow-up ticket.
+
+---
+---
+
+# ROUND 2 — narrow re-verification of `dc71099b8`
+
+**Scope:** `git diff HEAD~1..HEAD` on `dc71099b8` ("address the L4 API/precision merge gate"). Re-gate limited to the
+five items the coordinator asked about. Round-1 findings not re-litigated.
+
+## VERDICT — **CLEAR TO MERGE**
+
+No blockers. One documentation-coherence item (R2-1) that I'd like landed with the merge but which the new test net
+already protects against; four Minors.
+
+The consequential discovery is **real, correctly diagnosed, and correctly fixed** — and it was a genuine live bug, not
+just a test-harness artefact. I reproduced the root cause independently:
+
+```
+value      OLD numericString (bcformat@4, TRUNCATES)   NEW (number_format@4, ROUNDS)
+777.775 -> 777.7749  -> bcround@2 -> 777.77   (WRONG)  777.7750 -> bcround@2 -> 777.78  (right)
+300.0005-> 300.0004  -> bcround@3 -> 300.000  (WRONG)  300.0005 -> bcround@3 -> 300.001 (right)
+```
+
+The float `777.775` is held as `777.77499999999998`, so truncating the binary expansion at the normalisation scale ate
+the half **before** the currency rounding ever ran. My round-1 Minor 1 was indeed "with teeth": the money path was
+truncating twice, and the second truncation silently defeated the Q4 ruling on every value the float branch touches.
+Good catch by the implementer, and the right fix — `number_format` rounds and is scientific-notation safe.
+
+## Re-verification performed
+
+| Check | Result |
+|---|---|
+| `phpunit ReportNumberEmissionTest + TrialBalanceCurrencyScaleTest` | **OK — 15 tests, 63 assertions** (matches the claim) |
+| `phpunit` accounting-report regression (7 files: the 2 above + OwnerReporting, TrialBalance, SalesReportServiceReturns, SalesReportServicePaymentBreakdown, CashMovementsReport) | **OK — 55 tests, 411 assertions** |
+| `phpstan analyse app/Modules/Accounting/Application/Services/Reports` (16 files, level 8, live DB) | **No errors** |
+| `pint --test` on the 5 services + 2 test files | **pass** |
+| **Falsifiability, verified independently** (not by trusting the swap report) | all four new fixtures now DIFFER between the two helpers: `300.0005@3` → `300.001` vs `300.000`; `-0.5005@3` → `-0.501` vs `-0.500`; `299.4995@3` → `299.500` vs `299.499`; `777.775@2` → `777.78` vs `777.77`. **Genuinely falsifiable now.** |
+| Float-branch fix is load-bearing | under the OLD normalisation, `300.0005` and `777.775` fail **with `bcround` intact** — confirming the tests were unfalsifiable-and-red as reported |
+
+### 1. Is `number_format` at a fixed high scale correct for all magnitudes? — **yes, with a stated ceiling**
+
+I swept `10^k + 0.1235` for k = 3..15, comparing the string path against the float path end-to-end:
+
+| magnitude | float-branch intermediate | emitted @ scale 3 (string vs float) |
+|---|---|---|
+| 10^3 … 10^11 | identical to the string | **agree** |
+| 10^12 | `…1237` vs string `…1235` (fabricated digit) | **still agree** (`…124`) — the currency rounding absorbs it |
+| 10^13 and above | `…1230` / `…1250` | **DIVERGE** (`…123` / `…125` vs `…124`) |
+
+So: `number_format` *can* fabricate an intermediate digit from ~1e12 (PHP's pre-rounding, not a plain round of the
+double: the double is `999999999999.12353515625` yet `number_format(…,4)` returns `…1237`), and the **emitted** value
+only diverges from ~1e13. That threshold is unreachable in practice for three independent reasons:
+
+- **the float branch is dead in production** — PostgreSQL returns `numeric` columns and aggregates as strings, so the
+  shipping path never converts at all (re-confirmed; this is exactly the asymmetry the implementer documented at
+  `FormatsReportNumbers.php:100-113`);
+- `pos_shifts.expected_cash|actual_cash|variance` are `DECIMAL(16,4)` → 12 integer digits → **|v| < 1e12** at rest;
+- 1e13 TND is ~3 trillion EUR of receipts in one report window.
+
+It is also **not a regression**: the old `bcformat($float, 4)` path went through `number_format($v, max(4,14))` first —
+the same primitive — and was equally wrong at 1e13+, while being catastrophically wrong at the half boundary, which is
+the case that actually occurs.
+
+**`MONEY_NORMALISATION_SCALE = 4` is sane — in fact it is the minimal correct value.** It must be ≥ 3 (max currency
+scale in `CurrencyScale::SCALE_MAP`), ≥ 4 (quantity storage), and ≥ 4 (`company_fraud_settings.cash_variance_*` is
+`decimal(12,4)`, and these values flow into `varianceSeverity` through `numericString`). A *larger* value would be
+strictly worse — it would retain more of the float's binary garbage. Well chosen, and the docblock's reason for naming
+it locally rather than reusing `QuantityScale::SCALE` is correct.
+
+### 2. Tests run — done, above. 15/15 and 55/411, both green.
+
+### 3. `precision-contract.md` wording — display-only, **but incomplete**
+
+The new paragraph is correctly scoped: it says presentation rounds, explicitly names the § Storage-tier line it
+supersedes *for display*, and closes with "**Write/canonicalization boundaries are unchanged — they still truncate via
+`bcformat`**, including the fiscal-hash canonicalization". That does **not** contradict rule 19's storage rules
+(§ Storage tier `decimal(N,3)`/`(N,4)`, § Service tier "intermediates at scale+1/scale+4, round once at the write
+boundary via `bcformat`" — all still true and untouched). See R2-1 and R2-5 for what it misses.
+
+### 4. Anonymous-class trait test — **sound, not fragile**
+
+`use FormatsReportNumbers { decimalString as public money; … }` is valid PHP 8 aliasing; the originals stay private.
+I checked the coupling that would make it brittle: the trait has **zero** `$this->`-property access — its only `$this->`
+references are to its own `numericString()` (`:67`, `:86`, `:96`). So the anon class cannot fatal on a missing
+dependency. If a future edit pulls a collaborator into the trait the test fails loudly, which is the *desirable*
+direction: it pins "this trait is dependency-free". A rename of `decimalString` also fails loudly. The only nit is
+placement — it touches no database, so it could live in `tests/Unit` and skip `RefreshDatabase`.
+
+### 5. Docblock claims — **all now accurate**, including the one flagged for verification
+
+- `TrialBalanceService.php:79-97` "**SINGLE-company by construction**" — **verified true.**
+  `ReportsController.php:317` resolves `CompanyContext::requireCompanyId()` and `:336-341` passes that same id as the
+  report's `companyId`; `CompanyContext::getCompany()` (`:86-93`) is `Company::find($this->currentCompanyId)` — the
+  same bound id the scale resolver reads. Scale and subject cannot disagree. Grep confirms `ReportsController` is still
+  the only caller. The docblock's further claim that the `getScaleSafe()` fallback is "consequently unreachable on
+  today's only caller … kept as the family-wide convention rather than as a claim that this path runs without a
+  company" is honest and precise — that is the right way to keep the safe variant without asserting a fiction.
+- `SalesReportService.php:24-45` — the false "console contexts" justification is gone; the replacement states the real
+  root+every-child limitation, names the `OwnerSalesSummaryService::resolveCurrency()` divergence, and points at the
+  ticket. Accurate.
+- `CashRegisterReportService.php:59-68` (limitation) and `:94-108` (the `+4` rationale, now correctly attributed to the
+  operands' storage scale with `QuantityScale` explicitly disclaimed) — accurate.
+- `StockAlertReportService.php:11-22` — records the no-resolver-by-design decision and corrects the handoff claim.
+  Accurate.
+- Ticket `docs/superpowers/tickets/2026-08-05-l4-mixed-currency-report-scale.md` filed, covering round-1 findings 1/2/5.
+
+## Round-2 findings
+
+**[IMPORTANT — documentation only, not a merge blocker]
+`docs/architecture/precision-contract.md:28` vs `FormatsReportNumbers.php:121-125`.** The contract's § Service tier
+still lists **"Forbidden: `number_format((float)$v, …)`"**, and the new float branch is now literally
+`number_format($value, self::MONEY_NORMALISATION_SCALE, '.', '')` under an `is_float($value)` guard. The code is
+*right* — nothing is **cast**; the value arrives as a float from SQLite/PHP and `number_format` is the least-lossy,
+scientific-notation-safe way into bcmath (and the superseded `CurrencyScale::bcformat` used the same primitive
+internally) — but the § Emission & display paragraph only rules on `bcround` and says nothing about float
+normalisation. The next precision sweep will grep `number_format` in `app/`, find this, and "fix" it straight back
+into the `777.775 → 777.77` bug.
+*Mitigation that makes this non-blocking:* the new
+`test_sales_by_location_rounds_at_the_eur_currency_scale` runs through the SQLite **float** branch, so that exact
+revert now fails loudly. *Fix:* two sentences in § Emission & display recording the `numericString` float-branch ruling
+— must round, at a fixed normalisation scale, dead on PG / alive in SQLite tests, and why it is not the forbidden
+cast-then-format pattern.
+
+**[MINOR] `tests/Feature/Accounting/ReportNumberEmissionTest.php:283-311`** — the digit-for-digit
+string-vs-float agreement assertions are true only below ~1e13 (see the sweep above). Worth one comment line stating
+that domain of validity, so the test is not later read as a universal guarantee.
+
+**[MINOR] `FormatsReportNumbers.php:123-125`** — the `/** @var numeric-string */` over `number_format(...)` is unsound
+for `INF`/`NAN`, which return `"inf"`/`"nan"` (verified). Downstream `CurrencyScale::bcround`'s `is_numeric` guard
+converts that into a clear `InvalidArgumentException` rather than a corrupt figure, and the old path threw a rawer
+bcmath `ValueError`, so this is an improvement, not a regression. Recorded only.
+
+**[MINOR — carry-over, pre-existing]** `numericString()`'s string branch guards with `is_numeric()`, which accepts
+scientific notation; bcmath does not (verified: `bcround('1e5', 3)` → `ValueError: bcadd(): Argument #1 ($num1) is not
+well-formed`). Unreachable from PG `numeric` columns, which never render in scientific notation. Unchanged by this
+commit.
+
+**[MINOR] `docs/architecture/precision-contract.md:17`** — § Storage tier still reads "Display truncates to
+`getDecimals(currency)`" with no inline pointer to the paragraph that supersedes it. A reader who lands on the storage
+tier first gets the stale rule. One parenthetical would close it.
+
+## What to land with the merge
+
+R2-1's two sentences in § Emission & display (the `numericString` float-branch ruling). Everything else in round 2 is
+a comment-level nicety and can ride the already-filed ticket.

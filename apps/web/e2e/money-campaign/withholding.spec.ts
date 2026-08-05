@@ -102,9 +102,28 @@ async function certificatesForPartner(
   return res.data as unknown as CertificateRow[]
 }
 
-/** Grouping separator tolerance: `formatNumber()` runs at the en-US default here
- * (the callers pass only `decimals`), but pin the SCALE, not the separator glyph. */
-const GROSS_1000_RE = /1[, \s]?000\.000/
+/** Every digit in a rendered money string, so a comparison against an API value is
+ * immune to the locale's separators (fr-TN groups with U+202F). */
+function digitsOf(rendered: string): string {
+  return rendered.replace(/\D/g, '')
+}
+
+/**
+ * W-7 F-7 — FIXED (fix lane L4). The Amount Breakdown card renders its three
+ * figures through `formatNumber(value, decimals)`
+ * (`features/withholding/WithholdingCertificateDetail.tsx:337,345,351`), whose
+ * locale used to be pinned to `'en-US'` regardless of anything — which is what
+ * the previous version of this comment recorded, and what these assertions used
+ * to pin (`1,000.000` / `15.000` / `985.000`).
+ *
+ * That helper's locale now resolves from the COMPANY CURRENCY, so on this TND
+ * tenant it renders `fr-TN`: a COMMA decimal mark and a U+202F group separator.
+ * The comma is the discriminator — a revert to the en-US default puts a dot back
+ * and turns these red. The group GLYPH stays tolerated (`\s` matches U+202F,
+ * NBSP and a plain space) so an ICU/Intl change cannot turn this red for a
+ * cosmetic.
+ */
+const GROSS_1000_RE = /1\s?000,000/
 
 test.describe('MTP-WHT — withholding certificates & sales withholding tracking (W-5a §E.7)', () => {
   // The shared local backend is a single dev process serving every concurrent
@@ -267,9 +286,11 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // The "Amount Breakdown" card — anchored on its own heading so the assertion
     // cannot accidentally pass on a figure rendered elsewhere on the page.
     const breakdown = page.locator('xpath=//h2[contains(text(),"Amount Breakdown")]/..')
-    await expect(breakdown, 'gross rendered at scale 3').toContainText(GROSS_1000_RE)
-    await expect(breakdown, 'withheld rendered at scale 3').toContainText('15.000')
-    await expect(breakdown, 'net rendered at scale 3').toContainText('985.000')
+    await expect(breakdown, 'gross rendered at scale 3, in the currency`s convention').toContainText(
+      GROSS_1000_RE,
+    )
+    await expect(breakdown, 'withheld rendered at scale 3, comma decimal').toContainText('15,000')
+    await expect(breakdown, 'net rendered at scale 3, comma decimal').toContainText('985,000')
     // MINOR (ticket #5, no tripwire): the API emits `rate_percentage` as the 2dp
     // string "1.50", but `formatPercent()` -> `roundDecimalString()`
     // (lib/format.ts:249-278) TRIMS the trailing zero, so the screen reads
@@ -278,10 +299,14 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     // cosmetic today-value that a padding fix would turn red.
     await expect(breakdown, 'rate rendered as the percentage projection').toContainText(/Rate \(1\.50?%\)/)
 
-    // The rendered money must still agree with the API, digit for digit.
-    await expect(breakdown, 'the rendered net is the rendered gross minus the rendered withheld').toContainText(
-      subMoney(cert.gross_amount, cert.withholding_amount)
-    )
+    // The rendered money must still agree with the API, digit for digit. Compared
+    // as DIGITS rather than as the raw API string: the API emits `985.000` while
+    // the page now renders `985,000`, so a substring match on the API value would
+    // be testing the separator glyph rather than the money.
+    expect(
+      digitsOf(await breakdown.innerText()),
+      'the rendered net is the rendered gross minus the rendered withheld',
+    ).toContain(digitsOf(subMoney(cert.gross_amount, cert.withholding_amount)))
   })
 
   test('MTP-WHT-03: sales-withholding TRACKING — sum of withheld equals the sum of the individual rows exactly', async ({

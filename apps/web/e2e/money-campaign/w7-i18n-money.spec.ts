@@ -269,8 +269,9 @@ test.describe('I18N — money rendering on document surfaces', () => {
 
     // The numeric content is identical between the two locales — only the
     // surrounding labels change. (Same conclusion as MTP-I18N-04b: TND money
-    // formats fr-TN via currencyMeta.ts regardless of the UI language — and,
-    // per F-7, the totals panel formats en-US regardless of it too.)
+    // formats fr-TN via currencyMeta.ts regardless of the UI language. Since
+    // the F-7 fix the totals panel does so too, rather than falling back to
+    // en-US — see MTP-I18N-09 above.)
     expect(
       new Set(arTokens.map(digitsOf)),
       'the ar rendering carries exactly the fr rendering`s figures',

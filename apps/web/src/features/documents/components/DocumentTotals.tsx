@@ -50,13 +50,26 @@ export function DocumentTotals({
   })
 
   /**
-   * Format against the DOCUMENT's currency — it drives both the scale and the
-   * locale. (W-7 F-7: this used to call `formatNumber(amount, decimals)`, whose
-   * locale was pinned to `en-US`, so the totals panel rendered `1,234.567`
-   * directly beneath line cells rendered `1 234,567` by the currency-locale
-   * formatter. To a French or Tunisian reader that is a 1 000x misread of the
-   * invoice total.) The currency code is appended by the markup below, so it is
-   * suppressed here.
+   * Format against the `currency` this panel is GIVEN — it drives both the scale
+   * and the locale.
+   *
+   * W-7 F-7: this used to call `formatNumber(amount, decimals)`, whose locale was
+   * pinned to `en-US`, so the totals panel rendered `1,234.567` directly beneath
+   * line cells rendered `1 234,567` by the currency-locale formatter. To a French
+   * or Tunisian reader that is a 1 000x misread of the invoice total. The
+   * currency code is appended by the markup below, so it is suppressed here.
+   *
+   * NOTE — that currency is today the COMPANY's, not the document's: all four
+   * detail pages pass `currency={currentCompany?.currency ?? 'EUR'}`
+   * (`InvoiceDetailPage:475`, `QuoteDetailPage:350`, `SalesOrderDetailPage:446`,
+   * `CreditNoteDetailPage:313`), even though `Document.currency` exists. A
+   * cross-currency document therefore renders in the company's scale with the
+   * company's code appended. Pre-existing and unchanged here — and NOT fixed by
+   * switching these four props alone, because the outstanding callout, the
+   * payment history and the payment summary on the same pages read the company
+   * currency too, so a partial switch would put two currencies in one viewport
+   * (D6's own failure mode). Tracked page-wide in
+   * docs/superpowers/tickets/2026-08-05-l4-web-followups.md.
    */
   const formatAmount = (amount: string | number): string => {
     return formatCurrency(amount, { currency, includeCurrency: false })
