@@ -22,13 +22,68 @@ class MarketplaceServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+        /*
+        |----------------------------------------------------------------------
+        | Marketplace kill-switch — `config('marketplace.enabled')`
+        |----------------------------------------------------------------------
+        |
+        | The flag shipped with the module in config/marketplace.php but had
+        | ZERO readers, so the entire Marketplace surface was live in every
+        | tenant. It gates two things here (and the `marketplace-checkout`
+        | endpoint in App\Modules\Cart\Presentation\routes.php):
+        |
+        |   1. Route registration. `marketplace.browse` is seeded to EVERY role
+        |      by RolesAndPermissionsSeeder, and the "admin" seller-management
+        |      group — documented on MarketplaceSellerController as SUPER-ADMIN,
+        |      fleet-wide semantics — runs under the ordinary tenant stack
+        |      behind `can:marketplace.admin`, a permission the seeder grants to
+        |      every tenant admin. Until that surface is redesigned (ticket:
+        |      docs/superpowers/tickets/2026-08-05-marketplace-admin-surface-redesign.md)
+        |      the flag, default FALSE, is what keeps it unreachable.
+        |
+        |   2. Scheduling. `marketplace:delta-sync` / `marketplace:reconcile`
+        |      guard on `MarketplaceSeller::active()->exists()`, which is
+        |      data-presence, not capability — a tenant that happens to hold a
+        |      seller row would be swept into a fan-out for a module it never
+        |      enabled.
+        |
+        | Console command REGISTRATION stays unconditional: the flag gates the
+        | automatic fan-out and the HTTP surface, not operator-driven
+        | maintenance, so an operator can still run a reconciliation by hand
+        | while the module is dark.
+        |
+        | No `module:Marketplace` middleware gate is added, mirroring the same
+        | note in App\Modules\Procurement\Presentation\routes.php:20-23:
+        | 'Marketplace' is not a case of the ModuleName enum, and ModuleNameTest
+        | pins that enum to the union of config/verticals.php — so adding it is
+        | a product decision about which verticals sell the module, deferred to
+        | the vertical-module-gating audit
+        | (docs/superpowers/audits/2026-06-15-vertical-module-gating-audit/).
+        | Once inside the flag, access remains governed by per-route `can:`.
+        |
+        | NOTE: the route-registration half of this condition is deliberately
+        | DUPLICATED at the top of ../Presentation/routes.php, and that copy is
+        | the load-bearing one — spatie/laravel-event-sourcing's projector
+        | auto-discovery `include`s every file under app() as a side effect of
+        | its PSR-4 `is_subclass_of()` probe, so the routes file registers itself
+        | even when this provider never calls loadRoutesFrom(). See the comment
+        | block in that file for the verified backtrace.
+        */
+        $marketplaceEnabled = (bool) config('marketplace.enabled', false);
+
+        if ($marketplaceEnabled) {
+            $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+        }
 
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MarketplaceDeltaSyncCommand::class,
                 MarketplaceReconcileCommand::class,
             ]);
+        }
+
+        if (! $marketplaceEnabled) {
+            return;
         }
 
         // Schedule delta sync and reconciliation.

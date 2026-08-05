@@ -9,6 +9,34 @@ use App\Modules\Marketplace\Presentation\Controllers\MarketplaceOrderController;
 use App\Modules\Marketplace\Presentation\Controllers\MarketplaceSellerController;
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| Marketplace kill-switch — `config('marketplace.enabled')`, default FALSE
+|--------------------------------------------------------------------------
+|
+| Full rationale (why the flag exists, what it closes, and why no
+| `module:Marketplace` middleware gate is added) lives on
+| App\Modules\Marketplace\Providers\MarketplaceServiceProvider::boot().
+|
+| The guard is repeated HERE — not only around that provider's
+| `loadRoutesFrom()` — because this file is ALSO `include`d as a side effect of
+| spatie/laravel-event-sourcing's projector auto-discovery: config/event-sourcing.php
+| points `auto_discover_projectors_and_reactors` at `app()->path()`, and
+| DiscoverEventHandlers::addToProjectionist() maps EVERY file under it to a PSR-4
+| class name and calls `is_subclass_of()` on it, which makes Composer's autoloader
+| `include` this routes file. Verified 2026-08-05 by a backtrace taken from inside
+| this file: ClassLoader::loadClass <- is_subclass_of <- DiscoverEventHandlers:67
+| <- EventSourcingServiceProvider::packageBooted. That include registers the routes
+| no matter what the module's own service provider decides, so a provider-side
+| condition alone is NOT a gate. (Same reason the Cart module's
+| marketplace-checkout route is guarded inline.)
+|
+| Once past this guard, access is governed by the per-route `can:` permissions.
+*/
+if (! (bool) config('marketplace.enabled', false)) {
+    return;
+}
+
 Route::prefix('api/v1/marketplace')
     ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
     ->group(function () {
