@@ -1222,11 +1222,4 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             $e->getMessage(),
         ));
     }
-
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
 }

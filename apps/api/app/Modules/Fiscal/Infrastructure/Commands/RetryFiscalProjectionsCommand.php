@@ -243,13 +243,6 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
         $row->save();
     }
 
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     private function integerOption(string $name, int $minimum): ?int
     {
         $value = $this->option($name);

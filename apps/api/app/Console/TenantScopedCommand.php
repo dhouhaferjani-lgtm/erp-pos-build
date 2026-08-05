@@ -456,7 +456,7 @@ abstract class TenantScopedCommand extends Command
         return $tenant->database()->manager()->databaseExists($tenant->getDatabaseName());
     }
 
-    private function stringOption(string $name): ?string
+    protected function stringOption(string $name): ?string
     {
         $value = $this->option($name);
 

@@ -129,13 +129,6 @@ final class BackfillGoodsReceiptsCommand extends TenantScopedCommand
         return self::SUCCESS;
     }
 
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     /**
      * @return Collection<int, StockMovement>
      */

@@ -240,11 +240,4 @@ final class VerifyFiscalChainsCommand extends TenantScopedCommand
             'details' => null,
         ];
     }
-
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
 }

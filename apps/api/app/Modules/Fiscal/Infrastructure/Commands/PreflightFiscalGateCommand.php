@@ -267,11 +267,4 @@ final class PreflightFiscalGateCommand extends TenantScopedCommand
 
         return false;
     }
-
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
 }

@@ -336,11 +336,4 @@ final class VerifyPosChainCommand extends TenantScopedCommand
             'break_point' => $breakPoint,
         ];
     }
-
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
 }

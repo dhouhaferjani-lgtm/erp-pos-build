@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Compliance;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -100,6 +101,40 @@ final class DetectFraudPatternsCommandTest extends TestCase
         $exitCode = Artisan::call('fraud:detect', ['--company' => (string) Str::uuid()]);
 
         $this->assertNotSame(0, $exitCode);
+    }
+
+    /**
+     * R5 (2026-08-05 review). The unmatched-`--company` tail block returned
+     * INVALID (2) unconditionally, DISCARDING an aggregate FAILURE (1) that
+     * `forEachTenant()` had already produced from a throwing database probe. An
+     * operator whose target tenant's database was unreachable was told "Company
+     * X was not found in any reachable tenant" (exit 2 = your input is wrong)
+     * instead of the infra failure (exit 1). INVALID must stay reserved for
+     * operator input error — the same split
+     * {@see TenantScopedCommand::failIfTenantFilterUnvisited()}
+     * keeps for `--tenant`.
+     *
+     * The fault is injected the way the real one arrives: no database manager
+     * registered for the driver, which is what `DatabaseConfig::manager()`
+     * raises `DatabaseManagerNotRegisteredException` for.
+     */
+    public function test_an_unreachable_tenant_reports_the_infra_failure_not_an_invalid_company(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->createTenant('fraud-unreachable');
+        $company = $this->createCompany($tenant->id, 'UNREACHABLE');
+
+        config(['tenancy.database.managers' => []]);
+
+        $exitCode = Artisan::call('fraud:detect', ['--company' => $company->id]);
+
+        $this->assertSame(
+            1,
+            $exitCode,
+            'A probe fault is an infra FAILURE (1). Reporting INVALID (2) tells the operator their company id is '
+            .'wrong when the real answer is that the tenant database could not be opened.',
+        );
     }
 
     public function test_a_tenant_with_no_companies_is_not_a_failure(): void

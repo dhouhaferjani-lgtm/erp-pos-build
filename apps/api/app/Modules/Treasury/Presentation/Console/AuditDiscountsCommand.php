@@ -105,13 +105,6 @@ final class AuditDiscountsCommand extends TenantScopedCommand
         return $violations > 0 ? self::FAILURE : self::SUCCESS;
     }
 
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     private function auditLines(DiscountToleranceBoundary $boundary, Tenant $tenant): int
     {
         $violations = 0;

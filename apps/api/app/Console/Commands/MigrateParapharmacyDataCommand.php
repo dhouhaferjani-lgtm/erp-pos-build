@@ -137,13 +137,6 @@ final class MigrateParapharmacyDataCommand extends TenantScopedCommand
         return $this->errorCount > 0 ? self::FAILURE : self::SUCCESS;
     }
 
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     private function migrateProduct(ParapharmacyProductMetadata $metadata, bool $dryRun): void
     {
         DB::transaction(function () use ($metadata, $dryRun) {

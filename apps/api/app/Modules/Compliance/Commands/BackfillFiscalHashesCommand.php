@@ -204,13 +204,6 @@ final class BackfillFiscalHashesCommand extends TenantScopedCommand
         return Command::SUCCESS;
     }
 
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     /**
      * Backfill fiscal hashes for a specific company and document type.
      *

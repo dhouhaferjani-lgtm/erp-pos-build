@@ -198,16 +198,15 @@ final class DetectFraudPatterns extends TenantScopedCommand
                 $companyFilter,
             ));
 
-            return self::INVALID;
+            // R5 (2026-08-05 review): INVALID (2) means "the operator's input is
+            // wrong" and must never overwrite an infra FAILURE (1) the iteration
+            // already recorded — a tenant whose database could not be opened is
+            // the far likelier reason the company was not found, and telling the
+            // operator to check the id sends them the wrong way. Same split
+            // failIfTenantFilterUnvisited() keeps for --tenant.
+            return $exit === self::SUCCESS ? self::INVALID : $exit;
         }
 
         return $exit;
-    }
-
-    private function stringOption(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
     }
 }
