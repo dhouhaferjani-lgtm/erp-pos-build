@@ -25,7 +25,7 @@
 import { test, expect } from '@playwright/test'
 import { apiRequest, raceTwo, withTwoSessions } from './helpers'
 import { type Session } from './treasury-support'
-import { movementsFor } from './w5c-support'
+import { accountsByPurpose, ledgerLinesFor, movementsFor } from './w5c-support'
 import {
   TODAY,
   createCustomer,
@@ -299,6 +299,27 @@ test.describe('CONC — concurrency and stale edits', () => {
       description: `simultaneous POST /expenses/{id}/pay -> ${race.fulfilled.map((r) => r.status).join(' / ')}`,
     })
 
+    // ── I5 (review fix round 1): BOTH racers must have REACHED THE WRITE
+    // PATH. Without this, a permission or routing regression that turns one
+    // racer into a 403/404 leaves a test that still "passes" while proving
+    // nothing about concurrency — a silent false pass on a P0. A racer is
+    // admissible only if it either succeeded or was refused by the DOMAIN
+    // guard (with that guard's own message); an authz/routing refusal is not
+    // a race outcome.
+    for (const result of race.fulfilled) {
+      expect(
+        [401, 403, 404],
+        `a racer was refused by authz/routing (${result.status}), not by the settlement guard — this case would be a false pass`,
+      ).not.toContain(result.status)
+      const settled = result.status >= 200 && result.status < 300
+      const domainRefusal =
+        result.status === 422 && /already been paid/i.test(JSON.stringify(result.body))
+      expect(
+        settled || domainRefusal,
+        `each racer either settles or hits the domain guard -> got ${result.status} ${JSON.stringify(result.body)}`,
+      ).toBe(true)
+    }
+
     // ── THE MONEY INVARIANT ("Exactly one Payment row; no duplicated GL
     // leg") — asserted on the effects, never on the response codes, because
     // BOTH racers can legitimately answer 200 while only one writes.
@@ -309,6 +330,22 @@ test.describe('CONC — concurrency and stale edits', () => {
     ).toBe(1)
     expect(movements[0]!.direction, 'the single movement is an outflow').toBe('out')
     expect(sumMoney([String(movements[0]!.amount)]), '…of exactly the expense total').toBe('77.000')
+
+    // …and the GL half of the plan's wording ("no duplicated GL leg"), which
+    // fix round 1 (I6) turned from a claim into an assertion. The settlement
+    // JE credits the CASH account for the expense; the expense's own posting
+    // JE lands on 65/401, so filtering the cash-account ledger by this
+    // document's `source_id` isolates the settlement legs exactly.
+    const cashAccountId = (await accountsByPurpose(request, owner)).cash!.id
+    const settlementLines = await ledgerLinesFor(request, owner, cashAccountId, expense.id)
+    expect(
+      settlementLines.length,
+      `CONC-03: exactly ONE settlement leg on the cash account (got ${settlementLines.length})`,
+    ).toBe(1)
+    expect(
+      settlementLines[0]!.credit,
+      'CONC-03: …crediting cash once, for the expense total (the ledger renders scale 4)',
+    ).toBe('77.0000')
 
     const after = await apiRequest(page, 'GET', `/expenses/${expense.id}`)
     expect(
@@ -399,6 +436,25 @@ test.describe('CONC — concurrency and stale edits', () => {
       type: 'OBSERVED',
       description: `simultaneous POST /goods-receipts/{id}/post -> ${race.fulfilled.map((r) => r.status).join(' / ')}`,
     })
+
+    // ── I5/I6 (review fix round 1): both racers must have REACHED THE WRITE
+    // PATH, and the loser's refusal must be the POSTING guard's — not an
+    // authz/routing refusal, which would make this P1 a silent false pass.
+    for (const result of race.fulfilled) {
+      expect(
+        [401, 403, 404],
+        `a racer was refused by authz/routing (${result.status}), not by the posting guard`,
+      ).not.toContain(result.status)
+    }
+    const winners = race.fulfilled.filter((r) => r.status >= 200 && r.status < 300)
+    expect(winners.length, 'CONC-04: exactly ONE racer posted the receipt').toBe(1)
+    const loser = race.fulfilled.find((r) => r.status >= 400)
+    expect(loser, 'CONC-04: the other racer was refused').toBeTruthy()
+    expect(loser!.status, 'CONC-04: …with a 422 domain refusal').toBe(422)
+    expect(
+      JSON.stringify(loser!.body),
+      'CONC-04: …naming the state guard it hit (the receipt was no longer Draft)',
+    ).toMatch(/must be Draft before posting/i)
 
     // ── THE MONEY INVARIANT ("exactly one posting; stock moves once; WAC
     // blends once") ───────────────────────────────────────────────────────
