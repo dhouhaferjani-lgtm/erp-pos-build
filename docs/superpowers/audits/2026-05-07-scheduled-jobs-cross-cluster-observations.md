@@ -1081,8 +1081,48 @@ Notes for whoever runs it:
   the owning tenant, and pointers whose tenant has left the central directory.
   A run against a healthy fleet reports `Pruned 0 stale webhook directory
   pointer(s).`
-- Verify: `SELECT count(*) FROM channel_webhook_directory;` on CENTRAL must
-  equal the sum of `SELECT count(*) FROM channels` across the tenant databases.
+- Verify, in this order (N-8, 2026-08-05 re-gate — the count comparison alone
+  produces false alarms):
+
+  1. **Per tenant database**, find the channels that legitimately CANNOT have a
+     pointer, so they can be subtracted before the counts are compared. A
+     channel whose company row is missing gets no pointer at all —
+     `ChannelWebhookDirectoryRegistrar::register()` resolves the owning tenant
+     from `companies` and returns false with a warning when it cannot:
+
+     ```sql
+     -- TENANT database, once per tenant
+     SELECT c.id, c.name, c.company_id
+     FROM channels c
+     LEFT JOIN companies co ON co.id = c.company_id
+     WHERE co.id IS NULL                    -- orphan: no company row at all
+        OR co.tenant_id IS NULL             -- company with no owner stamped
+        OR co.tenant_id = ''
+     ORDER BY c.id;
+     ```
+
+     Rows here are a DATA defect worth fixing (those channels' webhooks 404
+     permanently), but they are an expected shortfall in step 2, not evidence
+     that `channels:reconcile` failed. `co.deleted_at IS NOT NULL` is
+     deliberately NOT in this predicate: a soft-deleted company keeps its
+     channels' pointers on purpose, and since N-1 the sweep no longer prunes
+     them.
+
+  2. **Then** compare the counts:
+
+     ```sql
+     -- CENTRAL
+     SELECT count(*) FROM channel_webhook_directory;
+     ```
+
+     must equal the sum of `SELECT count(*) FROM channels` across the tenant
+     databases **minus** the orphan-company rows from step 1.
+
+  3. **Check the log** for `Tenant scope drift` warnings from this run. Since
+     N-2 a tenant with drifted `companies.tenant_id` has its prune SKIPPED, so
+     stale pointers survive by design until the column is fixed — another
+     legitimate reason for a mismatch, and one that must be fixed at the data
+     level rather than re-run away.
 
 **The staging/production runbook entry itself is owed by the release owner** —
 the authoritative runbook (`docs/handoff/STAGING-RUNBOOK-first-tenant-2026-07-31.md`,

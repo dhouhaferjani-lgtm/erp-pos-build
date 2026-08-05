@@ -348,6 +348,15 @@ class AppServiceProvider extends ServiceProvider
         // 60/min/IP is comfortably above real platform callback volume for a
         // single tenant's channels and still bounds the amplification.
         // dev-remediation — 2026-08-05 cat-(b) wave-1 review, B1.
+        //
+        // KNOWN LIMITATION (N-7, re-gate): keyed by IP ALONE, so several
+        // tenants' channels served from one platform's shared egress IP share
+        // the 60/min budget — and a 429 to a platform that does not redeliver
+        // is a dropped order, by the same R3 reasoning that makes the 404 one.
+        // Fine at pilot scale (one tenant, one platform); per-channel keying
+        // needs the channel id validated BEFORE the limiter, which is T7
+        // redesign scope. Monitor 429s on this route before onboarding a
+        // second tenant onto the same platform.
         RateLimiter::for('channel-webhook', function (Request $request): Limit {
             return Limit::perMinute(60)->by($request->ip() ?? 'unknown');
         });

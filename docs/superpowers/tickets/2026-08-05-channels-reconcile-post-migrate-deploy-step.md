@@ -48,18 +48,57 @@ A central migration cannot backfill across tenant databases, so between deploy a
   in the owning tenant, and pointers whose tenant has left the central directory. A healthy fleet
   reports `Pruned 0 stale webhook directory pointer(s).` A non-zero prune count on the FIRST run
   after this deploy would be surprising (the table starts empty) and is worth investigating.
+- **The prune stands down on tenant-scope drift** (2026-08-05 re-gate, N-2). If a tenant's
+  `companies.tenant_id` disagrees with the database it lives in, that tenant's channels are not
+  enumerated, so pruning against the resulting (possibly empty) list would delete live pointers.
+  The run logs a `Tenant scope drift` warning and skips the prune for that tenant only. Fix the
+  column, then re-run.
+- **A soft-deleted company keeps its channels' pointers** (N-1). Ownership does not change when a
+  company is soft-deleted, and the external platform answers a 404 by dropping the order rather
+  than redelivering.
 
 ## Verification
+
+Run the three steps in order — the count comparison **alone produces false alarms** (N-8).
+
+**1. Per tenant database, list the channels that legitimately cannot have a pointer.**
+`ChannelWebhookDirectoryRegistrar::register()` resolves the owning tenant from `companies` and
+returns false with a warning when it cannot, so these channels are an expected shortfall:
+
+```sql
+-- TENANT database, once per tenant
+SELECT c.id, c.name, c.company_id
+FROM channels c
+LEFT JOIN companies co ON co.id = c.company_id
+WHERE co.id IS NULL                    -- orphan: no company row at all
+   OR co.tenant_id IS NULL             -- company with no owner stamped
+   OR co.tenant_id = ''
+ORDER BY c.id;
+```
+
+Rows here are a real data defect (those channels' webhooks 404 permanently) and worth a follow-up,
+but they are **not** evidence that `channels:reconcile` failed. `co.deleted_at IS NOT NULL` is
+deliberately absent from the predicate — a soft-deleted company keeps its pointers.
+
+**2. Then compare the counts.**
 
 ```sql
 -- CENTRAL
 SELECT count(*) FROM channel_webhook_directory;
 ```
 
-must equal the sum of `SELECT count(*) FROM channels` across every tenant database. Then, per
-tenant, spot-check one channel end to end: `POST /api/v1/webhooks/channels/<real channel id>` with
-a fresh `X-Channel-Timestamp` must reach signature verification (403 on a bad signature), **not**
-404. A 404 means the pointer is missing.
+must equal the sum of `SELECT count(*) FROM channels` across every tenant database **minus** the
+orphan-company rows from step 1.
+
+**3. Check the run's log for `Tenant scope drift` warnings.** A warned tenant had its prune
+skipped by design, so stale pointers survive until the `tenant_id` column is fixed — another
+legitimate reason for a mismatch, and one to fix at the data level rather than re-run away.
+
+Finally, per tenant, spot-check one channel end to end:
+`POST /api/v1/webhooks/channels/<real channel id>` with a fresh `X-Channel-Timestamp` must reach
+signature verification (403 on a bad signature), **not** 404. A 404 means the pointer is missing.
+Note that since N-3 a MALFORMED channel id also answers `{"message":"Unknown channel."}` — the
+router no longer refuses it — so a 404 body no longer tells you which of the two you sent.
 
 ## Why this ticket exists instead of the edit
 
