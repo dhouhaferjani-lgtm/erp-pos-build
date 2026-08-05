@@ -682,8 +682,11 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
     const product = rows.find((p) => p.sale_price === '25.000' && Number(p.cost_price) === 0)
     expect(product, 'cafe-tunis carries a 25.000 zero-cost product (CoffeeShopSeeder RET-BEANS)').toBeTruthy()
 
+    // M3 (review fix round 1): `W7-` prefix, so the wave's leftover predicate
+    // (`partners.name LIKE 'W7-%'`) actually covers this fixture. The earlier
+    // `MTP-PERM-14-*` name matched no documented predicate on either tenant.
     const customer = await post(request, barista, '/partners', {
-      name: `MTP-PERM-14-${Date.now()}`,
+      name: `W7-PERM14-${Date.now()}`,
       type: 'customer',
     })
     expect(customer.status, `customer create -> ${customer.status} ${JSON.stringify(customer.data)}`).toBe(201)
@@ -802,14 +805,29 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
   test('MTP-PERM-16 (P1): the viewer cannot author or mutate a sales document — every write 403s, every read renders', async ({
     page,
   }) => {
-    await loginAsRole(page, 'viewer')
+    // M5 (review fix round 1): author OUR OWN draft as the owner instead of
+    // blind-picking `per_page=1`. The probes below are DESTRUCTIVE
+    // transitions (confirm / post / cancel): if any of them were ever to
+    // succeed — which is exactly the regression this case guards — it must
+    // land on a W7 fixture, never on a stranger's (or a sibling wave's)
+    // invoice. Also makes the fixture retirable.
+    await loginAsRole(page, 'owner')
+    const ownedCustomer = await apiRequest(page, 'POST', '/partners', {
+      name: `W7-PERM16-${Date.now()}`,
+      type: 'customer',
+    })
+    expect(ownedCustomer.status).toBe(201)
+    const seeded = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: ((ownedCustomer.body as { data: { id: string } }).data).id,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [{ description: 'W7 PERM-16 probe target', quantity: '1', unit_price: '10.000', tax_rate: '0.00' }],
+    })
+    expect(seeded.status, `seed invoice -> ${seeded.status} ${JSON.stringify(seeded.body)}`).toBe(201)
+    const invoiceId = ((seeded.body as { data: { id: string } }).data).id
 
-    // A real document id, so an "update" denial cannot be a 404 in disguise.
+    await loginAsRole(page, 'viewer')
     const invoices = await apiRequest(page, 'GET', '/invoices?per_page=1')
     expect(invoices.status, 'the viewer can LIST invoices (invoices.view)').toBe(200)
-    const list = (invoices.body as { data?: Array<{ id: string }> }).data ?? []
-    expect(list.length, 'at least one invoice exists to target').toBeGreaterThan(0)
-    const invoiceId = list[0]!.id
 
     // UI: both authoring routes are refused. `/sales/invoices/new` is gated on
     // the `sales.create` ALIAS (role-based), `/sales/invoices/:id/edit` on the
@@ -839,6 +857,18 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
     // The read side is intact — "read-only", not "locked out".
     const detail = await apiRequest(page, 'GET', `/invoices/${invoiceId}`)
     expect(detail.status, 'the viewer can still READ the invoice it may not touch').toBe(200)
+    expect(
+      ((detail.body as { data: { status: string } }).data).status,
+      'and every refused transition left the seeded draft in Draft',
+    ).toBe('draft')
+
+    // Retire the fixture (owner — the viewer cannot delete either).
+    await loginAsRole(page, 'owner')
+    const retired = await apiRequest(page, 'DELETE', `/invoices/${invoiceId}`)
+    test.info().annotations.push({
+      type: 'CLEANUP',
+      description: `DELETE /invoices/${invoiceId} -> ${retired.status}`,
+    })
   })
 
   test('MTP-PERM-17 (P1): the cashier may CREATE a sales document but not move it — update/confirm/post/cancel all 403', async ({
@@ -853,8 +883,9 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
 
     // The cashier really can author a draft (proving the 403s below are the
     // transition gates and not a blanket module refusal).
+    // M3 (review fix round 1): `W7-` prefix — see MTP-PERM-14.
     const customer = await apiRequest(page, 'POST', '/partners', {
-      name: `MTP-PERM-17-${Date.now()}`,
+      name: `W7-PERM17-${Date.now()}`,
       type: 'customer',
     })
     expect(customer.status).toBe(201)
@@ -930,11 +961,24 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
     expect(permissions, '…but NOT invoices.create').not.toContain('invoices.create')
     expect(permissions, '…and NOT invoices.update').not.toContain('invoices.update')
 
-    const invoices = await apiRequest(page, 'GET', '/invoices?per_page=1')
-    expect(invoices.status).toBe(200)
-    const list = (invoices.body as { data?: Array<{ id: string }> }).data ?? []
-    expect(list.length).toBeGreaterThan(0)
-    const invoiceId = list[0]!.id
+    // M5 (review fix round 1): author our own draft as the owner — the
+    // accountant HOLDS `invoices.post`, so a blind-picked stranger's invoice
+    // is the one document in this file that a regression could actually post.
+    await loginAsRole(page, 'owner')
+    const ownedCustomer = await apiRequest(page, 'POST', '/partners', {
+      name: `W7-PERM18-${Date.now()}`,
+      type: 'customer',
+    })
+    expect(ownedCustomer.status).toBe(201)
+    const seeded = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: ((ownedCustomer.body as { data: { id: string } }).data).id,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [{ description: 'W7 PERM-18 probe target', quantity: '1', unit_price: '10.000', tax_rate: '0.00' }],
+    })
+    expect(seeded.status, `seed invoice -> ${seeded.status} ${JSON.stringify(seeded.body)}`).toBe(201)
+    const invoiceId = ((seeded.body as { data: { id: string } }).data).id
+
+    await loginAsRole(page, 'accountant')
 
     // Create and edit are refused at the API…
     for (const [method, path, body] of [
@@ -964,5 +1008,18 @@ test.describe('PERM — permission-denied paths for money mutations', () => {
       permissions.includes('invoices.post') && !permissions.includes('invoices.create'),
       'RULING: post-without-create is the accountant`s deliberate separation of duties',
     ).toBe(true)
+
+    // The seeded draft is untouched by the refusals, and retirable.
+    await loginAsRole(page, 'owner')
+    const stillDraft = await apiRequest(page, 'GET', `/invoices/${invoiceId}`)
+    expect(
+      ((stillDraft.body as { data: { status: string } }).data).status,
+      'the refused transitions left the seeded draft in Draft',
+    ).toBe('draft')
+    const retired = await apiRequest(page, 'DELETE', `/invoices/${invoiceId}`)
+    test.info().annotations.push({
+      type: 'CLEANUP',
+      description: `DELETE /invoices/${invoiceId} -> ${retired.status}`,
+    })
   })
 })
