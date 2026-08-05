@@ -80,7 +80,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $secondPaid = $this->createMovement($product, $po, '6.0000', '5.000000', $secondAt);
         $secondFree = $this->createMovement($product, $po, '1.0000', '0.000000', $secondAt);
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 2')
             ->assertExitCode(0);
 
@@ -107,7 +107,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->assertSame('3.0000', (string) $lines[1]->quantity_invoiced);
         $this->assertSame('4.285714', (string) $lines[1]->effective_unit_cost);
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 0')
             ->assertExitCode(0);
         $this->assertDatabaseCount('goods_receipts', 2);
@@ -123,13 +123,13 @@ final class GoodsReceiptBackfillTest extends TestCase
 
         // First run backfills a receipt of 4 units → apportions 4 of the 7 invoiced units.
         $this->createMovement($product, $po, '4.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 1')
             ->assertExitCode(0);
 
         // A second eligible receipt movement for the same PO line arrives after the first run.
         $this->createMovement($product, $po, '6.0000', '5.000000', CarbonImmutable::parse('2026-07-02 11:00:00'));
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 1')
             ->assertExitCode(0);
 
@@ -158,7 +158,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createPoLine($otherPo, $otherProduct, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
         $this->createMovement($otherProduct, $otherPo, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'), $this->otherCompany);
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 2')
             ->assertExitCode(0);
 
@@ -211,7 +211,7 @@ final class GoodsReceiptBackfillTest extends TestCase
 
         $this->assertNull($movement->fresh()?->reason);
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Eligible movements: 1')
             ->expectsOutputToContain('Created receipts: 1')
             ->assertExitCode(0);
@@ -230,7 +230,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createPoLine($po, $poProduct, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
         $this->createMovement($movementProduct, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 0')
             ->expectsOutputToContain('Created lines: 0')
             ->expectsOutputToContain('Skipped unmappable groups: 1')
@@ -239,7 +239,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->assertDatabaseCount('goods_receipts', 0);
         $this->assertDatabaseCount('goods_receipt_lines', 0);
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 0')
             ->expectsOutputToContain('Created lines: 0')
             ->expectsOutputToContain('Skipped unmappable groups: 1')
@@ -258,7 +258,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:59'));
         $this->createMovement($product, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:01:01'));
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 1')
             ->expectsOutputToContain('Created lines: 2')
             ->assertExitCode(0);
@@ -277,7 +277,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
         $this->createMovement($product, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:01:00'));
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('Created receipts: 2')
             ->expectsOutputToContain('Created lines: 2')
             ->assertExitCode(0);
@@ -294,7 +294,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createPoLine($po, $product, quantity: '2.0000', invoiced: '0.0000', unitCost: '0.000000');
         $this->createMovement($product, $po, '2.0000', '0.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain("PO {$po->document_number} synthesized received/free quantities do not match PO counters")
             ->assertExitCode(0);
     }
@@ -312,13 +312,13 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createPoLine($otherPo, $otherProduct, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
         $this->createMovement($otherProduct, $otherPo, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'), $this->otherCompany);
 
-        $this->artisan('procurement:backfill-goods-receipts', ['--company' => $this->company->id, '--dry-run' => true])
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id, '--company' => $this->company->id, '--dry-run' => true])
             ->expectsOutputToContain('Dry run')
             ->expectsOutputToContain('Eligible movements: 1')
             ->assertExitCode(0);
         $this->assertDatabaseCount('goods_receipts', 0);
 
-        $this->artisan('procurement:backfill-goods-receipts', ['--company' => $this->company->id])
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id, '--company' => $this->company->id])
             ->expectsOutputToContain('Created receipts: 1')
             ->assertExitCode(0);
 
@@ -336,7 +336,7 @@ final class GoodsReceiptBackfillTest extends TestCase
         $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
         $this->createMovement($product, $po, '2.0000', '6.000000', CarbonImmutable::parse('2026-07-01 10:00:01'));
 
-        $this->artisan('procurement:backfill-goods-receipts')
+        $this->artisan('procurement:backfill-goods-receipts', ['--tenant' => $this->tenant->id])
             ->expectsOutputToContain('duplicate product PO lines')
             ->assertExitCode(0);
 
