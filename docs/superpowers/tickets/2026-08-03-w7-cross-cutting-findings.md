@@ -11,14 +11,21 @@
 tripwire — the assertion records TODAY's behaviour and goes RED the moment it
 changes, so a fix cannot land silently and a regression cannot hide.
 
+> **Fix round 1 (review verdict APPROVE-WITH-FIXES, 2026-08-05) is folded into
+> this document.** F-6 CONFIRMED + ESCALATED (root cause and two escalations
+> added); F-5 / F-7 / F-2 / F-8 / F-2b / F-4 CONFIRMED with corrections;
+> **F-3 SPLIT** — the backend half is confirmed, the "the FE sends the
+> parameter" half is **REFUTED**; **F-9 re-graded P1 → P2** and re-framed as an
+> amendment to an existing ruling. Every correction is marked inline.
+
 | # | Sev | Surface | One-line summary |
 |---|---|---|---|
 | **F-6** | **P0** | documents / payments | A payment can be allocated to a **cancelled** invoice; the document is rewritten to `paid` while `cancelled_at` stays set |
 | **F-5** | **P1** (plan wording: launch-blocking) | documents | No optimistic concurrency anywhere: a stale second save silently overwrites a draft money document |
 | **F-7** | **P1** | web / documents | The document TOTALS panel renders `en-US` (`1,234.567`) under `fr`, beside correctly `fr-TN`-formatted lines — a 1 000x misread of the invoice total |
 | **F-2** | **P1** | api / owner reports | `FormatsReportNumbers::decimalString()` casts money to `float`, formats at scale **2**, and `rtrim`s zeros → `300.000` is emitted as `"300"` |
-| **F-3** | **P1** | api / cash report | `GET /reports/cash-movements` accepts `location_ids[]` and ignores it — every scope returns the whole company |
-| **F-9** | **P1** | api / settings | `PATCH /settings/company` answers 200 and persists none of the pricing-policy triple; `GET /settings/company` does not expose it either |
+| **F-3** | **P1** | api **+ web** / cash report | **NEITHER LAYER** implements location scoping: the server ignores `location_ids[]` and the hook never sends it (SPLIT, fix round 1) |
+| **F-9** | **P2** *(re-graded from P1, fix round 1)* | api / settings | `PATCH /settings/company` answers 200 on accept-and-drop instead of 422, and `GET` omits the fields so the drop is undetectable — an AMENDMENT to the 2026-08-02 F9 ruling |
 | **F-8** | **P1** | api / pricing | The document discount cap never consults `users.max_discount_percent` — the money-test-plan's PERM-13/14 premise does not match the implementation |
 | **F-1** | P2 | web / sales | The `/sales/*` UI is closed to the cashier by a ROLE-based alias while the API grants `invoices.create` |
 | **F-2b** | P2 | api / payments | `allocated_amount` is emitted unscaled (`"500"`) next to a correct scale-3 `unallocated_amount` on the same payload |
@@ -67,6 +74,51 @@ API route does, and it succeeds.
 **Expected:** the allocation is refused with a state error ("this document is
 cancelled"), and `documents.status` is never rewritten out of a terminal state.
 
+### Root cause (fix round 1, I1)
+
+The allocation path never asks what STATE the document is in, except on one
+branch:
+
+- `PaymentController.php:399-403` validates `allocations.*.document_id` with a
+  bare `ScopedExists::tenantAndCompany('documents', …)` — tenant + company, **no
+  status predicate**.
+- The status guard at `:496` (`$document->status !== DocumentStatus::Posted` →
+  422 `SUPPLIER_INVOICE_NOT_POSTED`) is scoped **inside the SupplierInvoice
+  branch** opened at `:489`. The AR branch (`:566-568`) is a bare `else` that
+  only increments a counter — it checks nothing.
+- Five status writes then flip the document to `paid` with no terminal-state
+  check, each gated only on `canTransitionToPaid()`, which is a **pure type
+  match** (`DocumentType.php:93-99`: Invoice / CreditNote / SupplierInvoice →
+  true) and says nothing about status:
+  `PaymentController.php:1003-1005`, `:1581-1582`, `:1679`, `:1745`, and
+  `PaymentAllocationService.php:235-236`.
+- `previewManualAllocation` (`:650-658`) has the same hole on the read side.
+- The **auto**-allocation path DOES filter `Posted` (`:471`), which is why this
+  only bites the explicit-`allocations[]` path.
+
+**Surgical fix:** reject terminal statuses in the shared guard block
+`:466-481` and mirror it at `:650-658`, rather than patching the five writers.
+
+### Escalations (fix round 1, I1)
+
+**(a) It composes with W-6 D2 into an AUTOMATIC exploit.** `:487` reads
+`$balanceDue = $document->balance_due ?? $document->total;`. Per W-6's D2,
+`documents.balance_due` is a PostgreSQL trigger cache that stays **NULL** until
+an allocation row exists — so a never-allocated cancelled invoice falls back to
+its **full total** and presents as *fully payable*. No crafted amount is needed:
+the default path offers the whole balance of a document that was withdrawn.
+
+**(b) The DB immutability trigger is blind here.** It returns early unless
+`fiscal_status = 'SEALED'`; a cancelled document is `VOIDED`, so the database
+does not stop the status rewrite either.
+
+**(c) The GL-unreversed half is CONFIRMED.** `DocumentPostingService::cancel()`
+(`:109-166`) makes **no GL call at all** — the only listener on
+`InvoiceCancelled` is the audit-chain one, and `GeneralLedgerService` contains
+**no sales-invoice reversal** of any kind. So cancelling a POSTED invoice leaves
+its revenue and receivable legs standing in the ledger, independently of the
+resurrection bug above.
+
 ---
 
 ## F-5 (P1 — the money-test-plan calls this shape launch-blocking) — silent last-write-wins on a money document
@@ -82,9 +134,24 @@ different change **computed from the state it loaded before A's save**
 none of them a concurrency token) and `UpdateDocumentRequest` neither accepts
 nor requires one, so a second writer is undetectable by construction.
 
-**Scope of the exposure.** DRAFT documents only — a posted invoice is immutable
-(`MTP-DOC-08`), so no fiscal record is at risk. A draft invoice is still the
-document a user is about to bill from.
+**Scope of the exposure — CORRECTED (fix round 1, I2).** Not draft-only:
+`DocumentStatus::isEditable()` (`DocumentStatus.php:19-25`) returns true for
+**`Draft` AND `Confirmed`**, so a CONFIRMED invoice — one that has already had
+its document-level taxes applied — is inside the window too. Three aggravating
+details:
+
+- **The overwrite is DESTRUCTIVE, not a merge.** `InvoiceController.php:429-431`
+  deletes the existing lines and recreates them from the payload, so the loser's
+  lines are gone rather than superseded.
+- **The read is outside the write transaction and takes no row lock** — the
+  document is fetched at `:387-389`, the transaction opens at `:424`, and there
+  is no `lockForUpdate()` anywhere on the path.
+- **There is no `If-Match`/`ETag` handling anywhere in the codebase**, so even a
+  client that wanted to send a precondition has nothing to send.
+
+The posted-immutability half of the original writeup **holds**: `Posted`,
+`Paid`, `Received` and `Cancelled` are all non-editable, so no fiscal record is
+at risk through this path.
 
 **Expected (plan §I.5 `MTP-CONC-01`):** "Second save must not silently overwrite
 with stale totals — expect a conflict/refetch. … a silent last-write-wins on a
@@ -108,10 +175,27 @@ calls `formatNumber(amount, decimals)`, and `apps/web/src/lib/format.ts:115-121`
 defaults that helper's third parameter to `locale = 'en-US'`. The UI language
 and the currency locale are both ignored.
 
-**Why it matters.** To a French or Tunisian reader `500.000` is five hundred
-**thousand** dinars. The mis-rendered figures are the Subtotal, the VAT, the
-stamp duty, the **Total** and the Balance Due — printed directly beneath
-correctly formatted line amounts, on the document a customer is invoiced from.
+**Trigger — CORRECTED (fix round 1, M1): this is CURRENCY-driven, not
+language-driven.** `formatCurrency` picks its locale from `currencyMeta.ts` by
+CURRENCY (TND → `fr-TN`), while `formatNumber` is pinned to `en-US` at
+`lib/format.ts:118` regardless of anything. So the split render fires in
+**every UI language** — English included — and equally for a **EUR** company
+(`de-DE`/`fr-FR` conventions vs `en-US`). `?lang=fr` is merely how this wave
+happened to observe it, not a precondition.
+
+**Why it matters.** To a French or Tunisian reader `1,191.000` reads as one
+million one hundred ninety-one thousand. The mis-rendered figures are the
+Subtotal, the VAT, the stamp duty, the **Total** and the Balance Due — printed
+directly beneath correctly formatted line amounts, on the document a customer is
+invoiced from. Softened from the original writeup: the misread risk is real
+**above 1 000** (where the grouping separator flips meaning) and effectively
+**invisible below it** (where only the decimal mark differs).
+
+**The unit tests lock the wrong render in.**
+`DocumentTotals.test.tsx:123` asserts `'1,000.000 TND'` and `:137` asserts
+`'1,191.000 TND'` — i.e. the en-US shape is currently the EXPECTED value. Any
+fix must update those two assertions, which is also why this cannot regress
+silently in the other direction.
 
 Same family as W-6's **D6** (`formatCurrency` defaulting to `EUR`,
 `lib/format.ts:77`), different helper. A fix should sweep both.
@@ -143,10 +227,26 @@ Three defects in four lines, on the TND owner dashboard:
 Live: `GET /reports/sales/by-location` returns `gross_sales: "300"` for
 STORE-TUN1 where `pos_receipts` holds `300.000`.
 
-**Blast radius** — every consumer of the trait:
-`SalesReportService::salesByLocation()` (`:63`), `topSkus()`, category revenue
-(`:141-147`, which also does `(float)` arithmetic to compute a percentage) and
-`paymentMethodBreakdown()` (`:285-286`). That is the entire owner dashboard.
+**Blast radius — WIDENED (fix round 1, I3).** Every consumer of the trait:
+
+- `SalesReportService::salesByLocation()` (`:63`), `topSkus()` (`:109`),
+  category revenue (`:141-147`, which also does `(float)` arithmetic to compute
+  a percentage) and `paymentMethodBreakdown()` (`:285-286`).
+- **`CashRegisterReportService.php:61-63` — `expected_cash`, `counted_cash` and
+  `variance` all go through the same float + scale-2 + rtrim path.** That is the
+  cash-count reconciliation figure, on the launch-critical Z/EOD surface, and it
+  is the most consequential instance of this defect by some distance.
+- **Quantities are pushed through the CURRENCY-shaped formatter** — a rule-19
+  violation in its own right, since quantities are scale 4:
+  `StockAlertReportService.php:50-51` (`quantity`, `min_quantity`) and
+  `SalesReportService.php:110` / `:154` (`quantity`). A `12.5000` quantity is
+  emitted as `"12.5"`.
+
+**Guard gap to record.** The PHPStan precision rules do not see any of this:
+`ForbidHardcodedBcmathScale` allow-lists bcmath functions and `number_format`
+is not one of them, and `ForbidFloatCastOnDecimalProperty` matches Eloquent
+model properties while these are `stdClass` rows off `DB::table()`. The
+structural guards are blind to the whole reporting layer.
 
 **Not the same ticket as** `2026-08-01-positive-refund-total-consumers.md`,
 which lists `SalesReportService:51` as SAFE — that ticket is about
@@ -159,19 +259,37 @@ which lists `SalesReportService:51` as SAFE — that ticket is about
 **Pinned by:** `MTP-MLC-08`.
 
 Three mutually exclusive single-location scopes — including a **warehouse that
-has never seen a POS receipt** — return payloads byte-identical to the unscoped
-read. The front end sends the parameter (`location_ids: effectiveLocationIds`,
-via `useViewScope`); the endpoint accepts it and drops it.
+has never seen a POS receipt** — return payloads identical to the unscoped read.
+
+**SPLIT (fix round 1, C1) — the original writeup's second sentence was wrong.**
+
+| Half | Verdict |
+|---|---|
+| The **server** accepts `location_ids[]` and ignores it | **CONFIRMED** |
+| "The front end sends the parameter via `useViewScope`" | **REFUTED** |
+
+`features/finance/hooks/useCashMovementsReport.ts:9-15` defines
+`CashMovementsFilters` with `from` / `to` / `repository_id` / `direction` /
+`page` and **no location field at all**; it keys the query with
+`tenantScopedKey`, not `locationScopedKey`; and
+`CashMovementsReportPage.tsx` never imports `useViewScope`. Contrast
+`useAgedReceivables.ts:12-13`, which does all three correctly.
+
+So **neither layer implements location scoping on this report**. The
+`location_ids[]` parameter in the reproduction is one the TEST sends. A fix
+therefore spans three places, not one: the backend query, the hook's filter
+type, and the hook's query key (which must move to `locationScopedKey` or the
+cache will serve one scope's rows under another).
 
 Nothing leaks across tenants or companies: this is an unimplemented filter, not
-an isolation hole. But a multi-shop owner reading `/finance/cash-movements`
-under a single-shop scope is shown the **whole company's cash** and told it is
-one shop's. Every sibling scoped report (`sales/by-location`, stock) filters
-correctly, which is exactly what makes this one convincing.
+an isolation hole. But the TopBar still offers a location scope while this page
+is open, so a multi-shop owner is shown the **whole company's cash** under a
+single-shop selection. Every sibling scoped report (`sales/by-location`, stock)
+filters correctly, which is exactly what makes this one convincing.
 
 ---
 
-## F-9 (P1) — `PATCH /settings/company` reports success and persists nothing
+## F-9 (P2 — re-graded, fix round 1) — `PATCH /settings/company` reports success and persists nothing
 
 **Pinned by:** `MTP-PERM-14`.
 
@@ -183,14 +301,35 @@ PATCH → `Advisory|100.00` → PUT → `Block|25.00`).
 
 `GET /settings/company` does not return the three fields at all, so the settings
 surface can neither display nor change the discount policy — while reporting
-that it did. A tenant that configures its discount policy through Settings gets
-a green toast and no enforcement.
+that it did.
+
+**Re-framed (fix round 1, I4): this is an AMENDMENT, not a new defect.** The
+two-routes situation is already ruled on in
+`docs/superpowers/tickets/2026-08-02-company-update-route-unauthorized.md:79-87`
+(finding **F9** there). What W-7 adds is only:
+
+1. the PATCH **200s on accept-and-drop** rather than answering 422, so the caller
+   is actively told the write succeeded; and
+2. the **GET omits the fields**, so the drop is undetectable from the API alone
+   — which is why this wave had to prove it behaviourally (set Block + a 25% cap
+   via PATCH, then watch a 40% discount still be accepted).
+
+**Re-graded P1 → P2** because **no UI path sends these fields** (zero grep hits
+across `apps/web/src`): only a direct API caller can hit it today. It is
+**NOT** the same as that ticket's **m6** (the dead `/company` route) — different
+route, different failure mode.
 
 ---
 
 ## F-8 (P1 / plan correction) — the document discount cap is the COMPANY cap, never the user's
 
-**Pinned by:** `MTP-PERM-14`; supersedes the premise of `MTP-PERM-13`.
+**Pinned by:** `MTP-PERM-14`. **SPLIT (fix round 1, M8) — it does not supersede
+`MTP-PERM-13`, it halves it:** the plan's DOCUMENT half is refuted (below), while
+the plan's **RECEIPT half is exactly right and stays §Z** —
+`DiscountPermissionResolver::effectiveMaxPercent()` (`:60-72`, POS) reads
+`$user->max_discount_percent` precisely as the plan describes. So
+`users.max_discount_percent` is a real, enforced cap; it simply governs the POS
+receipt path, not the web document path.
 
 The money-test-plan defines both cases in terms of "a user whose
 `max_discount_percent` is 10.00 / 25.00". On the document path that column is
@@ -215,10 +354,11 @@ Live on `cafe-tunis` with `barista` (`users.max_discount_percent = 25.00`):
 So the inclusive boundary the plan asks for **does work** — once the cap is set
 where the code looks for it. Two consequences:
 
-1. `users.max_discount_percent` is a **POS-device** cap (Identity DTO/controller
-   only); the plan should say so, and `MTP-PERM-13`'s "Advisory-only" ruling
-   from W-1 is true but incomplete — even under `Block`, an unset company cap
-   means nothing to enforce.
+1. `users.max_discount_percent` is the **POS receipt** cap
+   (`DiscountPermissionResolver.php:66`), never the document cap; the plan
+   should say so per surface, and `MTP-PERM-13`'s "Advisory-only" ruling from
+   W-1 is true but incomplete — even under `Block`, an unset company cap means
+   nothing to enforce.
 2. Any launch checklist that assumes per-cashier discount limits apply to
    web-authored documents is wrong today.
 
@@ -253,8 +393,20 @@ gated on `invoices.update`, `post` on `invoices.post`), and the draft is left in
 **Pinned by:** `MTP-CONC-02`.
 
 `GET /payments/{id}` returns `allocated_amount: "500"` (unscaled) beside
-`unallocated_amount: "0.000"` (correct scale-3), and
-`payment_allocations[].allocated_amount` is `"500.000"`. Same family as F-2.
+`unallocated_amount: "0.000"` (correct scale-3).
+
+**Corrected (fix round 1, M2):** the nested per-row field on THAT endpoint is
+`allocations[].amount` (`PaymentController.php:1968-1973`), not
+`payment_allocations[].allocated_amount` — the latter belongs to
+`GET /documents/{id}/payments`, which is a different payload and renders
+correctly.
+
+**Root cause:** `Payment::getAllocatedAmount()` (`Payment.php:243-248`) is
+`$this->allocations->sum('amount')` cast to string — a `Collection::sum`
+numeric collapse that drops the scale — while its sibling
+`getUnallocatedAmount()` (`:255-261`) uses `bcsub(...)` and keeps it. Note that
+sibling also hardcodes `int $scale = 3` rather than resolving the currency
+scale, so it is correct for TND by luck of the default.
 
 ---
 
@@ -297,11 +449,15 @@ parapharmacy sibling does. Until it does, C-8 will re-block on any fresh stack.
   ONE allocation persists, the invoice settles once, and the loser survives in
   full as unallocated on-account credit.
 - `MTP-CONC-03` — two simultaneous `POST /expenses/{id}/pay`: exactly ONE
-  repository movement and ONE settlement JE. (Both racers can answer 200; the
-  money effect is single. Recorded, not filed.)
+  repository movement AND exactly ONE settlement leg on the cash account
+  (both now ASSERTED, fix round 1 I6 — the JE half was previously only claimed).
+  Both racers can answer 200; the money effect is single. Each racer is also
+  asserted to have reached the write path (I5), so an authz regression cannot
+  turn this P0 into a false pass.
 - `MTP-CONC-04` — two simultaneous goods-receipt posts: stock moves once
-  (`10.0000`), WAC blends once (`5.000000`), the loser gets
-  `must be Draft before posting`.
+  (`10.0000`), WAC blends once (`5.000000`), exactly one racer 2xx and the loser
+  **422 `must be Draft before posting`** (message now ASSERTED, fix round 1 I6;
+  write-path admissibility asserted per I5).
 - `MTP-CONC-05` — two simultaneous opening-batch creations: exactly one is
   created, the loser gets `422 Company already has an unlocked … batch`. RULING:
   the rule is "one **unlocked** batch per type", not one batch per type.
