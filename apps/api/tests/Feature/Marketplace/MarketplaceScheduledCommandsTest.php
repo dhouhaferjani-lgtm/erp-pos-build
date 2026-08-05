@@ -65,6 +65,10 @@ final class MarketplaceScheduledCommandsTest extends TestCase
             $fixture['expectedDispatchedIds'],
             $this->dispatchedSellerIds(SyncSellerListingsJob::class),
         );
+        $this->assertSame(
+            $fixture['expectedDispatchedTenantIds'],
+            $this->dispatchedTenantIds(SyncSellerListingsJob::class),
+        );
     }
 
     public function test_reconcile_dispatches_one_job_per_active_seller_per_tenant(): void
@@ -83,6 +87,10 @@ final class MarketplaceScheduledCommandsTest extends TestCase
         $this->assertSame(
             $fixture['expectedDispatchedIds'],
             $this->dispatchedSellerIds(ReconcileListingsJob::class),
+        );
+        $this->assertSame(
+            $fixture['expectedDispatchedTenantIds'],
+            $this->dispatchedTenantIds(ReconcileListingsJob::class),
         );
     }
 
@@ -166,17 +174,41 @@ final class MarketplaceScheduledCommandsTest extends TestCase
      */
     private function dispatchedSellerIds(string $jobClass): array
     {
-        $ids = Queue::pushed($jobClass)
-            ->map(function (object $job): string {
-                $property = new ReflectionProperty($job, 'sellerId');
+        return $this->dispatchedPayloadValues($jobClass, 'sellerId');
+    }
 
-                return (string) $property->getValue($job);
+    /**
+     * Finding B closure (2026-08-05): each fan-out payload must carry the
+     * ITERATING tenant so the worker can rebind it via BindsTenantContext even
+     * when QueueTenancyBootstrapper's stamp is absent (queue:retry, manual
+     * re-queue). Note it is NOT `$seller->tenant_id` — that column is NULL for
+     * the external seller in this fixture.
+     *
+     * @param  class-string  $jobClass
+     * @return list<string>
+     */
+    private function dispatchedTenantIds(string $jobClass): array
+    {
+        return $this->dispatchedPayloadValues($jobClass, 'tenantId');
+    }
+
+    /**
+     * @param  class-string  $jobClass
+     * @return list<string>
+     */
+    private function dispatchedPayloadValues(string $jobClass, string $property): array
+    {
+        $values = Queue::pushed($jobClass)
+            ->map(function (object $job) use ($property): string {
+                $reflected = new ReflectionProperty($job, $property);
+
+                return (string) $reflected->getValue($job);
             })
             ->all();
 
-        sort($ids);
+        sort($values);
 
-        return array_values($ids);
+        return array_values($values);
     }
 
     private function createTenant(string $slug): Tenant
@@ -232,7 +264,7 @@ final class MarketplaceScheduledCommandsTest extends TestCase
      * erp_tenant seller gets its own company, and the external seller (which
      * carries no tenant/company at all) is exempt.
      *
-     * @return array{activeExternal: MarketplaceSeller, activeTenantB: MarketplaceSeller, suspended: MarketplaceSeller, expectedDispatchedIds: list<string>}
+     * @return array{activeExternal: MarketplaceSeller, activeTenantB: MarketplaceSeller, suspended: MarketplaceSeller, expectedDispatchedIds: list<string>, expectedDispatchedTenantIds: list<string>}
      */
     private function createSellers(): array
     {
@@ -271,11 +303,22 @@ final class MarketplaceScheduledCommandsTest extends TestCase
         ];
         sort($expected);
 
+        // Each tenant pass stamps ITS OWN id on both of the jobs it dispatches
+        // — never $seller->tenant_id, which is NULL for $activeExternal.
+        $expectedTenantIds = [
+            $tenantA->id,
+            $tenantA->id,
+            $tenantB->id,
+            $tenantB->id,
+        ];
+        sort($expectedTenantIds);
+
         return [
             'activeExternal' => $activeExternal,
             'activeTenantB' => $activeTenantB,
             'suspended' => $suspended,
             'expectedDispatchedIds' => array_values($expected),
+            'expectedDispatchedTenantIds' => array_values($expectedTenantIds),
         ];
     }
 }

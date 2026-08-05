@@ -86,6 +86,25 @@ the fix requires schema/contract changes that exceed the cluster's
 
 ## Finding B — `MarketplaceSeller::find` unscoped lookup in marketplace fan-out jobs (LOW / defense-in-depth)
 
+> **CLOSED 2026-08-05 — recommendation 1 ADOPTED, recommendation 2 REJECTED.**
+> `SyncSellerListingsJob` and `ReconcileListingsJob` now take
+> `public readonly string $tenantId` and wrap `handle()` in
+> `BindsTenantContext::withTenantContext()`; both classes dropped their
+> `@cross-tenant-by-design` tag and are now cat-(a). `MarketplaceDeltaSyncCommand`
+> / `MarketplaceReconcileCommand` dispatch with the **ITERATING** tenant's id
+> (`$tenant->id`), NOT `$seller->tenant_id` as this section's snippet suggested —
+> `marketplace_sellers.tenant_id` is NULLABLE and external / Synerivia-owned
+> sellers carry NULL, so `$seller->tenant_id` would dispatch a NULL anchor for
+> exactly those rows. For the same reason recommendation 2 (scoping the seller
+> lookup to `where('tenant_id', $this->tenantId)`) was **NOT** implemented: it
+> would silently drop every external seller. Under database-per-tenant the seller
+> table is physically isolated inside the bound tenant database, so the bind — not
+> a WHERE clause — is the isolation boundary. Pinned by
+> `tests/Feature/Marketplace/MarketplaceListingJobsTenantContextTest.php`
+> (binding + fail-loud + the external-seller leg) and by the `tenantId` payload
+> assertions in `tests/Feature/Marketplace/MarketplaceScheduledCommandsTest.php`.
+> The MarketplaceListing `company_id` column remains a genuine open follow-up.
+
 **Severity**: LOW (defense-in-depth on UUID-anchored entity lookup)
 
 **Surface**:
@@ -274,8 +293,11 @@ The `api.scheduled-jobs` cluster closes against:
     central context are now `TenantScopedCommand`s, so both jobs are dispatched
     under initialized tenancy and QueueTenancyBootstrapper stamps the tenant
     onto the payload. Finding B (BindsTenantContext hardening on the two
-    marketplace jobs) remains open and is now the only defence-in-depth gap
-    left on that pair.
+    marketplace jobs) remained the only defence-in-depth gap left on that pair.
+  - **2026-08-05 addendum.** Finding B is CLOSED: `ReconcileListingsJob` /
+    `SyncSellerListingsJob` DROPPED the cat-(b) tag, adopted
+    `BindsTenantContext` with an explicit `tenantId`, and are now cat-(a). The
+    cat-(b) annotation count for this cluster is therefore 4, not 6.
 - 1 deferral fixture entry (DispatchAppointmentReminder, locked at
   `api.console-commands.002`).
 - New architecture test `QueueJobTenantContextTest` over the `Jobs/`

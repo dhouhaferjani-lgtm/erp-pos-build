@@ -25,7 +25,11 @@ use App\Modules\Tenant\Domain\Tenant;
  * tenant queries from the command body. The seller query AND the dispatch both
  * run inside the tenant's context, so QueueTenancyBootstrapper stamps the
  * tenant onto each per-seller payload and the worker re-initializes tenancy
- * before {@see ReconcileListingsJob} resolves its seller.
+ * before {@see ReconcileListingsJob} resolves its seller. As of 2026-08-05 the
+ * iterating tenant's id is ALSO passed explicitly to the job, which rebinds it
+ * via BindsTenantContext — so a payload that lost the bootstrapper's stamp
+ * (queue:retry, manual re-queue, synchronous console dispatch) still binds the
+ * right database instead of falling through to central.
  *
  * **Legacy row-level mode** (`tenancy_resolver.db_per_tenant=false` — the test
  * suite and pre-flip compat): `forEachTenant()` runs the closure once per
@@ -60,8 +64,11 @@ final class MarketplaceReconcileCommand extends TenantScopedCommand
                 return self::SUCCESS;
             }
 
-            MarketplaceSeller::active()->each(function (MarketplaceSeller $seller) use (&$dispatched): void {
-                ReconcileListingsJob::dispatch($seller->id);
+            MarketplaceSeller::active()->each(function (MarketplaceSeller $seller) use ($tenant, &$dispatched): void {
+                // The ITERATING tenant, not $seller->tenant_id: the latter is
+                // NULL for external sellers, and what the worker must rebind is
+                // the database the seller row was read from.
+                ReconcileListingsJob::dispatch($seller->id, $tenant->id);
                 $dispatched++;
             });
 
