@@ -23,6 +23,23 @@ defense-in-depth tightenings or scope-extension reminders.
 
 ## Finding A — `platform_submission_id` global-uniqueness contract risk in `ProcessEnrichmentEventListener` (LOW / defense-in-depth)
 
+> **2026-08-05 — ERP HALF DONE, PLATFORM HALF PENDING (cat-(b) conversion wave 1).**
+> The recommendation this finding closes on — "extend the `EnrichmentWebhookPayload` DTO to carry
+> the originating `tenantId` … (the platform-side enrichment-submission API already knows which
+> tenant submitted)" — is IMPLEMENTED on the ERP side, because the database-per-tenant flip turned
+> it from defence-in-depth into a hard requirement. `EnrichmentWebhookPayload::$tenantId` exists,
+> `ProcessEnrichmentWebhookJob` rebinds it via `BindsTenantContext`, and the listener now FAILS
+> CLOSED when no tenant is bound instead of dying on a 42P01.
+>
+> Once the anchor is present the `->sole()` runs inside ONE tenant's database, so a cross-tenant
+> `platform_submission_id` collision stops being reachable at all — which is a stronger outcome than
+> the `where('company_id', …)` predicate this finding proposed, and needs no extra predicate.
+>
+> **Still open:** the platform does not send `tenant_id` yet. Until it does, every webhook takes the
+> discard path and `enrichment:check-pending` resolves the submission per tenant instead. Platform
+> contract + draft REALIGNMENT-LOG entry:
+> `docs/superpowers/tickets/2026-08-05-enrichment-webhook-platform-contract.md`.
+
 **Severity**: LOW (defense-in-depth; no observed contract violation)
 
 **Surface**: `apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php:22`
@@ -298,6 +315,21 @@ The `api.scheduled-jobs` cluster closes against:
     `SyncSellerListingsJob` DROPPED the cat-(b) tag, adopted
     `BindsTenantContext` with an explicit `tenantId`, and are now cat-(a). The
     cat-(b) annotation count for this cluster is therefore 4, not 6.
+  - **2026-08-05 addendum #2 (cat-(b) conversion wave 1).**
+    `ProcessEnrichmentWebhookJob` DROPPED its cat-(b) justification's central
+    claim and adopted `BindsTenantContext`. Its old text said tenant resolution
+    "chains through `platform_submission_id` → `Product` → `company_id`" — that
+    chain's FIRST hop is a tenant-table read, so post-flip it cannot start: the
+    unauthenticated webhook dispatches under central context and the synchronous
+    `ProcessEnrichmentEventListener` raised a 42P01 `QueryException` its
+    `catch (ModelNotFoundException)` never caught. The anchor now travels on
+    `EnrichmentWebhookPayload::$tenantId`; an anchorless payload is DISCARDED
+    (never processed under central) and `enrichment:check-pending` re-resolves
+    it per tenant within 15 minutes. **This makes Finding A resolvable for free**
+    once the platform echoes `tenant_id` back — see
+    `docs/superpowers/tickets/2026-08-05-enrichment-webhook-platform-contract.md`.
+    Remaining cat-(b) annotations for this cluster: 3
+    (`GenerateImageVariants` + the two verified-safe entries).
 - 1 deferral fixture entry (DispatchAppointmentReminder, locked at
   `api.console-commands.002`).
 - New architecture test `QueueJobTenantContextTest` over the `Jobs/`
@@ -996,3 +1028,95 @@ BEFORE committing to a master-plan §-narrowing as scope.
 - Static-vs-behavioral layering precedent: api.broadcast-channels
   round-3 BLOCK-NOVEL (this same doc, "Static analyzer on closure
   bodies has unbounded attack surface" section).
+
+---
+
+## cat-(b) cross-tenant conversion — WAVE 1 (2026-08-05)
+
+Follow-on to the 2026-08-04 session that converted `ExpireReservationsJob`,
+`DailyExpiryCheck` and the two marketplace scheduler closures. Source audit (a
+re-sweep of every remaining `@cross-tenant-by-design` class and every cat-(b)
+class named in this document against the post-2026-05-28 topology):
+`scratchpad/partA1-cat-b-resweep.md`.
+
+Wave 1 took the six AUTOMATED surfaces — the ones that run without an operator
+watching. The twelve operator/one-shot commands in the re-sweep's §1b (which
+fail LOUD when run bare) are a later wave.
+
+| Surface | Verdict | What shipped |
+|---|---|---|
+| `channels:reconcile` scheduler CLOSURE (`ChannelServiceProvider`) | **CONVERTED** | `ChannelReconcileCommand` (TenantScopedCommand), provider-registered, `withoutOverlapping(30)` + `onFailure()`. The `Schema::hasTable('channels')` guard was NOT carried across. |
+| `LockExpiredFiscalPeriodsCommand` (`fiscal:lock-expired-periods`) | **CONVERTED** | `forEachTenant()`; the `catch (\Exception)` swallow removed; schedule entry gains `onFailure()` and drops `runInBackground()`. Locking business logic untouched. |
+| `DetectFraudPatterns` (`fraud:detect`) | **CONVERTED** | `forEachTenant()` with the company enumeration inside, explicit `tenant_id` predicate, `--company` kept as an in-tenant filter that now fails loudly when it matches nothing. |
+| `CheckPendingEnrichmentsCommand` (`enrichment:check-pending`) | **CONVERTED (+ a second, undiagnosed fault)** | See below. |
+| Enrichment webhook chain | **CONVERTED — audit claim CONFIRMED, staging counter-evidence EXPLAINED** | See below. |
+| `ChannelWebhookController` | **CONVERTED** | Central `channel_webhook_directory` pointer + fail-closed 404. See below. |
+
+### Beyond the audit: `enrichment:check-pending` was never a registered command
+
+`CheckPendingEnrichmentsCommand` lives in
+`app/Modules/PlatformIntegration/Application/Commands/`, and Laravel only
+auto-discovers `app/Console/Commands`. It was therefore never a resolvable
+Artisan command — `php artisan list` never showed it. `Schedule::command()`
+takes an unvalidated STRING, so `schedule:list` printed the entry and the
+scheduler shelled out to a non-existent command on every 15-minute tick, with no
+`onFailure()` to notice. **A `schedule:list` assertion does not prove a command
+exists**; the regression test added with the fix asserts a resolvable name via
+`Artisan::all()`.
+
+Note the knock-on: this poller is the enrichment WEBHOOK's fallback path, so
+both halves of that feature were dark at once.
+
+### Staging counter-evidence on the enrichment queue — resolved, not a webhook bug
+
+A staging `failed_jobs` row (queue `enrichment`, 2026-07-03) carried a payload
+WITH `tenant_id` and a NOT NULL violation on `enrichment_results.tracking_id`,
+which appeared to contradict the audit's "the webhook runs with no tenancy"
+claim. It does not:
+
+- the `enrichment` queue carries several jobs, not just `ProcessEnrichmentWebhookJob`;
+- `ApplyCatalogEnrichmentJob` is dispatched from `ProductController` under an
+  AUTHENTICATED request, so `QueueTenancyBootstrapper` stamps `tenant_id` — that
+  is where the anchor in the payload came from;
+- it writes `'tracking_id' => null` (`CatalogEnrichmentService`), against a then
+  NOT NULL column;
+- migration `2026_07_03_000001_make_enrichment_results_tracking_id_nullable.php`
+  (`2b9b533d4`, same day) made the column nullable and fixed it.
+
+So the row is a historical artifact of a DIFFERENT job on the same queue, already
+fixed. **No `tracking_id` change was owed**, and the audit's verdict on the
+webhook path stands unaltered.
+
+### The listener's catch gap — closed with a guard, not a wider catch
+
+`ProcessEnrichmentEventListener` caught `ModelNotFoundException` around a
+`->sole()` that, on the central connection, raised `QueryException` (42P01)
+instead — so the job died naming a missing relation rather than the real fault.
+The catch was deliberately NOT widened: a query fault is an infra fault that must
+stay loud and retryable, never be reinterpreted as "unknown tracking id". The
+listener now refuses to run at all when no tenant is bound under db-per-tenant,
+and says why.
+
+### `ChannelWebhookController` — how channel webhooks identify the tenant: they don't
+
+The channel id in the URL is the only identifier the request carries, `channels`
+is a tenant table, and the signature cannot be checked first because verification
+needs that same row's adapter and credentials. A new CENTRAL
+`channel_webhook_directory` (`channel_id -> tenant_id`, and nothing else) makes
+the callback routable; the tenant is bound through
+`TenancyResolver::initializeIfProvisioned()` before anything tenant-side is read.
+Unresolvable ids get a fail-closed 404 before the adapter registry is consulted —
+**never a per-tenant fan-out**, which on an unauthenticated endpoint would let one
+forged request cost N database switches. The directory is maintained by a Channel
+model observer and self-healed by the nightly `channels:reconcile` sweep, since a
+central migration cannot backfill across tenant databases.
+
+### Cross-cutting lesson (re-sweep §4.1, restated with evidence)
+
+Both `ConsoleCommandTenantContextTest` and `QueueJobTenantContextTest` were GREEN
+with every surface above broken: they check that a justification STRING exists,
+never that it is still true. Three of the six justifications converted here were
+not merely stale but actively false post-flip (`ProcessEnrichmentWebhookJob`'s
+resolution chain, `ChannelWebhookController`'s "resolved from the signed channel
+secret", `LockExpiredFiscalPeriodsCommand`'s "across all companies"). That is the
+structural reason this class of breakage survived 2026-05-28.
