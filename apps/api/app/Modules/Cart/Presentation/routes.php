@@ -48,8 +48,16 @@ Route::prefix('api/v1/catalog-carts')
             ->middleware('can:catalog_cart.convert_po')
             ->name('catalog-carts.convert');
 
-        // Marketplace checkout
-        Route::post('{id}/marketplace-checkout', [CatalogCartController::class, 'marketplaceCheckout'])
-            ->middleware('can:catalog_cart.marketplace_checkout')
-            ->name('catalog-carts.marketplace-checkout');
+        // Marketplace checkout — registered only while the Marketplace
+        // kill-switch is on. This endpoint converts a catalog cart into
+        // marketplace orders, so it is a Marketplace surface living in the Cart
+        // module and must follow the same flag as
+        // App\Modules\Marketplace\Providers\MarketplaceServiceProvider (which
+        // carries the full rationale). Everything else in this group is
+        // procurement-only and stays registered unconditionally.
+        if ((bool) config('marketplace.enabled', false)) {
+            Route::post('{id}/marketplace-checkout', [CatalogCartController::class, 'marketplaceCheckout'])
+                ->middleware('can:catalog_cart.marketplace_checkout')
+                ->name('catalog-carts.marketplace-checkout');
+        }
     });
