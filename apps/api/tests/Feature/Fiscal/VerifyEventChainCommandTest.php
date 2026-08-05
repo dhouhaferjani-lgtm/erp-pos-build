@@ -355,6 +355,49 @@ final class VerifyEventChainCommandTest extends TestCase
     }
 
     // =================================================================
+    // Tenancy binding (cat-(b) wave 2, 2026-08-05)
+    //
+    // `--tenant` used to be a WHERE predicate on a command that never left the
+    // console's CENTRAL connection. It now BINDS tenancy, so a tenant that is
+    // not in the central directory can no longer be silently "verified".
+    // =================================================================
+
+    public function test_an_unknown_tenant_fails_loudly_instead_of_reporting_a_verified_chain(): void
+    {
+        $this->seedValidChain(3);
+
+        $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => '00000000-0000-0000-0000-000000000000',
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->verifierUser->id,
+        ])
+            ->expectsOutputToContain('not found in the central tenant directory')
+            ->doesntExpectOutputToContain('chain verified')
+            ->assertExitCode(1);
+    }
+
+    /**
+     * The chain lives in tenant A; the operator names tenant B. Before the
+     * conversion the walk simply matched zero rows and printed
+     * "chain verified — … 0 events walked", exit 0.
+     */
+    public function test_a_chain_is_not_verified_from_another_tenants_binding(): void
+    {
+        $this->seedValidChain(3);
+
+        $otherTenant = Tenant::factory()->create();
+
+        $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => $otherTenant->id,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->verifierUser->id,
+        ])
+            ->expectsOutputToContain(sprintf('does not exist in tenant %s', $otherTenant->id))
+            ->doesntExpectOutputToContain('chain verified')
+            ->assertExitCode(1);
+    }
+
+    // =================================================================
     // Fixture helpers — CI-shaped seeders matching plan §2401 contract.
     // =================================================================
 

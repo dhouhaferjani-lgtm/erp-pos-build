@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
+use App\Console\TenantScopedCommand;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
-use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\PermissionRegistrar;
 use stdClass;
@@ -62,9 +65,28 @@ use Throwable;
  * surfaces a transient failure (exit 2), and exits — never crashes the
  * operator's terminal mid-report.
  *
- * @cross-tenant-by-design Operator diagnostic command runs outside request tenant middleware but requires explicit tenant/terminal filters and an actor permission gate.
+ * **Tenant-isolation: cat-(a-per-tenant-iter) with a REQUIRED single-tenant
+ * filter, converted 2026-08-05 (cat-(b) wave 2).** `--tenant` used to be a
+ * WHERE predicate only: the command stayed on the console's CENTRAL connection
+ * and added `where('tenant_id', …)` to queries against `fiscal_events`,
+ * `fiscal_event_quarantine`, `pos_terminals` and `users` — all TENANT tables.
+ * After the 2026-05-28 database-per-tenant flip none of them exist there, so
+ * the launch program's canonical chain verifier raised 42P01 on every run. The
+ * option now BINDS tenancy (which is what the operator always believed it
+ * did); the `tenant_id` predicates are kept because they are load-bearing in
+ * single-schema compatibility mode.
+ *
+ * The actor lookup and the Spatie permission check moved INSIDE the tenancy
+ * binding — `users` is a tenant table, so the gate itself was unreadable from
+ * central.
+ *
+ * There is deliberately no fleet-wide mode: the gate is anchored on an actor
+ * who exists in exactly one tenant, so "verify every tenant with this actor"
+ * has no coherent meaning.
+ *
+ * The chain-walking LOGIC is untouched.
  */
-final class VerifyEventChainCommand extends Command
+final class VerifyEventChainCommand extends TenantScopedCommand
 {
     /** @var string */
     protected $signature = 'fiscal:verify-event-chain '.
@@ -78,16 +100,31 @@ final class VerifyEventChainCommand extends Command
     protected $description = 'Verify the fiscal-events hash chain for one terminal (spec §12).';
 
     public function __construct(
-        private readonly ConnectionInterface $db,
+        CompanyContext $companyContext,
+        private readonly DatabaseManager $databaseManager,
         private readonly FiscalIntegrityProvider $integrityProvider,
         private readonly PermissionRegistrar $permissionRegistrar,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    /**
+     * The connection resolved at CALL time.
+     *
+     * A `ConnectionInterface` captured in the constructor is pinned to the
+     * central connection: `tenancy()->initialize()` purges the `tenant`
+     * connection and re-points `database.default`, so only a resolution made
+     * after the switch reaches the tenant's database.
+     */
+    private function db(): ConnectionInterface
     {
-        // ---- Permission gate (Task 24 standing pattern) ----
+        return $this->databaseManager->connection();
+    }
+
+    protected function executeCommand(): int
+    {
+        // ---- Option validation (no DB access; every one of these is a
+        // validation error, exit 1, before any tenancy is bound) ----
         $actorId = $this->option('actor-id');
         if (! is_string($actorId) || $actorId === '') {
             $this->error('Missing --actor-id flag; required for fiscal.events.verify_chain gate.');
@@ -95,34 +132,6 @@ final class VerifyEventChainCommand extends Command
             return self::FAILURE;
         }
 
-        $actor = User::query()->find($actorId);
-        if ($actor === null) {
-            $this->error(sprintf('Unknown actor user id %s.', $actorId));
-
-            return self::FAILURE;
-        }
-
-        // Re-scope the Spatie registrar to the actor's tenant before
-        // checking `can()`. Mirrors EnqueueResolvedEventProjectionsCommand
-        // (Task 24 R2 — T24-P1). Always restored in finally per the
-        // Task 18 F1 / Task 23 R3-F2 try/finally discipline.
-        $previousTeamId = $this->permissionRegistrar->getPermissionsTeamId();
-        try {
-            $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
-
-            if (! $actor->can('fiscal.events.verify_chain')) {
-                $this->error(sprintf(
-                    'Actor %s lacks the fiscal.events.verify_chain permission.',
-                    $actorId,
-                ));
-
-                return self::FAILURE;
-            }
-        } finally {
-            $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
-        }
-
-        // ---- Required identifiers ----
         $tenantId = $this->option('tenant');
         if (! is_string($tenantId) || $tenantId === '') {
             $this->error('Missing --tenant option; required to scope the chain walk.');
@@ -154,8 +163,83 @@ final class VerifyEventChainCommand extends Command
             return self::FAILURE;
         }
 
+        $exit = $this->forEachTenant(
+            fn (Tenant $tenant): int => (string) $tenant->id === $tenantId
+                ? $this->verifyBoundTenant($actorId, $tenantId, $terminalId, $chainContext, $fromSequence)
+                : self::SUCCESS,
+        );
+
+        if ($this->failIfTenantFilterUnvisited($tenantId) !== null) {
+            // failIfTenantFilterUnvisited already printed the reason. Its own
+            // INVALID (2) is remapped: exit 2 is reserved by this command's
+            // documented contract for a TRANSIENT failure ("operator re-runs
+            // to retry"), and a tenant absent from the directory is not
+            // transient — it is a validation error, exit 1.
+            return self::FAILURE;
+        }
+
+        return $exit;
+    }
+
+    /**
+     * The permission gate and the chain walk, both running inside the bound
+     * tenant's database.
+     */
+    private function verifyBoundTenant(
+        string $actorId,
+        string $tenantId,
+        string $terminalId,
+        string $chainContext,
+        int $fromSequence,
+    ): int {
+        // ---- Permission gate (Task 24 standing pattern) ----
+        // `users` is a TENANT table: this lookup only resolves once tenancy is
+        // bound, which is why it now lives here rather than at the top of the
+        // command.
+        $actor = User::query()->find($actorId);
+        if ($actor === null) {
+            $this->error(sprintf('Unknown actor user id %s.', $actorId));
+
+            return self::FAILURE;
+        }
+
+        // Re-scope the Spatie registrar to the actor's tenant before
+        // checking `can()`. Mirrors EnqueueResolvedEventProjectionsCommand
+        // (Task 24 R2 — T24-P1). Always restored in finally per the
+        // Task 18 F1 / Task 23 R3-F2 try/finally discipline.
+        $previousTeamId = $this->permissionRegistrar->getPermissionsTeamId();
+        try {
+            $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
+
+            if (! $actor->can('fiscal.events.verify_chain')) {
+                $this->error(sprintf(
+                    'Actor %s lacks the fiscal.events.verify_chain permission.',
+                    $actorId,
+                ));
+
+                return self::FAILURE;
+            }
+        } finally {
+            $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
+        }
+
         // ---- Walk the chain ----
         try {
+            // Fail closed on a terminal the bound tenant does not own
+            // (2026-08-05 cat-(b) wave 2). Without this the walk simply
+            // matched zero rows and the command reported
+            // "chain verified — … 0 events walked" with exit 0 — a launch
+            // verifier declaring a chain intact when it never found the chain.
+            if (! $this->terminalExistsInBoundTenant($tenantId, $terminalId)) {
+                $this->error(sprintf(
+                    'Terminal %s does not exist in tenant %s; nothing was verified.',
+                    $terminalId,
+                    $tenantId,
+                ));
+
+                return self::FAILURE;
+            }
+
             $incidents = $this->walkChain($tenantId, $terminalId, $chainContext, $fromSequence);
             $quarantineIncidents = $this->reportQuarantineIncidents($tenantId, $terminalId, $chainContext);
         } catch (Throwable $e) {
@@ -218,6 +302,19 @@ final class VerifyEventChainCommand extends Command
 
     /** Tracks how many `fiscal_events` rows the latest walk inspected. */
     private int $lastWalkedCount = 0;
+
+    /**
+     * The `tenant_id` predicate is redundant once tenancy is bound and
+     * load-bearing in single-schema compatibility mode, where one shared
+     * database holds every tenant's terminals.
+     */
+    private function terminalExistsInBoundTenant(string $tenantId, string $terminalId): bool
+    {
+        return $this->db()->table('pos_terminals')
+            ->where('id', $terminalId)
+            ->where('tenant_id', $tenantId)
+            ->exists();
+    }
 
     /**
      * Walk `fiscal_events` for the (tenant, terminal) in
@@ -316,7 +413,7 @@ final class VerifyEventChainCommand extends Command
     {
         if ($fromSequence > 1) {
             /** @var stdClass|null $prior */
-            $prior = $this->db->table('fiscal_events')
+            $prior = $this->db()->table('fiscal_events')
                 ->where('tenant_id', $tenantId)
                 ->where('terminal_id', $terminalId)
                 ->where('chain_context', $chainContext)
@@ -335,7 +432,7 @@ final class VerifyEventChainCommand extends Command
         }
 
         /** @var stdClass|null $terminal */
-        $terminal = $this->db->table('pos_terminals')
+        $terminal = $this->db()->table('pos_terminals')
             ->where('id', $terminalId)
             ->first(['genesis_seed']);
 

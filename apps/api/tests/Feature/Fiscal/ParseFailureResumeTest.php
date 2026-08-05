@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
@@ -26,7 +27,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -210,6 +211,7 @@ final class ParseFailureResumeTest extends TestCase
 
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
 
@@ -232,10 +234,12 @@ final class ParseFailureResumeTest extends TestCase
 
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
 
@@ -257,6 +261,7 @@ final class ParseFailureResumeTest extends TestCase
 
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => Str::uuid()->toString(),
+            '--tenant' => $this->tenantId,
             '--actor-id' => $unprivileged->id,
         ])->assertExitCode(1);
     }
@@ -320,6 +325,7 @@ final class ParseFailureResumeTest extends TestCase
         // skips this row.
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
 
@@ -352,6 +358,7 @@ final class ParseFailureResumeTest extends TestCase
 
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
 
@@ -556,6 +563,7 @@ final class ParseFailureResumeTest extends TestCase
         // If the command scopes correctly to the actor's tenant, this
         // succeeds (exit 0 — nothing to do).
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(0);
 
@@ -564,6 +572,7 @@ final class ParseFailureResumeTest extends TestCase
         // result is sensitive to whatever team id was set before
         // invocation — either both succeed or both fail.
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--tenant' => $tenantB->id,
             '--actor-id' => $unprivilegedB->id,
         ])->assertExitCode(1);
     }
@@ -591,6 +600,7 @@ final class ParseFailureResumeTest extends TestCase
 
         $this->artisan('fiscal:enqueue-resolved-event-projections', [
             '--fiscal-event-id' => $event->id,
+            '--tenant' => $this->tenantId,
             '--actor-id' => $this->resolverUser->id,
         ])->assertExitCode(2);
     }
@@ -632,6 +642,35 @@ final class ParseFailureResumeTest extends TestCase
         // Only tenant A's projection row was dispatched. With one fake
         // projector tagged per event, exactly one job per event.
         Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
+    }
+
+    // =================================================================
+    // Tenancy binding (cat-(b) wave 2, 2026-08-05)
+    //
+    // `--tenant` used to be an optional WHERE predicate on a command that
+    // never left the console's CENTRAL connection. It is now REQUIRED and it
+    // BINDS tenancy — without it there is no database in which to look for the
+    // fiscal_events rows, the projection rows, or the actor.
+    // =================================================================
+
+    public function test_command_requires_the_tenant_option(): void
+    {
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--actor-id' => $this->resolverUser->id,
+        ])
+            ->expectsOutputToContain('Missing --tenant option')
+            ->assertExitCode(1);
+    }
+
+    public function test_command_fails_loudly_for_a_tenant_absent_from_the_directory(): void
+    {
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--tenant' => Str::uuid()->toString(),
+            '--actor-id' => $this->resolverUser->id,
+        ])
+            ->expectsOutputToContain('not found in the central tenant directory')
+            ->doesntExpectOutputToContain('nothing to do')
+            ->assertExitCode(1);
     }
 
     // =================================================================
@@ -928,7 +967,8 @@ final class ParseFailureResumeTest extends TestCase
         $this->app->bind(
             EnqueueResolvedEventProjectionsCommand::class,
             fn ($app) => new EnqueueResolvedEventProjectionsCommand(
-                $app->make(ConnectionInterface::class),
+                $app->make(CompanyContext::class),
+                $app->make(DatabaseManager::class),
                 $app->make(FiscalEventProjectionRegistry::class),
                 $app->make(PermissionRegistrar::class),
             ),

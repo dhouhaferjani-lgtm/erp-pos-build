@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
+use App\Console\TenantScopedCommand;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
-use Illuminate\Console\Command;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -80,37 +82,68 @@ use Throwable;
  * the command logs critical, skips that row, and continues — never
  * crashes mid-batch. This mirrors the Task 18 F1 standing pattern.
  *
- * @cross-tenant-by-design Fleet recovery command that can scan unresolved fiscal projection rows across tenants; per-row work remains anchored on each fiscal event's tenant/company context.
+ * **Tenant-isolation: cat-(a-per-tenant-iter) with a REQUIRED single-tenant
+ * filter, converted 2026-08-05 (cat-(b) wave 2).** `--tenant` used to be an
+ * optional WHERE predicate on a command that never left the console's CENTRAL
+ * connection, and the old annotation claimed a fleet-wide scan. `fiscal_events`,
+ * `fiscal_event_projections` and `users` are all TENANT tables, so after the
+ * 2026-05-28 database-per-tenant flip the recovery path raised 42P01 on every
+ * invocation — including the after-commit crash-window recovery it exists for.
+ * The option is now REQUIRED and BINDS tenancy; the surviving `tenant_id`
+ * predicate is load-bearing only in single-schema compatibility mode.
+ *
+ * There is deliberately NO `--all-tenants` mode. The permission gate is
+ * anchored on an `--actor-id` that resolves in exactly one tenant's `users`
+ * table, so a fleet run would either have to skip every other tenant (silent,
+ * the B1 failure class) or fail on them (useless). An operator recovering N
+ * tenants runs the command N times with the right actor for each.
+ *
+ * The actor lookup and permission check moved INSIDE the tenancy binding.
  *
  * **Exit codes (per Task 24 brief):**
  *   - 0 — success (including no-op when nothing to enqueue)
  *   - 1 — permission denied OR validation error (unknown user, missing
- *         actor, unknown fiscal-event-id when targeted explicitly)
+ *         actor, missing/unknown tenant, unknown fiscal-event-id when
+ *         targeted explicitly)
  *   - 2 — transient failure (registry-resolver hard error, DB connection
  *         lost mid-loop, etc.); operator re-runs to retry
  */
-final class EnqueueResolvedEventProjectionsCommand extends Command
+final class EnqueueResolvedEventProjectionsCommand extends TenantScopedCommand
 {
     /** @var string */
     protected $signature = 'fiscal:enqueue-resolved-event-projections '.
         '{--fiscal-event-id= : restrict to a single fiscal_events.id} '.
-        '{--tenant= : restrict to one tenant_id} '.
+        '{--tenant= : tenant_id whose database holds the rows (required)} '.
         '{--actor-id= : authenticated user id performing the action (required for the permission gate)}';
 
     /** @var string */
     protected $description = 'Recover pending fiscal_event_projections rows for parse-resolved events (spec §15.2).';
 
     public function __construct(
-        private readonly ConnectionInterface $db,
+        CompanyContext $companyContext,
+        private readonly DatabaseManager $databaseManager,
         private readonly FiscalEventProjectionRegistry $projectionRegistry,
         private readonly PermissionRegistrar $permissionRegistrar,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    /**
+     * The connection resolved at CALL time.
+     *
+     * A `ConnectionInterface` captured in the constructor is pinned to the
+     * central connection: `tenancy()->initialize()` purges the `tenant`
+     * connection and re-points `database.default`, so only a resolution made
+     * after the switch reaches the tenant's database.
+     */
+    private function db(): ConnectionInterface
     {
-        // ---- Permission gate (Task 24 brief pattern (a)) ----
+        return $this->databaseManager->connection();
+    }
+
+    protected function executeCommand(): int
+    {
+        // ---- Option validation (no DB access) ----
         $actorId = $this->option('actor-id');
         if (! is_string($actorId) || $actorId === '') {
             $this->error('Missing --actor-id flag; required for fiscal.events.resolve_quarantine gate.');
@@ -118,6 +151,34 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
             return self::FAILURE;
         }
 
+        $tenantOption = $this->option('tenant');
+        if (! is_string($tenantOption) || $tenantOption === '') {
+            $this->error('Missing --tenant option; required to bind the tenant database holding the rows.');
+
+            return self::FAILURE;
+        }
+
+        $exit = $this->forEachTenant(
+            fn (Tenant $tenant): int => (string) $tenant->id === $tenantOption
+                ? $this->recoverBoundTenant($actorId, $tenantOption)
+                : self::SUCCESS,
+        );
+
+        if ($this->failIfTenantFilterUnvisited($tenantOption) !== null) {
+            // Remapped away from INVALID (2): this command reserves exit 2 for
+            // a TRANSIENT failure the operator can retry, and a tenant absent
+            // from the directory is a validation error.
+            return self::FAILURE;
+        }
+
+        return $exit;
+    }
+
+    private function recoverBoundTenant(string $actorId, string $tenantOption): int
+    {
+        // ---- Permission gate (Task 24 brief pattern (a)) ----
+        // `users` is a TENANT table; the gate is only readable once tenancy is
+        // bound, which is why the lookup lives here.
         $actor = User::query()->find($actorId);
         if ($actor === null) {
             $this->error(sprintf('Unknown actor user id %s.', $actorId));
@@ -160,10 +221,9 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
             $query->where('id', $fiscalEventId);
         }
 
-        $tenantOption = $this->option('tenant');
-        if (is_string($tenantOption) && $tenantOption !== '') {
-            $query->where('tenant_id', $tenantOption);
-        }
+        // Redundant now that tenancy is bound; load-bearing in single-schema
+        // compatibility mode where one shared database holds every tenant.
+        $query->where('tenant_id', $tenantOption);
 
         try {
             $events = $query->get();
@@ -331,7 +391,7 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
             );
         }
 
-        return $this->db->affectingStatement($sql, $bindings);
+        return $this->db()->affectingStatement($sql, $bindings);
     }
 
     /**
@@ -347,7 +407,7 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
      */
     private function dispatchPendingRows(FiscalEvent $event): int
     {
-        $rowIds = $this->db->table('fiscal_event_projections')
+        $rowIds = $this->db()->table('fiscal_event_projections')
             ->where('fiscal_event_id', $event->id)
             ->where('projection_status', ProjectionStatus::Pending->value)
             ->pluck('id');
@@ -371,16 +431,18 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
      * Mirrors `OutboxIngestor::driverName()` — `ConnectionInterface` does
      * not expose `getDriverName()`; that method lives on the concrete
      * `\Illuminate\Database\Connection`. Narrow with `instanceof` so
-     * PHPStan level 8 stays clean; a hypothetical test that injects a
-     * fake `ConnectionInterface` falls back to the default connection's
-     * driver name.
+     * PHPStan level 8 stays clean; a hypothetical fake `ConnectionInterface`
+     * falls back to the bound tenant connection's driver name (which is the
+     * same driver — a tenant database is provisioned on the same engine).
      */
     private function driverName(): string
     {
-        if ($this->db instanceof Connection) {
-            return $this->db->getDriverName();
+        $connection = $this->db();
+
+        if ($connection instanceof Connection) {
+            return $connection->getDriverName();
         }
 
-        return DB::connection()->getDriverName();
+        return $this->databaseManager->connection()->getDriverName();
     }
 }
