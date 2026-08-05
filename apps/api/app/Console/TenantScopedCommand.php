@@ -287,6 +287,89 @@ abstract class TenantScopedCommand extends Command
     }
 
     /**
+     * {@see self::forEachTenant()} narrowed by an optional operator-supplied
+     * `--tenant=<uuid>` filter, with the unvisited-target check already wired.
+     *
+     * This is the cat-(b) wave-2 conversion idiom for FLEET-DEFAULT commands
+     * (the fiscal verifiers): no `--tenant` means "every tenant", a `--tenant`
+     * means "that one tenant, and fail loudly if it was never reached". The
+     * filter is applied INSIDE the iteration closure rather than as a directory
+     * query so the visited/skipped bookkeeping behind
+     * {@see self::failIfTenantFilterUnvisited()} stays authoritative.
+     *
+     * Returns the aggregate exit code, or the unvisited-filter exit code when
+     * the operator's `--tenant` never opened an iteration slot. Note that the
+     * latter can be {@see self::INVALID} (2); a command whose own exit-code
+     * contract already assigns a meaning to 2 must remap it (see
+     * `VerifyEventChainCommand`, where 2 means "transient failure").
+     *
+     * @param  callable(Tenant): int  $fn
+     */
+    protected function forEachTenantFiltered(?string $tenantFilter, callable $fn): int
+    {
+        $exit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, $fn): int {
+            if ($tenantFilter !== null && (string) $tenant->id !== $tenantFilter) {
+                return self::SUCCESS;
+            }
+
+            return $fn($tenant);
+        });
+
+        $miss = $this->failIfTenantFilterUnvisited($tenantFilter);
+
+        return $miss ?? $exit;
+    }
+
+    /**
+     * The cat-(b) wave-2 conversion idiom for ONE-SHOT BACKFILLS: a fleet-wide
+     * run must be asked for explicitly.
+     *
+     * Before the 2026-05-28 database-per-tenant flip these commands enumerated
+     * `companies` / their own tenant tables from the console's central
+     * connection and genuinely swept the fleet. After the flip that query
+     * either raises 42P01 or — where a `Schema::hasTable()` guard sits in front
+     * of it — reports "nothing to do". Making the fleet run implicit again
+     * would recreate the B1 failure class: a one-time backfill that silently
+     * skips a tenant leaves permanently wrong data behind with no signal. So
+     * the caller must name its scope:
+     *
+     *   - `--tenant=<uuid>` — process exactly that tenant, and fail if the
+     *     tenant is absent from the directory or its database cannot be opened
+     *     ({@see self::failIfTenantFilterUnvisited()}).
+     *   - `--all-tenants` — deliberate fleet run over every tenant whose
+     *     database can be opened; a tenant whose closure throws degrades the
+     *     aggregate exit but never aborts the remaining tenants.
+     *
+     * Neither (or both) is a usage error — {@see self::INVALID}, nothing is
+     * processed. The subclass MUST declare both `{--tenant=}` and
+     * `{--all-tenants}` in its signature and READ them itself: larastan's
+     * `console.undefinedOption` rule resolves `$this->option('all-tenants')`
+     * against every concrete subclass of the declaring class, so the base
+     * cannot touch an option only some subclasses declare.
+     *
+     * @param  callable(Tenant): int  $fn
+     */
+    protected function forEachExplicitlySelectedTenant(?string $tenantFilter, bool $allTenants, callable $fn): int
+    {
+        if ($tenantFilter === null && ! $allTenants) {
+            $this->error(
+                'Refusing to run without an explicit scope: pass --tenant=<uuid> to process one tenant, '.
+                'or --all-tenants for a deliberate fleet-wide run. Nothing was processed.',
+            );
+
+            return self::INVALID;
+        }
+
+        if ($tenantFilter !== null && $allTenants) {
+            $this->error('--tenant and --all-tenants are mutually exclusive. Nothing was processed.');
+
+            return self::INVALID;
+        }
+
+        return $this->forEachTenantFiltered($tenantFilter, $fn);
+    }
+
+    /**
      * Tenant ids whose closure actually ran during the last
      * {@see self::forEachTenant()} call (a tenant whose closure THREW counts
      * as visited — that failure is already loud in the aggregate exit code).
