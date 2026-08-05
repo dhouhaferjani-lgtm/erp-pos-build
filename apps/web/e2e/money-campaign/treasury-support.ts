@@ -206,7 +206,7 @@ export async function getPaymentMethods(
 export async function getRepositories(
   request: APIRequestContext,
   session: Session,
-): Promise<Array<{ id: string; code: string; type: string; currency: string; balance: string; gl_account_id: string | null }>> {
+): Promise<Array<{ id: string; code: string; type: string; currency: string; balance: string; gl_account_id: string | null; is_active: boolean }>> {
   const res = await request.get(`${API_BASE}/payment-repositories`, { headers: authHeaders(session) })
   expect(res.ok()).toBeTruthy()
   return (await res.json()).data
