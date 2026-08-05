@@ -6,6 +6,7 @@ namespace App\Jobs\Concerns;
 
 use App\Console\TenantScopedCommand;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Stancl\Tenancy\Bootstrappers\QueueTenancyBootstrapper;
 
@@ -49,6 +50,14 @@ use Stancl\Tenancy\Bootstrappers\QueueTenancyBootstrapper;
  * re-derive). A promoted `public readonly string $tenantId` remains correct for
  * jobs that have carried the anchor since their first dispatch.
  *
+ * **A malformed anchor is answered BEFORE the query** (M7, 2026-08-05 review).
+ * `tenants.id` is a PostgreSQL `uuid` column, so a non-UUID `$tenantId` made
+ * `find()` raise a `QueryException` (22P02) — a transient-looking fault the
+ * worker retries its whole budget against a value that can never become valid.
+ * Only a buggy or compromised producer can supply one, which is exactly why it
+ * must fail deterministically and name itself. Same shape as the null case
+ * below.
+ *
  * **Fail-loud semantics.** When `Tenant::find($this->tenantId)` returns null
  * this trait throws a RuntimeException that the queue worker surfaces as a job
  * failure, rather than silently processing under central context. Null means
@@ -76,6 +85,24 @@ trait BindsTenantContext
      */
     protected function withTenantContext(callable $fn): mixed
     {
+        // M7 (2026-08-05 wave-1 review): `tenants.id` is a PostgreSQL `uuid`
+        // column, so a malformed anchor — only reachable from a buggy or
+        // compromised platform, since every producer is signature-gated — made
+        // `find()` raise a `QueryException` (22P02). That is retryable, so the
+        // job would burn its whole retry budget on an input that can never
+        // become valid. Answer it the same way a missing tenant is answered:
+        // one deterministic, self-describing failure.
+        // `Str::isUuid()` answers false for a null / non-string anchor too, so
+        // this one predicate covers both shapes the property contract allows.
+        if (! Str::isUuid($this->tenantId)) {
+            throw new RuntimeException(sprintf(
+                'BindsTenantContext: tenant anchor %s is not a UUID — refusing to bind. Job class: %s. '.
+                'The value never identified a tenant, so retrying cannot help; fix the producer that dispatched it.',
+                (string) json_encode($this->tenantId),
+                static::class,
+            ));
+        }
+
         $tenant = Tenant::find($this->tenantId);
         if ($tenant === null) {
             throw new RuntimeException(sprintf(

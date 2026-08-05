@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Application\Services;
 
+use App\Console\TenantScopedCommand;
+use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
 use App\Modules\Tenant\Domain\Exceptions\TenantUnavailableException;
 use App\Modules\Tenant\Domain\Tenant;
 use Throwable;
@@ -28,6 +30,34 @@ use Throwable;
  *
  * Same code, no logic change between phases — which is the whole point of the
  * "flip-agnostic" Phase 0a split.
+ *
+ * **Lifecycle STATUS is deliberately not a predicate here — R3, 2026-08-05
+ * cat-(b) wave-1 review.** The only gate is database existence. That is a real
+ * policy DIVERGENCE from the authenticated request path, which rejects
+ * Suspended and Archived tenants outright
+ * ({@see ResolveTenancy}), and it
+ * is intended, not an oversight:
+ *
+ *   - Suspension is REVERSIBLE and the tenant database is preserved on purpose
+ *     (`TenantDeprovisioningService` is what actually removes a tenant; that
+ *     drops the central row, so `initializeIfProvisioned()` is never reached).
+ *   - The callers of THIS resolver are the data plane — the unauthenticated
+ *     channel webhook, queue workers via `BindsTenantContext`, and the
+ *     per-tenant scheduler iteration in
+ *     {@see TenantScopedCommand::forEachTenant()}. Their traffic
+ *     is machine-originated and NOT redelivered: an external sales platform
+ *     that gets a 404 drops the order permanently. Refusing it would destroy
+ *     data the tenant is entitled to on reinstatement, and would silently
+ *     disable every batch control (cash-drift freeze, fiscal dead-letter
+ *     recovery, batch-expiry alerts) on a tenant whose database is still live.
+ *   - `ResolveTenancy` governs the CONTROL plane — a human logging in. Locking
+ *     the tenant's users out while its machine traffic keeps landing is the
+ *     intended asymmetry: suspension is a commercial lever, not a data-retention
+ *     decision.
+ *
+ * A tenant whose ingestion genuinely must stop is deprovisioned (central row
+ * gone) or has its database taken offline — both of which this resolver already
+ * answers, fail-closed.
  */
 class TenancyResolver
 {

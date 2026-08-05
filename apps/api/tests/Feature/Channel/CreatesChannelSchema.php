@@ -4,11 +4,22 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Channel;
 
+use App\Jobs\Concerns\BindsTenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 trait CreatesChannelSchema
 {
+    /**
+     * A real UUID, not the `'tenant-1'` placeholder this fixture used until
+     * 2026-08-05. `tenants.id` is a `uuid` column in production, so the
+     * placeholder only ever resolved because this trait hand-rolls the table
+     * with a string id — it let jobs be exercised with an anchor the real
+     * database would have rejected with SQLSTATE 22P02
+     * ({@see BindsTenantContext}, review finding M7).
+     */
+    private const TENANT_ID = '55555555-5555-4555-8555-555555555555';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -34,7 +45,7 @@ trait CreatesChannelSchema
     protected function seedBaseRows(): array
     {
         $ids = [
-            'tenant_id' => 'tenant-1',
+            'tenant_id' => self::TENANT_ID,
             'company_id' => '11111111-1111-1111-1111-111111111111',
             'product_id' => '22222222-2222-2222-2222-222222222222',
             'document_id' => '33333333-3333-3333-3333-333333333333',
@@ -130,7 +141,7 @@ trait CreatesChannelSchema
     private function seedTenantRow(): void
     {
         DB::table('tenants')->insert([
-            'id' => 'tenant-1',
+            'id' => self::TENANT_ID,
             'name' => 'Test tenant',
             'slug' => 'test-tenant',
             'status' => 'active',

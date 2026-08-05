@@ -49,6 +49,15 @@ use Throwable;
  */
 abstract class TenantScopedCommand extends Command
 {
+    /**
+     * How many tenants get an individual ERROR line when the database-existence
+     * probe THROWS, before {@see self::forEachTenant()} collapses the rest into
+     * one aggregate line (M3, 2026-08-05 review). The faults this covers are
+     * global, so without a cap one central outage emits a line and a Sentry
+     * event per tenant per tick, per scheduled command.
+     */
+    private const MAX_PROBE_FAULT_LOG_LINES = 3;
+
     /** @var list<string> */
     private array $visitedTenantIds = [];
 
@@ -179,6 +188,12 @@ abstract class TenantScopedCommand extends Command
      * central outage skipped every tenant at WARNING with exit 0 and no
      * scheduler `onFailure()` hook ever fired.
      *
+     * Those probe faults are GLOBAL, so they throw for every tenant. Individual
+     * ERROR lines are therefore capped at
+     * {@see self::MAX_PROBE_FAULT_LOG_LINES} and the remainder collapses into a
+     * single aggregate ERROR at the end of the run (M3, 2026-08-05 review) —
+     * the exit code, the skipped list and the `onFailure()` hook are unaffected.
+     *
      * Lifecycle status is deliberately NOT consulted. Pending tenants are
      * live and transacting at request time (`ResolveTenancy` and
      * `AuthController` only reject Suspended/Archived, and `tenants.status`
@@ -210,6 +225,7 @@ abstract class TenantScopedCommand extends Command
 
         $this->visitedTenantIds = [];
         $this->skippedTenantIds = [];
+        $probeFaults = 0;
 
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
@@ -223,14 +239,24 @@ abstract class TenantScopedCommand extends Command
                     // closed for this tenant so the aggregate exit is non-zero
                     // and the scheduler's onFailure() hook fires.
                     $this->skippedTenantIds[] = (string) $tenant->id;
+                    $probeFaults++;
 
-                    Log::error('TenantScopedCommand::forEachTenant could not probe tenant database existence; failing this tenant.', [
-                        'tenant_id' => $tenant->id,
-                        'tenant_status' => $tenant->status->value,
-                        'command' => static::class,
-                        'exception_class' => $e::class,
-                        'exception_message' => $e->getMessage(),
-                    ]);
+                    // Log-storm guard (M3, 2026-08-05 review): the two faults
+                    // this branch exists for are GLOBAL, so they throw for every
+                    // tenant — N error lines and N Sentry events per tick, per
+                    // scheduled command, drowning the alert channel exactly when
+                    // it matters. The first few tenants carry the actionable
+                    // detail; the rest are counted and reported once below.
+                    // Nothing about the FAILURE itself is suppressed.
+                    if ($probeFaults <= self::MAX_PROBE_FAULT_LOG_LINES) {
+                        Log::error('TenantScopedCommand::forEachTenant could not probe tenant database existence; failing this tenant.', [
+                            'tenant_id' => $tenant->id,
+                            'tenant_status' => $tenant->status->value,
+                            'command' => static::class,
+                            'exception_class' => $e::class,
+                            'exception_message' => $e->getMessage(),
+                        ]);
+                    }
 
                     if ($aggregate === self::SUCCESS) {
                         $aggregate = self::FAILURE;
@@ -281,6 +307,14 @@ abstract class TenantScopedCommand extends Command
             if ($exit !== self::SUCCESS && $aggregate === self::SUCCESS) {
                 $aggregate = $exit;
             }
+        }
+
+        if ($probeFaults > self::MAX_PROBE_FAULT_LOG_LINES) {
+            Log::error('TenantScopedCommand::forEachTenant could not probe tenant database existence for MOST OF THE FLEET; this is a central-connection or driver-registration fault, not per-tenant data. Per-tenant lines above are capped — see skippedTenantIds for the full set.', [
+                'command' => static::class,
+                'tenants_failed_probe' => $probeFaults,
+                'suppressed_log_lines' => $probeFaults - self::MAX_PROBE_FAULT_LOG_LINES,
+            ]);
         }
 
         return $aggregate;

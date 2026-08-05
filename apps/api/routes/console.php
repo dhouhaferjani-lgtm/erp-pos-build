@@ -27,9 +27,13 @@ Artisan::command('inspire', function () {
 // inline instead of depending on the forked child surviving long enough to
 // re-invoke `schedule:finish`. Ordering: batch-expiry:daily-check is at 01:30 —
 // keep that gap.
+//
+// withoutOverlapping(720) — see the sizing note above `fraud:detect` below.
+// 12 h is well beyond any plausible fleet-wide auto-lock, and half the 24 h
+// gap to the next run, so a crashed process can never swallow a whole night.
 Schedule::command('fiscal:lock-expired-periods')
     ->dailyAt('01:00')
-    ->withoutOverlapping(30)
+    ->withoutOverlapping(720)
     ->onFailure(function (): void {
         Log::error('fiscal:lock-expired-periods exited non-zero — one or more tenants failed their nightly fiscal auto-lock. For those tenants, periods that ended past the country threshold were NOT moved Open -> Closed, ended fiscal years were NOT marked closed, and periods inside closed years were NOT Locked — so postings can still land in a period the law considers shut. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
     });
@@ -48,9 +52,27 @@ Schedule::command('fiscal:retry-projections --limit=100')
 // threw the exit code away. `fraud:detect` now iterates tenants explicitly via
 // TenantScopedCommand::forEachTenant() and enumerates companies inside the
 // tenant's own database. Run in-process so the exit code is observed inline.
+//
+// SIZING THE MUTEX (R4, 2026-08-05 wave-1 review — the reference note for the
+// daily entries in this file). `withoutOverlapping($n)` is the mutex's EXPIRY,
+// not a runtime cap: nothing kills a run at $n minutes. Past $n the lock simply
+// evaporates and the NEXT tick starts CONCURRENTLY. So $n has to sit above the
+// worst-case fleet runtime (below it, overlap; and here overlap means duplicate
+// fraud alerts and duplicate fraud-triggered stock counting) and below the
+// cadence (above it, one crashed process swallows the following run entirely —
+// which the bare 1440-minute default does exactly, since it equals the dailyAt()
+// gap).
+//
+// 30 satisfied neither bound: this command now analyses every company of every
+// tenant IN-PROCESS, so 30 minutes is a fleet-size assumption nobody made
+// deliberately. 720 (12 h) is the chosen value for the daily per-tenant
+// iterators: comfortably above any plausible fleet runtime at pilot scale, and
+// half the 24-hour gap, so a crashed process is cleared long before the next
+// run. Revisit it — do not just raise it — if a nightly run ever approaches
+// hours.
 Schedule::command('fraud:detect')
     ->dailyAt('02:00')
-    ->withoutOverlapping(30)
+    ->withoutOverlapping(720)
     ->onFailure(function (): void {
         Log::error('fraud:detect exited non-zero — one or more tenants (or individual companies) failed their nightly fraud-pattern detection. For those companies no draft-abandonment analysis ran, so NO fraud alerts were raised and no fraud-triggered stock counting was scheduled. Per-company detail is in the application error log ("Fraud detection failed for company", tenant_id + company_id); per-tenant detail is under the TenantScopedCommand::forEachTenant failure entry.');
     });
@@ -120,9 +142,13 @@ Schedule::command('expenses:generate-recurring')
 // Trade-off, accepted: a slow sweep serialises this 15-minute scheduler tick
 // until it finishes.
 //
-// withoutOverlapping(30) caps that mutex at 30 minutes — two ticks — instead of
-// the bare 1440-minute default, which would silently skip a full day of sweeps
-// after one crashed run.
+// withoutOverlapping(30) sets the mutex EXPIRY to 30 minutes — two ticks —
+// instead of the bare 1440-minute default, which would silently skip a full day
+// of sweeps after one crashed run. It is NOT a runtime cap: a sweep that
+// genuinely exceeds 30 minutes overlaps the tick after next rather than being
+// killed. That bound is deliberate here — the sweep is a bounded UPDATE per
+// tenant with no outbound I/O, so exceeding two ticks would itself be the
+// incident. See the sizing note above `fraud:detect` (R4).
 Schedule::command('inventory:expire-reservations')
     ->everyFifteenMinutes()
     ->withoutOverlapping(30)
@@ -163,12 +189,23 @@ Schedule::command('batch-expiry:daily-check')
 //      from the scheduler's CENTRAL connection since the 2026-05-28 flip. It is
 //      now a TenantScopedCommand iterating via forEachTenant().
 //
-// withoutOverlapping(30) caps the mutex at two ticks instead of the bare
+// withoutOverlapping(30) sets the mutex EXPIRY to two ticks instead of the bare
 // 1440-minute default, exactly as inventory:expire-reservations does — one
 // crashed run must not silence the poller for a day. That matters more here
 // than elsewhere: this poller is the enrichment WEBHOOK's fallback path, so a
 // silenced poller means enrichment results that missed the webhook are never
 // picked up at all.
+//
+// KNOWN BOUND, recorded rather than papered over (R4, 2026-08-05 review). 30 is
+// an expiry, NOT a runtime cap — this command makes up to 50 SYNCHRONOUS
+// outbound HTTP calls per tenant, in-process (`checkStatusRaw`), so its wall
+// clock is roughly N_tenants x 50 x RTT against a 30-minute expiry and a
+// 15-minute cadence. At the pilot's single tenant that is minutes; the fleet
+// size at which it stops holding is roughly 30min / (50 x RTT) tenants. Raising
+// the expiry is the WRONG fix past that point — it would only trade overlap for
+// a silenced poller. The right one is to fan the per-tenant poll out to the
+// queue, which is tracked as follow-on work rather than done here (it changes
+// the failure/alerting shape of the enrichment fallback path).
 Schedule::command('enrichment:check-pending')
     ->everyFifteenMinutes()
     ->withoutOverlapping(30)

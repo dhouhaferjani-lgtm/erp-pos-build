@@ -356,6 +356,60 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
     }
 
     /**
+     * M3 (2026-08-05 wave-1 review). A central outage AFTER `Tenant::all()`
+     * materialises makes the probe throw for EVERY tenant, so the per-tenant
+     * ERROR above became N error lines + N Sentry events per tick, per
+     * scheduled command — the alert channel drowns exactly when it is needed.
+     *
+     * The first few tenants carry the actionable detail; beyond that a single
+     * aggregate line reports the totals. The failure itself is unchanged: every
+     * tenant is still skipped, still non-zero, still visible to
+     * `failIfTenantFilterUnvisited()`.
+     */
+    public function test_a_fleet_wide_probe_fault_is_logged_first_n_then_aggregated_once(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenants = [];
+        for ($i = 0; $i < 6; $i++) {
+            $tenants[] = $this->createTenant('probe-storm-'.$i);
+        }
+
+        config(['tenancy.database.managers' => []]);
+
+        /** @var list<MessageLogged> $records */
+        $records = [];
+        Log::listen(function (MessageLogged $message) use (&$records): void {
+            $records[] = $message;
+        });
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachTenant(static fn (Tenant $tenant): int => Command::SUCCESS);
+
+        self::assertSame(Command::FAILURE, $exit);
+        self::assertCount(
+            6,
+            $command->skipped(),
+            'Log throttling must not change WHICH tenants are recorded as unprocessed.',
+        );
+
+        $perTenant = array_values(array_filter(
+            $records,
+            static fn (MessageLogged $m): bool => isset($m->context['tenant_id']),
+        ));
+        $aggregate = array_values(array_filter(
+            $records,
+            static fn (MessageLogged $m): bool => ! isset($m->context['tenant_id']),
+        ));
+
+        self::assertCount(3, $perTenant, 'Only the first few tenants carry a per-tenant line.');
+        self::assertCount(1, $aggregate, 'The rest collapse into exactly one aggregate line.');
+        self::assertSame('error', $aggregate[0]->level);
+        self::assertSame(6, $aggregate[0]->context['tenants_failed_probe']);
+        self::assertSame(3, $aggregate[0]->context['suppressed_log_lines']);
+    }
+
+    /**
      * The visited/skipped surface is what lets a `--tenant`-filtering command
      * fail loudly instead of exiting SUCCESS having done nothing.
      */

@@ -61,14 +61,25 @@ final class ChannelServiceProvider extends ServiceProvider
         // happens inside ChannelReconciliationJob on a worker), so serialising
         // the tick costs nothing.
         //
-        // withoutOverlapping(30) caps the mutex at 30 minutes rather than the
-        // bare 1440-minute default. For a dailyAt() entry that default is
-        // exactly the gap to the next run, so one crashed process can swallow
-        // the following night's reconciliation entirely.
+        // withoutOverlapping(720) sets the mutex EXPIRY to 12 hours. It is NOT a
+        // runtime cap (R4, 2026-08-05 wave-1 review): nothing kills a run at the
+        // limit — past it the lock evaporates and the next tick starts
+        // CONCURRENTLY, double-dispatching every reconciliation job and
+        // double-writing the directory. So the value must sit ABOVE the
+        // worst-case fleet runtime and BELOW the cadence. The bare 1440-minute
+        // default fails the second test (for a dailyAt() entry it is exactly the
+        // gap to the next run, so one crashed process swallows the following
+        // night entirely); the 30 this entry shipped with failed the first, as
+        // an unexamined fleet-size assumption. 12 hours clears a fleet-wide
+        // sweep by a wide margin — the command only enumerates channels and
+        // pushes jobs, all adapter I/O happens on a worker inside
+        // ChannelReconciliationJob — and is half the 24-hour gap. Same value as
+        // the daily per-tenant iterators in routes/console.php; see the sizing
+        // note above `fraud:detect` there.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('channels:reconcile')
                 ->dailyAt('03:30')
-                ->withoutOverlapping(30)
+                ->withoutOverlapping(720)
                 ->onFailure(function (): void {
                     Log::error('channels:reconcile exited non-zero — one or more tenants failed to fan out their nightly sales-channel reconciliation, so drift between locally published product mappings and the remote channel (ChannelSyncDriftDetected) goes undetected for those tenants until a later run succeeds. Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
                 });
