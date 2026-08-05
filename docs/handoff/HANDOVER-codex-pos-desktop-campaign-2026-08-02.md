@@ -26,9 +26,11 @@ covered by the web Playwright campaign — the plan explicitly de-duplicates the
   (absent row = 0); `products.stock_quantity` is a staler global figure — never compare the two.
 - Local API = :8010 (`.env.development.local`, gitignored). ⚠️ A parallel session's worktree
   `artisan serve` can squat :8010 — verify `lsof` cwd matches the MAIN checkout.
-- **Credentials/PINs are entered by the owner, never by the agent.** Demo-tenant PINs exist in the
-  seeders (owner 1234, manager 5678, cashiers 0000/1111/2222/3333/4444) but entry itself is the
-  human's job.
+- **Credentials/PINs — owner ruling 2026-08-03: the agent MAY type DEMO-tenant credentials and
+  PINs directly** (seeded, non-secret values: owner 1234, manager 5678, cashiers
+  0000/1111/2222/3333/4444; web logins owner@/manager@/cashier@pharmabio.tn / "password").
+  Scope strictly limited to demo/dev tenants — any PRODUCTION or real-tenant credential remains
+  owner-entered, never the agent.
 
 ## 2. Build prerequisites (BLOCKING — verify before any test)
 
