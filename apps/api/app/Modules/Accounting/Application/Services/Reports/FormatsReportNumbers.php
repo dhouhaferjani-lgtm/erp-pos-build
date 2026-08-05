@@ -103,9 +103,17 @@ trait FormatsReportNumbers
      * columns and aggregates as strings, so the value reaches the formatters
      * with its full stored precision intact and is never converted at all.
      *
-     * The FLOAT branch is reachable from a PHP-side computation and from SQLite
-     * (whose `SUM()` returns a float) — i.e. it is the branch the test suite
-     * exercises and the one production does not. It must ROUND, not truncate:
+     * The FLOAT branch exists ONLY for a float this code did not create and
+     * cannot prevent — a value the DRIVER hands back as a float on a
+     * non-PostgreSQL path (SQLite's `SUM()`), i.e. the branch the test suite
+     * exercises and the one production does not. It is NOT a licence to compute
+     * money with native PHP arithmetic and normalise afterwards: that is still a
+     * rule-19 violation, and normalising cannot restore precision already lost.
+     * See the emission-normalisation exemption in
+     * `docs/architecture/precision-contract.md` § Emission & display, which names
+     * this method as the only sanctioned site.
+     *
+     * It must ROUND, not truncate:
      * `777.775` is held as `777.77499999999998`, so truncating the binary
      * expansion at the normalisation scale yields `777.7749` and silently eats
      * the half BEFORE the currency-scale rounding ever runs. `number_format`
