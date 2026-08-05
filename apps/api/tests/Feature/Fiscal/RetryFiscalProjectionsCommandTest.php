@@ -9,7 +9,6 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
-use App\Modules\Fiscal\Infrastructure\Commands\RetryFiscalProjectionsCommand;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -17,9 +16,11 @@ use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
+use App\Modules\Fiscal\Infrastructure\Commands\RetryFiscalProjectionsCommand;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,39 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
         $this->assertSame(ProjectionStatus::Pending, $secondRow->refresh()->projection_status);
         $this->assertSame(0, $secondRow->attempts);
         Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 2);
+    }
+
+    /**
+     * B1 closure (2026-08-05 adversarial review): `--tenant` on this command is
+     * a filter applied INSIDE the `forEachTenant()` closure, so a tenant the
+     * iteration never reached used to produce exit 0 + "No retryable rows
+     * matched" — an operator repairing dead-lettered fiscal projections got
+     * SUCCESS having done nothing. Both miss modes must now be loud.
+     */
+    public function test_unknown_tenant_filter_fails_loudly(): void
+    {
+        Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', [
+            '--tenant' => '11111111-1111-4111-8111-111111111111',
+        ])
+            ->expectsOutputToContain('was not found in the central tenant directory')
+            ->assertExitCode(Command::INVALID);
+    }
+
+    public function test_tenant_filter_skipped_by_the_database_probe_fails_loudly(): void
+    {
+        // db-per-tenant mode with no provisioned per-tenant database: the
+        // tenant exists in the directory but forEachTenant()'s probe skips it.
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', [
+            '--tenant' => $tenant->id,
+        ])
+            ->expectsOutputToContain('per-tenant database does not exist')
+            ->assertExitCode(Command::FAILURE);
     }
 
     public function test_exhausted_pending_projection_can_be_reset(): void
@@ -208,8 +242,7 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
         string $projectorName,
         ProjectionStatus $status,
         int $attempts,
-    ): FiscalEventProjectionRow
-    {
+    ): FiscalEventProjectionRow {
         $now = Carbon::now('UTC')->subMinutes(20);
         $id = Str::uuid()->toString();
 

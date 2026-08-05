@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Console;
 
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Tenant\Domain\Enums\TenantStatus;
+use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Console\Command;
@@ -29,9 +29,9 @@ use Throwable;
  * `CompanyContext` for the run.
  *
  * **(a-per-tenant-iter)** — scheduler / batch command that iterates every
- * ACTIVE tenant ({@see TenantStatus::Active}; see
- * {@see self::forEachTenant()} for why non-active statuses are skipped).
- * Subclass calls {@see self::forEachTenant()} from
+ * tenant in the central directory whose per-tenant database can actually be
+ * opened (see {@see self::forEachTenant()} — lifecycle STATUS is deliberately
+ * NOT a filter). Subclass calls {@see self::forEachTenant()} from
  * {@see self::executeCommand()} and supplies a closure that does the
  * per-tenant work under the bound tenant. The closure receives the
  * {@see Tenant} model and returns an exit code; the base aggregates them.
@@ -49,6 +49,12 @@ use Throwable;
  */
 abstract class TenantScopedCommand extends Command
 {
+    /** @var list<string> */
+    private array $visitedTenantIds = [];
+
+    /** @var list<string> */
+    private array $skippedTenantIds = [];
+
     public function __construct(
         protected readonly CompanyContext $companyContext,
     ) {
@@ -148,21 +154,41 @@ abstract class TenantScopedCommand extends Command
      * continue-on-throw rather than an opt-in flag (surveyed 2026-07-09,
      * audit-fix-1).
      *
-     * **Active-only iteration (2026-08-05, staging follow-up A7):** only
-     * tenants whose central `status` is {@see TenantStatus::Active} run the
-     * closure. Every other lifecycle status — Suspended (database preserved
-     * but access cut off at request time by the same check
-     * `ResolveTenancy`/`AuthController` apply), Pending (provisioning never
-     * completed, so the per-tenant database may not exist yet) and Archived —
-     * is SKIPPED with a single INFO log line per tenant per run. Before this
-     * filter, `Tenant::all()` was unfiltered and every scheduler tick called
-     * `tenancy()->initialize()` on a missing/closed database, so the
-     * continue-on-throw handler below emitted an ERROR per tenant per tick:
-     * unactionable alert noise for a deliberate lifecycle state. A skipped
-     * tenant is NOT a failure — it never degrades the aggregate exit code.
-     * Commands that must reach non-active tenants (deprovisioning,
-     * re-provisioning, lifecycle repair) are cat-(a-singleshot) and take an
-     * explicit `--tenant` instead; they never route through here.
+     * **Database-existence probe, NOT a status filter (2026-08-05, staging
+     * follow-up A7 — revised after adversarial review):** the failure this
+     * guard exists to stop is "the per-tenant database is missing/unreachable,
+     * so `tenancy()->initialize()` throws on every scheduler tick and the
+     * continue-on-throw handler below emits an unactionable ERROR". The
+     * predicate for that is database existence, not lifecycle label, so under
+     * db-per-tenant mode this probes
+     * `$tenant->database()->manager()->databaseExists(...)` exactly the way
+     * {@see TenancyResolver::initializeIfProvisioned()}
+     * does before initializing, and SKIPS the tenant with a WARNING log line
+     * (a tenant row with no database is genuinely broken, so it is worth an
+     * operator's attention — but it is NOT a failure and never degrades the
+     * aggregate exit code).
+     *
+     * Lifecycle status is deliberately NOT consulted. Pending tenants are
+     * live and transacting at request time (`ResolveTenancy` and
+     * `AuthController` only reject Suspended/Archived, and `tenants.status`
+     * defaults to `pending`), and Suspended is a REVERSIBLE state whose
+     * database is preserved on purpose — silently disabling every batch
+     * control (cash-drift freeze, fiscal dead-letter recovery, batch-expiry
+     * alerts, one-time backfills) on either of those is the wrong default for
+     * a compliance-oriented ERP. Archived / failed-provision rows are exactly
+     * the ones with no database, so the probe covers them.
+     *
+     * In single-schema compat mode (`tenancy_resolver.db_per_tenant=false`)
+     * there are no per-tenant databases at all and `initialize()` is a no-op,
+     * so no probe runs and every directory row is visited.
+     *
+     * **Visited / skipped surface:** the tenant ids that ran the closure and
+     * the ones the probe skipped are recorded for the duration of the call
+     * ({@see self::visitedTenantIds()}, {@see self::skippedTenantIds()}) so an
+     * operator-supplied `--tenant` filter applied INSIDE `$fn` can fail loudly
+     * when its target was never reached — see
+     * {@see self::failIfTenantFilterUnvisited()}. Both lists are reset at the
+     * start of every `forEachTenant()` call.
      *
      * @param  callable(Tenant): int  $fn
      */
@@ -171,10 +197,15 @@ abstract class TenantScopedCommand extends Command
         $aggregate = self::SUCCESS;
         $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant', false);
 
+        $this->visitedTenantIds = [];
+        $this->skippedTenantIds = [];
+
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
-            if (! $tenant->isActive()) {
-                Log::info('TenantScopedCommand::forEachTenant skipping non-active tenant.', [
+            if ($dbPerTenant && ! $this->tenantDatabaseExists($tenant)) {
+                $this->skippedTenantIds[] = (string) $tenant->id;
+
+                Log::warning('TenantScopedCommand::forEachTenant skipping tenant whose database is not provisioned.', [
                     'tenant_id' => $tenant->id,
                     'tenant_status' => $tenant->status->value,
                     'command' => static::class,
@@ -182,6 +213,8 @@ abstract class TenantScopedCommand extends Command
 
                 continue;
             }
+
+            $this->visitedTenantIds[] = (string) $tenant->id;
 
             $initialized = false;
             $exit = self::SUCCESS;
@@ -213,6 +246,94 @@ abstract class TenantScopedCommand extends Command
         }
 
         return $aggregate;
+    }
+
+    /**
+     * Tenant ids whose closure actually ran during the last
+     * {@see self::forEachTenant()} call (a tenant whose closure THREW counts
+     * as visited — that failure is already loud in the aggregate exit code).
+     *
+     * @return list<string>
+     */
+    protected function visitedTenantIds(): array
+    {
+        return $this->visitedTenantIds;
+    }
+
+    /**
+     * Tenant ids the database-existence probe skipped during the last
+     * {@see self::forEachTenant()} call.
+     *
+     * @return list<string>
+     */
+    protected function skippedTenantIds(): array
+    {
+        return $this->skippedTenantIds;
+    }
+
+    /**
+     * Fail loudly when an operator supplied `--tenant=<id>` and that tenant was
+     * never reached by the preceding {@see self::forEachTenant()} call.
+     *
+     * Commands that implement `--tenant` as a filter INSIDE the iteration
+     * closure (treasury:reconcile, fiscal:retry-projections and the two
+     * one-time backfills) would otherwise exit SUCCESS having done literally
+     * nothing when the target tenant is absent from the directory or was
+     * skipped by the database probe — the exact scenario an operator running a
+     * repair command is least able to detect. Call this immediately after
+     * `forEachTenant()`:
+     *
+     * `if (($miss = $this->failIfTenantFilterUnvisited($tenantFilter)) !== null) return $miss;`
+     *
+     * Returns null when there is nothing to report (no filter, or the tenant
+     * was visited), otherwise the exit code to return after printing to stderr.
+     */
+    protected function failIfTenantFilterUnvisited(?string $tenantFilter): ?int
+    {
+        if ($tenantFilter === null || in_array($tenantFilter, $this->visitedTenantIds, true)) {
+            return null;
+        }
+
+        if (in_array($tenantFilter, $this->skippedTenantIds, true)) {
+            $this->error(sprintf(
+                'Tenant %s was skipped: its per-tenant database does not exist or could not be opened. '.
+                'Nothing was processed for it — re-run once the database is restored.',
+                $tenantFilter,
+            ));
+
+            return self::FAILURE;
+        }
+
+        $this->error(sprintf(
+            'Tenant %s was not found in the central tenant directory. Nothing was processed.',
+            $tenantFilter,
+        ));
+
+        return self::INVALID;
+    }
+
+    /**
+     * Mirror of {@see TenancyResolver}'s
+     * pre-initialize probe. A throwing probe (central connection down, no
+     * database manager registered for the driver) is treated as "cannot open"
+     * and logged with the exception details rather than aborting the whole
+     * batch — the per-tenant failure-isolation contract above applies to the
+     * probe too.
+     */
+    private function tenantDatabaseExists(Tenant $tenant): bool
+    {
+        try {
+            return $tenant->database()->manager()->databaseExists($tenant->getDatabaseName());
+        } catch (Throwable $e) {
+            Log::warning('TenantScopedCommand::forEachTenant could not probe tenant database existence.', [
+                'tenant_id' => $tenant->id,
+                'command' => static::class,
+                'exception_class' => $e::class,
+                'exception_message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     private function stringOption(string $name): ?string

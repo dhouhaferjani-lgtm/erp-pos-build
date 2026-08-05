@@ -147,6 +147,13 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             return self::SUCCESS;
         });
 
+        // An operator-targeted --tenant that was never reached (absent from the
+        // directory, or skipped by forEachTenant()'s database probe) must not
+        // exit SUCCESS having retried nothing.
+        if (($unvisited = $this->failIfTenantFilterUnvisited($tenantFilter)) !== null) {
+            return $unvisited;
+        }
+
         if ($matchedCount === 0) {
             $this->info('No retryable fiscal projection rows matched.');
 

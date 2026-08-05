@@ -22,9 +22,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 final class SubledgerReconciliationCommandTest extends TestCase
 {
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -40,8 +42,12 @@ final class SubledgerReconciliationCommandTest extends TestCase
     {
         config(['tenancy_resolver.db_per_tenant' => true]);
 
-        $tenantA = $this->createTenant('reconciliation-tenant-a');
-        $tenantB = $this->createTenant('reconciliation-tenant-b');
+        // Since the 2026-08-05 review fix, forEachTenant() probes
+        // databaseExists() before initializing and SKIPS a tenant that has no
+        // per-tenant database (the "directory row with no database" case).
+        // These probe tenants therefore need a real one.
+        $tenantA = $this->provisionTenantDatabase($this->createTenant('reconciliation-tenant-a'));
+        $tenantB = $this->provisionTenantDatabase($this->createTenant('reconciliation-tenant-b'));
         $command = $this->tenantScopedProbeCommand();
 
         $seen = [];

@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Queue;
 use ReflectionProperty;
 use Tests\TestCase;
 use Tests\Traits\EnablesMarketplaceModule;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 /**
  * `marketplace:delta-sync` / `marketplace:reconcile` — the TenantScopedCommand
@@ -42,6 +43,7 @@ final class MarketplaceScheduledCommandsTest extends TestCase
     // which is read at BOOT time to gate route + schedule registration — so this
     // suite has to boot with the flag on rather than set config() at runtime.
     use EnablesMarketplaceModule;
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -148,8 +150,12 @@ final class MarketplaceScheduledCommandsTest extends TestCase
     {
         config(['tenancy_resolver.db_per_tenant' => true]);
 
-        $tenantA = $this->createTenant('marketplace-probe-a');
-        $tenantB = $this->createTenant('marketplace-probe-b');
+        // Since the 2026-08-05 review fix, forEachTenant() probes
+        // databaseExists() before initializing and SKIPS a tenant that has no
+        // per-tenant database (the "directory row with no database" case).
+        // These probe tenants therefore need a real one.
+        $tenantA = $this->provisionTenantDatabase($this->createTenant('marketplace-probe-a'));
+        $tenantB = $this->provisionTenantDatabase($this->createTenant('marketplace-probe-b'));
 
         $command = new MarketplaceTenantScopedProbeCommand(app(CompanyContext::class));
 

@@ -114,6 +114,14 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
             return self::SUCCESS;
         });
 
+        // An operator-targeted --tenant that was never reached (absent from the
+        // directory, or skipped by forEachTenant()'s database probe) must not
+        // exit SUCCESS having backfilled nothing — a one-time backfill that
+        // silently misses a tenant is permanently missed.
+        if (($unvisited = $this->failIfTenantFilterUnvisited($tenantFilter)) !== null) {
+            return $unvisited;
+        }
+
         $prefix = $dryRun ? '[DRY-RUN] ' : '';
         $this->info(sprintf(
             '%sRefund compensation account backfill: %d purpose(s) %s; %d account(s) %s; %d skipped.',

@@ -17,7 +17,11 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Mockery;
+use Mockery\LegacyMockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -175,6 +179,77 @@ final class MarketplaceListingJobsTenantContextTest extends TestCase
             $recorder->calls,
             'A tenant_id-scoped seller lookup would silently drop external sellers — it must NOT be added.',
         );
+    }
+
+    /**
+     * R3 closure (2026-08-05 adversarial review): payloads serialized BEFORE
+     * the tenant anchor existed carry no `tenantId` key, and
+     * `SerializesModels::__unserialize()` skips absent keys — with a promoted
+     * `readonly string` the property stayed UNINITIALIZED and the first read
+     * fatalled ("Typed property must not be accessed before initialization"),
+     * one attempt (horizon `tries => 1`), straight back to `failed_jobs`,
+     * permanently un-retryable.
+     *
+     * The declared, defaulted `public ?string $tenantId = null` restores those
+     * payloads as null instead. Setting it back to its default reproduces a
+     * legacy payload exactly: `__serialize()` OMITS default-valued properties,
+     * so the serialized string has no `tenantId` key at all (asserted below).
+     *
+     * Semantics on restore: DISCARD with a warning. A pre-anchor payload is
+     * pre-fix garbage and both `marketplace:delta-sync` and
+     * `marketplace:reconcile` re-fan-out every active seller on their next
+     * tick, so nothing is lost — and guessing a tenant would be exactly the
+     * cross-tenant write the anchor exists to prevent.
+     *
+     * @return array<string, array{0: class-string<SyncSellerListingsJob|ReconcileListingsJob>}>
+     */
+    public static function anchoredJobProvider(): array
+    {
+        return [
+            'sync' => [SyncSellerListingsJob::class],
+            'reconcile' => [ReconcileListingsJob::class],
+        ];
+    }
+
+    /**
+     * @param  class-string<SyncSellerListingsJob|ReconcileListingsJob>  $jobClass
+     */
+    #[DataProvider('anchoredJobProvider')]
+    public function test_legacy_payload_without_a_tenant_anchor_is_discarded_with_a_warning(string $jobClass): void
+    {
+        [, $seller] = $this->createSellerWithProduct('legacy-payload-'.Str::lower(class_basename($jobClass)));
+
+        $job = new $jobClass($seller->id, (string) Str::uuid());
+        // Reset to the property default => __serialize() omits the key,
+        // which is byte-for-byte the shape of a pre-anchor payload.
+        $job->tenantId = null;
+        $payload = serialize($job);
+
+        self::assertStringNotContainsString(
+            'tenantId',
+            $payload,
+            'The reproduction is only faithful if the serialized payload genuinely lacks the key.',
+        );
+
+        $restored = unserialize($payload);
+        self::assertInstanceOf($jobClass, $restored);
+        self::assertNull($restored->tenantId, 'An absent key must restore as null, NOT as an uninitialized typed property.');
+
+        $recorder = new TenantContextRecordingListingSyncService;
+
+        $logSpy = Log::spy();
+
+        $restored->handle($recorder);
+
+        self::assertSame([], $recorder->calls, 'A payload with no tenant anchor must touch no data.');
+        self::assertNull($seller->refresh()->last_sync_at);
+        self::assertFalse(tenancy()->initialized);
+
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('warning', [
+            Mockery::on(static fn (string $message): bool => str_contains($message, 'no tenant anchor')),
+            Mockery::on(static fn (array $context): bool => $context['seller_id'] === $seller->id),
+        ]);
     }
 
     /**

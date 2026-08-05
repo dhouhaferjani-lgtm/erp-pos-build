@@ -257,6 +257,13 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             return self::SUCCESS;
         });
 
+        // An operator-targeted --tenant that was never reached (absent from the
+        // directory, or skipped by forEachTenant()'s database probe) must not
+        // exit SUCCESS having reconciled nothing.
+        if (($unvisited = $this->failIfTenantFilterUnvisited($tenantFilter)) !== null) {
+            return $unvisited;
+        }
+
         $this->info(sprintf(
             'treasury:reconcile — checked %d repository(ies); froze %d on cash drift; found %d portfolio drift(s); found %d statement alert(s); %d error(s).',
             $checked,

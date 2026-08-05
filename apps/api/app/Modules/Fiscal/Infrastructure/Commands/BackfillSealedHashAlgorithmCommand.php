@@ -139,6 +139,14 @@ final class BackfillSealedHashAlgorithmCommand extends TenantScopedCommand
             return self::SUCCESS;
         });
 
+        // An operator-targeted --tenant that was never reached (absent from the
+        // directory, or skipped by forEachTenant()'s database probe) must not
+        // exit SUCCESS having backfilled nothing — a one-time fiscal backfill
+        // that silently misses a tenant is permanently missed.
+        if (($unvisited = $this->failIfTenantFilterUnvisited($tenantFilter)) !== null) {
+            return $unvisited;
+        }
+
         if ($dryRun) {
             $this->info(sprintf(
                 'Dry run: %d legacy row(s) would be backfilled; %d would be logged-and-skipped.',

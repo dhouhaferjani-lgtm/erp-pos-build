@@ -16,6 +16,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Per-seller full listing reconciliation, fanned out by
@@ -64,13 +65,41 @@ class ReconcileListingsJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    /**
+     * Declared (NOT promoted) and nullable ON PURPOSE. A queue payload
+     * serialized BEFORE the tenant anchor existed carries no `tenantId` key at
+     * all, and `SerializesModels::__unserialize()` skips absent keys — a
+     * promoted `readonly string` would stay uninitialized and every read of it
+     * would fatal with "Typed property must not be accessed before
+     * initialization", making pre-existing `failed_jobs` rows permanently
+     * un-retryable. A declared property with a default unserializes to that
+     * default instead, and `__serialize()` omits default-valued properties, so
+     * new payloads do not grow. New dispatches always supply it (see the
+     * constructor); legacy payloads are discarded in {@see self::handle()}.
+     */
+    public ?string $tenantId = null;
+
     public function __construct(
         public readonly string $sellerId,
-        public readonly string $tenantId,
-    ) {}
+        string $tenantId,
+    ) {
+        $this->tenantId = $tenantId;
+    }
 
     public function handle(ListingSyncService $listingSyncService): void
     {
+        if ($this->tenantId === null) {
+            // Pre-anchor payload (dispatched before the tenant id existed on
+            // this job). Discard rather than guess a tenant: marketplace:reconcile
+            // re-fans-out every active seller on its next tick, so nothing is lost.
+            Log::warning('ReconcileListingsJob discarded: queue payload carries no tenant anchor.', [
+                'job' => static::class,
+                'seller_id' => $this->sellerId,
+            ]);
+
+            return;
+        }
+
         $this->withTenantContext(function () use ($listingSyncService): void {
             $seller = MarketplaceSeller::find($this->sellerId);
             if ($seller === null || $seller->company_id === null) {

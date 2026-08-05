@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 /**
  * `batch-expiry:daily-check` — the TenantScopedCommand replacement for the
@@ -32,6 +33,7 @@ use Tests\TestCase;
  */
 final class BatchExpiryDailyCheckCommandTest extends TestCase
 {
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -108,8 +110,12 @@ final class BatchExpiryDailyCheckCommandTest extends TestCase
     {
         config(['tenancy_resolver.db_per_tenant' => true]);
 
-        $tenantA = $this->createTenant('batch-daily-probe-a');
-        $tenantB = $this->createTenant('batch-daily-probe-b');
+        // Since the 2026-08-05 review fix, forEachTenant() probes
+        // databaseExists() before initializing and SKIPS a tenant that has no
+        // per-tenant database (the "directory row with no database" case).
+        // These probe tenants therefore need a real one.
+        $tenantA = $this->provisionTenantDatabase($this->createTenant('batch-daily-probe-a'));
+        $tenantB = $this->provisionTenantDatabase($this->createTenant('batch-daily-probe-b'));
 
         $command = new BatchExpiryDailyCheckProbeCommand(app(CompanyContext::class));
 
