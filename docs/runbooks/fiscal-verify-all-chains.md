@@ -3,13 +3,18 @@
 > Launch-blocker **M2** (2026-06-09 Z-report fiscal audit). The verifiers exist but are
 > fragmented and none is db-per-tenant-orchestrated. This runbook is the wrapper: it runs
 > every chain verifier across every tenant DB and is the basis for the nightly schedule.
+>
+> **Updated 2026-08-05 (cat-(b) wave 2).** All three verifiers now drive their OWN
+> per-tenant iteration. The "wrapper recipe" below is therefore no longer a loop around
+> them — see [All tenants](#all-tenants-the-fleet-run) — and `fiscal:verify-chains --fix`
+> no longer exists.
 
 ## The three verifiers (what each covers)
 
 | Command | Scope | Key options |
 |---|---|---|
-| `fiscal:verify-chains` | **Documents** — invoice / credit-note fiscal hash chains | `--company=` `--type=invoice\|credit_note` `--fix` (dangerous) |
-| `pos:verify-chains` | **POS** — legacy receipt chain **and** `pos_z_reports` Z chain | `--company=` `--terminal=` `--type=all\|receipts\|z-reports` |
+| `fiscal:verify-chains` | **Documents** — invoice / credit-note fiscal hash chains | `--tenant=` `--company=` `--type=invoice\|credit_note` |
+| `pos:verify-chains` | **POS** — legacy receipt chain **and** `pos_z_reports` Z chain | `--tenant=` `--company=` `--terminal=` `--type=all\|receipts\|z-reports` |
 | `fiscal:verify-event-chain` | **Canonical fiscal events** (v3/v4 device-authority, spec §12) — per terminal | `--tenant=` `--terminal=` `--chain-context=operational` `--from-sequence=` `--actor-id=` |
 
 Coverage note: `fiscal:verify-event-chain` is the authoritative verifier for cutover (v3)
@@ -21,9 +26,13 @@ has canonical events *and* a legacy `pos_z_reports` mirror row.
 
 As of 2026-05-28 the platform is **database-per-tenant** (one physical `tenant_<uuid>` DB each).
 Every verifier above runs inside a single tenant's DB context. Running them once on the central
-connection verifies nothing. The wrapper must bind each tenant in turn (Stancl tenancy) and run
-each verifier under that binding — exactly the `TenantScopedCommand::forEachTenant()` pattern
-(see `apps/api/app/Console/TenantScopedCommand.php` §14, mode **a-per-tenant-iter**).
+connection verifies nothing.
+
+**As of the 2026-08-05 cat-(b) wave-2 conversion each verifier does this itself**: all three
+extend `TenantScopedCommand` and drive their own `forEachTenant()` loop
+(`apps/api/app/Console/TenantScopedCommand.php` §14, mode **a-per-tenant-iter**), binding each
+tenant database in turn. No outer loop is needed, and adding one is now actively harmful — see
+the warning under [All tenants](#all-tenants-the-fleet-run).
 
 ## Manual run (single tenant)
 
@@ -39,40 +48,58 @@ php artisan fiscal:verify-event-chain \
   --chain-context=operational --actor-id=<SYSTEM_USER_UUID>
 ```
 
-A non-zero exit from any verifier = a broken chain → page the on-call + freeze the affected
-terminal. **Never** pass `--fix` unattended (it rewrites chain links).
+A non-zero exit from any verifier = a chain that is broken **or was never verified** → page the
+on-call + freeze the affected terminal. Read the `TENANT COVERAGE:` block at the end of the
+document and POS verifier output: it carries one line per tenant
+(`verified` / `FAILED` / `NO-DATA` / `SKIPPED` / `ERRORED`), and a `SKIPPED` or `ERRORED` line
+means nothing was verified for that tenant however green the rest of the run looks.
 
-## All tenants (the wrapper recipe)
+`fiscal:verify-chains --fix` was removed on 2026-08-05: the flag was declared and dangerous but
+read by nothing, and a server-side "fix" of a device-authored chain would itself be a
+fiscal-integrity defect. Passing it now fails with an unknown-option error.
 
-Until a dedicated `fiscal:verify-all-chains` command is shipped, drive the per-tenant loop with
-the tenancy CLI. Pseudocode for the wrapper (extends `TenantScopedCommand`, calls `forEachTenant`):
+## All tenants (the fleet run)
 
-```
-forEachTenant(function (Tenant $tenant) {
-    foreach ($tenant->companies as $company) {
-        Artisan::call('fiscal:verify-chains', ['--company' => $company->id]);
-        Artisan::call('pos:verify-chains',   ['--company' => $company->id, '--type' => 'all']);
-    }
-    foreach ($tenant->terminals as $terminal) {
-        Artisan::call('fiscal:verify-event-chain', [
-            '--tenant'   => $tenant->id,
-            '--terminal' => $terminal->id,
-            '--actor-id' => systemActorId(),
-        ]);
-    }
-});
+The two fleet-default verifiers already ARE the fleet run. Omit `--tenant`:
+
+```bash
+cd apps/api
+php artisan fiscal:verify-chains              # every tenant, every company
+php artisan pos:verify-chains --type=all      # every tenant, every active terminal
 ```
 
-Aggregate every non-zero sub-exit into one summary; the wrapper exits non-zero if ANY chain failed.
+Each iterates the central tenant directory, opens every tenant database whose file/DB exists,
+emits `TENANT <id> (<slug>): …` verdicts as it goes, and closes with the `TENANT COVERAGE:`
+block. The aggregate exit is non-zero if ANY tenant reports a break, was skipped, or threw — the
+PASS banners (`Status: ALL CHAINS VALID ✓`, `All chains verified successfully.`) are unreachable
+otherwise.
+
+`fiscal:verify-event-chain` has no fleet mode by design: its permission gate is anchored on an
+`--actor-id` that resolves in exactly one tenant's `users` table. Run it once per
+(tenant, terminal) with that tenant's actor.
+
+> **Do NOT wrap these in an outer `forEachTenant`.** The pre-2026-08-05 recipe in this runbook
+> called `Artisan::call('fiscal:verify-chains' | 'pos:verify-chains' | 'fiscal:verify-event-chain')`
+> INSIDE a `forEachTenant` closure. Post-conversion that is doubly wrong: each inner command
+> drives its own full-fleet loop (so the work becomes O(N²)), and the inner loop's
+> `tenancy()->end()` (`TenantScopedCommand.php`, the `finally` in `forEachTenantNarrowed`) tears
+> down the OUTER binding, leaving the remaining outer iterations running against whatever
+> connection is default at that point.
 
 ## Nightly schedule
 
-Add to `apps/api/app/Console/Kernel.php` (`schedule()`), low-traffic window, after the daily
-business-date rollover:
+Schedule the two fleet-default verifiers directly (low-traffic window, after the daily
+business-date rollover). A dedicated `fiscal:verify-all-chains` umbrella is no longer required
+for tenant iteration; it would only add the fiscal-events leg, which needs a per-tenant actor.
 
 ```php
-$schedule->command('fiscal:verify-all-chains')
+$schedule->command('fiscal:verify-chains')
     ->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->onFailure(fn () => /* alert: PostHog event + on-call page */ null);
+
+$schedule->command('pos:verify-chains --type=all')
+    ->dailyAt('03:45')
     ->withoutOverlapping()
     ->onFailure(fn () => /* alert: PostHog event + on-call page */ null);
 ```
@@ -82,5 +109,7 @@ $schedule->command('fiscal:verify-all-chains')
 - **No TimescaleDB audit-tier verifier.** The two-tier model (fiscal SHA-256 chain + per-event
   audit hashes in TimescaleDB) has no verifier for the audit tier yet. The commands above cover
   the fiscal tier only. (Follow-up ticket.)
-- **Wrapper command not yet shipped** — this runbook documents the recipe; the
-  `fiscal:verify-all-chains` Artisan command is the next increment (extend `TenantScopedCommand`).
+- **No fleet mode for `fiscal:verify-event-chain`** — deliberate (the `--actor-id` permission
+  gate resolves in exactly one tenant), so the fiscal-events leg is still driven per
+  (tenant, terminal) by the operator or by a wrapper that supplies the right actor per tenant.
+  The document and POS legs no longer need one.

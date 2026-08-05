@@ -68,7 +68,12 @@ Tunisian para-pharmacy tenant, **created manually** through onboarding:
    - **Horizon: `php artisan horizon`** — MANDATORY. POS/fiscal projections are async on the
      `fiscal-projections` queue (`ApplyFiscalEventProjectionJob` ShouldQueue). Without Horizon,
      POS sales never project into web-admin. Recovery if backlogged:
-     `php artisan fiscal:enqueue-resolved-event-projections --actor-id=<user-uuid>`.
+     `php artisan fiscal:enqueue-resolved-event-projections --tenant=<tenant-uuid> --actor-id=<user-uuid>`.
+     (`--tenant` became REQUIRED on 2026-08-05 — the command now BINDS that tenant's database
+     rather than adding a `where` on the central connection, where `fiscal_events` does not
+     exist. Without it the command exits 1 with "Missing --tenant option". The actor must belong
+     to that same tenant. There is deliberately no fleet mode: the permission gate resolves the
+     actor in exactly one tenant's `users` table, so recover N tenants with N invocations.)
    - Web: `cd apps/web && pnpm dev` (Vite).
    - POS: `cd apps/pos && pnpm tauri dev` with `.env` → `VITE_API_URL=http://localhost:8000` (or
      the actual local API port) + local Reverb host. (Local needs no baked-URL rebuild dance;
