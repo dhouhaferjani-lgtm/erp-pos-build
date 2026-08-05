@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -54,9 +55,31 @@ final class ReceiptHashService
     public function __construct(
         private readonly FiscalHashService $fiscalHashService,
         private readonly FiscalIntegrityProvider $integrityProvider,
-        private readonly ConnectionInterface $db,
+        private readonly DatabaseManager $databaseManager,
         private readonly V3ReceiptHashComputer $v3Computer,
     ) {}
+
+    /**
+     * The connection resolved at CALL time.
+     *
+     * A `ConnectionInterface` captured in the CONSTRUCTOR is pinned to the
+     * central connection for the life of the object: `db.connection` is a bind
+     * returning `$app['db']->connection()`, and `tenancy()->initialize()` only
+     * purges the `tenant` connection and re-points `database.default` — an
+     * already-handed-out `Connection` object keeps its own PDO. This service is
+     * constructor-injected into `pos:verify-chains`, which the console kernel
+     * builds BEFORE `forEachTenant()` binds any tenant, so the authoritative
+     * `fiscal_events` arm below used to query CENTRAL under db-per-tenant
+     * (42P01 in production; the wrong tenant's answer in compat mode).
+     *
+     * Same template as `VerifyEventChainCommand::db()` /
+     * `EnqueueResolvedEventProjectionsCommand::db()` (6c07d2730). Regression:
+     * `tests/Feature/POS/VerifyPosChainCommandDbPerTenantTest.php`.
+     */
+    private function db(): ConnectionInterface
+    {
+        return $this->databaseManager->connection();
+    }
 
     /**
      * Calculate fiscal hash for a POS receipt
@@ -210,7 +233,7 @@ final class ReceiptHashService
      */
     public function verifyTerminalChainFiscalArm(Terminal $terminal): bool
     {
-        $rows = $this->db->table('fiscal_events')
+        $rows = $this->db()->table('fiscal_events')
             ->where('terminal_id', $terminal->id)
             ->orderBy('sequence_number')
             ->get(['id', 'sequence_number', 'canonical_bytes', 'previous_hash', 'current_hash']);
@@ -447,7 +470,7 @@ final class ReceiptHashService
     public function verifyHash(Receipt $receipt): bool
     {
         if ($receipt->fiscal_event_id !== null) {
-            $canonicalBytes = $this->db->table('fiscal_events')
+            $canonicalBytes = $this->db()->table('fiscal_events')
                 ->where('id', $receipt->fiscal_event_id)
                 ->value('canonical_bytes');
 

@@ -7,6 +7,8 @@ namespace Tests\Traits;
 use App\Console\TenantScopedCommand;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Give a tenant a per-tenant database that actually EXISTS.
@@ -40,5 +42,77 @@ trait ProvisionsTenantDatabases
         });
 
         return $tenant;
+    }
+
+    /**
+     * Provision a tenant database that also carries the full application
+     * SCHEMA, so a command run under `db_per_tenant = true` can actually read
+     * and write tenant tables inside it.
+     *
+     * {@see self::provisionTenantDatabase()} only makes the database EXIST —
+     * enough to get past `forEachTenant()`'s probe, but an empty file cannot
+     * prove anything about WHICH database a query landed on. That is exactly
+     * the blind spot the 2026-08-05 wave-2 reviews called out (fiscal R4 /
+     * tenancy R5): every wave test ran in single-schema compat mode, so a
+     * collaborator pinned to the CENTRAL connection stayed invisible.
+     *
+     * Rather than replay 500+ tenant migrations per test, the schema is cloned
+     * from the central connection's `sqlite_master` — the compat suite migrates
+     * every table into that one in-memory database, so its DDL is by
+     * construction identical to (and never drifts from) the tenant schema.
+     * DDL only: no rows are copied, which is what makes "central has the row,
+     * the tenant database does not" a usable probe.
+     */
+    protected function provisionTenantDatabaseWithSchema(Tenant $tenant): Tenant
+    {
+        $this->provisionTenantDatabase($tenant);
+
+        /** @var list<object{sql: string}> $objects */
+        $objects = DB::connection()->select(
+            "select sql from sqlite_master where sql is not null and name not like 'sqlite_%' order by case type when 'table' then 0 else 1 end",
+        );
+
+        $this->withinTenantDatabase($tenant, static function () use ($objects): void {
+            DB::statement('PRAGMA foreign_keys = OFF');
+
+            foreach ($objects as $object) {
+                try {
+                    DB::statement($object->sql);
+                } catch (Throwable) {
+                    // An object the tenant database already has (sqlite creates
+                    // a few implicitly). Cloning is best-effort per object; a
+                    // table the test actually needs surfaces as a loud
+                    // "no such table" in the test itself.
+                }
+            }
+        });
+
+        return $tenant;
+    }
+
+    /**
+     * Run `$fn` with tenancy bound to `$tenant`, always ending the binding.
+     *
+     * Tests build their fixtures through this so the rows land in the TENANT
+     * database rather than in central — the whole point of a db-per-tenant leg.
+     *
+     * @template TReturn
+     *
+     * @param  callable(Tenant): TReturn  $fn
+     * @return TReturn
+     */
+    protected function withinTenantDatabase(Tenant $tenant, callable $fn): mixed
+    {
+        $wasInitialized = tenancy()->initialized;
+
+        tenancy()->initialize($tenant);
+
+        try {
+            return $fn($tenant);
+        } finally {
+            if (! $wasInitialized && tenancy()->initialized) {
+                tenancy()->end();
+            }
+        }
     }
 }
