@@ -17,6 +17,7 @@ use App\Modules\Channel\Domain\Enums\ChannelConnectionStatus;
 use App\Modules\Channel\Domain\Models\Channel;
 use App\Modules\Channel\Domain\Models\ChannelProductMapping;
 use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryEntry;
+use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryRegistrar;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Product\Domain\Product;
@@ -27,7 +28,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use ReflectionProperty;
@@ -110,6 +114,155 @@ final class ChannelWebhookTenantResolutionTest extends TestCase
         $this->postWebhook((string) Str::uuid(), ['external_order_id' => 'EXT-2'])->assertNotFound();
 
         $this->assertSame(0, $adapter->verifyCalls);
+    }
+
+    /**
+     * B1 (2026-08-05 adversarial review, Critical). `channel_webhook_directory
+     * .channel_id` is a PostgreSQL `uuid` column, so `where channel_id =
+     * 'garbage'` raises SQLSTATE 22P02 — and nothing renders `QueryException`,
+     * so an anonymous caller could drive unbounded 500s / Sentry events on an
+     * UNAUTHENTICATED route with a one-line curl.
+     *
+     * The suite runs on SQLite, which happily compares a TEXT primary key to
+     * 'garbage' and returns no rows — so a behavioural "assert 404" test alone
+     * is green on the broken code. The assertion that actually goes red is that
+     * the malformed id NEVER REACHES THE QUERY.
+     */
+    public function test_a_non_uuid_channel_id_never_reaches_the_directory_query(): void
+    {
+        Queue::fake();
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $response = $this->postWebhook('not-a-uuid', ['external_order_id' => 'EXT-BAD']);
+
+        $queries = DB::getRawQueryLog();
+        DB::disableQueryLog();
+
+        $response->assertNotFound();
+
+        $directoryQueries = array_values(array_filter(
+            $queries,
+            static fn (array $entry): bool => str_contains((string) $entry['raw_query'], 'channel_webhook_directory'),
+        ));
+
+        $this->assertSame(
+            [],
+            $directoryQueries,
+            'A non-UUID channel id must be rejected BEFORE the central directory lookup — on PostgreSQL that '
+            .'lookup raises 22P02 and the unauthenticated route answers 500.',
+        );
+
+        Queue::assertNothingPushed();
+    }
+
+    /**
+     * Layer 1 of the B1 fix: the route itself refuses a non-UUID segment, so a
+     * malformed id never even enters the middleware stack.
+     */
+    public function test_the_webhook_route_constrains_the_channel_id_to_a_uuid(): void
+    {
+        $route = Route::getRoutes()->getByName('channels.webhooks.ingest');
+
+        $this->assertNotNull($route);
+
+        $pattern = $route->wheres['channelId'] ?? null;
+
+        $this->assertIsString(
+            $pattern,
+            'The unauthenticated webhook route must constrain {channelId} to a UUID.',
+        );
+        $this->assertSame(1, preg_match('~^'.$pattern.'$~', (string) Str::uuid()));
+        $this->assertSame(0, preg_match('~^'.$pattern.'$~', 'not-a-uuid'));
+    }
+
+    /**
+     * Layer 2 of the B1 fix: the registrar is the last line of defence for any
+     * caller that reaches it without the route constraint (a direct call, a
+     * future route, a copy of this endpoint). Same fail-closed answer, no query.
+     */
+    public function test_the_directory_lookup_rejects_a_non_uuid_without_querying(): void
+    {
+        $registrar = app(ChannelWebhookDirectoryRegistrar::class);
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $resolved = $registrar->resolveTenantId('not-a-uuid');
+
+        $queries = DB::getRawQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertNull($resolved);
+        $this->assertSame([], $queries, 'A non-UUID id must not reach the uuid-typed primary key at all.');
+    }
+
+    /**
+     * Layer 3 of the B1 fix: the route is unauthenticated by design, so without
+     * a limiter any caller gets an unbounded free channel into the central
+     * directory (and, for a real channel id, into a tenant database switch).
+     */
+    public function test_the_webhook_route_is_rate_limited(): void
+    {
+        Queue::fake();
+
+        $this->assertContains(
+            'throttle:channel-webhook',
+            Route::getRoutes()->getByName('channels.webhooks.ingest')?->gatherMiddleware() ?? [],
+        );
+
+        $this->assertNotNull(
+            RateLimiter::limiter('channel-webhook'),
+            'The named limiter the route references must be registered, or the throttle middleware throws.',
+        );
+
+        $unknown = (string) Str::uuid();
+
+        for ($i = 0; $i < 60; $i++) {
+            $this->postWebhook($unknown, ['external_order_id' => 'EXT-RL'])->assertNotFound();
+        }
+
+        $this->postWebhook($unknown, ['external_order_id' => 'EXT-RL'])->assertStatus(429);
+    }
+
+    /**
+     * M1 (2026-08-05 review): the three fail-closed 404s must be
+     * INDISTINGUISHABLE. `Channel::findOrFail()` rendered a DIFFERENT body
+     * (`{"error":{"code":"NOT_FOUND","message":"… Channel …"}}`) via the
+     * ModelNotFoundException handler, so a directory row pointing at a live
+     * tenant with no channel row was tellable apart from an unknown id.
+     */
+    public function test_every_fail_closed_404_returns_the_same_body(): void
+    {
+        Queue::fake();
+
+        $unknownId = $this->postWebhook((string) Str::uuid(), [])->assertNotFound();
+
+        // Directory row whose tenant no longer exists.
+        $deadTenantChannelId = (string) Str::uuid();
+        ChannelWebhookDirectoryEntry::query()->create([
+            'channel_id' => $deadTenantChannelId,
+            'tenant_id' => (string) Str::uuid(),
+        ]);
+        $deadTenant = $this->postWebhook($deadTenantChannelId, [])->assertNotFound();
+
+        // Directory row + live tenant, but the channel row itself is gone
+        // (deleted with raw SQL / restored snapshot — the observer never fired).
+        $tenant = $this->createTenant('channel-dir-oracle');
+        $ghostChannelId = (string) Str::uuid();
+        ChannelWebhookDirectoryEntry::query()->create([
+            'channel_id' => $ghostChannelId,
+            'tenant_id' => $tenant->id,
+        ]);
+        $ghostChannel = $this->postWebhook($ghostChannelId, [])->assertNotFound();
+
+        $this->assertSame($unknownId->json(), $deadTenant->json());
+        $this->assertSame(
+            $unknownId->json(),
+            $ghostChannel->json(),
+            'A directory row whose channel row is missing must not be distinguishable from an unknown channel id.',
+        );
     }
 
     public function test_a_webhook_resolves_the_tenant_and_dispatches_the_ingest_job_with_that_anchor(): void

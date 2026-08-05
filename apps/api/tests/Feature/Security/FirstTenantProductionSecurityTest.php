@@ -91,6 +91,11 @@ class FirstTenantProductionSecurityTest extends TestCase
             // dev-remediation/D — M2.6 additional rate limiters.
             'document-email' => ['document-email'],
             'pos-terminal-activation' => ['pos-terminal-activation'],
+            // 2026-08-05 cat-(b) wave-1 review, B1 — the channel webhook is
+            // UNAUTHENTICATED (external sales platforms call it) and binds a
+            // tenant database before it can verify a signature, so it is the
+            // one non-auth surface that belongs in this list.
+            'channel-webhook' => ['channel-webhook'],
         ];
     }
 

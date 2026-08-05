@@ -337,6 +337,21 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by($request->ip() ?? 'unknown');
         });
 
+        // Channel webhook ingress - 60 per minute per IP.
+        //
+        // `POST api/v1/webhooks/channels/{channelId}` is UNAUTHENTICATED by
+        // design (external sales platforms call it), so before this limiter it
+        // was an unbounded anonymous channel: one central-directory lookup per
+        // request for any id, and a full tenant DATABASE SWITCH for a real one
+        // (ChannelWebhookController binds tenancy before the signature can be
+        // verified — verification needs the channel's own adapter row).
+        // 60/min/IP is comfortably above real platform callback volume for a
+        // single tenant's channels and still bounds the amplification.
+        // dev-remediation — 2026-08-05 cat-(b) wave-1 review, B1.
+        RateLimiter::for('channel-webhook', function (Request $request): Limit {
+            return Limit::perMinute(60)->by($request->ip() ?? 'unknown');
+        });
+
         // Storefront appointment booking - 10 requests per minute per IP + company pair.
         // The {company_id} route parameter is the companies.uuid primary key.
         RateLimiter::for('storefront-booking-ip', function (Request $request): Limit {

@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -44,6 +45,25 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * consulted. Deliberately NOT a per-tenant fan-out: this endpoint is
  * unauthenticated, so scanning every tenant database for a channel id would let
  * one forged request cost N database switches.
+ *
+ * **Every 404 on this route is byte-identical** (2026-08-05 review, M1). Unknown
+ * id, malformed id, directory row whose tenant is deprovisioned, and directory
+ * row whose channel row is gone all emit `NotFoundHttpException('Unknown
+ * channel.')`. `Channel::findOrFail()` used to render a DIFFERENT body through
+ * the `ModelNotFoundException` handler in `bootstrap/app.php`, which made the
+ * last case tellable apart from the first — an existence oracle on an
+ * unauthenticated endpoint.
+ *
+ * **Suspended / Archived tenants are PROCESSED here — deliberate divergence**
+ * (2026-08-05 review, R3). The authenticated request path rejects them
+ * (`ResolveTenancy` checks `TenantStatus::Suspended|Archived`); this data-plane
+ * callback does not, because {@see TenancyResolver::initializeIfProvisioned()}
+ * gates on database EXISTENCE only. Suspension is reversible and the database
+ * is preserved on purpose, so dropping inbound orders during it would destroy
+ * data the tenant gets back on reinstatement — the external platform does not
+ * redeliver on a 404. Locking the tenant's own USERS out while still accepting
+ * its machine traffic is the intended asymmetry, not an oversight; see the
+ * matching note on {@see TenancyResolver}.
  */
 final class ChannelWebhookController extends Controller
 {
@@ -64,6 +84,14 @@ final class ChannelWebhookController extends Controller
             throw new HttpException(403, 'Webhook timestamp expired.');
         }
 
+        // The route already constrains {channelId} to a UUID; this repeats it so
+        // the 22P02 guard does not depend on that one line staying there. Same
+        // answer as an unknown channel — a malformed id must not be tellable
+        // apart from an unused one (2026-08-05 review, B1).
+        if (! Str::isUuid($channelId)) {
+            throw new NotFoundHttpException('Unknown channel.');
+        }
+
         // CENTRAL lookup first: without it nothing below is readable.
         $tenantId = $this->directory->resolveTenantId($channelId);
         if ($tenantId === null) {
@@ -81,22 +109,39 @@ final class ChannelWebhookController extends Controller
         // Fail-closed binding: under database-per-tenant an unprovisioned or
         // unopenable tenant database raises TenantUnavailableException (503)
         // rather than silently degrading to the central connection.
-        $this->tenancyResolver->initializeIfProvisioned($tenant);
+        $initialized = $this->tenancyResolver->initializeIfProvisioned($tenant);
 
-        $channel = Channel::query()->findOrFail($channelId);
-        $adapter = $this->adapterRegistry->resolve($channel->adapter_type);
+        try {
+            // find(), NOT findOrFail(): ModelNotFoundException renders a
+            // different 404 body (see the class docblock, M1).
+            $channel = Channel::query()->find($channelId);
+            if ($channel === null) {
+                throw new NotFoundHttpException('Unknown channel.');
+            }
 
-        if (! $adapter->signatureStrategy()->verify($request, $channel)) {
-            throw new HttpException(403, 'Invalid webhook signature.');
+            $adapter = $this->adapterRegistry->resolve($channel->adapter_type);
+
+            if (! $adapter->signatureStrategy()->verify($request, $channel)) {
+                throw new HttpException(403, 'Invalid webhook signature.');
+            }
+
+            $payload = $request->json()->all();
+            $externalOrderId = isset($payload['external_order_id']) ? (string) $payload['external_order_id'] : hash('sha256', $request->getContent());
+            $order = $this->ingestService->ingest($externalOrderId, $payload, $channel);
+
+            event(new ChannelOrderReceived($order->id, $channel->id));
+            IngestChannelOrderJob::dispatch($order->id, $tenantId);
+
+            return response()->json(['data' => ['order_id' => $order->id]], 202);
+        } finally {
+            // Release the binding this request opened (M5). Harmless under
+            // php-fpm, where the process dies with the request; required the
+            // moment the app runs on a long-lived worker (Octane), where a
+            // leaked binding would hand the NEXT request this tenant's
+            // connection.
+            if ($initialized && tenancy()->initialized) {
+                tenancy()->end();
+            }
         }
-
-        $payload = $request->json()->all();
-        $externalOrderId = isset($payload['external_order_id']) ? (string) $payload['external_order_id'] : hash('sha256', $request->getContent());
-        $order = $this->ingestService->ingest($externalOrderId, $payload, $channel);
-
-        event(new ChannelOrderReceived($order->id, $channel->id));
-        IngestChannelOrderJob::dispatch($order->id, $tenantId);
-
-        return response()->json(['data' => ['order_id' => $order->id]], 202);
     }
 }
