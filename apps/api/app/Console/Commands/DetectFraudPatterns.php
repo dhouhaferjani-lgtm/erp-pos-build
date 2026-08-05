@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\WarnsOnTenantScopeDrift;
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
@@ -42,6 +43,11 @@ use Illuminate\Support\Facades\Log;
  */
 final class DetectFraudPatterns extends TenantScopedCommand
 {
+    use WarnsOnTenantScopeDrift;
+
+    /** Cap on drifted ids collected for the R1 warning. */
+    private const MAX_REPORTED_DRIFT_IDS = 20;
+
     /**
      * The name and signature of the console command.
      *
@@ -81,6 +87,28 @@ final class DetectFraudPatterns extends TenantScopedCommand
             &$totalAlertsCreated,
             &$totalFlaggedUsers,
         ): int {
+            // R1: under database-per-tenant the tenant_id predicate should be a
+            // no-op — every company in THIS database belongs to THIS tenant.
+            // When it is not, the excluded company's fraud sweep is silently
+            // skipped forever. Measured WITHOUT --company, which is an operator
+            // narrowing rather than a scoping predicate.
+            $this->warnOnTenantScopeDrift(
+                'companies',
+                $tenant,
+                static fn (): int => Company::query()->count(),
+                static fn (): int => Company::query()->where('tenant_id', $tenant->id)->count(),
+                static fn (): array => array_values(
+                    Company::query()
+                        ->where(static function ($query) use ($tenant): void {
+                            $query->where('tenant_id', '!=', $tenant->id)->orWhereNull('tenant_id');
+                        })
+                        ->limit(self::MAX_REPORTED_DRIFT_IDS)
+                        ->pluck('id')
+                        ->map(static fn (mixed $id): string => (string) $id)
+                        ->all(),
+                ),
+            );
+
             $companies = Company::query()
                 ->where('tenant_id', $tenant->id)
                 ->when($companyFilter !== null, fn ($query) => $query->where('id', $companyFilter))

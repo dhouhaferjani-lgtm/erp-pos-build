@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Channel\Infrastructure\Commands;
 
+use App\Console\Concerns\WarnsOnTenantScopeDrift;
 use App\Console\TenantScopedCommand;
 use App\Modules\Channel\Application\Jobs\ChannelReconciliationJob;
 use App\Modules\Channel\Domain\Models\Channel;
@@ -61,6 +62,11 @@ use Illuminate\Database\Eloquent\Builder;
  */
 final class ChannelReconcileCommand extends TenantScopedCommand
 {
+    use WarnsOnTenantScopeDrift;
+
+    /** Cap on drifted ids collected for the R1 warning. */
+    private const MAX_REPORTED_DRIFT_IDS = 20;
+
     /** @var string */
     protected $signature = 'channels:reconcile';
 
@@ -80,12 +86,32 @@ final class ChannelReconcileCommand extends TenantScopedCommand
         $pruned = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (&$dispatched, &$pruned): int {
-            $channels = Channel::query()
-                ->whereHas('company', static function (Builder $query) use ($tenant): void {
-                    /** @var Builder<Company> $query */
-                    $query->where('tenant_id', $tenant->id);
-                })
-                ->get();
+            $ownedByTenant = static function (Builder $query) use ($tenant): void {
+                /** @var Builder<Company> $query */
+                $query->where('tenant_id', $tenant->id);
+            };
+
+            $channels = Channel::query()->whereHas('company', $ownedByTenant)->get();
+
+            // R1: under database-per-tenant the predicate above should be a
+            // no-op — every channel in THIS database belongs to THIS tenant.
+            // When it is not, the excluded channel is never reconciled AND
+            // never gets a directory pointer, so its webhooks 404 forever. The
+            // silence is the bug; say so.
+            $this->warnOnTenantScopeDrift(
+                'channels',
+                $tenant,
+                static fn (): int => Channel::query()->count(),
+                static fn (): int => $channels->count(),
+                static fn (): array => array_values(
+                    Channel::query()
+                        ->whereDoesntHave('company', $ownedByTenant)
+                        ->limit(self::MAX_REPORTED_DRIFT_IDS)
+                        ->pluck('id')
+                        ->map(static fn (mixed $id): string => (string) $id)
+                        ->all(),
+                ),
+            );
 
             foreach ($channels as $channel) {
                 // Self-heal the CENTRAL webhook directory. Channels created
