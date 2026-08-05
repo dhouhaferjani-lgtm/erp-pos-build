@@ -171,8 +171,27 @@ class CatalogCartController extends Controller
             ->shared($user->id)
             ->findOrFail($id);
 
+        // Marketplace kill-switch (`config('marketplace.enabled')`, default FALSE).
+        // The cart itself is a procurement surface and stays live while the
+        // module is dark, but its marketplace payload must not be: an accepted
+        // `source=marketplace` / `marketplace_listing_id` drives
+        // CartService::addItem() into MarketplaceListing::findOrFail() +
+        // MarketplaceOrderService::reserveForCart(), which creates a stock
+        // reservation and consumes the anti-abuse counter. Rejecting here (422)
+        // keeps the marketplace branch of the service unreachable over HTTP
+        // instead of failing halfway through it.
+        $marketplaceEnabled = (bool) config('marketplace.enabled', false);
+
+        $sourceRules = ['required', Rule::enum(CartItemSource::class)];
+        $marketplaceListingRules = ['nullable', 'string', 'uuid'];
+
+        if (! $marketplaceEnabled) {
+            $sourceRules[] = Rule::notIn([CartItemSource::Marketplace->value]);
+            $marketplaceListingRules = ['prohibited'];
+        }
+
         $validated = $request->validate([
-            'source' => ['required', Rule::enum(CartItemSource::class)],
+            'source' => $sourceRules,
             'article_name' => ['required', 'string', 'max:255'],
             'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'article_number' => ['nullable', 'string'],
@@ -181,13 +200,15 @@ class CatalogCartController extends Controller
             'currency' => ['nullable', 'string', 'size:3'],
             'product_id' => ['nullable', 'string', 'uuid'],
             'platform_article_id' => ['nullable', 'string', 'uuid'],
-            'marketplace_listing_id' => ['nullable', 'string', 'uuid'],
+            'marketplace_listing_id' => $marketplaceListingRules,
             'preferred_supplier_partner_id' => ['nullable', 'string', 'uuid'],
             'notes' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer'],
         ], [
             'quantity.regex' => 'The quantity must have at most 4 decimal places.',
             'unit_price.regex' => 'The unit price must have at most 3 decimal places.',
+            'source.not_in' => 'The marketplace module is disabled.',
+            'marketplace_listing_id.prohibited' => 'The marketplace module is disabled.',
         ]);
 
         try {
