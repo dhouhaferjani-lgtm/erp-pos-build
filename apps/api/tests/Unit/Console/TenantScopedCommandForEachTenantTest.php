@@ -21,6 +21,7 @@ use RuntimeException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 /**
  * 2026-07-09 independent audit, finding N1: {@see TenantScopedCommand::forEachTenant()}'s
@@ -41,6 +42,7 @@ use Tests\TestCase;
  */
 final class TenantScopedCommandForEachTenantTest extends TestCase
 {
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     public function test_one_tenant_throwing_does_not_abort_the_remaining_tenants_and_aggregate_is_failure(): void
@@ -186,7 +188,11 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
     {
         config(['tenancy_resolver.db_per_tenant' => true]);
 
-        $openable = $this->createTenantWithDatabase('has-db-'.$status->value);
+        // 2026-08-05 re-gate, N2: the OPENABLE tenant carries the parameterised
+        // status too. Without it the db-per-tenant leg only ever exercised an
+        // Active openable tenant, so a reintroduced `! $tenant->isActive()`
+        // filter under db_per_tenant would have left this suite green.
+        $openable = $this->createTenantWithDatabase('has-db-'.$status->value, $status);
         $missing = $this->createTenant('no-db-'.$status->value, $status);
 
         $processed = [];
@@ -260,6 +266,96 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
     }
 
     /**
+     * 2026-08-05 re-gate, N1: the probe cannot distinguish "pg_database says
+     * no" from "I could not ask". Two reachable global faults (central
+     * connection lost after `Tenant::all()` materialised the directory; no
+     * database manager registered for the driver) make `databaseExists()`
+     * THROW for every tenant. Treating that as "database missing" skipped 100%
+     * of the fleet at WARNING with exit 0 — so every `onFailure()` ops hook
+     * wired to these scheduler entries stayed silent while cash-drift freeze,
+     * fiscal dead-letter recovery and batch-expiry alerts went dark.
+     *
+     * Contract now mirrors `TenancyResolver::initializeIfProvisioned()`,
+     * which fails CLOSED on a throwing probe under db-per-tenant: probe
+     * RETURNS false ⇒ skip + WARNING; probe THROWS ⇒ that tenant is a FAILURE
+     * (ERROR log, non-zero aggregate exit).
+     *
+     * The fault is injected the same way the real one arrives: no database
+     * manager registered for the connection's driver, which is exactly what
+     * `DatabaseConfig::manager()` raises `DatabaseManagerNotRegisteredException`
+     * for.
+     */
+    public function test_a_throwing_database_probe_is_a_failure_not_a_silent_skip(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->createTenantWithDatabase('probe-throws');
+
+        config(['tenancy.database.managers' => []]);
+
+        $processed = [];
+
+        /** @var list<MessageLogged> $records */
+        $records = [];
+        Log::listen(function (MessageLogged $message) use (&$records): void {
+            $records[] = $message;
+        });
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachTenant(function (Tenant $tenant) use (&$processed): int {
+            $processed[] = $tenant->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(
+            Command::FAILURE,
+            $exit,
+            'A probe that THROWS is an infra fault, not evidence of a missing database — the aggregate exit must be non-zero.',
+        );
+        self::assertSame([], $processed, 'The closure must not run for a tenant whose database could not be probed.');
+        self::assertSame([], $command->visited());
+        self::assertSame(
+            [$tenant->id],
+            $command->skipped(),
+            'A tenant whose probe threw was not processed, so a --tenant filter targeting it must be able to report it.',
+        );
+
+        $lines = array_values(array_filter(
+            $records,
+            static fn (MessageLogged $m): bool => ($m->context['tenant_id'] ?? null) === $tenant->id,
+        ));
+
+        self::assertCount(1, $lines, 'A probe fault must produce exactly ONE log line per tenant per run.');
+        self::assertSame(
+            'error',
+            $lines[0]->level,
+            'A probe fault is an alertable infra fault — error, not the warning-only skip path.',
+        );
+    }
+
+    public function test_a_throwing_database_probe_makes_a_tenant_filter_fail_loudly(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->createTenantWithDatabase('probe-throws-filter');
+
+        config(['tenancy.database.managers' => []]);
+
+        $buffer = new BufferedOutput;
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $buffer));
+        $command->runForEachTenant(static fn (Tenant $tenant): int => Command::SUCCESS);
+
+        self::assertSame(
+            Command::FAILURE,
+            $command->checkTenantFilter($tenant->id),
+            'An operator who targeted the tenant whose probe threw must not be told the run succeeded.',
+        );
+        self::assertStringContainsString($tenant->id, $buffer->fetch());
+    }
+
+    /**
      * The visited/skipped surface is what lets a `--tenant`-filtering command
      * fail loudly instead of exiting SUCCESS having done nothing.
      */
@@ -301,22 +397,12 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ($this->createdDatabaseFiles as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-        $this->createdDatabaseFiles = [];
-
         if (tenancy()->initialized) {
             tenancy()->end();
         }
 
         parent::tearDown();
     }
-
-    /** @var list<string> */
-    private array $createdDatabaseFiles = [];
 
     private function createTenant(string $slug, TenantStatus $status = TenantStatus::Active): Tenant
     {
@@ -329,19 +415,14 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
     }
 
     /**
-     * Create a tenant whose per-tenant database actually exists. Under the
-     * suite's SQLite driver that is a file at `database_path(<db name>)` —
-     * the same thing Stancl's SQLiteDatabaseManager creates and probes.
+     * Create a tenant whose per-tenant database actually exists. Delegates to
+     * {@see ProvisionsTenantDatabases} — the shared helper — rather than
+     * re-implementing the "a tenant database is a file under database_path()"
+     * assumption a second time (2026-08-05 re-gate, N5).
      */
     private function createTenantWithDatabase(string $slug, TenantStatus $status = TenantStatus::Active): Tenant
     {
-        $tenant = $this->createTenant($slug, $status);
-
-        $path = database_path($tenant->getDatabaseName());
-        touch($path);
-        $this->createdDatabaseFiles[] = $path;
-
-        return $tenant;
+        return $this->provisionTenantDatabase($this->createTenant($slug, $status));
     }
 
     private function probeCommand(): TenantScopedCommandForEachTenantProbeCommand

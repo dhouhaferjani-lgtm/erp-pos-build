@@ -168,6 +168,17 @@ abstract class TenantScopedCommand extends Command
      * operator's attention — but it is NOT a failure and never degrades the
      * aggregate exit code).
      *
+     * **The probe fails CLOSED when it cannot be answered (2026-08-05 re-gate,
+     * N1):** a probe that RETURNS false means "there is no database" ⇒ skip +
+     * WARNING (above). A probe that THROWS means the question could not be
+     * asked — central connection lost mid-run, or no database manager
+     * registered for the driver — and is recorded as that tenant's FAILURE
+     * (ERROR log, non-zero aggregate exit), exactly the way
+     * {@see TenancyResolver::initializeIfProvisioned()} raises
+     * `TenantUnavailableException` on the same fault. Without this a transient
+     * central outage skipped every tenant at WARNING with exit 0 and no
+     * scheduler `onFailure()` hook ever fired.
+     *
      * Lifecycle status is deliberately NOT consulted. Pending tenants are
      * live and transacting at request time (`ResolveTenancy` and
      * `AuthController` only reject Suspended/Archived, and `tenants.status`
@@ -202,16 +213,43 @@ abstract class TenantScopedCommand extends Command
 
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
-            if ($dbPerTenant && ! $this->tenantDatabaseExists($tenant)) {
-                $this->skippedTenantIds[] = (string) $tenant->id;
+            if ($dbPerTenant) {
+                try {
+                    $databaseExists = $this->tenantDatabaseExists($tenant);
+                } catch (Throwable $e) {
+                    // The probe could not be ANSWERED (central connection lost,
+                    // no database manager registered for the driver). That is an
+                    // infra fault, not evidence of a missing database: fail
+                    // closed for this tenant so the aggregate exit is non-zero
+                    // and the scheduler's onFailure() hook fires.
+                    $this->skippedTenantIds[] = (string) $tenant->id;
 
-                Log::warning('TenantScopedCommand::forEachTenant skipping tenant whose database is not provisioned.', [
-                    'tenant_id' => $tenant->id,
-                    'tenant_status' => $tenant->status->value,
-                    'command' => static::class,
-                ]);
+                    Log::error('TenantScopedCommand::forEachTenant could not probe tenant database existence; failing this tenant.', [
+                        'tenant_id' => $tenant->id,
+                        'tenant_status' => $tenant->status->value,
+                        'command' => static::class,
+                        'exception_class' => $e::class,
+                        'exception_message' => $e->getMessage(),
+                    ]);
 
-                continue;
+                    if ($aggregate === self::SUCCESS) {
+                        $aggregate = self::FAILURE;
+                    }
+
+                    continue;
+                }
+
+                if (! $databaseExists) {
+                    $this->skippedTenantIds[] = (string) $tenant->id;
+
+                    Log::warning('TenantScopedCommand::forEachTenant skipping tenant whose database is not provisioned.', [
+                        'tenant_id' => $tenant->id,
+                        'tenant_status' => $tenant->status->value,
+                        'command' => static::class,
+                    ]);
+
+                    continue;
+                }
             }
 
             $this->visitedTenantIds[] = (string) $tenant->id;
@@ -261,8 +299,13 @@ abstract class TenantScopedCommand extends Command
     }
 
     /**
-     * Tenant ids the database-existence probe skipped during the last
-     * {@see self::forEachTenant()} call.
+     * Tenant ids whose closure did NOT run during the last
+     * {@see self::forEachTenant()} call because the database-existence probe
+     * either answered "no database" (skip + WARNING, aggregate untouched) or
+     * could not be answered at all (FAILURE + ERROR). Both belong here: what
+     * {@see self::failIfTenantFilterUnvisited()} needs to tell an operator is
+     * that nothing was processed for the tenant, and the wording it emits
+     * ("does not exist or could not be opened") covers both.
      *
      * @return list<string>
      */
@@ -313,27 +356,21 @@ abstract class TenantScopedCommand extends Command
     }
 
     /**
-     * Mirror of {@see TenancyResolver}'s
-     * pre-initialize probe. A throwing probe (central connection down, no
-     * database manager registered for the driver) is treated as "cannot open"
-     * and logged with the exception details rather than aborting the whole
-     * batch — the per-tenant failure-isolation contract above applies to the
-     * probe too.
+     * Mirror of {@see TenancyResolver}'s pre-initialize probe.
+     *
+     * **Deliberately does NOT swallow.** A throwing probe (central connection
+     * down, no database manager registered for the driver) means the question
+     * could not be ASKED — it is not an answer of "no database". The caller
+     * turns a throw into that tenant's FAILURE (see the loop above), matching
+     * {@see TenancyResolver::initializeIfProvisioned()}, which raises
+     * `TenantUnavailableException` on the same fault under db-per-tenant.
+     * Swallowing it here made a single central-connection blip skip 100% of the
+     * fleet at WARNING with exit 0, silencing every scheduler `onFailure()`
+     * hook (2026-08-05 re-gate, N1).
      */
     private function tenantDatabaseExists(Tenant $tenant): bool
     {
-        try {
-            return $tenant->database()->manager()->databaseExists($tenant->getDatabaseName());
-        } catch (Throwable $e) {
-            Log::warning('TenantScopedCommand::forEachTenant could not probe tenant database existence.', [
-                'tenant_id' => $tenant->id,
-                'command' => static::class,
-                'exception_class' => $e::class,
-                'exception_message' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+        return $tenant->database()->manager()->databaseExists($tenant->getDatabaseName());
     }
 
     private function stringOption(string $name): ?string
