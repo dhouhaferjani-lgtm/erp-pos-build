@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import {
-  login,
+  loginResilient,
   authHeaders,
   API_BASE,
   TODAY,
@@ -81,9 +81,16 @@ async function createConfirmedInvoice(
   return { id: invoiceId, subtotal: d.subtotal, tax_amount: d.tax_amount, total: d.total, status: d.status }
 }
 
-test.describe('W-X §A/§B tax-configuration + company tax-status (country-scoped; all mutations product-refused)', () => {
+test.describe.serial('W-X §A/§B tax-configuration + company tax-status (country-scoped; all mutations product-refused)', () => {
+  let ownerSession: Session
+  let cashierSession: Session
+  test.beforeAll(async ({ request }) => {
+    ownerSession = await loginResilient(request, 'owner')
+    cashierSession = await loginResilient(request, 'cashier')
+  })
+
   test('MTP-TAX-02 [P0] tax_status change is fiscal-locked once posted docs exist (422); no mutation', async ({ request }) => {
-    const session = await login(request, 'owner')
+    const session = ownerSession
     const entry = await getCompanyTaxFields(request, session)
     expect(entry.tax_status, 'entry tax_status is REGISTERED').toBe('REGISTERED')
 
@@ -108,8 +115,8 @@ test.describe('W-X §A/§B tax-configuration + company tax-status (country-scope
   })
 
   test('MTP-TAX-03 [P1] deactivate STAMP_TAX_INVOICE is 403 (perm unseeded) for admin AND cashier; reads open', async ({ request }) => {
-    const owner = await login(request, 'owner')
-    const cashier = await login(request, 'cashier')
+    const owner = ownerSession
+    const cashier = cashierSession
     const configs = await listTaxConfigs(request, owner)
     const stampRow = configs.find((c) => c.code === CODE_STAMP_INVOICE)
     expect(stampRow, 'STAMP_TAX_INVOICE present + readable').toBeTruthy()
@@ -145,7 +152,7 @@ test.describe('W-X §A/§B tax-configuration + company tax-status (country-scope
   })
 
   test('MTP-TAX-06 [P0] posted-doc rate is snapshotted; config rate-change is 403 (unmanageable)', async ({ request }) => {
-    const session = await login(request, 'owner')
+    const session = ownerSession
     const configs = await listTaxConfigs(request, session)
     const tva = configs.find((c) => c.code === CODE_TVA_19)!
     expect(tva.percentage_rate).toBe('19.00')
@@ -185,7 +192,7 @@ test.describe('W-X §A/§B tax-configuration + company tax-status (country-scope
   })
 
   test('MTP-CFG-08 [P0] country-scoped cross-company visibility — BLOCKED→C-9 (single-company tenant)', async ({ request }) => {
-    const session = await login(request, 'owner')
+    const session = ownerSession
     const companies = await request.get(`${API_BASE}/user/companies`, { headers: authHeaders(session) })
     const rows = (await companies.json()).data as Array<{ id: string }>
     expect(rows.length, 'tenant is single-company; cross-company half not exercisable').toBe(1)
@@ -196,7 +203,7 @@ test.describe('W-X §A/§B tax-configuration + company tax-status (country-scope
   })
 
   test('MTP-CFG-09 [P1] deactivate TVA_19 config is 403 (unmanageable); posted docs keep snapshotted rate', async ({ request }) => {
-    const session = await login(request, 'owner')
+    const session = ownerSession
     const tva = (await listTaxConfigs(request, session)).find((c) => c.code === CODE_TVA_19)!
     expect(tva.is_active).toBe(true)
 
