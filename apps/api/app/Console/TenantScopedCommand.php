@@ -482,6 +482,63 @@ abstract class TenantScopedCommand extends Command
     }
 
     /**
+     * Print one COVERAGE line for every tenant the last iteration touched, and
+     * return the ids that produced no verdict at all.
+     *
+     * **Why a verifier needs this (2026-08-05 wave-2 fiscal review, B3/C3).**
+     * `forEachTenant()`'s two silent outcomes are invisible to the caller: a
+     * tenant whose database could not be opened is skipped with a `Log::warning`
+     * and no console output, and a tenant whose closure THREW is turned into a
+     * FAILURE by the base with only a `Log::error`. Neither touches the
+     * caller's own counters. So a verifier that summarised its own counters
+     * could report "all chains verified" for a fleet where N tenants were never
+     * opened and M tenants exploded — and those summary strings are what the
+     * launch checklist ticks as PASS.
+     *
+     * The block is also the E-7 evidence artifact: a reviewer must be able to
+     * see that EVERY directory tenant was accounted for, including the ones
+     * that simply had nothing to verify.
+     *
+     * @param  array<string, string>  $verdicts  tenant id => verdict label, for every
+     *                                           tenant whose closure ran to completion
+     * @return list<string> tenant ids that were visited but produced no verdict
+     */
+    protected function reportTenantCoverage(array $verdicts): array
+    {
+        $this->newLine();
+        $this->line('TENANT COVERAGE:');
+
+        $unaccounted = [];
+
+        foreach ($this->visitedTenantIds() as $tenantId) {
+            if (array_key_exists($tenantId, $verdicts)) {
+                $this->line(sprintf('  TENANT %s: %s', $tenantId, $verdicts[$tenantId]));
+
+                continue;
+            }
+
+            $unaccounted[] = $tenantId;
+            $this->error(sprintf(
+                '  TENANT %s: ERRORED - the per-tenant run threw and nothing was verified for it (see the log).',
+                $tenantId,
+            ));
+        }
+
+        foreach ($this->skippedTenantIds() as $tenantId) {
+            $this->error(sprintf(
+                '  TENANT %s: SKIPPED - its per-tenant database does not exist or could not be opened; nothing was verified for it.',
+                $tenantId,
+            ));
+        }
+
+        if ($this->visitedTenantIds() === [] && $this->skippedTenantIds() === []) {
+            $this->line('  (no tenant in the central directory matched this run)');
+        }
+
+        return $unaccounted;
+    }
+
+    /**
      * Fail loudly when an operator supplied `--tenant=<id>` and that tenant was
      * never reached by the preceding {@see self::forEachTenant()} call.
      *

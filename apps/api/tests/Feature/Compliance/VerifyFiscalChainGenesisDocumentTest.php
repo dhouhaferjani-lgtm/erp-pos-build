@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 /**
  * VerifyFiscalChainGenesisDocumentTest
@@ -37,6 +38,7 @@ use Tests\TestCase;
  */
 class VerifyFiscalChainGenesisDocumentTest extends TestCase
 {
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     private DocumentPostingService $postingService;
@@ -238,6 +240,144 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $this->assertSame(1, $exit, 'A company no reachable tenant owns must fail. Output: '.$output);
         $this->assertStringContainsString('No companies found.', $output);
         $this->assertStringNotContainsString('ALL CHAINS VALID', $output);
+    }
+
+    // =================================================================
+    // Banner truth + coverage (2026-08-05 wave-2 fiscal review: B2/C2,
+    // B3/C3, R1, R6, M2).
+    //
+    // `Status: ALL CHAINS VALID ✓` is the literal string
+    // `docs/qa/2026-05-12-first-tenant-smoke.md:117` ticks as PASS, so it must
+    // be unreachable for any run that did not actually verify every tenant.
+    // =================================================================
+
+    public function test_the_coverage_block_names_every_directory_tenant_including_the_ones_with_nothing_to_verify(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('coverage-with-data');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-CV-0001'));
+
+        $emptyTenant = Tenant::factory()->create(['slug' => 'coverage-no-companies']);
+
+        [$exit, $output] = $this->runVerifyWith([]);
+
+        $this->assertSame(0, $exit, 'A tenant with no companies is coverage, not a failure. Output: '.$output);
+        $this->assertStringContainsString('TENANT COVERAGE:', $output);
+        $this->assertStringContainsString(
+            sprintf('TENANT %s: verified', $tenant->id),
+            $output,
+        );
+        $this->assertStringContainsString(
+            sprintf('TENANT %s: NO-DATA', $emptyTenant->id),
+            $output,
+            'A tenant with no companies emitted no line at all before, so the E-7 pack could not show coverage.',
+        );
+        $this->assertStringContainsString('Status: ALL CHAINS VALID', $output);
+    }
+
+    /**
+     * B2/B3. A tenant whose database cannot be opened is skipped by
+     * `forEachTenant()` with only a `Log::warning`, and touches none of the
+     * command's own counters — so the summary block used to print the PASS
+     * line and then return a non-zero exit nobody reads.
+     */
+    public function test_a_skipped_tenant_blocks_the_pass_line_and_is_named_in_the_coverage_block(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $reachable = $this->provisionTenantDatabaseWithSchema(Tenant::factory()->create(['slug' => 'skip-reachable']));
+        $unreachable = Tenant::factory()->create(['slug' => 'skip-unreachable']);
+
+        // The reachable tenant must contribute a real verdict, otherwise the
+        // run lands on the pre-existing "No companies found." branch and this
+        // test could not tell the B2/B3 fix from the old behaviour: with
+        // `$companiesVerified > 0` and a skip that leaves the aggregate at
+        // SUCCESS, the old code printed `Status: ALL CHAINS VALID ✓` and
+        // exited 0.
+        $this->withinTenantDatabase($reachable, static function (Tenant $tenant): void {
+            Company::factory()->create(['tenant_id' => $tenant->id]);
+        });
+
+        [$exit, $output] = $this->runVerifyWith([]);
+
+        $this->assertSame(1, $exit, 'A tenant that was never opened must not leave the run green. Output: '.$output);
+        $this->assertStringNotContainsString(
+            'Status: ALL CHAINS VALID',
+            $output,
+            'The PASS string the launch checklist ticks must be unreachable when a tenant was never verified.',
+        );
+        $this->assertStringContainsString('Status: INCOMPLETE', $output);
+        $this->assertStringContainsString($unreachable->id, $output, 'The skipped tenant must be named.');
+        $this->assertStringContainsString(
+            sprintf('TENANT %s: SKIPPED', $unreachable->id),
+            $output,
+        );
+        $this->assertStringContainsString($reachable->id, $output);
+    }
+
+    /**
+     * R1. `DocumentType::from()` used to run inside the per-tenant closure, so
+     * an invalid `--type` raised a `ValueError` that `forEachTenant()` swallowed
+     * into a FAILURE — after `$companiesVerified` had already been incremented,
+     * which put `Status: ALL CHAINS VALID ✓` on screen for a run that verified
+     * nothing.
+     */
+    public function test_an_invalid_type_fails_up_front_without_printing_the_pass_line(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('bad-type-co');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-BT-0001'));
+
+        [$exit, $output] = $this->runVerifyWith(['--type' => 'not_a_document_type']);
+
+        $this->assertSame(1, $exit, 'An invalid --type is an operator error, not a pass. Output: '.$output);
+        $this->assertStringContainsString("Invalid type 'not_a_document_type'", $output);
+        $this->assertStringNotContainsString('ALL CHAINS VALID', $output);
+        $this->assertStringNotContainsString('Verification Summary', $output);
+    }
+
+    /**
+     * R1, second half: a REAL DocumentType this verifier does not walk (the
+     * enum holds quotes, orders and delivery notes too) must be rejected the
+     * same way rather than silently verifying an empty set.
+     */
+    public function test_a_document_type_this_verifier_does_not_walk_is_rejected(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('unwalked-type-co');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-UT-0001'));
+
+        [$exit, $output] = $this->runVerifyWith(['--type' => DocumentType::Quote->value]);
+
+        $this->assertSame(1, $exit, 'Output: '.$output);
+        $this->assertStringNotContainsString('ALL CHAINS VALID', $output);
+    }
+
+    /**
+     * M2. `forEachTenantFiltered()` returns INVALID (2) for an unknown
+     * `--tenant`; this command's contract only ever used 0 and 1.
+     */
+    public function test_an_unknown_tenant_filter_exits_one_not_two(): void
+    {
+        [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('exit-code-co');
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-EC-0001'));
+
+        [$exit] = $this->runVerifyWith(['--tenant' => '00000000-0000-0000-0000-000000000000']);
+
+        $this->assertSame(1, $exit);
+    }
+
+    /**
+     * R6. The flag was declared, documented as dangerous, warned against in two
+     * QA plans — and read by nothing.
+     */
+    public function test_the_dead_fix_flag_is_gone(): void
+    {
+        $definition = $this->app->make(ConsoleKernel::class)
+            ->all()['fiscal:verify-chains']
+            ->getDefinition();
+
+        $this->assertFalse(
+            $definition->hasOption('fix'),
+            'A server-side "fix" of a device-authored chain would itself be a fiscal-integrity defect.',
+        );
     }
 
     /**

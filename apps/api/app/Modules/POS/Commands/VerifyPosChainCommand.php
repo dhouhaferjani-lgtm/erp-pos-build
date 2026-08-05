@@ -37,7 +37,27 @@ use Illuminate\Support\Collection;
  *
  * **Evidence shape.** Each tenant emits its own verdict line and its own
  * results table so an E-7 reviewer can attribute every row; the aggregate exit
- * is non-zero if any tenant reports a break.
+ * is non-zero if any tenant reports a break. The run closes with a
+ * `TENANT COVERAGE:` block carrying one line for EVERY directory tenant the run
+ * touched — `verified` / `FAILED` / `NO-DATA` / `SKIPPED` / `ERRORED` — so the
+ * pack shows what was NOT looked at as plainly as what was (2026-08-05 review,
+ * B3/C3).
+ *
+ * **The success banner is a true summary (2026-08-05 review, B2/C2).**
+ * `All chains verified successfully.` is the string step D.2 of
+ * `docs/qa/2026-05-12-first-tenant-smoke.md` ticks as PASS. It is now
+ * unreachable unless the aggregate exit is 0 AND no tenant was skipped by the
+ * database probe AND no tenant's run threw. Anything else prints an explicit
+ * FAILED / INCOMPLETE banner naming the tenants involved. Exit codes remain
+ * 0/1 only — the base's {@see TenantScopedCommand::INVALID} (2) for an unknown
+ * `--tenant` is collapsed onto 1 (M2).
+ *
+ * **Output changed vs the pre-conversion transcripts (M1).** `Verifying %d
+ * terminal(s)...` is now `TENANT <id> (<slug>): verifying %d terminal(s)...`,
+ * and the historic `Terminal 'X' not found.` line is replaced by the
+ * fail-closed `The --terminal / --company filter matched no terminal in any
+ * reachable tenant.` Deliberate: per-tenant attribution is the point of the
+ * conversion. The D.2 pass string itself is unchanged.
  *
  * **Contract change (fail-closed).** A `--terminal` / `--company` filter that
  * matches nothing in any reachable tenant used to print "not found" / "No
@@ -83,6 +103,8 @@ final class VerifyPosChainCommand extends TenantScopedCommand
 
         $terminalsVerified = 0;
         $hasFailure = false;
+        /** @var array<string, string> $verdicts */
+        $verdicts = [];
 
         $exit = $this->forEachTenantFiltered(
             $this->stringOption('tenant'),
@@ -92,10 +114,15 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                 $terminalFilter,
                 &$terminalsVerified,
                 &$hasFailure,
+                &$verdicts,
             ): int {
                 $terminals = $this->resolveTerminals($tenant, $companyFilter, $terminalFilter);
 
                 if ($terminals->isEmpty()) {
+                    // Recorded, not silent: a tenant with nothing to verify is
+                    // still coverage an E-7 reviewer has to be able to see.
+                    $verdicts[(string) $tenant->id] = 'NO-DATA (no terminal matched this run)';
+
                     return self::SUCCESS;
                 }
 
@@ -155,20 +182,28 @@ final class VerifyPosChainCommand extends TenantScopedCommand
 
                 if ($tenantFailed) {
                     $hasFailure = true;
+                    $verdicts[(string) $tenant->id] = 'FAILED (a chain is broken)';
                     $this->error(sprintf('TENANT %s (%s): chain verification FAILED', $tenant->id, $tenant->slug));
 
                     return self::FAILURE;
                 }
 
+                $verdicts[(string) $tenant->id] = sprintf('verified (%d terminal(s))', $terminals->count());
                 $this->info(sprintf('TENANT %s (%s): all chains verified', $tenant->id, $tenant->slug));
 
                 return self::SUCCESS;
             },
         );
 
+        // Coverage FIRST, verdict second — the banner below is only allowed to
+        // say "verified" once every directory tenant is accounted for.
+        $erroredTenants = $this->reportTenantCoverage($verdicts);
+        $skippedTenants = $this->skippedTenantIds();
+        $unaccounted = array_merge($erroredTenants, $skippedTenants);
+
         $this->newLine();
 
-        if ($terminalsVerified === 0) {
+        if ($terminalsVerified === 0 && $unaccounted === [] && $exit === self::SUCCESS) {
             $this->info('No active terminals found.');
 
             if ($terminalFilter !== null || $companyFilter !== null) {
@@ -181,21 +216,47 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                     'Nothing was verified.',
                 );
 
-                return $exit === self::SUCCESS ? self::FAILURE : $exit;
+                return self::FAILURE;
             }
 
-            return $exit;
+            return self::SUCCESS;
         }
 
         if ($hasFailure) {
             $this->error('Chain verification FAILED - one or more chains are broken.');
 
-            return $exit === self::SUCCESS ? self::FAILURE : $exit;
+            return self::FAILURE;
+        }
+
+        if ($unaccounted !== []) {
+            // B2/C2 (2026-08-05 fiscal review). `$hasFailure` only ever captured
+            // verdicts the closure COMPUTED. A tenant whose closure threw, or
+            // whose database could not be opened, left it false while
+            // `$terminalsVerified` had already been incremented by the tenants
+            // that did run — so control reached the success branch and printed
+            // the exact string `docs/qa/2026-05-12-first-tenant-smoke.md:118`
+            // ticks as PASS, then returned a non-zero exit nobody reads.
+            $this->error(sprintf(
+                'Chain verification INCOMPLETE - %d tenant(s) produced no verdict: %s. '.
+                'Nothing was verified for them; this run is NOT evidence that their chains are intact.',
+                count($unaccounted),
+                implode(', ', $unaccounted),
+            ));
+
+            return self::FAILURE;
+        }
+
+        if ($exit !== self::SUCCESS) {
+            // The base reported a non-zero aggregate for a reason the counters
+            // above cannot see. Never print the PASS banner over it.
+            $this->error('Chain verification did not complete cleanly - see the errors above.');
+
+            return self::FAILURE;
         }
 
         $this->info('All chains verified successfully.');
 
-        return $exit;
+        return self::SUCCESS;
     }
 
     /**

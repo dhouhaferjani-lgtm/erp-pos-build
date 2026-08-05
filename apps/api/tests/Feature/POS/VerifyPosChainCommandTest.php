@@ -201,7 +201,38 @@ final class VerifyPosChainCommandTest extends TestCase
     {
         $this->artisan('pos:verify-chains', ['--tenant' => '00000000-0000-0000-0000-000000000000'])
             ->expectsOutputToContain('not found in the central tenant directory')
-            ->assertFailed();
+            ->assertExitCode(1);
+    }
+
+    /**
+     * C3 (2026-08-05 fiscal review). A tenant with no active terminals emitted
+     * NO line at all, so the E-7 evidence pack could only show the tenants that
+     * happened to have data — it could not demonstrate coverage.
+     */
+    public function test_the_coverage_block_names_every_tenant_including_the_ones_with_no_terminals(): void
+    {
+        $emptyTenant = Tenant::factory()->create();
+
+        $this->artisan('pos:verify-chains', ['--type' => 'receipts'])
+            ->expectsOutputToContain('TENANT COVERAGE:')
+            ->expectsOutputToContain(sprintf('  TENANT %s: verified (1 terminal(s))', $this->tenant->id))
+            ->expectsOutputToContain(sprintf('  TENANT %s: NO-DATA (no terminal matched this run)', $emptyTenant->id))
+            ->assertExitCode(0);
+    }
+
+    /**
+     * The other half of C3: a FAILED tenant must be attributable in the same
+     * block, not only in the mid-run error line.
+     */
+    public function test_a_failed_tenant_is_attributable_in_the_coverage_block(): void
+    {
+        $brokenTerminal = $this->createTerminalInNewTenant();
+        $this->breakReceiptChainOn($brokenTerminal);
+
+        $this->artisan('pos:verify-chains', ['--type' => 'receipts'])
+            ->expectsOutputToContain('TENANT COVERAGE:')
+            ->expectsOutputToContain(sprintf('  TENANT %s: FAILED (a chain is broken)', $brokenTerminal->tenant_id))
+            ->assertExitCode(1);
     }
 
     private function createTerminalInNewTenant(): Terminal

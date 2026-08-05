@@ -214,7 +214,26 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         // run, and `setPermissionsTeamId($actor->tenant_id)` below then
         // evaluated `can()` against B's team — B's roles authorising chain
         // verification over A's rows.
-        $actor = User::query()->where('tenant_id', $tenantId)->find($actorId);
+        //
+        // M3 (2026-08-05 fiscal review): the lookup is a DB query, and a query
+        // fault here escapes into `forEachTenant()`'s continue-on-throw handler,
+        // which scores it FAILURE (1) — "validation error" in this command's
+        // contract. A DB outage is not a validation error; it is the transient
+        // condition exit 2 exists for and an operator should retry.
+        try {
+            $actor = User::query()->where('tenant_id', $tenantId)->find($actorId);
+        } catch (Throwable $e) {
+            Log::critical('VerifyEventChainCommand: actor lookup failed; cannot evaluate the permission gate.', [
+                'actor_id' => $actorId,
+                'tenant_id' => $tenantId,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+            $this->error('Could not read the actor for the permission gate (transient failure); re-run to retry.');
+
+            return 2;
+        }
+
         if ($actor === null) {
             $this->error(sprintf('Unknown actor user id %s.', $actorId));
 

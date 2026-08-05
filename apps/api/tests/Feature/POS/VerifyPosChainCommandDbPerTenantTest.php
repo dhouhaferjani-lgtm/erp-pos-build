@@ -104,6 +104,32 @@ final class VerifyPosChainCommandDbPerTenantTest extends TestCase
     }
 
     /**
+     * B2/B3 + C2/C3 (2026-08-05 fiscal review). A tenant whose database cannot
+     * be opened is skipped by `forEachTenant()` with only a `Log::warning`, and
+     * touches none of this command's counters — so with one healthy tenant
+     * present the run printed `All chains verified successfully.` (the literal
+     * string step D.2 of the smoke checklist ticks as PASS) and exited 0 while
+     * N tenants were never looked at.
+     */
+    public function test_a_skipped_tenant_blocks_the_pass_banner_and_is_named_in_the_coverage_block(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $reachable = $this->provisionTenantDatabaseWithSchema(Tenant::factory()->create());
+        $unreachable = Tenant::factory()->create();
+
+        $this->withinTenantDatabase($reachable, fn (): string => $this->seedCleanLegacyChain($reachable));
+
+        $this->artisan('pos:verify-chains', ['--type' => 'receipts'])
+            ->doesntExpectOutputToContain('All chains verified successfully.')
+            ->expectsOutputToContain(sprintf(
+                '  TENANT %s: SKIPPED - its per-tenant database does not exist or could not be opened;',
+                $unreachable->id,
+            ))
+            ->assertExitCode(1);
+    }
+
+    /**
      * Seed a terminal whose legacy (`fiscal_event_id IS NULL`) receipt chain
      * verifies clean, so `verifyReceiptChain()` gets past its `count === 0`
      * short-circuit and actually reaches the authoritative fiscal arm.

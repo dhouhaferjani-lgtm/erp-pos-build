@@ -189,7 +189,25 @@ final class EnqueueResolvedEventProjectionsCommand extends TenantScopedCommand
         // R3). Without it an actor belonging to tenant B resolved for a
         // `--tenant=A` run, and `setPermissionsTeamId($actor->tenant_id)` then
         // evaluated `can()` against B's team.
-        $actor = User::query()->where('tenant_id', $tenantOption)->find($actorId);
+        //
+        // M3 (2026-08-05 fiscal review): a query fault here would otherwise
+        // escape into `forEachTenant()`'s continue-on-throw handler and be
+        // scored FAILURE (1) — "validation error" in this command's contract.
+        // A DB outage is the transient condition exit 2 exists for.
+        try {
+            $actor = User::query()->where('tenant_id', $tenantOption)->find($actorId);
+        } catch (Throwable $e) {
+            Log::critical('EnqueueResolvedEventProjectionsCommand: actor lookup failed; cannot evaluate the permission gate.', [
+                'actor_id' => $actorId,
+                'tenant_option' => $tenantOption,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+            $this->error('Could not read the actor for the permission gate (transient failure); re-run to retry.');
+
+            return 2;
+        }
+
         if ($actor === null) {
             $this->error(sprintf('Unknown actor user id %s.', $actorId));
 
