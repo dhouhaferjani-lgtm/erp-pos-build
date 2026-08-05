@@ -24,10 +24,22 @@ final class SalesReportService
     /**
      * Currency scale for every money figure this report emits.
      *
-     * Resolved from the request's bound company (`CompanyContext`). The safe
-     * variant is used because the owner reports are also reachable from console
-     * contexts where no company is bound; 3 is the safe maximum fallback per
-     * the precision contract.
+     * KNOWN LIMITATION — resolved ONCE, from the request's bound company
+     * (`CompanyContext`), not per result row. The owner report scope is the root
+     * company plus EVERY child (`OwnerReportScope::companyIds`), so a
+     * mixed-currency parent/child group renders the children's figures at the
+     * ROOT's scale — a TND child under a EUR root loses its millime. The
+     * underlying cross-currency `SUM` is already meaningless before any
+     * formatting (pre-existing), which is why this is a reporting-contract debt
+     * rather than a money bug.
+     *
+     * The sibling `OwnerSalesSummaryService::resolveCurrency()` takes the
+     * stronger line — it derives the scale from the DATA and REFUSES a
+     * mixed-currency scope — so this service family currently carries two
+     * different answers to the same question. Unifying them is tracked in
+     * `docs/superpowers/tickets/2026-08-05-l4-mixed-currency-report-scale.md`;
+     * `salesByLocation` is per-company-row and already joins `companies`, so it
+     * can carry a per-row currency once the ruling lands.
      */
     private function moneyScale(): int
     {

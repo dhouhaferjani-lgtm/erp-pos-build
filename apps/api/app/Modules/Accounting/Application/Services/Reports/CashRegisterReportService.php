@@ -59,6 +59,15 @@ final class CashRegisterReportService
         // Cash reconciliation is the launch-critical Z/EOD surface: its figures
         // must land on the company's currency scale (TND keeps the millime),
         // never on a hardcoded scale 2.
+        //
+        // KNOWN LIMITATION — the scale is resolved ONCE from the request's bound
+        // company, not per shift row. `ReportsController` calls this with
+        // `OwnerReportScope::companyIds(null, $user)` = root + EVERY child, and
+        // offers no way to filter a foreign-currency child out, so a TND child
+        // under a EUR root has its variance rendered at 2 dp. Rows here ARE
+        // per-company (`pos_terminals.company_id` is in hand), so a per-row
+        // currency is reachable; tracked in
+        // `docs/superpowers/tickets/2026-08-05-l4-mixed-currency-report-scale.md`.
         $scale = $this->scaleResolver->getScaleSafe();
 
         return array_values($rows->map(fn (object $row): CashReconciliationData => new CashReconciliationData(
@@ -85,11 +94,15 @@ final class CashRegisterReportService
     /**
      * Classify a cash variance against the company's soft/hard thresholds.
      *
-     * Compared in bcmath, not through a float cast: `pos_shifts.variance` is
-     * `decimal(16,4)` and the `company_fraud_settings.cash_variance_*` bounds are
-     * `decimal(N,4)`, so the comparison runs at a scale strictly finer than both
-     * (the currency scale plus the quantity storage scale) and cannot be tipped
-     * by an IEEE-754 representation error at the threshold boundary.
+     * Compared in bcmath, not through a float cast. `$scale + 4` is chosen so the
+     * comparison runs strictly finer than the STORAGE scale of BOTH operands —
+     * `pos_shifts.variance` is `decimal(16,4)` and the
+     * `company_fraud_settings.cash_variance_*` bounds are `decimal(12,4)`, hence
+     * the `+ 4`. (It is the operands' storage scale, NOT the quantity domain
+     * constant; `QuantityScale` is unrelated here.) At that precision no
+     * threshold boundary can be tipped by an IEEE-754 representation error, and
+     * equality at a threshold still yields the lower severity, exactly as the
+     * previous float comparison did.
      *
      * @param  numeric-string  $variance
      * @param  numeric-string  $overSoft

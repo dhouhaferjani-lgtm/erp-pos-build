@@ -8,6 +8,17 @@ use App\Modules\Accounting\Application\DTOs\Reports\StockAlertData;
 use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * DELIBERATELY has no `CurrencyScaleResolverInterface` and no constructor,
+ * unlike its three siblings in this directory.
+ *
+ * This report emits only QUANTITIES (rendered at the product unit's
+ * `decimal_places`) and a severity label — not a single money figure — so there
+ * is no currency scale to resolve. Injecting the resolver here would add a
+ * dependency nothing uses. Stated explicitly because the L4 handoff summary
+ * claimed all four services inject it; the code is right and the claim was
+ * wrong.
+ */
 final class StockAlertReportService
 {
     use FormatsReportNumbers;

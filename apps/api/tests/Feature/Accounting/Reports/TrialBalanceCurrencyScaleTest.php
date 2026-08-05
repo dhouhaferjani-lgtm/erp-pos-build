@@ -185,6 +185,41 @@ final class TrialBalanceCurrencyScaleTest extends TestCase
         $this->assertTrue($report['is_balanced']);
     }
 
+    /**
+     * `emit()` is `decimalString()`'s sibling — a SEPARATE call to
+     * `CurrencyScale::bcround`, so it needs its own rounding pin or a revert to
+     * truncation here stays green. Every other fixture in this class has a zero
+     * 4th decimal and cannot tell the two apart.
+     *
+     * See the Q4 ruling in
+     * `docs/superpowers/reviews/2026-08-05-l4-api-precision-gate.md`.
+     */
+    public function test_emission_rounds_the_digits_the_currency_scale_cannot_hold(): void
+    {
+        $company = $this->makeCompany('EUR', 'FR', 'fr_FR');
+        $debit = $this->makeAccount($company, 'W8GL1', AccountType::Asset);
+        $credit = $this->makeAccount($company, 'W8GL2', AccountType::Revenue);
+        $this->postEntry($company, $debit, $credit, '777.775');
+
+        $report = $this->generateFor($company);
+
+        $debitLine = collect($report['lines'])->firstWhere('account_code', 'W8GL1');
+        $creditLine = collect($report['lines'])->firstWhere('account_code', 'W8GL2');
+
+        $this->assertSame(
+            '777.78',
+            $debitLine['debit'],
+            'bcround, not bcformat: truncation would emit 777.77.',
+        );
+        $this->assertSame(
+            '777.78',
+            $creditLine['credit'],
+            'the credit side is derived through bcmul and must round the same way.',
+        );
+        $this->assertSame('777.78', $report['total_debit']);
+        $this->assertSame('777.78', $report['total_credit']);
+    }
+
     public function test_the_hierarchical_report_emits_at_the_currency_scale_too(): void
     {
         $company = $this->makeCompany('EUR', 'FR', 'fr_FR');

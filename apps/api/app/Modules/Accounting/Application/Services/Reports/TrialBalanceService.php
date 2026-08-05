@@ -79,9 +79,20 @@ class TrialBalanceService
 
     /**
      * The scale every emitted figure is rendered at — the company currency's,
-     * resolved from the bound `CompanyContext` (the trial balance is always
-     * generated for the request's own company). `getScaleSafe()` keeps a console
-     * invocation from throwing; 3 is the safe maximum fallback.
+     * resolved from the bound `CompanyContext`.
+     *
+     * This service is SINGLE-company by construction: `ReportsController`
+     * passes `CompanyContext::requireCompanyId()` as this report's own
+     * `$companyId`, so the scale and the subject can never disagree here — the
+     * mixed-currency limitation that affects the owner-scope reports (see
+     * `SalesReportService::moneyScale()` and
+     * `docs/superpowers/tickets/2026-08-05-l4-mixed-currency-report-scale.md`)
+     * does not apply.
+     *
+     * `getScaleSafe()`'s fallback is consequently unreachable on today's only
+     * caller; it is kept as the family-wide convention rather than as a claim
+     * that this path runs without a company. If a queued/console caller is ever
+     * added, that ticket's ruling applies rather than the silent fallback.
      */
     private function emissionScale(): int
     {

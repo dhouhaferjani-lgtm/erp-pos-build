@@ -37,6 +37,18 @@ trait FormatsReportNumbers
     private const REPORT_PERCENT_SCALE = 2;
 
     /**
+     * Working precision used to turn a float into a numeric string.
+     *
+     * Strictly finer than every currency scale in `CurrencyScale::SCALE_MAP`
+     * (max 3) and than the quantity storage scale, so normalising here can never
+     * lose a digit either domain cares about. Named locally rather than reusing
+     * `QuantityScale::SCALE`: this is a money-and-quantity NORMALISATION scale,
+     * not the quantity domain constant, and the two are only numerically equal
+     * by coincidence.
+     */
+    private const MONEY_NORMALISATION_SCALE = 4;
+
+    /**
      * Emit a MONEY figure at the caller-resolved currency scale.
      *
      * $scale has NO default on purpose: a defaulted scale is exactly how this
@@ -85,12 +97,20 @@ trait FormatsReportNumbers
     }
 
     /**
-     * Normalise a raw `stdClass` column into a well-formed numeric string
-     * WITHOUT a float round-trip.
+     * Normalise a raw `stdClass` column into a well-formed numeric string.
      *
-     * A float argument (only ever a PHP-side computation, never a DB column) is
-     * routed through `CurrencyScale::bcformat`, which is scientific-notation
-     * safe; `(string) 1e-5` would yield `"1.0E-5"`, which bcmath cannot parse.
+     * The STRING branch is the production path: PostgreSQL returns `numeric`
+     * columns and aggregates as strings, so the value reaches the formatters
+     * with its full stored precision intact and is never converted at all.
+     *
+     * The FLOAT branch is reachable from a PHP-side computation and from SQLite
+     * (whose `SUM()` returns a float) — i.e. it is the branch the test suite
+     * exercises and the one production does not. It must ROUND, not truncate:
+     * `777.775` is held as `777.77499999999998`, so truncating the binary
+     * expansion at the normalisation scale yields `777.7749` and silently eats
+     * the half BEFORE the currency-scale rounding ever runs. `number_format`
+     * rounds and is scientific-notation safe — `(string) 1e-5` would yield
+     * `"1.0E-5"`, which bcmath cannot parse.
      *
      * @return numeric-string
      */
@@ -101,7 +121,8 @@ trait FormatsReportNumbers
         }
 
         if (is_float($value)) {
-            return CurrencyScale::bcformat($value, QuantityScale::SCALE);
+            /** @var numeric-string */
+            return number_format($value, self::MONEY_NORMALISATION_SCALE, '.', '');
         }
 
         $trimmed = trim((string) $value);

@@ -6,6 +6,7 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\FormatsReportNumbers;
 use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\StockAlertReportService;
 use App\Modules\Company\Services\CompanyContext;
@@ -194,6 +195,119 @@ final class ReportNumberEmissionTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame('300.000', $rows[0]->amount);
         $this->assertSame('100.00', $rows[0]->percentage, 'A percentage is not currency-scaled: it stays at 2 dp.');
+    }
+
+    /**
+     * PINS THE ROUNDING SEMANTIC, not just the scale.
+     *
+     * `decimalString()` uses `CurrencyScale::bcround` (half AWAY FROM ZERO), not
+     * `bcformat` (truncate). Both produce byte-identical output for every other
+     * fixture in this class, because each has a zero 4th decimal — so without
+     * this case a silent revert to truncation stays green.
+     *
+     * The ruling (L4 API precision gate, Q4): the POS device rounds the same way
+     * — `apps/pos/src/lib/currency.ts:43-63` formats through `Intl.NumberFormat`
+     * (`halfExpand`) and `apps/pos/src/lib/decimal.ts` uses `Big.RM = 1` — so
+     * truncating server-side would MANUFACTURE a server-vs-device millime
+     * disagreement on the Z/EOD surface. `pos_shifts.expected_cash` is
+     * `DECIMAL(16,4)` in PostgreSQL, so a non-zero 4th decimal is representable
+     * at rest and this is reachable, not theoretical.
+     */
+    public function test_cash_reconciliation_rounds_the_fourth_decimal_it_cannot_render(): void
+    {
+        $this->bindCompanyCurrency('TND', 'TN');
+
+        Shift::create([
+            'terminal_id' => $this->terminalA->id,
+            'cashier_id' => $this->owner->id,
+            'shift_number' => 1,
+            'opening_cash' => '0.000',
+            'expected_cash' => '300.0005',
+            'actual_cash' => '299.4995',
+            'variance' => '-0.5005',
+            'status' => ShiftStatus::Closed,
+            'opened_at' => '2026-06-10 08:00:00',
+            'closed_at' => '2026-06-10 18:00:00',
+        ]);
+
+        $rows = $this->app->make(CashRegisterReportService::class)->reconciliationSummary(
+            $this->range(), [$this->company->id], [$this->locationA->id],
+        );
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(
+            '300.001',
+            $rows[0]->expected_cash,
+            'bcround, not bcformat: truncation would emit 300.000 and disagree with the device.',
+        );
+        $this->assertSame('299.500', $rows[0]->counted_cash, 'rounds UP at the half, same as the device.');
+        $this->assertSame(
+            '-0.501',
+            $rows[0]->variance,
+            'negatives round AWAY from zero, symmetric with positives — truncation would emit -0.500.',
+        );
+    }
+
+    /**
+     * The same rounding ruling at the OTHER currency scale, so a revert cannot
+     * hide behind TND: a EUR company renders at 2 dp, and `777.775` must round
+     * to `777.78` rather than truncate to `777.77`.
+     */
+    public function test_sales_by_location_rounds_at_the_eur_currency_scale(): void
+    {
+        $this->bindCompanyCurrency('EUR', 'FR');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '777.775');
+
+        $rows = $this->app->make(SalesReportService::class)->salesByLocation(
+            $this->range(), [$this->company->id], [$this->locationA->id], 'day',
+        );
+
+        $this->assertSame(
+            '777.78',
+            $rows[0]->gross_sales,
+            'bcround, not bcformat: truncation would emit 777.77.',
+        );
+    }
+
+    /**
+     * The two cases above reach the formatter through SQLite, whose `SUM()` and
+     * NUMERIC-affinity columns hand PHP a FLOAT. PostgreSQL — the production
+     * driver — returns `numeric` as a STRING, so the shipping path is a
+     * different branch of `numericString()` and is not covered by either.
+     *
+     * This exercises the trait directly on both branches, with the exact values
+     * the L4 API precision gate ruled on.
+     */
+    public function test_the_emission_helpers_round_on_the_production_string_path_too(): void
+    {
+        $formatter = new class
+        {
+            use FormatsReportNumbers {
+                decimalString as public money;
+                quantityString as public quantity;
+                percentString as public percent;
+            }
+        };
+
+        // PostgreSQL shape: a numeric STRING, full precision, no conversion.
+        $this->assertSame('300.001', $formatter->money('300.0005', 3), 'TND rounds the 4th decimal up');
+        $this->assertSame('-0.501', $formatter->money('-0.5005', 3), 'and negatives round AWAY from zero');
+        $this->assertSame('777.78', $formatter->money('777.775', 2), 'EUR rounds the 3rd decimal up');
+        $this->assertSame('777.77', $formatter->money('777.774', 2), 'below the half it rounds down');
+
+        // SQLite / PHP-computed shape: the same values as floats must agree,
+        // digit for digit, with the string path.
+        $this->assertSame('300.001', $formatter->money(300.0005, 3));
+        $this->assertSame('777.78', $formatter->money(777.775, 2));
+
+        // Nothing is trimmed, and a zero keeps the scale (W-7 F-2's `rtrim`).
+        $this->assertSame('300.000', $formatter->money('300', 3));
+        $this->assertSame('0.000', $formatter->money(null, 3));
+
+        // Quantities take the unit's precision, and percentages a fixed 2 dp.
+        $this->assertSame('12.50', $formatter->quantity('12.5000', 2));
+        $this->assertSame('12.5000', $formatter->quantity('12.5', null));
+        $this->assertSame('33.33', $formatter->percent('33.3333'));
     }
 
     public function test_revenue_by_category_emits_money_at_currency_scale(): void
