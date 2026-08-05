@@ -24,10 +24,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
+use Tests\Traits\EnablesMarketplaceModule;
 
 class MarketplaceListingTest extends TestCase
 {
     use AssertsApiValidation;
+
+    // Marketplace ships behind `config('marketplace.enabled')` (default FALSE),
+    // which is read at BOOT time to gate route + schedule registration — so this
+    // suite has to boot with the flag on rather than set config() at runtime.
+    use EnablesMarketplaceModule;
     use RefreshDatabase;
 
     private Tenant $tenant;

@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
 use ReflectionProperty;
 use Tests\TestCase;
+use Tests\Traits\EnablesMarketplaceModule;
 
 /**
  * `marketplace:delta-sync` / `marketplace:reconcile` — the TenantScopedCommand
@@ -37,6 +38,10 @@ use Tests\TestCase;
  */
 final class MarketplaceScheduledCommandsTest extends TestCase
 {
+    // Marketplace ships behind `config('marketplace.enabled')` (default FALSE),
+    // which is read at BOOT time to gate route + schedule registration — so this
+    // suite has to boot with the flag on rather than set config() at runtime.
+    use EnablesMarketplaceModule;
     use RefreshDatabase;
 
     protected function tearDown(): void
