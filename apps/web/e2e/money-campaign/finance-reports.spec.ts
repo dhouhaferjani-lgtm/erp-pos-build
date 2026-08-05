@@ -473,18 +473,21 @@ test.describe('GL — trial balance, balance sheet, P&L and ledger', () => {
     expect(tb.lines).toEqual([])
     expect(tb.is_balanced).toBe(true)
 
-    // FINDING D3 (P2, TRIPWIRE): every OTHER report renders its empty-period
-    // zeros at the report scale (`'0.0000'`); the trial balance renders them at
-    // SCALE 2 (`'0.00'`) — neither the report scale nor the TND currency scale
-    // of 3. `TrialBalanceService::generate()` seeds its accumulators with the
-    // literal `'0.00'` and only ever `bcadd`s onto that seed, so an empty
-    // period never reaches scale 4. Not blank / not NaN / not a dash, so the
-    // case still PASSES — but the scale is wrong and it is pinned here.
+    // W-6 D3 — FIXED (fix lane L4, as a consequence of W-8 F-3). The trial
+    // balance used to render its empty-period zeros at SCALE 2 (`'0.00'`) —
+    // neither the report scale nor the TND currency scale — because
+    // `TrialBalanceService::generate()` seeded its accumulators with the literal
+    // `'0.00'` and only ever `bcadd`ed onto that seed. It now emits every figure
+    // at the COMPANY CURRENCY's scale, so this TND tenant answers `'0.000'`.
+    //
+    // The sibling reports (P&L, balance sheet) still emit at the fixed report
+    // scale 4 — they were NOT in the L4 ticket surface, and are recorded as an
+    // adjacent inconsistency rather than changed here.
     expect(
       tb.total_debit,
-      'TRIPWIRE D3: empty-period trial-balance totals render at scale 2, not the report scale 4',
-    ).toBe('0.00')
-    expect(tb.total_credit).toBe('0.00')
+      'D3 FIXED: the empty-period trial balance reaches the TND currency scale of 3',
+    ).toBe('0.000')
+    expect(tb.total_credit).toBe('0.000')
     for (const value of [tb.total_debit, tb.total_credit, pl.net_income, bs.total_assets]) {
       expect(value, 'never blank, never NaN, never a dash').toMatch(/^-?\d+\.\d{2,4}$/)
     }

@@ -134,7 +134,7 @@ async function pageText(page: Page): Promise<string> {
 test.describe('I18N — money rendering on document surfaces', () => {
   test.setTimeout(120_000)
 
-  test('MTP-I18N-09 (P1): FINDING — the fr document detail renders its TOTALS in en-US, next to fr-formatted lines', async ({
+  test('MTP-I18N-09 (P1): the fr document detail renders ONE decimal convention — the currency`s — everywhere', async ({
     page,
   }) => {
     await loginAsRoleResilient(page, 'owner')
@@ -188,21 +188,26 @@ test.describe('I18N — money rendering on document surfaces', () => {
       })
     }
 
-    // 4) ── FINDING F-7 (P1, TRIPWIRE, GREEN: pins TODAY's behaviour) ───────
-    //    TWO DECIMAL CONVENTIONS IN ONE DOCUMENT. Under `?lang=fr` the header
-    //    ("Montant dû") and the line cells render `499,000 TND` — comma
-    //    decimal, fr-TN, correct. The TOTALS PANEL on the same screen renders
-    //    `499.000 TND` / `500.000 TND` — DOT decimal — because
-    //    `features/documents/components/DocumentTotals.tsx:56-57` calls
-    //    `formatNumber(amount, decimals)` and `lib/format.ts:115-121` defaults
-    //    that helper's `locale` parameter to `'en-US'`, ignoring both the UI
-    //    language and the currency's locale. Same family as W-6's D6
-    //    (`formatCurrency`'s EUR default), different helper.
+    // 4) ── W-7 F-7 — FIXED (fix lane L4) ────────────────────────────────
+    //    ONE DECIMAL CONVENTION PER DOCUMENT. This used to be two: the header
+    //    ("Montant dû") and the line cells rendered `499,000 TND` — comma
+    //    decimal, fr-TN, correct — while the TOTALS PANEL on the same screen
+    //    rendered `499.000 TND`, because
+    //    `features/documents/components/DocumentTotals.tsx` called
+    //    `formatNumber(amount, decimals)` and `lib/format.ts` pinned that
+    //    helper's `locale` parameter to `'en-US'`, ignoring both the UI
+    //    language and the currency's locale. To a French or Tunisian reader
+    //    `1,191.000` reads as one million — a 1 000x misread of the Subtotal,
+    //    the VAT, the stamp duty, the Total and the Balance Due, on the
+    //    document a customer is invoiced from.
     //
-    //    Not cosmetic: to a French or Tunisian reader `500.000` is five
-    //    hundred THOUSAND dinars — a 1 000x misread of the Subtotal, the VAT,
-    //    the stamp duty, the Total and the Balance Due, printed directly
-    //    beneath correctly-formatted line amounts.
+    //    The panel now formats against the DOCUMENT's currency
+    //    (`formatCurrency(..., { includeCurrency: false })`), and
+    //    `formatNumber`'s locale default resolves from the active company's
+    //    currency instead of `en-US`. Note this was CURRENCY-driven, not
+    //    language-driven: it fired in every UI language and for EUR companies
+    //    too, so the assertion below is about the CURRENCY convention, not
+    //    about `?lang=fr`.
     const dotFormatted = tokens.filter((t) => decimalPart(t).separator === '.')
     const commaFormatted = tokens.filter((t) => decimalPart(t).separator === ',')
     expect(
@@ -210,18 +215,20 @@ test.describe('I18N — money rendering on document surfaces', () => {
       'the fr-TN formatter IS in use on this page (header + line cells)',
     ).toBeGreaterThan(0)
     expect(
-      dotFormatted.length,
-      'TRIPWIRE F-7: the totals panel renders DOT-decimal money under fr (formatNumber`s en-US default)',
-    ).toBeGreaterThan(0)
-    // …and it is specifically the en-US shape (comma thousands + dot
-    // decimal), which is the one that reads as a 1 000x error in fr.
+      dotFormatted,
+      `F-7 FIXED: no money on a TND document renders with a DOT decimal (offenders: ${dotFormatted.join(', ')})`,
+    ).toEqual([])
+    // …and specifically not the en-US shape (comma thousands + dot decimal),
+    // which is the one that reads as a 1 000x error in fr.
     expect(
-      dotFormatted.some((t) => /^\d{1,3}(,\d{3})*\.\d{3}$/.test(t)),
-      'TRIPWIRE F-7: the totals panel emits the en-US shape (1,234.567) on a French page',
-    ).toBe(true)
+      tokens.filter((t) => /^\d{1,3}(,\d{3})*\.\d{3}$/.test(t)),
+      'F-7 FIXED: the en-US shape (1,234.567) is gone from the document detail page',
+    ).toEqual([])
+    // The document TOTAL is one of the comma-formatted figures — the money is
+    // still on the page, it is only rendered in the currency's convention now.
     expect(
-      digitsOf(dotFormatted.join(' ')),
-      'TRIPWIRE F-7: and the document TOTAL is one of the dot-formatted figures',
+      digitsOf(commaFormatted.join(' ')),
+      'F-7 FIXED: the document TOTAL renders through the currency formatter',
     ).toContain(digitsOf(total))
   })
 

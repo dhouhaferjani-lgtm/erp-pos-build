@@ -23,6 +23,7 @@ import {
   createProductWithCost,
   expectNoLeak,
   subMoney,
+  toMillimes,
   get,
   isFailClosed,
   loginPageAsTenant,
@@ -210,34 +211,63 @@ test('MTP-GL-25: switching company re-scopes the trial balance, and the currency
   expect(eurDebit, 'the EUR company sees its own posted JE').toBeDefined()
 
   // --- MONEY half: the exact delta ----------------------------------------
-  expect(eurDebit!.debit, `EUR debit moved by exactly 777.770 (was ${beforeDebit})`).toBe(
-    addMoney(beforeDebit, '777.770'),
-  )
+  // Compared in MILLIMES, not as strings: after the L4 fix the EUR company emits
+  // at its own currency scale (2), so a string comparison against a scale-3
+  // helper output would fail on the RENDER scale rather than on the money.
+  expect(
+    toMillimes(eurDebit!.debit),
+    `EUR debit moved by exactly 777.770 (was ${beforeDebit})`,
+  ).toBe(toMillimes(addMoney(beforeDebit, '777.770')))
 
   // --- SCALE half -----------------------------------------------------------
-  // FINDING (W-8 F-3, GREEN TRIPWIRE — pins TODAY's behaviour, goes red on fix):
-  // the plan expects "figures re-scale: EUR displays 2 dp, TND displays 3 dp".
-  // They do NOT. `GET /reports/trial-balance` emits the SAME scale for a 2-dp
-  // EUR company as for a 3-dp TND company, and emits THREE different scales
-  // inside one payload — `debit` at 3 dp, `credit` at 4 dp, and a literal
-  // `"0.00"` for the zero side. See
+  // W-8 F-3 — FIXED (fix lane L4). The plan expects "figures re-scale: EUR
+  // displays 2 dp, TND displays 3 dp". They did NOT:
+  // `GET /reports/trial-balance` emitted the SAME output for a 2-dp EUR company
+  // as for a 3-dp TND one, and emitted THREE different scales inside ONE
+  // payload — `debit` at 3 dp (the raw DB string), `credit` at 4 dp (a `bcmul`
+  // result) and a literal `"0.00"` for the zero side. None of them derived from
+  // `companies.currency`. See
   // docs/superpowers/tickets/2026-08-03-w8-isolation-findings.md (F-3).
+  //
+  // `TrialBalanceService` now keeps its scale-4 INTERNAL working precision but
+  // renders every emitted figure — both sides of every line and both totals,
+  // populated or zero — at the company currency's scale. That also closes W-6's
+  // D3 (an empty period answered `'0.00'`).
   expect(
     eurDebit!.debit,
-    'TRIPWIRE F-3: EUR debit emitted at scale 3, not the currency scale 2',
-  ).toMatch(/^\d+\.\d{3}$/)
+    'F-3 FIXED: the EUR company emits its debit at the currency scale 2',
+  ).toMatch(/^-?\d+\.\d{2}$/)
   const eurCredit = lines2.find((l) => l.account_code === 'W8GL2')
   expect(
     eurCredit!.credit,
-    'TRIPWIRE F-3: EUR credit emitted at scale 4 in the SAME payload',
-  ).toMatch(/^\d+\.\d{4}$/)
-  expect(eurDebit!.credit, 'TRIPWIRE F-3: the zero side is a bare "0.00"').toBe('0.00')
+    'F-3 FIXED: …and its credit at the SAME scale, not the bcmul scale 4',
+  ).toMatch(/^-?\d+\.\d{2}$/)
+  expect(
+    eurDebit!.credit,
+    'F-3 FIXED: the ZERO side carries the currency scale too, not a bare "0.00" literal',
+  ).toBe('0.00')
+  const eurTotals = tb2.data as unknown as { total_debit: string; total_credit: string }
+  expect(
+    [eurTotals.total_debit, eurTotals.total_credit],
+    'F-3 FIXED: the report-level totals carry the currency scale as well',
+  ).toEqual([
+    expect.stringMatching(/^-?\d+\.\d{2}$/),
+    expect.stringMatching(/^-?\d+\.\d{2}$/),
+  ])
 
-  // The TND company's own figures, for the side-by-side the plan asks for:
-  // byte-identical scale on both currencies is exactly the defect.
+  // The TND company's own figures, for the side-by-side the plan asks for: the
+  // two currencies must now DIFFER in scale — byte-identical emission was
+  // exactly the defect.
   const tndReceivable = lines1.find((l) => l.account_code === '411')
   expect(tndReceivable, 'TND company has its receivable line').toBeDefined()
-  expect(tndReceivable!.debit, 'TND debit at scale 3 — same emission as the EUR company').toMatch(/^\d+\.\d{3}$/)
+  expect(
+    tndReceivable!.debit,
+    'F-3 FIXED: the TND company emits scale 3 where the EUR company emits 2',
+  ).toMatch(/^-?\d+\.\d{3}$/)
+  expect(
+    tndReceivable!.credit,
+    'F-3 FIXED: including its zero side',
+  ).toMatch(/^-?\d+\.\d{3}$/)
 })
 
 async function ensureAccount(

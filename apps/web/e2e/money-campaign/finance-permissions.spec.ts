@@ -38,23 +38,25 @@ function digitsOf(rendered: string): string {
 }
 
 /**
- * The digit strings of the two 2-decimal representations bracketing a scale-4
- * money string — i.e. `floor` and `ceil` at 2dp. Exact BigInt arithmetic, no
- * float anywhere (CLAUDE.md rule 19).
+ * The digit strings of the two `dp`-decimal representations bracketing a
+ * higher-precision money string — i.e. `floor` and `ceil` at `dp`. Exact BigInt
+ * arithmetic, no float anywhere (CLAUDE.md rule 19).
  *
  * A renderer that rounds is guaranteed to land on one of the two, whatever its
  * tie-break policy, and a renderer showing a DIFFERENT number lands on neither.
- * `'228728.3860'` -> `['22872838', '22872839']`.
+ * `('228728.3860', 2)` -> `['22872838', '22872839']`.
+ *
+ * Parameterised on `dp` for the L4 fix: the widget now renders at the COMPANY
+ * currency's scale (TND -> 3), not at a hardcoded EUR 2.
  */
-function truncate2dpNeighbours(scale4: string): [string, string] {
-  const negative = scale4.trimStart().startsWith('-')
-  const [intPart, fracPart = ''] = scale4.replace('-', '').split('.')
-  const hundredths = BigInt(intPart) * 100n + BigInt((fracPart + '0000').slice(0, 2))
-  const remainder = BigInt((fracPart + '0000').slice(2, 4))
-  const lower = hundredths
-  const upper = remainder === 0n ? hundredths : hundredths + 1n
-  const render = (v: bigint): string => `${negative ? '-' : ''}${v.toString()}`.replace(/\D/g, '')
-  return [render(lower), render(upper)]
+function truncateNeighbours(value: string, dp: number): [string, string] {
+  const [intPart, fracPart = ''] = value.trim().replace('-', '').split('.')
+  const padded = (fracPart + '0'.repeat(dp + 4)).slice(0, dp + 4)
+  const kept = BigInt(intPart || '0') * 10n ** BigInt(dp) + BigInt(padded.slice(0, dp) || '0')
+  const remainder = BigInt(padded.slice(dp) || '0')
+  const upper = remainder === 0n ? kept : kept + 1n
+  const render = (v: bigint): string => v.toString().replace(/\D/g, '')
+  return [render(kept), render(upper)]
 }
 
 test.describe('GL — finance permission denials and money tiles', () => {
@@ -205,7 +207,7 @@ test.describe('GL — finance permission denials and money tiles', () => {
     ).toContain('/finance/trial-balance')
   })
 
-  test('MTP-GL-27 (P1): the treasury overview money tiles match the API — except the widget, which renders TND as EUR', async ({
+  test('MTP-GL-27 (P1): every treasury-overview money tile matches the API in the COMPANY currency', async ({
     page,
     request,
   }) => {
@@ -245,51 +247,49 @@ test.describe('GL — finance permission denials and money tiles', () => {
       )
     }
 
-    // 2) FINDING D6 (P1, TRIPWIRE, GREEN): the "Finance Overview" widget on the
-    //    SAME page calls `formatCurrency(value)` with NO options
-    //    (`features/finance/components/FinanceWidget.tsx`), and
-    //    `lib/format.ts:77` defaults `currency` to `'EUR'` — which also drags
-    //    the decimal count down from TND's 3 to EUR's 2. Six money tiles on a
-    //    Tunisian company therefore render as euros, next to four tiles that
-    //    correctly render dinars.
-    const totalAssets = await tileValue(page, 'Total Assets')
-    expect(
-      totalAssets,
-      'TRIPWIRE D6: the FinanceWidget labels TND money as EUR (formatCurrency default)',
-    ).toContain('EUR')
-    expect(totalAssets, 'TRIPWIRE D6: and it is NOT the company currency').not.toContain('TND')
-    expect(
-      totalAssets.split('EUR')[0]!.trim(),
-      'TRIPWIRE D6: EUR`s 2 decimals, not the TND scale of 3',
-    ).toMatch(/,\d{2}$/)
-
-    // The underlying number is still the right one — this is a rendering
-    // defect, not a data defect.
+    // 2) W-6 D6 — FIXED (fix lane L4). The "Finance Overview" widget on the
+    //    SAME page used to call `formatCurrency(value)` with NO options
+    //    (`features/finance/components/FinanceWidget.tsx`), and `lib/format.ts`
+    //    defaulted `currency` to `'EUR'` — which also dragged the decimal count
+    //    down from TND's 3 to EUR's 2, so six money tiles on a Tunisian company
+    //    rendered as euros next to four that correctly rendered dinars.
     //
-    // FIX ROUND 1: the earlier version compared only the INTEGER part, which
-    // silently breaks on a carry (`…728.996` renders `228 729,00`, so the
-    // integer parts differ by one and the assertion fails for the wrong
-    // reason). Compare the WHOLE rendered figure against the two 2dp
-    // neighbours of the API value instead — exact under BigInt, immune to the
-    // carry, and immune to whichever way `Number.toFixed()` breaks a tie
-    // (`lib/format.ts:43` rounds through `toFixed`, whose half-way behaviour
-    // is binary-float dependent).
-    expect(
-      truncate2dpNeighbours(summary.total_assets),
-      'the widget shows the finance-summary total_assets, rendered at EUR`s 2 decimals',
-    ).toContain(digitsOf(totalAssets))
-
-    for (const label of [
+    //    The formatter now derives currency + scale + locale from the ACTIVE
+    //    COMPANY when none is passed, and the widget formats through the
+    //    company-bound `useCurrency().format` the way its StatCard sibling does.
+    //    This assertion is the regression net: it goes RED if either half is
+    //    reverted.
+    const widgetTiles = [
+      'Total Assets',
       'Total Liabilities',
       'Net Income (MTD)',
       'Net Income (YTD)',
       'Accounts Receivable',
       'Accounts Payable',
-    ]) {
-      expect(await tileValue(page, label), `TRIPWIRE D6: ${label} is mislabelled EUR too`).toContain(
-        'EUR',
-      )
+    ]
+
+    for (const label of widgetTiles) {
+      const rendered = await tileValue(page, label)
+      expect(rendered, `D6 FIXED: ${label} renders the company currency`).toContain('TND')
+      expect(rendered, `D6 FIXED: ${label} is no longer labelled EUR`).not.toContain('EUR')
+      expect(
+        rendered.split('TND')[0]!.trim(),
+        `D6 FIXED: ${label} carries TND's 3 decimals, not EUR's 2`,
+      ).toMatch(/,\d{3}$/)
     }
+
+    // The underlying number was always right — D6 was purely a rendering defect,
+    // so the digits must still match the finance-summary payload.
+    //
+    // FIX ROUND 1 (kept): compare the WHOLE rendered figure against the two
+    // neighbours of the API value at the render scale, rather than the integer
+    // part alone — exact under BigInt, immune to a carry, and immune to whichever
+    // way the renderer breaks a tie.
+    const totalAssets = await tileValue(page, 'Total Assets')
+    expect(
+      truncateNeighbours(summary.total_assets, 3),
+      'the widget shows the finance-summary total_assets, rendered at the TND scale of 3',
+    ).toContain(digitsOf(totalAssets))
   })
 
   test('MTP-GL-28 (P2): the finance hub is a permission-filtered navigator that surfaces NO money', async ({

@@ -117,23 +117,29 @@ test.describe('MLC — multi-location money scoping', () => {
       'Σ per-location revenue == the all-locations total, exactly at scale 3',
     ).toBe(sumMoney(all.map((r) => toScale3(r.gross_sales))))
 
-    // ── FINDING F-2 (P1, TRIPWIRE, GREEN: pins TODAY's behaviour) ──────────
+    // ── W-7 F-2 — FIXED (fix lane L4) ────────────────────────────────────
     // Every money figure this endpoint family emits goes through
     // `FormatsReportNumbers::decimalString()`
     // (app/Modules/Accounting/Application/Services/Reports/
-    // FormatsReportNumbers.php:9-14), which does THREE things wrong for a TND
-    // company: it casts to `(float)` (CLAUDE.md rule 19 — never a float on
-    // money), it formats at a hardcoded `scale = 2` (TND is scale 3, so a
-    // millime is truncated away), and it then `rtrim`s the trailing zeros and
-    // the decimal point. The DB holds `300.000` and `181.100`; the API answers
-    // `"300"` and `"181.1"`. Affects sales-by-location, top-SKUs,
-    // revenue-by-category and the payment-method breakdown — i.e. every tile
-    // on the owner dashboard.
+    // FormatsReportNumbers.php), which used to do THREE things wrong for a TND
+    // company: it cast to `(float)` (CLAUDE.md rule 19 — never a float on
+    // money), it formatted at a hardcoded `scale = 2` (TND is scale 3, so a
+    // millime was truncated away), and it then `rtrim`med the trailing zeros
+    // and the decimal point. The DB held `300.000` and `181.100`; the API
+    // answered `"300"` and `"181.1"`. It affected sales-by-location, top-SKUs,
+    // revenue-by-category and the payment-method breakdown — i.e. every tile on
+    // the owner dashboard — plus the cash-count reconciliation variance on the
+    // Z/EOD surface.
+    //
+    // The scale is now resolved per report from the company currency
+    // (`CurrencyScaleResolverInterface`), the value never touches a float, and
+    // nothing is trimmed. This assertion is the regression net.
     const raw = all.map((r) => r.gross_sales)
+    const offenders = raw.filter((v) => !/^-?\d+\.\d{3}$/.test(v))
     expect(
-      raw.some((v) => !/^-?\d+\.\d{3}$/.test(v)),
-      'TRIPWIRE F-2: gross_sales is NOT emitted at the TND scale of 3 (decimalString scale-2 + rtrim)',
-    ).toBe(true)
+      offenders,
+      `F-2 FIXED: every gross_sales is emitted at the TND scale of 3 (offenders: ${offenders.join(', ')})`,
+    ).toEqual([])
   })
 
   test('MTP-MLC-02 (P0): scoping to one shop re-queries every money tile and the other shops` figures are ABSENT', async ({
