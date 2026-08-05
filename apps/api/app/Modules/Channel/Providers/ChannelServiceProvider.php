@@ -6,7 +6,9 @@ namespace App\Modules\Channel\Providers;
 
 use App\Modules\Channel\Application\Listeners\DispatchStockChangeToChannels;
 use App\Modules\Channel\Application\Services\AdapterRegistry;
+use App\Modules\Channel\Domain\Models\Channel;
 use App\Modules\Channel\Infrastructure\Commands\ChannelReconcileCommand;
+use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryObserver;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
@@ -25,6 +27,13 @@ final class ChannelServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
 
         Event::listen(StockMovementRecorded::class, DispatchStockChangeToChannels::class);
+
+        // Keeps the CENTRAL channel_webhook_directory in step with the
+        // tenant-side `channels` table. Without an entry a channel's webhooks
+        // are undeliverable (fail-closed 404), so this must cover every creation
+        // path — controller, service, seeder, factory, test — which is why it is
+        // a model observer rather than a call inside ChannelService::create().
+        Channel::observe(ChannelWebhookDirectoryObserver::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([

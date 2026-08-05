@@ -158,6 +158,9 @@ final class ChannelPersistenceTest extends TestCase
     {
         Schema::create('companies', function ($table): void {
             $table->uuid('id')->primary();
+            // Read by ChannelWebhookDirectoryRegistrar when a Channel is
+            // created, to resolve the owning tenant for the central pointer.
+            $table->string('tenant_id')->nullable();
         });
 
         Schema::create('products', function ($table): void {
@@ -166,6 +169,12 @@ final class ChannelPersistenceTest extends TestCase
 
         Schema::create('documents', function ($table): void {
             $table->uuid('id')->primary();
+        });
+
+        Schema::create('channel_webhook_directory', function ($table): void {
+            $table->uuid('channel_id')->primary();
+            $table->uuid('tenant_id');
+            $table->timestamps();
         });
     }
 
@@ -198,6 +207,7 @@ final class ChannelPersistenceTest extends TestCase
 
     private function dropBaseTables(): void
     {
+        Schema::dropIfExists('channel_webhook_directory');
         Schema::dropIfExists('documents');
         Schema::dropIfExists('products');
         Schema::dropIfExists('companies');

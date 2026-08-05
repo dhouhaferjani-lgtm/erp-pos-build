@@ -97,6 +97,16 @@ trait CreatesChannelSchema
         Schema::create('documents', function ($table): void {
             $table->uuid('id')->primary();
         });
+
+        // CENTRAL pointer that makes the unauthenticated channel webhook
+        // routable (channel_id -> tenant_id). Maintained by
+        // ChannelWebhookDirectoryObserver on every Channel create/delete, so it
+        // has to exist for any test that mints a Channel.
+        Schema::create('channel_webhook_directory', function ($table): void {
+            $table->uuid('channel_id')->primary();
+            $table->uuid('tenant_id');
+            $table->timestamps();
+        });
     }
 
     private function dropChannelTables(): void
@@ -110,6 +120,7 @@ trait CreatesChannelSchema
 
     private function dropBaseTables(): void
     {
+        Schema::dropIfExists('channel_webhook_directory');
         Schema::dropIfExists('documents');
         Schema::dropIfExists('products');
         Schema::dropIfExists('companies');

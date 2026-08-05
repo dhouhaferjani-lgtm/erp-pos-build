@@ -7,6 +7,7 @@ namespace App\Modules\Channel\Infrastructure\Commands;
 use App\Console\TenantScopedCommand;
 use App\Modules\Channel\Application\Jobs\ChannelReconciliationJob;
 use App\Modules\Channel\Domain\Models\Channel;
+use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryRegistrar;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Tenant;
@@ -58,6 +59,7 @@ final class ChannelReconcileCommand extends TenantScopedCommand
 
     public function __construct(
         CompanyContext $companyContext,
+        private readonly ChannelWebhookDirectoryRegistrar $directory,
     ) {
         parent::__construct($companyContext);
     }
@@ -68,12 +70,25 @@ final class ChannelReconcileCommand extends TenantScopedCommand
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (&$dispatched): int {
             Channel::query()
-                ->where('is_active', true)
                 ->whereHas('company', static function (Builder $query) use ($tenant): void {
                     /** @var Builder<Company> $query */
                     $query->where('tenant_id', $tenant->id);
                 })
                 ->each(function (Channel $channel) use ($tenant, &$dispatched): void {
+                    // Self-heal the CENTRAL webhook directory. Channels created
+                    // before that table existed have no pointer, and a central
+                    // migration cannot backfill across tenant databases — this
+                    // nightly per-tenant sweep is the only place that already
+                    // visits every channel of every tenant. Runs for INACTIVE
+                    // channels too: an external platform can still call a
+                    // deactivated channel's webhook, and the honest answer is a
+                    // resolvable tenant, not a 404 that looks like data loss.
+                    $this->directory->register($channel);
+
+                    if (! $channel->is_active) {
+                        return;
+                    }
+
                     // The ITERATING tenant, not a re-read of company.tenant_id:
                     // what the worker must rebind is the database the channel
                     // row was actually read from.
