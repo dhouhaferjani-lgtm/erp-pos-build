@@ -24,9 +24,23 @@ use Illuminate\Foundation\Http\FormRequest;
  * Treasury bridge ever looks the references up, and there is no delete route by
  * design. Without a boundary check a dangling `payment_method_code` /
  * `repository_id` produced a 500 plus a permanent orphan receipt that over-stated
- * the customer's deposit history. The `is_active` predicates mirror
- * `TreasuryDepositBridge::resolvePaymentMethod()` / `resolveRepository()` exactly,
- * so deactivating a method or repository while this dialog is open is a 422 too.
+ * the customer's deposit history.
+ *
+ * These rules are the CHEAP SUBSET of the bridge's preconditions — tenant,
+ * company and `is_active`, expressible as a single `exists` query and reported
+ * against the offending field. They are NOT full parity (gate finding I-4): the
+ * bridge additionally requires a resolvable, active cash GL account and a
+ * matching repository currency, which need a loaded row. Those are enforced by
+ * `DepositReferenceResolutionService::refusalFor()` inside
+ * `RecordCustomerDepositService::record()` — still before the seal — and surface
+ * as a 422 `BUSINESS_ERROR`.
+ *
+ * `'bail'` leads each reference rule so validation stops at the format failure.
+ * Laravel already skips `Exists` for an attribute that carries a message
+ * (`Validator::hasNotFailedPreviousRuleIfPresenceRule()`, "to avoid possible
+ * database type comparison errors"), so this is an explicit, order-independent
+ * belt rather than a fix: it keeps a malformed uuid away from the native
+ * PostgreSQL `uuid` column (SQLSTATE 22P02) even if the rule order changes.
  */
 final class RecordDepositRequest extends FormRequest
 {
@@ -54,6 +68,7 @@ final class RecordDepositRequest extends FormRequest
         return [
             'amount' => ['required', 'string', 'regex:/^(0|[1-9]\d*)(\.\d+)?$/'],
             'payment_method_code' => [
+                'bail',
                 'required',
                 'string',
                 'max:64',
@@ -61,6 +76,7 @@ final class RecordDepositRequest extends FormRequest
                     ->where('is_active', true),
             ],
             'repository_id' => [
+                'bail',
                 'required',
                 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId)

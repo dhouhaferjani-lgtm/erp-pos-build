@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Application\Exceptions;
 
+use App\Modules\Treasury\Domain\Enums\DepositReferenceRefusal;
+use DomainException;
+
 /**
- * Thrown when a back-office deposit names a payment method or payment repository
- * that the Treasury bridge could not project the receipt against.
+ * Thrown when a back-office deposit names Treasury references the projection
+ * pipeline could not have resolved.
  *
  * W-5c D1 — `RecordCustomerDepositService::record()` used to author and SEAL the
  * `DEPOSIT_RECEIPT` fiscal event first and only discover the dangling reference
@@ -16,28 +19,41 @@ namespace App\Modules\Partner\Application\Exceptions;
  * `appendDepositReceipt(...)`, so this exception is always raised with nothing
  * authored.
  *
- * `RecordDepositRequest` carries the same predicates as tenant/company-scoped
- * `exists` rules, so an HTTP caller gets a 422 and never reaches here; this is
- * the belt-and-braces guard for any internal caller that bypasses the FormRequest.
+ * **Extends `DomainException` deliberately** (gate finding I-6): nothing is
+ * sealed and the caller's input is at fault, so `bootstrap/app.php` renders it
+ * as a 422 `BUSINESS_ERROR`. A 500 here would reproduce the exact symptom the
+ * D1 ticket calls out — "indistinguishable from an outage in monitoring".
+ *
+ * `RecordDepositRequest` carries the cheap subset of these predicates as
+ * field-level `exists` rules, so an HTTP caller usually gets a field-scoped 422
+ * first; this is the complete check, and the belt-and-braces guard for any
+ * internal caller that bypasses the FormRequest.
  *
  * docs/superpowers/tickets/2026-08-03-w5c-expense-income-deposit-findings.md
  */
-final class UnresolvableDepositReferenceException extends \RuntimeException
+final class UnresolvableDepositReferenceException extends DomainException
 {
-    public static function paymentMethod(string $methodCode, string $companyId): self
-    {
-        return new self(sprintf(
-            'Refusing to author a DEPOSIT_RECEIPT: no active payment method with code "%s" exists for company %s.',
-            $methodCode,
-            $companyId,
-        ));
+    public function __construct(
+        public readonly DepositReferenceRefusal $refusal,
+        string $message,
+    ) {
+        parent::__construct($message);
     }
 
-    public static function repository(?string $repositoryId, string $companyId): self
-    {
-        return new self(sprintf(
-            'Refusing to author a DEPOSIT_RECEIPT: no active payment repository "%s" exists for company %s.',
+    public static function forRefusal(
+        DepositReferenceRefusal $refusal,
+        string $methodCode,
+        ?string $repositoryId,
+        string $currencyCode,
+        string $companyId,
+    ): self {
+        return new self($refusal, sprintf(
+            '%s [%s] Refusing to author a DEPOSIT_RECEIPT (method_code=%s, repository_id=%s, currency=%s, company=%s).',
+            $refusal->message(),
+            $refusal->value,
+            $methodCode,
             $repositoryId ?? '(null)',
+            $currencyCode,
             $companyId,
         ));
     }
