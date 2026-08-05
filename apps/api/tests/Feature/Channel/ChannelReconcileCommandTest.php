@@ -8,6 +8,7 @@ use App\Modules\Channel\Application\Jobs\ChannelReconciliationJob;
 use App\Modules\Channel\Domain\Enums\ChannelConnectionStatus;
 use App\Modules\Channel\Domain\Models\Channel;
 use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryEntry;
+use App\Modules\Channel\Infrastructure\Directory\ChannelWebhookDirectoryRegistrar;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -185,6 +186,74 @@ final class ChannelReconcileCommandTest extends TestCase
 
         $this->assertNull(ChannelWebhookDirectoryEntry::query()->find($orphanId));
         $this->assertNotNull(ChannelWebhookDirectoryEntry::query()->find($live->id));
+    }
+
+    /**
+     * N-1 (2026-08-05 re-gate, Important). The R2 prune shipped with
+     * `whereHas('company', …)`, which applies `Company`'s `SoftDeletes` GLOBAL
+     * SCOPE. A channel whose company is soft-deleted therefore fell out of the
+     * enumeration AND out of `$liveChannelIds`, so the very next sweep deleted
+     * its central pointer — a permanent fail-closed 404 on that channel's
+     * inbound webhooks, and by this design's own R3 reasoning an external
+     * platform that gets a 404 drops the order for good.
+     *
+     * That directly contradicts
+     * {@see ChannelWebhookDirectoryRegistrar::register()},
+     * which reads `companies` through a RAW table query specifically so a
+     * soft-deleted company keeps its channels routable: ownership is what the
+     * pointer records, and ownership does not change when a company is
+     * soft-deleted. Before the prune existed the pointer simply survived; the
+     * prune is what destroyed it.
+     */
+    public function test_the_sweep_keeps_the_pointer_of_a_channel_whose_company_is_soft_deleted(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->createTenant('channel-recon-trashed');
+        $company = $this->createCompany($tenant, 'TRASHED');
+        $channel = $this->createChannel($company, 'trashed');
+
+        // Soft-delete, NOT force-delete: the company row (and therefore the
+        // channel's ownership) is still there.
+        $company->delete();
+
+        $this->assertSame(0, Artisan::call('channels:reconcile'));
+
+        $this->assertNotNull(
+            ChannelWebhookDirectoryEntry::query()->find($channel->id),
+            'A soft-deleted company must not cost its channels their webhook pointers — the channel row still '
+            .'exists and the registrar deliberately resolves ownership past the SoftDeletes scope.',
+        );
+    }
+
+    /**
+     * The other half of N-1: the soft-deleted company's channel must still be
+     * ENUMERATED, not merely spared by the prune. A fix that only relaxed the
+     * `pruneTenant()` call would leave the channel unreconciled and its pointer
+     * un-self-healed.
+     */
+    public function test_a_channel_whose_company_is_soft_deleted_is_still_reconciled_and_re_registered(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->createTenant('channel-recon-trashed-heal');
+        $company = $this->createCompany($tenant, 'TRASHEDHEAL');
+        $channel = $this->createChannel($company, 'trashed-heal');
+
+        $company->delete();
+
+        // The pointer this run must BACKFILL, exactly as it would for a live
+        // company's channel that predates the directory table.
+        ChannelWebhookDirectoryEntry::query()->whereKey($channel->id)->delete();
+
+        $this->assertSame(0, Artisan::call('channels:reconcile'));
+
+        $this->assertNotNull(
+            ChannelWebhookDirectoryEntry::query()->find($channel->id),
+            'The self-heal must reach channels of soft-deleted companies too.',
+        );
+        Queue::assertPushed(ChannelReconciliationJob::class, 1);
+        $this->assertSame([$channel->id], $this->dispatchedValues('channelId'));
     }
 
     /**

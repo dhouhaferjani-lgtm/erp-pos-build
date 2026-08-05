@@ -86,9 +86,23 @@ final class ChannelReconcileCommand extends TenantScopedCommand
         $pruned = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (&$dispatched, &$pruned): int {
+            // `withTrashed()` is LOAD-BEARING (N-1, 2026-08-05 re-gate).
+            // Without it `whereHas('company', …)` applies Company's
+            // SoftDeletes global scope, so a channel whose company is
+            // soft-deleted drops out of the enumeration AND out of
+            // $liveChannelIds below — and the prune then deletes its central
+            // webhook pointer, turning that channel's inbound callbacks into a
+            // permanent fail-closed 404 (which the external platform answers by
+            // dropping the order, not by redelivering). Ownership is what the
+            // pointer records and ownership does not change when a company is
+            // soft-deleted, which is exactly why
+            // {@see ChannelWebhookDirectoryRegistrar::register()} reads
+            // `companies` as a RAW table query. This closure is the scope for
+            // BOTH the enumeration and the drift probe, so the two can never
+            // disagree about what "owned by this tenant" means.
             $ownedByTenant = static function (Builder $query) use ($tenant): void {
                 /** @var Builder<Company> $query */
-                $query->where('tenant_id', $tenant->id);
+                $query->withTrashed()->where('tenant_id', $tenant->id);
             };
 
             $channels = Channel::query()->whereHas('company', $ownedByTenant)->get();
