@@ -122,6 +122,12 @@ final class PreflightFiscalGateCommand extends TenantScopedCommand
             },
         );
 
+        // Scoped by construction since the 2026-08-05 wave-2 fix (tenancy R2):
+        // `forEachTenantFiltered()` narrows the DIRECTORY QUERY, so under
+        // `--tenant=X` this list can only ever hold X. Before that, every
+        // archived / failed-provision tenant row in the fleet landed here and
+        // turned a scoped gate run into "unable to verify" — a gate that cannot
+        // pass is a gate that gets bypassed in front of a destructive rebuild.
         $skipped = count($this->skippedTenantIds());
 
         if ($gatedTenants === 0) {
@@ -187,7 +193,7 @@ final class PreflightFiscalGateCommand extends TenantScopedCommand
 
         $tenantId = (string) $tenant->id;
 
-        return [
+        $findings = [
             'pos_receipts' => DB::table('pos_receipts')->where('tenant_id', $tenantId)->count(),
             'pos_z_reports' => DB::table('pos_z_reports')
                 ->whereIn('terminal_id', $this->terminalIdsQuery($tenantId))
@@ -207,6 +213,51 @@ final class PreflightFiscalGateCommand extends TenantScopedCommand
                     ->orWhere('current_sequence', '>', 0))
                 ->count(),
         ];
+
+        if ((bool) config('tenancy_resolver.db_per_tenant', false)) {
+            $findings['rows_not_owned_by_this_tenant'] = $this->unownedRowCount($tenantId);
+        }
+
+        return $findings;
+    }
+
+    /**
+     * The UNFILTERED half of the surface probe (2026-08-05 wave-2 fiscal
+     * review, R2).
+     *
+     * The pre-conversion counts carried no tenant predicate at all and
+     * therefore could not miss a row. Adding one bought compat-mode correctness
+     * at the cost of a fail-OPEN hole: a `pos_receipts` row whose `tenant_id`
+     * is legacy/mismatched, or a `pos_z_reports` / `pos_receipt_prints` row
+     * orphaned from every terminal, became invisible — so the gate could print
+     * "SERVER SURFACE: clear" and green-light schema destruction over rows it
+     * never counted.
+     *
+     * Under database-per-tenant the bound database is BY DEFINITION this
+     * tenant's, so every row in it that the tenant predicate rejects is an
+     * anomaly and must be reported. The probe is confined to that mode on
+     * purpose: in single-schema compatibility mode the same database
+     * legitimately holds every other tenant's rows, so an unfiltered count
+     * there would be noise, not a finding.
+     */
+    private function unownedRowCount(string $tenantId): int
+    {
+        $foreignTenantId = static fn ($query) => $query
+            ->where('tenant_id', '!=', $tenantId)
+            ->orWhereNull('tenant_id');
+
+        return DB::table('pos_receipts')->where($foreignTenantId)->count()
+            + DB::table('pos_terminals')->where($foreignTenantId)->count()
+            + DB::table('pos_z_reports')
+                ->where(fn ($query) => $query
+                    ->whereNotIn('terminal_id', $this->terminalIdsQuery($tenantId))
+                    ->orWhereNull('terminal_id'))
+                ->count()
+            + DB::table('pos_receipt_prints')
+                ->where(fn ($query) => $query
+                    ->whereNotIn('terminal_id', $this->terminalIdsQuery($tenantId))
+                    ->orWhereNull('terminal_id'))
+                ->count();
     }
 
     /**

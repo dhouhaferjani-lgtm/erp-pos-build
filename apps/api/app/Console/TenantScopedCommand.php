@@ -11,7 +11,9 @@ use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Stancl\Tenancy\Database\TenantCollection;
 use Throwable;
 
 /**
@@ -220,6 +222,44 @@ abstract class TenantScopedCommand extends Command
      */
     protected function forEachTenant(callable $fn): int
     {
+        return $this->forEachTenantNarrowed(null, $fn);
+    }
+
+    /**
+     * {@see self::forEachTenant()} with the directory itself narrowed to a
+     * single tenant when `$tenantFilter` is supplied — probe, `initialize()`,
+     * closure and bookkeeping all happen for that tenant ONLY.
+     *
+     * **Why the narrowing is in the QUERY and not in the closure (2026-08-05
+     * wave-2 review, tenancy R1 / fiscal R3).** The first shape of this helper
+     * filtered inside the iteration closure, which meant a `--tenant=X` run
+     * still probed and `tenancy()->initialize()`d every directory row before
+     * short-circuiting. Two consequences, both wrong:
+     *
+     *   - a probe throw or an `initialize()` throw on an UNRELATED tenant Y
+     *     degraded the aggregate, so an operator who asked about X was told X's
+     *     run failed — and for commands whose exit-code contract distinguishes
+     *     "validation error" from "transient failure", Y's infra fault was
+     *     reported as X's validation error;
+     *   - O(fleet) database opens to answer a question about one tenant.
+     *
+     * The visited/skipped bookkeeping behind
+     * {@see self::failIfTenantFilterUnvisited()} stays authoritative because
+     * the target tenant still occupies its own slot: it is recorded as visited
+     * when its closure runs, as skipped when its probe answers "no database" or
+     * throws, and as neither when the directory does not hold it at all — which
+     * is exactly the three-way distinction that method reports on.
+     *
+     * A filter that is not a well-formed UUID selects nothing rather than
+     * reaching the database: `tenants.id` is a PG `uuid` column and a malformed
+     * comparand raises a driver error instead of returning no rows. Selecting
+     * nothing lands on the "not found in the central tenant directory" branch,
+     * which is the honest answer.
+     *
+     * @param  callable(Tenant): int  $fn
+     */
+    protected function forEachTenantNarrowed(?string $tenantFilter, callable $fn): int
+    {
         $aggregate = self::SUCCESS;
         $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant', false);
 
@@ -227,7 +267,7 @@ abstract class TenantScopedCommand extends Command
         $this->skippedTenantIds = [];
         $probeFaults = 0;
 
-        foreach (Tenant::all() as $tenant) {
+        foreach ($this->directoryTenants($tenantFilter) as $tenant) {
             /** @var Tenant $tenant */
             if ($dbPerTenant) {
                 try {
@@ -321,15 +361,31 @@ abstract class TenantScopedCommand extends Command
     }
 
     /**
+     * The directory rows this run will iterate.
+     */
+    private function directoryTenants(?string $tenantFilter): TenantCollection
+    {
+        if ($tenantFilter === null) {
+            return Tenant::all();
+        }
+
+        if (! Str::isUuid($tenantFilter)) {
+            return Tenant::query()->whereRaw('1 = 0')->get();
+        }
+
+        return Tenant::query()->whereKey($tenantFilter)->get();
+    }
+
+    /**
      * {@see self::forEachTenant()} narrowed by an optional operator-supplied
      * `--tenant=<uuid>` filter, with the unvisited-target check already wired.
      *
      * This is the cat-(b) wave-2 conversion idiom for FLEET-DEFAULT commands
      * (the fiscal verifiers): no `--tenant` means "every tenant", a `--tenant`
      * means "that one tenant, and fail loudly if it was never reached". The
-     * filter is applied INSIDE the iteration closure rather than as a directory
-     * query so the visited/skipped bookkeeping behind
-     * {@see self::failIfTenantFilterUnvisited()} stays authoritative.
+     * narrowing happens in the directory query — see
+     * {@see self::forEachTenantNarrowed()} for why it must not happen inside
+     * the closure.
      *
      * Returns the aggregate exit code, or the unvisited-filter exit code when
      * the operator's `--tenant` never opened an iteration slot. Note that the
@@ -341,13 +397,7 @@ abstract class TenantScopedCommand extends Command
      */
     protected function forEachTenantFiltered(?string $tenantFilter, callable $fn): int
     {
-        $exit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, $fn): int {
-            if ($tenantFilter !== null && (string) $tenant->id !== $tenantFilter) {
-                return self::SUCCESS;
-            }
-
-            return $fn($tenant);
-        });
+        $exit = $this->forEachTenantNarrowed($tenantFilter, $fn);
 
         $miss = $this->failIfTenantFilterUnvisited($tenantFilter);
 

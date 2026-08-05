@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Traits\ProvisionsTenantDatabases;
 
 /**
  * `fiscal:preflight-gate` — the gate that must clear before a
@@ -35,6 +36,7 @@ use Tests\TestCase;
  */
 final class PreflightFiscalGateCommandTest extends TestCase
 {
+    use ProvisionsTenantDatabases;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -139,6 +141,88 @@ final class PreflightFiscalGateCommandTest extends TestCase
             ->expectsOutputToContain(sprintf('TENANT %s (', $cleanTerminal->tenant_id))
             ->doesntExpectOutputToContain(sprintf('TENANT %s (', $dirtyTerminal->tenant_id))
             ->assertExitCode(0);
+    }
+
+    // =================================================================
+    // The PRODUCTION tenancy mode (2026-08-05 wave-2 reviews: fiscal R2/R4,
+    // tenancy R2). Everything above runs in single-schema compat mode, where
+    // no database probe ever fires and the bound database is shared.
+    // =================================================================
+
+    /**
+     * Fiscal R4's untested fail-closed behaviour: a tenant whose database
+     * cannot be opened is a WARNING-level skip inside `forEachTenant()`, and
+     * the gate must never inherit that silence as a pass.
+     */
+    public function test_gate_fails_closed_when_a_tenant_database_could_not_be_opened(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $reachable = $this->provisionTenantDatabaseWithSchema(Tenant::factory()->create());
+        $unreachable = Tenant::factory()->create();
+
+        $this->artisan('fiscal:preflight-gate')
+            ->expectsOutputToContain(
+                'SERVER SURFACE: unable to verify - 1 tenant(s) could not be inspected '
+                .'(0 probe failure(s), 1 unreachable database(s))',
+            )
+            ->assertExitCode(1);
+
+        self::assertNotSame($reachable->id, $unreachable->id);
+    }
+
+    /**
+     * Tenancy R2. `$skipped` used to be counted fleet-wide, so ONE archived or
+     * failed-provision tenant row anywhere in the directory made every
+     * `--tenant`-scoped gate run unpassable — and a gate that cannot pass is a
+     * gate an operator bypasses before a schema-destructive rebuild.
+     */
+    public function test_a_scoped_gate_run_ignores_an_unrelated_unprovisioned_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $target = $this->provisionTenantDatabaseWithSchema(Tenant::factory()->create());
+        Tenant::factory()->create(); // archived / failed provisioning: no database
+
+        $this->artisan('fiscal:preflight-gate', ['--tenant' => $target->id])
+            ->expectsOutputToContain(sprintf('TENANT %s (', $target->id))
+            ->expectsOutputToContain('SERVER SURFACE: clear')
+            ->doesntExpectOutputToContain('unable to verify')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Fiscal R2. The tenant predicate the conversion added made the counts
+     * blind to rows the pre-conversion unfiltered count could not miss — a
+     * `tenant_id` that is legacy, mismatched or NULL. Under database-per-tenant
+     * the bound database is by definition this tenant's, so such a row is an
+     * anomaly and the gate must report it and fail rather than clear.
+     */
+    public function test_gate_fails_on_a_row_the_tenant_predicate_would_hide(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->provisionTenantDatabaseWithSchema(Tenant::factory()->create());
+
+        $this->withinTenantDatabase($tenant, function () use ($tenant): void {
+            $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+            $location = Location::factory()->create(['company_id' => $company->id]);
+
+            // A terminal physically inside THIS tenant's database that claims a
+            // different owner. The predicated count returns 0 for it.
+            Terminal::factory()->create([
+                'tenant_id' => (string) Str::uuid(),
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'current_sequence' => 0,
+            ]);
+        });
+
+        $this->artisan('fiscal:preflight-gate', ['--tenant' => $tenant->id])
+            ->expectsOutputToContain('SERVER SURFACE: NON-EMPTY')
+            ->expectsOutputToContain('rows_not_owned_by_this_tenant: 1')
+            ->doesntExpectOutputToContain('SERVER SURFACE: clear')
+            ->assertExitCode(1);
     }
 
     // =================================================================

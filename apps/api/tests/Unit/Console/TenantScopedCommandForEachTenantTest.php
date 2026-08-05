@@ -449,6 +449,260 @@ final class TenantScopedCommandForEachTenantTest extends TestCase
         self::assertStringContainsString('11111111-1111-4111-8111-111111111111', $stderr);
     }
 
+    // =================================================================
+    // forEachTenantFiltered / forEachExplicitlySelectedTenant, in the
+    // PRODUCTION tenancy mode (2026-08-05 wave-2 review, tenancy R1/R5).
+    //
+    // The wave added both helpers and neither had a single test under
+    // `db_per_tenant = true`. Worse, the first shape applied the `--tenant`
+    // filter INSIDE the iteration closure, so a scoped run still probed and
+    // initialized every directory row: an unrelated tenant's missing database
+    // landed in `skippedTenantIds()` (which `fiscal:preflight-gate` turns into
+    // a hard failure), and an unrelated tenant's probe fault degraded the
+    // scoped verdict.
+    // =================================================================
+
+    public function test_a_tenant_filter_visits_only_that_tenant_and_never_probes_the_rest(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $target = $this->createTenantWithDatabase('filtered-target');
+        $bystanderWithDb = $this->createTenantWithDatabase('filtered-bystander');
+        $bystanderWithoutDb = $this->createTenant('filtered-bystander-no-db');
+
+        $processed = [];
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachTenantFiltered($target->id, function (Tenant $tenant) use (&$processed): int {
+            $processed[] = $tenant->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::SUCCESS, $exit);
+        self::assertSame([$target->id], $processed);
+        self::assertSame(
+            [$target->id],
+            $command->visited(),
+            'A scoped run must not open an iteration slot for a tenant the operator did not name.',
+        );
+        self::assertSame(
+            [],
+            $command->skipped(),
+            'An unrelated tenant with no provisioned database must not appear in the scoped run\'s skipped set — '
+            .'fiscal:preflight-gate turns any skipped tenant into "unable to verify", so a fleet with one '
+            .'archived tenant made every --tenant-scoped gate run unpassable.',
+        );
+        self::assertNotContains($bystanderWithDb->id, $command->visited());
+        self::assertNotContains($bystanderWithoutDb->id, $command->skipped());
+    }
+
+    /**
+     * The same narrowing must hold on the FAILURE path: a probe fault is
+     * global, so under the closure-filter shape a `--tenant=X` run recorded
+     * every other tenant as skipped and reported their infra fault as X's
+     * problem.
+     */
+    public function test_a_probe_fault_on_a_scoped_run_is_confined_to_the_named_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $target = $this->createTenantWithDatabase('scoped-probe-target');
+        $bystander = $this->createTenantWithDatabase('scoped-probe-bystander');
+
+        config(['tenancy.database.managers' => []]);
+
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), new BufferedOutput));
+        $exit = $command->runForEachTenantFiltered($target->id, static fn (Tenant $tenant): int => Command::SUCCESS);
+
+        self::assertSame(Command::FAILURE, $exit, 'The NAMED tenant could not be probed — that is a real failure.');
+        self::assertSame(
+            [$target->id],
+            $command->skipped(),
+            'Only the named tenant may be probed at all, so only it can be recorded as unprocessed.',
+        );
+        self::assertNotContains($bystander->id, $command->skipped());
+    }
+
+    /**
+     * `failIfTenantFilterUnvisited()` still has to distinguish its three cases
+     * once the directory query does the narrowing — a tenant absent from the
+     * directory selects zero rows, which must read as INVALID ("not found"),
+     * not as a clean fleet run.
+     */
+    public function test_an_unknown_tenant_filter_still_reports_invalid_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $this->createTenantWithDatabase('unknown-filter-bystander');
+
+        $processed = [];
+
+        $buffer = new BufferedOutput;
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $buffer));
+
+        $exit = $command->runForEachTenantFiltered(
+            '11111111-1111-4111-8111-111111111111',
+            function (Tenant $tenant) use (&$processed): int {
+                $processed[] = $tenant->id;
+
+                return Command::SUCCESS;
+            },
+        );
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertSame([], $processed);
+        self::assertStringContainsString('not found in the central tenant directory', $buffer->fetch());
+    }
+
+    /**
+     * `tenants.id` is a PG `uuid` column: narrowing the directory in SQL means
+     * a malformed `--tenant` is now a comparand the driver sees. It must land
+     * on the honest "not in the directory" branch rather than raising.
+     */
+    public function test_a_malformed_tenant_filter_is_reported_not_raised(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $this->createTenantWithDatabase('malformed-filter-bystander');
+
+        $buffer = new BufferedOutput;
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $buffer));
+
+        $exit = $command->runForEachTenantFiltered('not-a-uuid', static fn (Tenant $tenant): int => Command::SUCCESS);
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertStringContainsString('not found in the central tenant directory', $buffer->fetch());
+    }
+
+    /**
+     * A null filter must behave exactly like a bare `forEachTenant()` — the
+     * fleet default the five verifiers rely on.
+     */
+    public function test_a_null_filter_still_runs_the_whole_fleet_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $a = $this->createTenantWithDatabase('fleet-a');
+        $b = $this->createTenantWithDatabase('fleet-b');
+        $noDb = $this->createTenant('fleet-no-db');
+
+        $processed = [];
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachTenantFiltered(null, function (Tenant $tenant) use (&$processed): int {
+            $processed[] = $tenant->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::SUCCESS, $exit);
+        sort($processed);
+        $expected = [$a->id, $b->id];
+        sort($expected);
+        self::assertSame($expected, $processed);
+        self::assertSame([$noDb->id], $command->skipped());
+    }
+
+    public function test_explicit_scope_helper_refuses_an_unnamed_run_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->createTenantWithDatabase('explicit-scope-refusal');
+
+        $processed = [];
+
+        $buffer = new BufferedOutput;
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $buffer));
+
+        $exit = $command->runForEachExplicitlySelectedTenant(null, false, function (Tenant $t) use (&$processed): int {
+            $processed[] = $t->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertSame([], $processed, 'Nothing may be processed when no scope was named.');
+        self::assertStringContainsString('Refusing to run without an explicit scope', $buffer->fetch());
+        self::assertNotContains($tenant->id, $processed);
+    }
+
+    public function test_explicit_scope_helper_rejects_both_flags_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenant = $this->createTenantWithDatabase('explicit-scope-both');
+
+        $processed = [];
+
+        $buffer = new BufferedOutput;
+        $command = $this->probeCommand();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $buffer));
+
+        $exit = $command->runForEachExplicitlySelectedTenant($tenant->id, true, function (Tenant $t) use (&$processed): int {
+            $processed[] = $t->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertSame([], $processed);
+        self::assertStringContainsString('mutually exclusive', $buffer->fetch());
+    }
+
+    public function test_explicit_scope_helper_narrows_to_the_named_tenant_under_db_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $target = $this->createTenantWithDatabase('explicit-scope-target');
+        $bystander = $this->createTenantWithDatabase('explicit-scope-bystander');
+
+        $processed = [];
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachExplicitlySelectedTenant($target->id, false, function (Tenant $t) use (&$processed): int {
+            $processed[] = $t->id;
+
+            return Command::SUCCESS;
+        });
+
+        self::assertSame(Command::SUCCESS, $exit);
+        self::assertSame([$target->id], $processed);
+        self::assertNotContains($bystander->id, $command->visited());
+    }
+
+    public function test_explicit_all_tenants_runs_the_fleet_and_propagates_a_failure(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $ok = $this->createTenantWithDatabase('explicit-all-ok');
+        $throwing = $this->createTenantWithDatabase('explicit-all-throwing');
+
+        $processed = [];
+
+        $command = $this->probeCommand();
+        $exit = $command->runForEachExplicitlySelectedTenant(
+            null,
+            true,
+            function (Tenant $tenant) use ($throwing, &$processed): int {
+                if ($tenant->id === $throwing->id) {
+                    throw new RuntimeException('simulated tenant-iteration failure');
+                }
+
+                $processed[] = $tenant->id;
+
+                return Command::SUCCESS;
+            },
+        );
+
+        self::assertSame(Command::FAILURE, $exit, 'N1 fail-closed propagation must survive both wrapper layers.');
+        self::assertSame([$ok->id], $processed, 'The throwing tenant must not abort the remaining tenants.');
+    }
+
     protected function tearDown(): void
     {
         if (tenancy()->initialized) {
@@ -498,6 +752,22 @@ final class TenantScopedCommandForEachTenantProbeCommand extends TenantScopedCom
     public function runForEachTenant(callable $fn): int
     {
         return $this->forEachTenant($fn);
+    }
+
+    /**
+     * @param  callable(Tenant): int  $fn
+     */
+    public function runForEachTenantFiltered(?string $tenantFilter, callable $fn): int
+    {
+        return $this->forEachTenantFiltered($tenantFilter, $fn);
+    }
+
+    /**
+     * @param  callable(Tenant): int  $fn
+     */
+    public function runForEachExplicitlySelectedTenant(?string $tenantFilter, bool $allTenants, callable $fn): int
+    {
+        return $this->forEachExplicitlySelectedTenant($tenantFilter, $allTenants, $fn);
     }
 
     /**

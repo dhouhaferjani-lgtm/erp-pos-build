@@ -387,12 +387,52 @@ final class VerifyEventChainCommandTest extends TestCase
 
         $otherTenant = Tenant::factory()->create();
 
+        // The actor must belong to the NAMED tenant since the 2026-08-05 R3
+        // fix (see the test below); otherwise the run stops at the actor gate
+        // and never reaches the terminal-ownership check this test is about.
+        $registrar = $this->app->make(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($otherTenant->id);
+        $otherActor = User::factory()->create(['tenant_id' => $otherTenant->id]);
+        $otherActor->givePermissionTo('fiscal.events.verify_chain');
+        $registrar->setPermissionsTeamId($this->tenantId);
+
         $this->artisan('fiscal:verify-event-chain', [
             '--tenant' => $otherTenant->id,
             '--terminal' => $this->terminalId,
-            '--actor-id' => $this->verifierUser->id,
+            '--actor-id' => $otherActor->id,
         ])
             ->expectsOutputToContain(sprintf('does not exist in tenant %s', $otherTenant->id))
+            ->doesntExpectOutputToContain('chain verified')
+            ->assertExitCode(1);
+    }
+
+    /**
+     * R3 (2026-08-05 wave-2 tenancy review). The actor lookup carried no
+     * `tenant_id` predicate while every other query in the closure did. In
+     * single-schema compatibility mode that let an actor belonging to tenant B
+     * resolve for a `--tenant=A` run — and because the command then calls
+     * `setPermissionsTeamId($actor->tenant_id)`, `can()` was evaluated against
+     * **B's** team, so B's roles authorised chain verification over A's rows.
+     */
+    public function test_an_actor_from_another_tenant_cannot_authorise_a_run_against_this_tenant(): void
+    {
+        $this->seedValidChain(3);
+
+        $tenantB = Tenant::factory()->create();
+        $registrar = $this->app->make(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($tenantB->id);
+        $actorB = User::factory()->create(['tenant_id' => $tenantB->id]);
+        // B's OWN team grants the permission — the only thing that must stop
+        // this run is that B's actor does not belong to tenant A.
+        $actorB->givePermissionTo('fiscal.events.verify_chain');
+        $registrar->setPermissionsTeamId($this->tenantId);
+
+        $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $actorB->id,
+        ])
+            ->expectsOutputToContain(sprintf('Unknown actor user id %s', $actorB->id))
             ->doesntExpectOutputToContain('chain verified')
             ->assertExitCode(1);
     }

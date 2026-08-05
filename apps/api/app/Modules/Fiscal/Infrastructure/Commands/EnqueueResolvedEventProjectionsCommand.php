@@ -158,10 +158,13 @@ final class EnqueueResolvedEventProjectionsCommand extends TenantScopedCommand
             return self::FAILURE;
         }
 
-        $exit = $this->forEachTenant(
-            fn (Tenant $tenant): int => (string) $tenant->id === $tenantOption
-                ? $this->recoverBoundTenant($actorId, $tenantOption)
-                : self::SUCCESS,
+        // Narrowed in the DIRECTORY QUERY, not inside the closure (2026-08-05
+        // wave-2 review, fiscal R3 / tenancy R1): this command reserves exit 2
+        // for a transient fault the operator can retry, so an unrelated
+        // tenant's probe fault must never reach this run's aggregate.
+        $exit = $this->forEachTenantNarrowed(
+            $tenantOption,
+            fn (Tenant $tenant): int => $this->recoverBoundTenant($actorId, $tenantOption),
         );
 
         if ($this->failIfTenantFilterUnvisited($tenantOption) !== null) {
@@ -179,7 +182,14 @@ final class EnqueueResolvedEventProjectionsCommand extends TenantScopedCommand
         // ---- Permission gate (Task 24 brief pattern (a)) ----
         // `users` is a TENANT table; the gate is only readable once tenancy is
         // bound, which is why the lookup lives here.
-        $actor = User::query()->find($actorId);
+        //
+        // The `tenant_id` predicate is redundant under database-per-tenant and
+        // load-bearing in single-schema compatibility mode, exactly like the
+        // candidate-selection query below (2026-08-05 wave-2 review, tenancy
+        // R3). Without it an actor belonging to tenant B resolved for a
+        // `--tenant=A` run, and `setPermissionsTeamId($actor->tenant_id)` then
+        // evaluated `can()` against B's team.
+        $actor = User::query()->where('tenant_id', $tenantOption)->find($actorId);
         if ($actor === null) {
             $this->error(sprintf('Unknown actor user id %s.', $actorId));
 

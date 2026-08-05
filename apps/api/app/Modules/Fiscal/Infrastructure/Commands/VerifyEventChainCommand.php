@@ -163,10 +163,20 @@ final class VerifyEventChainCommand extends TenantScopedCommand
             return self::FAILURE;
         }
 
-        $exit = $this->forEachTenant(
-            fn (Tenant $tenant): int => (string) $tenant->id === $tenantId
-                ? $this->verifyBoundTenant($actorId, $tenantId, $terminalId, $chainContext, $fromSequence)
-                : self::SUCCESS,
+        // Narrowed in the DIRECTORY QUERY, not inside the closure (2026-08-05
+        // wave-2 review, fiscal R3 / tenancy R1): an unrelated tenant's probe
+        // or `initialize()` fault must not degrade this run's verdict, because
+        // this command's exit codes distinguish "validation error" (1) from
+        // "transient failure" (2) and a stranger's infra fault is neither.
+        $exit = $this->forEachTenantNarrowed(
+            $tenantId,
+            fn (Tenant $tenant): int => $this->verifyBoundTenant(
+                $actorId,
+                $tenantId,
+                $terminalId,
+                $chainContext,
+                $fromSequence,
+            ),
         );
 
         if ($this->failIfTenantFilterUnvisited($tenantId) !== null) {
@@ -196,7 +206,15 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         // `users` is a TENANT table: this lookup only resolves once tenancy is
         // bound, which is why it now lives here rather than at the top of the
         // command.
-        $actor = User::query()->find($actorId);
+        //
+        // The `tenant_id` predicate is redundant under database-per-tenant and
+        // load-bearing in single-schema compatibility mode, exactly like every
+        // other query in this closure (2026-08-05 wave-2 review, tenancy R3).
+        // Without it an actor belonging to tenant B resolved for a `--tenant=A`
+        // run, and `setPermissionsTeamId($actor->tenant_id)` below then
+        // evaluated `can()` against B's team — B's roles authorising chain
+        // verification over A's rows.
+        $actor = User::query()->where('tenant_id', $tenantId)->find($actorId);
         if ($actor === null) {
             $this->error(sprintf('Unknown actor user id %s.', $actorId));
 
