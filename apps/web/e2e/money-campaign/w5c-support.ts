@@ -131,8 +131,16 @@ export async function ledgerLinesFor(
     `/ledger?account_id=${accountId}&date_from=${date}&date_to=${date}&per_page=200`,
   )
   expect(res.ok, `ledger -> ${res.status} ${JSON.stringify(res.data)}`).toBeTruthy()
-  const lines = (res.data as unknown as { lines: LedgerLine[] }).lines
-  return lines.filter((line) => line.source_id === sourceId)
+  const payload = res.data as unknown as { lines: LedgerLine[]; meta?: { last_page?: number } }
+  // Truncation guard (W-7 re-review): per_page=200 is the endpoint's hard MAX
+  // and this reads page 1 only. Client-side filtering after truncation can only
+  // DROP legs — a duplicated-GL-leg check would false-pass. Fail loudly the day
+  // the account's daily traffic outgrows one page instead.
+  expect(
+    payload.meta?.last_page ?? 1,
+    'ledgerLinesFor reads page 1 only — the account/day window must fit one page or the leg count is untrustworthy'
+  ).toBe(1)
+  return payload.lines.filter((line) => line.source_id === sourceId)
 }
 
 /** The append-only repository movements a given document produced (`search=`
