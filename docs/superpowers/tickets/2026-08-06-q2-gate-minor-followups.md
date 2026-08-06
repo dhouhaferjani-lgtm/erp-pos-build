@@ -26,6 +26,21 @@ vat-reporting feature directory for siblings, and check why the `no-parsefloat-o
 ESLint rule did not fire here (file predates the rule's ratchet baseline?). Fold into the next
 FE hygiene batch.
 
+## m-7/m-8/m-9 — re-gate probe findings on the closed-period reporting (P2, from the fix-round re-verify)
+
+- **m-7**: the closed-period lookup filters `status = Closed` only — a **FILED** period is
+  silently not reported. Vacuous today (no tenant has filed), but FILED is the
+  highest-consequence case and needs its OWN message: `reopenPeriod()` refuses filed periods,
+  so the remedy is a filed-declaration correction/escalation, not reopen+re-close.
+- **m-8**: the period lookup uses `->first()` on a set that can hold >1 (monthly + quarterly
+  after a `period_type` switch, or two `country_code` rows covering one date) — second period
+  goes unreported. One-liner: `->get()` + merge into the report map.
+- **m-9**: both new report paths (duplicate-slot skip, closed-period impact) are tested only
+  under `--apply`; dry-run is what an operator runs first — add dry-run-mode assertions.
+
+Close all three in the same motion as the I-3 ruling implementation (one small backfill-leg
+touch-up round).
+
 ## I-3 — 0%-deductible expense base: OWNER RULING PENDING (tracked here until answered)
 
 The Q2 fix makes a fully NON-deductible expense (vat_deductible_percent = 0) declare
