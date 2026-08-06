@@ -391,8 +391,18 @@ final readonly class CashMovementsReportService
             ->whereNotExists(function (Builder $query) use ($companyId, $locationIds): void {
                 if ($locationIds === []) {
                     // Unrestricted read: no location predicate at all, so there
-                    // is nothing to be ambiguous about. `whereRaw('1 = 0')`
-                    // keeps the NOT EXISTS trivially satisfied.
+                    // is nothing to be ambiguous about. The emitted SQL is not
+                    // byte-identical to the pre-lane query — it gains
+                    // `and not exists (select 1 where 1 = 0)` — but it is
+                    // SEMANTICALLY unchanged: a constant-false no-op that PG
+                    // folds to a `One-Time Filter: false` evaluated once at zero
+                    // cost (verified on PG 16.10 by the authz gate, NOTE-1).
+                    //
+                    // It must stay a real, always-empty subquery rather than an
+                    // omitted clause: writing it as a correlated NOT EXISTS that
+                    // happens to match nothing would re-open the NULL trap that
+                    // `NOT IN` has, and dropping the clause entirely here would
+                    // put the two branches on different query shapes.
                     $query->selectRaw('1')->whereRaw('1 = 0');
 
                     return;

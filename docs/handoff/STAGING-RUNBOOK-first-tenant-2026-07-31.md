@@ -237,6 +237,37 @@ Source: `docs/handoff/multiloc-deploy-checklist.md` §Wave 3.
 - **RERUN-ON-FINAL-CANDIDATE:** YES.
 - **Evidence:** _(empty)_
 
+### Step 4.2 — Audit shared/unlocated cash GL accounts (fix lane L3, added 2026-08-06)
+
+- **Why:** `/reports/cash-movements` scopes its journal-lines leg **fail-closed** — a journal cash
+  line is shown under a branch scope only when every active cash register owning its GL account is
+  inside that scope. Cash on an account that several branches share, or whose registers have no
+  location, is correctly reported as *unattributed*: visible on the "All" view, hidden on every
+  branch view. Measured on the live tenant `tenant019fbe86-…` on 2026-08-06, **126 cash-type
+  repositories shared ONE `gl_account_id` and all 126 had `location_id IS NULL`** — so until step
+  4.1 is done, the four branch cash views show **payment-backed cash only** and Σ(branches) falls
+  materially short of the company view. Correct behaviour, but it must be a known state rather than
+  a launch-day support ticket.
+- **Command** (per company, in the tenant DB):
+  ```sql
+  SELECT gl_account_id,
+         COUNT(*)                                    AS owners,
+         COUNT(DISTINCT location_id)                 AS distinct_locations,
+         COUNT(*) FILTER (WHERE location_id IS NULL) AS null_locations
+  FROM payment_repositories
+  WHERE company_id = :company_id
+    AND is_active = true
+    AND type IN ('cash_register', 'safe', 'bank_account')
+  GROUP BY gl_account_id
+  ORDER BY owners DESC;
+  ```
+- **Expected:** for tenant #1's four branch registers, `null_locations = 0`. Any remaining row with
+  `null_locations > 0` or `distinct_locations > 1` is cash that no branch view will show — accept it
+  deliberately or fix it via step 4.1.
+- **RERUN-ON-FINAL-CANDIDATE:** YES.
+- **Reference:** `docs/superpowers/tickets/2026-08-06-l3-cash-scope-residuals.md` residual (d).
+- **Evidence:** _(empty)_
+
 ---
 
 ## 5. Multi-location membership backfill check (Wave 1 — already ran automatically at `tenants:migrate`)

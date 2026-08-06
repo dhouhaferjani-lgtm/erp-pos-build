@@ -78,6 +78,14 @@ duplicates. That is correct for launch but is an indirection.
 together with its fail-closed clause. Until that lands the column must be documented as *reserved*,
 so a future reader does not assume it is authoritative (the service docblock now says so).
 
+**One asymmetry to fold into the same fix (authz gate NOTE-3):** `RepositoryType::Virtual` is
+outside `CashMovementsReportService::CASH_REPOSITORY_TYPES:54-58`, so a **virtual** repository at
+another branch pointed at a real cash account neither grants nor blocks — it is invisible to both
+the scope `EXISTS` and the fail-closed `NOT EXISTS`. That symmetry is correct as written and is
+currently unreachable (the `2026_03_02_400000` backfill maps Virtual→Bank), but it is a second
+place where "which repositories own this cash account" is answered, and it disappears once the leg
+scopes on `journal_entries.location_id` directly.
+
 ## (d) [P2] `/reports/cash-movements` never names the cash it withheld
 
 Under a strict branch scope the report silently omits cash that no single branch owns: a pure
@@ -93,6 +101,43 @@ on the surface a branch manager reconciles a drawer against.
 strict-scope reader can see that something was withheld, and have the FE render a
 "company-level cash is not included in this branch view" note. Until then, Σ over the branch views
 legitimately falls short of the company view and nothing on screen explains why.
+
+### [PRE-LAUNCH DATA TASK] the shortfall is currently TOTAL for the journal leg — locate the registers first
+
+**This is a deploy-data prerequisite, not a code defect** (authz gate NOTE-2, measured on the live
+tenant DB `tenant019fbe86-…`). Of the cash-type repositories, **126 share ONE `gl_account_id` and
+all 126 have `location_id IS NULL`**:
+
+```
+gl_account_id                        | owners | distinct locations | null locations
+24d2d5fb-8bfc-4734-93e7-e945c6d16072 |    126 |                  0 |            126
+```
+
+Under the fail-closed guard that is correct — no branch owns that account, so the cash is
+unattributed — but the practical consequence is that **the journal leg contributes NOTHING to any
+branch scope**: tenant #1's four branch cash views will show **payment-backed cash only**, and
+Σ(branches) will fall materially short of the company view until the registers are located.
+
+**Action, pre-launch:** assign `payment_repositories.location_id` for each of tenant #1's four
+branch registers. Audit the current state with:
+
+```sql
+SELECT gl_account_id,
+       COUNT(*)                                          AS owners,
+       COUNT(DISTINCT location_id)                       AS distinct_locations,
+       COUNT(*) FILTER (WHERE location_id IS NULL)       AS null_locations
+FROM payment_repositories
+WHERE company_id = :company_id
+  AND is_active = true
+  AND type IN ('cash_register', 'safe', 'bank_account')
+GROUP BY gl_account_id
+ORDER BY owners DESC;
+```
+
+Every row with `null_locations > 0` or `distinct_locations > 1` is cash that no branch view will
+show. This is already tracked operationally as **§4 Step 4.1** of
+`docs/handoff/STAGING-RUNBOOK-first-tenant-2026-07-31.md`, which this ticket now cross-references
+with the L3 consequence.
 
 ## (e) [MINOR] Offset pagination is not reset when the view scope changes
 

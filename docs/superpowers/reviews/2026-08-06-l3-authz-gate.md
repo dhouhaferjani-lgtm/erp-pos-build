@@ -211,3 +211,140 @@ journal-only cash (a cash expense settlement) this case goes red — the flip is
 Make the journal leg fail-closed on shared/ambiguous cash GL accounts (finding 1) with a two-repositories-
 one-account test; everything else (deactivated-location clamp, `is_active` in the EXISTS, the 403→500
 swallow, the tripwire's blackout blind spot, the dead column, the unattributed bucket) is a ticket.
+
+---
+
+# ROUND 2 — narrow re-gate (2026-08-06, post-rebase)
+
+**Basis:** branch rebased onto `dev` @ `a84c1b53e`, 6 commits; fix = `33842c147`, spec = `03f3a066c` + `b2006a33e`.
+`git diff a84c1b53e..HEAD` is now clean (11 files, +1495/−74) — round-1 finding N-1 resolved.
+
+**Re-verified by the reviewer:** `CashMovementsReportTest.php` **24/24 OK**; vitest
+`useCashMovementsReport.test.tsx` (4) + `CashMovementsReportPage.test.tsx` (4) = **8/8 OK**;
+pint `pass`; phpstan on the service `No errors`. A 7-probe scratch suite (`ZzScratchRegateProbeTest`)
+was run and **deleted**; worktree left clean.
+
+## VERDICT: spec ✅ / quality APPROVED — cleared for merge
+
+### Round-1 findings — disposition
+
+| # | Round-1 finding | Status |
+|---|---|---|
+| 1 | **CRITICAL** shared-GL-account replication | **FIXED, independently verified** |
+| 2 | IMPORTANT `isUnrestricted()` unsound on a deactivated location | Ticketed `(a)`, correctly out of lane |
+| 3 | IMPORTANT scope EXISTS ignored `is_active` | **FIXED, verified** |
+| 4 | IMPORTANT two definitions of "branch" undocumented | **FIXED** (class docblock `CashMovementsReportService.php:21-51`) |
+| 5 | IMPORTANT tripwire green on a total blackout | **FIXED** (`w7-multilocation.spec.ts:560-563`) |
+| 6 | MINOR 403→500 in aged-*/upcoming | Ticketed `(b)` |
+| 7 | MINOR wrong diff base | **FIXED** (rebased) |
+| 8 | MINOR empty-param asymmetry | Noted, no change needed |
+
+### Independent verification of the fail-closed clause
+
+**SQL semantics (RG-1, emitted SQL dumped from `journalLinesQuery`).** The NULL disjunct sits INSIDE
+the `NOT EXISTS` subquery, not on the outer side of the negation:
+
+```
+and not exists (select 1 from "payment_repositories" as "competing_repositories"
+  where "competing_repositories"."gl_account_id" = "journal_lines"."account_id"
+    and "competing_repositories"."company_id" = ? and "competing_repositories"."is_active" = ?
+    and "competing_repositories"."type" in (?, ?, ?)
+    and ("competing_repositories"."location_id" is null
+         or "competing_repositories"."location_id" not in (?)))
+```
+
+so a NULL-location competitor **matches** the subquery and the line is withheld. The three-valued
+`NOT IN` trap is genuinely avoided — the clause cannot be defeated by an unlocated register.
+Confirmed behaviourally by **RG-2**: an unlocated HQ safe on the shared Cash account suppresses the
+25.00 settlement under both branch scopes (`scopeA` shows only its own single-owner line, 30.00;
+`scopeB` 0) while the unscoped read still shows both (2 rows, in 30.00 / out 25.00).
+
+**RG-5, deactivated competitor:** a deactivated Shop-B register neither grants Shop B (`scopeB` 0
+rows) nor blocks Shop A's legitimate line (`scopeA` 1 row, in 30.00). Claim (2) holds in both directions.
+
+**RG-6, unscoped regression:** on the shared-account fixture the unscoped read is unchanged
+(2 rows, in 10.00 / out 25.00).
+
+**Short-circuit — the "byte-unchanged" claim is literally FALSE, semantically true.** The unscoped
+SQL now carries an extra `and not exists (select 1 where 1 = 0)`. Verified on **real PostgreSQL 16.10**
+(`autoerp_postgres`) that the construct is valid (`select 1 where 1 = 0` → 0 rows) and that the
+planner reduces it to `InitPlan → Result → One-Time Filter: false`, evaluated once at zero cost.
+Behaviour and plan cost are unaffected; only the wording should be corrected (NOTE-1).
+
+**Performance (item 1, EXISTS-in-EXISTS).** `EXPLAIN (ANALYZE, BUFFERS)` of the scoped journal-leg
+shape against a real local tenant DB (`tenant019fbe86-…`: 3 947 `journal_lines`, 131
+`payment_repositories`, ~6x the 630-movement live shape) — PostgreSQL compiles BOTH correlated
+subqueries into **hash semi-join / anti-join** over a 131-row seq scan (`shared hit=5`), not a
+per-row loop. `Execution Time: 0.236 ms`. Non-issue.
+
+## Adjudication — their open edge (register-less location)
+
+**Their reading is CORRECT; keep it as-is. Do not touch `isUnrestricted()` for this.**
+
+RG-7 pins what actually differs. Fixture: Shop A + Shop B (each with a register on the shared Cash
+account) + a register-less Warehouse, one shared-account `expense_settlement` (25.00 out) and one
+pure advance (7.00 in, NULL `payments.location_id`):
+
+```
+[RG-7] strict A+B   count=1  totals={"EUR":{"in":"0.00","out":"25.00","net":"-25.00"}}
+[RG-7] unscoped     count=2  totals={"EUR":{"in":"7.00","out":"25.00","net":"-18.00"}}
+```
+
+The strict "all register-owning branches" scope **admits** the shared-account journal line (every
+owner is in scope → the fail-closed clause is satisfied) and **hides** the pure advance. So the
+strict-vs-unrestricted delta is entirely the **pre-existing NULL-location *payments* convention**,
+not a new journal-leg inconsistency introduced by the guard.
+
+Teaching `LocationScopeBoundary::isUnrestricted()` a "register-owning locations" notion would leak
+cash-report-specific semantics into a helper shared by aged-AR/AP, upcoming-payments,
+`CashPositionController` and `PaymentInstrumentController`, silently moving four other surfaces —
+and it would collide with residual `(a)`, whose fix changes `isUnrestricted()` for the whole family.
+**Verdict: docblock note + the line already in residual `(d)`. No code change, no new ticket.**
+
+## MTP-MLC-08 split — accepted
+
+Both round-1 objections are answered. `:560-563` asserts Σ of the scoped `meta.total` > 0, so three
+empty payloads can no longer satisfy the case (my MAJOR blackout hole). `:569-573` asserts
+Σ counts ≤ unscoped count and `:604-617` Σ per-currency-per-leg totals ≤ All, both off `meta`, which
+`generate()` computes over the whole filtered set (`CashMovementsReportService.php:118-150`) — so the
+falsifying half is genuinely page-independent. Per-scope distinctness (`:681-687`) replaces the weak
+`every(...).toBe(false)`. The row-level half is gated on a real `last_page === 1` window and
+**annotated, not skipped**, when unavailable. Their live falsifiability run (Σ 1890 > 630 against a
+dev stack lacking the fix) is exactly the right evidence.
+
+**Spec-diff containment confirmed:** two adjacent hunks, `@@ -496,24 +496,80 @@` and
+`@@ -533,72 +589,103 @@`, both entirely inside MTP-MLC-08 (test starts `:494`, file ends `:712`).
+MLC-01..07 (`:83,148,203,267,335,379,459`) and the file header are untouched.
+
+## Ticket fidelity — confirmed
+
+`docs/superpowers/tickets/2026-08-06-l3-cash-scope-residuals.md` carries probe F verbatim (`:28-31`)
+and probe G verbatim (`:53-57`), and both `LocationScopeBoundary` fix shapes (`:40-43`: compare
+against all company locations à la `allCompanyLocationIds():72-80`, OR keep the explicit list and add
+`orWhereNull` like `CashPositionController.php:89-93`). Residuals (c) dead column, (d) unattributed
+bucket, (e)/(f) web items are all present and accurately cited.
+
+## New, non-blocking notes from this round
+
+- **NOTE-1 [MINOR, wording].** `33842c147`'s message and the docblock say the unrestricted read's
+  "SQL is unchanged". It is not — it gains `and not exists (select 1 where 1 = 0)`. Say
+  "semantically unchanged (a constant-false no-op the planner folds)". Proven safe on PG 16.10 above.
+- **NOTE-2 [IMPORTANT — pre-launch DATA task, not a code defect].** On real data the guard makes the
+  journal leg contribute *nothing* under any branch scope until registers are located. In the local
+  tenant DB `tenant019fbe86-…`, of the cash-type repositories **126 share ONE `gl_account_id` and ALL
+  126 have `location_id IS NULL`**:
+  ```
+  gl_account_id                        | owners | distinct locations | null locations
+  24d2d5fb-8bfc-4734-93e7-e945c6d16072 |    126 |                  0 |            126
+  ```
+  Correct and fail-closed, but tenant #1's four branch cash views will show **payment-backed cash
+  only**, and Σ(branches) will fall materially short of the company view. Add a pre-launch task —
+  assign `payment_repositories.location_id` for each of the 4 branches' registers — to residual (d)
+  or the launch runbook, so the shortfall is a known state rather than a support ticket.
+- **NOTE-3 [MINOR].** `RepositoryType::Virtual` is outside `CASH_REPOSITORY_TYPES:54-58`, so a virtual
+  repository at another branch pointed at a real cash account neither grants nor blocks (RG-4:
+  scope A still reports the shared-account 25.00). Symmetric with the scope EXISTS and currently
+  unreachable (the backfill maps Virtual→Bank), but worth one line in residual (c).
+- **NOTE-4 [trivia].** 8 vitest across the two cash-movements files, not 9.
+
+**Cleared for merge.** None of NOTE-1..4 blocks; NOTE-2 is a deploy-data prerequisite, not a code change.
