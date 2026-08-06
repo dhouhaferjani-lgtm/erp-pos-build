@@ -105,6 +105,70 @@ toast + focus + `shouldFocusError:false` *pairing* into a `useBlockedSubmitFeedb
 
 ---
 
+## Cross-lane — `apps/web/src/lib/api.ts` residuals (owned by the media lane)
+
+Recorded here because both round-2 gates flagged that this hand-off existed only verbally, and
+"a verbal lane assignment with no written ticket is how this batch's originating bug survived for
+days" (import gate R2-2). `api.ts` is owned by `fix/client-bugs-media-onboarding`; the partners lane
+must not touch it. Nothing below blocks this branch.
+
+### X1 — the 419 CSRF auto-retry is unreachable (assigned: media lane)
+`apps/web/src/lib/api.ts:190-202` retries a 419 after refreshing the CSRF cookie, but the whole
+interceptor block is gated on `isApiError(error)` (`api.ts:50-56`), which requires
+`response.data.error !== undefined`. Laravel emits no render handler for `TokenMismatchException`,
+so a 419 body is the framework default `{"message":"CSRF token mismatch."}` — no `error` key —
+`isApiError` returns **false**, and the retry never runs.
+
+The media lane's fix hoists the 419 handling **above** the `isApiError` gate. Two consequences for
+the import wizard when that lands:
+1. A transparently-retried 419 stops surfacing at all, so `wizard.upload.sessionExpired` will fire
+   only for genuinely dead sessions. That is the desired end state; no wizard change needed.
+2. See X2 — the same repair is the trigger for the sentinel coupling.
+
+### X2 — `INTERCEPTOR_NETWORK_ERROR` string-couples to an `api.ts` literal, and breaks SILENTLY
+`apps/web/src/features/import/pages/ImportWizardPage.tsx:55` holds
+`const INTERCEPTOR_NETWORK_ERROR = 'network error'`, compared at `:100` against
+`error.message.toLowerCase()`. The literal it mirrors is
+`new Error('Network error')` at **`apps/web/src/lib/api.ts:168`** — a different file, a different
+lane, with no import and no shared constant between them.
+
+**The failure is silent by construction.** If that message is ever retitled (e.g. to
+"Network request failed"), no test anywhere goes red: the wizard test at
+`ImportWizardPage.uploadErrors.test.tsx` constructs its **own** `new Error('Network error')` rather
+than driving the real interceptor, so it keeps passing while production quietly degrades network
+failures back to `parseError` — BUG-004, partially reinstated. The degradation is to today's
+behaviour rather than to something worse, which is the only reason this is not urgent.
+
+**Ruling, from the FE gate (R2.6) — prefer DELETION over maintenance:**
+> "If `isApiError` is ever repaired, prefer deleting the sentinel over keeping the coupling."
+
+So the intended lifecycle is: media lane repairs `isApiError` into a plain axios guard → `api.ts:168`
+becomes reachable *or* is removed outright → whoever lands that **deletes**
+`INTERCEPTOR_NETWORK_ERROR` and its branch from `ImportWizardPage.tsx`, rather than exporting the
+literal from `api.ts` to keep the two ends in sync. The branch exists purely to make the taxonomy
+survive a refactor that has not happened yet; once it has happened, it is dead weight with a
+silent-breakage mode.
+
+Whoever edits `api.ts:168` or `isApiError`: grep for `INTERCEPTOR_NETWORK_ERROR` first.
+
+### X3 — the 401 `sessionExpired` toast is usually destroyed before it is read (import gate R2-3)
+`redirect` is `window.location.assign` (`api.ts:91-93`), called synchronously at `:111` before the
+rejection propagates — a full document navigation that tears down the SPA and the sonner
+`<Toaster>`. The wizard's `toast.error` then fires in a microtask against a dying document. The
+classification is still right, and the message the operator needed ("sign in again") is delivered by
+the redirect itself; and because `redirectedToLogin` is a module-level once-guard (`api.ts:88`,
+`:109-111`), a **second** 401 in the same document does not redirect — there the toast is the only
+feedback and the branch is load-bearing. Recorded so nobody later "fixes" the 401 branch believing
+the toast is what the operator reads. 419 has no race at all (`handleUnauthorized` is 401-only).
+
+### X4 — the "probably fine" regression guard is `en`-only (import gate R2-4)
+`ImportWizardPage.uploadErrors.test.tsx` asserts the softened `serverError` copy against `en` only.
+`fr` was updated correctly (verified: no "probablement correct" remains), but nothing stops a future
+`fr` retranslation reintroducing the false assurance. **Fix:** one `it.each(['en','fr'])` with a
+per-locale forbidden-phrase list.
+
+---
+
 ## Known-red at `fe0df479e` (branch hygiene — not introduced by this batch)
 
 Base-verified by both the implementer and the FE gate on a detached worktree at `fe0df479e`:

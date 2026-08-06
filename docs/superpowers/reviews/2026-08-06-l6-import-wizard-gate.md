@@ -97,3 +97,81 @@ Verified empirically by reverting `ImportWizardPage.tsx` to `a8c2c9ff8^`: the 50
 
 ## One line to fix before merge
 Add `sessionExpired` (401/419) and `tooLarge` (413) keys to `describeUploadFailure`, and pin the `networkError` branch against the dead `api.ts:167-168` reject so a future `isApiError` cleanup can't silently restore the masking.
+
+---
+
+# Round 2 — re-verification of `34a920e13`
+
+- **Commit:** `34a920e13` "fix(import): import gate F1/F2/F3 — stop the taxonomy asserting causes it cannot know"
+- **Scope re-checked:** the three required items, the `serverError` copy, the catalog tests, the boundary comment, blast radius. Nothing else re-litigated.
+- **VERDICT: CLEAR TO MERGE (imports half).** All three required items land correctly. Four Minor residuals below, none blocking; two are already ticketed (T7/T8).
+
+## Required items — status
+
+### F1 (401/419 → sessionExpired) — LANDED, verified
+`ImportWizardPage.tsx:88-90`. Copy: "Your session expired. Sign in again, then re-upload the file." (`en/import.json:122`, `fr:122`). Red-first confirmed empirically — see the table below.
+
+**Answer to the redirect-race question, which splits by status:**
+- **419 has no race.** `handleUnauthorized` is called only for `status === 401` (`api.ts:175-183`), so a 419 never redirects. The toast is the operator's *only* feedback, and it now correctly says "session expired" instead of `HTTP 419`. Fully visible, unambiguously better. The classification is also self-consistent with the interceptor: `isApiError` (`api.ts:50-56`) returns false for Laravel's bare `{"message":"CSRF token mismatch."}`, the whole interceptor block is skipped, and the raw AxiosError re-rejects at `api.ts:210` with `status === 419` intact.
+- **401 does race, and the toast usually loses.** `redirect` is `window.location.assign(path)` (`api.ts:91-93`), invoked synchronously at `api.ts:111` *before* the rejection propagates — a full document navigation that tears down the SPA and the sonner `<Toaster>`. The wizard's `catch` then fires `toast.error` in a microtask, so on the first 401 in a document the `sessionExpired` toast will very likely never be read. This does **not** make the change wrong: (a) the classification is correct regardless, (b) the message the operator needed ("sign in again") is delivered by the redirect itself, and (c) `redirectedToLogin` is a module-level once-guard (`api.ts:88`, `:109-111`), so a *second* 401 in the same document does not redirect — and there the toast is the only feedback and the fix is load-bearing. Recorded as Minor R2-3, not a blocker; the redirect behaviour is `api.ts`-owned.
+
+### F2 (413 → tooLarge) — LANDED, verified
+`ImportWizardPage.tsx:91-93`. Copy: "The file is too large for the server to accept. Split it into smaller files, or ask your administrator to raise the upload limit." (`en:123`) — names the cause the FE *can* establish and gives an action that can succeed. The superseded `413 → serverError:413` case was correctly deleted rather than left contradicting the new one.
+
+### F3 (network sentinel) — LANDED, and the deviation is CORRECT — **it is an improvement on my relayed wording, not a compromise**
+`ImportWizardPage.tsx:46-56` (`INTERCEPTOR_NETWORK_ERROR` + the coupling doc-comment) and `:97-99` (the check).
+
+Confirming explicitly, since I'm asked to: **yes, this is what my record meant.** Round 1 offered two acceptable forms — delete the unreachable `api.ts:167-168`, *or* "have `describeUploadFailure` also recognise the sentinel". This is the second, verbatim. The implementer's argument for narrowing to the exact sentinel rather than "any bare `Error`" is not merely defensible, it is *more* correct than the wording relayed to them: an `any-bare-Error → networkError` rule would classify a genuine client-side throw (the `TypeError('headers is not iterable')` case) as a network failure — which is itself asserting a cause the frontend cannot know, i.e. the exact defect class this whole gate exists to eliminate. That case still asserts `parseError` and still passes.
+
+**Does it make the accident survivable? Yes.** I re-checked both ends of the coupling:
+- `api.ts:168` constructs `new Error('Network error')`; the constant is `'network error'` and the comparison is `error.message.toLowerCase() === INTERCEPTOR_NETWORK_ERROR` (`ImportWizardPage.tsx:97`) — matches.
+- The axios branch now returns exhaustively (a new `return t('wizard.upload.parseError')` at `:95` closes it), so the sentinel check is reached only by non-axios errors. No overlap, no reordering hazard.
+- So if the media lane repairs `isApiError` into a plain axios guard and `api.ts:167-168` activates, the bare `Error` that then arrives classifies as `networkError` — behaviour preserved across the change, which is precisely what the accident needed.
+
+## Red-first — verified empirically, claim is accurate
+
+Reverted `ImportWizardPage.tsx` + `en/import.json` + `fr/import.json` to `34a920e13^`, keeping the new tests:
+
+```
+× 401 → sessionExpired          × 419 → sessionExpired
+× 413 → tooLarge                × network sentinel → networkError
+× catalog en (sessionExpired missing)   × catalog fr (sessionExpired missing)
+× serverError not-"probably fine"
+✓ 500 → serverError   ✓ network (no response)   ✓ 422 → parseError   ✓ TypeError → parseError
+Tests  7 failed | 4 passed (11)
+```
+
+All seven new/changed assertions are genuinely red on the parent; the four carried-over cases stay green (correct — they pin unchanged behaviour). On HEAD: **11/11 pass**. Files restored, `git status` clean.
+
+## Catalog tests — yes, this is the assertion I wanted
+
+`ImportWizardPage.uploadErrors.test.tsx:216-247`. It resolves all five keys from the **real** `en`/`fr` `import.json` and asserts `new Set(messages).size === 5`. That is exactly the discrimination property from the retro principle, and it closes Round 1's F7 (a typo'd key could previously ship raw because `t` is stubbed to echo).
+
+Worth stating why the composition is sound rather than just the Set assertion: the component tests pin **branch → key** (with negative assertions that the *other* keys were not used), and the catalog tests pin **key → distinct real string**. Together those compose to "each branch produces a distinct operator-visible message" without needing a full i18n-instance render. The extra `serverError` guard (`:238-247`) — `not.toMatch(/probably fine/i)` plus `toContain('{{status}}')` — is a good touch: it pins both the removal of the false claim and the retention of the diagnostic code.
+
+## Minor residuals (none blocking)
+
+### [Minor] R2-1 — the sentinel coupling is one-directional and can break silently
+`ImportWizardPage.tsx:56` matches a string literal owned by `api.ts:168`. If the media lane edits that message text (e.g. to "Network request failed"), the coupling breaks with **no test failure anywhere** — the wizard test constructs its own `new Error('Network error')`, so it keeps passing while production silently degrades. The degradation is to `parseError`, i.e. today's behaviour rather than something worse, which is why this is Minor. Mitigation: export the sentinel from `api.ts` and import it (2 lines, but touches a file this lane must not), or note the coupling in the media lane's ticket. See R2-2.
+
+### [Minor] R2-2 — the `api.ts` interceptor root cause has no artifact in the repo
+The coordinator states the 419 auto-retry defect is assigned to the media lane that owns `api.ts`. I could not verify that assignment: grepping `docs/` finds `isApiError` mentioned only in passing inside T7 (`2026-08-06-l6-partners-followups.md:85`, about the `AxiosError<ApiError>` type lie), and nothing anywhere records (a) that the 419 auto-retry at `api.ts:191-202` is unreachable, or (b) the sentinel coupling from R2-1. A verbal lane assignment with no written ticket is how this batch's originating bug survived for days. Suggest a one-paragraph ticket before merge or immediately after.
+
+### [Minor] R2-3 — the 401 `sessionExpired` toast is usually destroyed by the redirect
+See the F1 answer above. `api.ts`-owned; no change wanted in this lane. Noted so nobody later "fixes" the 401 branch believing the toast is what the operator reads.
+
+### [Minor] R2-4 — the "probably fine" regression guard is `en`-only
+`ImportWizardPage.uploadErrors.test.tsx:238-247` asserts only against `en`. The `fr` copy was correctly updated too (verified: `grep -c "probablement correct" fr/import.json` → 0), but nothing prevents a future `fr` retranslation from reintroducing the claim. One extra `it.each(['en','fr'])` with a per-locale forbidden-phrase list would close it.
+
+### [Minor] R2-5 — one new lint warning, in the test file only
+`ImportWizardPage.uploadErrors.test.tsx:224` — `@typescript-eslint/no-unsafe-type-assertion` on the dynamic JSON-import cast. `ImportWizardPage.tsx` is unchanged at 21 warnings, all pre-existing; 0 errors across both files. Acceptable for a dynamic `import()` of JSON in a test.
+
+## Re-confirmed unchanged
+
+- **Blast radius still nil.** 4 files; `api.ts` untouched (verified — the commit's file list is the wizard page, its test, and the two locale catalogs). No staging/mapping/commit error surface touched. No opening-balance / number-normalization / price-resolution / opening-stock / `imports.manage` code in the diff.
+- **F4 → ticketed as T7** (`PARSE_FAILED` typed code). **F5 → ticketed as T8** (same-file re-select is a no-op). Both carried faithfully.
+- **Boundary comment** at `ImportWizardPage.tsx:594-609` states the equality I verified in Round 1 (client `10*1024*1024` B == server `max:10240` KB == 10,485,760 B) and names the exact failure mode if it diverges. This is the right artifact — the risk was that the equality was undocumented, not that it was wrong.
+- **F6/F7** (Round 1 Minors) — F7 is now closed by the catalog tests; F6 was cosmetic and the new commit message describes its red-first set accurately.
+
+## One line
+Nothing blocking — file a short ticket for the `api.ts` interceptor residuals (419 dead retry + the `Error('Network error')` sentinel coupling) so the media lane inherits them in writing rather than verbally.

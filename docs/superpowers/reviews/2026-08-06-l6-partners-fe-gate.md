@@ -380,3 +380,195 @@ than the code delivers" gap of exactly the kind this batch exists to punish. **m
 ticketed.
 
 No commit, push or merge performed by this review.
+
+---
+
+# ROUND 2 — narrow re-verification of the fix round
+
+**Range:** `git diff a8c2c9ff8..HEAD` — 6 commits, HEAD `5747708bb`. **Date:** 2026-08-06.
+**Scope:** only the items this gate raised (M1, m1–m9, Q3) plus regression sanity. Not a re-review
+of round 1.
+
+## VERDICT: CLEAR TO MERGE (FE half)
+
+All round-1 items are closed or honestly ticketed. Zero new findings at BLOCKER/MAJOR/MINOR.
+
+---
+
+## R2.1 Gates re-run
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @autoerp/web typecheck` | clean |
+| `pnpm --filter @autoerp/web lint` | **0 errors** (6519 warnings, pre-existing class) |
+| `audit:keys` | Gate C **0 new**, 0 stale |
+| `audit:design-system` | **743 acknowledged, 0 new, 0 stale** — unchanged from round 1, so the new `Checkbox` + label markup introduced no violation |
+| `audit:quantity` | 0 total |
+| eslint-rules RuleTester | 3 rules pass |
+| `npx eslint` on the 10 changed files | **0 errors** (47 warnings, all `no-unsafe-type-assertion` / `no-unnecessary-condition` on pre-existing lines) |
+| `npx vitest run src/features/partners src/features/import` | **18 files / 140 tests passed** |
+| `npx vitest run src/features/inventory src/lib` | 403 passed / **3 failed — the same three known-red** (`tenantScope` ×2, `StockByLocationPage` ×1) |
+| `phpunit tests/Feature/Partner/` | **138 tests, 566 assertions, OK** (4 skipped) |
+
+No baseline file appears in `git diff --stat a8c2c9ff8..HEAD`. Suppression grep over the round-2
+diff: zero hits.
+
+---
+
+## R2.2 M1 — CLOSED via the preferred route, and it actually persists
+
+The toggle is real end-to-end, not a decorative control. Verified each link in the chain:
+
+- **Atom, not a raw control.** `PartnerForm.tsx:802` uses `<Checkbox id="is_active" {...register('is_active')} />`
+  from `components/atoms/Checkbox/Checkbox.tsx`, whose docblock lists exactly this RHF pattern.
+  `type="checkbox"` is hardcoded inside the atom and `type` is `Omit`ted from its props, so it cannot
+  be overridden; `forwardRef` keeps `register`'s ref intact (props carry no `ref` under `forwardRef`).
+  Design-system audit confirms 0 new violations.
+- **Types + default.** `PartnerFormData.is_active: boolean` (`:109`), `Partner.is_active: boolean`
+  (`:58`), `defaultValues.is_active: true` (`:232`) with the model default cited.
+- **Seeded on edit.** `:341` `is_active: partner.is_active` inside the `reset()` payload. The read
+  side always supplies it: `PartnerData.php:49` declares `public bool $is_active` (non-nullable) and
+  `:97` fills it — so there is **no silent-deactivation risk** from an absent field.
+- **Persists.** `onSubmit` spreads the whole form data; `apiPost('/partners', data)` (`:374`) and
+  `apiPatch('/partners/'+id, data)` (`:386-387`). Backend: `CreatePartnerRequest.php:97` and
+  `UpdatePartnerRequest.php:103` both `['sometimes','boolean']`; `Partner.php:134` has `is_active`
+  in `$fillable`; `store` mass-assigns `...$validated`, `update` calls `$partnerModel->update($validated)`.
+  **Confirmed: no backend change was needed.**
+- **Three red→green cases** (`partnerIsActiveToggle.test.tsx`): create defaults to `is_active: true`
+  in the POST body (`:122-139`); an inactive partner renders unchecked and reactivation round-trips
+  through PATCH (`:141-169`); and **the exact deactivation path the blocked toast points at** —
+  active partner → untick → `PATCH … { is_active: false }` (`:171-199`).
+- **Role gating is correct, and it is the FORM's gate, not a separate one — which is right.**
+  The edit route is `RequirePermission permission="contacts.update"` (`routes/index.tsx:548`);
+  the backend PATCH is `can:partners.update` (`Partner/routes.php:47`). `contacts.update` =
+  `['admin','manager']` is a strict **subset** of `partners.update` = `['admin','manager','operator']`
+  (`hooks/permissionsMap.generated.ts:45,143`), so everyone who can open the form can also save it —
+  no 403 trap. `UpdatePartnerRequest::authorize()` returns `true` and adds no per-field rule, so a
+  separate FE gate on the toggle would have been *stricter than the backend*, i.e. wrong. Correct call.
+- **ar spread hazard survives.** `isActive` / `isActiveHint` are scalars directly under `partners`,
+  so the shallow `...arSales.partners` spread cannot drop an en fallback the way it would for a
+  nested object — and both keys are present anyway (`ar/sales.json:96-97`). All five
+  `partners.delete.*` keys still present in ar. Re-verified by parsing the JSON, not by eyeballing.
+
+The `blocked` copy ("Deactivate it instead") is now **true**. M1 closed.
+
+---
+
+## R2.3 m1 — CLOSED
+
+`partnerListRouteType.test.tsx:193-205` now asserts `key[0] === 'partners'`, `key[1] === 'customer'`,
+`key.at(-2)/at(-1)` for tenant/company, and the substring check is **removed**. The comment records
+why the old form locked nothing. Correct fix, and the only removal in the round-2 test diff besides
+R2.6's replaced 413 case.
+
+---
+
+## R2.4 m2 — CLOSED, and their honesty check holds under mutation
+
+The fix is `shouldFocusError: false` at `ProductForm.tsx:204` with the mechanism documented.
+I did not take the new fixture on trust — I ran **two mutations** in a throwaway detached worktree at
+`HEAD` (removed afterwards):
+
+**Mutation A — neuter `focusFirstInvalidField` (early `return null`):**
+```
+× formErrors.rhf.test.tsx > stays authoritative when shouldFocusError is disabled   FAIL
+✓ formErrors.rhf.test.tsx > is OVERRIDDEN by react-hook-form when shouldFocusError is left on
+× ProductFormInvalidSubmit > all 3 cases                                            FAIL
+```
+So the fixture's "fix" branch is genuinely pinned to the helper — it is not passing because jsdom
+happened to focus `beta`. And its "defect" branch correctly stays green, because it asserts RHF's
+behaviour, which does not depend on our helper.
+
+**Mutation B — flip `shouldFocusError` back to `true` in `ProductForm.tsx`:**
+```
+✓ ProductFormInvalidSubmit.test.tsx (3 tests)   — including the new multi-error case
+✓ formErrors.rhf.test.tsx (2 tests)
+```
+**Their disclosure is exactly right.** The new `ProductForm` multi-error case *does* pass without the
+fix, because `ProductForm` registers in DOM order today so RHF's pick coincides — and they label it
+in-file as `NOTE ON STRENGTH: this case is a REGRESSION GUARD, not a red-first test`, pointing at
+`formErrors.rhf.test.tsx` for the discriminating proof. That is the correct handling of a
+non-discriminating test: keep it (it fails the day a field is added out of DOM order, on the real
+form) and put the truth in the label. The fixture at `formErrors.rhf.test.tsx:32-55` forces the two
+orders apart deliberately (registers `alpha` then `beta`, renders `beta` then `alpha`) and waits out
+RHF's deferred `setTimeout(_focusError)` before asserting.
+
+---
+
+## R2.5 m4 / m7 / Q3 — CLOSED
+
+- **m4:** `PartnerReferenceCounter.php:9-36` now opens with "Counts rows in THREE specific tables",
+  names all thirteen uncovered tables, states the Otospex work-order / voucher consequence in the
+  open, points at the ticket, and records the rule-6 constraint verbatim ("must not grow further
+  without a `Shared/Contracts` reader owned by the module that owns the table"). The scope claim is
+  now honest; the gap is ticketed as T1 with the constraint attached.
+- **m7:** `PartnerDetailPage.tsx:262-266` — non-409 failures now `console.error` the raw error and
+  toast `t('sales:partners.delete.failed', { entity })`. `getErrorMessage` import dropped. The
+  previously-unused key is now wired; no raw English server string reaches the operator.
+- **Q3:** `PartnerListPage.tsx:160-173` — the comment no longer claims a "wider change". It states
+  the real reason (three consumers; the difficulty is semantic — `defaultFilters` is a fresh literal
+  each render, so re-seeding needs a previous-defaults ref), documents the m3 page-reset side effect,
+  and cites the ticket. This is the correction I asked for, applied verbatim.
+
+---
+
+## R2.6 Import commit `34a920e13` — strengthens BUG-004, does not disturb it
+
+Adjacent-scope (same file, same bug) and strictly additive to the taxonomy I verified in §3:
+401/419 → `sessionExpired`, 413 → `tooLarge` (correctly ordered *before* the generic
+`status !== 422`), plus a defensive branch for the interceptor's bare `Error('Network error')`.
+The 422 → `parseError` invariant and the `console.error` are untouched.
+
+**The removed 413 test was replaced, not dropped:** `ImportWizardPage.uploadErrors.test.tsx:171`
+asserts `tooLarge`, `:152` covers 401/419 via `it.each`, `:194` covers the sentinel, `:237` asserts
+the copy no longer claims the file is fine, and `:214-235` is a catalog test asserting all five
+taxonomy keys exist in **en and fr with distinct copy**. Locale re-parsed: en and fr `wizard.upload`
+now both hold `{parseError, serverError, networkError, sessionExpired, tooLarge}`;
+`ar/import.json` still has **no `wizard` key**, so ar inherits the whole subtree from en via
+`i18n.ts:366`. Inheritance claim still true after the change.
+
+*Observation, not a finding:* the `INTERCEPTOR_NETWORK_ERROR` branch string-matches an error message
+against a literal in `api.ts` for a refactor that has not happened. It is documented, harmless, and
+unreachable today. If `isApiError` is ever repaired, prefer deleting the sentinel over keeping the
+string coupling.
+
+---
+
+## R2.7 Ticket `2026-08-06-l6-partners-followups.md` — T1–T10 complete and accurate
+
+Every deferred item is present with the right file, the right diagnosis and the gate's constraint:
+T1←m4, T2←m8, T3←m3, T4←Q3 (with the sizing corrected to three named consumers), T5←m5, T6←m9,
+T9←Q4, plus the import gate's T7/T8. The known-red table records all three pre-existing failures
+**including the `arLocaleCoverage` ×3 I flagged as undisclosed (m6)**, attributed as such.
+Spot-checked for hallucination: the ticket says the inventory failures are the `locations` and
+`product-movements` key shapes — the actual assertion diffs are
+`expected [ 'locations', …(3) ]` and `expected [ 'product-movements', 'prod-1', …(6) ]`. Accurate.
+
+**T10 (IBAN flake) — reasoning spot-checked and sound.** The reported failure
+("Unable to find an accessible element with the role `option` and name /Amen Bank CFCTTNTT/i")
+maps exactly to `PartnerForm.test.tsx:337-340`, a `waitFor` around an async-loaded bank option —
+so "the banks query did not resolve inside the `waitFor` budget" is the right mechanism, and the
+default 1 s budget under heavy multi-directory load is a plausible trigger. Their control experiment
+is the correct one (revert `PartnerForm.tsx` to `a8c2c9ff8`; flake persists; the failing assertion is
+on a dropdown the toggle does not touch). Consistent with my own observations: green in 2 solo runs
+of `partners.test.tsx`, green in 2 full `src/features/partners` runs (119 and 140 tests). Not caused
+by this branch. Their proposed fix (`findByRole` / longer timeout / seed the query) is right.
+
+---
+
+## R2.8 Weakening, scope creep, hygiene
+
+- **Removals in the round-2 test diff:** exactly two — the substring key assertion (replaced by two
+  stronger positional ones) and the 413 case (replaced by a more specific one). **Nothing weakened.**
+- **Commit hygiene held:** one concern per commit, disjoint file sets — `2b54e3d94` M1,
+  `cf021464c` m1, `1e2dc467a` m2, `e7066db35` m4/m7/Q3, `34a920e13` import F1–F3, `5747708bb` docs.
+  Cherry-pickable.
+- **No scope creep:** every source change traces to a gate item or the sibling import gate. No new
+  feature surface beyond the `is_active` control the gate demanded.
+- **Working-tree note:** `docs/superpowers/reviews/2026-08-06-l6-import-wizard-gate.md` shows as
+  modified in the worktree — that is the sibling reviewer's file, not mine, and not part of this
+  assessment. This Round-2 section is appended uncommitted.
+
+## Remaining blockers: NONE (FE half)
+
+T1–T10 are ticketed and none gates the merge. No commit, push or merge performed by this review.
