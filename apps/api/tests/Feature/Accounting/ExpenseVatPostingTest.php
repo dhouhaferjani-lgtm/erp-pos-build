@@ -211,10 +211,20 @@ final class ExpenseVatPostingTest extends TestCase
             $this->expectedLine(SystemAccountPurpose::GeneralExpense, null, '119.000', '0.000', 'VAT Vendor', 0),
             $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '119.000', 'Expense payable', 1),
         ], $this->linePayloads($entry));
-        $this->assertSame('0.000', DocumentTaxDetail::query()
+        $detail = DocumentTaxDetail::query()
             ->where('document_id', $expense->id)
-            ->firstOrFail()
-            ->tax_amount);
+            ->firstOrFail();
+        $this->assertSame('0.000', $detail->tax_amount);
+        // I-3 (2026-08-06 gate,
+        // docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
+        // a fully non-deductible expense STILL declares the full facial
+        // subtotal as tax_base (only tax_amount goes to 0.000) -- this
+        // pins the CURRENT writer behaviour, not a resolved decision. The
+        // ticket only discusses the 80%-deductible case; the 0% case is
+        // outside its stated scope and an owner/expert ruling on it is
+        // still PENDING (see the writeDeductibleVatSnapshot() docblock).
+        // This assertion may need to flip once that ruling lands.
+        $this->assertSame('100.000', $detail->tax_base);
     }
 
     public function test_vatless_expense_keeps_the_exact_legacy_two_line_shape_and_has_no_tax_detail(): void

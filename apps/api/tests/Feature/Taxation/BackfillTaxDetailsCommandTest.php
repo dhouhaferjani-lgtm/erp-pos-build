@@ -17,13 +17,16 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Enums\TaxType;
+use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
 
@@ -358,6 +361,315 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
         $this->assertSame('100.000', $detail->tax_base);
         $this->assertSame('19.000', $detail->tax_amount);
+    }
+
+    /**
+     * Gate finding I-1 (2026-08-06,
+     * docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
+     * document_tax_details has no unique index on (document_id,
+     * sequence_order), and the PRE-V5 firstOrCreate writer could leave TWO
+     * rows in the writer's sequence_order=1/is_stamp_duty=false slot for
+     * the same document. `->first()` on that slot is nondeterministic and
+     * silently mis-remediates. The leg must detect the duplicate, skip the
+     * document, and report it explicitly -- never guess which row to fix.
+     */
+    public function test_expense_leg_skips_and_reports_a_document_with_duplicate_sequence_order_one_rows(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-DUPLICATE-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Duplicate Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+        // Row A: whole-subtotal base (an even older shape).
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '100.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now()->subDay(),
+        ]);
+        // Row B: the V5 deductible-proportion base -- a re-post left this
+        // SECOND row in the same slot instead of replacing row A.
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        // Both fragments are on the SAME output line (the warn() call), so
+        // Artisan::output() + assertStringContainsString is used instead of
+        // chaining two expectsOutputToContain() calls -- chaining against
+        // the same already-matched line is unreliable (see the sibling
+        // comment on test_skips_a_document_whose_recomputed_total_would_differ_from_the_signed_total above).
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('SKIPPED EXP-DUPLICATE-0001', $output);
+        $this->assertStringContainsString('2 rows at sequence_order=1', $output);
+
+        $this->assertCount(2, DocumentTaxDetail::where('document_id', $document->id)->get());
+        // Both untouched -- neither guessed at.
+        $rowA = DocumentTaxDetail::where('document_id', $document->id)->where('tax_base', '100.000')->firstOrFail();
+        $rowB = DocumentTaxDetail::where('document_id', $document->id)->where('tax_base', '80.000')->firstOrFail();
+        $this->assertSame('100.000', $rowA->tax_base);
+        $this->assertSame('80.000', $rowB->tax_base);
+    }
+
+    /**
+     * Gate finding I-2: `vat_period_breakdowns` is a materialized snapshot
+     * taken at period CLOSE (VatPeriodManagementService::persistBreakdowns
+     * / closePeriod). The leg only touches `document_tax_details`, so a
+     * rewritten expense whose document_date falls inside an already-CLOSED
+     * period leaves that period's frozen breakdown stale. The leg must
+     * name the affected period and instruct the operator to reopen +
+     * re-close it -- and must NOT do so automatically.
+     */
+    public function test_expense_leg_reports_a_reopen_and_reclose_instruction_for_an_affected_closed_period(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+        ]);
+
+        // 'January 2026' / 'reopen' / 're-close' all land on the SAME
+        // warn() line -- see the note in the duplicate-rows test above.
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('January 2026', $output);
+        $this->assertStringContainsString('reopen', $output);
+        $this->assertStringContainsString('re-close', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('100.000', $detail->tax_base);
+    }
+
+    /**
+     * Gate finding I-3: 0%-deductible expenses now declare the full facial
+     * base with 0.000 deducted VAT -- a behaviour change outside the
+     * ticket's stated 80%-case scope, with an OWNER RULING STILL PENDING
+     * (see the writeDeductibleVatSnapshot() docblock). Interim, the leg
+     * must SKIP AND REPORT these rows rather than rewrite them.
+     */
+    public function test_expense_leg_skips_and_reports_zero_percent_deductible_rows_pending_owner_ruling(): void
+    {
+        $expense = $this->createLegacyExpense('0.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('0%-deductible: awaiting ruling, skipped 1')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        // Untouched -- the V5 shape for 0% deductible is base=0.000 (100.000 × 0%).
+        $this->assertSame('0.000', $detail->tax_base);
+        $this->assertSame('0.000', $detail->tax_amount);
+    }
+
+    public function test_expense_leg_apply_is_idempotent_on_a_second_run(): void
+    {
+        $expense = $this->createLegacyExpense('80.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('Rewrote 1')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('100.000', $detail->tax_base);
+
+        // Second run must find nothing left to fix -- the row is already
+        // at the full subtotal.
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('Rewrote 0')
+            ->assertSuccessful();
+
+        $detail->refresh();
+        $this->assertSame('100.000', $detail->tax_base);
+        $this->assertSame('15.200', $detail->tax_amount);
+    }
+
+    public function test_expense_leg_skips_and_reports_a_document_with_no_expense_metadata(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-NO-METADATA-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        // No ExpenseMetadata row at all.
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        // 'SKIPPED ...' and the reason share ONE warn() line -- see the
+        // note on the duplicate-rows test above.
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('SKIPPED EXP-NO-METADATA-0001', $output);
+        $this->assertStringContainsString('no expense_metadata row', $output);
+        $this->assertStringContainsString('Scanned 1', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $document->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    public function test_expense_leg_skips_and_reports_a_null_vat_deductible_percent(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-NULL-PERCENT-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Null Percent Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => null,
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '19.000',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('SKIPPED EXP-NULL-PERCENT-0001', $output);
+        $this->assertStringContainsString('vat_deductible_percent is null', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $document->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    public function test_expense_leg_skips_and_reports_a_null_subtotal(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-NULL-SUBTOTAL-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => null,
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Null Subtotal Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('SKIPPED EXP-NULL-SUBTOTAL-0001', $output);
+        $this->assertStringContainsString('stored subtotal is null', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $document->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    public function test_expense_leg_skips_when_expense_metadata_table_is_unavailable(): void
+    {
+        $this->createLegacyExpense('80.00');
+
+        Schema::drop('expense_metadata');
+
+        // No further teardown needed: this test runs inside RefreshDatabase's
+        // per-test transaction and PostgreSQL DDL is transactional, so the
+        // DROP TABLE is rolled back with everything else at test end.
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('expense_metadata table unavailable')
+            ->assertSuccessful();
     }
 
     /**

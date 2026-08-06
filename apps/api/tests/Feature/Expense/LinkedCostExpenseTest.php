@@ -348,10 +348,19 @@ final class LinkedCostExpenseTest extends TestCase
         $detailBase = (string) $detail->tax_base;
         /** @var numeric-string $detailRate */
         $detailRate = (string) $detail->tax_rate;
+        // Q2 ruling (docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md)
+        // decorrelates the declared base from the deducted VAT amount for a
+        // PARTIALLY-deductible expense -- base × rate == tax_amount is no
+        // longer a general contract. This fixture is 100% deductible
+        // (`vat_deductible_percent => '100.00'` above), where the full
+        // facial base and the (now-abolished) deductible-proportion base
+        // coincide, so the identity still holds HERE ONLY -- it pins the
+        // LinkedCost branch's arithmetic at 100% deductible, not a
+        // general base×rate contract.
         $this->assertSame(
             $detail->tax_amount,
             bcmul($detailBase, bcdiv($detailRate, '100', 6), 3),
-            'base × rate == tax_amount identity must hold on the LinkedCost branch too',
+            'at 100% deductible the full facial base and the deductible VAT amount coincide on the LinkedCost branch too',
         );
 
         // The declaration's INPUT side must now see this expense's VAT.

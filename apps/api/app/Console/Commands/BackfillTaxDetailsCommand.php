@@ -7,6 +7,8 @@ namespace App\Console\Commands;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
+use App\Modules\Taxation\Domain\Entities\VatPeriod;
+use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
@@ -89,8 +91,29 @@ use Illuminate\Support\Facades\Schema;
  *   attested fields, not derived from lines — this leg touches nothing
  *   that could desynchronize a signed value).
  * - Self-guarding: skips (does not throw) and reports any expense document
- *   missing expense metadata, missing a vat_deductible_percent, or with a
- *   non-numeric stored subtotal, rather than guessing.
+ *   missing expense metadata, missing a vat_deductible_percent, with a
+ *   null stored subtotal, or missing the `expense_metadata` table
+ *   entirely (m-5, 2026-08-06 gate), rather than guessing.
+ * - I-1 (2026-08-06 gate, docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
+ *   `document_tax_details` has NO unique index on (document_id,
+ *   sequence_order) — a pre-V5 `firstOrCreate`-written document can
+ *   legitimately carry TWO rows in this writer's sequence_order=1/
+ *   is_stamp_duty=false slot. The leg fetches ALL matching rows and, when
+ *   more than one exists, SKIPS the document and reports the duplicate
+ *   explicitly rather than picking one nondeterministically.
+ * - I-2 (2026-08-06 gate): `vat_period_breakdowns` is a MATERIALIZED
+ *   SNAPSHOT taken at period close (`VatPeriodManagementService::
+ *   persistBreakdowns()`/`closePeriod()`), which this leg does not touch.
+ *   After the scan, the leg looks up every CLOSED `VatPeriod` overlapping
+ *   a REWRITTEN expense's `document_date` and prints an explicit
+ *   REOPEN + RE-CLOSE instruction naming each affected period. It never
+ *   reopens or re-closes a period itself.
+ * - I-3 (2026-08-06 gate): a 0%-deductible expense (vat_deductible_percent
+ *   = 0.00) is OUT OF SCOPE for this leg pending an owner/expert ruling on
+ *   whether it should also declare the full facial base — see the
+ *   `writeDeductibleVatSnapshot()` docblock. The leg SKIPS AND REPORTS
+ *   0%-deductible rows via their own counter line rather than rewriting
+ *   them.
  * - DRY-RUN BY DEFAULT / --apply / --company, same contract as the main leg.
  */
 final class BackfillTaxDetailsCommand extends Command
@@ -266,6 +289,16 @@ final class BackfillTaxDetailsCommand extends Command
         $this->line('');
         $this->line('Expense leg (Q2 ruling, declared base = full facial subtotal):');
 
+        // m-5 (2026-08-06 gate): the main leg guards `documents` and
+        // `document_tax_details` at the top of handle(); this leg also
+        // eager-loads `expense_metadata`, which needs the same guard --
+        // skip (not throw) when the table is unavailable.
+        if (! Schema::hasTable('expense_metadata')) {
+            $this->warn('  expense_metadata table unavailable on this tenant -- expense leg skipped.');
+
+            return;
+        }
+
         $query = Document::query()
             ->where('type', DocumentType::Expense)
             ->whereIn('id', DocumentTaxDetail::query()
@@ -279,18 +312,47 @@ final class BackfillTaxDetailsCommand extends Command
 
         $scanned = 0;
         $touched = 0;
+        $zeroDeductibleSkipped = 0;
         /** @var list<array{id: string, number: string, reason: string}> $skipped */
         $skipped = [];
         /** @var numeric-string $baseDelta */
         $baseDelta = '0';
+        /** @var array<string, VatPeriod> $affectedClosedPeriods */
+        $affectedClosedPeriods = [];
 
         foreach ($query->cursor() as $document) {
-            $detail = DocumentTaxDetail::query()
+            // m-2 (2026-08-06 gate): count every candidate document BEFORE
+            // any skip branch, so "Scanned" reflects how many expenses the
+            // leg actually examined -- not just the ones it rewrote.
+            $scanned++;
+
+            // I-1 (2026-08-06 gate): fetch ALL rows in this writer's slot,
+            // not just one. `document_tax_details` has no unique index on
+            // (document_id, sequence_order); a pre-V5 `firstOrCreate`
+            // write can legitimately leave two rows here. Picking one with
+            // `->first()` is nondeterministic and can silently
+            // mis-remediate (see the class docblock). Skip and report
+            // instead of guessing.
+            $details = DocumentTaxDetail::query()
                 ->where('document_id', $document->id)
                 ->where('sequence_order', 1)
                 ->where('is_stamp_duty', false)
-                ->first();
+                ->get();
 
+            if ($details->count() > 1) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => sprintf(
+                        '%d rows at sequence_order=1 -- duplicate legacy snapshot, manual review required',
+                        $details->count(),
+                    ),
+                ];
+
+                continue;
+            }
+
+            $detail = $details->first();
             if ($detail === null) {
                 // The whereIn subquery guarantees a matching row existed at
                 // query time; a concurrent delete between then and now is
@@ -321,6 +383,19 @@ final class BackfillTaxDetailsCommand extends Command
             }
 
             $deductiblePercent = (string) $rawDeductiblePercent;
+
+            // I-3 (2026-08-06 gate): 0%-deductible expenses now declare the
+            // FULL facial base with 0.000 deducted VAT -- outside the
+            // ticket's stated 80%-case scope, with an owner/expert ruling
+            // still PENDING (see writeDeductibleVatSnapshot() docblock).
+            // Conservative interim handling: skip and report rather than
+            // rewrite while the ruling is open.
+            if (bccomp($deductiblePercent, '0', 2) === 0) {
+                $zeroDeductibleSkipped++;
+
+                continue;
+            }
+
             if (bccomp($deductiblePercent, '100', 2) >= 0) {
                 // 100% deductible: the V5 prorated base already equals the
                 // full subtotal. Not a candidate.
@@ -337,8 +412,6 @@ final class BackfillTaxDetailsCommand extends Command
 
                 continue;
             }
-
-            $scanned++;
 
             $scale = $this->scaleResolver->getScale((string) $document->currency);
             /** @var numeric-string $subtotal */
@@ -361,16 +434,33 @@ final class BackfillTaxDetailsCommand extends Command
             }
             $touched++;
             $baseDelta = bcadd($baseDelta, bcsub($subtotal, $storedBase, $scale), $scale);
+
+            // I-2 (2026-08-06 gate): a rewritten row inside an already
+            // CLOSED period leaves that period's materialized
+            // vat_period_breakdowns snapshot stale. Record the period so
+            // the report can name it and instruct the operator to reopen
+            // + re-close it -- this command never does so automatically.
+            $documentDate = $document->document_date->toDateString();
+            $closedPeriod = VatPeriod::query()
+                ->where('company_id', $document->company_id)
+                ->where('status', VatPeriodStatus::Closed)
+                ->where('period_start', '<=', $documentDate)
+                ->where('period_end', '>=', $documentDate)
+                ->first();
+            if ($closedPeriod !== null) {
+                $affectedClosedPeriods[$closedPeriod->id] = $closedPeriod;
+            }
         }
 
         $this->line(sprintf(
-            '  Scanned %d partially-deductible expense document(s). %s %d. Skipped %d.',
+            '  Scanned %d expense document(s) carrying an eligible input-VAT row. %s %d. Skipped %d.',
             $scanned,
             $apply ? 'Rewrote' : 'Would rewrite',
             $touched,
             count($skipped),
         ));
         $this->line(sprintf('  Cumulative declared-base delta (AFTER - BEFORE): %s', $baseDelta));
+        $this->line(sprintf('  0%%-deductible: awaiting ruling, skipped %d document(s).', $zeroDeductibleSkipped));
 
         foreach ($skipped as $row) {
             $this->warn(sprintf(
@@ -379,6 +469,20 @@ final class BackfillTaxDetailsCommand extends Command
                 $row['id'],
                 $row['reason'],
             ));
+        }
+
+        if ($affectedClosedPeriods !== []) {
+            $this->line('');
+            $this->warn('  CLOSED-PERIOD IMPACT -- vat_period_breakdowns is a snapshot taken at period close and is now STALE for:');
+            foreach ($affectedClosedPeriods as $period) {
+                $this->warn(sprintf(
+                    '    - %s (%s, %s to %s): reopen this period then re-close it to refresh its breakdowns. This command does NOT do so automatically.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
         }
 
         if (! $apply && $touched > 0) {

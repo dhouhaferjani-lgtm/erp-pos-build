@@ -446,6 +446,22 @@ final class ExpenseService
      * mathematical-control convenience, not a fiscal-declaration
      * requirement. This OVERRULES the V5 deductible-proportion base below.
      *
+     * I-3 (2026-08-06 gate, docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
+     * a fully NON-deductible expense (vat_deductible_percent = 0.00) is NOT
+     * special-cased below -- it still writes tax_base = the full facial
+     * subtotal, with tax_amount = 0.000 (V5 wrote 0.000 / 0.000 instead).
+     * The ticket's worked example only discusses the 80%-deductible case;
+     * whether the 0% case should also declare the full base (facial value
+     * of a wholly non-deductible purchase) is, per the gate, OUTSIDE the
+     * ticket's stated scope, and an explicit OWNER/EXPERT RULING ON THE
+     * 0% CASE IS PENDING. This is documented here as the CURRENT behaviour,
+     * pinned by
+     * ExpenseVatPostingTest::test_zero_percent_deductible_vat_omits_the_input_vat_line,
+     * not as a resolved decision -- it may flip once the ruling lands. The
+     * backfill command's expense leg (BackfillTaxDetailsCommand) SKIPS AND
+     * REPORTS 0%-deductible rows rather than rewriting them, precisely
+     * because this is still open.
+     *
      * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md,
      * SUPERSEDED by the Q2 ruling above -- kept for history):
      * - tax_base used to be the WHOLE expense subtotal while tax_amount was
