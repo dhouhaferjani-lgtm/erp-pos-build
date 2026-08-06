@@ -3,12 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
 import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, type FieldErrors } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch, isApiError } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { focusFirstInvalidField } from '../../lib/formErrors'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -152,6 +153,8 @@ function findCategoryName(nodes: CategoryTreeNode[], id: number): string | null 
   return null
 }
 
+const PRODUCT_FORM_ID = 'product-editor-form'
+
 export function ProductForm() {
   const { t } = useTranslation()
   const { id = '' } = useParams<{ id: string }>()
@@ -245,7 +248,21 @@ export function ProductForm() {
   // mutation error) and reset via the form's onInvalid (covers validation
   // abort) so a stale intent can never make a later plain Save go to the list.
   const closeIntentRef = useRef(false)
-  const onInvalid = () => { closeIntentRef.current = false }
+
+  // BUG-003: a blocked submit used to be completely silent — no request, no
+  // toast, no movement — because the failing required field could be below the
+  // fold (the Parapharmacy "Product Category" on the reported tenant). Announce
+  // the block and take the operator to the first invalid control. Field-
+  // agnostic on purpose: any future required field is covered for free.
+  const onInvalid = (fieldErrors: FieldErrors<ProductFormData>) => {
+    closeIntentRef.current = false
+    toast.error(t('inventory:products.validationBlocked'))
+    const formElement = document.getElementById(PRODUCT_FORM_ID)
+    focusFirstInvalidField(
+      formElement instanceof HTMLFormElement ? formElement : null,
+      fieldErrors,
+    )
+  }
 
   const handleProductData = useCallback((data: SuggestedProduct) => {
     suggestedProductRef.current = data
@@ -790,12 +807,12 @@ export function ProductForm() {
             </button>
             <SaveSplitButton
               primaryLabel={t('catalog:editor.actions.save')}
-              form="product-editor-form"
+              form={PRODUCT_FORM_ID}
               isPending={isSubmitting}
               onPrimarySave={() => { /* form= handles submission */ }}
               onSaveAndClose={() => {
                 closeIntentRef.current = true
-                const f = document.getElementById('product-editor-form')
+                const f = document.getElementById(PRODUCT_FORM_ID)
                 if (f instanceof HTMLFormElement) f.requestSubmit()
               }}
             />
@@ -845,7 +862,7 @@ export function ProductForm() {
       )}
 
       {/* Form */}
-      <form id="product-editor-form" onSubmit={(e) => { void handleSubmit(onSubmit, onInvalid)(e) }} className="flex flex-1 flex-col gap-[18px]">
+      <form id={PRODUCT_FORM_ID} onSubmit={(e) => { void handleSubmit(onSubmit, onInvalid)(e) }} className="flex flex-1 flex-col gap-[18px]">
         {/* Catalog Lookup Banner */}
         <CatalogBanner
           state={lookupState}
