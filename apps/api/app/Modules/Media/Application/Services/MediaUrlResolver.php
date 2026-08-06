@@ -32,11 +32,26 @@ use Illuminate\Support\Facades\URL;
 final class MediaUrlResolver
 {
     /**
-     * Signed URL TTL for uploaded assets served via `media.serve`.
-     * 60 minutes covers a typical admin session page load.  The SPA should
-     * refetch the image list (and get fresh signed URLs) on navigation.
+     * Expiry-bucket width, in hours, for `media.serve` signed URLs.
+     *
+     * The expiry is SNAPPED to a bucket boundary (start of hour + N hours)
+     * rather than computed as a rolling `now() + TTL`. Rationale (authz gate
+     * 2026-08-06): `primary_image_url` is minted per product row on the LIST
+     * endpoint, so a rolling expiry changed the signature on every response —
+     * every refetch produced new URLs, invalidating the browser image cache
+     * wholesale. A 60-100 product grid re-downloading each minute, shared
+     * across terminals behind one NAT, trips `throttle:signed-media`.
+     *
+     * Snapping makes the URL byte-identical for every caller within the window,
+     * so the browser (and the `Cache-Control: private, max-age=3600, immutable`
+     * header sent by MediaStorageAdapter) can actually reuse the response.
+     *
+     * The effective remaining life ranges from just over 1h (asked at the end of
+     * a bucket) to 2h (asked at the start) — never below the 1h max-age the
+     * serve route advertises, which would let a browser cache outlive the
+     * signature.
      */
-    private const SIGNED_URL_TTL_MINUTES = 60;
+    private const SIGNED_URL_BUCKET_HOURS = 2;
 
     /**
      * Resolve a display URL for use in the SPA (e.g. <img src="…"> tags).
@@ -82,7 +97,7 @@ final class MediaUrlResolver
         // serve route validates it with the `signed:relative` middleware.
         return URL::temporarySignedRoute(
             'media.serve',
-            now()->addMinutes(self::SIGNED_URL_TTL_MINUTES),
+            now()->startOfHour()->addHours(self::SIGNED_URL_BUCKET_HOURS),
             $params,
             absolute: false,
         );

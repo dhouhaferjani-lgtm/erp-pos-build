@@ -10,8 +10,11 @@ use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\RenditionFormat;
+use App\Modules\Media\Domain\Enums\RenditionName;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -270,6 +273,93 @@ final class SignedMediaServeTest extends TestCase
     {
         $response = $this->serveAssetWithStatus(MediaStatus::Ready);
         $response->assertStatus(200);
+    }
+
+    /**
+     * BUG-005 / A2 follow-up (authz gate 2026-08-06).
+     *
+     * Assets are now created READY and GenerateRenditions no longer marks them
+     * FAILED, so the status filter no longer hides an asset whose original
+     * object never landed (partial S3/MinIO put, or a legacy row promoted by the
+     * backfill). Without an exists() check the adapter streams a missing key —
+     * a metadata error / truncated body, i.e. a 500 plus Sentry noise. It must
+     * be a clean 404.
+     */
+    public function test_ready_asset_with_missing_original_bytes_returns_404_not_500(): void
+    {
+        $storagePath = 'products/'.$this->tenant->id.'/'.Str::uuid().'/original.jpg';
+        // Deliberately do NOT put the object on the fake disk.
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'image/jpeg',
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
+        );
+
+        $this->get($signedUrl)->assertStatus(404);
+    }
+
+    /**
+     * A requested variant whose rendition row exists but whose object is gone
+     * must fall back to the original rather than 404 — the original is present
+     * and serveable, only the derived file is missing.
+     */
+    public function test_missing_rendition_object_falls_back_to_the_original(): void
+    {
+        $asset = $this->makeUploadAsset();
+
+        MediaRendition::create([
+            'tenant_id' => $this->tenant->id,
+            'media_asset_id' => $asset->id,
+            'name' => RenditionName::Small,
+            'format' => RenditionFormat::Webp,
+            'storage_disk' => 's3',
+            'storage_path' => 'products/'.$this->tenant->id.'/gone/small.webp',
+            'width' => 400,
+            'height' => 300,
+            'file_size' => 16,
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id, 'variant' => 'md'],
+            absolute: false,
+        );
+
+        $this->get($signedUrl)->assertStatus(200);
+    }
+
+    /**
+     * Signed media must be browser-cacheable: the URL is now stable within an
+     * expiry bucket, so without a Cache-Control header every grid re-render
+     * re-downloads every image and trips the `signed-media` limiter.
+     */
+    public function test_served_media_carries_a_private_cache_control_header(): void
+    {
+        $response = $this->serveAssetWithStatus(MediaStatus::Ready);
+
+        $response->assertStatus(200);
+        $cacheControl = (string) $response->headers->get('Cache-Control');
+
+        self::assertStringContainsString('private', $cacheControl);
+        self::assertStringContainsString('max-age=3600', $cacheControl);
+        self::assertStringContainsString('immutable', $cacheControl);
     }
 
     // -----------------------------------------------------------------------
