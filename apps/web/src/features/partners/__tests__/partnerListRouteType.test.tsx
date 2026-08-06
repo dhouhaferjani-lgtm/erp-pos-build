@@ -193,10 +193,16 @@ describe('PartnerListPage route partner type (BUG-006)', () => {
 
     expect(partnerKeys.length).toBeGreaterThan(0)
     for (const key of partnerKeys) {
-      // tenantScopedKey suffixes tenant + company; the type must be inside the key.
+      // POSITIONAL on purpose. A stringify/`toContain('customer')` check passes
+      // on the unfixed base too, because the OLD key
+      // `['partners', {…type:'customer'…}, tenant, company]` already contained
+      // the word — it would lock nothing. The partner type must be its own
+      // segment at index 1, ahead of the params bag, with tenantScopedKey's
+      // tenant + company still the trailing suffix.
+      expect(key[0]).toBe('partners')
+      expect(key[1]).toBe('customer')
       expect(key.at(-2)).toBe('tenant-A')
       expect(key.at(-1)).toBe('company-1')
-      expect(JSON.stringify(key)).toContain('customer')
     }
   })
 })
