@@ -62,6 +62,13 @@ final readonly class CashMovementsReportService
     ) {}
 
     /**
+     * @param  list<string>  $locationIds  Effective location scope resolved by
+     *                                     ReportsController::reportLocationScope().
+     *                                     An EMPTY list means "unrestricted" and
+     *                                     applies no location predicate at all,
+     *                                     so company-level (NULL-location) cash
+     *                                     stays visible — the same convention the
+     *                                     aged-* reports use.
      * @return array{
      *     data: list<array{
      *         date: string,
@@ -91,11 +98,12 @@ final readonly class CashMovementsReportService
         ?CarbonImmutable $to,
         ?string $repositoryId,
         ?string $direction,
+        array $locationIds,
         int $page,
         int $perPage,
     ): array {
-        $union = $this->paymentsQuery($companyId, $from, $to, $repositoryId)
-            ->unionAll($this->journalLinesQuery($companyId, $companyCurrency, $from, $to, $repositoryId));
+        $union = $this->paymentsQuery($companyId, $from, $to, $repositoryId, $locationIds)
+            ->unionAll($this->journalLinesQuery($companyId, $companyCurrency, $from, $to, $repositoryId, $locationIds));
 
         $base = DB::query()->fromSub($union, 'cash_movements');
 
@@ -169,11 +177,20 @@ final readonly class CashMovementsReportService
         ];
     }
 
+    /**
+     * A payment carries its OWN location dimension (`payments.location_id`,
+     * written by the POS terminal bridge and by the document-attribution path),
+     * so it is scoped on that column — the same shape the aged-* reports use on
+     * `documents.location_id` / `payment_instruments.location_id`.
+     *
+     * @param  list<string>  $locationIds
+     */
     private function paymentsQuery(
         string $companyId,
         ?CarbonImmutable $from,
         ?CarbonImmutable $to,
         ?string $repositoryId,
+        array $locationIds = [],
     ): Builder {
         $query = DB::table('payments')
             ->join('payment_repositories', 'payment_repositories.id', '=', 'payments.repository_id')
@@ -257,15 +274,37 @@ final readonly class CashMovementsReportService
 
         $this->applyPaymentFilters($query, $from, $to, $repositoryId, 'payments');
 
+        if ($locationIds !== []) {
+            $query->whereIn('payments.location_id', $locationIds);
+        }
+
         return $query;
     }
 
+    /**
+     * `journal_entries.location_id` exists in the schema but is never written
+     * (the column is not on the JournalEntry model at all), so scoping this leg
+     * on it would erase every non-payment cash line under any branch scope.
+     * The leg is therefore scoped exactly the way its `repository_id` filter
+     * already works — through the `payment_repositories` row that owns the GL
+     * account — which is also how CashPositionController attributes cash to a
+     * branch (`payment_repositories.location_id`).
+     *
+     * The de-duplication `whereNotExists` clauses below are deliberately NOT
+     * given the location predicate: they answer "is this GL line already
+     * represented by a payment row?", a scope-independent question. Passing the
+     * scope there would let a payment excluded from the payments leg reappear as
+     * its GL twin under a different branch.
+     *
+     * @param  list<string>  $locationIds
+     */
     private function journalLinesQuery(
         string $companyId,
         string $companyCurrency,
         ?CarbonImmutable $from,
         ?CarbonImmutable $to,
         ?string $repositoryId,
+        array $locationIds = [],
     ): Builder {
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
@@ -281,7 +320,7 @@ final readonly class CashMovementsReportService
                 $query->where('journal_lines.debit', '>', '0')
                     ->orWhere('journal_lines.credit', '>', '0');
             })
-            ->whereExists(function (Builder $query) use ($companyId, $repositoryId): void {
+            ->whereExists(function (Builder $query) use ($companyId, $repositoryId, $locationIds): void {
                 $query->selectRaw('1')
                     ->from('payment_repositories')
                     ->whereColumn('payment_repositories.gl_account_id', 'journal_lines.account_id')
@@ -290,6 +329,10 @@ final readonly class CashMovementsReportService
 
                 if ($repositoryId !== null) {
                     $query->where('payment_repositories.id', $repositoryId);
+                }
+
+                if ($locationIds !== []) {
+                    $query->whereIn('payment_repositories.location_id', $locationIds);
                 }
             })
             ->whereNotExists(function (Builder $query) use ($companyId, $from, $to, $repositoryId): void {

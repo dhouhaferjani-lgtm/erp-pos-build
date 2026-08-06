@@ -23,6 +23,16 @@ final class GetCashMovementsRequest extends FormRequest
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'repository_id' => ['nullable', 'uuid'],
+            // Shape-only validation, exactly as the aged-* / upcoming-payments
+            // report requests declare it (GetAgedReceivablesRequest:40-41,
+            // GetUpcomingPaymentsRequest:23-24). Tenant/company existence AND
+            // the principal's grant are both enforced downstream by
+            // ReportsController::reportLocationScope() -> LocationScopeResolver,
+            // whose allowed set is derived from `locations WHERE company_id`:
+            // an id belonging to another company (or to nothing at all) is not
+            // in that set and is refused with 403, not silently dropped.
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['uuid'],
             'direction' => ['nullable', 'in:in,out'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],

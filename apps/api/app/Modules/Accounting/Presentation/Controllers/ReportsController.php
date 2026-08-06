@@ -239,6 +239,11 @@ class ReportsController extends Controller
             ], 401);
         }
 
+        // Deliberately OUTSIDE the catch above: reportLocationScope() throws an
+        // AuthorizationException for a location outside the principal's grant,
+        // which must surface as 403 rather than be swallowed into a 500.
+        $locationIds = $this->reportLocationScope($request, $company->id);
+
         return response()->json($this->cashMovementsReportService->generate(
             companyId: $company->id,
             companyCurrency: $company->currency,
@@ -246,6 +251,7 @@ class ReportsController extends Controller
             to: $request->toDate(),
             repositoryId: $request->repositoryId(),
             direction: $request->direction(),
+            locationIds: $locationIds,
             page: $request->page(),
             perPage: $request->perPage(),
         ));

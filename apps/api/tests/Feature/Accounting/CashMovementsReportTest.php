@@ -664,6 +664,249 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonPath('meta.totals.EUR.net', '50.00');
     }
 
+    // ── W-7 F-3: multi-branch cash visibility (fix lane L3) ────────────────
+    // The scope contract is the one the aged-* reports already implement via
+    // ReportsController::reportLocationScope(): an unscoped read is CLAMPED to
+    // the principal's grant, an explicitly requested id OUTSIDE that grant is
+    // REFUSED (403), and a grant covering every active location degrades to the
+    // unrestricted read so NULL-location rows stay visible.
+
+    public function test_location_ids_scopes_cash_movements_to_the_requested_branch(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $atShopA = $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '5.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20&location_ids[]={$shopA->id}");
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_id', $atShopA->id);
+        $response->assertJsonPath('data.0.amount', '10.00');
+        $response->assertJsonPath('meta.total', 1);
+        $response->assertJsonPath('meta.totals.EUR.in', '10.00');
+        $response->assertJsonPath('meta.totals.EUR.net', '10.00');
+    }
+
+    public function test_unscoped_cash_movements_read_keeps_every_branch_and_unattributed_cash(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '5.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20');
+
+        $response->assertOk();
+        $response->assertJsonCount(3, 'data');
+        $response->assertJsonPath('meta.totals.EUR.in', '35.00');
+    }
+
+    public function test_a_location_scope_naming_every_active_location_still_shows_unattributed_cash(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '5.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson(
+                '/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20'
+                ."&location_ids[]={$shopA->id}&location_ids[]={$shopB->id}"
+            );
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJsonPath('meta.totals.EUR.in', '15.00');
+    }
+
+    public function test_a_location_outside_the_principal_grant_is_refused(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$shopA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20&location_ids[]={$shopB->id}");
+
+        $response->assertForbidden();
+    }
+
+    public function test_an_unscoped_read_is_clamped_to_the_principal_grant(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $atShopA = $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-20',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$shopA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_id', $atShopA->id);
+        $response->assertJsonPath('meta.totals.EUR.in', '10.00');
+    }
+
+    public function test_journal_only_cash_lines_are_scoped_by_the_owning_repository_location(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $this->cashRepository->update(['location_id' => $shopA->id]);
+        $this->bankRepository->update(['location_id' => $shopB->id]);
+
+        $cashEntry = $this->journalEntry('2026-07-21', 'manual_cash_sale', Str::uuid()->toString());
+        $this->journalLine($cashEntry, $this->cashAccount, '30.000', '0.000', 'Shop A cash sale');
+        $this->journalLine($cashEntry, $this->revenueAccount, '0.000', '30.000', 'Revenue');
+
+        $bankEntry = $this->journalEntry('2026-07-21', 'manual_bank_sale', Str::uuid()->toString());
+        $this->journalLine($bankEntry, $this->bankAccount, '40.000', '0.000', 'Shop B bank sale');
+        $this->journalLine($bankEntry, $this->revenueAccount, '0.000', '40.000', 'Revenue');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-21&to=2026-07-21&location_ids[]={$shopA->id}");
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_type', 'manual_cash_sale');
+        $response->assertJsonPath('data.0.amount', '30.00');
+        $response->assertJsonPath('meta.totals.EUR.in', '30.00');
+    }
+
+    public function test_a_payment_backed_journal_line_is_not_resurrected_by_a_location_scope(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        // The register lives at Shop A; the payment itself is attributed to the
+        // Shop B document it settles. Under a Shop-A scope the payment row drops
+        // out — its GL twin must NOT take its place, or the same cash move would
+        // be reported under a branch that already excluded it.
+        $this->cashRepository->update(['location_id' => $shopA->id]);
+
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '12.000',
+            paymentDate: '2026-07-22',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+
+        $entry = $this->journalEntry('2026-07-22', 'customer_payment', $payment->id);
+        $this->journalLine($entry, $this->cashAccount, '12.000', '0.000', 'Duplicated payment cash line');
+        $this->journalLine($entry, $this->revenueAccount, '0.000', '12.000', 'Offset');
+
+        $scopedToA = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-22&to=2026-07-22&location_ids[]={$shopA->id}");
+
+        $scopedToA->assertOk();
+        $scopedToA->assertJsonCount(0, 'data');
+
+        $scopedToB = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-22&to=2026-07-22&location_ids[]={$shopB->id}");
+
+        $scopedToB->assertOk();
+        $scopedToB->assertJsonCount(1, 'data');
+        $scopedToB->assertJsonPath('data.0.source_type', 'payment');
+        $scopedToB->assertJsonPath('data.0.source_id', $payment->id);
+    }
+
+    public function test_a_malformed_location_id_is_rejected_by_validation(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-20&to=2026-07-20&location_ids[]=not-a-uuid');
+
+        $response->assertStatus(422);
+    }
+
+    private function location(string $code, string $name): Location
+    {
+        return Location::create([
+            'company_id' => $this->company->id,
+            'name' => $name,
+            'code' => $code,
+            'type' => 'shop',
+            'is_active' => true,
+            'pos_enabled' => true,
+        ]);
+    }
+
     private function account(string $code, string $name, AccountType $type): Account
     {
         return Account::create([
@@ -701,6 +944,7 @@ final class CashMovementsReportTest extends TestCase
         PaymentOrigin $origin = PaymentOrigin::WebAdmin,
         ?string $fiscalEventId = null,
         string $currency = 'EUR',
+        ?string $locationId = null,
     ): Payment {
         return Payment::create([
             'tenant_id' => $this->tenant->id,
@@ -708,6 +952,7 @@ final class CashMovementsReportTest extends TestCase
             'partner_id' => $this->partner->id,
             'payment_method_id' => $this->paymentMethod->id,
             'repository_id' => $repository->id,
+            'location_id' => $locationId,
             'amount' => $amount,
             'currency' => $currency,
             'payment_date' => $paymentDate,
