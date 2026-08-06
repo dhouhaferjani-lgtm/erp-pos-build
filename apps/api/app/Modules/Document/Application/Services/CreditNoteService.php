@@ -19,6 +19,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
@@ -48,6 +49,7 @@ class CreditNoteService
         private readonly DocumentNumberingService $numberingService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly DocumentAllocationStateGuard $allocationStateGuard,
     ) {}
 
     /**
@@ -1263,6 +1265,12 @@ class CreditNoteService
             if ($invoice->type !== DocumentType::Invoice) {
                 throw new \InvalidArgumentException('Source document must be an invoice');
             }
+
+            // Treasury gate IMPORTANT — the invoice is required to be Posted only
+            // at credit-note CREATION time; the credit note is created Draft and
+            // allocated only once it is itself posted, and the source invoice can
+            // be cancelled in that gap. Money against a withdrawn document.
+            $this->allocationStateGuard->assertAllocatable($invoice);
 
             $scale = $this->scaleFor($invoice);
             /** @var numeric-string $currentBalance */

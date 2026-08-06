@@ -43,6 +43,7 @@ final class CloseInvoiceWithToleranceService
         private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private readonly PaymentToleranceService $toleranceService,
         private readonly GeneralLedgerService $glService,
+        private readonly DocumentAllocationStateGuard $allocationStateGuard,
     ) {}
 
     public function close(string $invoiceId, string $closedBy): CloseInvoiceWithToleranceResult
@@ -54,7 +55,23 @@ final class CloseInvoiceWithToleranceService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $balance = (string) ($invoice->balance_due ?? '0');
+            // Treasury gate IMPORTANT — the only status check here used to be
+            // `status === Paid`. A CANCELLED invoice carrying a partial
+            // allocation has `balance_due > 0`, so it sailed straight through to
+            // a GL write-off and `DocumentStatus::Paid` — a withdrawn document
+            // reappearing as collected revenue.
+            $this->allocationStateGuard->assertAllocatable($invoice);
+
+            // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
+            // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a
+            // NON-NULL cache as authoritative (unchanged for this trigger- or
+            // opening-balance-maintained value) and only falls back to the
+            // allocation-derived computation when the cache is genuinely NULL.
+            // Scale 3 (not `self::SCALE`) to match `balance_due`'s own
+            // `decimal:3` cast — this value flows into the tolerance checker,
+            // the GL write-off amount and the API response, all of which
+            // expect the money scale, not the wider internal comparison scale.
+            $balance = $invoice->outstandingBalance(3);
             if ($invoice->status === DocumentStatus::Paid || bccomp($balance, '0', self::SCALE) <= 0) {
                 throw new InvoiceAlreadyPaidException($invoiceId);
             }

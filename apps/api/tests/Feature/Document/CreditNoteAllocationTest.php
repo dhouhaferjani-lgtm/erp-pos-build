@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -336,6 +337,47 @@ class CreditNoteAllocationTest extends TestCase
 
         // Act: Try to allocate
         $this->creditNoteService->allocateCreditNote($creditNote);
+    }
+
+    /**
+     * TREASURY GATE, IMPORTANT — `allocateCreditNote()` requires a POSTED invoice
+     * only at credit-note CREATION time (`:802-803`); the credit note is created
+     * `Draft` and allocated only once IT is posted, and the source invoice can be
+     * cancelled in the gap between the two. Result: a credit is booked against a
+     * withdrawn invoice, and — now that the L2 lane's cancel reverses GL — the
+     * invoice's revenue is reversed TWICE (once by the cancellation mirror, once
+     * by the credit note's own GL entry). Ruling: guard IN-LANE, one call after
+     * the existing lock.
+     *
+     * @test
+     */
+    public function it_refuses_to_allocate_a_credit_note_against_a_cancelled_invoice(): void
+    {
+        $invoice = $this->createPostedInvoice('1000.00');
+        $creditNote = $this->createAndPostCreditNote($invoice, '300.00');
+
+        // Cancelled AFTER the credit note was already posted.
+        $invoice->update([
+            'status' => DocumentStatus::Cancelled,
+            'fiscal_status' => FiscalStatus::Voided,
+            'cancelled_at' => now(),
+        ]);
+
+        try {
+            $this->creditNoteService->allocateCreditNote($creditNote);
+            self::fail('Expected allocateCreditNote() to refuse a cancelled source invoice.');
+        } catch (HttpResponseException $exception) {
+            self::assertSame(422, $exception->getResponse()->getStatusCode());
+            /** @var array{error: array{code: string}} $payload */
+            $payload = json_decode((string) $exception->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame('DOCUMENT_NOT_ALLOCATABLE', $payload['error']['code']);
+        }
+
+        self::assertSame(
+            0,
+            CreditNoteAllocation::where('credit_note_id', $creditNote->id)->count(),
+            'No allocation must be written against a withdrawn invoice',
+        );
     }
 
     // Helper methods

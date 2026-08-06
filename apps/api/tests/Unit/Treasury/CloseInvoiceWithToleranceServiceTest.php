@@ -21,6 +21,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\CloseInvoiceWithToleranceService;
+use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
@@ -31,6 +32,7 @@ use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
 use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
@@ -298,6 +300,46 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
         }
     }
 
+    /**
+     * TREASURY GATE, IMPORTANT — the only status check on entry was
+     * `status === Paid`. A CANCELLED invoice that carries a partial allocation
+     * has `balance_due > 0`, so it sailed straight through to a GL write-off and
+     * `DocumentStatus::Paid` — a withdrawn document reappearing as collected
+     * revenue, same shape as the F-6 resurrection bug elsewhere in this lane.
+     */
+    public function test_rejects_a_cancelled_invoice_even_with_a_positive_partial_balance(): void
+    {
+        $this->seedToleranceGlAccounts();
+        Event::fake([InvoiceClosedWithTolerance::class]);
+        $invoice = $this->seedPostedInvoice(total: '100.300', balance: '0.300', status: DocumentStatus::Cancelled);
+        $invoice->update(['fiscal_status' => FiscalStatus::Voided, 'cancelled_at' => now()]);
+
+        $service = $this->app->make(CloseInvoiceWithToleranceService::class);
+
+        $caught = null;
+        try {
+            $service->close($invoice->id, $this->closedBy);
+        } catch (\Throwable $exception) {
+            $caught = $exception;
+        }
+
+        self::assertInstanceOf(HttpResponseException::class, $caught);
+        self::assertSame(422, $caught->getResponse()->getStatusCode());
+        /** @var array{error: array{code: string}} $payload */
+        $payload = json_decode((string) $caught->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('DOCUMENT_NOT_ALLOCATABLE', $payload['error']['code']);
+
+        $invoice->refresh();
+        self::assertSame('0.300', (string) $invoice->balance_due, 'Balance must remain unchanged');
+        self::assertSame(DocumentStatus::Cancelled, $invoice->status, 'The terminal status must not be rewritten');
+        Event::assertNotDispatched(InvoiceClosedWithTolerance::class);
+        self::assertSame(
+            0,
+            JournalEntry::where('source_id', $invoice->id)->count(),
+            'A refused close must not leak a journal entry.',
+        );
+    }
+
     public function test_atomic_rollback_when_gl_post_fails(): void
     {
         // Intentionally do NOT seed the AR account — getAccountByPurpose throws,
@@ -355,6 +397,7 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
             $spy,
             $this->app->make(PaymentToleranceService::class),
             $this->app->make(GeneralLedgerService::class),
+            $this->app->make(DocumentAllocationStateGuard::class),
         );
 
         $service->close($invoice->id, $this->closedBy);
