@@ -14,6 +14,17 @@ route-orphaned (gate verified: zero routes check it). When the row is DROPPED ne
   permission (gate-verified) — do not touch.
 - Sweep erp-mobile for `reports.view` before dropping (not checked by the gate).
 
+## DEPLOY CHECKLIST LINES for the perms lane (fold into the batch deploy checklist at promotion)
+
+1. Per tenant: `tenants:run db:seed --class=RolesAndPermissionsSeeder`, then tenant-wide
+   `permission:cache-reset` (Spatie cache is tenant-blind).
+2. ⚠️ BEFORE the reseed: verify no tenant has CUSTOMISED role grants — the seeder is
+   `syncPermissions`-based (no merge mode); a reseed clobbers custom grants on the builtin
+   roles. Check `model_has_permissions`/`role_has_permissions` drift vs the seeder matrix per
+   tenant, coordinate with support on any hit (gate m-1).
+3. Post-deploy spot-check: manager 403 on `GET /reports/trial-balance` AND on
+   `POST /vat/periods/{id}/file`; accountant 200-class on both; admin unchanged.
+
 Also carried here: gate I-1 orchestrator ruling record — `reports.manage` REMOVED from the
 manager role in-lane (manager could POST /vat/periods/{id}/file while 403 on reading the
 period list; "manager gets OPERATIONAL ONLY" governs). If the owner wants managers to run
