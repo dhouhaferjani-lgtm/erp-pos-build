@@ -124,7 +124,10 @@ describe('SetupChecklist', () => {
     expect(mockFetchOnboardingStatus).not.toHaveBeenCalled()
     expect(screen.queryByText('onboarding.progressLabel')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(container.querySelector('[data-testid="spinner"], svg')).not.toBeNull()
+    // Nit (FE gate round 2): `svg` alone would match ANY icon and prove
+    // nothing. `.animate-spin` targets the Loader2 icon Spinner actually
+    // renders, so this genuinely discriminates the loading branch.
+    expect(container.querySelector('.animate-spin')).not.toBeNull()
   })
 
   it('renders the checklist when the request succeeds', async () => {
@@ -176,5 +179,27 @@ describe('SetupChecklist', () => {
 
     // allDone must not appear while a required step is unresolved.
     expect(screen.queryByText('onboarding.allDone')).not.toBeInTheDocument()
+  })
+
+  /**
+   * MINOR-R2-2 (FE gate round 2, 2026-08-06) — `hasIncompleteRequired` counted
+   * a degraded required step (reported `completed: false`), so the red
+   * "required steps" banner fired on a row the list itself labels
+   * "Unavailable". Degraded is UNKNOWN, not "you still have work to do".
+   */
+  it('does not show the required-steps alert when the only incomplete required step is degraded', async () => {
+    mockFetchOnboardingStatus.mockResolvedValue([
+      makeItem({ step: 'payment_methods', degraded: true, completed: false, required: true }),
+    ])
+
+    renderChecklist()
+
+    await waitFor(() => {
+      expect(screen.getByText('onboarding.badges.unavailable')).toBeInTheDocument()
+    })
+
+    // The "required steps" banner has no `role="alert"` (unlike the error
+    // state), so discriminate on its rendered key text via the i18n mock.
+    expect(screen.queryByText('onboarding.requiredStepsAlert')).not.toBeInTheDocument()
   })
 })

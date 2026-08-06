@@ -31,7 +31,11 @@ export function SetupChecklist() {
 
   // A degraded step is NOT complete and NOT actionable — count it with the
   // unresolved steps so `allDone` cannot appear while any step is unknown.
-  const hasIncompleteRequired = items.some((item) => item.required && !item.completed)
+  // Excluded from the "required steps" alert below: a degraded step is
+  // UNKNOWN, not "you still have work to do", so it must not trip the red
+  // banner on a row the list itself labels "Unavailable" (FE gate round 2,
+  // MINOR-R2-2, 2026-08-06).
+  const hasIncompleteRequired = items.some((item) => item.required && !item.completed && !item.degraded)
   const hasDegraded = items.some((item) => item.degraded)
 
   // Gate on isPending, not isLoading: `isLoading === isPending && isFetching`,

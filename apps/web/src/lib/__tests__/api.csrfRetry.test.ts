@@ -119,6 +119,49 @@ describe('api interceptor — 419 CSRF auto-retry', () => {
     expect(csrfCookieSpy).not.toHaveBeenCalled()
   })
 
+  /**
+   * FE gate round 2, MINOR-R2-1 (2026-08-06) — `return await client.request(config)`
+   * used to sit INSIDE the `try`, so a failed REPLAY was caught by
+   * `catch (csrfError)`, mislabelled "Failed to refresh CSRF token", and the
+   * caller received the ORIGINAL 419 instead of the replay's real error. A
+   * replay that 500s must propagate as a 500, not a swallowed CSRF failure.
+   */
+  it('propagates the replay error when the retried request fails for a reason other than CSRF', async () => {
+    let calls = 0
+
+    const adapter: AxiosAdapter = async (config) => {
+      calls += 1
+      if (calls === 1) {
+        return Promise.reject(
+          new axios.AxiosError(
+            'Request failed with status code 419',
+            '419',
+            config,
+            {},
+            makeResponse(419, { message: 'CSRF token mismatch.' }, config),
+          ),
+        )
+      }
+      return Promise.reject(
+        new axios.AxiosError(
+          'Request failed with status code 500',
+          '500',
+          config,
+          {},
+          makeResponse(500, { message: 'Server Error' }, config),
+        ),
+      )
+    }
+
+    api.defaults.adapter = adapter
+
+    await expect(api.get('/probe')).rejects.toMatchObject({
+      response: expect.objectContaining({ status: 500 }) as unknown,
+    })
+
+    expect(calls).toBe(2)
+  })
+
   it('keeps the AxiosHeaders instance usable on the replayed config', async () => {
     let calls = 0
     let replayHeaders: unknown = null

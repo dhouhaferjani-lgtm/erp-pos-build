@@ -205,11 +205,16 @@ function createApiClient(): AxiosInstance {
           console.warn('CSRF token mismatch, refreshing token...')
           try {
             await ensureCsrfCookie()
-
-            return await client.request(config)
           } catch (csrfError) {
             console.error('Failed to refresh CSRF token:', csrfError)
           }
+
+          // Outside the try: a failure of the REPLAY itself (e.g. the retried
+          // request 422s or 500s) must propagate as its own error, not be
+          // caught by the block above and mislabelled "Failed to refresh CSRF
+          // token" while the caller still sees the stale original 419
+          // (FE gate round 2, MINOR-R2-1, 2026-08-06).
+          return await client.request(config)
         }
       }
 
