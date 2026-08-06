@@ -138,11 +138,21 @@ final class MediaUploadService
             );
         }
 
-        // Non-images are created READY immediately; images start as UPLOADED and are
-        // promoted to READY by the GenerateRenditions job after renditions are built.
-        $initialStatus = $assetType === MediaAssetType::Image
-            ? MediaStatus::Uploaded
-            : MediaStatus::Ready;
+        // BUG-005 / RCA A2 — every asset is created READY, images included.
+        //
+        // Images used to start as UPLOADED and were promoted only by the queued
+        // GenerateRenditions job, while every read path (SignedMediaController,
+        // ProductMediaController::index, EloquentMediaAttachmentRepository) filters
+        // on READY. The 201 response still handed the client a URL, so a fresh
+        // upload rendered a broken image until a worker ran the job — and forever
+        // if the `images` supervisor was not consuming.
+        //
+        // Serving a READY image with no renditions yet is safe: MediaStorageAdapter
+        // falls back to the original object whenever the requested variant's
+        // rendition row is absent. GenerateRenditions still runs and only ADDS
+        // renditions, so the queue is now an optimisation (smaller bytes) rather
+        // than a correctness dependency.
+        $initialStatus = MediaStatus::Ready;
 
         try {
             /** @var MediaAsset $asset */

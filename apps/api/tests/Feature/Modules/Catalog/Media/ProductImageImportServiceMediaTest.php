@@ -98,7 +98,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
 
         /** @var MediaAsset $asset */
         $asset = MediaAsset::where('source', MediaSource::Upload)->first();
-        self::assertSame(MediaStatus::Uploaded, $asset->status);
+        self::assertSame(MediaStatus::Ready, $asset->status, 'Image assets are READY on upload (BUG-005 A2)');
 
         // Exactly one media_attachments row with role=PRIMARY must exist.
         $attachmentCount = MediaAttachment::where('role', MediaRole::Primary)->count();
