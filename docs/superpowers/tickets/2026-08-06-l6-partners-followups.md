@@ -213,7 +213,13 @@ already flipped (e.g. inside a queued job's `handle()`, or a console command)?* 
 hits are `OutboxIngestor` (constructor-injected into `FiscalEventIngestionController`, the exact
 same controller-dependency shape as the bug just fixed here — **not yet confirmed safe or broken,
 just not yet checked**) and `RecordCustomerDepositService` (same module as this fix, same
-risk profile). The Fiscal/POS console commands are lower risk (commands don't run
+risk profile). R3 reviewer note (2026-08-06): the reconciling detail behind "deposits demonstrably
+work live" is that `PartnerDepositController.php:25` is a standalone class that does NOT extend
+`Illuminate\Routing\Controller`, so `Route::controllerMiddleware()`'s `method_exists(...,
+'getMiddleware')` probe fails and the early pre-tenancy construction never fires for it —
+whereas `FiscalEventIngestionController.php:44` DOES extend the base `Controller` and therefore
+carries the exact trigger shape. The audit's discriminator is thus: flagged service reachable
+from a controller that extends the base `Controller` class = real risk. The Fiscal/POS console commands are lower risk (commands don't run
 `Route::gatherMiddleware()`) but should still be confirmed rather than assumed.
 
 ### T12 — test-methodology gap: `actingAs()` structurally cannot catch connection-capture defects

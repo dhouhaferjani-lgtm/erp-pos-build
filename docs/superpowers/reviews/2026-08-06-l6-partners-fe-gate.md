@@ -572,3 +572,108 @@ by this branch. Their proposed fix (`findByRole` / longer timeout / seed the que
 ## Remaining blockers: NONE (FE half)
 
 T1–T10 are ticketed and none gates the merge. No commit, push or merge performed by this review.
+
+---
+
+## R3 — narrow single-commit review, `2fd5b0867` (2026-08-06 connection-timing fix)
+
+Reviewer: tenancy-authz-reviewer (Sonnet, capped-model posture). Scope: exactly `2fd5b0867` on
+`fix/client-bugs-partners-fe` (`b6678f025..HEAD` has no sibling commit). Not re-proving the live
+204/409 behaviour — checking the code that produced it.
+
+**1. `PartnerReferenceCounter` — all three query sites fixed, no cached property.**
+`apps/api/app/Modules/Partner/Application/Services/PartnerReferenceCounter.php:75` now holds
+`private readonly DatabaseManager $db` (was `ConnectionInterface`). All three counts —
+`:90` `documents`, `:96` `payments`, `:100` `pos_receipts` — call `$this->db->connection()->table(...)`
+inline inside `countFor()`; no connection is ever assigned to a property or resolved outside the
+method body. Clean.
+
+**2. `PartnerController` — both transaction sites fixed, no other capture site, no direct
+instantiation.** Constructor at `PartnerController.php:47-54` now injects `DatabaseManager`.
+`store()` (`:214`) and `update()` (`:294`) both call
+`$this->db->connection()->transaction(...)`. `grep -n '\$this->db'` on the file returns exactly
+those two lines — no other method uses `$this->db`. `destroy()` (`:339-378`) never touches `$db` at
+all; it goes through `Partner::where(...)` (Eloquent's own connection resolver, unaffected by this
+class of bug) and the now-fixed `PartnerReferenceCounter`. Repo-wide grep for
+`new PartnerController` / `new PartnerReferenceCounter` across `app/` and `tests/`: zero hits —
+container-only construction, so the constructor-signature change breaks nothing.
+
+**3. Precedent (`Treasury\...\InstrumentAccountResolver`) verified to actually do what's claimed.**
+`InstrumentAccountResolver.php:13,17,25` injects `DatabaseManager` and calls `$this->database->table(...)`
+— no explicit `->connection()`. Confirmed in `vendor/laravel/framework/.../DatabaseManager.php:485-491`
+that `DatabaseManager::__call()` forwards any undefined method (including `table()`) to
+`$this->connection()->$method(...)`, and `connection()` (`:93-95`) re-derives the connection name via
+`getDefaultConnection()` (`:382-384`, `config('database.default')`) on every invocation. So the
+precedent resolves at call time exactly like the fix's explicit `->connection()->table(...)` form —
+functionally identical, just via magic-method vs. explicit call. Precedent is real and sound.
+
+**4. New test genuinely discriminates — verified empirically, not just reasoned.** Restored the
+pre-fix `PartnerReferenceCounter.php` (via `git show 2fd5b0867~1:...`) into the worktree, ran
+`PartnerReferenceCounterConnectionTimingTest` — `test_counter_resolves_connection_at_call_time_not_construction_time`
+**FAILED** (`expected ['documents'=>1], got []`), `test_counter_never_leaks_a_reference_row_...`
+still passed (expected — it only guards the opposite-direction regression). Restored the fixed file
+(`git status` clean afterward, no residual diff). Ran again against the fix: both tests **PASS**.
+The test is a real regression guard, not a tautology. Its documented reasoning for why `actingAs()`
+can't catch this (`ResolveTenancy::tenantFromBearer()` is the only branch that swaps
+`database.default` in single-schema test mode, and `actingAs()` never exercises it) was not
+independently re-derived line-by-line here but is consistent with the rest of the diff and not
+load-bearing for the verdict.
+
+**5. Rule 13 + lint/static-analysis spot-checks.** No `app()` calls anywhere in the diff
+(`git show 2fd5b0867 | grep 'app('` — zero hits); both fixed classes use constructor injection with
+`private readonly`. `./vendor/bin/pint --test` on the three touched PHP files: `{"result":"pass"}`.
+`./vendor/bin/phpstan analyse` (level per `phpstan.neon`) on the same three files: `[OK] No errors`.
+Ran the pre-existing `DeletePartnerTest` (11 tests / 29 assertions) — all green, confirming the fix
+doesn't regress the 409-blocking behaviour it sits next to.
+
+**6. Ticket `2026-08-06-l6-partners-followups.md` T11 audit and nuance.**
+Re-ran the grep bound: `grep -rlE 'private readonly (Connection|ConnectionInterface) \$' app` under
+`apps/api` returns exactly the 10 files listed in T11 — accurate, not stale.
+Independently traced *why* the two flagged risks differ, since the ticket doesn't spell this out:
+- `OutboxIngestor` → `FiscalEventIngestionController` (`FiscalEventIngestionController.php:44,46-47`)
+  **does** `extend Controller` and directly constructor-injects `OutboxIngestor` — the identical
+  shape to the bug just fixed (base `Illuminate\Routing\Controller::getMiddleware()` at
+  `vendor/.../Routing/Controller.php:40` is inherited, so `Route::controllerMiddleware()`
+  (`vendor/.../Routing/Route.php:1130-1133`) forces early `container->make()` via `getController()`
+  before `ResolveTenancy` runs). This one is a live, credible risk, correctly flagged.
+- `RecordCustomerDepositService` → `PartnerDepositController` (`PartnerDepositController.php:25`)
+  is a **standalone `final class` that does NOT extend `Illuminate\Routing\Controller`** and
+  implements no `HasMiddleware`. Per `Route::controllerMiddleware()` (`Route.php:1125-1136`), neither
+  the `HasMiddleware` static branch nor the `method_exists($controllerClass,'getMiddleware')` branch
+  fires for such a class, so `getController()` is never called during `gatherMiddleware()` — the
+  early-construction trigger this whole bug class depends on does not apply. That is *why* deposits
+  demonstrably work live: the capture almost certainly happens after `ResolveTenancy` has already
+  swapped to the tenant connection, on the normal late-dispatch path, not because it's immune to
+  the general pattern.
+  The ticket's own framing (`"not yet confirmed safe or broken, just not yet checked"`, applied to
+  the pair as a whole) does satisfy the instruction not to read this as a confirmed defect — it is
+  phrased as an open question, not an assertion of brokenness. **Minor gap, not a blocker:** the
+  ticket would be stronger if T11 stated explicitly that `PartnerDepositController` doesn't extend
+  `Controller`/implement `HasMiddleware` (the concrete reason the live evidence and the "same shape
+  on paper" caveat can coexist), rather than leaving a future reader to re-derive that distinction.
+  Recommend folding this one-paragraph nuance into T11 before anyone burns time re-investigating
+  `RecordCustomerDepositService` from scratch.
+
+### Findings
+- **[Minor]** `docs/superpowers/tickets/2026-08-06-l6-partners-followups.md` T11 — the
+  `RecordCustomerDepositService` risk note doesn't state the concrete reason (its controller,
+  `PartnerDepositController.php:25`, doesn't extend `Illuminate\Routing\Controller`/implement
+  `HasMiddleware`, so the early-construction trigger doesn't fire) that reconciles "same shape on
+  paper" with "demonstrably works live." Suggest a one-line addition; does not block this commit.
+- No Important or Critical findings on the reviewed commit itself.
+
+### Verdict
+**CLEAR.** The three verified query sites and the two verified transaction sites are the complete
+set of pre-existing `$this->db`/`ConnectionInterface` capture points in these two files; the fix is
+applied at every one of them, at call time, with no cached property anywhere. The cited Treasury
+precedent does resolve at call time (confirmed against Laravel's `DatabaseManager` source, not
+assumed). The regression test is real — empirically fails against the reverted pre-fix class and
+passes against the fix — not a tautology. No `app()` use; Pint and PHPStan are clean on the touched
+surface; the pre-existing `DeletePartnerTest` suite still passes. The T11 audit's 10-file grep bound
+reproduces exactly, and its two flagged risk items are honestly framed as unconfirmed rather than
+as confirmed defects (one minor tightening suggested above, non-blocking).
+
+This is a narrow, mechanical, well-scoped fix with a genuine regression test; nothing here needs
+escalation beyond Sonnet-level review.
+
+**VERDICT: spec ✅ quality APPROVED**
