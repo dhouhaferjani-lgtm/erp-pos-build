@@ -17,6 +17,7 @@ use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAssetRepository;
 use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAttachmentRepository;
 use App\Modules\Media\Infrastructure\Rendition\ImageRenditionGenerator;
 use App\Modules\Media\Infrastructure\Storage\MediaStorageAdapter;
+use App\Modules\Media\Presentation\Console\PromoteFailedImageAssetsCommand;
 use App\Shared\Contracts\MediaServiceInterface;
 use Illuminate\Support\ServiceProvider;
 
@@ -36,5 +37,13 @@ class MediaServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/routes.php');
+
+        if ($this->app->runningInConsole()) {
+            // Operator-invoked only — deliberately NOT scheduled (see the
+            // command's docblock and the A2 backfill migration).
+            $this->commands([
+                PromoteFailedImageAssetsCommand::class,
+            ]);
+        }
     }
 }
