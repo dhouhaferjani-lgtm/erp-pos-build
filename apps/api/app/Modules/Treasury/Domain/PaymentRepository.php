@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string $code
  * @property string $name
  * @property RepositoryType $type
+ * @property bool $allow_negative Whether an outflow may take this repository's balance below zero (W-5b Option B). Type-derived at creation when not explicitly set: bank_account defaults true, every other type defaults false (the column default). Enforced by TreasuryMovementService::record().
  * @property string|null $bank_id
  * @property string|null $bank_name
  * @property string|null $account_number
@@ -108,6 +109,23 @@ class PaymentRepository extends Model
                 }
                 $repository->currency = $company->currency;
             }
+
+            // W-5b Option B: allow_negative defaults from RepositoryType — a
+            // bank account may run an authorised overdraft (allow_negative =
+            // true); every other type (cash_register/safe/virtual) is a till
+            // that cannot hold negative cash and is left to the column
+            // default (false). Only derive when the caller has not already
+            // supplied an explicit value — mirrors the currency default
+            // above, never overriding an explicit choice.
+            if ($repository->getAttribute('allow_negative') === null) {
+                $type = $repository->getAttribute('type');
+                $typeEnum = $type instanceof RepositoryType
+                    ? $type
+                    : (is_string($type) ? RepositoryType::tryFrom($type) : null);
+                if ($typeEnum === RepositoryType::BankAccount) {
+                    $repository->allow_negative = true;
+                }
+            }
         });
     }
 
@@ -117,6 +135,7 @@ class PaymentRepository extends Model
         'code',
         'name',
         'type',
+        'allow_negative',
         'bank_id',
         'bank_name',
         'account_number',
@@ -138,6 +157,7 @@ class PaymentRepository extends Model
     {
         return [
             'type' => RepositoryType::class,
+            'allow_negative' => 'boolean',
             'balance' => 'decimal:3',
             'last_reconciled_balance' => 'decimal:3',
             'last_reconciled_at' => 'datetime',

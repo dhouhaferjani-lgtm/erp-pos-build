@@ -324,6 +324,7 @@ class PaymentRepositoryController extends Controller
             'code' => $repository->code,
             'name' => $repository->name,
             'type' => $repository->type->value,
+            'allow_negative' => $repository->allow_negative,
             'bank_id' => $repository->bank_id,
             'bank_name' => $repository->bank_name,
             'account_number' => $repository->account_number,
