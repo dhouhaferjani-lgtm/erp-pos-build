@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -146,14 +146,34 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
     }
   }
 
+  // BUG-006: Clients and Fournisseurs are the SAME component behind two
+  // structurally identical route elements, so react-router reconciles instead
+  // of remounting. `useTableState` seeds `defaultFilters` only in its useState
+  // initializer, so the filter stays frozen at the previous route's type. The
+  // route context is therefore AUTHORITATIVE — it overwrites a stale (or
+  // URL-supplied) `type` rather than only filling a missing one.
   const queryParams = tableState.getQueryParams()
-  // Ensure type filter is always set for customer/supplier views
-  if (partnerType && !queryParams['type']) {
+  if (partnerType) {
     queryParams['type'] = partnerType
   }
 
+  // Keep the table state (and therefore the synced URL) in step with the route
+  // context, so a stale `?type=` is never left bookmarkable on the other list.
+  // Page-local on purpose: re-seeding `defaultFilters` inside the shared
+  // `useTableState` hook is a separate, wider change.
+  const currentTypeFilter = tableState.filters['type']
+  const setTableFilter = tableState.setFilter
+  useEffect(() => {
+    if (partnerType && currentTypeFilter !== partnerType) {
+      setTableFilter('type', partnerType)
+    }
+  }, [partnerType, currentTypeFilter, setTableFilter])
+
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['partners', queryParams]),
+    // `partnerType` is part of the key (not just of `queryParams`) so the two
+    // lists can never share a cache entry even if the params ever stop
+    // carrying the type.
+    queryKey: tenantScopedKey(['partners', partnerType ?? 'all', queryParams]),
     queryFn: async () => {
       const params = new URLSearchParams(queryParams)
       const response = await api.get<PartnersResponse>(`/partners?${params.toString()}`)
