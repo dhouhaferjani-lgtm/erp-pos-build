@@ -11,7 +11,7 @@ export { ProductSuppliersSection, type ProductSuppliersAdapter } from './Product
 export { ProductMediaSection, type ProductMediaAdapter } from './ProductMediaSection'
 export { ProductHeroSection, type ProductHeroAdapter } from './ProductHeroSection'
 export { ProductHeroShell } from './ProductHeroShell'
-export { withProductHeroImageVariant } from '../productHeroImage'
+export { productHeroImageSrc } from '../productHeroImage'
 export {
   ProductSectionStack,
   type ProductSectionStackAdapters,

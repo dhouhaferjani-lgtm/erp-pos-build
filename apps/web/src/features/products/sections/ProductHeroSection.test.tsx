@@ -96,7 +96,7 @@ describe('ProductHeroSection', () => {
 
     expect(screen.getByRole('img', { name: 'Brake Pad' })).toHaveAttribute(
       'src',
-      '/media/product/serve?signature=abc&variant=md',
+      '/media/product/serve?signature=abc',
     )
     expect(screen.getByRole('heading', { name: 'Brake Pad' })).toBeInTheDocument()
     expect(screen.getByText('Bosch ✦')).toBeInTheDocument()
