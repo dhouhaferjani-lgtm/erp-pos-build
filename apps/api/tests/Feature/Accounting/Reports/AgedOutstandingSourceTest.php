@@ -115,14 +115,61 @@ final class AgedOutstandingSourceTest extends TestCase
         self::assertSame('550.0000', $report->grand_total, 'Outstanding = total - allocations');
     }
 
-    public function test_a_fully_allocated_invoice_is_excluded_even_with_a_stale_cache(): void
+    public function test_a_fully_allocated_invoice_with_a_cold_cache_is_excluded(): void
     {
-        $invoice = $this->invoice('INV-SETTLED', '900.000', dueDate: '2026-07-20', balanceDue: '900.000');
+        $invoice = $this->invoice('INV-SETTLED', '900.000', dueDate: '2026-07-20', balanceDue: null);
         PaymentAllocation::create(['document_id' => $invoice->id, 'amount' => '900.000']);
 
         $report = app(AgedReceivablesService::class)->generate($this->company->id, Carbon::parse('2026-07-06'));
 
         self::assertSame('0.0000', $report->grand_total, 'A settled invoice must not be reported outstanding');
+        self::assertCount(0, $report->lines);
+    }
+
+    /**
+     * TREASURY GATE, CRITICAL 2 — a NON-NULL `balance_due` is AUTHORITATIVE.
+     *
+     * `ArApOpeningService:293-313` creates posted historical invoices with
+     * `balance_due = open_amount` and `total = total`, where `open_amount <= total`
+     * is an explicitly supported input (`:204-209`) — a partially settled legacy
+     * invoice migrated at go-live. NO `payment_allocations` row is ever written for
+     * these, so a formula of `total − allocations` reports the FULL total and
+     * overstates the receivable by everything the customer already paid before the
+     * migration. This is the first-tenant go-live path (`PartiesBalancesPhase`).
+     *
+     * The computed formula therefore applies ONLY where the cache is genuinely
+     * blind — `balance_due IS NULL` — which is the actual D2 defect.
+     */
+    public function test_an_opening_balance_document_reports_its_open_amount_not_its_total(): void
+    {
+        $this->invoice('HIST-INV-000001', '1000.000', dueDate: '2026-07-20', balanceDue: '300.000');
+
+        $report = app(AgedReceivablesService::class)->generate($this->company->id, Carbon::parse('2026-07-06'));
+
+        self::assertSame(
+            '300.0000',
+            $report->grand_total,
+            'A migrated opening balance is outstanding for its open_amount, never its total',
+        );
+        self::assertSame('300.0000', $report->lines[0]->current);
+    }
+
+    public function test_an_opening_balance_purchase_order_reports_its_open_amount(): void
+    {
+        $this->purchaseOrder('HIST-PO-000001', '1000.000', dueDate: '2026-07-20', balanceDue: '300.000');
+
+        $report = app(AgedPayablesService::class)->generate($this->company->id, Carbon::parse('2026-07-06'));
+
+        self::assertSame('300.0000', $report->grand_total);
+    }
+
+    public function test_a_fully_settled_opening_balance_is_excluded(): void
+    {
+        $this->invoice('HIST-INV-000002', '1000.000', dueDate: '2026-07-20', balanceDue: '0.000');
+
+        $report = app(AgedReceivablesService::class)->generate($this->company->id, Carbon::parse('2026-07-06'));
+
+        self::assertSame('0.0000', $report->grand_total);
         self::assertCount(0, $report->lines);
     }
 

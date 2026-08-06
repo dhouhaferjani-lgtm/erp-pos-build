@@ -667,16 +667,18 @@ class Document extends Model
     }
 
     /**
-     * The SQL that reproduces the `balance_due` cache, correlated to `documents`.
+     * The SQL for the outstanding amount — the same invariant as
+     * {@see outstandingBalance()}, expressed for the database.
      *
-     * Copied deliberately from `update_document_balance_due()`
+     * A NON-NULL `balance_due` is AUTHORITATIVE and is taken as-is. The allocation
+     * formula — copied from `update_document_balance_due()`
      * (`database/migrations/tenant/2026_01_08_214145_add_balance_due_cache_trigger.php`)
-     * and from `DocumentCacheValidationService`, which already expresses the same
-     * formula in raw SQL. Type-agnostic, exactly like the trigger: it always joins
+     * and from `DocumentCacheValidationService` — is the FALLBACK for a NULL
+     * cache. Type-agnostic, exactly like the trigger: it always joins
      * `credit_note_allocations` on `invoice_id`, so a credit note's own outward
      * allocations never reduce its balance.
      */
-    private const OUTSTANDING_BALANCE_SQL = '(COALESCE(documents.total, 0)'
+    private const OUTSTANDING_BALANCE_SQL = 'COALESCE(documents.balance_due, COALESCE(documents.total, 0)'
         .' - COALESCE((SELECT SUM(amount) FROM payment_allocations WHERE payment_allocations.document_id = documents.id), 0)'
         .' - COALESCE((SELECT SUM(amount) FROM credit_note_allocations WHERE credit_note_allocations.invoice_id = documents.id), 0))';
 
@@ -691,13 +693,10 @@ class Document extends Model
     /**
      * Bound a query to documents that MIGHT still be outstanding (W-6 D2).
      *
-     * A deliberately coarse SQL pre-filter, not the verdict. `balance_due` is a
-     * trigger cache that only ever fires on allocation DML, so filtering on the
-     * column hides every posted-but-never-allocated document — the D2 defect. This
-     * filters on the same arithmetic the trigger performs, so nothing outstanding
-     * is excluded; callers must still take the exact amount from
-     * {@see outstandingBalance()}, because SQLite evaluates this expression in
-     * floating point and can leave a settled document a hair above zero.
+     * A deliberately coarse SQL pre-filter, not the verdict — callers must still
+     * take the exact amount from {@see outstandingBalance()}, because SQLite
+     * evaluates the fallback arithmetic in floating point and can leave a settled
+     * document a hair above zero.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -708,20 +707,44 @@ class Document extends Model
     }
 
     /**
-     * The outstanding amount computed from allocations — the SOURCE OF TRUTH.
+     * How much of this document is still open — the ONE definition (W-6 D2).
      *
-     * Mirrors {@see self::OUTSTANDING_BALANCE_SQL} in bcmath at the caller's
-     * currency scale, so it never depends on the `balance_due` cache being warm.
-     * Unlike {@see getOutstandingAmount()} it is type-agnostic, again like the
-     * trigger, so it is usable for supplier invoices and purchase orders too.
+     * The invariant, in order:
+     *
+     * 1. **A NON-NULL `balance_due` is AUTHORITATIVE.** It has exactly two
+     *    writers, and both are right:
+     *    - the PostgreSQL trigger `update_document_balance_due()`, which keeps it
+     *      equal to `total − Σallocations` on every allocation DML; and
+     *    - `ArApOpeningService:293-313`, which writes `balance_due = open_amount`
+     *      on migrated historical documents where `open_amount <= total` is an
+     *      explicitly supported input (`:204-209`) and NO allocation row exists.
+     *      A partially settled legacy invoice (total 1 500, open 300) is a
+     *      first-class go-live shape (`PartiesBalancesPhase`), and recomputing it
+     *      from allocations would report 1 500 — overstating the receivable by
+     *      everything the customer paid before the migration, and letting the
+     *      allocation cap accept 1 200 too much.
+     * 2. **`balance_due IS NULL` is the blindness D2 is about.** The trigger only
+     *    ever fires on `payment_allocations` / `credit_note_allocations` DML, so a
+     *    posted document that was never allocated against has no trigger event and
+     *    stays NULL forever — invisible to every consumer that filtered
+     *    `balance_due > 0` (165 invoices / 59 532.410 TND on the demo tenant).
+     *    Only there is the amount computed, from the trigger's own formula.
+     *
+     * Type-agnostic, like the trigger — unlike {@see getOutstandingAmount()}, which
+     * returns `'0'` for supplier invoices — so purchase orders and supplier
+     * invoices can use it too.
      *
      * Eager-load `allocations` and `creditsAgainstDocument` before calling this in
-     * a loop; otherwise it lazy-loads two relations per document.
+     * a loop; otherwise the NULL-cache branch lazy-loads two relations per document.
      *
      * @return numeric-string
      */
     public function outstandingBalance(int $scale): string
     {
+        if ($this->balance_due !== null) {
+            return CurrencyScale::bcround((string) $this->balance_due, $scale);
+        }
+
         // Intermediates run wider than the emission scale (CLAUDE.md rule 19);
         // the single rounding happens on the way out.
         $calculationScale = $scale + 4;
