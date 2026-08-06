@@ -37,6 +37,7 @@ use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Sentry\Laravel\Integration;
 use Sentry\State\Scope;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -393,5 +394,42 @@ return Application::configure(basePath: dirname(__DIR__))
                     ],
                 ], 422);
             }
+        });
+
+        // ---------------------------------------------------------------------
+        // Catch-all API renderer — MUST stay LAST (Laravel 11 matches render
+        // callbacks in registration order, first match wins).
+        //
+        // BUG-005 / RCA B3: everything above is typed. Any other Throwable fell
+        // through to Laravel's default `{"message":"Server Error"}`, while the
+        // SPA interceptor dereferences `data.error.message` unconditionally —
+        // producing a TypeError inside the interceptor, unusable error text and
+        // a poisoned Sentry breadcrumb. Every api/* failure now carries the same
+        // `{error: {code, message, request_id}}` envelope as the typed handlers.
+        //
+        // HttpExceptionInterface (404 / 405 / 419 / 429 …) is deliberately NOT
+        // intercepted: those already render correctly with a meaningful status,
+        // and rewriting them here would turn an unknown route into a 500.
+        // ---------------------------------------------------------------------
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if (! ($request->expectsJson() || $request->is('api/*'))) {
+                return null;
+            }
+
+            if ($e instanceof HttpExceptionInterface) {
+                return null;
+            }
+
+            return response()->json([
+                'error' => [
+                    'code' => 'INTERNAL_ERROR',
+                    // The raw message is only exposed with debug on — in
+                    // production it can carry SQL, file paths or tenant data.
+                    'message' => config('app.debug') === true
+                        ? $e->getMessage()
+                        : __('messages.server_error'),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 500);
         });
     })->create();
