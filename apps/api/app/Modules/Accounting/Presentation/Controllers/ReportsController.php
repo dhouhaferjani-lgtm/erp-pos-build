@@ -69,7 +69,10 @@ use Illuminate\Http\Request;
  *
  * Authorization:
  * - Handled by middleware (auth:sanctum)
- * - Route-level permission checks (can:reports.view)
+ * - Route-level permission checks: can:reports.financial (trial balance,
+ *   P&L, balance sheet, finance summary) or can:reports.operational (aged
+ *   receivables/payables, upcoming payments, cash movements) — see
+ *   routes.php for the per-endpoint mapping. reports.view is deprecated.
  * - Company context validated by CompanyContext service
  *
  * Error Handling:

@@ -369,11 +369,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // below are still served from it.
     // docs/superpowers/reviews/2026-08-06-l2-treasury-gate.md
 
+    // W-6 D5 owner ruling (2026-08-05, "Option B split"): customer statement
+    // and overdue summary are operational reports.
     Route::get('/reports/customer-statement/{partnerId}', [ReportsController::class, 'customerStatement'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.customer-statement');
 
     Route::get('/reports/overdue-summary', [ReportsController::class, 'overdueSummary'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.overdue-summary');
 });

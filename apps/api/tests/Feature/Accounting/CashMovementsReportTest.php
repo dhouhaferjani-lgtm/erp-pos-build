@@ -98,7 +98,7 @@ final class CashMovementsReportTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['reports.view']);
+        $this->user->givePermissionTo(['reports.operational']);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
@@ -240,7 +240,7 @@ final class CashMovementsReportTest extends TestCase
         $response->assertUnauthorized();
     }
 
-    public function test_cash_movements_report_requires_reports_view_permission(): void
+    public function test_cash_movements_report_requires_reports_operational_permission(): void
     {
         $user = User::create([
             'tenant_id' => $this->tenant->id,

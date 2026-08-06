@@ -88,7 +88,7 @@ final class LocationReconciliationTest extends TestCase
         ]);
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
-        $this->user->givePermissionTo(['reports.view', 'treasury.view', 'instruments.view', 'expenses.view']);
+        $this->user->givePermissionTo(['reports.operational', 'treasury.view', 'instruments.view', 'expenses.view']);
         app(CompanyContext::class)->setCompanyId($this->company->id);
         $this->actingAs($this->user, 'sanctum');
     }

@@ -53,7 +53,7 @@ class GetBalanceSheetRequest extends FormRequest
      * Determine if the user is authorized to make this request.
      *
      * Authorization is handled via middleware (auth:sanctum) and
-     * route-level permission checks (can:reports.view), so this
+     * route-level permission checks (can:reports.financial), so this
      * always returns true.
      */
     public function authorize(): bool

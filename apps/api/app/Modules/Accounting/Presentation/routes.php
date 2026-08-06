@@ -159,36 +159,41 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('ledger.index');
 
     // Financial Reports
+    //
+    // W-6 D5 owner ruling (2026-08-05, "Option B split"): trial balance, P&L,
+    // balance sheet and finance summary gate on reports.financial; aged
+    // AR/AP, upcoming payments and cash movements gate on reports.operational.
+    // reports.view is deprecated and no longer checked by any route.
     Route::get('/reports/trial-balance', [ReportsController::class, 'trialBalance'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.financial')
         ->name('reports.trial-balance');
 
     Route::get('/reports/profit-loss', [ReportsController::class, 'profitLoss'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.financial')
         ->name('reports.profit-loss');
 
     Route::get('/reports/balance-sheet', [ReportsController::class, 'balanceSheet'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.financial')
         ->name('reports.balance-sheet');
 
     Route::get('/reports/cash-movements', [ReportsController::class, 'cashMovements'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.cash-movements');
 
     Route::get('/reports/aged-receivables', [ReportsController::class, 'agedReceivables'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.aged-receivables');
 
     Route::get('/reports/aged-payables', [ReportsController::class, 'agedPayables'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.aged-payables');
 
     Route::get('/reports/upcoming-payments', [ReportsController::class, 'upcomingPayments'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.operational')
         ->name('reports.upcoming-payments');
 
     Route::get('/reports/finance-summary', [ReportsController::class, 'financeSummary'])
-        ->middleware('can:reports.view')
+        ->middleware('can:reports.financial')
         ->name('reports.finance-summary');
 
     // Owner Reporting MVP

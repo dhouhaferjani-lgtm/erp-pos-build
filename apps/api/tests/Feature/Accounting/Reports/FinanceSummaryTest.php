@@ -111,7 +111,7 @@ final class FinanceSummaryTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['reports.view']);
+        $this->user->givePermissionTo(['reports.financial']);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
@@ -267,7 +267,7 @@ final class FinanceSummaryTest extends TestCase
         $this->getJson('/api/v1/reports/finance-summary')->assertUnauthorized();
     }
 
-    public function test_finance_summary_requires_reports_view_permission(): void
+    public function test_finance_summary_requires_reports_financial_permission(): void
     {
         $userWithoutPermission = User::create([
             'tenant_id' => $this->tenant->id,

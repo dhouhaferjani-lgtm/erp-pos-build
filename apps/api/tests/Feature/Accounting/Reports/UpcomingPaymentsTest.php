@@ -63,8 +63,8 @@ final class UpcomingPaymentsTest extends TestCase
         }
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        Permission::findOrCreate('reports.view', 'sanctum');
-        $this->user->givePermissionTo('reports.view');
+        Permission::findOrCreate('reports.operational', 'sanctum');
+        $this->user->givePermissionTo('reports.operational');
         app(CompanyContext::class)->setCompanyId($this->company->id);
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
@@ -210,7 +210,7 @@ final class UpcomingPaymentsTest extends TestCase
         $response->assertJsonPath('data.in.1.balance_due', '150.000');
     }
 
-    public function test_upcoming_payments_report_requires_reports_view_permission(): void
+    public function test_upcoming_payments_report_requires_reports_operational_permission(): void
     {
         $response = $this->actingAs($this->userWithoutPermission, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)

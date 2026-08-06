@@ -73,10 +73,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:invoices.update');
 
     // VAT Period endpoints
+    //
+    // W-6 D5 owner ruling (2026-08-05, "Option B split"): VAT period reads
+    // are "VAT declaration" reporting, so they gate on reports.financial
+    // (reports.view is deprecated and no longer checked). Mutating period
+    // lifecycle actions (generate/close/reopen/file) stay on reports.manage,
+    // unchanged by this split.
     Route::prefix('vat/periods')->group(function (): void {
-        Route::get('/', [VatPeriodController::class, 'index'])->middleware('can:reports.view');
+        Route::get('/', [VatPeriodController::class, 'index'])->middleware('can:reports.financial');
         Route::post('/generate', [VatPeriodController::class, 'generate'])->middleware('can:reports.manage');
-        Route::get('/{id}', [VatPeriodController::class, 'show'])->middleware('can:reports.view');
+        Route::get('/{id}', [VatPeriodController::class, 'show'])->middleware('can:reports.financial');
         Route::post('/{id}/close', [VatPeriodController::class, 'close'])->middleware('can:reports.manage');
         Route::post('/{id}/reopen', [VatPeriodController::class, 'reopen'])->middleware('can:reports.manage');
         Route::post('/{id}/file', [VatPeriodController::class, 'file'])->middleware('can:reports.manage');

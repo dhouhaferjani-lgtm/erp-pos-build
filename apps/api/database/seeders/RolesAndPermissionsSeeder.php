@@ -261,7 +261,14 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'ledger.view',  // General ledger access
 
-            'reports.view',  // All financial reports
+            // DEPRECATED (W-6 D5, 2026-08-05 owner ruling "Option B split") —
+            // reports.view no longer gates any route as of this release; the
+            // reports/* endpoints now check reports.financial or
+            // reports.operational per report. Kept seeded (admin retains it
+            // via Permission::all()) for one release so any tenant-custom
+            // role referencing it does not break; slated for removal next
+            // release.
+            'reports.view',
             'reports.financial',
             'reports.operational',
             'reports.manage',  // VAT period management
@@ -526,7 +533,10 @@ class RolesAndPermissionsSeeder extends Seeder
                 'treasury.view', 'treasury.adjust', 'treasury.transfer',
                 'journal.view',
                 'accounts.view', 'accounts.manage',
-                'reports.financial', 'reports.operational', 'reports.manage', 'dashboard.owner',
+                // W-6 D5 owner ruling (2026-08-05, "Option B split"): manager
+                // gets reports.operational ONLY — no reports.financial
+                // (P&L/trial balance/balance sheet) and no ledger.view.
+                'reports.operational', 'reports.manage', 'dashboard.owner',
                 'work-orders.view', 'work-orders.create', 'work-orders.update',
                 'work-orders.approve', 'work-orders.assign', 'work-orders.transition',
                 'work-orders.cancel', 'work-orders.complete', 'work-orders.view_financials',
@@ -650,7 +660,9 @@ class RolesAndPermissionsSeeder extends Seeder
                 'repositories.view',
                 'journal.view',
                 'accounts.view',
-                'reports.operational',
+                // W-6 D5 owner ruling (2026-08-05, "Option B split"): viewer
+                // gets NO finance-report permissions at all (neither
+                // reports.financial nor reports.operational, nor ledger.view).
                 'work-orders.view',
                 'settings.view',
                 'composite-items.view',
@@ -742,7 +754,8 @@ class RolesAndPermissionsSeeder extends Seeder
                 'bank-statements.view', 'bank-statements.import', 'bank-statements.reconcile',
                 'journal.view', 'journal.create', 'journal.post',
                 'accounts.view', 'accounts.manage',
-                'reports.financial', 'reports.manage',
+                'ledger.view',
+                'reports.financial', 'reports.operational', 'reports.manage',
                 'taxation.tax_configurations.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',
                 'audit.view',

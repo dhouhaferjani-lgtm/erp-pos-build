@@ -78,7 +78,7 @@ class ProfitLossTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['reports.view']);
+        $this->user->givePermissionTo(['reports.financial']);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
@@ -345,7 +345,7 @@ class ProfitLossTest extends TestCase
         $response->assertUnauthorized();
     }
 
-    public function test_profit_loss_requires_reports_view_permission(): void
+    public function test_profit_loss_requires_reports_financial_permission(): void
     {
         $userWithoutPermission = User::create([
             'tenant_id' => $this->tenant->id,
