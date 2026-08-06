@@ -134,3 +134,67 @@ describe('ProductForm blocked submit feedback (BUG-003)', () => {
     expect(scrollIntoView).toHaveBeenCalled()
   })
 })
+
+describe('ProductForm multi-error focus ownership (BUG-003 / FE gate m2)', () => {
+  let scrollIntoView: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    seedAuth()
+    scrollIntoView = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+  })
+
+  afterEach(() => {
+    resetAuth()
+    vi.clearAllMocks()
+  })
+
+  /**
+   * react-hook-form's `handleSubmit` runs `_focusError()` (and a second one in a
+   * `setTimeout`) AFTER awaiting `onInvalid`. `_focusError` walks the `_fields`
+   * registry in REGISTRATION order and calls `ref.focus()` without
+   * `preventScroll`, so on a multi-error submit it can overwrite the DOM-order
+   * element our helper chose — and scroll the page to a different field than
+   * the one the toast is about. `shouldFocusError: false` makes our walk the
+   * last (and only) writer.
+   */
+  // NOTE ON STRENGTH: this case is a REGRESSION GUARD, not a red-first test.
+  // ProductForm happens to register its fields in DOM order today, so RHF's
+  // pick and ours coincide here and it passed before `shouldFocusError: false`
+  // too. The discriminating proof lives in `src/lib/formErrors.rhf.test.tsx`,
+  // where the fixture forces the two orders apart. This one exists so a future
+  // field added out of DOM order fails HERE, on the real form.
+  it('leaves the DOM-order pick focused when SEVERAL fields are invalid', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<ProductForm />, {
+      route: '/inventory/products/new',
+      companyConfig: parapharmacyCompanyConfig,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('products:parapharmacy.title')).toBeInTheDocument()
+    })
+
+    // Submit with EVERY required field empty: name, sku and the parapharmacy
+    // category are all invalid at once.
+    await user.click(screen.getByRole('button', { name: 'catalog:editor.actions.save' }))
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('inventory:products.validationBlocked')
+    })
+
+    const form = document.getElementById('product-editor-form')
+    expect(form).toBeInstanceOf(HTMLFormElement)
+
+    const invalidNames = ['name', 'sku', 'parapharmacy_metadata.category']
+    const firstInDomOrder = Array.from(
+      (form as HTMLFormElement).querySelectorAll<HTMLElement>('[name]'),
+    ).find((el) => invalidNames.includes(el.getAttribute('name') ?? ''))
+
+    expect(firstInDomOrder).toBeDefined()
+    // Settle RHF's deferred setTimeout(_focusError) before asserting ownership.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(document.activeElement).toBe(firstInDomOrder)
+  })
+})

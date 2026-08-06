@@ -201,6 +201,14 @@ export function ProductForm() {
     setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<ProductFormData>({
+    // BUG-003 / gate m2: react-hook-form's own `_focusError` runs AFTER
+    // `onInvalid`, walks the `_fields` registry in REGISTRATION order and
+    // focuses without `preventScroll`. Whenever registration order and DOM
+    // order disagree it silently overrides the field `focusFirstInvalidField`
+    // chose and scrolls somewhere else. Disabling it makes our DOM-order walk
+    // the single, authoritative writer. Mechanism pinned in
+    // `src/lib/formErrors.rhf.test.tsx`.
+    shouldFocusError: false,
     defaultValues: {
       name: '',
       sku: '',
