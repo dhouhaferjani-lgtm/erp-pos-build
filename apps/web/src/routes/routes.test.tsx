@@ -85,12 +85,12 @@ describe('route module guards', () => {
     expect(fragment).toContain('<ReconciliationWorkspacePage />')
   })
 
-  it('registers treasury overview under finance with reports.view permission', () => {
+  it('registers treasury overview under finance with reports.operational permission', () => {
     const idx = routesSource.indexOf('path="overview"')
     expect(idx).toBeGreaterThanOrEqual(0)
     const fragment = routesSource.slice(Math.max(0, idx - 200), idx + 500)
     expect(fragment).toContain('TreasuryOverviewPage')
-    expect(fragment).toContain('permission="reports.view"')
+    expect(fragment).toContain('permission="reports.operational"')
   })
 
   it('lazy-loads recurring expenses under an exact view permission guard', () => {

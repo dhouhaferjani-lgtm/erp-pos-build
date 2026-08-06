@@ -24,7 +24,7 @@ vi.mock('../components/auth', () => ({
     permission?: string
   }) => {
     mockRequirePermission(permission)
-    return permission === 'reports.view' ? <>{children}</> : null
+    return permission === 'reports.operational' ? <>{children}</> : null
   },
 }))
 
@@ -33,7 +33,7 @@ vi.mock('../features/finance/pages/CashMovementsReportPage', () => ({
 }))
 
 describe('cash movements report route', () => {
-  it('lazy-renders the page behind reports.view', async () => {
+  it('lazy-renders the page behind reports.operational', async () => {
     render(
       <MemoryRouter initialEntries={['/finance/cash-movements']}>
         <AppRoutes />
@@ -41,6 +41,6 @@ describe('cash movements report route', () => {
     )
 
     expect(await screen.findByText('cash movements route page')).toBeInTheDocument()
-    expect(mockRequirePermission).toHaveBeenCalledWith('reports.view')
+    expect(mockRequirePermission).toHaveBeenCalledWith('reports.operational')
   })
 })

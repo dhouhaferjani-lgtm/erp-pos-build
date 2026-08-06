@@ -1926,7 +1926,7 @@ export function AppRoutes() {
           <Route
             path="overview"
             element={
-              <RequirePermission permission="reports.view">
+              <RequirePermission permission="reports.operational">
                 <SuspenseWrapper>
                   <TreasuryOverviewPage />
                 </SuspenseWrapper>
@@ -1937,7 +1937,7 @@ export function AppRoutes() {
             path="cash-movements"
             element={
               <SuspenseWrapper>
-                <RequirePermission permission="reports.view">
+                <RequirePermission permission="reports.operational">
                   <CashMovementsReportPage />
                 </RequirePermission>
               </SuspenseWrapper>
@@ -1966,7 +1966,7 @@ export function AppRoutes() {
           <Route
             path="trial-balance"
             element={
-              <RequirePermission permission="accounts.view">
+              <RequirePermission permission="reports.financial">
                 <SuspenseWrapper>
                   <TrialBalancePage />
                 </SuspenseWrapper>
@@ -1976,7 +1976,7 @@ export function AppRoutes() {
           <Route
             path="profit-loss"
             element={
-              <RequirePermission permission="accounts.view">
+              <RequirePermission permission="reports.financial">
                 <SuspenseWrapper>
                   <ProfitLossPage />
                 </SuspenseWrapper>
@@ -1986,7 +1986,7 @@ export function AppRoutes() {
           <Route
             path="balance-sheet"
             element={
-              <RequirePermission permission="accounts.view">
+              <RequirePermission permission="reports.financial">
                 <SuspenseWrapper>
                   <BalanceSheetPage />
                 </SuspenseWrapper>
@@ -1996,7 +1996,7 @@ export function AppRoutes() {
           <Route
             path="aged-receivables"
             element={
-              <RequirePermission permission="accounts.view">
+              <RequirePermission permission="reports.operational">
                 <SuspenseWrapper>
                   <AgedReceivablesPage />
                 </SuspenseWrapper>
@@ -2006,7 +2006,7 @@ export function AppRoutes() {
           <Route
             path="aged-payables"
             element={
-              <RequirePermission permission="accounts.view">
+              <RequirePermission permission="reports.operational">
                 <SuspenseWrapper>
                   <AgedPayablesPage />
                 </SuspenseWrapper>

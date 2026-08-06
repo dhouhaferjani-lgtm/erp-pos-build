@@ -32,7 +32,11 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   remittances: ['instruments.remit'],
   vehicles: ['vehicles.view'],
   services: ['services.view'],
-  reports: ['reports.view'],
+  // W-6 D5 owner ruling (2026-08-05, "Option B split"): reports.view is
+  // deprecated and no longer gates any API route; VAT period reads
+  // (the only consumer of this module key — vat-periods/vat-report) now
+  // check reports.financial.
+  reports: ['reports.financial'],
   ownerReports: ['dashboard.owner'],
   finance: ['accounts.view', 'journal.view'],
   pricing: ['pricing.view'],

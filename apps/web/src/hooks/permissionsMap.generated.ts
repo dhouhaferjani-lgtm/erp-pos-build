@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:32135fe72d4016f5e93974414a73de1bfbcd0d3b7871d040fd799604bfec25ba
+// Source hash: sha256:8aa4c4e6cb82efe830ebfc9e588632ea8517e6d50d3e5bdf88f83809a7240466
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -81,6 +81,7 @@ export const PERMISSIONS = {
   'expenses.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
   'fiscal.events.resolve_quarantine': ['admin'],
   'fiscal.events.verify_chain': ['admin'],
+  'fiscal.refunds.manage_dead_letters': ['admin', 'manager'],
   'fraud-alerts.manage': ['admin', 'manager'],
   'fraud-alerts.view': ['accountant', 'admin', 'manager'],
   'fraud-settings.update': ['admin', 'manager'],
@@ -121,7 +122,7 @@ export const PERMISSIONS = {
   'journal.create': ['accountant', 'admin'],
   'journal.post': ['accountant', 'admin'],
   'journal.view': ['accountant', 'admin', 'manager', 'viewer'],
-  'ledger.view': ['admin'],
+  'ledger.view': ['accountant', 'admin'],
   'loyalty.enroll': ['admin', 'cashier', 'manager'],
   'loyalty.manage': ['admin', 'manager'],
   'loyalty.view': ['admin', 'manager', 'viewer'],
@@ -223,9 +224,9 @@ export const PERMISSIONS = {
   'replenishment.create': ['admin', 'manager', 'operator'],
   'replenishment.process': ['admin', 'manager'],
   'replenishment.view': ['admin', 'manager', 'operator'],
-  'reports.financial': ['accountant', 'admin', 'manager'],
+  'reports.financial': ['accountant', 'admin'],
   'reports.manage': ['accountant', 'admin', 'manager'],
-  'reports.operational': ['admin', 'manager', 'viewer'],
+  'reports.operational': ['accountant', 'admin', 'manager'],
   'reports.view': ['admin'],
   'repositories.manage': ['accountant', 'admin'],
   'repositories.view': ['accountant', 'admin', 'manager', 'viewer'],
@@ -244,6 +245,7 @@ export const PERMISSIONS = {
   'supplier-invoices.approve-invoice-first': ['accountant', 'admin', 'manager'],
   'supplier-invoices.create-pending': ['accountant', 'admin', 'manager'],
   'supplier-invoices.link-receipts': ['accountant', 'admin', 'manager'],
+  'taxation.tax_configurations.manage': ['accountant', 'admin'],
   'treasury.adjust': ['accountant', 'admin', 'manager'],
   'treasury.manage': ['accountant', 'admin'],
   'treasury.transfer': ['accountant', 'admin', 'manager'],

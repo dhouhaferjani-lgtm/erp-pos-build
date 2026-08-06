@@ -99,6 +99,12 @@ describe('FinanceHubPage canonicalization', () => {
     mockCanAccessModule.mockImplementation(
       (m: string) => m !== 'accounts' && m !== 'finance',
     )
+    // Reports-section cards (trial balance / P&L / balance sheet / aged
+    // AR/AP) are gated on reports.financial / reports.operational, not a
+    // permissionModule — deny both so the section still empties out.
+    mockHasPermission.mockImplementation(
+      (permission: string) => permission !== 'reports.financial' && permission !== 'reports.operational',
+    )
     render(<FinanceHubPage />)
     // accounting + reports sections become empty → removed
     expect(screen.queryByText('hub.sections.accounting')).not.toBeInTheDocument()
