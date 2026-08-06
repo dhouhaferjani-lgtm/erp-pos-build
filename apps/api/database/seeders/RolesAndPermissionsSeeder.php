@@ -367,6 +367,16 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.update',
             'withholding.delete',
 
+            // Taxation - Tax Configurations (W-X, 2026-08-06): create/edit/
+            // delete/reorder tax rates, types and stamp duties. Was defined
+            // in the central-bootstrap PermissionSeeder but never in this
+            // per-tenant seeder, so it was never created on any real tenant
+            // DB — taxation.tax_configurations.manage was dead for every
+            // role including admin. Matches the route guard string exactly:
+            // Taxation/routes.php:23-31 (store/update/destroy/reorder).
+            // docs/superpowers/tickets/2026-08-05-wx-tax-config-unmanageable.md
+            'taxation.tax_configurations.manage',
+
             // Loyalty
             'loyalty.view',
             'loyalty.manage',
@@ -733,6 +743,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'journal.view', 'journal.create', 'journal.post',
                 'accounts.view', 'accounts.manage',
                 'reports.financial', 'reports.manage',
+                'taxation.tax_configurations.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',
                 'audit.view',
                 'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
