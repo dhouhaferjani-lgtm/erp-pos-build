@@ -394,11 +394,40 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     await expect(table).toBeVisible({ timeout: 20_000 })
     const runRows = table.locator('tr', { hasText: customerName })
     await expect(runRows, "exactly this run's three rows render for the customer").toHaveCount(3)
+
+    // W-7 F-7 — FIXED (fix lane L4). `hasText: withheldValue` used to work
+    // because the tracking page rendered `15.000` — the same dot-decimal shape
+    // the API emits, so an API-derived string could be matched against the DOM
+    // verbatim. `formatNumber`'s locale now resolves from the company currency,
+    // so the page renders `15,000` (fr-TN) and a `hasText` match on the API
+    // value finds nothing.
+    //
+    // Compare DIGITS instead of the glyph, and keep the live-derivation
+    // property that made this assertion worth having: `expectedPerRow` is still
+    // computed from THIS run's rate and gross (the page accumulates rows across
+    // runs with no delete endpoint, and 15.000 / 37.500 / 11.250 recur every
+    // run, so a bare amount match would pass on a previous run's stale row).
+    // Only the separator is factored out — the row set is still anchored on
+    // this run's customer, and the count is still exactly one per figure.
+    //
+    // PER CELL, and by EQUALITY — not `digitsOf(wholeRow).includes(...)`, which
+    // is what the first version of this repair did and which false-matched live:
+    // digesting the whole row CONCATENATES the customer name's digits with the
+    // money's, so `…-8u83` + `750,000` synthesises `…8837500…` and the row
+    // matched the needle `37.500` that belongs to a different row. Cell-scoped
+    // exact digit equality has no such seam, and is strictly SHARPER than the
+    // `hasText` substring match it replaces.
+    const cellsPerRow = await runRows.evaluateAll((rows) =>
+      rows.map((row) => Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent ?? '')),
+    )
     for (const withheldValue of expectedPerRow) {
-      await expect(
-        runRows.filter({ hasText: withheldValue }),
-        `THIS run's row renders withheld ${withheldValue} at scale 3`
-      ).toHaveCount(1)
+      const needle = digitsOf(withheldValue)
+      const matching = cellsPerRow.filter((cells) => cells.some((cell) => digitsOf(cell) === needle))
+      expect(
+        matching,
+        `exactly one of THIS run's rows renders withheld ${withheldValue} at scale 3 `
+          + `(rendered: ${cellsPerRow.map((cells) => cells.join(' / ')).join(' | ')})`
+      ).toHaveLength(1)
     }
   })
 

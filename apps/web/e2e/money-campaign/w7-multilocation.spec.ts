@@ -9,11 +9,14 @@
  * Plan §B.8 row 105 calls this surface "unblockable except the POS-data half".
  * That is now only PARTLY true and the difference matters:
  *
- *   * `pos_receipts` DO exist on this tenant — 4 of them, `300.000` at
- *     STORE-TUN1 and `181.100` at STORE-TUN2 (authored as a side effect of
+ *   * `pos_receipts` DO exist on this tenant (authored as a side effect of
  *     C-2's `authorTier4CardFiscalSale` card-settlement fixture, not by any
  *     seeder). So the per-location revenue leg of MLC-01/02/03 IS assertable
- *     today, and this spec asserts it.
+ *     today, and this spec asserts it. Their COUNT and their LOCATIONS are not
+ *     fixture constants: that fixture clones whichever terminal happens to sort
+ *     first, so it has landed receipts at STORE-TUN1, STORE-TUN2 and — since
+ *     2026-08-05 — the WH-01 warehouse. Every case below derives its subject
+ *     from a live read rather than naming one.
  *   * What remains DEVICE-BLOCKED is authoring NEW POS money per location: no
  *     web path opens a shift, rings a sale, or closes a Z. Every case below
  *     therefore reads the POS figures rather than authoring them, and the
@@ -378,34 +381,76 @@ test.describe('MLC — multi-location money scoping', () => {
   }) => {
     await loginAsRoleResilient(page, 'owner')
 
-    // API: the warehouse is `type: warehouse` and has never had a receipt.
+    // FIXTURE PREMISE, REPAIRED (2026-08-06). This case used to hardcode
+    // `warehouse` (WH-01) and assert it "has never had a receipt". That premise
+    // DIED: `statement-support.ts` `authorTier4CardFiscalSale()` picks
+    // `terminals.find((t) => t.is_active)` — the first active terminal in list
+    // order, with NO location predicate — and clones its `location_id` onto the
+    // dedicated terminal it then rings a real SALE_RECEIPT on. Once the
+    // warehouse-resident `VADMIN` terminal sorted first, that fixture started
+    // minting POS receipts AT THE WAREHOUSE (`FE-C2-001d096a-2026-00000001`,
+    // `100.000`, 2026-08-05). The earlier C-2 terminals all landed at
+    // STORE-TUN1, so this case's long green was ORDER-LUCK, not a property of
+    // the tenant. See docs/superpowers/tickets/2026-08-06-c2-fixture-terminal-location.md.
+    //
+    // So resolve the subject from the DATA instead of naming it: any location
+    // with zero POS revenue in the window, preferring a non-POS one (the
+    // sharper subject — a warehouse *cannot* legitimately hold POS money).
+    // Skip with a reason rather than fail if the tenant has no quiet location
+    // left: that is a fixture fact about the stack, not a product defect.
+    const unscoped = await apiRequest(
+      page,
+      'GET',
+      `/reports/sales/by-location?from=${YEAR_FROM}&to=${YEAR_TO}`,
+    )
+    expect(unscoped.status, 'the unscoped report reads').toBe(200)
+    const unscopedRows = (unscoped.body as { data?: SalesByLocationRow[] }).data ?? []
+    // NON-VACUITY GUARD: the zero-rows assertion below only means something if
+    // the report is capable of returning rows at all in this window.
+    expect(
+      unscopedRows.length,
+      'the window holds POS revenue somewhere, so an empty scoped read is a real filter result',
+    ).toBeGreaterThan(0)
+
+    const noisy = new Set(unscopedRows.map((r) => r.location_id))
+    const quiet = locations.filter((l) => !noisy.has(l.id))
+    const subject = quiet.find((l) => l.type !== 'shop') ?? quiet[0]
+    test.skip(
+      subject === undefined,
+      'every location on this tenant now carries POS revenue in the window — no zero-revenue '
+        + 'scope left to assert against (fixture state, not a product defect)',
+    )
+
+    // API: a location with no POS receipts is a valid scope that returns nothing.
     const res = await apiRequest(
       page,
       'GET',
-      `/reports/sales/by-location?from=${YEAR_FROM}&to=${YEAR_TO}&location_ids[]=${warehouse}`,
+      `/reports/sales/by-location?from=${YEAR_FROM}&to=${YEAR_TO}&location_ids[]=${subject!.id}`,
     )
-    expect(res.status, 'a non-POS scope is a valid query, not an error').toBe(200)
+    expect(res.status, 'a zero-revenue scope is a valid query, not an error').toBe(200)
     const rows = (res.body as { data?: SalesByLocationRow[] }).data ?? []
-    expect(rows.length, 'zero POS revenue rows for a non-POS location').toBe(0)
+    expect(
+      rows.length,
+      `zero POS revenue rows for ${subject!.code} (${subject!.type}) — and NOT the `
+        + `${unscopedRows.length}-row unscoped dump, which is what an ignored scope would return`,
+    ).toBe(0)
 
-    // UI: the warehouse scope on the location-scoped stock surface (see
-    // MLC-02 for why `/reports` is not the fixture here) and on the POS Z
-    // list, which is where a non-POS location most plausibly breaks.
-    await applyViewScope(page, [warehouse])
+    // UI: the same scope on the location-scoped stock surface (see MLC-02 for
+    // why `/reports` is not the fixture here) and on the POS Z list, which is
+    // where a location holding no POS data most plausibly breaks.
+    await applyViewScope(page, [subject!.id])
     await page.goto('/inventory/stock-by-location')
     await settleAfterNav(page)
     const stockBody = await page.locator('main').innerText()
-    expect(stockBody, 'the warehouse column renders').toContain(
-      locations.find((l) => l.id === warehouse)!.name,
-    )
-    expect(stockBody, 'no NaN under a non-POS scope').not.toContain('NaN')
+    expect(stockBody, 'the scoped location`s column renders').toContain(subject!.name)
+    expect(stockBody, 'no NaN under a zero-revenue scope').not.toContain('NaN')
     expect(stockBody, 'no undefined leaks into a cell').not.toContain('undefined')
     expect(stockBody, 'renders rather than erroring').not.toMatch(/something went wrong/i)
 
     await page.goto('/pos/z-reports')
     await settleAfterNav(page)
     const zBody = await page.locator('body').innerText()
-    expect(zBody, 'the Z list renders cleanly under a warehouse scope').not.toContain('NaN')
+    expect(zBody, 'the Z list renders cleanly under a zero-revenue scope').not.toContain('NaN')
     expect(zBody, 'no error boundary').not.toMatch(/something went wrong/i)
 
     await applyViewScope(page, 'all')
@@ -474,9 +519,13 @@ test.describe('MLC — multi-location money scoping', () => {
     // The plan's expectation for this case is "cash figures RE-SCOPE; Σ across
     // all locations == the 'All' figure". The second half holds trivially and
     // the first half does not hold at all: three mutually exclusive
-    // single-location scopes — including a warehouse that has never seen a POS
-    // receipt — return payloads identical to the unscoped read. The
-    // `location_ids[]` parameter is accepted and then dropped.
+    // single-location scopes — including the WH-01 warehouse — return payloads
+    // identical to the unscoped read. The `location_ids[]` parameter is accepted
+    // and then dropped. (An earlier version of this comment called WH-01 "a
+    // warehouse that has never seen a POS receipt". It has since been given one
+    // by the C-2 statement fixture — see MLC-06's note — but the point stands
+    // and this tripwire never depended on it: the defect is that ALL THREE
+    // scopes return the unscoped payload byte for byte.)
     //
     // C1 (review fix round 1) — SCOPE OF THE DEFECT, CORRECTED. An earlier
     // version of this comment (and of the ticket) claimed "the parameter the
