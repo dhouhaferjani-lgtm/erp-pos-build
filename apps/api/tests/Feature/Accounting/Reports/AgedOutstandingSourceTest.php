@@ -6,6 +6,7 @@ namespace Tests\Feature\Accounting\Reports;
 
 use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
+use App\Modules\Accounting\Presentation\Controllers\ReportsController;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -19,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -183,6 +185,35 @@ final class AgedOutstandingSourceTest extends TestCase
         self::assertSame('750.0000', $report->grand_total);
         self::assertCount(1, $report->lines);
         self::assertSame('750.0000', $report->lines[0]->current);
+    }
+
+    /**
+     * TREASURY GATE — `Accounting/Presentation/routes.php` and
+     * `Document/Presentation/routes.php` both registered
+     * `GET api/v1/reports/aged-receivables` under the SAME route name. Laravel's
+     * `RouteCollection::addToCollections()` keys on method+URI, so the LAST
+     * provider to boot (`AccountingServiceProvider`, after `DocumentServiceProvider`
+     * per `bootstrap/providers.php`) fully overwrites the first — Accounting's
+     * D2+D4-fixed controller is served; the Document module's registration is
+     * DEAD CODE that still carries both defects (`balance_due ?? total`,
+     * `balance_due ?? '0.00'`, `whereRaw('balance_due > 0')`) and a DIFFERENT
+     * bucket contract. Deleted here; this pins the served route so the
+     * collision cannot silently come back if `bootstrap/providers.php`'s order
+     * ever changes or a route cache is built differently.
+     */
+    public function test_the_aged_receivables_route_resolves_to_the_accounting_controller(): void
+    {
+        $route = Route::getRoutes()->getByName('reports.aged-receivables');
+
+        self::assertNotNull($route, 'The named route must exist');
+        self::assertSame(
+            ReportsController::class,
+            $route->getAction('controller') !== null
+                ? explode('@', (string) $route->getAction('controller'))[0]
+                : null,
+            'reports.aged-receivables must resolve to the Accounting module controller — its Document-module '
+                .'twin still carries the D2/D4 defects this lane fixed',
+        );
     }
 
     // ------------------------------------------------------------ helpers ---

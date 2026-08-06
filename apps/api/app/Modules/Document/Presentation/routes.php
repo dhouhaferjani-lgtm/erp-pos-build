@@ -357,9 +357,17 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('documents.email.queue');
 
     // Financial Reports
-    Route::get('/reports/aged-receivables', [ReportsController::class, 'agedReceivables'])
-        ->middleware('can:reports.view')
-        ->name('reports.aged-receivables');
+    //
+    // `reports/aged-receivables` deliberately NOT registered here: it collided
+    // with the identical route in `Accounting/Presentation/routes.php` (same
+    // method + URI, so Laravel's RouteCollection had the last-booted provider
+    // silently overwrite this one — Accounting's D2/D4-fixed controller was
+    // always served). This Document-module `ReportsController::agedReceivables`
+    // still carries both defects and a different bucket contract; deleting the
+    // dead registration here removes the collision risk without touching the
+    // controller method itself, since `overdueSummary`/`customerStatement`
+    // below are still served from it.
+    // docs/superpowers/reviews/2026-08-06-l2-treasury-gate.md
 
     Route::get('/reports/customer-statement/{partnerId}', [ReportsController::class, 'customerStatement'])
         ->middleware('can:reports.view')
