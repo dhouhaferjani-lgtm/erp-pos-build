@@ -46,17 +46,27 @@ final class CatalogMediaQuery implements CatalogMediaQueryInterface
             $rows = $byOwner[$id] ?? [];
 
             $dtos = array_map(
-                // Use forPosSync() here — CatalogMediaQuery feeds the POS sync payload
-                // whose image_url shape is frozen (Tauri cache key).  The SPA uses
-                // forAttachment() via ProductMediaController/PublicProductMediaController.
+                // media[]: forPosSync() — the /products payload is also the POS sync
+                // payload and this per-attachment url shape is frozen (Tauri cache
+                // contract).  Do NOT change it without a coordinated POS release.
                 fn ($a) => MediaAttachmentData::fromModel($a, $this->urls->forPosSync($a, 'sm')),
                 $rows,
             );
 
+            // primary_image_url: forAttachment() — this is what the SPA renders in an
+            // <img src="…"> on the product hero (ProductHero / ProductEditHero).  An
+            // <img> tag cannot send the Sanctum Bearer header and the SPA is
+            // same-origin through the web proxy (no cookie for the API host), so the
+            // auth:sanctum-gated products.images.download URL always 401s → broken
+            // image icon (BUG-005 / RCA A1).  forAttachment() mints a RELATIVE
+            // HMAC-signed media.serve URL that the browser can load unauthenticated.
+            // 'md' is the hero rendition; the variant is passed to the resolver so it
+            // is covered by the HMAC (appending ?variant= afterwards would invalidate
+            // the signature).
             $primaryUrl = null;
-            foreach ($dtos as $d) {
-                if ($d->role === MediaRole::Primary->value) {
-                    $primaryUrl = $d->url;
+            foreach ($rows as $a) {
+                if ($a->role === MediaRole::Primary) {
+                    $primaryUrl = $this->urls->forAttachment($a, 'md');
                     break;
                 }
             }

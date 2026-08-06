@@ -194,13 +194,24 @@ final class ProductDataMediaParityTest extends TestCase
             'Product A index: primary_image_url must equal the external URL'
         );
 
-        // Product B (UPLOAD READY): primary_image_url contains /images/ and variant=sm
+        // Product B (UPLOAD READY): primary_image_url is a RELATIVE HMAC-signed
+        // media.serve URL with the md (hero) variant — BUG-005 / RCA A1. It must NOT
+        // be the auth:sanctum-gated products.images.download URL, which an <img> tag
+        // cannot authenticate.
         self::assertNotNull($rowB['primary_image_url'], 'Product B index: primary_image_url must not be null');
-        self::assertStringContainsString('/images/', $rowB['primary_image_url'], 'Product B index: URL must contain /images/');
-        self::assertStringContainsString('variant=sm', $rowB['primary_image_url'], 'Product B index: URL must contain variant=sm');
+        self::assertStringStartsWith('/', $rowB['primary_image_url'], 'Product B index: URL must be relative');
+        self::assertStringContainsString('/media/', $rowB['primary_image_url'], 'Product B index: URL must contain /media/');
+        self::assertStringContainsString('signature=', $rowB['primary_image_url'], 'Product B index: URL must be HMAC-signed');
+        self::assertStringContainsString('variant=md', $rowB['primary_image_url'], 'Product B index: URL must contain variant=md');
+        self::assertStringNotContainsString('/download', $rowB['primary_image_url'], 'Product B index: URL must not be the auth-gated download route');
 
-        // Product B URL must also be a download route for product B's attachment
-        self::assertStringContainsString($this->productB->id, $rowB['primary_image_url'], 'Product B index: URL must reference product B');
+        // Product B URL must reference product B's own tenant (signed tenant segment)
+        self::assertStringContainsString($this->tenant->id, $rowB['primary_image_url'], 'Product B index: URL must reference the tenant');
+
+        // The per-attachment media[] array keeps the frozen POS URL shape.
+        self::assertNotSame([], $rowB['media'], 'Product B index: media array must not be empty');
+        self::assertStringContainsString('/images/', $rowB['media'][0]['url'], 'Product B index: media[].url keeps the POS download shape');
+        self::assertStringContainsString('variant=sm', $rowB['media'][0]['url'], 'Product B index: media[].url keeps variant=sm');
 
         // Product C (no media): primary_image_url must be null
         self::assertNull($rowC['primary_image_url'], 'Product C index: primary_image_url must be null');
@@ -231,8 +242,10 @@ final class ProductDataMediaParityTest extends TestCase
             ->json('data');
 
         self::assertNotNull($showB['primary_image_url'], 'Product B show: primary_image_url must not be null');
-        self::assertStringContainsString('/images/', $showB['primary_image_url']);
-        self::assertStringContainsString('variant=sm', $showB['primary_image_url']);
+        self::assertStringStartsWith('/', $showB['primary_image_url']);
+        self::assertStringContainsString('/media/', $showB['primary_image_url']);
+        self::assertStringContainsString('signature=', $showB['primary_image_url']);
+        self::assertStringContainsString('variant=md', $showB['primary_image_url']);
 
         // Product C show
         $showC = $this->actingAs($this->user, 'sanctum')
@@ -248,10 +261,13 @@ final class ProductDataMediaParityTest extends TestCase
             $showA['primary_image_url'],
             'Product A: index and show primary_image_url must match'
         );
+        // Signed URLs embed a per-request `expires` timestamp, so compare the route
+        // path (the stable part of the contract) rather than the full signed string —
+        // otherwise the assertion flakes whenever the two requests straddle a second.
         self::assertSame(
-            $rowB['primary_image_url'],
-            $showB['primary_image_url'],
-            'Product B: index and show primary_image_url must match'
+            strtok((string) $rowB['primary_image_url'], '?'),
+            strtok((string) $showB['primary_image_url'], '?'),
+            'Product B: index and show primary_image_url must resolve the same media.serve path'
         );
     }
 
