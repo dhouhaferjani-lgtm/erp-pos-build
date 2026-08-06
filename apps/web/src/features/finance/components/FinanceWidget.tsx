@@ -4,6 +4,7 @@ import { useFinanceSummary } from '../hooks/useFinanceSummary'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
 import { textColors, borderColors } from '@/lib/designTokens'
+import { QueryError } from '@/components/QueryError'
 
 /**
  * Pick the signed-amount tone token (success when >= 0, error otherwise).
@@ -15,7 +16,7 @@ function netIncomeToneClass(value: string | null | undefined): string {
 
 export function FinanceWidget() {
   const { t } = useTranslation(['finance', 'common'])
-  const { data, isLoading } = useFinanceSummary()
+  const { data, isLoading, error, refetch } = useFinanceSummary()
   // W-6 D6: every tile used to call `formatCurrency(value)` with NO options, and
   // the helper defaulted to EUR — so a Tunisian company's six tiles rendered as
   // euros at 2 decimals, beside four sibling StatCards on the same viewport
@@ -39,6 +40,24 @@ export function FinanceWidget() {
       <div className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
         <h3 className="mb-4 text-lg font-semibold">{t('finance:widget.title')}</h3>
         <div>{t('common:common.loading')}</div>
+      </div>
+    )
+  }
+
+  // Never fall through to `data?.x ?? '0'` on error (e.g. a 403 for a role
+  // that can open this page but lacks reports.financial) — that fabricates
+  // six zero-value financial tiles as if they were real numbers.
+  if (error) {
+    return (
+      <div className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
+        <h3 className="mb-4 text-lg font-semibold">{t('finance:widget.title')}</h3>
+        <QueryError
+          error={error}
+          onRetry={() => {
+            void refetch()
+          }}
+          title={t('finance:widget.loadError')}
+        />
       </div>
     )
   }

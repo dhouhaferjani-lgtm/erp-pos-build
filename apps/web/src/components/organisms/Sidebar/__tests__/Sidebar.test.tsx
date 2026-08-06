@@ -148,7 +148,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       ).toBeTruthy()
     })
 
-    it('shows cash movements beside treasury overview only with reports access', async () => {
+    it('shows cash movements beside treasury overview only with reports.operational access', async () => {
       const firstRender = renderSidebar(mechanicFullConfig)
 
       const overviewLink = await screen.findByRole('link', {
@@ -165,7 +165,11 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       ).toBeTruthy()
 
       firstRender.unmount()
-      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'reports')
+      // Gate finding I-3 (2026-08-06 review): treasuryOverview/cashMovements
+      // moved off the shared 'reports' module key (which stayed
+      // reports.financial, wrongly hiding both entries for an
+      // operational-only manager) onto their own 'reports.operational' key.
+      mockCanAccessModule.mockImplementation((permission: string) => permission !== 'reports.operational')
       renderSidebar(mechanicFullConfig)
 
       expect(screen.queryByRole('link', {

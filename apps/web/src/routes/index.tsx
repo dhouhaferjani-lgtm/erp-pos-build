@@ -1956,7 +1956,7 @@ export function AppRoutes() {
           <Route
             path="ledger"
             element={
-              <RequirePermission permission="journal.view">
+              <RequirePermission permission="ledger.view">
                 <SuspenseWrapper>
                   <GeneralLedgerPage />
                 </SuspenseWrapper>

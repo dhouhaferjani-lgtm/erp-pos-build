@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:8aa4c4e6cb82efe830ebfc9e588632ea8517e6d50d3e5bdf88f83809a7240466
+// Source hash: sha256:2578583cb8d8ca55e7c3f07e2e84eca751caee49d76060f67a81dc19a42f9649
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -225,7 +225,7 @@ export const PERMISSIONS = {
   'replenishment.process': ['admin', 'manager'],
   'replenishment.view': ['admin', 'manager', 'operator'],
   'reports.financial': ['accountant', 'admin'],
-  'reports.manage': ['accountant', 'admin', 'manager'],
+  'reports.manage': ['accountant', 'admin'],
   'reports.operational': ['accountant', 'admin', 'manager'],
   'reports.view': ['admin'],
   'repositories.manage': ['accountant', 'admin'],

@@ -33,10 +33,17 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   vehicles: ['vehicles.view'],
   services: ['services.view'],
   // W-6 D5 owner ruling (2026-08-05, "Option B split"): reports.view is
-  // deprecated and no longer gates any API route; VAT period reads
-  // (the only consumer of this module key — vat-periods/vat-report) now
-  // check reports.financial.
+  // deprecated and no longer gates any API route; VAT period reads now
+  // check reports.financial. Gate finding I-3 (2026-08-06 review): this
+  // 'reports' key's ONLY consumers are the vat-periods/vat-report nav item
+  // (Sidebar.tsx) and route (routes/index.tsx moduleKey="reports") — the
+  // treasuryOverview/cashMovements Sidebar entries were WRONGLY sharing it
+  // (they need reports.operational, not reports.financial) and have their
+  // own 'reports.operational' key below.
   reports: ['reports.financial'],
+  'reports.financial': ['reports.financial'],
+  'reports.operational': ['reports.operational'],
+  'ledger.view': ['ledger.view'],
   ownerReports: ['dashboard.owner'],
   finance: ['accounts.view', 'journal.view'],
   pricing: ['pricing.view'],

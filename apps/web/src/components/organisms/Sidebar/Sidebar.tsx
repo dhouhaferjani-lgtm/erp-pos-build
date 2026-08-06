@@ -287,16 +287,21 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       module: 'Accounting',
       permission: 'accounts',
       children: [
-        { key: 'treasuryOverview', labelKey: 'finance:hub.cards.treasuryOverview.title', href: '/finance/overview', icon: Wallet, permission: 'reports' },
-        { key: 'cashMovements', labelKey: 'finance:cashMovements.navTitle', href: '/finance/cash-movements', icon: ArrowLeftRight, permission: 'reports' },
+        // Gate findings I-2/I-3/I-5 (2026-08-06 review): these nine entries
+        // used to be split only 'accounts' vs 'reports' (= reports.financial),
+        // which disagreed with the routes they link to (routes/index.tsx) —
+        // a viewer/manager could see a nav item that then silently bounced
+        // to /dashboard on click. Aligned 1:1 to the route's permission.
+        { key: 'treasuryOverview', labelKey: 'finance:hub.cards.treasuryOverview.title', href: '/finance/overview', icon: Wallet, permission: 'reports.operational' },
+        { key: 'cashMovements', labelKey: 'finance:cashMovements.navTitle', href: '/finance/cash-movements', icon: ArrowLeftRight, permission: 'reports.operational' },
         { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, permission: 'accounts' },
-        { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'accounts' },
+        { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'ledger.view' },
         { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, permission: 'accounts' },
-        { key: 'trialBalance', href: '/finance/trial-balance', icon: Scale, permission: 'accounts' },
-        { key: 'profitLoss', href: '/finance/profit-loss', icon: TrendingUp, permission: 'accounts' },
-        { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, permission: 'accounts' },
-        { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, permission: 'accounts' },
-        { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, permission: 'accounts' },
+        { key: 'trialBalance', href: '/finance/trial-balance', icon: Scale, permission: 'reports.financial' },
+        { key: 'profitLoss', href: '/finance/profit-loss', icon: TrendingUp, permission: 'reports.financial' },
+        { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, permission: 'reports.financial' },
+        { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, permission: 'reports.operational' },
+        { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, permission: 'reports.operational' },
         { key: 'vatReporting', href: '/finance/vat-periods', icon: Receipt, permission: 'reports' },
       ],
     },

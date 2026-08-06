@@ -85,7 +85,8 @@
     "netIncomeMtd": "Résultat net (mois en cours)",
     "netIncomeYtd": "Résultat net (exercice)",
     "accountsReceivable": "Créances clients",
-    "accountsPayable": "Dettes fournisseurs"
+    "accountsPayable": "Dettes fournisseurs",
+    "loadError": "Impossible de charger le résumé financier"
   },
   "overview": {
     "title": "Trésorerie",

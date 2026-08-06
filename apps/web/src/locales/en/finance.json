@@ -85,7 +85,8 @@
     "netIncomeMtd": "Net Income (MTD)",
     "netIncomeYtd": "Net Income (YTD)",
     "accountsReceivable": "Accounts Receivable",
-    "accountsPayable": "Accounts Payable"
+    "accountsPayable": "Accounts Payable",
+    "loadError": "Unable to load the finance summary"
   },
   "overview": {
     "title": "Treasury",
