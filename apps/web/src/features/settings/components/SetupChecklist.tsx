@@ -8,17 +8,18 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { Spinner } from '@/components/atoms/Spinner'
+import { Button } from '@/components/atoms/Button'
 import { ProgressBar } from '@/components/atoms/ProgressBar'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { fetchOnboardingStatus, type OnboardingItem } from '../api/onboardingApi'
 
 export function SetupChecklist() {
-  const { t } = useTranslation('settings')
+  const { t } = useTranslation(['settings', 'common'])
   const navigate = useNavigate()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, isError, refetch } = useQuery({
     queryKey: tenantScopedKey(['onboarding-status']),
     queryFn: fetchOnboardingStatus,
     enabled: tenantId !== null && companyId !== null,
@@ -34,6 +35,34 @@ export function SetupChecklist() {
     return (
       <div className="flex items-center justify-center p-8">
         <Spinner size="md" />
+      </div>
+    )
+  }
+
+  // BUG-005 / RCA B3 — a failed request leaves `data` at its `[]` default, which
+  // used to render a perfectly healthy-looking "0 of 0 completed" checklist (and
+  // no "required steps" alert), telling the user their setup was fine when in
+  // fact nothing loaded. A failure must look like a failure.
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className={tokens.heading.section}>{t('onboarding.title')}</h2>
+          <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('onboarding.description')}</p>
+        </div>
+
+        <div role="alert" className={cn('flex items-start gap-3', tokens.alert.base, tokens.alert.error)}>
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="space-y-3">
+            <div>
+              <p className="font-medium">{t('onboarding.loadErrorTitle')}</p>
+              <p className="text-sm">{t('onboarding.loadErrorBody')}</p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => { void refetch() }}>
+              {t('common:actions.retry')}
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }

@@ -389,6 +389,8 @@
     "viewChecklist": "View Setup Checklist",
     "dismiss": "Dismiss",
     "allDone": "Setup complete! You're ready to start selling.",
+    "loadErrorTitle": "Could not load the setup checklist",
+    "loadErrorBody": "Something went wrong on our side. Your setup has not changed — try again in a moment.",
     "steps": {
       "company_info": "Company Information",
       "tax_config": "Tax Configuration",

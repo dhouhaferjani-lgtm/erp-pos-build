@@ -55,16 +55,40 @@ export function isApiError(error: unknown): error is AxiosError<ApiError> {
   return data?.error !== undefined
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 /**
- * Extract error message from API error
+ * Read a string field off an unknown response body without assuming its shape.
+ */
+function readString(source: unknown, key: string): string | null {
+  if (!isRecord(source)) return null
+  const value = source[key]
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Extract a human-readable message from an API error.
+ *
+ * BUG-005 / RCA B3 — this used to read `data.error.message` behind an
+ * `isApiError` guard, with two holes: a body carrying only a bare top-level
+ * `message` (Laravel's untyped `{"message":"Server Error"}`) failed the guard
+ * and lost the server's text entirely, and an envelope whose `error` object
+ * had no `message` returned `undefined` despite the `string` return type.
+ *
+ * Fallback chain: `data?.error?.message ?? data?.message ?? error.message`.
  */
 export function getErrorMessage(error: unknown): string {
-  if (isApiError(error)) {
-    const data = error.response?.data
-    if (data) {
-      return data.error.message
-    }
-    return 'An unexpected error occurred'
+  if (axios.isAxiosError(error)) {
+    const data: unknown = error.response?.data
+    const envelope = isRecord(data) ? data['error'] : null
+
+    return (
+      readString(envelope, 'message') ??
+      readString(data, 'message') ??
+      (error.message !== '' ? error.message : 'An unexpected error occurred')
+    )
   }
   if (error instanceof Error) {
     return error.message
@@ -184,7 +208,7 @@ function createApiClient(): AxiosInstance {
 
         // Handle 403 Forbidden
         if (response.status === 403) {
-          console.error('Access denied:', response.data.error.message)
+          console.error('Access denied:', getErrorMessage(error))
         }
 
         // Handle 419 CSRF Token Mismatch - retry after fetching new token
@@ -203,7 +227,7 @@ function createApiClient(): AxiosInstance {
 
         // Handle 500+ Server Errors
         if (response.status >= 500) {
-          console.error('Server error:', response.data.error.message)
+          console.error('Server error:', getErrorMessage(error))
         }
       }
 
