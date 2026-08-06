@@ -430,31 +430,38 @@ final class ExpenseService
      * computes tax from lines; an expense's VAT is a single attested
      * document-level figure, not derived from line rates).
      *
-     * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md):
+     * Q2 expert-comptable ruling (2026-08-06,
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md):
+     * tax_base is the FULL FACIAL subtotal of the transaction (e.g. 100.000
+     * on a 100.000 HT expense at 80% deductible), NOT a deductible-proportion
+     * base. Only tax_amount is prorated to the deductible share. Verbatim
+     * from the expert: "Il faut déclarer la valeur faciale totale de la
+     * transaction ... et non la base au prorata" -- the Tunisian DGI
+     * cross-matches monthly declarations between customers and suppliers,
+     * so declaring anything less than the supplier's own declared sale base
+     * creates a cross-matching anomaly. "Il faut dé-corréler la base
+     * déclarée du montant de la TVA effectivement déduite" -- so
+     * `base × rate == tax_amount` is EXPECTED to fail for any
+     * partially-deductible expense; that identity is an internal
+     * mathematical-control convenience, not a fiscal-declaration
+     * requirement. This OVERRULES the V5 deductible-proportion base below.
+     *
+     * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md,
+     * SUPERSEDED by the Q2 ruling above -- kept for history):
      * - tax_base used to be the WHOLE expense subtotal while tax_amount was
      *   only the DEDUCTIBLE share -- base × rate != amount for any
      *   partially-deductible expense, so SUM(base) and SUM(vat_amount) sat
-     *   on different footings in the declaration. Fixed by making tax_base
-     *   the DEDUCTIBLE-PROPORTION base: the same proportion of the subtotal
-     *   as was claimed of the VAT (ExpenseVatSplit::deductible() applied to
-     *   the subtotal, not just the VAT amount -- same bcmul/bcdiv/bcround
-     *   shape, one shared rounding convention). At 100% deductible this is
-     *   the subtotal unchanged; at partial deductibility it shrinks with
-     *   the claimed VAT, so base × rate reproduces tax_amount whenever
-     *   vat_amount was itself subtotal × rate (an invoice whose face VAT
-     *   was computed straightforwardly -- the common case).
-     *   FLAG for owner/expert-comptable, both on the mechanics and the
-     *   declaration mapping: (1) vat_amount/vat_rate/subtotal are
-     *   INDEPENDENTLY ATTESTED fields on an expense (OCR/manual entry, not
-     *   computed by TaxCalculationService from lines), so base × rate ==
-     *   tax_amount is not a data-model invariant the way it is on the
-     *   sales side -- it holds for the common straightforward case, not by
-     *   construction for every possible attested input; (2) this reports
-     *   the DEDUCTIBLE-PROPORTION base (e.g. 80.000 on a 100.000 subtotal
-     *   at 80% deductible), not the full transaction face value (100.000).
-     *   Either convention is defensible for an INPUT declaration box; if
-     *   the DGI form expects the full transaction value instead, that is a
-     *   declaration-mapping decision, not a data-correctness one.
+     *   on different footings in the declaration. V5 "fixed" this by making
+     *   tax_base the DEDUCTIBLE-PROPORTION base: the same proportion of the
+     *   subtotal as was claimed of the VAT (ExpenseVatSplit::deductible()
+     *   applied to the subtotal, not just the VAT amount -- same
+     *   bcmul/bcdiv/bcround shape, one shared rounding convention). At 100%
+     *   deductible this is the subtotal unchanged; at partial deductibility
+     *   it shrunk with the claimed VAT, so base × rate reproduced
+     *   tax_amount whenever vat_amount was itself subtotal × rate.
+     *   V5 flagged this exact question for the owner/expert-comptable --
+     *   the answer above is that flag's resolution: the DGI wants the full
+     *   transaction face value, not the deductible-proportion share.
      * - `firstOrCreate` (keyed on document_id + every value column) let a
      *   changed subtotal/VAT before a re-post create a SECOND row while the
      *   stale first row survived, double-counting input VAT. Fixed with a
@@ -483,18 +490,14 @@ final class ExpenseService
         $vatRate = $metadata?->vat_rate;
         $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
 
-        // The DEDUCTIBLE-PROPORTION base: the same proportion of the
-        // subtotal as was claimed of the VAT, using the identical
-        // bcmul/bcdiv/bcround shape as ExpenseVatSplit::deductible() so the
-        // two share one rounding convention. At 100% deductible this is
-        // just the subtotal unchanged; at partial deductibility it shrinks
-        // with the claimed VAT, so base × rate reproduces tax_amount
-        // exactly whenever vat_amount was itself subtotal × rate (the
-        // common case for an invoice whose face VAT was computed
-        // straightforwardly) -- see the class docblock on
-        // writeDeductibleVatSnapshot() for the flagged alternative.
+        // Q2 ruling: the declared base is the FULL FACIAL subtotal, not the
+        // deductible-proportion share -- decorrelated from tax_amount
+        // (below), which stays prorated to the deductible percent. See the
+        // docblock above for the verbatim ruling and citation. Formatted
+        // as a bcmath-safe numeric string at the resolved currency scale;
+        // never cast to float.
         $subtotal = (string) ($expense->subtotal ?? '0');
-        $taxBase = ExpenseVatSplit::deductible($subtotal, $deductiblePercent, $scale);
+        $taxBase = CurrencyScale::bcformatStrict($subtotal, $scale);
 
         DocumentTaxDetail::where('document_id', $expense->id)
             ->where('sequence_order', 1)

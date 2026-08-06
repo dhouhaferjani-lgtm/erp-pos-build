@@ -108,16 +108,25 @@ final class ExpenseVatPostingTest extends TestCase
         $this->assertSame(TaxType::Percentage, $detail->tax_type);
         $this->assertSame('TVA 19.00%', $detail->tax_name);
         $this->assertSame('19.00', $detail->tax_rate);
-        // V5 (2026-08-03 gate): tax_base is the DEDUCTIBLE-proportion base
-        // (80.000 = 100.000 subtotal × 80% deductible), derived from
-        // tax_amount/rate so base × rate == tax_amount holds exactly --
-        // not the whole (pre-deductibility) subtotal.
-        $this->assertSame('80.000', $detail->tax_base);
+        // Q2 expert-comptable ruling (2026-08-06,
+        // docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md):
+        // tax_base is the FULL FACIAL subtotal of the transaction (100.000),
+        // decorrelated from the deductible VAT amount -- the DGI cross-matches
+        // the declared base against the supplier's declared sale, so
+        // under-declaring the base for a partially-deductible expense would
+        // create a cross-matching anomaly. This OVERRULES the V5
+        // deductible-proportion base (2026-08-03 gate).
+        $this->assertSame('100.000', $detail->tax_base);
         $this->assertSame('15.200', $detail->tax_amount);
-        $this->assertSame(
+        // base × rate == tax_amount is DELIBERATELY BROKEN here by design:
+        // 100.000 × 19% = 19.000 != 15.200 (the deductible-only share). The
+        // ruling explicitly decorrelates the declared base from the
+        // deducted VAT amount -- see the docblock on
+        // writeDeductibleVatSnapshot() and the ticket above.
+        $this->assertNotSame(
             $detail->tax_amount,
             bcmul($detail->tax_base, bcdiv($detail->tax_rate, '100', 6), 3),
-            'base × rate == tax_amount identity must hold exactly',
+            'base × rate == tax_amount identity is expected to NOT hold for a partially-deductible expense per the Q2 ruling',
         );
         $this->assertFalse($detail->is_stamp_duty);
     }
@@ -164,8 +173,8 @@ final class ExpenseVatPostingTest extends TestCase
         $this->assertSame('19.00', $tvaDetail->tax_rate);
         $this->assertSame($vatLine->debit, $tvaDetail->tax_amount);
         $this->assertSame('15.200', $tvaDetail->tax_amount);
-        // Deductible-proportion base (V5) — see the sibling test above.
-        $this->assertSame('80.000', $tvaDetail->tax_base);
+        // Full facial subtotal base (Q2 ruling) — see the sibling test above.
+        $this->assertSame('100.000', $tvaDetail->tax_base);
 
         try {
             $this->service->post($posted, $this->user);
