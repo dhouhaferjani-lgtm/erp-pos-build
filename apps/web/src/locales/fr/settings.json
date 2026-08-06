@@ -402,7 +402,9 @@
     },
     "badges": {
       "required": "Requis",
-      "optional": "Optionnel"
+      "optional": "Optionnel",
+      "unavailable": "Indisponible",
+      "unavailableHint": "Impossible de vérifier cette étape pour le moment. Votre configuration n'a pas changé."
     }
   },
   "terminalDiscount": {
