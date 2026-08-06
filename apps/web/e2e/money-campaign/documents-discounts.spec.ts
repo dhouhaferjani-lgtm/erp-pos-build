@@ -38,7 +38,6 @@ import {
   uniqueName,
 } from './w1b-support'
 import { apiRequest } from './helpers'
-import { addMoney } from './treasury-support'
 
 test.describe('MTP-DSC — line discounts (W1b)', () => {
   test.beforeEach(async ({ page }) => {
@@ -161,7 +160,7 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     expect(confirmedBody.total).toBe('120.000')
   })
 
-  test('MTP-DSC-04 (EDGE, P1): discount_amount ABOVE the line subtotal — TRIPWIRE, the line net goes NEGATIVE instead of being refused or floored at 0.000', async ({
+  test('MTP-DSC-04 (EDGE, P1): discount_amount ABOVE the line subtotal — REFUSED with a 422, the line net never goes negative', async ({
     page,
   }) => {
     test.setTimeout(120000)
@@ -172,74 +171,43 @@ test.describe('MTP-DSC — line discounts (W1b)', () => {
     // Plan expectation: "Refused, or the line net floors at 0.000 — never
     // negative. Record actual."
     //
-    // FINDING / TRIPWIRE (W-3, 2026-08-03) —
+    // FIXED (W-3, 2026-08-03 finding closed 2026-08-06) —
     //   docs/superpowers/tickets/2026-08-03-w3-line-discount-amount-no-ui-and-negative-net.md
-    // ACTUAL: neither. `lines.*.discount_amount` is validated only as
-    // `nullable|numeric|min:0|regex:3dp` (CreateDocumentRequest.php:130) — it
-    // is never compared against the line's own gross — and
-    // `computeLineTotal()` (DocumentLine.php:272-290) does a bare
-    // `bcsub($subtotal, $discountAmount, $scale)` with no floor at
-    // DocumentLine.php:286 (the percent-vs-amount chain is :282-287). So the
-    // document is accepted with a NEGATIVE net, a NEGATIVE VAT, and a negative
-    // total that still carries a POSITIVE 1.000 stamp duty. The assertions
-    // below pin TODAY'S behaviour: when the guard lands, this test goes red on
-    // purpose and must be updated deliberately (to a 422, or to a 0.000 floor).
+    // Owner ruling: Option A, "reject-then-floor" — both guards, not one.
+    // `lines.*.discount_amount` is now compared against the line's own gross
+    // (qty x unit_price) at the request-validation boundary
+    // (LineDiscountAmountWithinGross, wired into CreateDocumentRequest,
+    // UpdateDocumentRequest, and AppliesDiscountToleranceRule) and rejected
+    // with a 422 naming `lines.0.discount_amount`. `computeLineTotal()`
+    // (DocumentLine.php:272-...) also floors the discounted subtotal at zero
+    // as defence-in-depth, so no other write path can reproduce a negative
+    // net. This test was a DELIBERATE TRIPWIRE on the old (accepted,
+    // negative-net) behaviour — updated here to the fixed contract per the
+    // ticket's own instruction ("update it to the new 422 contract, do not
+    // delete it"), not deleted.
     //
-    // CLEANUP (review fix M-3): the probe document is DELETED in the `finally`
-    // below. The tripwire lives in the assertions, not in the row — leaving a
-    // persisted negative-money Draft invoice in the shared demo-pharmacy-tn
-    // tenant would leak into every later wave's reads (e.g.
-    // `UpcomingPaymentsService.php:251` queries Draft-status documents), which
-    // is exactly the shared-tenant contamination the campaign's mutation-safety
-    // rule exists to prevent.
-    let probeInvoiceId: string | null = null
-    try {
-      const created = await apiRequest(page, 'POST', '/invoices', {
-        partner_id: customerId,
-        document_date: new Date().toISOString().slice(0, 10),
-        lines: [
-          {
-            description: 'DSC-04 over-discount probe',
-            quantity: '10',
-            unit_price: '12.500',
-            discount_amount: '200.000',
-            tax_rate: '19.00',
-          },
-        ],
-      })
-      expect(
-        created.status,
-        `TRIPWIRE: an over-line discount_amount is ACCEPTED today (expected 422 once guarded) — ${JSON.stringify(created.body)}`,
-      ).toBe(201)
-      const body = (created.body as { data: Record<string, unknown> }).data
-      probeInvoiceId = body.id as string
-
-      const lines = body.lines as Array<Record<string, unknown>>
-      expect(lines[0].line_total, 'TRIPWIRE: 125.000 - 200.000 = -75.000, not floored at 0.000').toBe('-75.000')
-      expect(body.subtotal, 'TRIPWIRE: negative document subtotal').toBe('-75.000')
-      // VAT on a negative net is itself negative: -75.000 * 0.19 = -14.250.
-      // The document-level stamp duty is a FixedAmount and stays +1.000, so
-      // tax_amount = -14.250 + 1.000 = -13.250.
-      expect(body.tax_amount, 'TRIPWIRE: negative line VAT plus a still-positive 1.000 stamp').toBe('-13.250')
-      expect(body.total, 'TRIPWIRE: -75.000 + -13.250 = -88.250').toBe('-88.250')
-      // The aggregate identity still holds even in this nonsensical state — the
-      // arithmetic is self-consistent, the INPUT is what is unguarded. Computed
-      // from the response with the house integer-millimes adder (review fix
-      // M-2 — this used to be a duplicate `total` assertion, which proved
-      // nothing); `addMoney` is sign-correct, so it exercises the negative path.
-      expect(
-        addMoney(body.subtotal as string, body.tax_amount as string),
-        'aggregate identity survives the negative state: subtotal + tax_amount == total',
-      ).toBe(body.total as string)
-    } finally {
-      if (probeInvoiceId !== null) {
-        const deleted = await apiRequest(page, 'DELETE', `/invoices/${probeInvoiceId}`)
-        expect(
-          deleted.status,
-          `failed to clean up the negative-money probe invoice ${probeInvoiceId}: ${deleted.status} ${JSON.stringify(deleted.body)}`,
-        ).toBeLessThan(300)
-      }
-    }
+    // No cleanup needed: a 422 never persists a document, so there is
+    // nothing to leak into the shared demo-pharmacy-tn tenant's later reads.
+    const created = await apiRequest(page, 'POST', '/invoices', {
+      partner_id: customerId,
+      document_date: new Date().toISOString().slice(0, 10),
+      lines: [
+        {
+          description: 'DSC-04 over-discount probe',
+          quantity: '10',
+          unit_price: '12.500',
+          discount_amount: '200.000',
+          tax_rate: '19.00',
+        },
+      ],
+    })
+    expect(
+      created.status,
+      `an over-line discount_amount must be refused with a 422 — got ${created.status} ${JSON.stringify(created.body)}`,
+    ).toBe(422)
+    expect(JSON.stringify(created.body), 'the 422 must name lines.0.discount_amount').toContain(
+      'lines.0.discount_amount',
+    )
   })
 
   test('MTP-DSC-05: discount_percent ceilings — 100.01 (>max) and 10.001 (>2dp) both rejected', async ({ page }) => {

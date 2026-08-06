@@ -10,6 +10,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
+import { Button } from '../../../components/atoms/Button/Button'
 import { Input } from '../../../components/atoms/Input/Input'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
 import { DraftMoneyInput } from '../../../components/atoms/DraftMoneyInput'
@@ -208,6 +209,14 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const [showServicePicker, setShowServicePicker] = useState(false)
   const [focusedPriceLineId, setFocusedPriceLineId] = useState<string | null>(null)
   const [openPricingLineId, setOpenPricingLineId] = useState<string | null>(null)
+  // Per-line discount UI mode (percent vs. absolute amount). This is a pure
+  // UI concern layered on top of the domain model — DocumentLine only ever
+  // carries ONE of discount_percent/discount_amount at a time (mirroring the
+  // backend's either/or). An explicit toggle wins once set; otherwise the
+  // mode is derived from which field is populated, so a line whose amount
+  // arrived from the API/an import defaults to amount mode instead of being
+  // silently clobbered by touching the percent cell.
+  const [discountModeOverrides, setDiscountModeOverrides] = useState<Record<string, 'percent' | 'amount' | undefined>>({})
   const linesRef = useRef(lines)
 
   useEffect(() => {
@@ -509,6 +518,19 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     })
   }, [companyCurrency, companyLocale])
 
+  // Resolve the discount UI mode for a line: an explicit toggle wins, else
+  // derive from which field currently carries a value (amount-only -> amount
+  // mode; anything else, including both-null and percent-set, -> percent).
+  const getDiscountMode = useCallback((line: DocumentLine): 'percent' | 'amount' => {
+    const override = discountModeOverrides[line.id]
+    if (override !== undefined) return override
+
+    const hasAmount = line.discount_amount !== null && line.discount_amount !== undefined && line.discount_amount !== ''
+    const hasPercent = line.discount_percent !== null && line.discount_percent !== undefined && line.discount_percent !== ''
+
+    return hasAmount && !hasPercent ? 'amount' : 'percent'
+  }, [discountModeOverrides])
+
   const lineColumns = useMemo<LineItemsTableColumn<DocumentLine>[]>(() => [
     {
       id: 'article',
@@ -739,29 +761,70 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     {
       id: 'discount',
       header: t('sales:lineItems.discount'),
-      headerClassName: 'w-28 text-end',
+      headerClassName: 'w-40 text-end',
       cellClassName: 'text-end',
-      Cell: ({ line }) => (
-        readonly ? (
-          <span className={`text-sm ${textColors.primary}`}>{formatPercent(line.discount_percent ?? '0')}</span>
-        ) : (
-          <Input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            max="100"
-            value={line.discount_percent ?? ''}
-            onChange={(event) => {
-              handleUpdateLine(line.id, {
-                discount_percent: event.target.value === '' ? null : event.target.value,
-                discount_amount: null,
-              })
-            }}
-            aria-label={t('sales:lineItems.discount')}
-            className="w-20 text-end text-sm"
-          />
+      Cell: ({ line }) => {
+        const mode = getDiscountMode(line)
+
+        if (readonly) {
+          return (
+            <span className={`text-sm ${textColors.primary}`}>
+              {mode === 'amount' && line.discount_amount !== null && line.discount_amount !== undefined
+                ? formatAmount(line.discount_amount)
+                : formatPercent(line.discount_percent ?? '0')}
+            </span>
+          )
+        }
+
+        return (
+          <div className="flex items-center justify-end gap-1">
+            {mode === 'percent' ? (
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="100"
+                value={line.discount_percent ?? ''}
+                onChange={(event) => {
+                  handleUpdateLine(line.id, {
+                    discount_percent: event.target.value === '' ? null : event.target.value,
+                    discount_amount: null,
+                  })
+                }}
+                aria-label={t('sales:lineItems.discount')}
+                className="w-16 text-end text-sm"
+              />
+            ) : (
+              <MoneyInput
+                currency={companyCurrency}
+                min="0"
+                value={decimalValue(line.discount_amount)}
+                onChange={(value) => {
+                  handleUpdateLine(line.id, {
+                    discount_amount: value,
+                    discount_percent: null,
+                  })
+                }}
+                aria-label={t('sales:lineItems.discountAmountPerLine')}
+                className={`${tokens.input.base} w-24 text-end text-sm`}
+              />
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              onClick={() => {
+                const nextMode = mode === 'percent' ? 'amount' : 'percent'
+                setDiscountModeOverrides((prev) => ({ ...prev, [line.id]: nextMode }))
+              }}
+              aria-pressed={mode === 'amount'}
+              className="px-2 py-1"
+            >
+              {mode === 'percent' ? t('sales:lineItems.discountMode.amount') : t('sales:lineItems.discountMode.percent')}
+            </Button>
+          </div>
         )
-      ),
+      },
     },
     {
       id: 'tax',
@@ -820,6 +883,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     designationFeatureEnabled,
     deriveUnitPrice,
     formatAmount,
+    getDiscountMode,
     handleRemoveLine,
     handleUpdateLine,
     purchaseBonusEnabled,

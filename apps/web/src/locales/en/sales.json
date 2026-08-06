@@ -302,6 +302,11 @@
       "policyWarning": "Margin warning"
     },
     "discount": "Discount",
+    "discountAmountPerLine": "Discount amount (per line)",
+    "discountMode": {
+      "percent": "%",
+      "amount": "Amt"
+    },
     "tax": "Tax",
     "taxPercent": "Tax %",
     "total": "Total",

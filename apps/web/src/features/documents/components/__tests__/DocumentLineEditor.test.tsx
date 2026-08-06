@@ -67,6 +67,9 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.pricing.policyBlocked': `Margin blocked: ${String(params?.['permission'] ?? '')}`,
         'sales:lineItems.pricing.policyWarning': 'Margin warning',
         'sales:lineItems.discount': 'Discount',
+        'sales:lineItems.discountAmountPerLine': 'Discount amount (per line)',
+        'sales:lineItems.discountMode.percent': '%',
+        'sales:lineItems.discountMode.amount': 'Amt',
         'sales:lineItems.taxPercent': 'Tax',
         'sales:lineItems.total': 'Total',
         'sales:lineItems.subtotal': 'Subtotal',
@@ -485,6 +488,93 @@ describe('DocumentLineEditor — designation cells', () => {
     expect(screen.getByText('EUR 90.00')).toBeInTheDocument()
     expect(screen.getByText('EUR 18.00')).toBeInTheDocument()
     expect(screen.getAllByText('EUR 108.00')).toHaveLength(2)
+  })
+
+  // ── W-3 discount percent/amount toggle (Option A) ──────────────────────
+
+  it('defaults to percent mode and toggling switches to an amount MoneyInput', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({ quantity: 1, unit_price: 100, tax_rate: 20 })
+
+    render(<DocumentLineEditor lines={[line]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    // Percent input is the default surface.
+    expect(screen.getByRole('spinbutton', { name: 'Discount' })).toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Discount amount (per line)' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Amt' }))
+
+    expect(screen.queryByRole('spinbutton', { name: 'Discount' })).not.toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Discount amount (per line)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '%' })).toBeInTheDocument()
+  })
+
+  it('typing in amount mode emits discount_amount as a string and nulls discount_percent', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({ quantity: 1, unit_price: 100, tax_rate: 0 })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    await user.click(screen.getByRole('button', { name: 'Amt' }))
+    const amountInput = screen.getByRole('spinbutton', { name: 'Discount amount (per line)' })
+    fireEvent.change(amountInput, { target: { value: '25.000' } })
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        discount_percent: null,
+        discount_amount: '25.000',
+        line_total: '75.000',
+      }),
+    ])
+  })
+
+  it('a line arriving with only discount_amount set defaults to amount mode without nulling it', () => {
+    const line = makeLine({
+      quantity: 1,
+      unit_price: 100,
+      discount_percent: null,
+      discount_amount: '25.000',
+      line_total: 75,
+    })
+
+    render(<DocumentLineEditor lines={[line]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    const amountInput = screen.getByRole('spinbutton', { name: 'Discount amount (per line)' })
+    expect(amountInput).toHaveValue(25)
+    expect(screen.queryByRole('spinbutton', { name: 'Discount' })).not.toBeInTheDocument()
+  })
+
+  it('toggling back to percent mode restores the percent input', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({ quantity: 1, unit_price: 100 })
+
+    render(<DocumentLineEditor lines={[line]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Amt' }))
+    expect(screen.getByRole('spinbutton', { name: 'Discount amount (per line)' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '%' }))
+    expect(screen.getByRole('spinbutton', { name: 'Discount' })).toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Discount amount (per line)' })).not.toBeInTheDocument()
   })
 
   it('hides purchase bonus controls when either the module or company flag is disabled', () => {

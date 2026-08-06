@@ -302,6 +302,11 @@
       "policyWarning": "Avertissement de marge"
     },
     "discount": "Remise",
+    "discountAmountPerLine": "Montant de remise (par ligne)",
+    "discountMode": {
+      "percent": "%",
+      "amount": "Mt"
+    },
     "tax": "TVA",
     "taxPercent": "TVA %",
     "total": "Total",
