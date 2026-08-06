@@ -723,6 +723,91 @@ class InvoiceGLIntegrationTest extends TestCase
     }
 
     /**
+     * A document with NO lines is a separate, PRE-EXISTING broken shape that this
+     * lane must not change (see
+     * `docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md`).
+     *
+     * On the Tunisian chart the pre-lane behaviour was: the whole `total` is swept
+     * into `4375` as if it were collected timbre — nonsense, but BALANCED. The
+     * first cut of the lineless carve-out returned no absorbing account at all,
+     * which downgraded that to a ONE-LEGGED, unbalanced, hash-chained entry on
+     * every chart. Strictly worse, and a regression this lane introduced.
+     */
+    public function test_a_lineless_document_still_sweeps_its_total_to_the_timbre_account_on_the_tunisian_chart(): void
+    {
+        [$company, $partner] = $this->tunisianFixture();
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-TN-NOLINES-'.uniqid(),
+            'partner_id' => $partner->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+            'balance_due' => '119.000',
+            'currency' => 'TND',
+        ]);
+        $invoice = $invoice->fresh(['lines']);
+        $this->assertCount(0, $invoice->lines);
+
+        // NEVER refuse: the carve-out must not turn a legacy shape into a 422.
+        $this->accountingService->assertDocumentGlIsPostable($invoice);
+
+        $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        $stampAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::SalesStampDutyPayable);
+        $stampLine = $lines->firstWhere('account_id', $stampAccount->id);
+        $this->assertNotNull($stampLine, 'pre-lane behaviour: the whole total is swept to 4375');
+        $this->assertSame(0, bccomp((string) $stampLine->credit, '119', 3));
+
+        $debits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->debit, 3), '0');
+        $credits = $lines->reduce(fn (string $c, JournalLine $l): string => bcadd($c, (string) $l->credit, 3), '0');
+        $this->assertSame(0, bccomp($debits, $credits, 3), 'the entry must still balance, as it did before this lane');
+    }
+
+    /**
+     * The other half of the same carve-out: on a chart with NO timbre account the
+     * lineless shape keeps its pre-lane behaviour too — a one-legged entry, and
+     * NO refusal. It must not fall back to the rounding-difference account either:
+     * sweeping an entire invoice total into "écart d'arrondi" would be a silent
+     * misstatement, which is exactly what the ticket exists to fix properly.
+     */
+    public function test_a_lineless_document_is_not_refused_and_does_not_touch_the_rounding_account(): void
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-FR-NOLINES-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.00',
+            'tax_amount' => '20.00',
+            'total' => '120.00',
+            'balance_due' => '120.00',
+            'currency' => 'EUR',
+        ]);
+        $invoice = $invoice->fresh(['lines']);
+
+        $this->accountingService->assertDocumentGlIsPostable($invoice);
+
+        $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        $this->assertNull(
+            $lines->firstWhere('account_id', $this->roundingIncomeAccount->id),
+            'a whole invoice total must never be booked as a rounding difference'
+        );
+        $this->assertCount(1, $lines, 'pre-lane behaviour on a chart without 4375: the lone AR leg');
+    }
+
+    /**
      * Build a single-line EUR invoice with a known residual.
      *
      * `total − line_total − trunc(line_total x rate)` is the residual under test.

@@ -2,20 +2,35 @@
 
 **Filed:** 2026-08-05, by the L1 fiscal-integrity fix lane, while implementing W-6 **D1a**.
 **Related:** `docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md` (D1a),
-`docs/superpowers/reviews/2026-08-05-l1-fiscal-gate.md` (C-1, C-2, I-5).
-**Status:** OPEN — behaviour deliberately left UNCHANGED by the L1 lane.
+`docs/superpowers/reviews/2026-08-05-l1-fiscal-gate.md` (C-1, C-2, I-5, and the
+round-2 finding that corrected this ticket).
+**Status:** OPEN — the L1 lane preserves the pre-lane OUTCOME for this shape; it does
+not endorse it.
+
+> **Correction, 2026-08-05 (re-gate round 2).** The first version of this ticket said
+> the lane "deliberately left the behaviour UNCHANGED". That was inaccurate: the
+> lineless carve-out initially returned no absorbing account, which DOWNGRADED the
+> Tunisian case from "balanced (nonsensically) via 4375" to a one-legged UNBALANCED
+> hash-chained entry — a regression the lane itself introduced, on every chart. Fixed:
+> `residualPlan()`'s lineless branch now resolves `SalesStampDutyPayable` exactly as
+> the old inline step-3b did. Pinned by
+> `InvoiceGLIntegrationTest::test_a_lineless_document_still_sweeps_its_total_to_the_timbre_account_on_the_tunisian_chart`.
 
 ## What happens
 
 `AccountingService::createInvoiceGLEntries()` debits AR with the header `total` and
 credits one revenue leg per document line. A document with **zero lines** therefore
-produces a single AR debit and no credit side at all:
+has no revenue or VAT credits at all, and its entire `total` becomes the residual:
 
-- on a chart that defines `SalesStampDutyPayable` (Tunisia), the whole `total` is
-  swept into `4375 — droit de timbre à reverser`. The entry balances, but the entire
-  invoice is booked as collected stamp duty. Nonsense, silently.
+- on a chart that defines `SalesStampDutyPayable` (Tunisia), that whole total is
+  swept into `4375 — droit de timbre à reverser`. The entry BALANCES, but an entire
+  invoice is booked as collected stamp duty — and it inflates the figure the company
+  remits to the State. Nonsense, silently.
 - on any other chart (France, Generic), the residual has no home and the entry is
   written **unbalanced** — a one-legged, `Posted`, hash-chained journal entry.
+
+Both outcomes are pre-existing and unchanged by the L1 lane; neither is acceptable
+long-term, which is what this ticket is for.
 
 This is the same failure class as D1a but a different trigger, and materially larger:
 D1a's negative residual fired on exactly one document out of 274 on `demo-pharmacy-tn`,
@@ -41,8 +56,12 @@ whereas this fires on every lineless posting.
    The true count may be higher — a full PHPUnit run was not permitted.
 
 So `AccountingService::residualPlan()` returns `balanceAssertable = false` for a
-lineless document, and both the pre-flight and the defence-in-depth assertion skip it.
-Its behaviour is byte-identical to before the lane.
+lineless document — both the pre-flight and the defence-in-depth assertion skip it —
+AND it still resolves `SalesStampDutyPayable` as the absorbing account, so the leg is
+written exactly where the old inline code wrote it. It deliberately does NOT fall back
+to the new `SalesRoundingDifference*` pair: booking a whole invoice total as an
+"écart d'arrondi" would trade one silent misstatement for another. The outcome is
+byte-identical to before the lane, on every chart.
 
 ## Suggested fix
 
@@ -57,7 +76,8 @@ Order of work:
    `DocumentService::confirm()`), returning a domain error.
 2. Sweep the fixtures: every test that builds a `Document` it then posts needs one
    `DocumentLine` whose `line_total` reconciles with the header. Mechanical.
-3. Remove `$balanceAssertable` and the carve-out in `residualPlan()`.
+3. Remove `$balanceAssertable`, the carve-out in `residualPlan()`, and the two
+   `InvoiceGLIntegrationTest` cases that pin the carve-out's behaviour.
 4. Decide what to do with any lineless posted documents already in staging/production
    data — on TN they are sitting in `4375` and will distort the timbre remittance.
    Query: `documents d LEFT JOIN document_lines dl ON dl.document_id = d.id WHERE

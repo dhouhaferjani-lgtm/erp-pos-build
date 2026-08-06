@@ -100,11 +100,11 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      *   - `SalesStampDutyPayable` when the chart defines it (Tunisia): ANY positive
      *     residual, unchanged behaviour — the timbre is a real document-level
      *     charge and is legitimately far larger than rounding.
-     *   - otherwise the `SalesRoundingDifference*` account, but only up to what
-     *     per-line tax truncation can explain: one unit of the last place per line.
-     *     A chart with no document-level charge concept has no honest reason for a
-     *     bigger gap, and burying real money in a rounding account would be worse
-     *     than refusing.
+     *   - otherwise the `SalesRoundingDifference*` account, but only up to
+     *     {@see roundingTolerance()}. A chart with no document-level charge concept
+     *     has no honest reason for a bigger gap, and burying real money in a
+     *     rounding account would be a silent misstatement of income — worse than
+     *     refusing (gate ruling: refuse, do NOT absorb-with-alert).
      *   - no absorbing account at all → REFUSE rather than silently drop it.
      * - `residual == 0` → nothing to book.
      */
@@ -115,14 +115,29 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
         // not the D1a defect either — it is a separate, PRE-EXISTING broken shape.
         // It is unreachable through the documented API (`CreateDocumentRequest`
         // requires `lines` min:1) and survives only in legacy/test fixtures, so this
-        // lane deliberately leaves its behaviour untouched rather than change ~35
-        // call sites under a merge gate. Ticketed:
+        // lane leaves its OUTCOME byte-identical to before the lane rather than
+        // change ~35 call sites under a merge gate. Ticketed:
         // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md
+        //
+        // "Byte-identical" means resolving the absorbing account exactly as the old
+        // inline step-3b did — `SalesStampDutyPayable` ONLY, write the leg when it
+        // resolves, write nothing when it does not, and NEVER refuse:
+        //   - Tunisian chart  -> the whole total is swept into 4375. Nonsense, but
+        //                        balanced; that is what it did before.
+        //   - any other chart -> a one-legged entry, as before.
+        // It deliberately does NOT fall back to `SalesRoundingDifference*`: booking
+        // an entire invoice total as an "écart d'arrondi" would be a silent
+        // misstatement, and inventing new behaviour here is the ticket's job.
+        // `balanceAssertable = false` keeps both guards off this shape.
         if ($document->lines->isEmpty()) {
             /** @var numeric-string $total */
             $total = (string) ($document->total ?? '0');
 
-            return new DocumentGlResidualPlan('0', '0', $total, [], null, null, false);
+            $absorbing = bccomp($total, '0', $scale) > 0
+                ? Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable)
+                : null;
+
+            return new DocumentGlResidualPlan('0', '0', $total, [], $absorbing, null, false);
         }
 
         /** @var numeric-string $revenue */
@@ -187,13 +202,16 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
     }
 
     /**
-     * How large a POSITIVE residual per-line tax truncation alone can produce:
-     * one unit of the last place per line.
+     * The ceiling this code accepts as "explainable by per-line tax truncation":
+     * `lineCount` units of the last place.
      *
      * `groupTaxByRate()` truncates each line's tax (`bcmul(..., $scale)`), while
      * `TaxCalculationService` accumulates at `scale+1` and truncates once per rate
-     * bucket. Since `Σ trunc(xᵢ) <= trunc(Σ xᵢ)`, the header tax can exceed the GL
-     * VAT by at most one ULP per line.
+     * bucket. Since `Σ trunc(xᵢ) <= trunc(Σ xᵢ)`, the TIGHT bound is `(n − 1)` ULP.
+     * `n` is a DELIBERATE ONE-ULP MARGIN over that derivation, not the derivation
+     * itself — it costs at most one extra unit of the last place of tolerance and
+     * buys immunity to an off-by-one in the bound if either rounding site changes.
+     * Ruled acceptable by the fiscal-pos gate, 2026-08-05.
      *
      * @return numeric-string
      */
