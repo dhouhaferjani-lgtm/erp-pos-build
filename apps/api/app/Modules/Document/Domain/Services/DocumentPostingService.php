@@ -147,8 +147,17 @@ final class DocumentPostingService
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
         return DB::transaction(function () use ($document, $requiresFiscalChain, $reason, $actorId): Document {
-            // Double-check inside transaction (another request may have cancelled it)
-            $document->refresh();
+            // Double-check inside transaction (another request may have cancelled
+            // it). GL gate I-1 / treasury gate finding 3: a plain `refresh()` is a
+            // SELECT with no lock, so two concurrent cancels can both pass this
+            // check and both seal a GL reversal — the ledger's revenue/AR/VAT get
+            // credited-then-debited TWICE, and both entries race for the same
+            // `chain_sequence`. `lockForUpdate()` re-reads the row and holds it for
+            // the rest of the transaction, so the second concurrent cancel blocks
+            // here until the first commits, then observes the now-cancelled status
+            // and takes the idempotent early return below.
+            /** @var Document $document */
+            $document = Document::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
             if ($document->status === DocumentStatus::Cancelled) {
                 /** @var Document */
                 return $document->fresh(['lines']);

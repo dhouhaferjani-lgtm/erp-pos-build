@@ -31,8 +31,10 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * W-7 F-6, escalation (c) — cancelling a POSTED invoice left its revenue and
@@ -223,6 +225,105 @@ final class DocumentCancellationGlReversalTest extends TestCase
                 ->count(),
             'A document can only ever be reversed once',
         );
+    }
+
+    /**
+     * GL gate I-1 / treasury gate finding 3 — the SERIAL double-cancel above
+     * proves idempotence but cannot exercise the race: two ACTUALLY concurrent
+     * cancels used to both pass `DocumentPostingService::cancel()`'s
+     * pre-lock `$document->refresh()` re-check before either committed, so both
+     * sealed a `REVCAN-…` reversal — the ledger's revenue/AR/VAT got
+     * credited-then-debited TWICE. Two real PostgreSQL connections (forked
+     * processes) are required to reproduce a genuine `SELECT ... FOR UPDATE`
+     * race; SQLite has no row-level locking and no second connection to race
+     * against, so this is skipped there like the codebase's other two-process
+     * contention proofs (`OutboundInstrumentConcurrencyTest`).
+     */
+    public function test_concurrent_cancels_cannot_double_reverse_the_ledger(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Two-process concurrent-cancel contention requires PostgreSQL.');
+        }
+        if (! function_exists('pcntl_fork')) {
+            $this->markTestSkipped('pcntl is required for the two-process concurrency proof.');
+        }
+
+        $invoiceId = $this->postedInvoiceWithGl()->id;
+        $userId = $this->user->id;
+
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        self::assertNotFalse($sockets);
+        [$parentSocket, $childSocket] = $sockets;
+        $resultFile = tempnam(sys_get_temp_dir(), 'doc-cancel-race-');
+        self::assertIsString($resultFile);
+
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parentSocket);
+            DB::disconnect();
+            fread($childSocket, 1);
+            fclose($childSocket);
+
+            try {
+                /** @var Document $doc */
+                $doc = Document::query()->findOrFail($invoiceId);
+                app(DocumentPostingService::class)->cancel($doc, 'concurrent child', $userId);
+                file_put_contents($resultFile, json_encode(['succeeded' => true], JSON_THROW_ON_ERROR));
+                exit(0);
+            } catch (Throwable $exception) {
+                file_put_contents($resultFile, json_encode([
+                    'succeeded' => false,
+                    'error' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ], JSON_THROW_ON_ERROR));
+                exit(0);
+            }
+        }
+
+        fclose($childSocket);
+        try {
+            fwrite($parentSocket, '1');
+            fclose($parentSocket);
+
+            /** @var Document $doc */
+            $doc = Document::query()->findOrFail($invoiceId);
+            app(DocumentPostingService::class)->cancel($doc, 'concurrent parent', $userId);
+
+            $status = 0;
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            $childPayload = json_decode((string) file_get_contents($resultFile), true, 512, JSON_THROW_ON_ERROR);
+            self::assertIsArray($childPayload);
+            self::assertTrue($childPayload['succeeded'] ?? false, 'the child cancel must not fail — it should serialize, not error');
+
+            self::assertSame(
+                1,
+                JournalEntry::query()
+                    ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                    ->where('source_id', $invoiceId)
+                    ->count(),
+                'Two concurrent cancels must seal exactly ONE reversal entry, never two',
+            );
+        } finally {
+            if (is_resource($parentSocket)) {
+                fclose($parentSocket);
+            }
+            if (is_file($resultFile)) {
+                unlink($resultFile);
+            }
+        }
+    }
+
+    /**
+     * PostgreSQL fixtures must commit before forking so both independent PDOs
+     * can see them. SQLite stays on the normal transaction-backed test path.
+     *
+     * @return list<string|null>
+     */
+    protected function connectionsToTransact(): array
+    {
+        return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
     }
 
     public function test_a_document_that_never_reached_the_gl_reverses_nothing(): void
