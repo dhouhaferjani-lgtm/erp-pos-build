@@ -142,7 +142,7 @@ test.describe('GL — aged receivables and aged payables', () => {
     ).toBeUndefined()
   })
 
-  test('MTP-GL-12 (P0): a freshly posted, wholly unpaid invoice is INVISIBLE to aged receivables', async ({
+  test('MTP-GL-12 (P0): a freshly posted, wholly unpaid invoice REACHES aged receivables', async ({
     request,
   }) => {
     // The plan pins `Clinique Al Amal` 900 outstanding / `Medis Distribution`
@@ -187,29 +187,25 @@ test.describe('GL — aged receivables and aged payables', () => {
     expect(docData.balance_due, 'the document API reports the full amount outstanding').toBe('900.000')
     expect(docData.outstanding_amount).toBe('900.000')
 
-    // --- VERDICT: FAIL (P0). TRIPWIRE, GREEN: pins TODAY's behaviour.
+    // --- D2 FIXED (L2 lane).
     //
-    // `AgedReceivablesService::getOutstandingInvoices():146-151` filters on the
-    // PERSISTED `documents.balance_due` column (`where('balance_due','>',0)`),
-    // but NOTHING on the invoice create/confirm/post path ever writes that
-    // column — it stays NULL until a treasury settlement path recomputes it
-    // (`InstrumentLifecycleService:545`, `MultiPaymentService:137`,
-    // `CloseInvoiceWithToleranceService:117`) or the document was produced by a
-    // converter / AR-opening (`CopiesDocumentData:87`, `ArApOpeningService:309`).
-    // The document API hides this: `DocumentData::fromModel():173-177` COMPUTES
-    // `balance_due` from `outstanding_amount` for payment-tracked types and
-    // never reads the persisted column. Net effect, measured live 2026-08-05:
-    // 163 posted invoices totalling 57 732.410 TND have a NULL `balance_due`
-    // and are missing from `/finance/aged-receivables` entirely.
+    // The report used to filter on the PERSISTED `documents.balance_due`
+    // column, which is a PostgreSQL trigger cache fired by allocation DML only:
+    // a posted invoice that was never allocated against had no trigger event
+    // and stayed NULL forever, so it never reached this report at all. Measured
+    // live 2026-08-05: 165 posted invoices / 59 532.410 TND invisible against a
+    // reported grand total of 32 892.422. The aged services now read the
+    // outstanding COMPUTED from allocations — the trigger's own formula — so no
+    // cache has to be warm for a receivable to be seen.
     const after = await agedReceivables(request, owner)
     expect(
-      agedLineFor(after, name),
-      'TRIPWIRE D2 (P0, LAUNCH-BLOCKING): a posted, wholly unpaid invoice never reaches aged AR',
-    ).toBeUndefined()
+      agedLineFor(after, name)?.total,
+      'D2 (P0, LAUNCH-BLOCKING): a posted, wholly unpaid invoice is reported at its full balance',
+    ).toBe('900.0000')
     expect(
       sub4(norm4(after.grand_total), grandBefore),
-      'TRIPWIRE D2: the aged-AR grand total does not move at all when a receivable is created',
-    ).toBe('0.0000')
+      'D2: the aged-AR grand total rises by exactly the new receivable',
+    ).toBe('900.0000')
   })
 
   test('MTP-GL-13 (P0): every invoice lands in exactly one bucket and Σ buckets == the total', async ({
@@ -248,7 +244,7 @@ test.describe('GL — aged receivables and aged payables', () => {
     }
   })
 
-  test('MTP-GL-14 (P0): the aging buckets are SIGN-INVERTED — overdue money never ages', async ({
+  test('MTP-GL-14 (P0): overdue money ages into the bucket its age names', async ({
     request,
   }) => {
     // READ-ONLY. The boundary evidence is taken from fixtures that ALREADY sit
@@ -257,9 +253,9 @@ test.describe('GL — aged receivables and aged payables', () => {
     // deliberately LEFT BEHIND (for W-6)" item 4). Nothing is created or
     // mutated here, and no `W4`-prefixed row is touched.
     //
-    // (The alternative — minting invoices at 30/31/60/61/90/91 days overdue —
-    // proves nothing today, because D2 above means a freshly posted invoice
-    // never reaches this report at all.)
+    // (Minting invoices at 30/31/60/61/90/91 days overdue would also work now
+    // that D2 is fixed, but the read-only historicals keep this case free of
+    // footprint.)
     const ar = await agedReceivables(request, owner)
 
     // Candidates: aged-AR lines whose partner holds EXACTLY ONE outstanding
@@ -312,19 +308,27 @@ test.describe('GL — aged receivables and aged payables', () => {
         + 'needs — each on a partner holding exactly one posted invoice, more than 30 days overdue',
     ).toBeGreaterThan(0)
 
-    // --- VERDICT: FAIL (P0). TRIPWIRE, GREEN: pins TODAY's behaviour.
+    // --- D4 FIXED (L2 lane).
     //
-    // `AgedReceivablesService::calculateCustomerAging():197` computes
-    //   $daysOverdue = (int) $asOfDate->diffInDays(Carbon::parse($referenceDate), false)
-    // Carbon's signed `diffInDays` returns (argument − receiver), so for an
-    // invoice due in the PAST this is NEGATIVE, and `determineBucket():230-232`
-    // maps `$daysOverdue < 0` straight to `current`. The sign is inverted:
-    // NOTHING overdue ever ages out of Current, and a NOT-YET-DUE invoice
-    // (positive day count) would be aged as if it were late.
-    // `AgedPayablesService::calculateVendorAging():273` +
-    // `determineBucket():306-320` are byte-identical, so aged payables carries
-    // the same inversion (recorded by code citation — every AP fixture on this
-    // tenant is < 30 days old, so it cannot be exercised here).
+    // `AgedReceivablesService::calculateCustomerAging()` used to compute
+    //   $daysOverdue = (int) $asOfDate->diffInDays(Carbon::parse($reference), false)
+    // and Carbon's signed `diffInDays` returns (argument − receiver), so for an
+    // invoice due in the PAST this was NEGATIVE — which `determineBucket()`
+    // maps to `current`. Nothing overdue ever aged out of Current, and a
+    // not-yet-due invoice (positive count) was aged as if it were late. The
+    // receiver is now the REFERENCE date, so the count reads `asOf − reference`:
+    // positive = overdue, exactly what `determineBucket()`'s docblock claims.
+    // `AgedPayablesService` carried the byte-identical inversion and is fixed
+    // with it (every AP fixture on this tenant is < 30 days old, so it is
+    // covered by the API suite rather than exercised here).
+    const expectedBucket = (days: number): string => {
+      if (days <= 30) return 'current'
+      if (days <= 60) return 'days_30'
+      if (days <= 90) return 'days_60'
+      if (days <= 120) return 'days_90'
+      return 'over_90'
+    }
+
     for (const single of singles) {
       expect(
         single.daysOverdue,
@@ -332,9 +336,9 @@ test.describe('GL — aged receivables and aged payables', () => {
       ).toBeGreaterThan(30)
       expect(
         single.bucket,
-        `TRIPWIRE D4: ${single.documentNumber} (${single.name}) is ${single.daysOverdue} days `
-          + `overdue for ${single.amount} and is STILL reported as Current`,
-      ).toBe('current')
+        `D4: ${single.documentNumber} (${single.name}) is ${single.daysOverdue} days `
+          + `overdue for ${single.amount} and must age out of Current`,
+      ).toBe(expectedBucket(single.daysOverdue))
     }
 
     test.info().annotations.push({
@@ -348,14 +352,14 @@ test.describe('GL — aged receivables and aged payables', () => {
     })
 
     // The whole report shows the same shape: with 31- and 61-day-overdue money
-    // present, every non-Current bucket is empty.
+    // present, the non-Current buckets are no longer empty.
     expect(
       add4(
         add4(norm4(ar.total_days_30), norm4(ar.total_days_60)),
         add4(norm4(ar.total_days_90), norm4(ar.total_over_90)),
       ),
-      'TRIPWIRE D4: not one millime has ever aged out of Current on this tenant',
-    ).toBe('0.0000')
+      'D4: overdue money has aged out of Current on this tenant',
+    ).not.toBe('0.0000')
 
     // Consistency half: AR and AP expose the identical bucket contract, which
     // is the part of the case that survives the fix.
@@ -383,14 +387,14 @@ test.describe('GL — aged receivables and aged payables', () => {
       'W6 GL-26 reopened-invoice fixture',
     )
 
-    // 1) Posted and unpaid -> ABSENT, because of D2 above (the persisted
-    //    `documents.balance_due` is still NULL). Captured here so the delta at
-    //    step 3 is unambiguous.
+    // 1) Posted and unpaid -> PRESENT for its full balance. Before D2 was fixed
+    //    this step recorded the invoice as ABSENT, because the report filtered
+    //    on a `documents.balance_due` cache that no allocation had yet warmed.
     const posted = await agedReceivables(request, owner)
     expect(
-      agedLineFor(posted, name),
-      'D2: a posted, wholly unpaid invoice is not on the aging report yet',
-    ).toBeUndefined()
+      agedLineFor(posted, name)?.total,
+      'D2: a posted, wholly unpaid invoice is already on the aging report',
+    ).toBe('500.0000')
     const grandBeforeAnyPayment = norm4(posted.grand_total)
 
     // 2) Paid in full -> the settlement path materialises `balance_due = 0`,
@@ -414,8 +418,8 @@ test.describe('GL — aged receivables and aged payables', () => {
     expect(agedLineFor(whilePaid, name), 'a fully paid invoice is not a receivable').toBeUndefined()
     expect(
       sub4(norm4(whilePaid.grand_total), grandBeforeAnyPayment),
-      'settling an invoice that was never on the report leaves the grand total unchanged',
-    ).toBe('0.0000')
+      'settling the invoice takes its balance back off the report',
+    ).toBe('-500.0000')
 
     // 3) Fully refunded -> the invoice REOPENS and comes BACK on the report.
     const refund = await post(request, owner, `/payments/${paymentId}/refund`, {
@@ -438,18 +442,7 @@ test.describe('GL — aged receivables and aged payables', () => {
     ).toBe('500.0000')
     expect(
       sub4(norm4(afterRefund.grand_total), grandBeforeAnyPayment),
-      'the grand total rises by exactly the reopened balance',
-    ).toBe('500.0000')
-
-    // Side-observation for the ticket (D2): a pay-then-refund round trip is
-    // currently the ONLY way an ordinary invoice ever reaches this report,
-    // because the refund path is what finally writes the persisted
-    // `documents.balance_due` the report filters on.
-    test.info().annotations.push({
-      type: 'recorded',
-      description:
-        'The invoice became visible to aged AR only AFTER the pay+refund cycle materialised '
-        + 'documents.balance_due — see D2.',
-    })
+      'the grand total returns to where it stood before the payment',
+    ).toBe('0.0000')
   })
 })

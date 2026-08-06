@@ -30,5 +30,4 @@ final class GetUpcomingPaymentsRequest extends FormRequest
     {
         return (int) ($this->validated('days') ?? 30);
     }
-
 }

@@ -586,7 +586,7 @@ test.describe('CONC — concurrency and stale edits', () => {
     expect(slotAfter.batch?.status, '…with its status untouched').toBe(slot.batch!.status)
   })
 
-  test('MTP-CONC-06 (P0): FINDING — a stale tab can allocate a payment to a CANCELLED invoice, resurrecting it as PAID', async ({
+  test('MTP-CONC-06 (P0): a payment allocated to a CANCELLED invoice is refused, and the terminal status stands', async ({
     browser,
   }) => {
     await withTwoSessions(browser, { a: 'owner', b: 'manager' }, async ({ pageA, pageB }) => {
@@ -622,49 +622,42 @@ test.describe('CONC — concurrency and stale edits', () => {
         allocations: [{ document_id: invoiceId, amount: posted.total }],
       })
 
-      // ── FINDING F-6 (TRIPWIRE, GREEN: pins TODAY's behaviour) ───────────
-      // The plan's expectation is "refused with a clear state error; no
-      // action against a stale status". Observed: the allocation is
-      // ACCEPTED against a cancelled document, and the document's `status`
-      // is then rewritten from `cancelled` to `paid` while `cancelled_at`
-      // stays set. A cancelled invoice reappears as a paid one — in the
-      // partner's ledger, in the aged-AR read path, and in any report
-      // keying on `documents.status`.
+      // ── F-6 FIXED (L2 lane) ─────────────────────────────────────────────
+      // The shared per-allocation guard now refuses a WITHDRAWN document, so a
+      // terminal status can never be rewritten by a stale tab. Previously this
+      // returned 201 and flipped the document from `cancelled` to `paid` with
+      // `cancelled_at` still set — a cancelled sale reappearing as collected
+      // revenue in the partner ledger, aged AR, and every status-keyed report.
       expect(
         stalePayment.status,
-        'TRIPWIRE F-6: a payment allocated to a CANCELLED invoice is accepted (201), not refused',
-      ).toBe(201)
+        'F-6: a payment allocated to a CANCELLED invoice is refused with a state error',
+      ).toBe(422)
+      expect(
+        (stalePayment.body as { error?: { code?: string } }).error?.code,
+        'F-6: …naming the document state, not a validation failure',
+      ).toBe('DOCUMENT_NOT_ALLOCATABLE')
 
       const afterPayment = await getInvoice(pageA, invoiceId)
       expect(
         afterPayment.status,
-        'TRIPWIRE F-6: the cancelled document is resurrected as `paid`',
-      ).toBe('paid')
-      expect(
-        String(afterPayment.balance_due),
-        'TRIPWIRE F-6: …with a zero balance, indistinguishable from a legitimately settled invoice',
-      ).toBe('0.000')
+        'F-6: the cancelled document keeps its terminal status',
+      ).toBe('cancelled')
 
-      // The allocation really attached — this is not a cosmetic status flip.
+      // No allocation row attached, and no payment was created.
       const docPayments = await apiRequest(pageA, 'GET', `/documents/${invoiceId}/payments`)
       const allocations = ((docPayments.body as {
         data: { payment_allocations: Array<{ allocated_amount?: string; amount?: string }> }
       }).data).payment_allocations
       expect(
         allocations.length,
-        'TRIPWIRE F-6: a real allocation row is attached to the cancelled document',
-      ).toBe(1)
-      expect(
-        sumMoney([String(allocations[0]!.allocated_amount ?? allocations[0]!.amount ?? '0')]),
-        'TRIPWIRE F-6: …for the full document total',
-      ).toBe(posted.total)
+        'F-6: no allocation row is attached to the cancelled document',
+      ).toBe(0)
 
-      // Nothing here is retirable: a posted/cancelled document has no delete
-      // route and a completed payment has no delete route. The footprint is
-      // disclosed in the wave report's "state left behind" predicate table.
+      // A posted/cancelled document has no delete route, so the fixture invoice
+      // stays; the payment no longer does, because it is never created.
       test.info().annotations.push({
         type: 'FOOTPRINT',
-        description: `CONC-06 leaves one cancelled-then-paid invoice (${posted.total}) and one payment on partner ${partnerId}; neither is deletable.`,
+        description: `CONC-06 leaves one cancelled invoice (${posted.total}) on partner ${partnerId}; it is not deletable. No payment is created.`,
       })
     })
   })
