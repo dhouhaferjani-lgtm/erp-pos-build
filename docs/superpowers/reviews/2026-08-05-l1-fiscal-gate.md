@@ -504,3 +504,164 @@ that TN fixture its 4375 account; (2) ship a backfill migration mapping `SalesRo
 for existing FR/Generic companies; (3) restore the absorbing-account resolution in the lineless
 branch so Tunisian lineless postings stay balanced, and correct the two ticket statements that
 describe it as unchanged. Then re-run `tests/Feature/Document` in full.
+
+---
+
+# ROUND 3 — final narrow re-gate (`bbf2d8d23~3..bbf2d8d23`)
+
+**Commits:** `8f1c3219e` (blocker 3: lineless absorbing-account restoration + ticket corrections),
+`92599ad7c` (blockers 1+2: TN fixture 4375 + backfill migration + 7-case migration test),
+`bbf2d8d23` (N-9 ticket, tolerance/remedy wording, cross-module import debt note).
+**Reviewer:** fiscal-pos-reviewer, adversarial. Nothing modified; nothing merged.
+
+## VERDICT (round 3)
+
+**APPROVE.** All three round-2 blockers are closed, verified independently. **The lane —
+all eight commits `d0fabd896 … bbf2d8d23` — is CLEARED FOR MERGE to local `dev`.**
+
+No new blockers. Two bounded residual risks are recorded below as ticket material, neither
+merge-blocking.
+
+## Blocker closures
+
+### [R2-1] three lane-caused red tests → **CLOSED**
+
+`apps/api/tests/Feature/Document/CreditNoteMoneyLaneTest.php:165-177` adds the `4375`
+`SalesStampDutyPayable` account to the TN fixture — the same alignment move approved for FR in
+round 2, and consistent with `TunisiaChartOfAccountsSeeder.php:200`, which gives every real TN
+company that account. **No assertion was weakened to pass:** `git diff --numstat` on that file
+is `15  0` for round 3 **and** `15  0` across the whole lane (`7d8e6c861..bbf2d8d23`) — purely
+additive, zero deletions.
+
+The file asserts document-level totals only (it has no `JournalLine`/`JournalEntry` assertions,
+before or after), so the "stamp leg lands in 4375" guarantee lives where it belongs — in
+`InvoiceGLIntegrationTest::test_the_tunisian_chart_still_credits_the_timbre_to_4375_and_balances`
+(0.600/1.000-shaped stamp asserted on the 4375 leg, VAT asserted to stay line-VAT-only, entry
+asserted to balance) and now also in the new lineless TN case. Requirement satisfied.
+
+**My run of `tests/Feature/Document` + `tests/Feature/Compliance`: 562 tests, 13 errors, ZERO
+failures** — exactly my round-2 baseline shape with the three lane-caused failures at zero. The
+13 errors remain the pre-existing `IngressPrecisionTest` / `CreateDocumentRequest` constructor
+arity, verified in round 2 as an ancestor of the lane base.
+
+### [R2-2] no backfill for existing FR/Generic companies → **CLOSED**
+
+`apps/api/database/migrations/tenant/2026_08_05_120000_backfill_sales_rounding_difference_accounts.php`,
+modelled on the TN precedent. Guard ladder walked against every edge I named:
+
+| Edge | Guard | Verdict |
+|---|---|---|
+| chart-less company | `:86` `accounts…doesntExist()` → `continue` | correct — the seeder will supply the pair at chart creation |
+| TN / any chart with a timbre account | `:92` `hasPurpose(SalesStampDutyPayable)` → `continue` | correct, and **mapping-based, not country-based** — the right predicate, since `residualPlan()` also keys on the mapping, not on `country_code` |
+| purpose already mapped (re-run, or admin-assigned elsewhere) | `:123` | correct |
+| user-created account at `6581`/`7581`, type-compatible and unpurposed | `:132-159` maps the purpose + `is_system` onto it, leaves name/type alone | correct — this is exactly the seeder-skip edge I flagged in round 2, and a duplicate insert would violate `accounts_company_code_unique` |
+| preferred code taken by an incompatible or already-purposed account | `:163-165` → `nextFreeCode()` `:216-234`, `+1…+8` | correct |
+| all 9 codes exhausted | `:167-178` `Log::warning` naming the company + the manual remedy, then `return` | correct — never throws, never half-maps |
+| idempotence | every branch is guarded by a read | verified by `BackfillSalesRoundingDifferenceAccountsTest::test_it_is_idempotent`, which applies it **three** times and pins both the account count and the account id |
+| `down()` | deliberate no-op with a stated reason (posted journal lines; unmapping would re-break posting) | correct for a data-correction migration |
+
+**TN-mapping-deleted edge (specifically requested).** If a TN company's `SalesStampDutyPayable`
+mapping was user-deleted, `hasPurpose()` is false and the migration DOES give it `6581`/`7581`.
+Traced through `residualPlan()`: the stamp lookup returns null, the rounding account resolves,
+and then the tolerance ceiling fires — a `1.000` TND timbre against a tolerance of
+`lineCount × 0.001` yields `ResidualExceedsRoundingTolerance`, i.e. a **refusal**, not a silent
+sweep into `7581`. The refusal message (reworded this round) now names the correct remedy
+("assign the account that should carry it"). So the mapping-based guard is safe: the worst case
+is a correct, actionable fail-closed refusal. See residual risk **R3-a** for the bound.
+
+**Deploy posture (specifically requested).** The file is in `database/migrations/tenant/`, which
+`config/tenancy.php:195-197` (`'--path' => [database_path('migrations/tenant')]`) is exactly the
+path `tenants:migrate` runs — so it applies per tenant on the `origin/dev` auto-deploy, and it is
+**self-guarding** (no manual prerequisite), satisfying the push-to-dev migration rule.
+**Half-apply is impossible within a tenant:** `Migration::$withinTransaction` defaults to `true`
+(`vendor/laravel/framework/src/Illuminate/Database/Migrations/Migration.php:19`) and
+`PostgresGrammar::$transactions = true`
+(`vendor/.../Schema/Grammars/PostgresGrammar.php:18`), so
+`Migrator::runMigration()` (`vendor/.../Migrations/Migrator.php:448-451`) wraps the entire
+company loop in one PG transaction. A failure on company *n* rolls back companies *1…n*.
+Across tenants a failure leaves earlier tenants applied — normal, and safe because the migration
+is idempotent.
+
+**PHPStan on the migration:** `database/` is indeed outside `phpstan.neon` `paths: [app/]`
+(`phpstan.neon:6-8`); I analysed the file explicitly together with `app/Modules/Accounting` —
+**`[OK] No errors`** at level 8. Agreed that CI-gating `database/` is out-of-lane config work.
+
+### [R2-3] lineless branch changed TN behaviour → **CLOSED**
+
+`AccountingService::residualPlan()`'s lineless branch now resolves the absorbing account:
+
+```php
+$absorbing = bccomp($total, '0', $scale) > 0
+    ? Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable)
+    : null;
+```
+
+That is a faithful reproduction of the old inline step-3b predicate
+(`bccomp($stampDuty,'0',$scale) > 0 && $stampDutyAccount !== null`): leg written when the purpose
+resolves, nothing written when it does not, **never a refusal**, `balanceAssertable = false` so
+both guards stay off the shape. The `$isStampDuty` branch keeps the original
+`'Stamp duty (timbre)'` description, so the TN entry is byte-identical — including the
+credit-note mirror, which debits the same account.
+
+Pinned by two new cases in `InvoiceGLIntegrationTest`: the TN case asserts no refusal, the whole
+`119.000` on the 4375 leg and a balanced entry; the FR case asserts no refusal, **no** rounding-
+account leg, and exactly one line (the lone AR leg) — i.e. FR/Generic's pre-existing one-legged
+shape is untouched, which is what the ~35 suppressed fixtures assert.
+
+**RATIFIED — deliberately not falling back to `SalesRoundingDifference*` for lineless documents
+is the right call.** Booking an entire invoice total as an "écart d'arrondi" would trade one
+silent misstatement for another (and a larger one: it would look legitimate in the P&L, where the
+one-legged entry at least shows up as a trial-balance gap). It would also *change* FR/Generic
+behaviour, breaking the very fixtures the carve-out exists to leave alone. Inventing new
+behaviour for this shape is the ticket's job, not the merge gate's.
+
+## Small items
+
+- **N-9 → CLOSED (ticketed).** `docs/superpowers/tickets/2026-08-05-tn-timbre-account-carries-rounding-noise.md`
+  states the mechanism correctly (per-line vs per-bucket truncation, `Σ trunc(xᵢ) ≤ trunc(Σ xᵢ)`),
+  names the consequence precisely — `4375`'s balance is the figure remitted to the State and is
+  over-stated by the accumulated residue — notes that D1a makes the account load-bearing, and
+  correctly gates the fix on an expert-comptable ruling. Matches my finding.
+- **Ticket corrections → ACCURATE.** The lineless ticket now carries an explicit
+  "Correction, 2026-08-05 (re-gate round 2)" block that states the regression *the lane itself
+  introduced*, rather than quietly rewriting history; its "What happens" section describes both
+  charts' real current behaviour; and the fix-order list now remembers to delete the two pinning
+  tests. The deposit-vectors ticket records the **I-4 withdrawal** with the vendor citation, and
+  adds the cross-module import debt with the right long-term shape (a shared
+  `activeAccountExists` read port that both the bridge and the resolution service depend on, so
+  they cannot drift) — better than the fix I suggested.
+- **Tolerance / remedy wording → FIXED.** `roundingTolerance()`'s docblock now states the tight
+  bound as `(n−1)` ULP and `n` as a deliberate one-ULP margin; `GlResidualRefusal::message()` for
+  `ResidualExceedsRoundingTolerance` now offers the chart-configuration remedy first.
+- **Pint:** `--test` on the lane's changed paths reports failures only in
+  `AgedPayablesService`, `AgedReceivablesService`, `GetUpcomingPaymentsRequest` — none of which
+  appear in `git diff --name-only 7d8e6c861..bbf2d8d23`. Pre-existing style drift, out of lane.
+
+## Residual risks (record, do not block)
+
+- **[R3-a] The rounding tolerance can, in principle, swallow a real timbre.** On a chart with no
+  `SalesStampDutyPayable` mapping, the ceiling is `lineCount × ULP`. Absorbing a `1.000` TND
+  timbre would need **1000 lines**; a `0.600` credit-note stamp, **600**. Practically
+  unreachable, and it only arises on a TN company whose 4375 mapping was destroyed. Worth one
+  line in the N-9 ticket rather than a code change.
+- **[R3-b] `nextFreeCode()` places the account outside the definition's intended series only
+  within `+1…+8`.** If `6582…6589` are all user-occupied the migration logs and skips, leaving
+  that company unable to post until an admin maps the purpose. Correct fail-closed behaviour with
+  an actionable log; noted so an ops runbook can grep for the warning after the staging deploy.
+
+## Round-3 test runs (by path, SQLite, this worktree)
+
+| Suite | Result |
+|---|---|
+| `CreditNoteMoneyLaneTest` + `BackfillSalesRoundingDifferenceAccountsTest` + `DocumentGlPreflightTest` + `InvoiceGLIntegrationTest` + `CreditNoteGLIntegrationTest` + `RecordCustomerDepositTest` | **OK 62/62, 338 assertions** |
+| `tests/Feature/Document` + `tests/Feature/Compliance` | **562 tests — 13 errors (PRE-EXISTING `IngressPrecisionTest` arity), 0 failures** |
+| `phpstan` on `app/Modules/Accounting` + the migration (explicit, level 8) | **[OK] No errors** |
+| `pint --test` on lane paths | only out-of-lane pre-existing drift |
+
+## Merge clearance
+
+The lane `d0fabd896 · 6f54871ae · 39153158d · f2d521f77 · 9c174a4f5 · 8f1c3219e · 92599ad7c ·
+bbf2d8d23` is **cleared for merge to LOCAL `dev`**. Deploy note for whoever promotes it: the new
+tenant migration runs automatically on the `origin/dev` push, so grep the deploy log for
+`could not place sales_rounding_difference` warnings afterwards (R3-b), and remember that the
+`IngressPrecisionTest` red is pre-existing and not this lane's to fix.
