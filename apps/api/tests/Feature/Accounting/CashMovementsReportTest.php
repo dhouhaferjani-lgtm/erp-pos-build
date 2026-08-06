@@ -887,6 +887,126 @@ final class CashMovementsReportTest extends TestCase
         $scopedToB->assertJsonPath('data.0.source_id', $payment->id);
     }
 
+    /**
+     * Authz gate 2026-08-06, CRITICAL. `payment_repositories.gl_account_id` is
+     * many-to-one, and BOTH provisioning paths — the backfill migration
+     * `2026_03_02_400000` and `PaymentRepositorySeeder` — assign the single
+     * company-wide `SystemAccountPurpose::Cash` account to EVERY cash_register
+     * and safe. On that default shape a company-cash journal line (a petty-cash
+     * expense settlement: `source_type = 'expense_settlement'`, absent from
+     * PAYMENT_BACKED_SOURCE_TYPES, so the journal leg emits it) matched an
+     * in-scope repository for every branch and was reported IN FULL under all
+     * four — a 4x overstatement that broke both invariants MTP-MLC-08 asserts.
+     *
+     * The fixture is tenant #1's exact shape: one company, four branches, one
+     * shared cash GL account, per-branch POS-style cash in, one company-level
+     * cash out.
+     */
+    public function test_a_cash_journal_line_on_a_gl_account_shared_across_branches_is_unattributed_not_multiplied(): void
+    {
+        $branches = [];
+        foreach (['A', 'B', 'C', 'D'] as $suffix) {
+            $branches[$suffix] = $this->location('SHOP-'.$suffix, 'Shop '.$suffix);
+        }
+
+        // Default provisioning: every register on the SAME company-wide Cash
+        // account. The pre-existing CASH register becomes Shop A's.
+        $this->cashRepository->update(['location_id' => $branches['A']->id]);
+        foreach (['B', 'C', 'D'] as $suffix) {
+            $this->repository(
+                'CASH-'.$suffix,
+                'Register '.$suffix,
+                RepositoryType::CashRegister,
+                $this->cashAccount,
+            )->update(['location_id' => $branches[$suffix]->id]);
+        }
+
+        $branchPayments = [];
+        foreach (['A' => '1.000', 'B' => '2.000', 'C' => '4.000', 'D' => '8.000'] as $suffix => $amount) {
+            $branchPayments[$suffix] = $this->payment(
+                repository: $this->cashRepository,
+                amount: $amount,
+                paymentDate: '2026-07-23',
+                paymentType: PaymentType::DocumentPayment,
+                locationId: $branches[$suffix]->id,
+            );
+        }
+
+        // The company-level petty-cash settlement: no payment row backs it, and
+        // no branch owns it — four registers answer to its GL account.
+        $settlement = $this->journalEntry('2026-07-23', 'expense_settlement', Str::uuid()->toString());
+        $this->journalLine($settlement, $this->cashAccount, '0.000', '25.000', 'Petty cash expense');
+        $this->journalLine($settlement, $this->revenueAccount, '25.000', '0.000', 'Offset');
+
+        $unscoped = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-23&to=2026-07-23');
+
+        $unscoped->assertOk();
+        $unscoped->assertJsonCount(5, 'data');
+        $unscoped->assertJsonPath('meta.totals.EUR.in', '15.00');
+        $unscoped->assertJsonPath('meta.totals.EUR.out', '25.00');
+
+        $seenSourceIds = [];
+        foreach (['A' => '1.00', 'B' => '2.00', 'C' => '4.00', 'D' => '8.00'] as $suffix => $expected) {
+            $scoped = $this->actingAs($this->user, 'sanctum')
+                ->getJson(
+                    '/api/v1/reports/cash-movements?from=2026-07-23&to=2026-07-23'
+                    ."&location_ids[]={$branches[$suffix]->id}"
+                );
+
+            $scoped->assertOk();
+            // Only this branch's own payment — the shared-account settlement is
+            // ambiguous and therefore unattributed, exactly like a NULL-location
+            // row, rather than replicated to all four branches.
+            $scoped->assertJsonCount(1, 'data');
+            $scoped->assertJsonPath('data.0.source_id', $branchPayments[$suffix]->id);
+            $scoped->assertJsonPath('data.0.amount', $expected);
+            $scoped->assertJsonPath('meta.totals.EUR.in', $expected);
+            // Σ over the branch scopes (0.00 out) never exceeds the All figure
+            // (25.00 out): no branch claims the company-level outflow.
+            $scoped->assertJsonPath('meta.totals.EUR.out', '0.00');
+
+            $seenSourceIds[] = (string) $scoped->json('data.0.source_id');
+        }
+
+        // Pairwise disjointness across the four branch scopes.
+        $this->assertSame($seenSourceIds, array_values(array_unique($seenSourceIds)));
+    }
+
+    public function test_a_deactivated_register_stops_granting_its_branch_journal_visibility(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $this->cashRepository->update(['location_id' => $shopA->id]);
+        $this->bankRepository->update(['location_id' => $shopB->id, 'is_active' => false]);
+
+        $entry = $this->journalEntry('2026-07-24', 'manual_bank_sale', Str::uuid()->toString());
+        $this->journalLine($entry, $this->bankAccount, '40.000', '0.000', 'Shop B bank sale');
+        $this->journalLine($entry, $this->revenueAccount, '0.000', '40.000', 'Revenue');
+
+        $scopedToB = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-24&to=2026-07-24&location_ids[]={$shopB->id}");
+
+        $scopedToB->assertOk();
+        $scopedToB->assertJsonCount(0, 'data');
+
+        $scopedToA = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-24&to=2026-07-24&location_ids[]={$shopA->id}");
+
+        $scopedToA->assertOk();
+        $scopedToA->assertJsonCount(0, 'data');
+
+        // The unscoped read applies no location predicate at all, so the line is
+        // still visible there — it is unattributed, not deleted.
+        $unscoped = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-24&to=2026-07-24');
+
+        $unscoped->assertOk();
+        $unscoped->assertJsonCount(1, 'data');
+        $unscoped->assertJsonPath('data.0.amount', '40.00');
+    }
+
     public function test_a_malformed_location_id_is_rejected_by_validation(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

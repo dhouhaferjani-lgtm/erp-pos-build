@@ -18,6 +18,38 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
+/**
+ * Cash movements across the two sources that can move cash: completed payments
+ * and posted journal lines on a cash GL account, unioned and de-duplicated.
+ *
+ * ── "BRANCH" MEANS TWO DIFFERENT THINGS ON THE TWO LEGS ────────────────────
+ * There is no single location column behind this report, so `location_ids[]`
+ * resolves against a different dimension per leg. Read this before changing
+ * either predicate.
+ *
+ *  - PAYMENTS leg → `payments.location_id`, i.e. the **document's** branch:
+ *    the terminal for a POS receipt (TreasuryReceiptBridge), otherwise the
+ *    location of the first allocated document (PaymentController.php:596-607).
+ *    NULL for a pure advance, by design.
+ *  - JOURNAL-LINES leg → `payment_repositories.location_id`, i.e. the
+ *    **register's** branch. `journal_entries.location_id` exists in the schema
+ *    but is never written (the column is absent from the JournalEntry model),
+ *    so it is reserved, not authoritative — see the P2 ticket to populate it at
+ *    the posting sites and drop this indirection.
+ *
+ * For one physical cash move the two answers can differ (cash paid against a
+ * Shop-B document into a Shop-A register). That is safe because the legs never
+ * both emit the same move: the scope-INDEPENDENT de-duplication below drops a
+ * journal line whenever a payment row already represents it. So a move is
+ * counted at most once overall, under the document's branch when it is
+ * payment-backed and under the register's branch when it is not.
+ *
+ * Ambiguity is resolved FAIL-CLOSED rather than by duplication: cash that no
+ * single branch owns — a NULL location, or a GL account shared by registers in
+ * several branches — is withheld from a strict branch scope and shown only on
+ * the unrestricted read. Σ over the branch scopes is therefore a sub-total of
+ * the unscoped figure, never a multiple of it.
+ */
 final readonly class CashMovementsReportService
 {
     /**
@@ -332,8 +364,50 @@ final readonly class CashMovementsReportService
                 }
 
                 if ($locationIds !== []) {
-                    $query->whereIn('payment_repositories.location_id', $locationIds);
+                    // A deactivated register is not a branch owner: it must not
+                    // keep granting its location visibility of the GL account.
+                    // Mirrors CashPositionController.php:87.
+                    $query->where('payment_repositories.is_active', true)
+                        ->whereIn('payment_repositories.location_id', $locationIds);
                 }
+            })
+            // FAIL-CLOSED on an ambiguous cash GL account (authz gate
+            // 2026-08-06, CRITICAL). `payment_repositories.gl_account_id` is
+            // many-to-one — indexed, never unique — and both provisioning paths
+            // (the `2026_03_02_400000` backfill and `PaymentRepositorySeeder`)
+            // point EVERY cash_register/safe at the single company-wide
+            // `SystemAccountPurpose::Cash` account. Without this clause the
+            // EXISTS above matches some in-scope register for every branch, so
+            // one company-level cash line (a petty-cash `expense_settlement`,
+            // which no payment row backs) was emitted IN FULL under all four of
+            // tenant #1's branches: a 4x overstatement that also broke the
+            // disjointness and Σ ≤ All invariants MTP-MLC-08 asserts.
+            //
+            // A journal line is admitted under a strict scope only when EVERY
+            // active cash register owning its GL account is inside that scope.
+            // Shared/ambiguous cash therefore behaves exactly like NULL-location
+            // cash — hidden under a branch scope, visible unscoped — instead of
+            // being replicated per branch.
+            ->whereNotExists(function (Builder $query) use ($companyId, $locationIds): void {
+                if ($locationIds === []) {
+                    // Unrestricted read: no location predicate at all, so there
+                    // is nothing to be ambiguous about. `whereRaw('1 = 0')`
+                    // keeps the NOT EXISTS trivially satisfied.
+                    $query->selectRaw('1')->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->selectRaw('1')
+                    ->from('payment_repositories as competing_repositories')
+                    ->whereColumn('competing_repositories.gl_account_id', 'journal_lines.account_id')
+                    ->where('competing_repositories.company_id', $companyId)
+                    ->where('competing_repositories.is_active', true)
+                    ->whereIn('competing_repositories.type', self::CASH_REPOSITORY_TYPES)
+                    ->where(function (Builder $query) use ($locationIds): void {
+                        $query->whereNull('competing_repositories.location_id')
+                            ->orWhereNotIn('competing_repositories.location_id', $locationIds);
+                    });
             })
             ->whereNotExists(function (Builder $query) use ($companyId, $from, $to, $repositoryId): void {
                 $query->selectRaw('1')
