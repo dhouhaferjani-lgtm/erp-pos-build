@@ -38,6 +38,7 @@ use App\Services\VerticalConfigService;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\BankAccountValidator;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
+use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -96,6 +97,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(LocationServiceInterface::class, LocationService::class);
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlPreflightInterface::class, AccountingService::class);
+        $this->app->bind(DocumentGlReversalInterface::class, AccountingService::class);
         $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
         $this->app->bind(CatalogLookupInterface::class, BarcodeLookupService::class);
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);

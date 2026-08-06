@@ -651,6 +651,22 @@ class Document extends Model
     }
 
     /**
+     * Has this document been WITHDRAWN — cancelled, or fiscally voided?
+     *
+     * W-7 F-6. Two columns, because neither one alone is the whole truth and the
+     * database guards neither:
+     * - `status = Cancelled` is what `DocumentPostingService::cancel()` writes.
+     * - `fiscal_status = Voided` is the fiscal half. The documents immutability
+     *   trigger (`2025_12_11_054716_add_document_immutability_trigger.php`) returns
+     *   early unless `fiscal_status = 'SEALED'`, so a VOIDED document is exactly the
+     *   one the database will happily let a later write mutate.
+     */
+    public function isWithdrawn(): bool
+    {
+        return $this->status->isTerminal() || $this->fiscal_status === FiscalStatus::Voided;
+    }
+
+    /**
      * The SQL that reproduces the `balance_due` cache, correlated to `documents`.
      *
      * Copied deliberately from `update_document_balance_due()`

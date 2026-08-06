@@ -20,6 +20,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
+use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
@@ -67,6 +68,7 @@ class PaymentController extends Controller
         private readonly InstrumentAccountResolver $instrumentAccountResolver,
         private readonly OutboundRepositoryValidator $outboundRepositoryValidator,
         private readonly OutboundInstrumentIssuer $outboundInstrumentIssuer,
+        private readonly DocumentAllocationStateGuard $allocationStateGuard,
     ) {}
 
     private function scale(): int
@@ -479,6 +481,13 @@ class PaymentController extends Controller
                     ],
                 ], 422);
             }
+
+            // W-7 F-6: a WITHDRAWN document must be un-allocatable. This is the
+            // shared per-allocation guard for both the AR and the AP branch below,
+            // deliberately placed here rather than on the five `canTransitionToPaid()`
+            // status writes it protects — those are a pure TYPE match and cannot be
+            // made to express state.
+            $this->allocationStateGuard->assertAllocatable($document);
 
             /** @var numeric-string $requestedAmount */
             $requestedAmount = (string) $allocation['amount'];
@@ -1378,6 +1387,8 @@ class PaymentController extends Controller
         // paid via the single-payment supplier-aware store() path. (Phase 1 does not
         // support multi-line supplier-invoice payments.)
         $this->rejectSupplierInvoiceInMultiline($primaryDocument);
+        // W-7 F-6: the multi-line path writes the same `Paid` status transitions.
+        $this->allocationStateGuard->assertAllocatable($primaryDocument);
 
         /** @var numeric-string $documentBalance */
         $documentBalance = $primaryDocument->balance_due ?? $primaryDocument->total;
@@ -1669,6 +1680,9 @@ class PaymentController extends Controller
                             // Same gap as the primary document: manual excess allocations
                             // also post the customer GL direction — reject supplier invoices.
                             $this->rejectSupplierInvoiceInMultiline($targetDoc);
+                            // W-7 F-6: manual excess targets are client-supplied
+                            // document ids and reach the same status write.
+                            $this->allocationStateGuard->assertAllocatable($targetDoc);
 
                             /** @var numeric-string $allocAmount */
                             $allocAmount = (string) $allocation['amount'];

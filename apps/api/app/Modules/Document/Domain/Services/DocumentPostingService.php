@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
+use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,7 @@ final class DocumentPostingService
         private readonly ReservationReleaserInterface $reservationReleaser,
         private readonly ReceiptLineGuardInterface $receiptLineGuard,
         private readonly DocumentGlPreflightInterface $glPreflight,
+        private readonly DocumentGlReversalInterface $glReversal,
     ) {}
 
     /**
@@ -165,6 +167,20 @@ final class DocumentPostingService
             ];
 
             if ($requiresFiscalChain) {
+                // W-7 F-6 (c): cancelling a POSTED invoice used to make no GL call
+                // at all, leaving its AR debit, revenue credits and VAT credit
+                // standing in the ledger forever. The reversal is a NEW
+                // hash-chained entry mirroring the SEALED legs — never a mutation
+                // or deletion of the immutable original.
+                //
+                // It runs INSIDE this transaction on purpose. The L1 lane's gate
+                // finding C-1 is the counter-example: a GL verdict raised after the
+                // document is sealed cannot be re-driven, and strands the document.
+                // Here the reversal and the void are one atomic act — if the
+                // reversal cannot be written the cancel is refused with it, and the
+                // document stays posted with its GL intact.
+                $this->glReversal->reverseDocumentGl($document);
+
                 $updateData['fiscal_status'] = FiscalStatus::Voided;
                 $document->update($updateData);
                 DB::afterCommit(function () use ($document): void {

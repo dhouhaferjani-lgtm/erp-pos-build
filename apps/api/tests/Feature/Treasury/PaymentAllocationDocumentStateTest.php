@@ -14,6 +14,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -169,6 +170,120 @@ final class PaymentAllocationDocumentStateTest extends TestCase
             bccomp((string) $allocated, '200.000', 3),
             'The 200.000 invoice must never be allocated beyond its total: 150.000 already + 50.000 capped',
         );
+    }
+
+    /**
+     * W-7 F-6 — the headline shape, reproduced exactly as the campaign found it:
+     * session A cancels a posted invoice, session B (holding a stale page) records
+     * the payment against it. It used to return 201 and rewrite the document to
+     * `paid` with `cancelled_at` still populated — a cancelled sale reappearing as
+     * collected revenue in every report that keys on `documents.status`.
+     */
+    public function test_a_payment_cannot_be_allocated_to_a_cancelled_invoice(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED', '200.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'reference' => 'PAY-CANCELLED-001',
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '200.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+
+        $invoice->refresh();
+        self::assertSame(DocumentStatus::Cancelled, $invoice->status, 'A terminal status must never be rewritten');
+        self::assertNotNull($invoice->cancelled_at);
+        self::assertSame(0, PaymentAllocation::query()->where('document_id', $invoice->id)->count());
+        self::assertDatabaseMissing('payments', ['reference' => 'PAY-CANCELLED-001']);
+    }
+
+    /**
+     * The guard must not depend on the `balance_due` cache being warm — W-7 F-6
+     * escalation (a): a never-allocated cancelled invoice has a NULL cache, so the
+     * amount path presented its FULL total as payable with no crafted input.
+     */
+    public function test_the_guard_holds_while_balance_due_is_null(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED-NULL-CACHE', '200.000', balanceDue: null);
+        self::assertNull($invoice->balance_due);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'reference' => 'PAY-CANCELLED-002',
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '200.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+    }
+
+    public function test_the_multi_payment_path_refuses_a_cancelled_document(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED-MULTI', '200.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'document_id' => $invoice->id,
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->repository->id,
+                    'amount' => '200.000',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+    }
+
+    public function test_the_smart_payment_manual_preview_refuses_a_cancelled_invoice(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED-PREVIEW', '200.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/smart-payment/preview-allocation', [
+            'partner_id' => $this->customer->id,
+            'payment_amount' => '200.000',
+            'allocation_method' => 'manual',
+            'manual_allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '200.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+    }
+
+    private function cancelledInvoice(string $number, string $total, ?string $balanceDue = null): Document
+    {
+        $invoice = $this->invoice($number, $total, $balanceDue ?? $total);
+        $invoice->update([
+            'status' => DocumentStatus::Cancelled,
+            'fiscal_status' => FiscalStatus::Voided,
+            'cancelled_at' => now(),
+            'balance_due' => $balanceDue,
+        ]);
+
+        return $invoice->refresh();
     }
 
     private function invoice(string $number, string $total, ?string $balanceDue = null): Document

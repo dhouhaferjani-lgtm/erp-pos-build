@@ -36,6 +36,24 @@ enum DocumentStatus: string
     }
 
     /**
+     * A TERMINAL status: the document has been withdrawn and no later event may
+     * move it out again.
+     *
+     * W-7 F-6: nothing on the payment-allocation path ever asked this. The five
+     * status writes that flip a document to `Paid` are each gated only on
+     * `DocumentType::canTransitionToPaid()`, which is a pure TYPE match and says
+     * nothing about status, so a cancelled invoice was rewritten to `paid` with
+     * `cancelled_at` still populated.
+     */
+    public function isTerminal(): bool
+    {
+        return match ($this) {
+            self::Cancelled => true,
+            self::Draft, self::Confirmed, self::Posted, self::Paid, self::Received => false,
+        };
+    }
+
+    /**
      * Get human-readable label
      */
     public function label(): string

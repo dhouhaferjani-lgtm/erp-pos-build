@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
+use App\Modules\Accounting\Domain\Exceptions\UnreversibleDocumentGlException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\DoubleEntryValidator;
@@ -19,6 +20,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
+use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
@@ -31,8 +33,21 @@ use Illuminate\Support\Facades\Log;
  *
  * Exposes accounting functionality to other modules through the AccountingServiceInterface.
  */
-final class AccountingService implements AccountingServiceInterface, DocumentGlPreflightInterface
+final class AccountingService implements AccountingServiceInterface, DocumentGlPreflightInterface, DocumentGlReversalInterface
 {
+    /**
+     * `journal_entries.source_type` for an entry written BY posting a document.
+     */
+    public const DOCUMENT_SOURCE_TYPE = 'Document';
+
+    /**
+     * `journal_entries.source_type` for the entry that REVERSES a document's GL
+     * when the document is withdrawn. Deliberately distinct from
+     * {@see self::DOCUMENT_SOURCE_TYPE} so the two can never be confused for one
+     * another — the reversal must not itself look like a posting to be reversed.
+     */
+    public const DOCUMENT_CANCELLATION_SOURCE_TYPE = 'DocumentCancellation';
+
     public function __construct(
         private readonly GeneralLedgerHashService $hashService,
         private readonly PartnerBalanceService $partnerBalanceService,
@@ -375,7 +390,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 'entry_date' => $invoice->document_date,
                 'description' => 'Invoice '.$invoice->document_number,
                 'status' => JournalEntryStatus::Posted,
-                'source_type' => 'Document',
+                'source_type' => self::DOCUMENT_SOURCE_TYPE,
                 'source_id' => $invoice->id,
                 'chain_sequence' => $chainSequence,
                 'previous_hash' => $previousHash,
@@ -527,7 +542,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 'entry_date' => $creditNote->document_date,
                 'description' => 'Credit Note '.$creditNote->document_number,
                 'status' => JournalEntryStatus::Posted,
-                'source_type' => 'Document',
+                'source_type' => self::DOCUMENT_SOURCE_TYPE,
                 'source_id' => $creditNote->id,
                 'chain_sequence' => $chainSequence,
                 'previous_hash' => $previousHash,
@@ -664,6 +679,176 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 ]
             );
         }
+    }
+
+    /**
+     * W-7 F-6 (c) — reverse a withdrawn document's GL.
+     *
+     * `DocumentPostingService::cancel()` made no GL call at all, so a cancelled
+     * POSTED invoice left its AR debit, its revenue credits and its VAT credit
+     * standing in the ledger forever.
+     *
+     * Three properties this method is built to guarantee:
+     *
+     * 1. **Mirror fidelity.** The legs are read back from the STORED entry and
+     *    swapped, never recomputed from the document. Recomputation would run
+     *    `residualPlan()` again against a chart, a tax table and an absorbing
+     *    account that may all have moved since the seal — the reversal could then
+     *    silently differ from what was actually posted. Reading the sealed legs
+     *    makes divergence impossible by construction.
+     * 2. **Balance by construction.** Σdr(mirror) == Σcr(original) and
+     *    Σcr(mirror) == Σdr(original), so a balanced original yields a balanced
+     *    mirror. Only an original that was ALREADY unbalanced can fail, and that
+     *    is refused rather than sealed — see {@see UnreversibleDocumentGlException}.
+     *    The assertion runs BEFORE anything is written.
+     * 3. **Idempotence.** A document is reversed at most once, keyed on
+     *    `source_type = DOCUMENT_CANCELLATION_SOURCE_TYPE` + `source_id`. Note
+     *    that `journal_entries(source_type, source_id)` carries no uniqueness
+     *    constraint, so this is an explicit check inside the caller's transaction,
+     *    not a database guarantee.
+     *
+     * The original entry is never mutated or deleted: the ledger is immutable and
+     * this is a forward correction, chained after it like any other entry.
+     *
+     * @throws UnreversibleDocumentGlException
+     */
+    public function reverseDocumentGl(Document $document): ?string
+    {
+        if (! in_array($document->type, [DocumentType::Invoice, DocumentType::CreditNote], true)) {
+            return null;
+        }
+
+        $alreadyReversed = JournalEntry::query()
+            ->where('company_id', $document->company_id)
+            ->where('source_type', self::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+            ->where('source_id', $document->id)
+            ->exists();
+
+        if ($alreadyReversed) {
+            return null;
+        }
+
+        /** @var Collection<int, JournalEntry> $originals */
+        $originals = JournalEntry::query()
+            ->where('company_id', $document->company_id)
+            ->where('source_type', self::DOCUMENT_SOURCE_TYPE)
+            ->where('source_id', $document->id)
+            ->where('status', JournalEntryStatus::Posted)
+            ->with('lines')
+            ->orderBy('chain_sequence')
+            ->get();
+
+        if ($originals->isEmpty()) {
+            // Never reached the ledger — a document posted before GL existed, a
+            // type that posts none, or one whose posting was refused pre-seal by
+            // the W-6 D1a pre-flight. Nothing to reverse; minting an empty entry
+            // would be noise in the chain.
+            return null;
+        }
+
+        $scale = $this->documentScale($document);
+        $mirrorLegs = [];
+        /** @var numeric-string $originalDebits */
+        $originalDebits = '0';
+        /** @var numeric-string $originalCredits */
+        $originalCredits = '0';
+
+        foreach ($originals as $original) {
+            foreach ($original->lines as $line) {
+                /** @var numeric-string $debit */
+                $debit = (string) $line->debit;
+                /** @var numeric-string $credit */
+                $credit = (string) $line->credit;
+
+                $originalDebits = bcadd($originalDebits, $debit, $scale);
+                $originalCredits = bcadd($originalCredits, $credit, $scale);
+
+                $mirrorLegs[] = [
+                    'account_id' => $line->account_id,
+                    'partner_id' => $line->partner_id,
+                    // The mirror: every debit becomes a credit and back again.
+                    'debit' => $credit,
+                    'credit' => $debit,
+                    'description' => 'Reversal of '.($line->description ?? $original->entry_number),
+                ];
+            }
+        }
+
+        if (bccomp($originalDebits, $originalCredits, $scale) !== 0) {
+            throw UnreversibleDocumentGlException::forUnbalancedOriginal(
+                $document->document_number ?? $document->id,
+                (string) $originals->first()->entry_number,
+                $originalDebits,
+                $originalCredits,
+            );
+        }
+
+        $entryId = DB::transaction(function () use ($document, $scale, $mirrorLegs): string {
+            $previousHash = JournalEntry::getLastChainHash($document->company_id);
+            $chainSequence = JournalEntry::getNextChainSequence($document->company_id);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $document->tenant_id,
+                'company_id' => $document->company_id,
+                'entry_number' => 'REVCAN-'.now()->format('YmdHis').'-'.str_replace('-', '', $document->id),
+                // The cancellation's OWN date, not the invoice's: the original
+                // stands in its period and the reversal lands in the period the
+                // withdrawal actually happened in.
+                'entry_date' => now(),
+                'description' => 'Cancellation of '.($document->document_number ?? $document->id),
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => self::DOCUMENT_CANCELLATION_SOURCE_TYPE,
+                'source_id' => $document->id,
+                'chain_sequence' => $chainSequence,
+                'previous_hash' => $previousHash,
+            ]);
+
+            foreach ($mirrorLegs as $leg) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $leg['account_id'],
+                    'partner_id' => $leg['partner_id'],
+                    'debit' => $leg['debit'],
+                    'credit' => $leg['credit'],
+                    'description' => $leg['description'],
+                ]);
+            }
+
+            $freshEntry = $entry->fresh(['lines']);
+            if ($freshEntry === null) {
+                throw new \RuntimeException('Failed to reload reversal journal entry after creation');
+            }
+
+            // Defence in depth, same shape as the posting paths: the balance was
+            // already proven above, so this can only fire if a leg was written
+            // that the mirror did not describe.
+            $this->assertLegsBalance(
+                $freshEntry,
+                'document_cancellation',
+                $document,
+                $scale,
+                new DocumentGlResidualPlan('0', '0', '0', [], null, null),
+            );
+
+            $entry->update(['fiscal_hash' => $this->hashService->calculateHash($freshEntry, $previousHash)]);
+
+            $entry = $entry->fresh(['lines']);
+            if ($entry === null) {
+                throw new \RuntimeException('Failed to reload reversal journal entry after hash update');
+            }
+
+            $this->dispatchJournalEntryCreatedEvent($entry, 'document_cancellation', $scale);
+
+            return $entry->id;
+        });
+
+        $this->refreshPartnerBalanceAfterGlPersistence(
+            $document->company_id,
+            $document->partner_id,
+            $entryId
+        );
+
+        return $entryId;
     }
 
     /**

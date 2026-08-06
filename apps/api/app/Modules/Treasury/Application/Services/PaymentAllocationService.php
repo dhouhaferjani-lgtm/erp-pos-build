@@ -36,6 +36,7 @@ class PaymentAllocationService
         private GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyContext $companyContext,
+        private readonly DocumentAllocationStateGuard $allocationStateGuard,
     ) {}
 
     private function scale(?string $currencyCode = null): int
@@ -181,6 +182,10 @@ class PaymentAllocationService
                 // PaymentController::store() path (Dr 401 / Cr Bank). This generic
                 // allocation path posts the AR direction (Dr Bank / Cr AR), so reject.
                 $this->rejectSupplierInvoiceAllocation($document);
+                // W-7 F-6: a withdrawn document must be un-allocatable here too —
+                // this write path reaches its own `canTransitionToPaid()` status
+                // flip a few lines below.
+                $this->allocationStateGuard->assertAllocatable($document);
 
                 // Create allocation record
                 PaymentAllocation::create([
@@ -656,6 +661,9 @@ class PaymentAllocationService
             // Supplier invoices (AP) are not allocable here — reject in the preview
             // so the manual smart-payment path fails fast before any write.
             $this->rejectSupplierInvoiceAllocation($invoice);
+            // W-7 F-6: fail the READ side too, so the smart-payment preview never
+            // offers a withdrawn document as payable in the first place.
+            $this->allocationStateGuard->assertAllocatable($invoice);
 
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 
