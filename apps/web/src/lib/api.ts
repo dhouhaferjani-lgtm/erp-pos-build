@@ -1,4 +1,4 @@
-import axios, { type AxiosError, type AxiosInstance, type AxiosResponse } from 'axios'
+import axios, { type AxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { useCompanyStore } from '../stores/companyStore'
 import { useAuthStore } from '../stores/authStore'
 
@@ -186,6 +186,33 @@ function createApiClient(): AxiosInstance {
   client.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error: unknown) => {
+      // 419 CSRF is handled FIRST and keys on STATUS alone, deliberately
+      // outside the `isApiError` gate below.
+      //
+      // Laravel's CSRF failure is a bare `{"message":"CSRF token mismatch."}` —
+      // 419 is an HttpException, which the API's catch-all renderer leaves
+      // untyped on purpose — so `isApiError` is false for it and this
+      // refresh-and-retry branch was unreachable: every CSRF expiry surfaced as
+      // a hard failure instead of self-healing. (Found independently by the
+      // media and imports merge gates, 2026-08-06.)
+      if (axios.isAxiosError(error) && error.response?.status === 419) {
+        const config = error.config as (InternalAxiosRequestConfig & { _csrfRetried?: boolean }) | undefined
+
+        // Replay at most once — a second 419 means the token is not the problem
+        // and retrying again would loop.
+        if (config && config._csrfRetried !== true) {
+          config._csrfRetried = true
+          console.warn('CSRF token mismatch, refreshing token...')
+          try {
+            await ensureCsrfCookie()
+
+            return await client.request(config)
+          } catch (csrfError) {
+            console.error('Failed to refresh CSRF token:', csrfError)
+          }
+        }
+      }
+
       if (isApiError(error)) {
         const response = error.response
         if (!response) {
@@ -211,19 +238,7 @@ function createApiClient(): AxiosInstance {
           console.error('Access denied:', getErrorMessage(error))
         }
 
-        // Handle 419 CSRF Token Mismatch - retry after fetching new token
-        if (response.status === 419) {
-          console.warn('CSRF token mismatch, refreshing token...')
-          try {
-            await ensureCsrfCookie()
-            // Retry the original request
-            if (error.config) {
-              return client.request(error.config)
-            }
-          } catch (csrfError) {
-            console.error('Failed to refresh CSRF token:', csrfError)
-          }
-        }
+        // 419 is handled above, before the isApiError gate.
 
         // Handle 500+ Server Errors
         if (response.status >= 500) {
