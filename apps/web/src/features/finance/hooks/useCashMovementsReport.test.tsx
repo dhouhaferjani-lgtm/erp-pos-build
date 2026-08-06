@@ -9,8 +9,19 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { useCashMovementsReport } from './useCashMovementsReport'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
+const mockUseViewScope = vi.hoisted(() =>
+  vi.fn(() => ({
+    scope: ['loc-b', 'loc-a'] as 'all' | string[],
+    effectiveLocationIds: ['loc-b', 'loc-a'],
+    isAll: false,
+    setScope: vi.fn(),
+  })),
+)
 
 vi.mock('@/lib/api', () => ({ api: { get: mockApiGet } }))
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: mockUseViewScope,
+}))
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -43,7 +54,96 @@ describe('useCashMovementsReport', () => {
     })
   })
 
-  it('preserves paginated data and meta under a tenant-scoped query key', async () => {
+  it('sends the view scope as location_ids and keys the query by that scope', async () => {
+    // W-7 F-3 (fix lane L3): this report used to define no location field at
+    // all and key with tenantScopedKey, so a single-shop selection in the
+    // TopBar silently returned the whole company's cash — and one scope's rows
+    // were served from cache under another. Modelled on useAgedReceivables.
+    const filters = { from: '2026-07-01', to: '2026-07-31', page: 1 }
+    const report = {
+      data: [],
+      meta: {
+        current_page: 1,
+        per_page: 50,
+        total: 0,
+        last_page: 1,
+        from: null,
+        to: null,
+        totals: {},
+      },
+    }
+    mockApiGet.mockResolvedValue({ data: report })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+
+    const { result } = renderHook(() => useCashMovementsReport(filters), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockApiGet).toHaveBeenCalledWith('/reports/cash-movements', {
+      params: { ...filters, location_ids: ['loc-b', 'loc-a'] },
+    })
+    expect(
+      queryClient.getQueryData([
+        'cash-movements-report',
+        { ...filters, location_ids: ['loc-b', 'loc-a'] },
+        { locScope: ['loc-a', 'loc-b'] },
+        'tenant-1',
+        'company-1',
+      ]),
+    ).toEqual(report)
+  })
+
+  it('keys an unrestricted scope distinctly from a single-branch scope', async () => {
+    mockUseViewScope.mockReturnValueOnce({
+      scope: 'all',
+      effectiveLocationIds: ['loc-a', 'loc-b'],
+      isAll: true,
+      setScope: vi.fn(),
+    })
+    const filters = { page: 1 }
+    const report = {
+      data: [],
+      meta: {
+        current_page: 1,
+        per_page: 50,
+        total: 0,
+        last_page: 1,
+        from: null,
+        to: null,
+        totals: {},
+      },
+    }
+    mockApiGet.mockResolvedValue({ data: report })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+
+    const { result } = renderHook(() => useCashMovementsReport(filters), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(
+      queryClient.getQueryData([
+        'cash-movements-report',
+        { ...filters, location_ids: ['loc-a', 'loc-b'] },
+        { locScope: 'all' },
+        'tenant-1',
+        'company-1',
+      ]),
+    ).toEqual(report)
+  })
+
+  it('preserves paginated data and meta under a location-scoped query key', async () => {
     const filters = {
       from: '2026-07-01',
       to: '2026-07-31',
@@ -85,14 +185,16 @@ describe('useCashMovementsReport', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
+    const scopedFilters = { ...filters, location_ids: ['loc-b', 'loc-a'] }
     expect(mockApiGet).toHaveBeenCalledWith('/reports/cash-movements', {
-      params: filters,
+      params: scopedFilters,
     })
     expect(result.current.data).toEqual(report)
     expect(
       queryClient.getQueryData([
         'cash-movements-report',
-        filters,
+        scopedFilters,
+        { locScope: ['loc-a', 'loc-b'] },
         'tenant-1',
         'company-1',
       ]),
