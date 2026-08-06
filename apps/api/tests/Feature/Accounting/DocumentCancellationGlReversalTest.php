@@ -383,6 +383,41 @@ final class DocumentCancellationGlReversalTest extends TestCase
     }
 
     /**
+     * GL gate IMPORTANT — the refusal used to say "Post a correcting entry
+     * first", which is impossible advice: `AccountingService::reverseDocumentGl()`
+     * only counts entries with `source_type = 'Document' AND source_id =
+     * $document->id AND status = Posted` (`:730-737`), and the only manual-entry
+     * writer, `JournalEntryController::store()`, hard-codes
+     * `source_type = 'manual'` — a correcting entry created through the only
+     * available endpoint can NEVER enter that predicate. The message must not
+     * send an accountant down a path that does nothing.
+     */
+    public function test_the_refusal_message_does_not_recommend_an_impossible_remedy(): void
+    {
+        $invoice = $this->postedInvoiceWithGl();
+        $original = $this->glEntryFor($invoice);
+
+        JournalLine::withoutEvents(fn () => JournalLine::create([
+            'journal_entry_id' => $original->id,
+            'account_id' => $original->lines->first()->account_id,
+            'debit' => '0',
+            'credit' => '19.000',
+            'description' => 'Legacy imbalance',
+        ]));
+
+        try {
+            $this->postingService->cancel($invoice, 'should refuse', $this->user->id);
+            self::fail('Cancelling must refuse rather than seal an unbalanced reversal');
+        } catch (\DomainException $exception) {
+            self::assertStringNotContainsString(
+                'Post a correcting entry first',
+                $exception->getMessage(),
+                'That remedy is currently impossible through the journal-entry endpoint',
+            );
+        }
+    }
+
+    /**
      * The L1 lane's lineless-document carve-out applies to the reversal too.
      *
      * A document with NO lines posts a lone AR leg with no revenue side on any

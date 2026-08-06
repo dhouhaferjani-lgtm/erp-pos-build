@@ -781,11 +781,25 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
         // byte-identical rather than change under a merge gate
         // (`residualPlan()`, `DocumentGlResidualPlan::$balanceAssertable`,
         // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md).
-        // Refusing to reverse it would make such a document impossible to cancel at
-        // all — strictly worse than before this lane, which reversed nothing and
-        // cancelled cleanly. Its mirror is equal and opposite, so the pair still
-        // nets to zero in the trial balance.
-        $balanceAssertable = $document->lines->isNotEmpty();
+        //
+        // GL gate finding M-1: the mirror being "equal and opposite" does NOT
+        // distinguish this case from the DOC06 refusal below — mirroring an
+        // unbalanced original ALSO nets to zero. The real reason to skip the
+        // assertion here is cancellability: refusing would make a lineless
+        // document impossible to cancel at all, strictly worse than before this
+        // lane (which reversed nothing and cancelled cleanly). This DOES seal a
+        // new one-legged (unbalanced) entry into the chain — accepted as the
+        // lesser evil, not claimed to be balanced.
+        //
+        // GL gate finding I-2: reuse `residualPlan()`'s OWN predicate rather than
+        // a second, independent expression of it (`$document->lines->isEmpty()`
+        // at `:147` vs. a hand-rolled `isNotEmpty()` here) — two expressions of
+        // one fiscal invariant is exactly the drift class L1's own DTO comment
+        // warns about. For any document with lines this is unconditionally
+        // `true` (every non-lineless branch defaults `balanceAssertable` to
+        // `true`), so behaviour is unchanged; only the lineless carve-out reuses
+        // a single source now.
+        $balanceAssertable = $this->residualPlan($document, $scale)->balanceAssertable;
 
         if ($balanceAssertable && bccomp($originalDebits, $originalCredits, $scale) !== 0) {
             throw UnreversibleDocumentGlException::forUnbalancedOriginal(
@@ -843,7 +857,16 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 new DocumentGlResidualPlan('0', '0', '0', [], null, null, $balanceAssertable),
             );
 
-            $entry->update(['fiscal_hash' => $this->hashService->calculateHash($freshEntry, $previousHash)]);
+            // GL gate finding I-5: pass the document's OWN currency rather than
+            // falling to a no-arg `getScale()` resolve inside
+            // `serializeForHashing()` — that resolves from the country row
+            // (`CurrencyScaleResolver::scale()`), a DIFFERENT function from the
+            // explicit-currency path `verifyChain()` always uses. They agree
+            // today, but this is new code written after L1's "pass the
+            // currency" doctrine, and the no-arg path also throws outside
+            // request context (rule 20). `$document->currency` is already in
+            // hand — no reason to take the fragile path.
+            $entry->update(['fiscal_hash' => $this->hashService->calculateHash($freshEntry, $previousHash, $document->currency)]);
 
             $entry = $entry->fresh(['lines']);
             if ($entry === null) {
