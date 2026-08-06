@@ -6,11 +6,11 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesData;
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
+use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
-use App\Modules\Company\Domain\Location;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -39,7 +39,7 @@ final readonly class AgedReceivablesService
      * @return AgedReceivablesData The aged receivables report
      */
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      */
     public function generate(
         string $companyId,
@@ -86,7 +86,7 @@ final readonly class AgedReceivablesService
     }
 
     /**
-     * @param Collection<int, Document> $invoices
+     * @param  Collection<int, Document>  $invoices
      * @return list<LocationReportBucketData>
      */
     private function locationBuckets(Collection $invoices, string $companyId): array
@@ -138,7 +138,7 @@ final readonly class AgedReceivablesService
      * @return Collection<int, Document>
      */
     /**
-     * @param list<string> $locationIds
+     * @param  list<string>  $locationIds
      * @return Collection<int, Document>
      */
     private function getOutstandingInvoices(string $companyId, Carbon $asOfDate, array $locationIds = []): Collection
@@ -192,9 +192,17 @@ final readonly class AgedReceivablesService
                 foreach ($customerInvoices as $invoice) {
                     $balance = $invoice->balance_due ?? '0.0000';
 
-                    // Calculate days overdue from due_date or document_date
+                    // Days overdue from due_date (or document_date when there is
+                    // none). W-6 D4: Carbon's signed `diffInDays` returns
+                    // ARGUMENT − RECEIVER, so the previous
+                    // `$asOfDate->diffInDays($reference, false)` yielded
+                    // `reference − asOf` — NEGATIVE for an invoice that is already
+                    // overdue, which `determineBucket()` maps to `current`. Every
+                    // overdue receivable was reported as Current and a not-yet-due
+                    // one was aged as if late. The receiver must be the REFERENCE
+                    // date so the result is `asOf − reference`: positive = overdue.
                     $referenceDate = $invoice->due_date ?? $invoice->document_date;
-                    $daysOverdue = (int) $asOfDate->diffInDays(Carbon::parse($referenceDate), false);
+                    $daysOverdue = (int) Carbon::parse($referenceDate)->diffInDays($asOfDate, false);
 
                     // Assign to appropriate bucket
                     $bucket = $this->determineBucket($daysOverdue);
