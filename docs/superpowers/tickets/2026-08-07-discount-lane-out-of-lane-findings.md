@@ -28,12 +28,17 @@ discount behaviour quotes have. Decide: make QuoteController route through
 DocumentLine::computeLineTotal like other types (preferred), and check ConvertsDocuments for
 which totals a conversion recomputes. Pre-launch relevance: quotes are in tenant #1 scope.
 
-## 3. FE deps-revert blind spot (P3) — carried from FE gate m-4
+## 3. FE deps blind spot + LIVE pricing-popover staleness (P2) — FE gate m-4 + m-5, one fix
 
-The DocumentLineEditor test suite's fresh-closure `t` mock means no test fails if the
-`getDiscountMode` useMemo dependency is reverted; `react-hooks/exhaustive-deps` is warn-level.
-If the implementer couldn't cheaply make one test deterministic in the fix round, harden when
-the suite's mock strategy is next touched (stable `t` reference fixture).
+Confirmed entangled by the fix round (attempt made, reverted with reasoning inline at
+`DocumentLineEditor.test.tsx:27-39`): the suite's fresh-closure `t` mock masks ALL missing
+`lineColumns` useMemo deps, so (a) the `getDiscountMode` deps fix has no regression gate, and
+(b) the PRE-EXISTING missing deps `openPricingLineId` / `pricingContext?.items` (present at
+base `695f6814d`) are a LIVE staleness bug in the pricing popover — in production `t` IS
+stable, so those cells don't re-render when pricing context changes. One fix, one pass:
+stabilize the `t` mock to module scope AND add both missing deps; the two tests that go red
+under a stable mock are the proof the deps were load-bearing. `react-hooks/exhaustive-deps`
+is warn-level — consider promoting to error for this directory.
 
 ## 4. Persisted negative-line disposition (accountant list)
 
