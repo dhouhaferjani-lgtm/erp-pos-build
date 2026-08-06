@@ -12,10 +12,12 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -299,6 +301,117 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         // Untouched.
         $this->assertSame('0.000', $detail->tax_base);
         $this->assertTrue((bool) $detail->is_stamp_duty);
+    }
+
+    /**
+     * Q2 expert-comptable ruling (2026-08-06,
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md):
+     * ExpenseService::writeDeductibleVatSnapshot() used to declare the
+     * DEDUCTIBLE-PROPORTION base for a partially-deductible expense (V5,
+     * 2026-08-03 gate); the Q2 ruling requires the FULL FACIAL subtotal
+     * instead. Existing rows written under the V5 writer under-declare the
+     * base and need the same backfill treatment as the invoice/credit-note
+     * leg above -- this exercises the dedicated expense leg added to
+     * `vat:backfill-tax-details` for exactly that.
+     */
+    public function test_expense_leg_dry_run_reports_the_base_fix_without_writing(): void
+    {
+        $expense = $this->createLegacyExpense('80.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id])
+            ->expectsOutputToContain('[DRY-RUN]')
+            ->expectsOutputToContain('Expense leg')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        // Unchanged -- dry-run must never write.
+        $this->assertSame('80.000', $detail->tax_base);
+        $this->assertSame('15.200', $detail->tax_amount);
+    }
+
+    public function test_expense_leg_apply_rewrites_the_base_to_the_full_subtotal(): void
+    {
+        $expense = $this->createLegacyExpense('80.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('[APPLY]')
+            ->expectsOutputToContain('Expense leg')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        // Base rewritten to the full facial subtotal (Q2 ruling) --
+        // tax_amount stays the deductible share, untouched.
+        $this->assertSame('100.000', $detail->tax_base);
+        $this->assertSame('15.200', $detail->tax_amount);
+    }
+
+    public function test_expense_leg_leaves_a_hundred_percent_deductible_row_untouched(): void
+    {
+        // At 100% deductible the V5 prorated base already equals the full
+        // subtotal -- nothing for the Q2 leg to fix.
+        $expense = $this->createLegacyExpense('100.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('[APPLY]')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('100.000', $detail->tax_base);
+        $this->assertSame('19.000', $detail->tax_amount);
+    }
+
+    /**
+     * Builds a partially-deductible expense in the exact SHAPE the pre-Q2
+     * (V5) writer produced: tax_base holds the DEDUCTIBLE-PROPORTION share
+     * of the subtotal (subtotal × deductiblePercent), not the full
+     * subtotal -- the defect the expense backfill leg corrects.
+     *
+     * @param  numeric-string  $deductiblePercent
+     */
+    private function createLegacyExpense(string $deductiblePercent): Document
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-LEGACY-'.$deductiblePercent,
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Legacy Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => $deductiblePercent,
+        ]);
+
+        // deductibleVat = subtotal's VAT (19.000) × deductiblePercent.
+        $deductibleVat = bcdiv(bcmul('19.000', $deductiblePercent, 5), '100', 3);
+        // V5 writer's shape: base = subtotal × deductiblePercent (same
+        // proportion as was claimed of the VAT).
+        $legacyBase = bcdiv(bcmul('100.000', $deductiblePercent, 5), '100', 3);
+
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => $legacyBase,
+            'tax_amount' => $deductibleVat,
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        return $document;
     }
 
     private function createLegacyInvoice(): Document

@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -57,13 +58,40 @@ use Illuminate\Support\Facades\Schema;
  *   run.
  * - Scope: documents of type invoice/credit_note that already carry at
  *   least one document_tax_details row (proof they went through a real
- *   confirm() at some point). Expense documents are OUT OF SCOPE — their
- *   tax details are written by ExpenseService's own writer, not
- *   TaxCalculationService::snapshotTaxDetails(), and have no `lines` for
- *   calculateDocumentTaxes() to read.
+ *   confirm() at some point), PLUS a separate expense leg (below). Expense
+ *   documents never go through TaxCalculationService::snapshotTaxDetails()
+ *   / calculateDocumentTaxes() (they have no `lines`), so the main leg above
+ *   still does not touch them — the expense leg is its own, narrower fix.
  * - Operates against whichever tenant database connection is currently
  *   bound. Invoke per tenant, e.g. via `tenants:run` (fleet) or directly
  *   inside an already-bound tenant context (local/staging).
+ *
+ * Expense leg (Q2 expert-comptable ruling, 2026-08-06,
+ * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md):
+ * ExpenseService::writeDeductibleVatSnapshot() used to write tax_base as the
+ * DEDUCTIBLE-PROPORTION base (V5, 2026-08-03 gate) for a partially-deductible
+ * expense; the Q2 ruling requires the FULL FACIAL subtotal instead (the DGI
+ * cross-matches supplier/customer declared bases, so under-declaring the
+ * base creates a cross-matching anomaly). Rows written by the pre-fix
+ * writer under-declare the base and need remediation:
+ * - Scope: documents of type `expense` carrying a DocumentTaxDetail at
+ *   sequence_order=1 with is_stamp_duty=false (the writer's own stable
+ *   slot — see writeDeductibleVatSnapshot()) whose tax_base differs from
+ *   the document's stored subtotal AND whose expense metadata records
+ *   vat_deductible_percent < 100 (at 100% the V5 base already equals the
+ *   full subtotal — nothing to fix, and touching it would be a no-op
+ *   dressed up as a rewrite).
+ * - tax_amount is NEVER touched — only tax_base is rewritten, to the
+ *   document's own stored subtotal. No recomputation of the deductible
+ *   share is performed, so there is no "recomputed total differs from
+ *   signed total" risk the way there is for the invoice/credit-note leg
+ *   above (an expense's total/subtotal/tax_amount are independently
+ *   attested fields, not derived from lines — this leg touches nothing
+ *   that could desynchronize a signed value).
+ * - Self-guarding: skips (does not throw) and reports any expense document
+ *   missing expense metadata, missing a vat_deductible_percent, or with a
+ *   non-numeric stored subtotal, rather than guessing.
+ * - DRY-RUN BY DEFAULT / --apply / --company, same contract as the main leg.
  */
 final class BackfillTaxDetailsCommand extends Command
 {
@@ -71,10 +99,11 @@ final class BackfillTaxDetailsCommand extends Command
                             {--apply : Actually rewrite document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
                             {--company= : Optional company id to scope to a single company within the current tenant}';
 
-    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline. DRY-RUN by default. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6.';
+    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal per the Q2 expert-comptable ruling. DRY-RUN by default. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6 and docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md.';
 
     public function __construct(
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {
         parent::__construct();
     }
@@ -221,7 +250,140 @@ final class BackfillTaxDetailsCommand extends Command
             $this->info('Dry-run only. The AFTER column above is a simulation (not yet written) -- re-run with --apply to write it for real.');
         }
 
+        $this->handleExpenseLeg($apply, $companyId);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Expense leg (Q2 ruling) — see class docblock. Rewrites tax_base on a
+     * partially-deductible expense's own DocumentTaxDetail row (sequence
+     * order 1, non-stamp) from the V5 deductible-proportion base to the
+     * document's full stored subtotal. tax_amount is never touched.
+     */
+    private function handleExpenseLeg(bool $apply, ?string $companyId): void
+    {
+        $this->line('');
+        $this->line('Expense leg (Q2 ruling, declared base = full facial subtotal):');
+
+        $query = Document::query()
+            ->where('type', DocumentType::Expense)
+            ->whereIn('id', DocumentTaxDetail::query()
+                ->select('document_id')
+                ->where('sequence_order', 1)
+                ->where('is_stamp_duty', false))
+            ->with('expenseMetadata');
+        if ($companyId !== null) {
+            $query->where('company_id', $companyId);
+        }
+
+        $scanned = 0;
+        $touched = 0;
+        /** @var list<array{id: string, number: string, reason: string}> $skipped */
+        $skipped = [];
+        /** @var numeric-string $baseDelta */
+        $baseDelta = '0';
+
+        foreach ($query->cursor() as $document) {
+            $detail = DocumentTaxDetail::query()
+                ->where('document_id', $document->id)
+                ->where('sequence_order', 1)
+                ->where('is_stamp_duty', false)
+                ->first();
+
+            if ($detail === null) {
+                // The whereIn subquery guarantees a matching row existed at
+                // query time; a concurrent delete between then and now is
+                // not impossible -- skip rather than throw.
+                continue;
+            }
+
+            $metadata = $document->expenseMetadata;
+            if ($metadata === null) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'no expense_metadata row -- cannot read vat_deductible_percent',
+                ];
+
+                continue;
+            }
+
+            $rawDeductiblePercent = $metadata->vat_deductible_percent;
+            if ($rawDeductiblePercent === null) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'vat_deductible_percent is null -- cannot determine whether the base needs correcting',
+                ];
+
+                continue;
+            }
+
+            $deductiblePercent = (string) $rawDeductiblePercent;
+            if (bccomp($deductiblePercent, '100', 2) >= 0) {
+                // 100% deductible: the V5 prorated base already equals the
+                // full subtotal. Not a candidate.
+                continue;
+            }
+
+            $rawSubtotal = $document->subtotal;
+            if ($rawSubtotal === null) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'stored subtotal is null -- cannot determine the full facial base',
+                ];
+
+                continue;
+            }
+
+            $scanned++;
+
+            $scale = $this->scaleResolver->getScale((string) $document->currency);
+            /** @var numeric-string $subtotal */
+            $subtotal = CurrencyScale::bcformatStrict((string) $rawSubtotal, $scale);
+            /** @var numeric-string $storedBase */
+            $storedBase = CurrencyScale::bcformatStrict((string) ($detail->tax_base ?? '0'), $scale);
+
+            if (bccomp($storedBase, $subtotal, $scale) === 0) {
+                // Already the full subtotal -- nothing to fix (covers
+                // rows already migrated to the Q2 shape, or coincidental
+                // matches).
+                continue;
+            }
+
+            if ($apply) {
+                DB::transaction(function () use ($detail, $subtotal): void {
+                    $detail->tax_base = $subtotal;
+                    $detail->save();
+                });
+            }
+            $touched++;
+            $baseDelta = bcadd($baseDelta, bcsub($subtotal, $storedBase, $scale), $scale);
+        }
+
+        $this->line(sprintf(
+            '  Scanned %d partially-deductible expense document(s). %s %d. Skipped %d.',
+            $scanned,
+            $apply ? 'Rewrote' : 'Would rewrite',
+            $touched,
+            count($skipped),
+        ));
+        $this->line(sprintf('  Cumulative declared-base delta (AFTER - BEFORE): %s', $baseDelta));
+
+        foreach ($skipped as $row) {
+            $this->warn(sprintf(
+                '  SKIPPED %s (%s): %s -- needs manual review, NOT backfilled',
+                $row['number'],
+                $row['id'],
+                $row['reason'],
+            ));
+        }
+
+        if (! $apply && $touched > 0) {
+            $this->info('Dry-run only for the expense leg -- re-run with --apply to write it for real.');
+        }
     }
 
     /**
