@@ -186,3 +186,119 @@ but it earns its own test file (`productHeroImage.test.ts`) for two lines of log
 Skip `HttpResponseException` in the catch-all + add the 404/HttpResponseException regression tests; narrow
 `trustProxies` to FOR|PROTO|PORT; add the `exists()` guard in `MediaStorageAdapter::serve`; stabilise the signed-URL
 expiry bucket (or raise/re-key `signed-media`); open the POS `image_url` ticket. Then land the backfill per the ruling.
+
+---
+
+# Round 2 — narrow re-verification (6 commits, `6aaaa0fa3..02893a626`)
+
+## VERDICT: CLEAR TO MERGE (authz half). No blockers.
+
+All four Important items and both Minors from Round 1 are closed. No new defect found.
+
+## Correction to MY ruling — accepted, and it was a real one
+
+`MediaStatus` and `MediaAssetType` are UPPERCASE-backed enums
+(`MediaStatus.php:9-12` → `'UPLOADED'/'PROCESSING'/'READY'/'FAILED'`;
+`MediaAssetType.php:9-13` → `'IMAGE'/…`). The literal SQL in my Round-1 directive
+(`status='ready' … type='image'`) would have matched **zero rows** and silently no-op'd on every tenant —
+a backfill that reports success and fixes nothing. Their enum-constant version
+(`2026_08_06_100000_backfill_ready_image_media_assets.php:52-62`) is correct, and
+`BackfillReadyImageAssetsTest::test_migration_promotes_uploaded_and_processing_images_but_never_failed`
+pins it. My error; their catch. Reviewers writing literal SQL for enum columns must read the enum first.
+
+### Other silent-no-op paths in the migration — checked, none blocking
+- `Schema::hasTable('media_assets')` (`:47`) is the right guard; the table is a tenant migration
+  (`database/migrations/tenant/2026_06_12_100001_create_media_assets_table.php`), so central no-ops correctly.
+- `updated_at` exists (`timestamps()` in the create migration) — a missing column would have thrown, not no-op'd.
+- Timestamp `2026_08_06_100000` sorts after every create-table migration ✓.
+- No `tenant_id` predicate: correct under db-per-tenant (physical isolation). Under a legacy single-schema
+  deployment it would promote all tenants in one statement — same intent, no cross-tenant data movement.
+- ExternalUrl assets stuck at UPLOADED are also promoted; harmless, `MediaStorageAdapter::serve` redirects on
+  `source === ExternalUrl` before any `exists()` check.
+- **[Minor, non-blocking]** `DB::table()` bypasses SoftDeletes, so soft-deleted assets are promoted too and the
+  logged row count is inflated. No read path surfaces them. The command does it right (`MediaAsset::query()`).
+
+## Item-by-item
+
+**1. Catch-all `HttpResponseException` skip — closed.** `bootstrap/app.php:443` now skips both families; the comment
+documents *why* (`Route::run()` cannot catch a middleware-thrown one). Three tests green, including the
+handler-direct probe (`test_http_response_exception_is_not_rewritten_by_the_exception_handler`) — exactly the probe
+that was red at 500 in Round 1 — plus the unknown-route 404 guard.
+
+**2. trustProxies narrowing — closed, and the one path that could have been Critical is disproved.**
+`bootstrap/app.php:68-70` = `FOR | PROTO | PORT`; `test_forwarded_host_is_not_trusted` green
+(`attacker.example.com` no longer becomes the request host). I then chased whether keeping
+`HEADER_X_FORWARDED_FOR` under `at: '*'` makes `$request->ip()` client-controlled — which would have defeated
+every per-IP limiter including `login:ip:` (`AppServiceProvider.php:258-268`) and been a brute-force bypass.
+**It does not:** Laravel maps `'*'` to "trust the calling IP only" (`vendor/.../TrustProxies.php:83-85, 120-123`),
+and with a single trusted hop Symfony returns the entry the trusted proxy appended. Probe with
+`REMOTE_ADDR=10.0.0.5`, `X-Forwarded-For: 203.0.113.9, 198.51.100.7` → `ip() = 198.51.100.7` (proxy-appended);
+the client-supplied leftmost value is ignored. Per-IP rate limiting is sound. Keeping FOR is correct.
+
+**3. Signed-URL stability + serve hardening — closed.**
+- Bucketing (`MediaUrlResolver.php:56, 100`): `now()->startOfHour()->addHours(2)` → byte-identical URL within an
+  hour, remaining life always in (1h, 2h], so a `max-age=3600` cached response can never outlive the signature.
+  Arithmetic re-derived at the worst case (request at HH:59:59 → 1h 0m 1s). Both new resolver tests green.
+- `Cache-Control: private, max-age=3600, immutable` (`MediaStorageAdapter.php:96-98`) — `private` is right:
+  signed URLs must never enter a shared cache.
+- `exists()` guard (`:88-90`) → clean 404, test `ready asset with missing original bytes returns 404 not 500` green.
+- **Rendition-row-with-missing-object → fall back to original (`:70-74`): sound.** It matches the pre-existing
+  "rendition row absent → original" semantics; the controller's no-silent-downgrade rule targets *unknown variant
+  keys*, not a known variant whose derived file vanished. Test `missing rendition object falls back to the original`
+  green. **[Minor]** cost is up to 2 extra object-store HEADs per serve, offset by the response now being cacheable.
+
+**4. `signed-media` re-key to `ip|tenant` at 600/min — their argument is correct; no abuse vector reopened.**
+- The tenant segment is part of the SIGNED path (`MediaUrlResolver.php:69-72`); altering it invalidates the HMAC →
+  403 at `signed:relative` (`Product/routes.php:176`), which is listed before `throttle:signed-media`.
+  So the tenant half of the key is HMAC-authenticated and cannot be forged to widen a budget.
+- Nor can it be used to exhaust a victim's budget: the other half of the key is the attacker's own (non-spoofable,
+  see item 2) IP. Worst case an attacker throttles themselves.
+- **[Minor, accepted]** the raise does widen replay amplification: one leaked signed URL can now be replayed
+  600×/min for up to 2h against MinIO. That is bandwidth, not data exposure — the URL already discloses that one
+  image. Acceptable at this stage; revisit if object-store egress is metered.
+
+**5. Backfill migration + `media:promote-failed-images` — matches the ruling.**
+`PromoteFailedImageAssetsCommand` extends `TenantScopedCommand`, dry-run is the default (`--apply` to write),
+`Schema::hasTable` guard per tenant, per-asset `Storage::disk()->exists()` before promotion, missing-bytes rows left
+FAILED with an operator warning. Registered console-only (`MediaServiceProvider.php:41-47`), **not** scheduled
+(no scheduler reference found). 5 tests green including "apply promotes only assets whose original bytes exist".
+
+**6. `markProcessing`/`markFailed` now have zero production callers — RULING: acceptable, ticket not a blocker.**
+Verified the only remaining references are the repository writers themselves
+(`EloquentMediaAssetRepository.php:30,44`) and the new command's *read*
+(`PromoteFailedImageAssetsCommand.php:75`). Nothing in any UI, report or query ever surfaced FAILED, so no operator
+surface is actually being lost — the diagnostic was already invisible. Signal is preserved by Horizon `failed_jobs`,
+the `GenerateRenditions failed — asset keeps serving its original bytes` log line, and the new command's report.
+**Follow-up ticket (post-merge, not a gate):** a small asset-health counter (assets with zero renditions / missing
+bytes) or a Sentry alert rule on that log line, so "renditions have been failing for a week" is noticed without
+someone running the command.
+
+**7. `ConsoleCommandTenantContextTest` — pre-existing red confirmed unchanged.** Exactly 8 unclassified commands,
+and `grep -i PromoteFailedImage` over the failure output returns nothing. The new command does not add to the ratchet.
+
+**8. Round-1 Minors closed.** `degraded` is now rendered as a distinct UNKNOWN state with its own icon and badge
+(`SetupChecklist.tsx:32-35,124-167`) instead of reading as "incomplete"; the POS ticket exists at
+`docs/superpowers/tickets/2026-08-06-pos-product-images-never-populated.md`.
+
+**9. 419 retry hoist (`api.ts:189-215`) — reviewed in passing (web gate owns it).** Correct: keyed on status alone
+above the `isApiError` gate (419 is an untyped `HttpException`, so it never reached the old branch), and the
+`_csrfRetried` flag on the request config bounds it to a single replay — no loop. 4 tests green.
+
+## Suites run (Round 2, by path)
+
+| Suite | Result |
+|---|---|
+| `tests/Feature/Http/` | 8 passed (incl. all 3 new catch-all tests + host-not-trusted) |
+| `tests/Feature/Modules/Catalog/Media/` | 133 passed, 1 skipped (incl. 3 new serve tests) |
+| `tests/Feature/Modules/Media/` + `tests/Unit/.../MediaUrlResolverTest.php` | 78 passed |
+| `tests/Feature/Modules/Media/BackfillReadyImageAssetsTest.php` + `PromoteFailedImageAssetsCommandTest.php` | 5 passed |
+| `tests/Architecture/ConsoleCommandTenantContextTest.php` | 1 failed — **pre-existing**, 8 commands, new one absent |
+| PHPStan L8 on the 6 round-2 files (incl. the migration) | OK, 0 errors |
+| web vitest: `api.csrfRetry`, `api`, `SetupChecklist` | 18 passed |
+
+## Deploy notes (unchanged from Round 1, restated)
+
+- The migration auto-runs on the `origin/dev` staging deploy via `tenants:migrate`. Idempotent, no prerequisite.
+- `media:promote-failed-images` is manual: run **dry** first, read the per-tenant report, then `--apply`.
+- No new permission → no seeder re-sync, no `permission:cache-reset` needed for this lane.
+- Deploy invariant to keep: the `api` service must never publish `ports:` (now stated in `bootstrap/app.php:66`).

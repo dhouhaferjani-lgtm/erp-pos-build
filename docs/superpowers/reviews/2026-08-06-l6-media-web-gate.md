@@ -97,3 +97,52 @@ Their fallback claim holds, but through a build-time shallow merge over `enSetti
 ## 4. Notes (no action)
 - `productHeroImage.ts` is now an identity function with a 14-line docblock; keeping it as a documented seam (rather than inlining `?? null` at the two call sites) is defensible and keeps the regression test addressable.
 - `SetupChecklistPage.tsx:10` and `SetupChecklist.tsx:50-51` both render the onboarding title/subtitle, so the page shows it twice; the new error branch faithfully reproduces the pre-existing duplication rather than introducing it.
+
+---
+
+# Round 2 — narrow re-verification (2026-08-06)
+
+- **Commits under review:** `9e348f1cb` (MAJOR-1 + MAJOR-2 + MINOR-1), `87044e76b` (MINOR-2 / 419 interceptor), `02893a626` (docs only — gate records + POS-image ticket; contains no code).
+- **Verdict: CLEAR TO MERGE (FE half).** All four round-1 findings closed at the root. 0 BLOCKER, 0 MAJOR. Three new MINOR residuals below, none merge-blocking.
+
+## Gates re-run (round 2)
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @autoerp/web lint` | exit 0 — **0 errors**, 6517 warnings (was 6516; the +1 is `@typescript-eslint/no-unsafe-type-assertion` ×2 on the new `api.csrfRetry.test.ts:24,36` test scaffolding, minus one elsewhere — warning class only) |
+| audit:keys / design-system / quantity | Gate C 0 new; **design-system 743 acknowledged, 0 new, 0 stale**; quantity 0. Baseline file still absent from the diff — no absorption. |
+| eslint-rules RuleTester | 3 rules, all cases pass |
+| `pnpm --filter @autoerp/web typecheck` | clean |
+| `pnpm vitest run src/features/settings src/lib` (default pool, BY PATH) | **49 files / 248 tests passed**, 19.06s |
+| `pnpm vitest run …/SetupChecklist.test.tsx` | 5 tests passed (2 → 5) |
+| `npx react-doctor@latest --verbose --diff` | ran (skill lives at `.agents/skills/react-doctor/SKILL.md` — **my round-1 "not available" was wrong; correction recorded**). Score 49, 203 diagnostics (10 errors / 193 warnings) across 132 files. `--diff` did **not** restrict to the diff — this is effectively a full scan, i.e. a stronger check. Machine-checked `diagnostics.json`: **0 hits on any of the 14 changed web files** (grep over `SetupChecklist`, `productHeroImage`, `onboardingApi`, `lib/api`, `ProductHero`, `csrfRetry`). Their claim verified; the 203 pre-existing findings are unrelated code (stock-transfers, placement, purchases, pos). |
+
+## Findings closed
+
+**MAJOR-1 — CLOSED.** `SetupChecklist.tsx:22,43` now destructures and gates on `isPending`. The triad is complete and mutually exclusive: pending (incl. the **disabled** window) → `Spinner`; `isError` → alert + Retry; otherwise → body. New test `SetupChecklist.test.tsx` ("shows the loading state … while the query is disabled") sets `companyState.currentCompanyId = null` via `vi.hoisted` mutable state reset in `beforeEach`, and asserts `mockFetchOnboardingStatus` was never called **and** `queryByText('onboarding.progressLabel')` is absent. Red-first is structurally verifiable: under the old `isLoading` gate a disabled query is pending+idle → falls through → renders the progress label → that assertion fails.
+
+**MAJOR-2 — CLOSED, surfaced (preferred option taken).** `SetupChecklist.tsx:128` renders `HelpCircle` + `textColors.tertiary` for a degraded row instead of the red triangle; `:145-156` the `item.degraded` badge branch **precedes** required/optional, so a degraded step can never read "Required"; `:150` uses `StatusBadge tone="warning"`, a first-class tone backed by `tokens.alert.warning` (`StatusBadge.tsx:19,40`) — **rule 18 clean, no new literals, no interpolated token**; `:149` tooltip is `t('onboarding.badges.unavailableHint')` — translated, and the wrapping `<span title>` is the right call over widening a shared atom; `:166` `allDone` now requires `!hasDegraded`, so completion is never claimed on unknown state. Keys added to `en/settings.json:405-406` and `fr/settings.json:405-406`. Two new tests assert the discrimination (exactly one "Unavailable", the healthy required row keeps "Required") and the `allDone` suppression. **`ar/settings.json` confirmed untouched** — `git diff --name-only fe0df479e..HEAD -- apps/web/src/locales` lists only en + fr, so MINOR-3 stands unchanged as a pre-existing gap.
+
+**MINOR-1 — CLOSED.** Assertions re-targeted at the rendered key `'onboarding.progressLabel'` (the mock returns unmapped keys verbatim, so this genuinely discriminates the empty body from the error/loading branches), and a positive assertion added to the success test. The false "Setup complete! banner" claim is dropped from **both** the test comment and the component comment (`SetupChecklist.tsx:51-54`), with the `totalCount > 0` guard correctly named as the reason.
+
+**MINOR-2 (419) — CLOSED at the root.** `api.ts:198-214`: the branch now runs **before** the `isApiError` gate and keys on `axios.isAxiosError(error) && error.response?.status === 419`, so Laravel's untyped `{"message":"CSRF token mismatch."}` reaches it. Loop-safety is sound: `_csrfRetried` is stamped on the *config object*, which axios reuses for the replay, so the replay's own 419 hits the guard and falls through — verified by their test ("does not retry forever", `calls === 2`). Non-419 paths are byte-untouched: the diff only deletes the old inner block and leaves 401/403/5xx/network handling identical; their third test proves a 500 makes exactly 1 adapter call and never touches `/sanctum/csrf-cookie`. 4/4 tests pass on my run.
+
+## New residuals (MINOR, non-blocking)
+
+### MINOR-R2-1 — a failed *replay* is mislabelled and masks the real error
+`apps/web/src/lib/api.ts:206-213`
+`return await client.request(config)` sits **inside** the `try`, so a rejection of the replayed request is caught by `catch (csrfError)`, logged as `'Failed to refresh CSRF token:'` (it wasn't), swallowed, and the caller is then rejected with the **original 419** rather than the replay's real error — a 422/500 on the replay would surface as a CSRF error. Visible in their own suite: the "does not retry forever" test prints a 419 object under that message. The pre-fix code returned the replay un-awaited, so it propagated.
+**Fix:** keep only `await ensureCsrfCookie()` in the `try`; put `return await client.request(config)` after the `catch`.
+
+### MINOR-R2-2 — the top "required steps" alert still fires for a degraded step
+`apps/web/src/features/settings/components/SetupChecklist.tsx:34, 98-101`
+`hasIncompleteRequired = items.some(i => i.required && !i.completed)` still counts a degraded required step (it is reported `completed: false`), so the red `onboarding.requiredStepsAlert` banner tells the user they have work to do on the very row the list labels "Unavailable". `allDone` was correctly taught about `degraded`; this sibling condition was not — the same mixed message MAJOR-2 removed from the badge, one element up.
+**Fix:** `items.some(i => i.required && !i.completed && !i.degraded)`, and/or add a dedicated "some steps could not be checked" line.
+
+### MINOR-R2-3 — indefinite spinner for a permanently disabled query
+`apps/web/src/features/settings/components/SetupChecklist.tsx:43-49`
+Correctly preferred over the false "0 of 0", but for a principal that never gets a `currentCompanyId` the query stays disabled forever and the page spins indefinitely — "loading" is itself a claim that will never resolve.
+**Fix (follow-up):** branch the disabled case explicitly (`enabled === false && !isFetched`) to an "unavailable / select a company" state.
+
+### Nit (no action)
+`SetupChecklist.test.tsx` disabled-window test asserts the spinner with `container.querySelector('[data-testid="spinner"], svg')` — any `<svg>` satisfies it. Harmless here because the co-located `queryByText('onboarding.progressLabel')` assertion carries the discrimination, but the selector proves less than it appears to.
