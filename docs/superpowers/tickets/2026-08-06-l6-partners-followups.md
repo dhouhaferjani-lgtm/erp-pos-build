@@ -169,6 +169,82 @@ per-locale forbidden-phrase list.
 
 ---
 
+## P0 live-verification fix (2026-08-06) — connection-capture defect + follow-ups
+
+`DELETE /api/v1/partners/{id}` 500'd unconditionally in live verification:
+`SQLSTATE[42P01] Undefined table: relation "documents" does not exist (Connection: central)`.
+Root cause and fix are in `PartnerReferenceCounter` and `PartnerController::$db`
+(commit on this branch, see PR description) — both constructor-injected
+`Illuminate\Database\ConnectionInterface`, which Laravel resolves to a connection object at
+`PartnerController`'s construction time. `PartnerController` is `make()`'d during
+`Route::gatherMiddleware()` → `controllerMiddleware()` (every controller's `getMiddleware()`
+method — inherited from the base `Illuminate\Routing\Controller`, present even with zero
+`$this->middleware()` calls — forces the container to build the controller instance before the
+route's own middleware pipeline runs), which is BEFORE `ResolveTenancy` swaps
+`database.default` from `central` to the tenant DB. Fixed by switching both to
+`Illuminate\Database\DatabaseManager` and resolving `->connection()` at query/transaction call
+time (same pattern as `Treasury\Application\Services\InstrumentAccountResolver`).
+
+### T11 — repo-wide audit: constructor-injected `ConnectionInterface`/`Connection` is a
+tenancy-blind capture class, not just a Partner-module bug
+
+Grep starting bound (constructor property promotion on either type, `apps/api/app` tree,
+2026-08-06):
+
+```
+app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php
+app/Modules/Fiscal/Application/Services/OutboxIngestor.php
+app/Modules/Fiscal/Application/Services/ParseFailureResolutionService.php
+app/Modules/Fiscal/Application/Services/TerminalRegistrySnapshotService.php
+app/Modules/Fiscal/Infrastructure/Commands/EnqueueResolvedEventProjectionsCommand.php
+app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php
+app/Modules/POS/Application/Services/Nf525DataProvider.php
+app/Modules/POS/Application/Services/VirtualAdminFiscalEventService.php
+app/Modules/POS/Domain/Services/ReceiptHashService.php
+app/Modules/Partner/Application/Services/RecordCustomerDepositService.php
+```
+
+10 hits (this grep does not distinguish "constructed as a controller dependency during
+`gatherMiddleware()`" — the exposed case — from "constructed deep in a call chain after tenancy
+is already resolved" — safe in practice, same shape on paper). Each needs the same question asked
+that this ticket's fix answers for Partner: *is this class (transitively) a constructor dependency
+of a controller reachable via a routed HTTP request, or is it only ever resolved after tenancy has
+already flipped (e.g. inside a queued job's `handle()`, or a console command)?* The two highest-risk
+hits are `OutboxIngestor` (constructor-injected into `FiscalEventIngestionController`, the exact
+same controller-dependency shape as the bug just fixed here — **not yet confirmed safe or broken,
+just not yet checked**) and `RecordCustomerDepositService` (same module as this fix, same
+risk profile). The Fiscal/POS console commands are lower risk (commands don't run
+`Route::gatherMiddleware()`) but should still be confirmed rather than assumed.
+
+### T12 — test-methodology gap: `actingAs()` structurally cannot catch connection-capture defects
+
+`DeletePartnerTest` (and the large majority of this suite's feature tests) authenticate via
+`$this->actingAs($user, 'sanctum')`, which sets the authenticated user directly on the guard and
+never sends a request through `ResolveTenancy`'s bearer-token branch — the only branch that
+flips `database.default` in single-schema test mode
+(`app/Modules/Identity/Presentation/Middleware/ResolveTenancy.php::tenantFromBearer()`). With no
+real bearer token, the connection is never swapped mid-request in the first process at all, so
+whether a class captured its connection before or after tenancy resolution is not an observable
+distinction under `actingAs()` — a suite that is 100% `actingAs()`-authenticated is structurally
+blind to this entire defect class, no matter how much coverage it has. This is a gap in the test
+*methodology*, not in any one test's assertions, and should feed whatever net-tightening /
+regression-prevention list this program's retro maintains: routed feature-test coverage for any
+tenancy-timing-sensitive path needs at least one real-bearer-token round-trip (`POST
+/api/v1/auth/login` + `Authorization: Bearer …`) exercising the actual middleware pipeline, not
+`actingAs()`. `PartnerReferenceCounterConnectionTimingTest` (this branch) demonstrates the
+alternative for the unit layer — swap `database.default` directly between construction and call —
+but that only covers classes reachable in isolation; the controller-construction-timing half of the
+bug (verified live in this fix, §1 above) has no automated regression coverage today and would need
+the real-bearer-token round-trip to get one.
+
+### T13 — orphaned `media_assets` rows on attachment unlink (media-lane-adjacent)
+
+Unlinking a media attachment leaves orphaned `READY`-status `media_assets` rows behind — 2 found
+during this program's live verification work. Purge gap; adjacent to
+`project_media_unification_strategy` but not investigated further here — out of this lane's scope.
+
+---
+
 ## Known-red at `fe0df479e` (branch hygiene — not introduced by this batch)
 
 Base-verified by both the implementer and the FE gate on a detached worktree at `fe0df479e`:
