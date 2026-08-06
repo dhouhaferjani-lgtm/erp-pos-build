@@ -46,6 +46,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust the reverse proxy (nginx / Traefik) that terminates TLS in front
+        // of the container. Without this Laravel reads the upstream (plain HTTP)
+        // scheme and mints every absolute URL — route(), url(), asset(), signed
+        // URLs — as `http://…`, which a browser on an https:// page blocks as
+        // mixed content (BUG-005 / RCA A1, aggravating factor).
+        //
+        // `at: '*'` trusts any forwarding hop: the container is only reachable
+        // through the proxy on the internal Docker network, so no untrusted
+        // client can reach it to spoof X-Forwarded-*. Pinning a CIDR here would
+        // have to track Dokploy's ephemeral bridge subnets.
+        $middleware->trustProxies(at: '*');
+
         // Register middleware aliases
         $middleware->alias([
             'super_admin' => EnsureSuperAdmin::class,
