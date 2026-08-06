@@ -276,3 +276,231 @@ Split the lane: land W-5c D1 (`d0fabd896`) after adding `'bail'` to `repository_
 `UnresolvableDepositReferenceException` to 422, and validating `currency` against the repository;
 hold W-6 D1a (`6f54871ae`) until the guard runs *before* the document is sealed (or is re-drivable)
 and the FR/Generic rounding residual has an absorbing account plus a test on the real chart.
+
+---
+
+# ROUND 2 — narrow re-gate (`6f54871ae..HEAD`)
+
+**Commits:** `39153158d` (D1 bail + 422 mapping), `f2d521f77` (full bridge parity + refusal enum),
+`9c174a4f5` (D1a rework: pre-seal preflight + narrowed residual rule).
+**Reviewer:** fiscal-pos-reviewer, adversarial. Nothing modified; nothing merged.
+
+## VERDICT (round 2)
+
+**REJECT — narrow. The DESIGN is ACCEPTED; three mechanical defects block the merge.**
+
+The pre-seal architecture is exactly right and C-1/C-2/I-5/I-6/I-7/N-8 are genuinely closed,
+with real end-to-end proof. But the branch is **objectively red on tests it caused**, it ships
+**no backfill** for the new accounts, and the lineless carve-out **silently changed Tunisian
+behaviour** into a new unbalanced-entry vector on the chain that is E-7 evidence.
+
+One round-1 finding (**I-4**) was **WRONG and is withdrawn** — see the adjudication below.
+
+## Closure table
+
+| # | Round-1 finding | Claim | Verdict | Evidence |
+|---|---|---|---|---|
+| C-1 | guard threw post-seal, unrecoverable | closed | **CLOSED** | `DocumentPostingService.php:103` preflight, `:105` seal, both inside the `DB::transaction` opened at `:84`; DI sweep clean; `DocumentGlPreflightTest:134-197` |
+| C-2 | FR/Generic ordinary invoices hard-fail | closed | **CLOSED for new companies / OPEN for existing** | `InvoiceGLIntegrationTest` on the real FR seeder; `DocumentGlPreflightTest:204-247`. See **R2-2** |
+| I-3 | 4 residual orphan vectors | partial per ruling | **ACCEPTED** | `DepositReferenceRefusal` 5 cases; `DepositReferenceResolutionService.php:44-105`; 2 TOCTOU vectors ticketed |
+| I-4 | malformed uuid → PG 500 | disputed | **WITHDRAWN — my finding was wrong** | probe below |
+| I-5 | `count<2` second rule | closed | **CLOSED** | `DoubleEntryValidator.php:63-79` `isSumBalanced()` |
+| I-6 | exception mapping | closed | **CLOSED** | `UnresolvableDepositReferenceException` now `extends DomainException`; `UnbalancedJournalEntryException` correctly still a 500 |
+| I-7 | FR fixture hand-seeded 4375 | closed | **CLOSED** | `InvoiceGLIntegrationTest` runs `FranceChartOfAccountsSeeder` and asserts 4375 is ABSENT |
+| N-8 | no-arg `getScale()` | closed | **CLOSED** | `documentScale()` = `getScaleSafe($document->currency, 3)`; zero no-arg `getScale()` remains in `AccountingService` |
+| N-9 | TN books rounding noise as timbre | — | **OPEN, NOT TICKETED** | neither new ticket covers it |
+
+## New findings
+
+### [R2-1] CRITICAL (merge-blocking) — three existing tests are RED because of this lane
+
+`apps/api/tests/Feature/Document/CreditNoteMoneyLaneTest.php` `:212`, `:477`, `:537` —
+`POST /credit-notes/{id}/post` returns **422 where the test asserts 200**:
+
+- `test_amount_based_credit_note_reconstructs_exactly_with_tn_stamp`
+- `test_over_credit_allocation_clamps_balance_due_at_zero`
+- `test_line_based_discount_is_prorated_and_draft_equals_confirm_equals_posted`
+
+Cause: the fixture builds a **TN** company (`:84` `country_code 'TN'`, `:87` TND) with a
+hand-rolled chart (`:118-164`) carrying `CustomerReceivable`, `ProductRevenue`, `VatCollected`,
+`SalesReturn`, `ServiceRevenue` — and **no `SalesStampDutyPayable`, no rounding pair**. The
+credit note carries the `0.600` TN stamp, so `residualPlan()` sees a positive residual of
+`0.600`, finds no absorbing account, returns `GlResidualRefusal::NoAbsorbingAccount`, and the
+preflight throws `UnpostableDocumentGlException` → `DomainException` → 422 `BUSINESS_ERROR`.
+Previously the residual was silently dropped and the post succeeded (with an unbalanced entry).
+
+The file is **untouched by the lane** (`git diff --name-only 7d8e6c861..HEAD` does not list it;
+last touched `ba7be2ce2`), so this is lane-caused. The implementer's "document/compliance 109
+passed" claim did not cover `tests/Feature/Document` in full.
+
+**My run — `phpunit tests/Feature/Document tests/Feature/Compliance`: 562 tests, 13 errors,
+3 failures.** The 13 errors are `IngressPrecisionTest` / `CreateDocumentRequest` constructor
+arity and are **PRE-EXISTING** (last touched `1a0f366ca`, verified an ancestor of the lane base
+`7d8e6c861` via `git merge-base --is-ancestor`). The 3 failures are **NEW**.
+
+*Fix:* seed the absorbing account into that fixture (it is a TN chart — it should have 4375), or
+switch the fixture to `TunisiaChartOfAccountsSeeder` the way `InvoiceGLIntegrationTest` now does
+for FR. Do not weaken the guard for this.
+
+### [R2-2] IMPORTANT (CRITICAL for any existing non-TN tenant) — no backfill migration for 6581/7581
+
+The new absorbing accounts are added to the **seeders only**:
+`apps/api/database/seeders/FranceChartOfAccountsSeeder.php:276-277` and `:309-311`,
+`apps/api/database/seeders/GenericChartOfAccountsSeeder.php:186-193` and `:214-216`.
+`git diff --name-only 7d8e6c861..HEAD` contains **no migration**. The TN precedent did ship one
+(`apps/api/database/migrations/tenant/2026_06_30_120000_backfill_sales_stamp_duty_account.php`).
+
+Consequence: every **already-provisioned** FR/Generic company has no `SalesRoundingDifference*`
+account, so the first ordinary per-line truncation residual now returns `NoAbsorbingAccount` and
+the invoice becomes **unpostable (422)**. That is strictly better than round 1 (nothing is
+stranded, and the document stays `Confirmed` and retryable) but it is still a functional outage
+on staging/demo and on any non-TN tenant.
+
+Mitigating: the chart seeders are **idempotent** — `FranceChartOfAccountsSeeder.php:39-43` skips
+any code that already exists and only promotes `is_system` — so a per-company re-run is a valid
+backfill. Edge case to handle: a company that already owns a *user-created* account with code
+`6581`/`7581` is skipped **without** the `system_purpose` being mapped, so `findByPurpose()`
+still returns null and the document is still refused.
+
+*Fix:* add a tenant migration that maps/creates the pair for every company whose chart lacks the
+purpose (mirroring `2026_06_30_120000`), or call the seeder per company from a migration.
+
+### [R2-3] IMPORTANT — the lineless carve-out silently CHANGED Tunisian behaviour and mints a new unbalanced entry
+
+`AccountingService::residualPlan()`, the `$document->lines->isEmpty()` branch, returns
+`new DocumentGlResidualPlan('0', '0', $total, [], null, null, false)` — `absorbingAccount = null`.
+Both posting methods then write **no residual leg** (`if ($plan->absorbingAccount !== null)`).
+
+Before this lane, the inline code computed `$stampDuty = total − 0 − 0 = total` and, **on a chart
+with 4375, wrote the leg** — so a lineless TN document produced a *balanced* (if nonsensical)
+entry. Under round 2 it produces a **one-legged, `Posted`, hash-chained, UNBALANCED entry on
+every chart, including Tunisia**.
+
+That is a behaviour change, not a preservation, and it directly contradicts:
+- the ticket header — `docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md`
+  "**Status:** OPEN — behaviour deliberately left UNCHANGED by the L1 lane";
+- the ticket body `:15-17`, which still describes the OLD TN behaviour ("the whole `total` is
+  swept into `4375` … The entry balances") as if it still held;
+- the lane's own goal, and the D1b tripwire premise now conceded in
+  `apps/web/e2e/money-campaign/finance-reports.spec.ts:110-113`.
+
+It is a NEW unbalanced-entry vector on `demo-pharmacy-tn`, the chain that is E-7 evidence.
+
+*Fix (small, and it preserves the ~35-test suppression exactly):* in the lineless branch resolve
+the absorbing account the way the old inline code did — positive residual **and** an account
+found ⇒ carry it in the plan so the leg is written; otherwise carry `null`; never refuse; keep
+`balanceAssertable = false`. That restores TN byte-for-byte and leaves FR/Generic's pre-existing
+one-legged shape untouched (which is what the ~35 fixtures assert).
+
+### [R2-4] MINOR — `ResidualExceedsRoundingTolerance` prescribes the wrong remedy
+
+`GlResidualRefusal::message()` says *"Correct the document totals before posting."* When the
+cause is a legitimately-configured document-level charge, the correct remedy is to map an
+absorbing account, not to alter the totals. No live FR/Generic configuration produces one today
+(`FranceTaxConfigurationSeeder.php:63` seeds `LINE_ITEMS` only; only
+`TunisiaTaxConfigurationSeeder.php:137` seeds `DOCUMENT_TOTAL`), so this is wording, not a defect.
+
+### [R2-5] MINOR — tolerance docblocks assert a bound that is one ULP looser than the derivation
+
+`AccountingService::roundingTolerance()` and `GlResidualRefusal`'s docblock both state the bound
+as "one unit of the last place **per line**". The provable bound is `(n−1)·ULP`: with
+`trunc_s(x) > x − ULP` for each line, `Σ trunc_s(aᵢ) > Σaᵢ − n·ULP`, while the header
+`trunc_s(Σ trunc_{s+1}(aᵢ)) ≤ Σaᵢ`, so the difference is `< n·ULP` — and being an integer
+multiple of ULP, `≤ (n−1)·ULP`. See the ruling below: `n` is **accepted** as a deliberate margin,
+but the docblocks should say so rather than present `n` as derived.
+
+### [R2-6] MINOR — cross-module model import
+
+`DepositReferenceResolutionService.php` now imports `App\Modules\Accounting\Domain\Account`
+(Treasury → Accounting **model**), which CLAUDE.md rule 6 forbids. Precedent exists inside the
+same module (`TreasuryDepositBridge` already imports it for the identical check), so this is
+consistency with existing debt rather than new drift — worth a ticket, not a block.
+
+## Adjudication: the I-4 dispute — **the implementer is RIGHT, I was wrong**
+
+`Validator::isValidatable()` (`vendor/laravel/framework/src/Illuminate/Validation/Validator.php:817-827`)
+gates every rule on `hasNotFailedPreviousRuleIfPresenceRule()` (`:902-905`):
+
+```php
+return in_array($rule, ['Unique', 'Exists']) ? ! $this->messages->has($attribute) : true;
+```
+
+— documented in-source as *"This is to avoid possible database type comparison errors."* Round 1
+checked `shouldStopValidating()` (`:969-988`), which indeed does not stop, and **missed this
+second, independent gate**. Empirically settled with a probe (illuminate/validation + an
+exploding `PresenceVerifier`, so any DB touch is visible):
+
+| rule array (value `'not-a-uuid'`) | DB hit? |
+|---|---|
+| `['required','uuid', Rule::exists(...)->where(...)]` (round-1 shape) | **no** |
+| `['bail','required','uuid', Rule::exists(...)]` (round-2 shape) | **no** |
+| `['required', Rule::exists(...), 'uuid']` (order flipped) | **YES** — would be SQLSTATE 22P02 |
+
+Also confirmed: `ScopedExists::tenantAndCompany()` uses scalar `where()`, so `queryCallbacks()`
+is empty and `ValidationRuleParser::prepareRule():135-140` stringifies the rule to `exists:…`,
+which is what makes the `'Exists'` name match above fire. (A `ScopedExists::tenantOrSystem()`
+rule, which uses a Closure, would stay an object — out of scope here.)
+
+**I-4 is WITHDRAWN.** The round-1 record's I-4 entry is incorrect and is superseded by this
+section. `'bail'` remains a correct and worthwhile addition: the probe shows the protection is
+**order-dependent**, so `'bail'` converts an implicit framework behaviour into an explicit,
+order-independent guarantee. Keep it.
+
+## Rulings requested
+
+**1. Tolerance `n` vs `n−1` ULP → ACCEPT `n`.** The tight bound is `(n−1)·ULP` (derivation in
+R2-5), so `n` grants exactly one ULP of slack. Can `n` mask a real defect one line could produce?
+Yes, in the strict sense: for `n = 1` the truncation bound is exactly `0`, so a single-line
+document is allowed 1 ULP of unexplained money that books to the rounding account. That is the
+smallest representable amount, and the slack buys robustness against the other sub-ULP sources
+this lane did not model — the document-discount proration branch in `TaxCalculationService` and
+any `line_total` vs `calculateTotal()` divergence — each of which a tight `n−1` bound would turn
+into a hard 422. Round 1 rejected an over-tight guard for exactly that reason; do not repeat it.
+**Keep `n`; correct the docblocks to present it as a deliberate 1-ULP margin over the derived
+`(n−1)` bound.**
+
+**2. Beyond-tolerance POSITIVE residual on FR/Generic → REFUSE is correct; do NOT absorb-with-alert.**
+Absorbing routes unexplained money into PCG 758 *"produits divers de gestion courante"* — a real
+revenue account — which mis-books a genuine document-level charge as miscellaneous income,
+understating the corresponding liability and its tax treatment. That is a silent money
+misstatement, which is strictly worse for a fiscal gate than a **recoverable** refusal: the
+document stays `Confirmed`, nothing is sealed, and `DocumentGlPreflightTest:170-197` proves it
+posts once corrected. An alert nobody reads does not undo a mis-booking; a 422 cannot be ignored.
+This is consistent with my round-1 stance — "negative refuses, positive is rounding" — because a
+residual **beyond** the truncation bound is by definition **not** rounding. Fix the remedy
+wording (R2-4).
+
+**3. TN absolute precedence → byte-identical for documents WITH lines; NOT byte-identical for
+lineless ones.** `residualPlan()` checks `SalesStampDutyPayable` before any tolerance and returns
+immediately, so any-size positive residual still credits 4375 with the unchanged
+`'Stamp duty (timbre)'` description — proven by
+`InvoiceGLIntegrationTest::test_the_tunisian_chart_still_credits_the_timbre_to_4375_and_balances`.
+Z/X/EOD and E-7 aggregates are untouched. The lineless exception is R2-3 and must be fixed.
+**N-9 (rounding noise booked as timbre on TN) is still open and, contrary to the round-1
+recommendation, is NOT covered by either new ticket** — file it.
+
+**4. Zero-line skip deviation → acceptable in principle, NOT as implemented.** The unreachability
+claim holds: `CreateDocumentRequest.php:97` requires `lines` `min:1`, and every credit-note mode
+in `CreditNoteController::store():148-165` requires either `lines min:1` or a source invoice
+whose lines are derived (confirmed: the amount-based credit note in `CreditNoteMoneyLaneTest`
+reaches the *lined* branch, not the lineless one). Supplier documents are a distinct
+`DocumentType` and the preflight no-ops on them. The ticket is thorough and honest. But the
+carve-out as written is not behaviour-preserving (R2-3) and the ticket text misstates the current
+behaviour — fix both.
+
+## Round-2 test runs (by path, SQLite, this worktree)
+
+| Suite | Result |
+|---|---|
+| `DocumentGlPreflightTest` + `InvoiceGLIntegrationTest` + `CreditNoteGLIntegrationTest` + `RecordCustomerDepositTest` | **OK 42/42, 223 assertions** |
+| `tests/Feature/Document` + `tests/Feature/Compliance` | **562 tests — 13 errors (PRE-EXISTING, `IngressPrecisionTest`), 3 failures (NEW, `CreditNoteMoneyLaneTest`)** |
+| `PosBridgeSpineTest` + `DepositReceiptProjectionTest` | **OK 12/12, 55 assertions** |
+| `phpstan` on Accounting + Partner + Treasury deltas + `DocumentPostingService` + `Shared/Contracts/Accounting` | **[OK] No errors** |
+
+## What to fix before merge (round 2)
+
+Three mechanical items, no redesign: (1) green the 3 `CreditNoteMoneyLaneTest` cases by giving
+that TN fixture its 4375 account; (2) ship a backfill migration mapping `SalesRoundingDifference*`
+for existing FR/Generic companies; (3) restore the absorbing-account resolution in the lineless
+branch so Tunisian lineless postings stay balanced, and correct the two ticket statements that
+describe it as unchanged. Then re-run `tests/Feature/Document` in full.

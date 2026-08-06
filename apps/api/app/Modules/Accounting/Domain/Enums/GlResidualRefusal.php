@@ -39,8 +39,15 @@ enum GlResidualRefusal: string
     /**
      * A positive residual larger than per-line tax truncation can explain, on a
      * chart with no document-level charge account (no `SalesStampDutyPayable`).
-     * Absorbing it into a rounding-difference account would silently bury real
-     * money, so it is refused instead.
+     *
+     * REFUSED, never absorbed-with-an-alert (fiscal-pos gate ruling, 2026-08-05):
+     * sweeping unexplained money into a "produits divers de gestion courante"
+     * account is a silent misstatement of income, and an alert nobody reads does
+     * not make it less silent.
+     *
+     * The cause is NOT always bad totals — it is just as likely a real
+     * document-level charge (a timbre-equivalent) on a chart that does not model
+     * one, which is a chart-configuration fix, so the message offers both remedies.
      */
     case ResidualExceedsRoundingTolerance = 'residual_exceeds_rounding_tolerance';
 
@@ -55,7 +62,7 @@ enum GlResidualRefusal: string
         return match ($this) {
             self::NegativeResidual => 'The document total is less than the sum of its lines plus their tax, so the general-ledger entry cannot balance. Correct the document totals before posting.',
             self::NoAbsorbingAccount => 'The document total exceeds the sum of its lines plus their tax, and this chart of accounts has no account to absorb the difference. Assign a rounding-difference account in Settings -> Chart of Accounts.',
-            self::ResidualExceedsRoundingTolerance => 'The document total exceeds the sum of its lines plus their tax by more than tax rounding can explain. Correct the document totals before posting.',
+            self::ResidualExceedsRoundingTolerance => 'The document total exceeds the sum of its lines plus their tax by more than tax rounding can explain. If the difference is a document-level charge (for example a stamp duty), assign the account that should carry it in Settings -> Chart of Accounts; otherwise correct the document totals.',
             self::LegsDoNotBalance => 'The general-ledger entry for this document does not balance.',
         };
     }

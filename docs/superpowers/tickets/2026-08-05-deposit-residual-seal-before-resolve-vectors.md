@@ -90,6 +90,16 @@ to `tenancy-authz-reviewer`, not here.
   `vendor/laravel/framework/src/Illuminate/Validation/Validator.php:902-905` — its own
   docblock: *"This is to avoid possible database type comparison errors."*). No fix needed;
   recorded so the next reader does not re-derive it.
-- **N-9 (gate):** on the TN chart, tax-rounding residual is booked to
-  `4375 — droit de timbre à reverser`, a State liability, mixed in with genuine timbre.
-  Pre-existing; see the D1a rework for the FR/Generic split.
+- **N-9 (gate)** is now its own ticket:
+  `docs/superpowers/tickets/2026-08-05-tn-timbre-account-carries-rounding-noise.md`.
+- **Cross-module import debt.** `DepositReferenceResolutionService` (Treasury) imports
+  `App\Modules\Accounting\Domain\Account` directly to mirror the bridge's
+  "cash GL account exists and is active" predicate. That is a Treasury -> Accounting
+  MODEL import, which CLAUDE.md rule 6 forbids; it was written that way deliberately,
+  because the predicate it mirrors —
+  `TreasuryDepositBridge::resolveRepository()` — already carries the identical import,
+  and diverging from the bridge is the exact failure mode this service exists to
+  prevent. Recorded as debt, not fixed: the clean shape is a small
+  `Shared/Contracts/Accounting` read port (e.g. `activeAccountExists(tenantId,
+  companyId, accountId)`) that BOTH the bridge and this service depend on, so the two
+  cannot drift. Fix them together or not at all.
