@@ -491,7 +491,7 @@ test.describe('MLC — multi-location money scoping', () => {
     await applyViewScope(page, 'all')
   })
 
-  test('MTP-MLC-08 (P1): FINDING — /reports/cash-movements IGNORES the location scope entirely', async ({
+  test('MTP-MLC-08 (P1): FIXED — /reports/cash-movements honours the location scope', async ({
     page,
   }) => {
     await loginAsRoleResilient(page, 'owner')
@@ -515,59 +515,93 @@ test.describe('MLC — multi-location money scoping', () => {
 
     expect(allBefore.length, 'cash movements exist to scope').toBeGreaterThan(0)
 
-    // ── FINDING F-3 (P1, TRIPWIRE, GREEN: pins TODAY's behaviour) ──────────
-    // The plan's expectation for this case is "cash figures RE-SCOPE; Σ across
-    // all locations == the 'All' figure". The second half holds trivially and
-    // the first half does not hold at all: three mutually exclusive
-    // single-location scopes — including the WH-01 warehouse — return payloads
-    // identical to the unscoped read. The `location_ids[]` parameter is accepted
-    // and then dropped. (An earlier version of this comment called WH-01 "a
-    // warehouse that has never seen a POS receipt". It has since been given one
-    // by the C-2 statement fixture — see MLC-06's note — but the point stands
-    // and this tripwire never depended on it: the defect is that ALL THREE
-    // scopes return the unscoped payload byte for byte.)
+    // ── FINDING F-3 — FIXED (fix lane L3, 2026-08-05) ──────────────────────
+    // WAS: three mutually exclusive single-location scopes returned payloads
+    // identical to the unscoped read, byte for byte. NEITHER layer implemented
+    // scoping — the server accepted `location_ids[]` and dropped it, and
+    // `useCashMovementsReport` had no location field on `CashMovementsFilters`,
+    // keyed with `tenantScopedKey`, and never read `useViewScope`. The TopBar
+    // offered a location picker over it regardless, so a multi-shop owner was
+    // shown the whole company's cash under a single-shop selection.
     //
-    // C1 (review fix round 1) — SCOPE OF THE DEFECT, CORRECTED. An earlier
-    // version of this comment (and of the ticket) claimed "the parameter the
-    // FE sends". It does not: `features/finance/hooks/useCashMovementsReport.ts`
-    // has NO location field on `CashMovementsFilters` at all, keys its query
-    // with `tenantScopedKey` rather than `locationScopedKey`, and
-    // `CashMovementsReportPage.tsx` never imports `useViewScope` — contrast
-    // `useAgedReceivables.ts:12-13`, which does all three. So NEITHER LAYER
-    // implements location scoping here: the parameter below is one this TEST
-    // sends, the server ignores it, and a fix has to span the backend query,
-    // the hook's filters and its query key. Nothing LEAKS across tenants or
-    // companies — this is an unimplemented filter, not an isolation hole —
-    // but the TopBar still offers a location scope on this page, so a
-    // multi-shop owner is shown the whole company's cash under a single-shop
-    // selection.
+    // NOW: `GetCashMovementsRequest` validates `location_ids[]`,
+    // `ReportsController::cashMovements` resolves it through the same
+    // `reportLocationScope()` helper the aged-* reports use (clamp an unscoped
+    // read to the grant, 403 an explicit out-of-grant id), and
+    // `CashMovementsReportService` filters the payments leg on
+    // `payments.location_id` and the journal-lines leg through the owning
+    // `payment_repositories.location_id`. The hook sends the scope and keys
+    // with `locationScopedKey`.
+    //
+    // WHAT THIS CASE CAN AND CANNOT ASSERT. The payload carries no location
+    // field, so scoping is only observable SET-THEORETICALLY — which is
+    // sufficient and, unlike a fixture count, cannot flake on a shared stack:
+    // every scoped row must exist in the unscoped read (subset), and two
+    // mutually exclusive location scopes must not both claim the same movement
+    // (disjoint). The plan's stricter "Σ across all locations == the All
+    // figure" is deliberately NOT asserted: it holds only once EVERY cash row
+    // is location-attributed, and company-level cash (a pure advance, a manual
+    // JE on a location-less safe) is legitimately unattributed by design — see
+    // the ticket's note on NULL-location rows.
+    const rowKey = (row: Record<string, unknown>): string =>
+      [row.source_type, row.source_id, row.direction, row.gl_account, row.amount].join('|')
+    const allKeys = new Set([...allBefore, ...allAfter].map(rowKey))
+
+    for (const [label, rows] of [
+      ['a Tunis-Lac-only scope', scopedTunis1],
+      ['a Tunis-Centre-only scope', scopedTunis2],
+      ['a warehouse-only scope', scopedWarehouse],
+    ] as const) {
+      expect(
+        rows.map(rowKey).filter((key) => !allKeys.has(key)),
+        `F-3 FIXED: ${label} returns only movements the unscoped read also reports`,
+      ).toEqual([])
+    }
+
+    const [keysTunis1, keysTunis2, keysWarehouse] = [
+      scopedTunis1,
+      scopedTunis2,
+      scopedWarehouse,
+    ].map((rows) => new Set(rows.map(rowKey)))
+    for (const [label, left, right] of [
+      ['Tunis-Lac vs Tunis-Centre', keysTunis1, keysTunis2],
+      ['Tunis-Lac vs the warehouse', keysTunis1, keysWarehouse],
+      ['Tunis-Centre vs the warehouse', keysTunis2, keysWarehouse],
+    ] as const) {
+      expect(
+        [...left].filter((key) => right.has(key)),
+        `F-3 FIXED: ${label} are mutually exclusive scopes and share no movement`,
+      ).toEqual([])
+    }
+
+    // The direct negation of the old tripwire: three disjoint single-location
+    // scopes can no longer ALL return the unscoped payload.
     const fingerprint = (rows: Array<Record<string, unknown>>): string => JSON.stringify(rows)
     const unscopedFingerprints = [fingerprint(allBefore), fingerprint(allAfter)]
     expect(
-      unscopedFingerprints,
-      'TRIPWIRE F-3: a Tunis-Lac-only scope returns the SAME payload as no scope at all',
-    ).toContain(fingerprint(scopedTunis1))
-    expect(
-      unscopedFingerprints,
-      'TRIPWIRE F-3: …and so does a Tunis-Centre-only scope',
-    ).toContain(fingerprint(scopedTunis2))
-    expect(
-      unscopedFingerprints,
-      'TRIPWIRE F-3: …and so does a NON-POS warehouse scope, which can hold no POS cash at all',
-    ).toContain(fingerprint(scopedWarehouse))
+      [scopedTunis1, scopedTunis2, scopedWarehouse].every((rows) =>
+        unscopedFingerprints.includes(fingerprint(rows)),
+      ),
+      'F-3 FIXED: `location_ids[]` is no longer accepted-and-dropped',
+    ).toBe(false)
 
-    // The additive half of the plan's expectation, stated as the (vacuous but
-    // recorded) truth it currently is: Σ over the shops == the All figure
-    // BECAUSE each scope returns the All figure.
+    // Money half, stated as the sub-total it honestly is: the branch scopes are
+    // disjoint subsets of the unscoped read, so Σ over them can never EXCEED
+    // the All figure. (Equality would require every cash row to be
+    // location-attributed, which company-level cash is not — see above.)
     const total = (rows: Array<Record<string, unknown>>): string =>
       sumMoney(rows.map((r) => toScale3(String(r.amount ?? '0'))))
+    const negate = (value: string): string =>
+      value.startsWith('-') ? value.slice(1) : `-${value}`
+    const branchTotal = total([...scopedTunis1, ...scopedTunis2, ...scopedWarehouse])
+    const headroom = sumMoney([total(allBefore), negate(branchTotal)])
     expect(
-      [total(allBefore), total(allAfter)],
-      'each scope reports the same grand total as All (the arithmetic identity is vacuous today)',
-    ).toContain(total(scopedTunis1))
+      headroom.startsWith('-'),
+      `F-3 FIXED: Σ over the branch scopes (${branchTotal}) does not exceed the All figure (${total(allBefore)})`,
+    ).toBe(false)
 
-    // UI: the page renders under a single-shop scope without erroring — the
-    // figures are simply not scoped.
+    // UI: the page renders under a single-shop scope, and now really is scoped
+    // — the hook sends the view scope and keys the cache by it.
     await applyViewScope(page, [tunis1])
     await page.goto('/finance/cash-movements')
     await settleAfterNav(page)

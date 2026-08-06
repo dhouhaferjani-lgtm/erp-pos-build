@@ -24,7 +24,7 @@ changes, so a fix cannot land silently and a regression cannot hide.
 | **F-5** | **P1** (plan wording: launch-blocking) | documents | No optimistic concurrency anywhere: a stale second save silently overwrites a draft money document |
 | **F-7** | **P1** | web / documents | The document TOTALS panel renders `en-US` (`1,234.567`) under `fr`, beside correctly `fr-TN`-formatted lines — a 1 000x misread of the invoice total |
 | **F-2** | **P1** | api / owner reports | `FormatsReportNumbers::decimalString()` casts money to `float`, formats at scale **2**, and `rtrim`s zeros → `300.000` is emitted as `"300"` |
-| **F-3** | **P1** | api **+ web** / cash report | **NEITHER LAYER** implements location scoping: the server ignores `location_ids[]` and the hook never sends it (SPLIT, fix round 1) |
+| **F-3** | **P1** — **FIXED** (fix lane L3, 2026-08-05) | api **+ web** / cash report | **NEITHER LAYER** implemented location scoping: the server ignored `location_ids[]` and the hook never sent it (SPLIT, fix round 1) |
 | **F-9** | **P2** *(re-graded from P1, fix round 1)* | api / settings | `PATCH /settings/company` answers 200 on accept-and-drop instead of 422, and `GET` omits the fields so the drop is undetectable — an AMENDMENT to the 2026-08-02 F9 ruling |
 | **F-8** | **P1** | api / pricing | The document discount cap never consults `users.max_discount_percent` — the money-test-plan's PERM-13/14 premise does not match the implementation |
 | **F-1** | P2 | web / sales | The `/sales/*` UI is closed to the cashier by a ROLE-based alias while the API grants `invoices.create` |
@@ -254,7 +254,7 @@ which lists `SalesReportService:51` as SAFE — that ticket is about
 
 ---
 
-## F-3 (P1) — `/reports/cash-movements` ignores the location scope
+## F-3 (P1) — `/reports/cash-movements` ignores the location scope — **FIXED (fix lane L3, 2026-08-05)**
 
 **Pinned by:** `MTP-MLC-08`.
 
@@ -286,6 +286,54 @@ an isolation hole. But the TopBar still offers a location scope while this page
 is open, so a multi-shop owner is shown the **whole company's cash** under a
 single-shop selection. Every sibling scoped report (`sales/by-location`, stock)
 filters correctly, which is exactly what makes this one convincing.
+
+### Fix (lane L3, branch `fix/l3-multibranch-cash`)
+
+Both halves are implemented on the pattern the aged-* reports already use — no
+third behaviour was invented:
+
+- `GetCashMovementsRequest` declares `location_ids` / `location_ids.*` with the
+  same shape-only `uuid` rules as `GetAgedReceivablesRequest:40-41`.
+- `ReportsController::cashMovements` resolves the scope through the existing
+  `reportLocationScope()` helper → `LocationScopeResolver`: an **unscoped** read
+  is CLAMPED to the principal's grant, an **explicit** out-of-grant id is
+  REFUSED with 403, and a grant covering every active location degrades to the
+  unrestricted read (`LocationScopeBoundary::isUnrestricted` → `[]`) so
+  NULL-location cash stays visible. The call sits deliberately outside the
+  company-context `catch`, so the 403 is not swallowed into a 500 the way
+  `agedReceivables`/`agedPayables`/`upcomingPayments` currently would.
+- `CashMovementsReportService` filters the **payments** leg on its own
+  `payments.location_id` and the **journal-lines** leg through the owning
+  `payment_repositories.location_id`. The de-duplication `whereNotExists`
+  clauses are deliberately left scope-independent, so a payment excluded from
+  the payments leg cannot reappear as its GL twin under another branch.
+- `useCashMovementsReport` sends `location_ids` from `useViewScope` and keys
+  with `locationScopedKey` (sending without re-keying would serve one branch's
+  rows from another branch's cache entry).
+
+Tripwire `MTP-MLC-08` flipped to the expected behaviour: scoped payloads are
+subsets of the unscoped read, the three single-location scopes are pairwise
+disjoint, `location_ids[]` is no longer accepted-and-dropped, and Σ over the
+branch scopes does not exceed the All figure.
+
+**Residual, recorded deliberately — needs a ruling, not a silent fix.**
+
+1. **`journal_entries.location_id` is a dead column.** It exists (migration
+   `2025_12_27_150002`) but appears nowhere on the `JournalEntry` model and is
+   never written, so scoping the journal leg on it would erase every
+   non-payment cash line under any branch scope. The leg is therefore attributed
+   through the cash account's owning repository — the same handle its
+   `repository_id` filter already uses, and the same attribution
+   `CashPositionController` uses. If manual JEs ever need their own branch
+   dimension, that column has to start being populated first.
+2. **Company-level cash is invisible under a branch scope.** A pure advance
+   (`payments.location_id` NULL by design, `PaymentController.php:596-598`) or a
+   manual JE on a location-less safe is hidden once a strict scope is applied.
+   This is the documented aged-* convention (`reportLocationScope`'s docblock),
+   and it is why the plan's "Σ across all locations == the All figure" is
+   asserted as `≤` rather than `==`. The launch consequence for tenant #1: the
+   four branch views only foot to the company view once every cash row is
+   location-attributed.
 
 ---
 
