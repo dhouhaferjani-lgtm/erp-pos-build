@@ -496,13 +496,25 @@ test.describe('MLC — multi-location money scoping', () => {
   }) => {
     await loginAsRoleResilient(page, 'owner')
 
-    // MAJOR-2 (web gate 2026-08-06): the row-level set assertions below compare
-    // payloads as complete SETS, so they are only sound on a SINGLE page. The
-    // endpoint defaults to `per_page=50` ordered `date DESC`, so on a tenant
-    // with more movements than that a branch's 50 most recent rows reach
-    // further back than the global 50 and a CORRECT implementation would look
-    // like a scoping defect (false RED). Read the maximum page and prove the
-    // single-page premise from `meta.last_page` rather than assuming it.
+    // MAJOR-2 (web gate 2026-08-06): the row-level set assertions further down
+    // compare payloads as complete SETS, and that is only sound on a SINGLE
+    // page. The endpoint defaults to `per_page=50` ordered `date DESC` and caps
+    // at 200, while this tenant carries ~630 cash movements — so a branch's most
+    // recent page reaches further back in time than the global one, and a
+    // CORRECT implementation reads as a scoping defect (false RED).
+    //
+    // The case is therefore split in two:
+    //
+    //   1. PAGE-INDEPENDENT evidence, always asserted, taken from `meta` —
+    //      which the service computes over the WHOLE filtered set
+    //      (`CashMovementsReportService::generate`), not over the page. This
+    //      half alone falsifies F-3: under the old accepted-and-dropped
+    //      behaviour every branch scope returned the unscoped `meta.total`, so
+    //      Σ over three scopes was 3x the All figure.
+    //   2. ROW-LEVEL set evidence (subset / pairwise-disjoint), asserted only on
+    //      a window narrow enough to fit one page, and ANNOTATED rather than
+    //      asserted when no such window is available. It never silently
+    //      disappears, and it can never mis-assert across a page boundary.
     interface CashMovementsMeta {
       total: number
       last_page: number
@@ -513,55 +525,51 @@ test.describe('MLC — multi-location money scoping', () => {
       meta: CashMovementsMeta
     }
 
-    const read = async (label: string, query: string): Promise<CashMovementsRead> => {
-      const separator = query === '' ? '?' : '&'
-      const res = await apiRequest(
-        page,
-        'GET',
-        `/reports/cash-movements${query}${separator}per_page=200`,
-      )
-      expect(res.status, `GET /reports/cash-movements${query}`).toBe(200)
+    const read = async (query: string, window = ''): Promise<CashMovementsRead> => {
+      const path = `/reports/cash-movements?per_page=200${window}${query}`
+      const res = await apiRequest(page, 'GET', path)
+      expect(res.status, `GET ${path}`).toBe(200)
       const body = res.body as { data?: Array<Record<string, unknown>>; meta?: CashMovementsMeta }
-      const meta = body.meta ?? { total: 0, last_page: 1, totals: {} }
-      // Skip rather than mis-assert: the set framing is simply not applicable
-      // beyond one page, and silently comparing page 1 to page 1 would report a
-      // defect that is not there.
-      test.skip(
-        meta.last_page > 1,
-        `MLC-08 premise: ${label} spans ${meta.last_page} pages (${meta.total} movements) — the set-based assertions need a single page; re-run against a narrower date range`,
-      )
-      return { rows: body.data ?? [], meta }
+      return { rows: body.data ?? [], meta: body.meta ?? { total: 0, last_page: 1, totals: {} } }
     }
+
+    const scopeQueries = [
+      ['a Tunis-Lac-only scope', `&location_ids[]=${tunis1}`],
+      ['a Tunis-Centre-only scope', `&location_ids[]=${tunis2}`],
+      ['a warehouse-only scope', `&location_ids[]=${warehouse}`],
+    ] as const
 
     // M6 (review fix round 1): the unscoped payload is read TWICE, before and
     // after the scoped reads, and a scoped payload counts as "unchanged" if it
     // matches EITHER snapshot. A single before-read would make this tripwire
     // fragile on a shared stack: any sibling write landing between the reads
     // would break equality and report a scoping fix that never happened.
-    const readAllBefore = await read('the unscoped read', '')
-    const readTunis1 = await read('the Tunis-Lac scope', `?location_ids[]=${tunis1}`)
-    const readTunis2 = await read('the Tunis-Centre scope', `?location_ids[]=${tunis2}`)
-    const readWarehouse = await read('the warehouse scope', `?location_ids[]=${warehouse}`)
-    const readAllAfter = await read('the unscoped re-read', '')
+    const readAllBefore = await read('')
+    const scopedReads = []
+    for (const [, query] of scopeQueries) scopedReads.push(await read(query))
+    const readAllAfter = await read('')
+    const [readTunis1, readTunis2, readWarehouse] = scopedReads
 
-    const allBefore = readAllBefore.rows
-    const allAfter = readAllAfter.rows
-    const scopedTunis1 = readTunis1.rows
-    const scopedTunis2 = readTunis2.rows
-    const scopedWarehouse = readWarehouse.rows
+    expect(readAllBefore.meta.total, 'cash movements exist to scope').toBeGreaterThan(0)
 
-    expect(allBefore.length, 'cash movements exist to scope').toBeGreaterThan(0)
+    // ── 1. PAGE-INDEPENDENT EVIDENCE ───────────────────────────────────────
+    // MAJOR-3 (web gate): the row-level assertions are all satisfied by three
+    // EMPTY payloads, so an over-filtering regression could stay green. Require
+    // that the scope actually returns cash — the failure mode the journal-lines
+    // leg can produce is "silently nothing", and it must be visible here.
+    expect(
+      scopedReads.reduce((sum, r) => sum + r.meta.total, 0),
+      'F-3 FIXED: the branch scopes return cash — a scope that over-filters to nothing would make every set assertion below vacuous',
+    ).toBeGreaterThan(0)
 
-    // MAJOR-3 (web gate 2026-08-06): EVERY assertion below is satisfied by three
-    // EMPTY scoped payloads, so a regression that over-filters to nothing would
-    // stay green — precisely the failure mode the journal-lines leg can produce.
-    // The demo tenant's premise (see this file's header) is that all three
-    // locations hold POS cash, so require it explicitly: if it ever stops
-    // holding, this case must SKIP loudly rather than pass vacuously.
-    test.skip(
-      [scopedTunis1, scopedTunis2, scopedWarehouse].some((rows) => rows.length === 0),
-      `MLC-08 premise: each of the three locations must hold cash in the window (Tunis-Lac=${scopedTunis1.length}, Tunis-Centre=${scopedTunis2.length}, warehouse=${scopedWarehouse.length}) — an empty scope makes every assertion below vacuous`,
-    )
+    // THE falsifying assertion, and the one that cannot false-red: the branch
+    // scopes are disjoint subsets, so Σ of their counts can never exceed the
+    // unscoped count. Under the F-3 defect each scope returned the whole
+    // company, i.e. Σ = 3 x All.
+    expect(
+      scopedReads.reduce((sum, r) => sum + r.meta.total, 0),
+      `F-3 FIXED: Σ of the branch movement counts (${scopedReads.map((r) => r.meta.total).join(' + ')}) does not exceed the unscoped count (${readAllBefore.meta.total}) — under the old accepted-and-dropped behaviour it was 3x it`,
+    ).toBeLessThanOrEqual(readAllBefore.meta.total)
 
     // ── FINDING F-3 — FIXED (fix lane L3, 2026-08-05) ──────────────────────
     // WAS: three mutually exclusive single-location scopes returned payloads
@@ -581,64 +589,6 @@ test.describe('MLC — multi-location money scoping', () => {
     // `payment_repositories.location_id`. The hook sends the scope and keys
     // with `locationScopedKey`.
     //
-    // WHAT THIS CASE CAN AND CANNOT ASSERT. The payload carries no location
-    // field, so scoping is only observable SET-THEORETICALLY — which is
-    // sufficient and, unlike a fixture count, cannot flake on a shared stack:
-    // every scoped row must exist in the unscoped read (subset), and two
-    // mutually exclusive location scopes must not both claim the same movement
-    // (disjoint). The plan's stricter "Σ across all locations == the All
-    // figure" is deliberately NOT asserted: it holds only once EVERY cash row
-    // is location-attributed, and company-level cash (a pure advance, a manual
-    // JE on a location-less safe) is legitimately unattributed by design — see
-    // the ticket's note on NULL-location rows.
-    const rowKey = (row: Record<string, unknown>): string =>
-      [row.source_type, row.source_id, row.direction, row.gl_account, row.amount].join('|')
-    const allKeys = new Set([...allBefore, ...allAfter].map(rowKey))
-
-    for (const [label, rows] of [
-      ['a Tunis-Lac-only scope', scopedTunis1],
-      ['a Tunis-Centre-only scope', scopedTunis2],
-      ['a warehouse-only scope', scopedWarehouse],
-    ] as const) {
-      expect(
-        rows.map(rowKey).filter((key) => !allKeys.has(key)),
-        `F-3 FIXED: ${label} returns only movements the unscoped read also reports`,
-      ).toEqual([])
-    }
-
-    const [keysTunis1, keysTunis2, keysWarehouse] = [
-      scopedTunis1,
-      scopedTunis2,
-      scopedWarehouse,
-    ].map((rows) => new Set(rows.map(rowKey)))
-    for (const [label, left, right] of [
-      ['Tunis-Lac vs Tunis-Centre', keysTunis1, keysTunis2],
-      ['Tunis-Lac vs the warehouse', keysTunis1, keysWarehouse],
-      ['Tunis-Centre vs the warehouse', keysTunis2, keysWarehouse],
-    ] as const) {
-      expect(
-        [...left].filter((key) => right.has(key)),
-        `F-3 FIXED: ${label} are mutually exclusive scopes and share no movement`,
-      ).toEqual([])
-    }
-
-    // The direct negation of the old tripwire, asserted PER SCOPE rather than
-    // "at least one of the three differs" (web gate): with all three scopes
-    // non-empty and pairwise disjoint, each one MUST be a strict subset, so
-    // none of them may return the unscoped payload.
-    const fingerprint = (rows: Array<Record<string, unknown>>): string => JSON.stringify(rows)
-    const unscopedFingerprints = [fingerprint(allBefore), fingerprint(allAfter)]
-    for (const [label, rows] of [
-      ['a Tunis-Lac-only scope', scopedTunis1],
-      ['a Tunis-Centre-only scope', scopedTunis2],
-      ['a warehouse-only scope', scopedWarehouse],
-    ] as const) {
-      expect(
-        unscopedFingerprints,
-        `F-3 FIXED: ${label} no longer returns the unscoped payload — \`location_ids[]\` is not accepted-and-dropped`,
-      ).not.toContain(fingerprint(rows))
-    }
-
     // Money half, driven off `meta.totals` rather than the page's rows: the
     // service computes those over the WHOLE filtered set, so they are
     // page-independent (web gate MAJOR-2). Stated as the sub-total it honestly
@@ -666,11 +616,76 @@ test.describe('MLC — multi-location money scoping', () => {
       }
     }
 
-    // …and the count half, likewise page-independent.
-    expect(
-      readTunis1.meta.total + readTunis2.meta.total + readWarehouse.meta.total,
-      'F-3 FIXED: Σ of the branch movement counts does not exceed the unscoped count',
-    ).toBeLessThanOrEqual(readAllBefore.meta.total)
+    // ── 2. ROW-LEVEL SET EVIDENCE, on a single-page window ─────────────────
+    // The payload carries no location field, so per-ROW scoping is observable
+    // only set-theoretically: every scoped row must exist in the unscoped read
+    // (subset), and two mutually exclusive scopes must not both claim the same
+    // movement (disjoint). Both statements are about complete sets, so they are
+    // asserted on the newest single day — narrow enough to fit one page on any
+    // realistic tenant — rather than on the paginated full range. If that day
+    // does not fit one page, or does not carry cash for at least two of the
+    // three scopes, the block is ANNOTATED and skipped: the page-independent
+    // evidence above has already run, so the case never passes vacuously.
+    const newestDate = String(readAllBefore.rows[0]?.date ?? '')
+    const dayWindow = newestDate === '' ? '' : `&from=${newestDate}&to=${newestDate}`
+    const dayAll = newestDate === '' ? null : await read('', dayWindow)
+    const dayScoped =
+      dayAll === null ? [] : await Promise.all(scopeQueries.map(([, q]) => read(q, dayWindow)))
+
+    const singlePage =
+      dayAll !== null &&
+      dayAll.meta.last_page === 1 &&
+      dayScoped.every((r) => r.meta.last_page === 1)
+    const populatedScopes = dayScoped.filter((r) => r.rows.length > 0).length
+
+    if (!singlePage || populatedScopes < 2) {
+      test.info().annotations.push({
+        type: 'mlc-08-row-evidence-skipped',
+        description:
+          `row-level set assertions not applicable on ${newestDate || '(no movements)'}: ` +
+          `singlePage=${singlePage}, scopes with rows=${populatedScopes}/3 ` +
+          `(unscoped total=${dayAll?.meta.total ?? 0}). The page-independent meta evidence above still ran ` +
+          `over the full range (${readAllBefore.meta.total} movements).`,
+      })
+    } else {
+      const rowKey = (row: Record<string, unknown>): string =>
+        [row.source_type, row.source_id, row.direction, row.gl_account, row.amount].join('|')
+      const dayAllKeys = new Set(dayAll.rows.map(rowKey))
+
+      for (const [index, [label]] of scopeQueries.entries()) {
+        expect(
+          dayScoped[index].rows.map(rowKey).filter((key) => !dayAllKeys.has(key)),
+          `F-3 FIXED: on ${newestDate}, ${label} returns only movements the unscoped read also reports`,
+        ).toEqual([])
+      }
+
+      const keySets = dayScoped.map((r) => new Set(r.rows.map(rowKey)))
+      for (const [left, right] of [
+        [0, 1],
+        [0, 2],
+        [1, 2],
+      ] as const) {
+        expect(
+          [...keySets[left]].filter((key) => keySets[right].has(key)),
+          `F-3 FIXED: on ${newestDate}, ${scopeQueries[left][0]} and ${scopeQueries[right][0]} are mutually exclusive and share no movement`,
+        ).toEqual([])
+      }
+
+      // The direct negation of the old tripwire, asserted PER SCOPE rather than
+      // "at least one of the three differs" (web gate). With ≥2 populated,
+      // pairwise-disjoint scopes, a scope that still returned the whole
+      // unscoped payload would contradict disjointness — so this can only fire
+      // on the real defect.
+      const fingerprint = (rows: Array<Record<string, unknown>>): string => JSON.stringify(rows)
+      const unscopedFingerprint = fingerprint(dayAll.rows)
+      for (const [index, [label]] of scopeQueries.entries()) {
+        if (dayScoped[index].rows.length === 0) continue
+        expect(
+          fingerprint(dayScoped[index].rows),
+          `F-3 FIXED: on ${newestDate}, ${label} no longer returns the unscoped payload — \`location_ids[]\` is not accepted-and-dropped`,
+        ).not.toBe(unscopedFingerprint)
+      }
+    }
 
     // UI: the page renders under a single-shop scope, and now really is scoped
     // — the hook sends the view scope and keys the cache by it.
