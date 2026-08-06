@@ -184,20 +184,33 @@ final readonly class UpcomingPaymentsService
      */
     private function openDocuments(string $companyId, array $types, CarbonImmutable $windowEnd, array $locationIds = []): Collection
     {
+        // W-6 D2: this used to filter `balance_due > 0`. That column is a
+        // PostgreSQL trigger cache fired by `payment_allocations` /
+        // `credit_note_allocations` DML ONLY, so a posted invoice that was never
+        // allocated against keeps a NULL cache forever and was invisible to the
+        // cash-flow forecast — the same blindness the aged reports carried.
         $query = Document::query()
             ->where('company_id', $companyId)
             ->whereIn('type', $types)
             ->where('status', DocumentStatus::Posted)
-            ->where('balance_due', '>', 0)
+            ->whereOutstanding()
             ->whereRaw('COALESCE(due_date, document_date) <= ?', [$windowEnd->toDateString()])
-            ->with(['partner:id,name'])
+            ->with(['partner:id,name', 'allocations:id,document_id,amount', 'creditsAgainstDocument:id,invoice_id,amount'])
             ->orderByRaw('COALESCE(due_date, document_date) ASC')
             ->orderBy('document_number');
         if ($locationIds !== []) {
             $query->whereIn('location_id', $locationIds);
         }
 
-        return $query->get();
+        // The SQL predicate is only a coarse bound — SQLite evaluates it in
+        // floating point — so bcmath has the final say on what is still open.
+        return $query->get()
+            ->filter(fn (Document $document): bool => bccomp(
+                $this->openAmount($document),
+                '0',
+                $this->documentScale($document),
+            ) > 0)
+            ->values();
     }
 
     /**
@@ -336,8 +349,9 @@ final readonly class UpcomingPaymentsService
     }
 
     /**
-     * Open amount owed on a document: expenses carry it in total
-     * (balance_due is never populated for them), everything else in balance_due.
+     * Open amount owed on a document: expenses carry it in `total` (they have no
+     * allocations at all), everything else is the outstanding computed from
+     * allocations.
      *
      * @return numeric-string
      */
@@ -348,8 +362,21 @@ final readonly class UpcomingPaymentsService
             return $document->total ?? '0';
         }
 
-        /** @var numeric-string */
-        return $document->balance_due ?? '0';
+        // W-6 D2: `balance_due` is a trigger cache that is NULL until the first
+        // allocation, so reading it reported a wholly unpaid invoice as owing
+        // nothing. The computed outstanding mirrors the trigger's own formula and
+        // needs no cache to be warm.
+        return $document->outstandingBalance($this->documentScale($document));
+    }
+
+    /**
+     * The DOCUMENT's own currency scale — this report mixes currencies within one
+     * company, and `sum()` has always accumulated per document (CLAUDE.md rule 19:
+     * never a bare no-arg resolve).
+     */
+    private function documentScale(Document $document): int
+    {
+        return $this->scaleResolver->getScaleSafe((string) $document->currency, 3);
     }
 
     /**

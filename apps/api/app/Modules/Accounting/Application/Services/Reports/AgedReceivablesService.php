@@ -7,10 +7,12 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesData;
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
 use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -31,6 +33,10 @@ final readonly class AgedReceivablesService
 {
     private const DECIMAL_SCALE = 4;
 
+    public function __construct(
+        private CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Generate aged receivables report.
      *
@@ -48,12 +54,13 @@ final readonly class AgedReceivablesService
         bool $groupByLocation = false,
     ): AgedReceivablesData {
         $asOfDate = $asOfDate ?? Carbon::today();
+        $scale = $this->currencyScale($companyId);
 
         // Get outstanding customer invoices
-        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate, $locationIds);
+        $invoices = $this->getOutstandingInvoices($companyId, $asOfDate, $scale, $locationIds);
 
         // Group by customer and calculate aging buckets
-        $customerBalances = $this->calculateCustomerAging($invoices, $asOfDate);
+        $customerBalances = $this->calculateCustomerAging($invoices, $asOfDate, $scale);
 
         // Convert to line data objects
         $lines = $customerBalances->map(function ($balance) {
@@ -81,7 +88,7 @@ final readonly class AgedReceivablesService
             'total_days_90' => $totals['days_90'],
             'total_over_90' => $totals['over_90'],
             'grand_total' => $totals['total'],
-            'buckets_by_location' => $groupByLocation ? $this->locationBuckets($invoices, $companyId) : [],
+            'buckets_by_location' => $groupByLocation ? $this->locationBuckets($invoices, $companyId, $scale) : [],
         ]);
     }
 
@@ -89,7 +96,7 @@ final readonly class AgedReceivablesService
      * @param  Collection<int, Document>  $invoices
      * @return list<LocationReportBucketData>
      */
-    private function locationBuckets(Collection $invoices, string $companyId): array
+    private function locationBuckets(Collection $invoices, string $companyId, int $scale): array
     {
         $buckets = [];
         foreach ($invoices as $invoice) {
@@ -100,7 +107,7 @@ final readonly class AgedReceivablesService
             ];
             $buckets[$key]['total'] = bcadd(
                 $buckets[$key]['total'],
-                (string) ($invoice->balance_due ?? '0.0000'),
+                $this->openBalance($invoice, $scale),
                 self::DECIMAL_SCALE,
             );
         }
@@ -141,19 +148,54 @@ final readonly class AgedReceivablesService
      * @param  list<string>  $locationIds
      * @return Collection<int, Document>
      */
-    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate, array $locationIds = []): Collection
+    private function getOutstandingInvoices(string $companyId, Carbon $asOfDate, int $scale, array $locationIds = []): Collection
     {
         $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<=', $asOfDate)
-            ->where('balance_due', '>', 0);
+            ->whereOutstanding();
         if ($locationIds !== []) {
             $query->whereIn('location_id', $locationIds);
         }
 
-        return $query->with(['partner:id,name,type'])->get();
+        return $query
+            ->with(['partner:id,name,type', 'allocations:id,document_id,amount', 'creditsAgainstDocument:id,invoice_id,amount'])
+            ->get()
+            // The SQL predicate is only a coarse bound — SQLite evaluates it in
+            // floating point — so bcmath has the final say on what is outstanding.
+            ->filter(static fn (Document $invoice): bool => bccomp($invoice->outstandingBalance($scale), '0', $scale) > 0)
+            ->values();
+    }
+
+    /**
+     * The amount this report presents for a document.
+     *
+     * W-6 D2: it used to be `$invoice->balance_due`, a PostgreSQL trigger cache
+     * fired by `payment_allocations` / `credit_note_allocations` DML ONLY. A posted
+     * invoice that was never allocated against has no trigger event, so its cache
+     * stays NULL forever — 165 invoices / 59 532.410 TND invisible to this report
+     * on the demo tenant, against a reported grand total of 32 892.422. Reading
+     * the computed outstanding removes the cache from the critical path entirely.
+     *
+     * @return numeric-string
+     */
+    private function openBalance(Document $invoice, int $scale): string
+    {
+        return $invoice->outstandingBalance($scale);
+    }
+
+    /**
+     * The scale the outstanding arithmetic runs at: the COMPANY's currency
+     * (CLAUDE.md rule 19 — never a bare no-arg resolve).
+     */
+    private function currencyScale(string $companyId): int
+    {
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+
+        return $this->scaleResolver->getScaleSafe((string) $company->currency, 3);
     }
 
     /**
@@ -170,13 +212,14 @@ final readonly class AgedReceivablesService
      * - over_90: >120 days
      *
      * @param  Collection<int, Document>  $invoices
+     * @param  int  $scale  The company currency's scale (CLAUDE.md rule 19)
      * @return Collection<int|string, array{customer_id: string, customer_name: string, current: string, days_30: string, days_60: string, days_90: string, over_90: string, total: string}>
      */
-    private function calculateCustomerAging(Collection $invoices, Carbon $asOfDate): Collection
+    private function calculateCustomerAging(Collection $invoices, Carbon $asOfDate, int $scale): Collection
     {
         return $invoices
             ->groupBy('partner_id')
-            ->map(function (Collection $customerInvoices, string $partnerId) use ($asOfDate) {
+            ->map(function (Collection $customerInvoices, string $partnerId) use ($asOfDate, $scale) {
                 /** @var Document $firstInvoice */
                 $firstInvoice = $customerInvoices->first();
                 $customer = $firstInvoice->partner;
@@ -190,7 +233,7 @@ final readonly class AgedReceivablesService
                 ];
 
                 foreach ($customerInvoices as $invoice) {
-                    $balance = $invoice->balance_due ?? '0.0000';
+                    $balance = $this->openBalance($invoice, $scale);
 
                     // Days overdue from due_date (or document_date when there is
                     // none). W-6 D4: Carbon's signed `diffInDays` returns

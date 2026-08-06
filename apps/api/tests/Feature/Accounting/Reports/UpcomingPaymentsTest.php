@@ -17,6 +17,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -179,6 +180,34 @@ final class UpcomingPaymentsTest extends TestCase
             ->getJson('/api/v1/reports/upcoming-payments?location_ids[]='.$storeA->id);
 
         $response->assertOk()->assertJsonPath('data.total_in', '100.000');
+    }
+
+    /**
+     * W-6 D2 — `documents.balance_due` is a PostgreSQL trigger cache fired by
+     * allocation DML only, so a posted invoice that was never allocated against
+     * keeps a NULL cache forever. This report's `where('balance_due', '>', 0)`
+     * hid exactly those documents from the cash-flow forecast, the same blindness
+     * the aged reports carried.
+     */
+    public function test_upcoming_payments_sees_a_posted_never_allocated_invoice(): void
+    {
+        $neverAllocated = $this->createDocument('INV-NEVER-PAID', DocumentType::Invoice, $this->customer, '119.000', '2026-07-12');
+        $neverAllocated->update(['balance_due' => null]);
+
+        $partiallyPaid = $this->createDocument('INV-PARTIAL', DocumentType::Invoice, $this->customer, '200.000', '2026-07-14');
+        $partiallyPaid->update(['balance_due' => null]);
+        PaymentAllocation::create(['document_id' => $partiallyPaid->id, 'amount' => '50.000']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/reports/upcoming-payments?days=30');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.total_in', '269.000');
+        $response->assertJsonPath('data.in.0.document_number', 'INV-NEVER-PAID');
+        $response->assertJsonPath('data.in.0.balance_due', '119.000');
+        $response->assertJsonPath('data.in.1.document_number', 'INV-PARTIAL');
+        $response->assertJsonPath('data.in.1.balance_due', '150.000');
     }
 
     public function test_upcoming_payments_report_requires_reports_view_permission(): void

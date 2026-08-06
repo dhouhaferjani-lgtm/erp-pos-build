@@ -483,8 +483,19 @@ class PaymentController extends Controller
             /** @var numeric-string $requestedAmount */
             $requestedAmount = (string) $allocation['amount'];
 
+            // W-6 D2: this used to be `$document->balance_due ?? $document->total`.
+            // `balance_due` is a PostgreSQL trigger cache fired by allocation DML
+            // only, so it is NULL on any document that has never been allocated
+            // against — and the `?? total` fallback then offered the document's
+            // FULL total as payable regardless of what had already been settled by
+            // any path the trigger did not observe. Reading the outstanding
+            // computed from the allocations themselves removes the cache from this
+            // guard entirely; W-7 F-6 escalation (a) is the same fallback seen from
+            // the other side, where a cancelled invoice presented as fully payable.
             /** @var numeric-string $balanceDue */
-            $balanceDue = $document->balance_due ?? $document->total;
+            $balanceDue = $document->outstandingBalance(
+                $this->scaleResolver->getScaleSafe((string) $document->currency, 3),
+            );
 
             if ($document->type === DocumentType::SupplierInvoice) {
                 $isSupplierPayment = true;

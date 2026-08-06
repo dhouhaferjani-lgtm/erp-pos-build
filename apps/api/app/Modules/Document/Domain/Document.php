@@ -22,6 +22,7 @@ use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Domain\CurrencyScale;
 use Database\Factories\DocumentFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -93,6 +94,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, DocumentAdditionalCost> $additionalCosts
  * @property-read Collection<int, PaymentAllocation> $allocations
  * @property-read Collection<int, CreditNoteAllocation> $creditNoteAllocations
+ * @property-read Collection<int, CreditNoteAllocation> $creditsAgainstDocument
  * @property-read Collection<int, Document> $creditNotes
  * @property-read Collection<int, Document> $childDocuments
  *
@@ -646,6 +648,88 @@ class Document extends Model
     public function scopeCreditNotes(Builder $query): Builder
     {
         return $query->where('type', DocumentType::CreditNote);
+    }
+
+    /**
+     * The SQL that reproduces the `balance_due` cache, correlated to `documents`.
+     *
+     * Copied deliberately from `update_document_balance_due()`
+     * (`database/migrations/tenant/2026_01_08_214145_add_balance_due_cache_trigger.php`)
+     * and from `DocumentCacheValidationService`, which already expresses the same
+     * formula in raw SQL. Type-agnostic, exactly like the trigger: it always joins
+     * `credit_note_allocations` on `invoice_id`, so a credit note's own outward
+     * allocations never reduce its balance.
+     */
+    private const OUTSTANDING_BALANCE_SQL = '(COALESCE(documents.total, 0)'
+        .' - COALESCE((SELECT SUM(amount) FROM payment_allocations WHERE payment_allocations.document_id = documents.id), 0)'
+        .' - COALESCE((SELECT SUM(amount) FROM credit_note_allocations WHERE credit_note_allocations.invoice_id = documents.id), 0))';
+
+    /**
+     * @return HasMany<CreditNoteAllocation, $this>
+     */
+    public function creditsAgainstDocument(): HasMany
+    {
+        return $this->hasMany(CreditNoteAllocation::class, 'invoice_id');
+    }
+
+    /**
+     * Bound a query to documents that MIGHT still be outstanding (W-6 D2).
+     *
+     * A deliberately coarse SQL pre-filter, not the verdict. `balance_due` is a
+     * trigger cache that only ever fires on allocation DML, so filtering on the
+     * column hides every posted-but-never-allocated document — the D2 defect. This
+     * filters on the same arithmetic the trigger performs, so nothing outstanding
+     * is excluded; callers must still take the exact amount from
+     * {@see outstandingBalance()}, because SQLite evaluates this expression in
+     * floating point and can leave a settled document a hair above zero.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereOutstanding(Builder $query): Builder
+    {
+        return $query->whereRaw(self::OUTSTANDING_BALANCE_SQL.' > 0');
+    }
+
+    /**
+     * The outstanding amount computed from allocations — the SOURCE OF TRUTH.
+     *
+     * Mirrors {@see self::OUTSTANDING_BALANCE_SQL} in bcmath at the caller's
+     * currency scale, so it never depends on the `balance_due` cache being warm.
+     * Unlike {@see getOutstandingAmount()} it is type-agnostic, again like the
+     * trigger, so it is usable for supplier invoices and purchase orders too.
+     *
+     * Eager-load `allocations` and `creditsAgainstDocument` before calling this in
+     * a loop; otherwise it lazy-loads two relations per document.
+     *
+     * @return numeric-string
+     */
+    public function outstandingBalance(int $scale): string
+    {
+        // Intermediates run wider than the emission scale (CLAUDE.md rule 19);
+        // the single rounding happens on the way out.
+        $calculationScale = $scale + 4;
+
+        /** @var numeric-string $outstanding */
+        $outstanding = CurrencyScale::bcround((string) ($this->total ?? '0'), $calculationScale);
+
+        foreach ($this->allocations as $allocation) {
+            $outstanding = bcsub(
+                $outstanding,
+                CurrencyScale::bcround((string) $allocation->amount, $calculationScale),
+                $calculationScale,
+            );
+        }
+
+        foreach ($this->creditsAgainstDocument as $credit) {
+            $outstanding = bcsub(
+                $outstanding,
+                CurrencyScale::bcround((string) $credit->amount, $calculationScale),
+                $calculationScale,
+            );
+        }
+
+        return CurrencyScale::bcround($outstanding, $scale);
     }
 
     /**
