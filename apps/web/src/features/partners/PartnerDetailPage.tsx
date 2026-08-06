@@ -19,7 +19,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import { api, getErrorMessage, isApiError } from '../../lib/api'
+import { api, isApiError } from '../../lib/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
@@ -259,7 +259,11 @@ export function PartnerDetailPage() {
         toast.error(t('sales:partners.delete.blocked', { name: partner?.name ?? '' }))
         return
       }
-      toast.error(getErrorMessage(mutationError))
+      // Anything else: a translated generic failure, not the raw English
+      // server-authored `error.message`. The detail goes to the console for
+      // support rather than to the operator.
+      console.error('Partner delete failed', mutationError)
+      toast.error(t('sales:partners.delete.failed', { entity: entityLabel }))
     },
   })
 

@@ -159,8 +159,18 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
 
   // Keep the table state (and therefore the synced URL) in step with the route
   // context, so a stale `?type=` is never left bookmarkable on the other list.
-  // Page-local on purpose: re-seeding `defaultFilters` inside the shared
-  // `useTableState` hook is a separate, wider change.
+  //
+  // Page-local on purpose — but NOT because the shared hook is hard to reach:
+  // `useTableState` has exactly three consumers (this page, ProductListPage,
+  // MenuListPage). The difficulty is semantic, not scale: re-seeding `filters`
+  // whenever `defaultFilters` changes would stomp a user-set filter on every
+  // render, so the hook-level fix needs a previous-defaults ref and a "only if
+  // the DEFAULT itself changed" comparison. Ticketed in
+  // `docs/superpowers/tickets/2026-08-06-l6-partners-followups.md`.
+  //
+  // Note: `setFilter` also resets the page to 1, so a bookmarked
+  // `?type=<stale>&page=3` fetches page 3 of the correct type once, then
+  // page 1. Harmless, and tracked in the same ticket.
   const currentTypeFilter = tableState.filters['type']
   const setTableFilter = tableState.setFilter
   useEffect(() => {
