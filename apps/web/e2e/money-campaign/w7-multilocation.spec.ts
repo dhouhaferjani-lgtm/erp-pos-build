@@ -696,17 +696,21 @@ test.describe('MLC — multi-location money scoping', () => {
     expect(body, 'no NaN under a scoped cash-movements read').not.toContain('NaN')
     await applyViewScope(page, 'all')
 
-    // ── CROSS-REFERENCE, NOT A NEW DEFECT: W-6 finding D5 ─────────────────
-    // (docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md). This
-    // report is gated on `reports.view`, which `RolesAndPermissionsSeeder`
-    // grants to `admin` ONLY — so the finance persona who most needs a cash
-    // report cannot read it. Re-confirmed live here on THIS surface so the
-    // scoping defect above is not mistaken for the access one; NOT re-filed.
+    // ── CROSS-REFERENCE, NOT A NEW DEFECT: W-6 finding D5 — FIXED
+    // 2026-08-06/07 ────────────────────────────────────────────────────────
+    // (docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md). ORIGINALLY
+    // this report was gated on `reports.view`, admin-only, so the finance
+    // persona who most needs a cash report could not read it. Comment kept,
+    // not deleted, per the fix-round instruction. Under the D5 "Option B
+    // split", `/reports/cash-movements` now gates on `reports.operational`,
+    // which the accountant holds (financial + operational + ledger.view role
+    // sub-rule) — re-confirmed live here on THIS surface so the scoping fix
+    // above is not mistaken for masking an access defect; NOT re-filed.
     await loginAsRoleResilient(page, 'accountant')
     const asAccountant = await apiRequest(page, 'GET', '/reports/cash-movements')
     expect(
       asAccountant.status,
-      'TRIPWIRE (W-6 D5, cross-referenced): the accountant is 403 on /reports/cash-movements — reports.view is admin-only',
-    ).toBe(403)
+      'the accountant holds reports.operational, so /reports/cash-movements is 200',
+    ).toBe(200)
   })
 })

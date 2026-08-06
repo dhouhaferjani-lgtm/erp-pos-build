@@ -140,7 +140,7 @@ test.describe('GL — finance permission denials and money tiles', () => {
     expect(create.status, 'the create API is refused').toBe(403)
   })
 
-  test('MTP-GL-23 (P1): the accountant CAN create a journal entry — but is 403 on every financial report', async ({
+  test('MTP-GL-23 (P1): the accountant CAN create a journal entry AND read every financial report', async ({
     page,
   }) => {
     await loginAsRole(page, 'accountant')
@@ -168,20 +168,20 @@ test.describe('GL — finance permission denials and money tiles', () => {
     // Deliberately NOT posted: the case asks whether creation is allowed, and a
     // draft adds no money to the tenant.
 
-    // --- FINDING D5 (P1, TRIPWIRE, GREEN: pins TODAY's behaviour).
+    // --- FINDING D5 (P1, TRIPWIRE — FIXED 2026-08-06/07, W-6 D5 "Option B
+    // split" + gate round-2 fix I-1/I-2/I-3/I-5). ORIGINALLY pinned the
+    // pre-fix defect: `reports.view`/`ledger.view` were admin-only while the
+    // FE report routes were gated on `accounts.view` (which accountant held),
+    // so the page rendered then 403'd on data fetch. Comment kept, not
+    // deleted, per the fix-round instruction — the assertions below now pin
+    // the FIXED behaviour instead of the defect.
     //
-    // `reports.view` (every `/reports/*` financial report) and `ledger.view`
-    // (`GET /ledger`) are granted to NO seeded role except `admin`
-    // (`RolesAndPermissionsSeeder::rolePermissionGrants()` — the accountant
-    // block at :717-745 lists `reports.financial` and `reports.manage`, never
-    // `reports.view`; the manager block at :519 is the same, and viewer at :643
-    // holds only `reports.operational`). The FRONT-END routes for those very
-    // pages are gated on `accounts.view` instead
-    // (`apps/web/src/routes/index.tsx` trial-balance / profit-loss /
-    // balance-sheet / aged-receivables / aged-payables), which the accountant,
-    // the manager and the viewer all HOLD. Net effect: the page renders for the
-    // finance persona and then fails its data fetch with a 403. Verified live
-    // for accountant, viewer and manager alike.
+    // `RolesAndPermissionsSeeder::rolePermissionGrants()` now grants the
+    // accountant `reports.financial` + `reports.operational` + `ledger.view`
+    // (the D5 "financial + operational + ledger.view" role sub-rule), and
+    // every route below was re-cut onto `reports.financial` / `.operational`
+    // / `ledger.view` to match — so the accountant is 200 on all seven, and
+    // the FE route it can already open now agrees with the API.
     for (const path of [
       '/reports/trial-balance',
       '/reports/balance-sheet',
@@ -194,16 +194,17 @@ test.describe('GL — finance permission denials and money tiles', () => {
       const res = await apiRequest(page, 'GET', path)
       expect(
         res.status,
-        `TRIPWIRE D5: the accountant is refused ${path} (reports.view / ledger.view are admin-only)`,
-      ).toBe(403)
+        `the accountant holds reports.financial/reports.operational/ledger.view, so ${path} is 200`,
+      ).toBe(200)
     }
 
-    // …while the FE route that renders that data is open to them.
+    // …and the FE route that renders that data is open to them, in agreement
+    // with the API (no more render-then-403 incoherence).
     await page.goto('/finance/trial-balance')
     await settleAfterNav(page)
     expect(
       page.url(),
-      'TRIPWIRE D5: the FE gate (accounts.view) lets the accountant onto a page the API will 403',
+      'the accountant holds reports.financial, so the FE route and the API agree',
     ).toContain('/finance/trial-balance')
   })
 
@@ -331,19 +332,23 @@ test.describe('GL — finance permission denials and money tiles', () => {
     const body = (await page.locator('main').innerText()).trim()
     expect(body, 'the finance hub renders no money').not.toMatch(/\d[\d   ,.]*\s*(TND|EUR|€)/)
 
-    // The permission filter is real — and it is the same `reports.view`
-    // admin-only grant as D5: the finance persona loses the hub's entry point
-    // to the treasury overview.
+    // The permission filter is real — FIXED 2026-08-06/07 (was the same
+    // `reports.view` admin-only-grant tripwire as D5 above; comment kept,
+    // not deleted, per the fix-round instruction). The accountant now holds
+    // `reports.operational` (D5 "financial + operational + ledger.view" role
+    // sub-rule), and the Treasury card is gated on `reports.operational`
+    // (`FinanceHubPage.tsx`), so it renders for the accountant instead of
+    // being hidden.
     await loginAsRole(page, 'accountant')
     await page.goto('/finance')
     await settleAfterNav(page)
     await expect(
       page.locator('a[href^="/finance/trial-balance"]').first(),
-      'the accountant still sees the accounts-gated report cards',
+      'the accountant still sees the reports.financial-gated report cards',
     ).toBeVisible({ timeout: 15_000 })
     await expect(
       page.locator('a[href^="/finance/overview"]'),
-      'TRIPWIRE D5: the Treasury card needs reports.view, which no non-admin role holds',
-    ).toHaveCount(0)
+      'the accountant holds reports.operational, so the Treasury card renders',
+    ).toBeVisible({ timeout: 15_000 })
   })
 })
