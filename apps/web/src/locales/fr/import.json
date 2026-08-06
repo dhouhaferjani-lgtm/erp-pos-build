@@ -117,8 +117,10 @@
       "fileReady": "Fichier prêt : {{name}}",
       "columnsDetected": "{{count}} colonnes détectées",
       "parseError": "Impossible de lire le fichier. Veuillez importer un fichier CSV ou Excel valide.",
-      "serverError": "Le serveur a rejeté l'envoi (HTTP {{status}}). Votre fichier est probablement correct : réessayez, puis contactez votre administrateur si l'erreur persiste.",
-      "networkError": "L'envoi n'a jamais atteint le serveur. Vérifiez votre connexion et réessayez."
+      "serverError": "Le serveur a rejeté l'envoi (HTTP {{status}}). Réessayez ; si l'erreur persiste, communiquez ce code à votre administrateur.",
+      "networkError": "L'envoi n'a jamais atteint le serveur. Vérifiez votre connexion et réessayez.",
+      "sessionExpired": "Votre session a expiré. Reconnectez-vous, puis renvoyez le fichier.",
+      "tooLarge": "Le fichier est trop volumineux pour être accepté par le serveur. Divisez-le en plusieurs fichiers, ou demandez à votre administrateur d'augmenter la limite d'envoi."
     },
     "mapping": {
       "title": "Mappez vos colonnes",

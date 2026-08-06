@@ -102,21 +102,6 @@ describe('ImportWizardPage upload error reporting (BUG-004)', () => {
     expect(mockToastError).not.toHaveBeenCalledWith('wizard.upload.parseError')
   })
 
-  it('reports an nginx 413 with its status rather than blaming the file', async () => {
-    mockParseHeaders.mockRejectedValue({
-      isAxiosError: true,
-      response: { status: 413, data: '' },
-      message: 'Request failed with status code 413',
-    })
-
-    await chooseFile()
-
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledWith('wizard.upload.serverError:413')
-    })
-    expect(mockToastError).not.toHaveBeenCalledWith('wizard.upload.parseError')
-  })
-
   it('reports a network failure (no response) distinctly', async () => {
     mockParseHeaders.mockRejectedValue({
       isAxiosError: true,
@@ -157,5 +142,106 @@ describe('ImportWizardPage upload error reporting (BUG-004)', () => {
     await waitFor(() => {
       expect(mockToastError).toHaveBeenCalledWith('wizard.upload.parseError')
     })
+  })
+
+  // ── Import gate F1 — session expiry is the most reachable wrong-cause case.
+  // `parseHeaders` carries a 120 s timeout (importApi.ts), so a session dying
+  // mid-upload is routine, and api.ts is already redirecting to /login while
+  // the toast fires. Telling that operator "contact your administrator" turns a
+  // routine re-login into a support ticket.
+  it.each([401, 419])('reports HTTP %i as a session expiry, not an infrastructure fault', async (status) => {
+    mockParseHeaders.mockRejectedValue({
+      isAxiosError: true,
+      response: { status, data: { error: { code: 'UNAUTHENTICATED' } } },
+      message: `Request failed with status code ${String(status)}`,
+    })
+
+    await chooseFile()
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('wizard.upload.sessionExpired')
+    })
+    expect(mockToastError).not.toHaveBeenCalledWith(`wizard.upload.serverError:${String(status)}`)
+    expect(mockToastError).not.toHaveBeenCalledWith('wizard.upload.parseError')
+  })
+
+  // ── Import gate F2 — for a 413 the file IS the cause, so the generic
+  // "your file is probably fine, try again" is affirmatively false and the
+  // retry it advises is guaranteed to fail.
+  it('reports HTTP 413 as a size problem rather than a generic server fault', async () => {
+    mockParseHeaders.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 413, data: '' },
+      message: 'Request failed with status code 413',
+    })
+
+    await chooseFile()
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('wizard.upload.tooLarge')
+    })
+    expect(mockToastError).not.toHaveBeenCalledWith('wizard.upload.serverError:413')
+  })
+
+  // ── Import gate F3 — the networkError branch must not depend on the current
+  // strictness of `isApiError`. Today a no-response failure reaches us as a raw
+  // AxiosError only because `isApiError` returns false and the interceptor's
+  // `if (!response) reject(new Error('Network error'))` (api.ts) is unreachable.
+  // Repair `isApiError` into a plain axios guard — a tempting one-line cleanup
+  // in a file this lane must not touch — and that branch activates, every
+  // network failure arrives as a bare Error, and BUG-004 silently returns with
+  // a green suite. Recognise the sentinel so the taxonomy survives that change.
+  it('recognises the interceptor\'s bare "Network error" sentinel as a network failure', async () => {
+    mockParseHeaders.mockRejectedValue(new Error('Network error'))
+
+    await chooseFile()
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('wizard.upload.networkError')
+    })
+    expect(mockToastError).not.toHaveBeenCalledWith('wizard.upload.parseError')
+  })
+})
+
+/**
+ * Import gate F7 — the suite above stubs `react-i18next` to echo keys, so a
+ * typo'd key (`severError`) would pass green and ship a raw key to the
+ * operator. There is no locale key-parity audit in `apps/web/tools/`. Assert
+ * the taxonomy against the REAL catalogs instead, and assert the messages
+ * DISCRIMINATE — a taxonomy whose branches resolve to the same sentence is the
+ * masking bug wearing five names.
+ */
+describe('upload failure catalog (BUG-004 taxonomy)', () => {
+  const TAXONOMY_KEYS = [
+    'parseError',
+    'serverError',
+    'networkError',
+    'sessionExpired',
+    'tooLarge',
+  ] as const
+
+  it.each(['en', 'fr'])('defines every taxonomy key in %s with distinct copy', async (lang) => {
+    const catalog = (await import(`../../../locales/${lang}/import.json`)) as {
+      default: { wizard: { upload: Record<string, string> } }
+    }
+    const upload = catalog.default.wizard.upload
+
+    for (const key of TAXONOMY_KEYS) {
+      expect(upload[key], `${lang}: wizard.upload.${key} is missing`).toBeTruthy()
+    }
+
+    const messages = TAXONOMY_KEYS.map((key) => upload[key])
+    expect(new Set(messages).size).toBe(TAXONOMY_KEYS.length)
+  })
+
+  it('does not tell the operator their file is probably fine on a generic server fault', async () => {
+    const en = (await import('../../../locales/en/import.json')) as {
+      default: { wizard: { upload: Record<string, string> } }
+    }
+    // The frontend cannot know the cause of an arbitrary 5xx, so `serverError`
+    // must not assert one. (Import gate Q1: re-asserting a wrong cause is the
+    // exact defect class BUG-004 exists to eliminate.)
+    expect(en.default.wizard.upload['serverError']).not.toMatch(/probably fine/i)
+    expect(en.default.wizard.upload['serverError']).toContain('{{status}}')
   })
 })
