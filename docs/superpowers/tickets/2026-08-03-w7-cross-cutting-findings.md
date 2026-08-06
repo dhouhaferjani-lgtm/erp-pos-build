@@ -304,9 +304,21 @@ third behaviour was invented:
   `agedReceivables`/`agedPayables`/`upcomingPayments` currently would.
 - `CashMovementsReportService` filters the **payments** leg on its own
   `payments.location_id` and the **journal-lines** leg through the owning
-  `payment_repositories.location_id`. The de-duplication `whereNotExists`
-  clauses are deliberately left scope-independent, so a payment excluded from
-  the payments leg cannot reappear as its GL twin under another branch.
+  `payment_repositories.location_id` (active registers only). The
+  de-duplication `whereNotExists` clauses are deliberately left
+  scope-independent, so a payment excluded from the payments leg cannot
+  reappear as its GL twin under another branch.
+- The journal-lines leg **fails closed on an ambiguous cash GL account**
+  (authz gate 2026-08-06, CRITICAL). `payment_repositories.gl_account_id` is
+  many-to-one, and both provisioning paths — the `2026_03_02_400000` backfill
+  and `PaymentRepositorySeeder` — point every cash_register/safe at the single
+  company-wide `SystemAccountPurpose::Cash` account. Without the guard, one
+  company-level cash line (a petty-cash `expense_settlement`, which no payment
+  row backs) matched an in-scope register for **every** branch and was reported
+  in full under all four of tenant #1's — a 4x overstatement that also broke
+  the disjointness and Σ ≤ All invariants MTP-MLC-08 asserts. A journal line is
+  now admitted under a strict scope only when every active cash register owning
+  its GL account is inside that scope.
 - `useCashMovementsReport` sends `location_ids` from `useViewScope` and keys
   with `locationScopedKey` (sending without re-keying would serve one branch's
   rows from another branch's cache entry).
@@ -316,24 +328,21 @@ subsets of the unscoped read, the three single-location scopes are pairwise
 disjoint, `location_ids[]` is no longer accepted-and-dropped, and Σ over the
 branch scopes does not exceed the All figure.
 
-**Residual, recorded deliberately — needs a ruling, not a silent fix.**
+**Residuals — all six carried in one place:**
+[`docs/superpowers/tickets/2026-08-06-l3-cash-scope-residuals.md`](2026-08-06-l3-cash-scope-residuals.md).
+Headline: the `LocationScopeBoundary` deactivated-location clamp unsoundness (P1, the only one with
+an authorization flavour), the aged-*/upcoming-payments 403→500 swallow, the dead
+`journal_entries.location_id` column, the missing `unattributed` bucket on this payload, the
+pagination-vs-scope-change gap, and the three pre-existing red web tests that need an owner.
 
-1. **`journal_entries.location_id` is a dead column.** It exists (migration
-   `2025_12_27_150002`) but appears nowhere on the `JournalEntry` model and is
-   never written, so scoping the journal leg on it would erase every
-   non-payment cash line under any branch scope. The leg is therefore attributed
-   through the cash account's owning repository — the same handle its
-   `repository_id` filter already uses, and the same attribution
-   `CashPositionController` uses. If manual JEs ever need their own branch
-   dimension, that column has to start being populated first.
-2. **Company-level cash is invisible under a branch scope.** A pure advance
-   (`payments.location_id` NULL by design, `PaymentController.php:596-598`) or a
-   manual JE on a location-less safe is hidden once a strict scope is applied.
-   This is the documented aged-* convention (`reportLocationScope`'s docblock),
-   and it is why the plan's "Σ across all locations == the All figure" is
-   asserted as `≤` rather than `==`. The launch consequence for tenant #1: the
-   four branch views only foot to the company view once every cash row is
-   location-attributed.
+The one contract consequence worth restating here, because it is what the flipped MTP-MLC-08
+asserts: **company-level cash is invisible under a branch scope.** A pure advance
+(`payments.location_id` NULL by design, `PaymentController.php:596-598`), a manual JE on a
+location-less safe, and cash on a GL account shared across branches are all withheld from a strict
+scope and shown only on the unrestricted read. That is the documented aged-* convention
+(`reportLocationScope`'s docblock), and it is why the plan's "Σ across all locations == the All
+figure" is asserted as `≤` rather than `==`. Launch consequence for tenant #1: the four branch
+views only foot to the company view once every cash row is location-attributed.
 
 ---
 

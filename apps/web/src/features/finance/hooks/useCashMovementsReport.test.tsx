@@ -9,14 +9,28 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { useCashMovementsReport } from './useCashMovementsReport'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
-const mockUseViewScope = vi.hoisted(() =>
-  vi.fn(() => ({
-    scope: ['loc-b', 'loc-a'] as 'all' | string[],
-    effectiveLocationIds: ['loc-b', 'loc-a'],
-    isAll: false,
-    setScope: vi.fn(),
-  })),
-)
+const mockUseViewScope = vi.hoisted(() => vi.fn())
+
+interface ViewScopeValue {
+  scope: 'all' | string[]
+  effectiveLocationIds: string[]
+  isAll: boolean
+  setScope: () => void
+}
+
+const branchScope: ViewScopeValue = {
+  scope: ['loc-b', 'loc-a'],
+  effectiveLocationIds: ['loc-b', 'loc-a'],
+  isAll: false,
+  setScope: () => undefined,
+}
+
+const unrestrictedScope: ViewScopeValue = {
+  scope: 'all',
+  effectiveLocationIds: ['loc-a', 'loc-b'],
+  isAll: true,
+  setScope: () => undefined,
+}
 
 vi.mock('@/lib/api', () => ({ api: { get: mockApiGet } }))
 vi.mock('@/features/locations/hooks/useViewScope', () => ({
@@ -32,6 +46,11 @@ function wrapper(queryClient: QueryClient) {
 describe('useCashMovementsReport', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Re-established for EVERY case, so a per-case `mockReturnValue` override
+    // cannot leak forward. `mockReturnValueOnce` would be wrong here: the hook
+    // re-renders after the fetch resolves and would consume the override before
+    // the assertions run (web gate 2026-08-06, MINOR-5).
+    mockUseViewScope.mockReturnValue(branchScope)
     act(() => {
       useAuthStore.setState({
         user: {
@@ -100,12 +119,7 @@ describe('useCashMovementsReport', () => {
   })
 
   it('keys an unrestricted scope distinctly from a single-branch scope', async () => {
-    mockUseViewScope.mockReturnValueOnce({
-      scope: 'all',
-      effectiveLocationIds: ['loc-a', 'loc-b'],
-      isAll: true,
-      setScope: vi.fn(),
-    })
+    mockUseViewScope.mockReturnValue(unrestrictedScope)
     const filters = { page: 1 }
     const report = {
       data: [],

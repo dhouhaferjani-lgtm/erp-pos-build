@@ -496,10 +496,41 @@ test.describe('MLC — multi-location money scoping', () => {
   }) => {
     await loginAsRoleResilient(page, 'owner')
 
-    const read = async (query: string): Promise<Array<Record<string, unknown>>> => {
-      const res = await apiRequest(page, 'GET', `/reports/cash-movements${query}`)
+    // MAJOR-2 (web gate 2026-08-06): the row-level set assertions below compare
+    // payloads as complete SETS, so they are only sound on a SINGLE page. The
+    // endpoint defaults to `per_page=50` ordered `date DESC`, so on a tenant
+    // with more movements than that a branch's 50 most recent rows reach
+    // further back than the global 50 and a CORRECT implementation would look
+    // like a scoping defect (false RED). Read the maximum page and prove the
+    // single-page premise from `meta.last_page` rather than assuming it.
+    interface CashMovementsMeta {
+      total: number
+      last_page: number
+      totals: Record<string, { in: string; out: string; net: string }>
+    }
+    interface CashMovementsRead {
+      rows: Array<Record<string, unknown>>
+      meta: CashMovementsMeta
+    }
+
+    const read = async (label: string, query: string): Promise<CashMovementsRead> => {
+      const separator = query === '' ? '?' : '&'
+      const res = await apiRequest(
+        page,
+        'GET',
+        `/reports/cash-movements${query}${separator}per_page=200`,
+      )
       expect(res.status, `GET /reports/cash-movements${query}`).toBe(200)
-      return (res.body as { data?: Array<Record<string, unknown>> }).data ?? []
+      const body = res.body as { data?: Array<Record<string, unknown>>; meta?: CashMovementsMeta }
+      const meta = body.meta ?? { total: 0, last_page: 1, totals: {} }
+      // Skip rather than mis-assert: the set framing is simply not applicable
+      // beyond one page, and silently comparing page 1 to page 1 would report a
+      // defect that is not there.
+      test.skip(
+        meta.last_page > 1,
+        `MLC-08 premise: ${label} spans ${meta.last_page} pages (${meta.total} movements) — the set-based assertions need a single page; re-run against a narrower date range`,
+      )
+      return { rows: body.data ?? [], meta }
     }
 
     // M6 (review fix round 1): the unscoped payload is read TWICE, before and
@@ -507,13 +538,30 @@ test.describe('MLC — multi-location money scoping', () => {
     // matches EITHER snapshot. A single before-read would make this tripwire
     // fragile on a shared stack: any sibling write landing between the reads
     // would break equality and report a scoping fix that never happened.
-    const allBefore = await read('')
-    const scopedTunis1 = await read(`?location_ids[]=${tunis1}`)
-    const scopedTunis2 = await read(`?location_ids[]=${tunis2}`)
-    const scopedWarehouse = await read(`?location_ids[]=${warehouse}`)
-    const allAfter = await read('')
+    const readAllBefore = await read('the unscoped read', '')
+    const readTunis1 = await read('the Tunis-Lac scope', `?location_ids[]=${tunis1}`)
+    const readTunis2 = await read('the Tunis-Centre scope', `?location_ids[]=${tunis2}`)
+    const readWarehouse = await read('the warehouse scope', `?location_ids[]=${warehouse}`)
+    const readAllAfter = await read('the unscoped re-read', '')
+
+    const allBefore = readAllBefore.rows
+    const allAfter = readAllAfter.rows
+    const scopedTunis1 = readTunis1.rows
+    const scopedTunis2 = readTunis2.rows
+    const scopedWarehouse = readWarehouse.rows
 
     expect(allBefore.length, 'cash movements exist to scope').toBeGreaterThan(0)
+
+    // MAJOR-3 (web gate 2026-08-06): EVERY assertion below is satisfied by three
+    // EMPTY scoped payloads, so a regression that over-filters to nothing would
+    // stay green — precisely the failure mode the journal-lines leg can produce.
+    // The demo tenant's premise (see this file's header) is that all three
+    // locations hold POS cash, so require it explicitly: if it ever stops
+    // holding, this case must SKIP loudly rather than pass vacuously.
+    test.skip(
+      [scopedTunis1, scopedTunis2, scopedWarehouse].some((rows) => rows.length === 0),
+      `MLC-08 premise: each of the three locations must hold cash in the window (Tunis-Lac=${scopedTunis1.length}, Tunis-Centre=${scopedTunis2.length}, warehouse=${scopedWarehouse.length}) — an empty scope makes every assertion below vacuous`,
+    )
 
     // ── FINDING F-3 — FIXED (fix lane L3, 2026-08-05) ──────────────────────
     // WAS: three mutually exclusive single-location scopes returned payloads
@@ -574,31 +622,55 @@ test.describe('MLC — multi-location money scoping', () => {
       ).toEqual([])
     }
 
-    // The direct negation of the old tripwire: three disjoint single-location
-    // scopes can no longer ALL return the unscoped payload.
+    // The direct negation of the old tripwire, asserted PER SCOPE rather than
+    // "at least one of the three differs" (web gate): with all three scopes
+    // non-empty and pairwise disjoint, each one MUST be a strict subset, so
+    // none of them may return the unscoped payload.
     const fingerprint = (rows: Array<Record<string, unknown>>): string => JSON.stringify(rows)
     const unscopedFingerprints = [fingerprint(allBefore), fingerprint(allAfter)]
-    expect(
-      [scopedTunis1, scopedTunis2, scopedWarehouse].every((rows) =>
-        unscopedFingerprints.includes(fingerprint(rows)),
-      ),
-      'F-3 FIXED: `location_ids[]` is no longer accepted-and-dropped',
-    ).toBe(false)
+    for (const [label, rows] of [
+      ['a Tunis-Lac-only scope', scopedTunis1],
+      ['a Tunis-Centre-only scope', scopedTunis2],
+      ['a warehouse-only scope', scopedWarehouse],
+    ] as const) {
+      expect(
+        unscopedFingerprints,
+        `F-3 FIXED: ${label} no longer returns the unscoped payload — \`location_ids[]\` is not accepted-and-dropped`,
+      ).not.toContain(fingerprint(rows))
+    }
 
-    // Money half, stated as the sub-total it honestly is: the branch scopes are
-    // disjoint subsets of the unscoped read, so Σ over them can never EXCEED
-    // the All figure. (Equality would require every cash row to be
-    // location-attributed, which company-level cash is not — see above.)
-    const total = (rows: Array<Record<string, unknown>>): string =>
-      sumMoney(rows.map((r) => toScale3(String(r.amount ?? '0'))))
+    // Money half, driven off `meta.totals` rather than the page's rows: the
+    // service computes those over the WHOLE filtered set, so they are
+    // page-independent (web gate MAJOR-2). Stated as the sub-total it honestly
+    // is — the branch scopes are disjoint subsets, so Σ over them can never
+    // EXCEED the All figure. (Equality would require every cash row to be
+    // location-attributed, which company-level cash and cash on a GL account
+    // shared by several branches' registers are not — see above.)
     const negate = (value: string): string =>
       value.startsWith('-') ? value.slice(1) : `-${value}`
-    const branchTotal = total([...scopedTunis1, ...scopedTunis2, ...scopedWarehouse])
-    const headroom = sumMoney([total(allBefore), negate(branchTotal)])
+    const legTotal = (meta: CashMovementsMeta, currency: string, leg: 'in' | 'out'): string =>
+      toScale3(meta.totals[currency]?.[leg] ?? '0')
+
+    for (const currency of Object.keys(readAllBefore.meta.totals)) {
+      for (const leg of ['in', 'out'] as const) {
+        const branchTotal = sumMoney(
+          [readTunis1.meta, readTunis2.meta, readWarehouse.meta].map((meta) =>
+            legTotal(meta, currency, leg),
+          ),
+        )
+        const allTotal = legTotal(readAllBefore.meta, currency, leg)
+        expect(
+          sumMoney([allTotal, negate(branchTotal)]).startsWith('-'),
+          `F-3 FIXED: Σ of the branch scopes' ${currency} ${leg} (${branchTotal}) does not exceed the All figure (${allTotal})`,
+        ).toBe(false)
+      }
+    }
+
+    // …and the count half, likewise page-independent.
     expect(
-      headroom.startsWith('-'),
-      `F-3 FIXED: Σ over the branch scopes (${branchTotal}) does not exceed the All figure (${total(allBefore)})`,
-    ).toBe(false)
+      readTunis1.meta.total + readTunis2.meta.total + readWarehouse.meta.total,
+      'F-3 FIXED: Σ of the branch movement counts does not exceed the unscoped count',
+    ).toBeLessThanOrEqual(readAllBefore.meta.total)
 
     // UI: the page renders under a single-shop scope, and now really is scoped
     // — the hook sends the view scope and keys the cache by it.
