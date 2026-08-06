@@ -202,7 +202,7 @@ test.describe('EMPTY — remittances, instruments, statement detail, VAT periods
     // READ-ONLY. `POST /vat/periods/generate` and `POST /vat/periods/{id}/close`
     // belong to W-X; this case must not fire either, and does not.
     const res = await apiRequest(page, 'GET', '/vat/periods')
-    expect(res.status, 'GET /vat/periods (reports.view — admin-only, see W-6 D5)').toBe(200)
+    expect(res.status, 'GET /vat/periods (reports.financial — admin/accountant, see W-6 D5)').toBe(200)
     const rows = (res.body as { data?: unknown[] }).data ?? []
     expect(rows, 'this tenant has never had a VAT period — the list is []').toEqual([])
 

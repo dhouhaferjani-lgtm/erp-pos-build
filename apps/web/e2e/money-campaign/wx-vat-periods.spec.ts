@@ -236,10 +236,11 @@ test.describe.serial('W-X §B VAT periods + report (country-scoped fiscal object
     const cashier = cashierSession
     expect(augId).toBeTruthy()
 
-    // No seeded role isolates reports.view WITHOUT reports.manage (owner/admin has
-    // both; manager/accountant have manage; cashier/technician have neither). So
-    // the gate is proven as a SPLIT: mutation requires reports.manage (cashier,
-    // lacking it, is refused), reads require reports.view (owner, holding it, is
+    // Post W-6 D5 split: reads require reports.financial (admin/accountant),
+    // mutation requires reports.manage (admin/accountant only — manager lost it
+    // in the I-1 fix; cashier/technician never had either). The gate is proven
+    // as a SPLIT: mutation requires reports.manage (cashier, lacking it, is
+    // refused), reads require reports.financial (owner/admin, holding it, is
     // allowed).
     const close = await request.post(`${API_BASE}/vat/periods/${augId}/close`, { headers: authHeaders(cashier) })
     const reopen = await request.post(`${API_BASE}/vat/periods/${augId}/reopen`, { headers: authHeaders(cashier) })

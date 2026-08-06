@@ -100,10 +100,13 @@ describe('FinanceHubPage canonicalization', () => {
       (m: string) => m !== 'accounts' && m !== 'finance',
     )
     // Reports-section cards (trial balance / P&L / balance sheet / aged
-    // AR/AP) are gated on reports.financial / reports.operational, not a
-    // permissionModule — deny both so the section still empties out.
+    // AR/AP) are gated on reports.financial / reports.operational, and the
+    // General Ledger card on ledger.view (R-1 fix), not a permissionModule —
+    // deny all three so both sections still empty out.
     mockHasPermission.mockImplementation(
-      (permission: string) => permission !== 'reports.financial' && permission !== 'reports.operational',
+      (permission: string) => permission !== 'reports.financial'
+        && permission !== 'reports.operational'
+        && permission !== 'ledger.view',
     )
     render(<FinanceHubPage />)
     // accounting + reports sections become empty → removed

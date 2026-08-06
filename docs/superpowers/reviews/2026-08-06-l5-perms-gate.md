@@ -207,3 +207,140 @@ worktree clean). Unrelated to permissions.
 
 Fix **I-1** (drop `reports.manage` from `manager` or escalate to the owner), **I-2**/**I-3**
 (sidebar + the false comment), **I-4** (FinanceWidget error state); ticket **I-5**, **I-6**, m-1, m-5.
+
+---
+
+# Fix-round re-verify (2026-08-07)
+
+Commits re-verified: `5eac6b1d2` (gate record), `2dc65e1a0` (I-1), `77779172b` (I-2/I-3/I-4/I-5),
+`368298dea` (I-6). Scope limited to the round-1 findings, per the coordinator. Worktree clean
+after re-verification (two throwaway probes deleted).
+
+**VERDICT: CLEAR TO MERGE after one one-line residual (R-1). All six IMPORTANT findings and all
+three minors are genuinely closed.**
+
+## I-1 — CLOSED (verified at three levels)
+
+- `RolesAndPermissionsSeeder.php:536-546` — `'reports.manage'` removed from the manager grant list;
+  accountant keeps it (`:757`). The manager entry is a key of `rolePermissionGrants()`, which is
+  exactly the array `createRoles()` feeds to `syncPermissions()` at `:490` — so the removal IS
+  inside the sync-covered set.
+- **Existing-tenant reseed proven empirically.** Throwaway probe (deleted): tenant seeded in
+  console context (`setPermissionsTeamId(null)`), manager re-granted `reports.manage` +
+  `reports.financial` to simulate the old state, seeder re-run → both revoked, accountant's
+  `reports.manage` intact, and a real manager user gets **403 on
+  `POST /api/v1/vat/periods/generate`** while still **200 on `GET /api/v1/reports/aged-receivables`**.
+- `tests/Feature/Taxation/VatPeriodManagerCannotMutateTest.php` — 5 tests green (4 manager-denied
+  on generate/close/reopen/file, 1 accountant-still-allowed with `assertNotSame(403)` on the two
+  business-state-422 paths, which is the right assertion for a permission gate).
+- `RolesAndPermissionsFinanceReportSplitTest.php:49,67` now pins
+  `accountant.reports.manage === true` / `manager.reports.manage === false`.
+- **Map regen picked it up**: `permissionsMap.generated.ts:228` is now
+  `'reports.manage': ['accountant', 'admin']`, and re-running
+  `php artisan permissions:export-frontend-map` produces a **byte-identical** file (hash included),
+  so the CI drift guard is satisfied.
+
+## I-2 / I-3 — CLOSED (per-role matrix measured, not asserted)
+
+`Sidebar.tsx:293-306` re-cut 1:1 to the routes; `usePermissions.ts:36-46` gives
+`treasuryOverview`/`cashMovements` their own `reports.operational` key, adds `reports.financial`
+and `ledger.view` identity keys, and the false "only consumer" comment is corrected.
+`canAccessModule` returns `true` for an unmapped key (`usePermissions.ts:128`), so the identity
+keys were required — they are present.
+
+Measured with a throwaway probe that drives the **real** `usePermissions` against the real
+`authStore` per seeded role (deleted afterwards) — this is stronger than `Sidebar.test.tsx`,
+which mocks `canAccessModule`:
+
+| role | finance nav entries visible |
+|---|---|
+| admin | all 11 |
+| accountant | all 11 |
+| **manager** | treasuryOverview, cashMovements, agedReceivables, agedPayables (**operational only**) + chartOfAccounts, journalEntries |
+| **viewer** | chartOfAccounts, journalEntries **only** — zero report entries, no ledger |
+| cashier | none |
+
+Exactly the required matrix: manager sees the operational entries and **no** `reports.financial`
+entry, no General Ledger, no VAT reporting (coherent now that I-1 removed `reports.manage`).
+`chartOfAccounts`/`journalEntries` are correctly retained — their routes gate on
+`accounts.view` (`routes/index.tsx:1949`) and `journal.view` (`:2019`), both held by manager and
+viewer. `Sidebar.test.tsx` (41 tests) green, including the re-pointed
+`reports.operational` denial case.
+
+## I-4 — CLOSED
+
+`FinanceWidget.tsx:47-63` returns a `QueryError` block **before** the tile grid, so the
+`data?.x ?? '0'` fallbacks at `:81+` are unreachable on the error branch. i18n key verified present
+in **both** locales — `apps/web/src/locales/en/finance.json` `widget.loadError` = "Unable to load
+the finance summary", `apps/web/src/locales/fr/finance.json` = "Impossible de charger le résumé
+financier"; the retry label `actions.tryAgain` is `QueryError.tsx:85`, an existing shared key.
+`FinanceWidget.error.test.tsx` (2 tests) green and asserts the right things — the error text
+renders, `container.textContent` contains **no** `0.000` and no tile label, and the retry calls
+`refetch`. The pre-existing `FinanceWidget.test.tsx` (8) and `FinanceWidget.currency.test.tsx` still pass.
+
+## I-5 — CLOSED at the route and sidebar; **residual R-1 on the hub card**
+
+`routes/index.tsx:1959` is now `permission="ledger.view"`, and `Sidebar.tsx:296` `generalLedger`
+moved from `'accounts'` to `'ledger.view'` — so the viewer (holds `journal.view`, lacks
+`ledger.view`) **no longer sees the sidebar General Ledger item** (confirmed in the matrix above).
+
+**R-1 (IMPORTANT, residual, one line) — the finance HUB still offers the same dead card.**
+`apps/web/src/features/finance/pages/FinanceHubPage.tsx:106-112` keeps
+`permissionModule: 'finance'` on the General Ledger card, and `finance` maps to
+`['accounts.view','journal.view']` (`usePermissions.ts:48`), both held by manager and viewer.
+*Failure scenario:* a viewer opens `/finance`, sees the "General Ledger" card, clicks, and is
+**silently `<Navigate to="/dashboard">`**-ed (`RequirePermission.tsx:73-75`). The card was
+`permissionModule: 'finance'` at base `695f6814d` too, so the affordance is pre-existing — but
+I-5 changed its failure mode from "page renders, shows a QueryError from the API 403" to a silent
+teleport, which is worse, and it is the exact F1 affordance class this fix round closed on the
+sidebar. One-line fix: `permission: 'ledger.view'` (drop `permissionModule`), mirroring what the
+sibling report cards already do in the same file.
+*Nit, not a defect:* the `journalEntries` hub card and sidebar entry use the broader
+`accounts.view|journal.view` while the route gates on `journal.view` alone — harmless today
+because the two role sets are identical (`permissionsMap.generated.ts:7,124`).
+
+## I-6 — CLOSED
+
+All three specs flipped to the fixed matrix with the tripwire comments **retained and annotated
+"FIXED 2026-08-06/07"**, not deleted:
+- `e2e/money-campaign/finance-permissions.spec.ts:143` (title), `:171-182` (comment rewritten),
+  `:195-198` — the seven-path loop now asserts **200** for the accountant.
+- `finance-permissions.spec.ts:335-351` — the `/finance/overview` hub card assertion flipped from
+  `toHaveCount(0)` to `toBeVisible`.
+- `w7-multilocation.spec.ts:699-713` — accountant on `/reports/cash-movements` flipped 403 → **200**.
+No Playwright run performed (per instruction). Swept the rest of the campaign for collateral: the
+viewer block (`finance-permissions.spec.ts:115-140`) only touches journal-entries;
+`permissions.spec.ts` has zero `/reports`, `/vat/periods` or `/ledger` references; the two
+remaining VAT specs run as `owner`/`cashier` (`w7-empty-states.spec.ts:200`,
+`wx-vat-periods.spec.ts:234-256`) so no assertion flips — **but their comments are now stale**
+("manager/accountant have manage"; "reads require reports.view"). Fold into the m-5 deprecation
+ticket; not blocking.
+
+## Minors
+
+- **m-1 CLOSED (with a caveat).** The `syncPermissions`-clobbers-tenant-customisation warning is
+  spelled out in `2dc65e1a0`'s message, including "reseed once, after all three fixes land, not
+  per-commit". Caveat: it lives only in a commit message, not in a deploy runbook doc — whoever
+  executes the reseed reads the runbook, not `git log`. Worth one line in the lane's deploy checklist.
+- **m-2 CLOSED.** PHPStan clean on the new/changed test files and on `app/Modules/Taxation`
+  (`[OK] No errors`).
+- **m-3 CLOSED.** Renamed to
+  `test_reports_view_permission_row_still_exists_and_is_only_explicitly_granted_to_admin`
+  (`RolesAndPermissionsFinanceReportSplitTest.php:103`) — the name now matches what it asserts.
+- **m-4 / m-5** unchanged: m-4 was informational; m-5 remains ticketed (add the two stale VAT-spec
+  comments above to it).
+
+## Gates re-run
+
+| Gate | Result |
+|---|---|
+| `VatPeriodManagerCannotMutateTest` + 3 seeder/taxation suites | 16 passed |
+| Round-1 API regression set (Accounting reports, CashMovements, LocationReconciliation, RBAC, RoleAuthorization, PermissionCatalogVerticalFilter, ExportFrontendPermissionsMap, 2 seeder-grant suites) | **108 passed** |
+| web: Sidebar, FinanceWidget ×3, routes, CashMovementsRoute, FinanceHubPage, usePermissions aliases, modules.drift | **84 passed** |
+| 2 throwaway probes (reseed revocation of `reports.manage`; per-role sidebar matrix) | passed, deleted |
+| `permissions:export-frontend-map` re-run vs committed file | byte-identical |
+| Pint (seeder + new tests) | pass |
+| `tsc --noEmit` (apps/web) | clean |
+| ESLint on the 5 touched web files | 0 errors (4 pre-existing warnings at `Sidebar.tsx:621/635/680`, untouched lines) |
+
+**Before merge:** close R-1 (one line in `FinanceHubPage.tsx:111`). Everything else is clear.

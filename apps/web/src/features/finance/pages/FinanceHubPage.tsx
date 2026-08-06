@@ -108,7 +108,7 @@ const sections: HubSection[] = [
         descriptionKey: 'hub.cards.generalLedger.description',
         icon: Landmark,
         href: '/finance/ledger',
-        permissionModule: 'finance',
+        permission: 'ledger.view',
       },
       {
         titleKey: 'hub.cards.journalEntries.title',
