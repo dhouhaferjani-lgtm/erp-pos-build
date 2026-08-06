@@ -31,6 +31,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -53,11 +54,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // URLs — as `http://…`, which a browser on an https:// page blocks as
         // mixed content (BUG-005 / RCA A1, aggravating factor).
         //
-        // `at: '*'` trusts any forwarding hop: the container is only reachable
-        // through the proxy on the internal Docker network, so no untrusted
-        // client can reach it to spoof X-Forwarded-*. Pinning a CIDR here would
-        // have to track Dokploy's ephemeral bridge subnets.
-        $middleware->trustProxies(at: '*');
+        // `at: '*'` trusts any forwarding hop — a CIDR would have to track
+        // Dokploy's ephemeral bridge subnets. The safety therefore comes from
+        // the HEADER set, not the proxy list (authz gate, 2026-08-06):
+        //
+        // The framework default also trusts X-Forwarded-HOST and -PREFIX. With
+        // `at: '*'` that makes the request host attacker-controlled for anything
+        // able to reach the container, and Dokploy co-locates containers on a
+        // shared host — so "only the proxy can reach it" is verified for
+        // external traffic (no `ports:` on the api service) but NOT for
+        // co-resident containers. A poisoned host would corrupt every
+        // url()/route()/asset() and any absolute signed URL.
+        //
+        // A1 only needs the SCHEME, so trust exactly FOR | PROTO | PORT.
+        // Deploy invariant: the api service must never publish `ports:`.
+        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_PROTO
+            | Request::HEADER_X_FORWARDED_PORT);
 
         // Register middleware aliases
         $middleware->alias([
@@ -407,16 +420,28 @@ return Application::configure(basePath: dirname(__DIR__))
         // a poisoned Sentry breadcrumb. Every api/* failure now carries the same
         // `{error: {code, message, request_id}}` envelope as the typed handlers.
         //
-        // HttpExceptionInterface (404 / 405 / 419 / 429 …) is deliberately NOT
-        // intercepted: those already render correctly with a meaningful status,
-        // and rewriting them here would turn an unknown route into a 500.
+        // Two families are deliberately NOT intercepted:
+        //
+        //  - HttpExceptionInterface (404 / 405 / 419 / 429 …) already renders
+        //    with a meaningful status; rewriting it here would turn an unknown
+        //    route into a 500.
+        //  - HttpResponseException carries a fully-built Response the thrower
+        //    chose. It is a plain RuntimeException (NOT HttpExceptionInterface),
+        //    and Laravel matches render callbacks BEFORE the Handler's own match
+        //    on it (Foundation/Exceptions/Handler.php), so without this guard a
+        //    HttpResponseException thrown OUTSIDE a route action — from
+        //    middleware, where Illuminate\Routing\Route::run() cannot catch it —
+        //    would be discarded and returned as a 500.
+        //
+        // AuthenticationException / ValidationException survive only because
+        // their callbacks are registered earlier in this file. Keep them there.
         // ---------------------------------------------------------------------
         $exceptions->render(function (Throwable $e, Request $request) {
             if (! ($request->expectsJson() || $request->is('api/*'))) {
                 return null;
             }
 
-            if ($e instanceof HttpExceptionInterface) {
+            if ($e instanceof HttpExceptionInterface || $e instanceof HttpResponseException) {
                 return null;
             }
 

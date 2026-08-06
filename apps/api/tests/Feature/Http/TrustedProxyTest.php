@@ -37,12 +37,46 @@ final class TrustedProxyTest extends TestCase
 
         $this->get('/__trusted-proxy-probe', [
             'X-Forwarded-Proto' => 'https',
-            'X-Forwarded-Host' => 'erp.otospex.dev',
         ])->assertOk();
 
         self::assertIsArray($captured);
         self::assertTrue($captured['secure'], 'X-Forwarded-Proto: https must mark the request secure behind a trusted proxy');
         self::assertSame('https', $captured['scheme']);
-        self::assertSame('https://erp.otospex.dev', $captured['root'], 'X-Forwarded-Host must be honoured so absolute URLs point at the public host');
+    }
+
+    /**
+     * Host poisoning guard (authz gate, 2026-08-06).
+     *
+     * `trustProxies()` with no `$headers` argument keeps Symfony's default set,
+     * which includes X-Forwarded-HOST and -PREFIX. Combined with `at: '*'` that
+     * makes the request host attacker-controlled for anything that can reach the
+     * container — and Dokploy co-locates containers on a shared host, so the
+     * "only the proxy can reach it" premise is not verifiable from this repo.
+     *
+     * A1 only ever needed the SCHEME. The header set is therefore narrowed to
+     * FOR | PROTO | PORT: `at: '*'` stays (Dokploy's bridge subnets are
+     * ephemeral, so a CIDR would rot), but X-Forwarded-Host must be ignored.
+     */
+    public function test_forwarded_host_is_not_trusted(): void
+    {
+        $captured = null;
+
+        $this->app['router']->get('/__trusted-proxy-host-probe', function (Request $request) use (&$captured): array {
+            $captured = ['root' => $request->getSchemeAndHttpHost()];
+
+            return $captured;
+        });
+
+        $this->get('/__trusted-proxy-host-probe', [
+            'X-Forwarded-Proto' => 'https',
+            'X-Forwarded-Host' => 'attacker.example.com',
+        ])->assertOk();
+
+        self::assertIsArray($captured);
+        self::assertStringNotContainsString(
+            'attacker.example.com',
+            $captured['root'],
+            'X-Forwarded-Host must NOT be trusted — it would poison every url()/route()/asset() and any absolute signed URL'
+        );
     }
 }
