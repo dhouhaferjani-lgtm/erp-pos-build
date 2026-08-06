@@ -6,8 +6,10 @@ namespace App\Modules\Document\Presentation\Requests\Concerns;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Services\Conversion;
+use App\Modules\Document\Presentation\Rules\LineDiscountAmountWithinGross;
 use App\Modules\Treasury\Application\Services\DiscountToleranceBoundary;
 use App\Modules\Treasury\Presentation\Rules\DiscountAboveTolerance;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Route;
 
@@ -52,7 +54,9 @@ trait AppliesDiscountToleranceRule
         if (! $companyContext->hasCompany()) {
             return $rules;
         }
-        $companyId = $companyContext->requireCompanyId();
+        $company = $companyContext->requireCompany();
+        $companyId = $company->id;
+        $scale = app(CurrencyScaleResolverInterface::class)->getScale($company->currency);
 
         $lines = $this->input('lines', []);
         $linesArray = is_array($lines) ? $lines : [];
@@ -79,6 +83,18 @@ trait AppliesDiscountToleranceRule
             // semantics (e.g. sum of line discounts vs threshold) was
             // considered and rejected per spec §7 ambiguity — see PR #49
             // audit Low #1.
+            //
+            // W-3 (2026-08-03): this array REPLACES the base rules()'s
+            // `lines.*.discount_amount` wildcard rule set for this specific
+            // index rather than merging with it — Laravel's
+            // `ValidationRuleParser::explodeRules()` processes the wildcard
+            // key first (merging in whatever explicit `lines.{idx}.*` rules
+            // already exist), then re-visits the ORIGINAL explicit key from
+            // its pre-merge snapshot and overwrites the merged result with
+            // it. So `LineDiscountAmountWithinGross` must be listed here
+            // explicitly too, or invoice/order lines would silently lose the
+            // over-gross guard the base rule set provides to every other
+            // document type.
             $rules["lines.{$idx}.discount_amount"] = [
                 'nullable',
                 'numeric',
@@ -87,6 +103,10 @@ trait AppliesDiscountToleranceRule
                 new DiscountAboveTolerance(
                     subtotal: $lineSubtotal,
                     companyId: $companyId,
+                ),
+                new LineDiscountAmountWithinGross(
+                    lines: $linesArray,
+                    scale: $scale,
                 ),
             ];
         }

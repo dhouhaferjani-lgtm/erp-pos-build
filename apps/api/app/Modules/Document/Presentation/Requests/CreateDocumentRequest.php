@@ -8,10 +8,12 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
+use App\Modules\Document\Presentation\Rules\LineDiscountAmountWithinGross;
 use App\Modules\Document\Presentation\Validation\DiscountPolicyDocumentValidator;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Services\CompanyConfigService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,6 +28,7 @@ class CreateDocumentRequest extends FormRequest
         private readonly CompanyConfigService $configService,
         private readonly PurchaseBonusGate $purchaseBonusGate,
         private readonly DiscountPolicyDocumentValidator $discountPolicyValidator,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {
         parent::__construct();
     }
@@ -127,7 +130,16 @@ class CreateDocumentRequest extends FormRequest
                 ? ['nullable', 'boolean']
                 : ['prohibited'],
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'lines.*.discount_amount' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'regex:/^\d+(\.\d{1,3})?$/',
+                new LineDiscountAmountWithinGross(
+                    lines: is_array($this->input('lines')) ? $this->input('lines') : [],
+                    scale: $this->scaleResolver->getScale($company->currency),
+                ),
+            ],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.tax_configuration_id' => [
                 'nullable',

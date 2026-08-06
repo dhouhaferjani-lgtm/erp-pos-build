@@ -263,6 +263,14 @@ class DocumentLine extends Model
      * arithmetic — used both by the {@see calculateTotal()} instance method and
      * by the document line builders that compute totals before a model exists.
      *
+     * Floored at zero (W-3, 2026-08-03): a sale line never goes negative — that
+     * is the credit-note model's job (MTP-DOC-16, credit notes are stored
+     * positive with sign handled at allocation). The request-layer validation
+     * boundary is the primary guard against an over-gross discount_amount; this
+     * floor is defence-in-depth so no other write path (stale row, import,
+     * future conversion) can reintroduce a negative net, VAT, or total into the
+     * fiscal hash chain.
+     *
      * @param  numeric-string  $quantity
      * @param  numeric-string  $unitPrice
      * @param  numeric-string|null  $discountPercent
@@ -284,6 +292,10 @@ class DocumentLine extends Model
             $subtotal = bcsub($subtotal, $discount, $scale);
         } elseif ($discountAmount !== null && bccomp($discountAmount, '0', $scale) !== 0) {
             $subtotal = bcsub($subtotal, $discountAmount, $scale);
+        }
+
+        if (bccomp($subtotal, '0', $scale) < 0) {
+            $subtotal = bcmul('0', '0', $scale);
         }
 
         return $subtotal;
