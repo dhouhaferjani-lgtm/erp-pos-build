@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Application\Services\PartnerBankAccountService;
+use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Events\PartnerCreated;
 use App\Modules\Partner\Domain\Events\PartnerDeleted;
@@ -37,6 +38,7 @@ class PartnerController extends Controller
         private readonly PartnerBankAccountService $partnerBankAccounts,
         private readonly BankAccountValidatorInterface $bankAccountValidator,
         private readonly ConnectionInterface $db,
+        private readonly PartnerReferenceCounter $partnerReferenceCounter,
     ) {}
 
     /**
@@ -340,6 +342,25 @@ class PartnerController extends Controller
                     'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
                 ],
             ], 404);
+        }
+
+        // BUG-007: block the delete while the partner still carries financial
+        // history. The partner is soft-deleted, so the DB FKs never fire and
+        // the referencing rows would silently point at an invisible partner.
+        $references = $this->partnerReferenceCounter->countFor($partnerModel->id);
+
+        if ($references !== []) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_HAS_DOCUMENTS',
+                    'message' => 'Cannot delete this partner: it is still referenced by financial records.',
+                    'details' => $references,
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 409);
         }
 
         $partnerModel->delete();

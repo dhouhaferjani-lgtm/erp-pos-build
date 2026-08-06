@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link, useParams, useLocation, useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   ArrowLeft,
   Edit,
@@ -16,8 +17,10 @@ import {
   Wallet,
   PiggyBank,
   Plus,
+  Trash2,
 } from 'lucide-react'
-import { api } from '../../lib/api'
+import { api, getErrorMessage, isApiError } from '../../lib/api'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -26,11 +29,12 @@ import { bccomp } from '../../lib/decimal'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { usePartnerDeposits } from './hooks/usePartnerDeposits'
 import { RecordDepositModal } from './RecordDepositModal'
+import { Button } from '../../components/atoms/Button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/molecules/Tabs'
 import { AddVehicleModal } from '../../components/organisms/AddVehicleModal/AddVehicleModal'
 import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
 import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
-import { partnerVehiclesInvalidationPredicate } from './_invalidation'
+import { partnersInvalidationPredicate, partnerVehiclesInvalidationPredicate } from './_invalidation'
 import { useCompanyConfig } from '@/contexts'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -121,8 +125,10 @@ export function PartnerDetailPage() {
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [showVehicleModal, setShowVehicleModal] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [documentsPage, setDocumentsPage] = useState(1)
   const [documentsPerPage, setDocumentsPerPage] = useState(10)
@@ -224,6 +230,37 @@ export function PartnerDetailPage() {
       return response.data.data
     },
     enabled: id.length > 0 && hasTenantScope,
+  })
+
+  // BUG-007: there was no delete control at all. The backend endpoint and the
+  // `partners.delete` permission (admin-only) already existed.
+  const canDeletePartner = hasPermission('partners.delete')
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/partners/${id}`)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: partnersInvalidationPredicate(tenantId, companyId),
+      })
+      toast.success(t('sales:partners.delete.success', { entity: entityLabel }))
+      void navigate(basePath)
+    },
+    onError: (mutationError: unknown) => {
+      // The server refuses (409 PARTNER_HAS_DOCUMENTS) when invoices, payments
+      // or POS receipts still reference the partner. Surface the actionable,
+      // translated message rather than the raw English server string.
+      if (
+        isApiError(mutationError) &&
+        mutationError.response?.status === 409 &&
+        mutationError.response.data.error.code === 'PARTNER_HAS_DOCUMENTS'
+      ) {
+        toast.error(t('sales:partners.delete.blocked', { name: partner?.name ?? '' }))
+        return
+      }
+      toast.error(getErrorMessage(mutationError))
+    },
   })
 
   const documents = documentsData?.data ?? []
@@ -352,6 +389,16 @@ export function PartnerDetailPage() {
             <Edit className="h-4 w-4" />
             {t('actions.edit')}
           </Link>
+          {canDeletePartner && (
+            <Button
+              variant="danger"
+              onClick={() => { setShowDeleteDialog(true) }}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="me-2 h-4 w-4" />
+              {deleteMutation.isPending ? t('status.saving') : t('actions.delete')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -840,6 +887,21 @@ export function PartnerDetailPage() {
         isOpen={showDepositModal}
         onClose={() => { setShowDepositModal(false); }}
         partnerId={partner.id}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => { setShowDeleteDialog(false) }}
+        onConfirm={() => {
+          setShowDeleteDialog(false)
+          deleteMutation.mutate()
+        }}
+        title={t('sales:partners.delete.title', { entity: entityLabel })}
+        message={t('sales:partners.delete.confirm', { name: partner.name })}
+        confirmText={t('actions.delete')}
+        variant="danger"
+        isLoading={deleteMutation.isPending}
       />
     </div>
   )
