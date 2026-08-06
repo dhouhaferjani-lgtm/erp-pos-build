@@ -34,6 +34,7 @@ use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -274,6 +275,56 @@ final class PosRefundReceiptBridgeTest extends TestCase
         $this->assertNotNull($movement);
         $this->assertSame(MovementDirection::Out->value, $movement->direction);
         $this->assertTrue((bool) $movement->recorded_while_frozen);
+    }
+
+    // =================================================================
+    // (e) W-5b Option B intent-flag sweep — a device refund leg RECORDS +
+    // ALERTS (never throws) when it would take the repository negative,
+    // mirroring the allowWhileFrozen precedent above site-for-site.
+    // =================================================================
+
+    public function test_device_refund_leg_records_and_alerts_when_it_would_go_negative(): void
+    {
+        Log::spy();
+
+        // Lower the seeded repository's balance below the refund amount, via
+        // the same port-GUC bracket PaymentRepositoryFactory::store() uses —
+        // a direct write outside the port is otherwise trigger-blocked on
+        // pgsql, and this must not lay down a phantom movement.
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        if ($isPgsql) {
+            DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
+        }
+        DB::table('payment_repositories')->where('id', $this->repositoryId)->update(['balance' => '5.000']);
+        if ($isPgsql) {
+            DB::statement("SET LOCAL app.treasury_movement_port = 'off'");
+        }
+
+        [$refundEvent] = $this->projectedRefundReceipt('10.00');
+
+        // A SALE_RECEIPT (refund) is device-authored — allowNegative mirrors
+        // allowWhileFrozen and is TRUE on this leg, so the bridge RECORDS the
+        // Out movement instead of throwing InsufficientRepositoryBalanceException
+        // and poisoning the fiscal-projection queue. Company currency is EUR
+        // (scale 2, the ISO 4217 default) — 5.00 - 10.00 = -5.00.
+        $this->app->make(TreasuryReceiptBridge::class)->apply($refundEvent);
+
+        $movement = DB::table('repository_movements')
+            ->where('source_id', $refundEvent->id)
+            ->first();
+        $this->assertNotNull($movement);
+        $this->assertSame(MovementDirection::Out->value, $movement->direction);
+
+        $repo = PaymentRepository::query()->findOrFail($this->repositoryId);
+        $this->assertSame(0, bccomp((string) $repo->balance, '-5.00', 2));
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with(
+                'Treasury movement recorded a negative repository balance',
+                \Mockery::on(fn (array $context): bool => $context['repository_id'] === $this->repositoryId
+                    && $context['balance_after'] === '-5.00'),
+            );
     }
 
     // =================================================================

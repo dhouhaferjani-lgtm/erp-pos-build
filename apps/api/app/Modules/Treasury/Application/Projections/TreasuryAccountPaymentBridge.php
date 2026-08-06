@@ -258,6 +258,13 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                 notes: null,
                 allowWhileFrozen: ! $event->event_type->isServerOnly(),
                 allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
+                // W-5b Option B intent-flag sweep: this bridge runs inside
+                // ApplyFiscalEventProjectionJob (ShouldQueue), mirroring the
+                // allowWhileFrozen precedent site-for-site. Direction is
+                // always In here so the negative-balance guard never
+                // actually trips on this leg — set for consistency/defense
+                // in depth, not because this specific call can go negative.
+                allowNegative: ! $event->event_type->isServerOnly(),
             ));
         });
     }

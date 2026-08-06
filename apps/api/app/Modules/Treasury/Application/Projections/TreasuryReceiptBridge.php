@@ -1423,6 +1423,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             notes: null,
             allowWhileFrozen: ! $event->event_type->isServerOnly(),
             allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
+            // W-5b Option B intent-flag sweep: this bridge runs inside
+            // ApplyFiscalEventProjectionJob (ShouldQueue) — a queue worker,
+            // not an interactive request. Mirrors allowWhileFrozen exactly
+            // (same event-type-derived expression, same site): a device-
+            // authored refund/void tender leg (direction Out on $isRefund)
+            // must record + alert rather than throw and poison the
+            // projection queue into failed_jobs.
+            allowNegative: ! $event->event_type->isServerOnly(),
         ));
     }
 
