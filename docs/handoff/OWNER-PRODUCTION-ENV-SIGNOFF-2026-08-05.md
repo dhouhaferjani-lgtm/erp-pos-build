@@ -14,20 +14,17 @@ This sheet consolidates the production-environment design and the launch-readine
 
 - [ ] **A. Place the server order (D-1).** Hetzner **AX42-1 dedicated** (64 GB DDR5 **ECC**, 2×512 GB NVMe), FSN1, **€97.30/mo + €1.70/mo IPv4 + €49 one-off**. No server means no build — this blocks *everything*. ECC is the point: this is a chained-hash fiscal ledger and a silent memory bit-flip is the worst failure we can have. Decide once; moving a live fiscal tenant off a box later is a full disaster-recovery exercise.
 
-- [ ] **B. Name six second humans.** Five launch gates **cannot even start** until these people are named — they depend on other people's calendars, so this is the true long pole. The Tunisia legal/accounting reviewer is the single longest-lead item on the whole program.
-  1. **Tenant operator** — runs the real-device smoke test (gate E-2)
-  2. **Synerivia observer** — witnesses that smoke test (E-2)
-  3. **Tunisia legal / accounting reviewer** — fiscal + legal sign-off (E-2 **and** E-4) ← *start first*
-  4. **DBA / ops steward** (only if not you) — witnesses the migration rehearsal (E-3)
-  5. **Walkthrough Reader** — reads the go-live walkthrough (E-6)
-  6. **Branch / location manager** — attends the mandatory device-rollout briefing (E-8)
+- [x] **B. Name the second humans — RESOLVED 2026-08-06 (owner ruling, see `DECISION-HANDOVER-prod-env-choices-2026-08-06.md`): the six roles collapse to TWO people.**
+  - **Owner** wears: tenant operator (E-2), DBA/ops steward (E-3), walkthrough Reader (E-6), branch/location manager (E-8), and E-2 witness posture as owner-accepted.
+  - **Owner's business partner — chartered accountant** takes the **Tunisia fiscal/legal reviewer** role (E-2 + E-4, incl. D-3b retention answer). E-4 is no longer the unnamed long pole.
+  - *Remaining sub-action:* formally record the partner's name on the E-4 gate sheet and get their retention answer (D-3b) before the first fiscal record.
 
 **Then the credential, domain and account decisions that unblock the build phases — these need YOUR accounts or DNS, so an engineer cannot proceed without them:**
 
 - [ ] **C. Domains + DNS (D-2).** Confirm `riserpos.app` (web) and `api.riserpos.app` (API); create the DNS records at **TTL 300** *before* provisioning so TLS issues on first deploy.
 - [ ] **D. Secret store account (D-4).** Approve **1Password** and create the vault — **two seats** (you + a second custodian, D-12). Blocks secret rotation (gate E-1).
-- [ ] **E. Email account (D-5).** Create a **Brevo** free account and add **SPF + DKIM + DMARC** DNS records. Today mail is silently swallowed; the app really does send invoices, email-verification and fraud alerts.
-- [ ] **F. Alert channel (D-6).** Approve **Telegram** + email as the alert destinations.
+- [ ] **E. Email account (D-5) — AMENDED 2026-08-06: Resend (was Brevo), owner-confirmed.** Create the Resend account, verify the sending domain, add **SPF + DKIM + DMARC** DNS records, and confirm current free-tier caps ≥ expected volume at signup. Today mail is silently swallowed; the app really does send invoices, email-verification and fraud alerts.
+- [ ] **F. Alert channel (D-6) — AMENDED 2026-08-06: Sentry (Crons + Uptime) + email (Telegram dropped), owner-confirmed.** Owner action: ensure the Sentry account is on a **paid plan that includes Crons + Uptime** (thin/absent on free tier). Every "Telegram" mention in the design doc's §6 alert tables now reads as "the D-6 channel = Sentry alert + email backstop".
 - [ ] **G. Image registry billing check (D-9).** Open the GitHub billing console, check the Packages storage/transfer allowance, and choose **private GHCR** (recommended) — this is the one recurring cost still unpriced. Do **not** choose public packages: the API image ships the full application source.
 
 Everything not in this list runs on its recommended default — see §2. The human gates are in §3, the build sequence in §4, and the caveats you must formally acknowledge in §5.
@@ -47,8 +44,8 @@ Everything not in this list runs on its recommended default — see §2. The hum
 | **D-3** | Backup destinations | Two legs: Hetzner Object Storage (WORM) €4.99 + Storage Box BX11 ~€3.20 | €8.19 | — | All of backup/DR; restore rehearsal; **first fiscal record** | ✅ swap dest; ❌ too-short retention | Proceed (but D-3b below needs E-4) |
 | **D-3b** | Long-term fiscal retention | **NON-WAIVABLE.** Route through E-4 (TN accountant/legal) with a named approver. No multi-year WORM lock set until they answer | incl. | — | The first fiscal record | ❌ | **NEEDS YOU — via E-4** |
 | **D-4** | Secret store | **1Password** (Business), two seats | ~€14.80 | — | Secret rotation (E-1) | ✅ | **NEEDS YOU — create account** |
-| **D-5** | Email provider | **Brevo** free tier (300/day); Postmark as paid upgrade | 0 (Brevo) | — | Onboarding email, invoice delivery | ✅ | **NEEDS YOU — account + DNS** |
-| **D-6** | Alert destination | **Telegram** + email | 0 | — | All alerting | ✅ | **NEEDS YOU — set up channel** |
+| **D-5** | Email provider | **Resend** (amended 2026-08-06, owner-confirmed; was Brevo). Free tier expected to cover launch volume; verify caps at signup | 0 (Resend free) | — | Onboarding email, invoice delivery | ✅ | **NEEDS YOU — account + DNS** |
+| **D-6** | Alert destination | **Sentry (Crons + Uptime) + email** (amended 2026-08-06, owner-confirmed; Telegram dropped). Requires paid Sentry plan with Crons + Uptime | Sentry plan cost | — | All alerting | ✅ | **NEEDS YOU — confirm paid plan** |
 | **D-7** | Dokploy plan tier | **Startup, ~$15/mo** (3 servers, unlimited users) | ~€13.90 | — | Registering the 3rd server | ✅ | Proceed |
 | **D-8** | Dokploy security upgrade | **GO — upgrade panel to ≥ v0.29.13 BEFORE registering the prod server** (fixes ~15 CVE-class issues incl. command injection) | 0 | — | Hard-blocks registering the prod server | n/a | Proceed (agent executes) |
 | **D-9** | Image registry | **Private GHCR** — contingent on your billing-allowance check | ⚠️ **UNQUANTIFIED — requote** | — | The whole deploy pipeline (Phase 0) | ✅ (registry swappable) | **NEEDS YOU — check billing, choose** |
@@ -95,18 +92,21 @@ Read it as: **"About €136 a month, plus a container-registry line nobody has p
 | **E-9** | Staging-runbook execution | No | ✅ you | OPEN — 0 filled cells |
 | **E-10** | Production release / cutover | No, but the environment decision is non-delegable | ✅ you | Decision made, **not yet transcribed** into the gate sheet |
 
-**The six second humans to name (this unblocks E-2, E-3, E-4, E-6, E-8):**
+**The second humans (RESOLVED 2026-08-06 — roles collapse to TWO people, owner ruling):**
 
-| # | Role | Gate(s) | Plays this part |
+| # | Role | Gate(s) | Held by |
 |---|---|---|---|
-| 1 | Tenant operator | E-2 | Runs the P0 smoke test on the real terminal |
-| 2 | Synerivia observer | E-2 | Independent witness to the smoke test |
-| 3 | **Tunisia legal / accounting reviewer** | **E-2 + E-4** | Fiscal/legal sign-off — VAT, receipt fields, retention. **Longest lead — name first** |
-| 4 | DBA / ops steward *(if ≠ you)* | E-3 | Witnesses the migration rehearsal on a staging clone |
-| 5 | Walkthrough Reader | E-6 | Reads the go-live walkthrough aloud in rehearsal |
-| 6 | Branch / location manager | E-8 | Attends the mandatory briefing *before* device install |
+| 1 | Tenant operator | E-2 | **Owner** |
+| 2 | Synerivia observer | E-2 | **Owner** (witness-independence posture owner-accepted) |
+| 3 | **Tunisia legal / accounting reviewer** | **E-2 + E-4** | **Owner's business partner (chartered accountant)** — record name on gate sheet; D-3b retention answer owed before first fiscal record |
+| 4 | DBA / ops steward | E-3 | **Owner** |
+| 5 | Walkthrough Reader | E-6 | **Owner** |
+| 6 | Branch / location manager | E-8 | **Owner** |
 
-*Rule as written: an unnamed required second human blocks the gate from **starting**, not just from closing.* A seventh person — the **second custodian** for the break-glass package (D-12) — is separate from these six but also needs naming.
+*Rule as written: an unnamed required second human blocks the gate from **starting**, not just from closing.* A seventh person — the **second custodian** for the break-glass package (D-12) — is separate from these roles and still needs naming (the business partner is the natural candidate).
+
+**New pre-production build item (owner ruling 2026-08-06):**
+- **Super-admin MFA is REQUIRED before production** — TOTP on the `sanctum-admin` guard (the login is internet-exposed, password + rate-limit only today). IP-restriction of the admin surface follows later as defence-in-depth. This is a code lane, not an open question.
 
 **Two standing rulings you must record:**
 - **E-8 device version:** correct the gate row from **v64 → v67**. Below v67, refunds are hard-refused or the terminal silently splits paths, and the test-campaign evidence is void. Only you can edit that file.

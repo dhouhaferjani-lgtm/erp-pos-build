@@ -3,7 +3,15 @@
 **Date:** 2026-08-06 · **For:** owner review + an independent Fable-5 confirmation pass
 **Context docs:** design `docs/superpowers/plans/2026-08-05-production-environment-design.md` (v6, converged); owner sheet `docs/handoff/OWNER-PRODUCTION-ENV-SIGNOFF-2026-08-05.md`; readiness `docs/superpowers/audits/2026-08-05-production-v1-readiness.md`.
 
-> **Purpose.** The owner questioned four choices. Each is stated below as a decision record: the original recommendation, the challenge, the reasoning, and the RESULTING recommendation. A reviewer should be able to confirm or refute each on the evidence. **None of these edits have been applied to the design doc or owner sheet yet — they await owner confirmation.**
+> **Purpose.** The owner questioned four choices. Each is stated below as a decision record: the original recommendation, the challenge, the reasoning, and the RESULTING recommendation. A reviewer should be able to confirm or refute each on the evidence.
+>
+> **STATUS 2026-08-06: ALL FOUR CONFIRMED BY OWNER.** Rulings:
+> 1. **Email = Resend** — confirmed.
+> 2. **Launch humans = TWO** — owner + **owner's business partner (chartered accountant)** who takes the E-4 TN fiscal/legal sign-off. E-4 is no longer the open long-pole; the reviewer is named-in-principle.
+> 3. **Alerts = Sentry (Crons + Uptime) + email** — confirmed; owner will ensure the Sentry account is on a paid plan that supports Crons + Uptime.
+> 4. **Super-admin security = MFA required (at minimum) before production; IP-restriction added later** as defence-in-depth. MFA is now a pre-production BUILD ITEM (TOTP on the `sanctum-admin` guard), not an open question.
+>
+> These rulings are folded into the owner sheet and design doc (amendment notes at D-5/D-6). The per-decision "reviewer check" lines below remain valid for an independent confirmation pass.
 
 ---
 
