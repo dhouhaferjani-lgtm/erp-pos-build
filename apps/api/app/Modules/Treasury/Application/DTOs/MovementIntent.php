@@ -37,6 +37,18 @@ final readonly class MovementIntent
      *                                  false.
      * @param  bool  $allowBehindCheckpoint  Explicit offline-projection classification. Interactive and
      *                                       server-only callers must leave this false.
+     * @param  bool  $allowNegative  Explicit escape hatch (W-5b Option B) to record an OUTFLOW that
+     *                               would take the repository below zero even though the repository
+     *                               itself refuses it (`allow_negative = false`). Mirrors
+     *                               $allowWhileFrozen exactly: NEVER inferred from $sourceType,
+     *                               defaults to false. Set true ONLY by queued/replay/bridge writers
+     *                               replaying a movement that already physically happened (offline
+     *                               device replay, fiscal-projection bridges) — a hard block there
+     *                               would throw inside a queue worker and land the fiscal projection
+     *                               in failed_jobs. record() RECORDS + alerts instead of throwing when
+     *                               this is set. Every interactive caller (repository transfer,
+     *                               adjustment, expense payment, outbound instrument issuance, …) must
+     *                               leave this false so a mistyped write is refused at the click.
      */
     public function __construct(
         public string $repositoryId,
@@ -56,6 +68,7 @@ final readonly class MovementIntent
         public ?string $notes,
         public bool $allowWhileFrozen = false,
         public bool $allowBehindCheckpoint = false,
+        public bool $allowNegative = false,
     ) {}
 
     public function idempotencyKey(): string

@@ -26,11 +26,16 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -239,6 +244,14 @@ class PaymentGlPostingTest extends TestCase
 
         $repository = $this->makeLedgeredRepository();
 
+        // W-5b Option B: a supplier payment moves cash OUT of the repository
+        // (MovementDirection::Out), and a cash_register defaults
+        // allow_negative = false — fund it first so this GL-posting
+        // assertion isn't entangled with the (unrelated) balance-sufficiency
+        // guard. Mirrors VendorPrepaymentRefundTest's fix for the same
+        // latent gap.
+        $this->fundRepository($repository, '100.000');
+
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $supplier->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -335,6 +348,38 @@ class PaymentGlPostingTest extends TestCase
             'account_id' => null,
             'is_active' => true,
         ]);
+    }
+
+    /**
+     * Fund a repository through the movement port (mirrors
+     * PaymentRepositorySeeder::recordOpeningBalance()) — `balance` is
+     * port-managed and NOT fillable, so a plain create()/update() with a
+     * 'balance' key is silently dropped, and W-5b Option B now enforces that
+     * an outflow can't take a cash_register below zero.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function fundRepository(PaymentRepository $repository, string $amount): void
+    {
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $repository->tenant_id,
+            companyId: $repository->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+        $repository->refresh();
     }
 
     private function postOpeningReceivable(Partner $partner, string $amount): void

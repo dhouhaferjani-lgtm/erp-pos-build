@@ -18,6 +18,7 @@ use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
 use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
+use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherExpiredException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherInsufficientBalanceException;
@@ -366,6 +367,31 @@ return Application::configure(basePath: dirname(__DIR__))
                     'error' => [
                         'code' => 'VOUCHER_DUPLICATE_IN_TRANSACTION',
                         'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // W-5b Option B (owner ruling 2026-08-05): a typed 422 so the FE can
+        // render both the available balance and the refused amount rather
+        // than a generic BUSINESS_ERROR toast. Registered BEFORE the generic
+        // DomainException handler below, per the same registration-order
+        // rule as the POS refund-flow exceptions above.
+        $exceptions->render(function (InsufficientRepositoryBalanceException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'INSUFFICIENT_REPOSITORY_BALANCE',
+                        'message' => __('messages.treasury.insufficient_repository_balance', [
+                            'available' => $e->available,
+                            'requested' => $e->requested,
+                            'currency' => $e->currency,
+                        ]),
+                        'repository_id' => $e->repositoryId,
+                        'available' => $e->available,
+                        'requested' => $e->requested,
+                        'resulting_balance' => $e->resultingBalance,
+                        'currency' => $e->currency,
                     ],
                 ], 422);
             }

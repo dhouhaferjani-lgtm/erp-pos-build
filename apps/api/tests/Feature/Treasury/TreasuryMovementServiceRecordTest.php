@@ -10,9 +10,11 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
@@ -20,6 +22,7 @@ use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -60,8 +63,13 @@ final class TreasuryMovementServiceRecordTest extends TestCase
         return app(TreasuryMovementServiceInterface::class);
     }
 
-    private function seedRepository(string $currency = 'TND', string $balance = '100.000', ?string $frozenAt = null): PaymentRepository
-    {
+    private function seedRepository(
+        string $currency = 'TND',
+        string $balance = '100.000',
+        ?string $frozenAt = null,
+        RepositoryType $type = RepositoryType::CashRegister,
+        ?bool $allowNegative = null,
+    ): PaymentRepository {
         return PaymentRepository::factory()->for($this->company)->create([
             'tenant_id' => $this->tenant->id,
             'currency' => $currency,
@@ -69,6 +77,12 @@ final class TreasuryMovementServiceRecordTest extends TestCase
             'next_movement_ordinal' => 0,
             'frozen_at' => $frozenAt,
             'frozen_reason' => $frozenAt !== null ? 'end_of_day_count' : null,
+            'type' => $type,
+            // Only include the key when the caller wants an EXPLICIT override —
+            // omitting it entirely (rather than passing an explicit null) lets
+            // the model's creating() hook type-derive it, mirroring how
+            // 'currency' is left out to exercise that same defaulting path.
+            ...($allowNegative !== null ? ['allow_negative' => $allowNegative] : []),
         ]);
     }
 
@@ -106,6 +120,7 @@ final class TreasuryMovementServiceRecordTest extends TestCase
         ?string $sourceId = null,
         ?string $journalEntryId = null,
         bool $allowWhileFrozen = false,
+        bool $allowNegative = false,
     ): MovementIntent {
         return new MovementIntent(
             repositoryId: $repo->id,
@@ -124,6 +139,7 @@ final class TreasuryMovementServiceRecordTest extends TestCase
             createdBy: null,
             notes: null,
             allowWhileFrozen: $allowWhileFrozen,
+            allowNegative: $allowNegative,
         );
     }
 
@@ -163,6 +179,138 @@ final class TreasuryMovementServiceRecordTest extends TestCase
         $this->assertSame('60.000', $result->balanceAfter);
         $repo->refresh();
         $this->assertSame('60.000', $repo->balance);
+    }
+
+    // (g) W-5b Option B: an outflow that would take a cash_register repository
+    // to -0.001 is refused with InsufficientRepositoryBalanceException — the
+    // balance is left untouched (no leg written, no ordinal burned).
+    public function test_cash_register_outflow_below_zero_is_refused(): void
+    {
+        $repo = $this->seedRepository(type: RepositoryType::CashRegister, balance: '10.000');
+
+        try {
+            DB::transaction(fn () => $this->service()->record(
+                $this->intent($repo, direction: MovementDirection::Out, amount: '10.001'),
+            ));
+            $this->fail('Expected InsufficientRepositoryBalanceException.');
+        } catch (InsufficientRepositoryBalanceException $e) {
+            $this->assertSame($repo->id, $e->repositoryId);
+            $this->assertSame('10.000', $e->available);
+            $this->assertSame('10.001', $e->requested);
+            $this->assertSame('-0.001', $e->resultingBalance);
+        }
+
+        $repo->refresh();
+        $this->assertSame('10.000', $repo->balance);
+        $this->assertSame(0, $repo->next_movement_ordinal);
+    }
+
+    // (g-bonus) exact-zero result is ALLOWED — draining a till to the last
+    // cent is not "negative".
+    public function test_cash_register_outflow_to_exactly_zero_is_allowed(): void
+    {
+        $repo = $this->seedRepository(type: RepositoryType::CashRegister, balance: '10.000');
+
+        $result = DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::Out, amount: '10.000'),
+        ));
+
+        $this->assertSame('0.000', $result->balanceAfter);
+        $repo->refresh();
+        $this->assertSame('0.000', $repo->balance);
+    }
+
+    // (g) safe/virtual repositories are physical/pseudo-physical too — same
+    // block as cash_register (type-derived default is false).
+    public function test_safe_outflow_below_zero_is_refused(): void
+    {
+        $repo = $this->seedRepository(type: RepositoryType::Safe, balance: '5.000');
+
+        $this->expectException(InsufficientRepositoryBalanceException::class);
+
+        DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::Out, amount: '5.500'),
+        ));
+    }
+
+    // (g) bank_account defaults allow_negative = true — an authorised
+    // overdraft is recorded normally, no exception, no alert.
+    public function test_bank_account_outflow_below_zero_is_allowed_by_default(): void
+    {
+        Log::spy();
+
+        $repo = $this->seedRepository(type: RepositoryType::BankAccount, balance: '5.000');
+        $this->assertTrue($repo->allow_negative);
+
+        $result = DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::Out, amount: '9.000'),
+        ));
+
+        $this->assertSame('-4.000', $result->balanceAfter);
+        $repo->refresh();
+        $this->assertSame('-4.000', $repo->balance);
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    // (g) an INFLOW can never trip the guard, even on a blocked repository
+    // type and even against a currently-negative balance.
+    public function test_inflow_never_triggers_the_negative_balance_guard(): void
+    {
+        $repo = $this->seedRepository(type: RepositoryType::CashRegister, balance: '0.000');
+
+        $result = DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::In, amount: '5.000'),
+        ));
+
+        $this->assertSame('5.000', $result->balanceAfter);
+    }
+
+    // (h) the allowNegative INTENT flag (queued/replay/bridge writers): the
+    // movement is RECORDED (never thrown) and a structured warning is logged
+    // instead — mirrors the allowWhileFrozen precedent exactly.
+    public function test_allow_negative_intent_records_and_alerts_instead_of_throwing(): void
+    {
+        Log::spy();
+
+        $repo = $this->seedRepository(type: RepositoryType::CashRegister, balance: '10.000');
+
+        $result = DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::Out, amount: '15.000', allowNegative: true),
+        ));
+
+        $this->assertSame('-5.000', $result->balanceAfter);
+        $repo->refresh();
+        $this->assertSame('-5.000', $repo->balance);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with(
+                'Treasury movement recorded a negative repository balance',
+                \Mockery::on(function (array $context) use ($repo, $result): bool {
+                    return $context['repository_id'] === $repo->id
+                        && $context['movement_id'] === $result->movementId
+                        && $context['amount'] === '15.000'
+                        && $context['balance_after'] === '-5.000'
+                        && $context['tenant_id'] === $this->tenant->id
+                        && $context['company_id'] === $this->company->id;
+                }),
+            );
+    }
+
+    // (h-bonus) the allowNegative INTENT flag is a no-op when the repository
+    // already permits negative balances (bank_account) — no alert fires,
+    // because nothing exceptional happened.
+    public function test_allow_negative_intent_on_a_repository_that_already_allows_it_does_not_alert(): void
+    {
+        Log::spy();
+
+        $repo = $this->seedRepository(type: RepositoryType::BankAccount, balance: '5.000');
+
+        DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, direction: MovementDirection::Out, amount: '9.000', allowNegative: true),
+        ));
+
+        Log::shouldNotHaveReceived('warning');
     }
 
     // (a-bonus) the RepositoryMovementRecorded event fires exactly once, after commit.

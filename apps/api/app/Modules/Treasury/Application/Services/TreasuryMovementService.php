@@ -17,6 +17,7 @@ use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryCheckpointException;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -101,6 +102,36 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             $intent->allowBehindCheckpoint,
         );
 
+        // 3.5 W-5b Option B (owner ruling 2026-08-05): a physical/pseudo-
+        // physical repository (cash_register/safe/virtual, allow_negative =
+        // false by type-derived default) must never be driven below zero;
+        // a bank_account may run an authorised overdraft (allow_negative =
+        // true) and is never touched by this guard. Only an OUTFLOW can
+        // drive the balance down, so INFLOW is exempt outright. Exact zero
+        // is NOT negative (bccomp < 0, not <= 0) — draining a till to the
+        // last cent is allowed. Mirrors the allowWhileFrozen policy shape
+        // exactly: the explicit intent->allowNegative flag (queued/replay/
+        // bridge writers only — see MovementIntent docblock) RECORDS the
+        // movement and alerts instead of throwing, so a queue worker never
+        // dies replaying a fact that already physically happened.
+        $recordedNegative = false;
+        if ($intent->direction === MovementDirection::Out && ! $repo->allow_negative) {
+            $resultingBalance = bcsub($repo->balance ?? '0', $intent->amount, $scale);
+            if (bccomp($resultingBalance, '0', $scale) < 0) {
+                if ($intent->allowNegative) {
+                    $recordedNegative = true; // derived/replay writer: record + alert, never throw
+                } else {
+                    throw new InsufficientRepositoryBalanceException(
+                        $intent->repositoryId,
+                        $repo->balance ?? '0',
+                        $intent->amount,
+                        $resultingBalance,
+                        $intent->currency,
+                    );
+                }
+            }
+        }
+
         // MED-10: set the port GUC in the OUTER transaction, BEFORE the
         // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
         // and trip the Task-22 trigger. GUCs are a Postgres concept — SET LOCAL
@@ -166,6 +197,28 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                     'repository_id' => $repo->id,
                     'occurred_at' => $occurredAt->toIso8601String(),
                     'checkpoint' => $repo->last_reconciled_at?->toIso8601String(),
+                ]));
+            }
+
+            if ($recordedNegative) {
+                // W-5b Option B alert lane: the writer forced an outflow through
+                // via intent->allowNegative that this repository would otherwise
+                // have refused. No thrown exception, no failed_jobs entry — just
+                // a structured warning carrying everything a human needs to spot
+                // and reconcile the now-negative till. Mirrors the
+                // recordedBehindCheckpoint Log::warning above (the only ACTIVE
+                // alert-emission precedent in this port for a "recorded but
+                // flagged" movement).
+                DB::afterCommit(fn () => Log::warning('Treasury movement recorded a negative repository balance', [
+                    'movement_id' => $movementId,
+                    'repository_id' => $repo->id,
+                    'tenant_id' => $intent->tenantId,
+                    'company_id' => $intent->companyId,
+                    'amount' => $intent->amount,
+                    'currency' => $intent->currency,
+                    'balance_after' => $balanceAfter,
+                    'source_type' => $intent->sourceType->value,
+                    'source_id' => $intent->sourceId,
                 ]));
             }
 

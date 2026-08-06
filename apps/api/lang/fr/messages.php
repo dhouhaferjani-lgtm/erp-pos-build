@@ -68,6 +68,7 @@ return [
         'transfer_completed' => 'Transfert effectué avec succès.',
         'transfer_recorded' => 'Transfert entre dépôts enregistré avec succès.',
         'adjustment_tolerance_account_missing' => 'Impossible d\'enregistrer cet ajustement : le plan comptable n\'a aucun compte assigné à l\'usage \':purpose\'. Allez dans Paramètres → Plan comptable pour assigner un compte à cet usage, puis réessayez.',
+        'insufficient_repository_balance' => 'Le solde de ce dépôt (:available :currency) est insuffisant pour enregistrer une sortie de :requested :currency ; ce dépôt n\'autorise pas un solde négatif.',
     ],
 
     // Inventory

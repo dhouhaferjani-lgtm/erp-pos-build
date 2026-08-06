@@ -68,6 +68,7 @@ return [
         'transfer_completed' => 'Transfer completed successfully.',
         'transfer_recorded' => 'Repository transfer recorded successfully.',
         'adjustment_tolerance_account_missing' => 'Cannot post this adjustment: the chart of accounts has no account assigned to the \':purpose\' purpose. Go to Settings → Chart of Accounts and assign an account to this purpose, then try again.',
+        'insufficient_repository_balance' => 'This repository\'s balance (:available :currency) is insufficient to record an outflow of :requested :currency; this repository does not allow a negative balance.',
     ],
 
     // Inventory

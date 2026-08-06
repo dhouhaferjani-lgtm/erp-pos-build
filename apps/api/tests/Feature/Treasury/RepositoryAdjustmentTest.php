@@ -425,6 +425,64 @@ final class RepositoryAdjustmentTest extends TestCase
         $this->assertSame('500.000', $freshRepo->balance);
     }
 
+    /**
+     * W-5b Option B (owner ruling 2026-08-05): the interactive adjustment
+     * endpoint is an INTERACTIVE writer (MovementIntent::$allowNegative left
+     * at its default false) — an outflow that would drive a cash_register
+     * below zero must be refused end-to-end with the typed 422 envelope, not
+     * just at the service-unit level. GL entry + movement are both inside
+     * the same transaction, so a refusal must roll back the JE too.
+     */
+    public function test_out_adjustment_returns_422_insufficient_repository_balance_and_writes_nothing(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '10.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('INSUFFICIENT_REPOSITORY_BALANCE', $response->json('error.code'));
+        $this->assertSame('10.000', $response->json('error.available'));
+        $this->assertSame('25.000', $response->json('error.requested'));
+        $this->assertSame('-15.000', $response->json('error.resulting_balance'));
+        $this->assertSame($repo->id, $response->json('error.repository_id'));
+        $this->assertIsString($response->json('error.message'));
+
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame('10.000', $freshRepo->balance);
+
+        $movements = DB::table('repository_movements')
+            ->where('payment_repository_id', $repo->id)
+            ->where('source_type', 'adjustment')
+            ->count();
+        $this->assertSame(0, $movements);
+
+        $journalEntries = JournalEntry::query()
+            ->where('company_id', $company->id)
+            ->where('source_type', 'repository_adjustment')
+            ->count();
+        $this->assertSame(0, $journalEntries);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

@@ -23,6 +23,9 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -31,8 +34,10 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\VendorRefundService;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -106,6 +111,14 @@ class VendorPrepaymentRefundTest extends TestCase
             'is_active' => true,
         ]);
 
+        // `balance` is port-managed and NOT fillable (Task 22) — a plain
+        // create() with a 'balance' key silently drops it, so this repository
+        // was ALWAYS actually minted at 0, not 5000.00. That was invisible
+        // before W-5b Option B (nothing checked the balance before an
+        // outflow); it now trips InsufficientRepositoryBalanceException on
+        // every refund in this file. Fund it for real, through the port
+        // (mirrors PaymentRepositorySeeder::recordOpeningBalance()), so the
+        // fixture matches its always-intended "well-funded till" scenario.
         $this->cashRegister = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -113,8 +126,27 @@ class VendorPrepaymentRefundTest extends TestCase
             'name' => 'Main Cash Register',
             'type' => RepositoryType::CashRegister,
             'is_active' => true,
-            'balance' => '5000.00',
         ]);
+
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $this->cashRegister->id,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            direction: MovementDirection::In,
+            amount: '5000.00',
+            currency: 'EUR',
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $this->cashRegister->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+        $this->cashRegister->refresh();
 
         $this->vendor = Partner::create([
             'tenant_id' => $this->tenant->id,
