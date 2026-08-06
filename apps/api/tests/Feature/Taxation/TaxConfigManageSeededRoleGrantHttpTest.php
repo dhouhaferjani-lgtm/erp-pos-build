@@ -85,6 +85,9 @@ final class TaxConfigManageSeededRoleGrantHttpTest extends TestCase
         return $user;
     }
 
+    /**
+     * @return array{tax_type: string, name: string, code: string, fixed_amount: string, applies_to: string, applicable_document_types: list<string>, is_active: bool}
+     */
     private function payload(): array
     {
         return [

@@ -43,6 +43,10 @@ final class RolesAndPermissionsFinanceReportSplitTest extends TestCase
         $this->assertTrue($accountant->hasPermissionTo('reports.financial', 'sanctum'));
         $this->assertTrue($accountant->hasPermissionTo('reports.operational', 'sanctum'));
         $this->assertTrue($accountant->hasPermissionTo('ledger.view', 'sanctum'));
+        // Gate finding I-1: accountant keeps reports.manage (VAT period
+        // generate/close/reopen/file) — it also holds the matching read
+        // permission (reports.financial), so there's no mutate-without-read gap.
+        $this->assertTrue($accountant->hasPermissionTo('reports.manage', 'sanctum'));
     }
 
     public function test_manager_holds_operational_only(): void
@@ -54,6 +58,13 @@ final class RolesAndPermissionsFinanceReportSplitTest extends TestCase
         $this->assertTrue($manager->hasPermissionTo('reports.operational', 'sanctum'));
         $this->assertFalse($manager->hasPermissionTo('reports.financial', 'sanctum'));
         $this->assertFalse($manager->hasPermissionTo('ledger.view', 'sanctum'));
+        // Gate finding I-1 (2026-08-06 review, orchestrator ruling): manager
+        // must NOT keep reports.manage either — VAT-period lifecycle mutation
+        // (generate/close/reopen/file) is financial, and keeping it while
+        // manager lost reports.financial let it file a VAT declaration it
+        // cannot read back. See VatPeriodManagerCannotMutateTest for the
+        // HTTP-level proof.
+        $this->assertFalse($manager->hasPermissionTo('reports.manage', 'sanctum'));
     }
 
     public function test_viewer_holds_no_finance_report_permissions(): void
@@ -78,11 +89,19 @@ final class RolesAndPermissionsFinanceReportSplitTest extends TestCase
         $this->assertFalse($cashier->hasPermissionTo('ledger.view', 'sanctum'));
     }
 
-    public function test_reports_view_is_still_seeded_but_gates_nothing_by_this_test_suite_convention(): void
+    /**
+     * m-3 (2026-08-06 gate review): renamed from the misleading
+     * `test_reports_view_is_still_seeded_but_gates_nothing_…` — this test
+     * only pins the ROLE GRANTS (admin retains reports.view via
+     * Permission::all(); no non-admin role is explicitly granted it), which
+     * is all a Role-level assertion can prove. It does NOT and cannot pin
+     * "no route checks reports.view any more" — that is a route-middleware
+     * claim, verified instead by grep in the gate review and by every
+     * touched-endpoint HTTP test now asserting reports.financial /
+     * reports.operational instead of reports.view.
+     */
+    public function test_reports_view_permission_row_still_exists_and_is_only_explicitly_granted_to_admin(): void
     {
-        // reports.view is deprecated (kept seeded for admin via Permission::all(),
-        // no longer explicitly granted to any non-admin role, and no route checks
-        // it any more — see the deprecation comment in permissionNames()).
         $this->seed(RolesAndPermissionsSeeder::class);
 
         $admin = Role::findByName('admin', 'sanctum');

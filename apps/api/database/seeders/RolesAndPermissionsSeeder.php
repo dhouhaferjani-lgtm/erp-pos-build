@@ -536,7 +536,14 @@ class RolesAndPermissionsSeeder extends Seeder
                 // W-6 D5 owner ruling (2026-08-05, "Option B split"): manager
                 // gets reports.operational ONLY — no reports.financial
                 // (P&L/trial balance/balance sheet) and no ledger.view.
-                'reports.operational', 'reports.manage', 'dashboard.owner',
+                // Gate finding I-1 (2026-08-06 review, orchestrator ruling):
+                // reports.manage (VAT period generate/close/reopen/file) is
+                // ALSO dropped here — it is financial-lifecycle mutation, and
+                // keeping it while removing reports.financial let a manager
+                // file a VAT declaration to the tax authority that it could
+                // not read back (POST .../file was 200-reachable, GET
+                // /vat/periods was 403). Accountant keeps reports.manage.
+                'reports.operational', 'dashboard.owner',
                 'work-orders.view', 'work-orders.create', 'work-orders.update',
                 'work-orders.approve', 'work-orders.assign', 'work-orders.transition',
                 'work-orders.cancel', 'work-orders.complete', 'work-orders.view_financials',
