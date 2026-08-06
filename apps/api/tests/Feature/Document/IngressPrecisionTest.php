@@ -7,10 +7,12 @@ namespace Tests\Feature\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
+use App\Modules\Document\Presentation\Validation\DiscountPolicyDocumentValidator;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
@@ -289,6 +291,8 @@ final class IngressPrecisionTest extends TestCase
             $context,
             app(CompanyConfigService::class),
             app(PurchaseBonusGate::class),
+            app(DiscountPolicyDocumentValidator::class),
+            app(CurrencyScaleResolverInterface::class),
         );
         $request->setUserResolver(fn () => $user);
 

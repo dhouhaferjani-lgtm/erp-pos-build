@@ -50,9 +50,16 @@ final class LineDiscountAmountWithinGross implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if ($value === null || $value === '' || ! is_numeric($value)) {
-            // Absence/emptiness/non-numeric shape is the `nullable`/`numeric`
-            // rules' job — this rule only compares well-formed numbers.
+        if ($value === null || $value === '' || ! $this->isBcmathSafeDecimal($value)) {
+            // Absence/emptiness is the `nullable` rule's job. A value that
+            // `is_numeric()` would accept but bcmath would REJECT (exponent
+            // notation, leading/trailing whitespace, "1e3", a JSON float that
+            // stringifies as "1.0E+25") is deliberately treated the same way:
+            // this rule stays silent and lets the field's own `numeric`/
+            // `regex` rules produce the 422. bcmul()/bccomp() throw an
+            // uncaught ValueError on a non-well-formed operand — that is a
+            // 500, never acceptable at a validation boundary (backend gate
+            // CRITICAL-1, 2026-08-06).
             return;
         }
 
@@ -70,9 +77,10 @@ final class LineDiscountAmountWithinGross implements ValidationRule
         $quantity = $line['quantity'] ?? null;
         $unitPrice = $line['unit_price'] ?? null;
 
-        if (! is_numeric($quantity) || ! is_numeric($unitPrice)) {
+        if (! $this->isBcmathSafeDecimal($quantity) || ! $this->isBcmathSafeDecimal($unitPrice)) {
             // Malformed quantity/unit_price is rejected by their own rules —
-            // nothing meaningful to compare a gross against here.
+            // nothing meaningful (and nothing SAFE to feed bcmul with) to
+            // compare a gross against here.
             return;
         }
 
@@ -82,5 +90,27 @@ final class LineDiscountAmountWithinGross implements ValidationRule
         if (bccomp($discountAmount, $gross, $this->scale) > 0) {
             $fail(__('documents.discount.amount_exceeds_line_gross', ['gross' => $gross]));
         }
+    }
+
+    /**
+     * True when $value is a bcmath-well-formed decimal: an optional leading
+     * `-`, one or more digits, and an optional `.` followed by one or more
+     * digits. Deliberately STRICTER than PHP's `is_numeric()` (used here
+     * first, purely so PHPStan narrows $value to `numeric-string` for the
+     * callers below): `is_numeric()` also accepts exponent notation
+     * (`"1e3"`, a large JSON float that stringifies as `"1.0E+25"`) and
+     * leading/trailing whitespace (`" 21 "`) — forms bcmath's `bcmul()`/
+     * `bccomp()` reject with an uncaught `ValueError` rather than a
+     * catchable failure.
+     *
+     * @phpstan-assert-if-true numeric-string $value
+     */
+    private function isBcmathSafeDecimal(mixed $value): bool
+    {
+        if (! is_numeric($value)) {
+            return false;
+        }
+
+        return (bool) preg_match('/^-?\d+(\.\d+)?$/', (string) $value);
     }
 }

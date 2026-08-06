@@ -9,7 +9,6 @@ use App\Modules\Document\Domain\Services\Conversion;
 use App\Modules\Document\Presentation\Rules\LineDiscountAmountWithinGross;
 use App\Modules\Treasury\Application\Services\DiscountToleranceBoundary;
 use App\Modules\Treasury\Presentation\Rules\DiscountAboveTolerance;
-use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Route;
 
@@ -56,7 +55,12 @@ trait AppliesDiscountToleranceRule
         }
         $company = $companyContext->requireCompany();
         $companyId = $company->id;
-        $scale = app(CurrencyScaleResolverInterface::class)->getScale($company->currency);
+        // $this->scaleResolver: the trait's two consumers (CreateDocumentRequest,
+        // UpdateDocumentRequest) both constructor-inject CurrencyScaleResolverInterface
+        // as `scaleResolver` — traits share the host class's scope, so this private
+        // property is directly visible here without an app() lookup (rule 13,
+        // backend gate IMPORTANT-2, 2026-08-06).
+        $scale = $this->scaleResolver->getScale($company->currency);
 
         $lines = $this->input('lines', []);
         $linesArray = is_array($lines) ? $lines : [];

@@ -393,6 +393,92 @@ class CreateDocumentLineValidationTest extends TestCase
         $this->assertSame('112.50', $response->json('data.lines.0.line_total'));
     }
 
+    // ── backend gate CRITICAL-1 (2026-08-06) — bcmath-unsafe input must 422, never 500 ──
+    //
+    // PHP's is_numeric() accepts exponent notation and padded whitespace,
+    // both of which bcmul()/bccomp() reject with an uncaught ValueError.
+    // LineDiscountAmountWithinGross must never reach bcmath with such a
+    // value — malformed input is the sibling numeric/regex rule's job to
+    // reject with a clean 422.
+
+    #[Test]
+    public function exponent_notation_discount_amount_is_rejected_with_422_not_500(): void
+    {
+        $line = $this->validLine();
+        $line['quantity'] = 1;
+        $line['unit_price'] = 10.000;
+        // is_numeric('1e3') === true, but bcmul/bccomp reject it outright.
+        $line['discount_amount'] = '1e3';
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $this->invoicePayload([$line]));
+
+        $this->assertApiValidationErrors($response, ['lines.0.discount_amount']);
+    }
+
+    #[Test]
+    public function json_float_exponent_discount_amount_is_rejected_with_422_not_500(): void
+    {
+        $line = $this->validLine();
+        $line['quantity'] = 1;
+        $line['unit_price'] = 10.000;
+        // A JSON number this large decodes to a PHP float that stringifies
+        // as "1.0E+25" — is_numeric() on the float is true, bcmath rejects
+        // the stringified form.
+        $line['discount_amount'] = 1.0e25;
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $this->invoicePayload([$line]));
+
+        $this->assertApiValidationErrors($response, ['lines.0.discount_amount']);
+    }
+
+    #[Test]
+    public function padded_whitespace_discount_amount_is_rejected_with_422_not_500(): void
+    {
+        // Note: Laravel's global TrimStrings middleware trims this to '21'
+        // before it ever reaches validation, so on THIS app's pipeline it is
+        // caught by the (legitimate) over-gross check rather than exercising
+        // an untrimmed bcmath call directly. Kept as a regression test for
+        // the padded-input shape regardless — is_numeric(' 21 ') is true in
+        // PHP 8+ (trailing whitespace is accepted), so a bare is_numeric()
+        // guard would still be the wrong tool here if TrimStrings were ever
+        // scoped away from this route.
+        $line = $this->validLine();
+        $line['quantity'] = 1;
+        $line['unit_price'] = 10.000;
+        $line['discount_amount'] = ' 21 ';
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $this->invoicePayload([$line]));
+
+        $this->assertApiValidationErrors($response, ['lines.0.discount_amount']);
+    }
+
+    #[Test]
+    public function exponent_notation_quantity_does_not_crash_the_discount_amount_gross_check(): void
+    {
+        // discount_amount itself is well-formed, so LineDiscountAmountWithinGross
+        // proceeds to read the line's quantity/unit_price to compute the
+        // gross — quantity being bcmath-unsafe must not fatal there either.
+        $line = $this->validLine();
+        $line['quantity'] = '1e2';
+        $line['unit_price'] = 10.000;
+        $line['discount_amount'] = 1.000;
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $this->invoicePayload([$line]));
+
+        // Whichever field's own rule catches it (quantity's own regex is the
+        // expected culprit here), this must be a clean validation failure —
+        // the assertion that matters is "not a 500", pinned by asserting the
+        // documented error envelope shape rather than a specific field.
+        $response->assertStatus(422);
+        $json = $response->json();
+        $this->assertArrayHasKey('error', $json, 'a malformed-but-numeric quantity must not 500: '.json_encode($json));
+        $this->assertArrayHasKey('errors', $json['error']);
+    }
+
     #[Test]
     public function designation_default_snapshot_sent_by_client_is_stripped(): void
     {
