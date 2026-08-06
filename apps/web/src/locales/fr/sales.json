@@ -303,6 +303,7 @@
     },
     "discount": "Remise",
     "discountAmountPerLine": "Montant de remise (par ligne)",
+    "discountMaxHint": "Max {{amount}}",
     "discountMode": {
       "percent": "%",
       "amount": "Mt"

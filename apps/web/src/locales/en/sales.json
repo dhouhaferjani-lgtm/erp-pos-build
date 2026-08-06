@@ -303,6 +303,7 @@
     },
     "discount": "Discount",
     "discountAmountPerLine": "Discount amount (per line)",
+    "discountMaxHint": "Max {{amount}}",
     "discountMode": {
       "percent": "%",
       "amount": "Amt"

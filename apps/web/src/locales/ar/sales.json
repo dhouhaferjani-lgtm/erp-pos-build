@@ -25,6 +25,12 @@
       "policyWarning": "تحذير الهامش"
     },
     "discount": "الخصم",
+    "discountAmountPerLine": "مبلغ الخصم (لكل بند)",
+    "discountMaxHint": "الحد الأقصى {{amount}}",
+    "discountMode": {
+      "percent": "%",
+      "amount": "مبلغ"
+    },
     "tax": "الضريبة",
     "taxPercent": "نسبة الضريبة",
     "total": "المجموع",

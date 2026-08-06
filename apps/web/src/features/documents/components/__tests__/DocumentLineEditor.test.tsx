@@ -24,6 +24,19 @@ const taxSelectMock = vi.hoisted(() =>
   ))
 )
 
+// NOT hoisted to module scope, deliberately (see FE gate m-4, 2026-08-06,
+// resolution below): the real react-i18next `t` is referentially stable
+// across renders, and a stable mock here WOULD make the `getDiscountMode`
+// deps-array fix load-bearing under test — but the same `lineColumns` memo
+// also already omits `openPricingLineId`/`pricingContext?.items`
+// (pre-existing, confirmed at base `695f6814d`, explicitly left as scope
+// discipline per the FE gate's m-5). Tried it: stabilizing `t` alone turns
+// that PRE-EXISTING staleness bug from silently-masked-by-this-mock into two
+// failing tests ("lazily fetches bulk pricing context…",
+// "shows server-driven blocked margin policy…") — fixing m-4 cheaply here
+// is not possible without also fixing m-5's missing deps, which is out of
+// this fix round's scope. Left as a fresh-per-render closure; m-4 deferred
+// with this note rather than silently left unaddressed.
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
@@ -68,6 +81,7 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.pricing.policyWarning': 'Margin warning',
         'sales:lineItems.discount': 'Discount',
         'sales:lineItems.discountAmountPerLine': 'Discount amount (per line)',
+        'sales:lineItems.discountMaxHint': `Max ${String(params?.['amount'] ?? '')}`,
         'sales:lineItems.discountMode.percent': '%',
         'sales:lineItems.discountMode.amount': 'Amt',
         'sales:lineItems.taxPercent': 'Tax',
@@ -491,6 +505,96 @@ describe('DocumentLineEditor — designation cells', () => {
   })
 
   // ── W-3 discount percent/amount toggle (Option A) ──────────────────────
+
+  // FE gate CRITICAL C-1 (2026-08-06): the toggle must WRITE, not just switch
+  // the view. Before this fix, clicking the toggle only flipped which input
+  // renders — it never cleared the abandoned field, so a line could display
+  // "0" / empty in the newly-shown field while the payload still carried the
+  // OLD field's value (which wins on the backend), silently saving a
+  // discount the operator never saw. Both directions asserted against the
+  // emitted payload, not just which input is rendered.
+
+  it('C-1: toggling percent -> amount nulls discount_percent in the SAME click, and the amount field renders empty (not a stale "0")', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({
+      quantity: 1,
+      unit_price: 100,
+      tax_rate: 0,
+      discount_percent: '10',
+      discount_amount: null,
+      line_total: '90.000',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    await user.click(screen.getByRole('button', { name: 'Amt' }))
+
+    // The write happens in the same click that flips the view.
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        discount_percent: null,
+        discount_amount: null,
+        line_total: '100.000',
+      }),
+    ])
+
+    // What's rendered matches what's saved: an EMPTY amount field, never a
+    // literal "0" that reads as "no discount was ever entered" while
+    // secretly still carrying the abandoned 10%.
+    expect(screen.getByRole('spinbutton', { name: 'Discount amount (per line)' })).toHaveValue(null)
+  })
+
+  it('C-1 (mirror): toggling amount -> percent nulls discount_amount in the SAME click, and the percent field renders empty', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({
+      quantity: 1,
+      unit_price: 100,
+      tax_rate: 0,
+      discount_percent: null,
+      discount_amount: '25.000',
+      line_total: '75.000',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    await user.click(screen.getByRole('button', { name: '%' }))
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        discount_percent: null,
+        discount_amount: null,
+        line_total: '100.000',
+      }),
+    ])
+
+    expect(screen.getByRole('spinbutton', { name: 'Discount' })).toHaveValue(null)
+  })
 
   it('defaults to percent mode and toggling switches to an amount MoneyInput', async () => {
     const user = userEvent.setup()

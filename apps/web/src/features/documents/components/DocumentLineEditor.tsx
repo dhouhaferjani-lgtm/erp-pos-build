@@ -761,7 +761,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     {
       id: 'discount',
       header: t('sales:lineItems.discount'),
-      headerClassName: 'w-40 text-end',
+      headerClassName: readonly ? 'w-28 text-end' : 'w-40 text-end',
       cellClassName: 'text-end',
       Cell: ({ line }) => {
         const mode = getDiscountMode(line)
@@ -776,52 +776,84 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           )
         }
 
+        // Line gross (qty x unit_price), string math only — bounds the
+        // amount input the same way `max="100"` bounds the percent input, so
+        // an over-gross value gets immediate field-level feedback instead of
+        // only the generic 422 toast on submit (FE gate IMPORTANT I-3).
+        const lineGross = bcmul(decimalValue(line.quantity), decimalValue(line.unit_price))
+
         return (
-          <div className="flex items-center justify-end gap-1">
-            {mode === 'percent' ? (
-              <Input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                max="100"
-                value={line.discount_percent ?? ''}
-                onChange={(event) => {
-                  handleUpdateLine(line.id, {
-                    discount_percent: event.target.value === '' ? null : event.target.value,
-                    discount_amount: null,
-                  })
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center justify-end gap-1">
+              {mode === 'percent' ? (
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max="100"
+                  value={line.discount_percent ?? ''}
+                  onChange={(event) => {
+                    handleUpdateLine(line.id, {
+                      discount_percent: event.target.value === '' ? null : event.target.value,
+                      discount_amount: null,
+                    })
+                  }}
+                  aria-label={t('sales:lineItems.discount')}
+                  className="w-16 text-end text-sm"
+                />
+              ) : (
+                <MoneyInput
+                  currency={companyCurrency}
+                  min="0"
+                  max={lineGross}
+                  // I-1: an unset amount renders EMPTY, matching the percent
+                  // branch's `?? ''` — decimalValue() would render a literal
+                  // "0", which reads as a deliberate zero discount rather
+                  // than "nothing entered yet".
+                  value={line.discount_amount ?? ''}
+                  onChange={(value) => {
+                    handleUpdateLine(line.id, {
+                      // I-2: clearing the field emits null, symmetric with
+                      // the percent branch above — never a bare '', which
+                      // would introduce a third value into a `string | null`
+                      // field and desync from every downstream null check.
+                      discount_amount: value === '' ? null : value,
+                      discount_percent: null,
+                    })
+                  }}
+                  aria-label={t('sales:lineItems.discountAmountPerLine')}
+                  className={`${tokens.input.base} w-24 text-end text-sm`}
+                />
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                onClick={() => {
+                  const nextMode = mode === 'percent' ? 'amount' : 'percent'
+                  setDiscountModeOverrides((prev) => ({ ...prev, [line.id]: nextMode }))
+                  // C-1: the toggle must WRITE, not just switch which input
+                  // renders. Null the field being abandoned in the SAME
+                  // click, so what the operator sees immediately after
+                  // toggling is always what gets saved — a toggle that only
+                  // changed the view could leave the OLD field's value
+                  // active (percent wins over amount on the backend),
+                  // silently applying a discount nobody can see anymore.
+                  handleUpdateLine(
+                    line.id,
+                    nextMode === 'amount' ? { discount_percent: null } : { discount_amount: null },
+                  )
                 }}
-                aria-label={t('sales:lineItems.discount')}
-                className="w-16 text-end text-sm"
-              />
-            ) : (
-              <MoneyInput
-                currency={companyCurrency}
-                min="0"
-                value={decimalValue(line.discount_amount)}
-                onChange={(value) => {
-                  handleUpdateLine(line.id, {
-                    discount_amount: value,
-                    discount_percent: null,
-                  })
-                }}
-                aria-label={t('sales:lineItems.discountAmountPerLine')}
-                className={`${tokens.input.base} w-24 text-end text-sm`}
-              />
+                aria-pressed={mode === 'amount'}
+              >
+                {mode === 'percent' ? t('sales:lineItems.discountMode.amount') : t('sales:lineItems.discountMode.percent')}
+              </Button>
+            </div>
+            {mode === 'amount' && (
+              <span className={`text-[11px] leading-4 ${textColors.tertiary}`}>
+                {t('sales:lineItems.discountMaxHint', { amount: formatAmount(lineGross) })}
+              </span>
             )}
-            <Button
-              type="button"
-              variant="secondary"
-              size="xs"
-              onClick={() => {
-                const nextMode = mode === 'percent' ? 'amount' : 'percent'
-                setDiscountModeOverrides((prev) => ({ ...prev, [line.id]: nextMode }))
-              }}
-              aria-pressed={mode === 'amount'}
-              className="px-2 py-1"
-            >
-              {mode === 'percent' ? t('sales:lineItems.discountMode.amount') : t('sales:lineItems.discountMode.percent')}
-            </Button>
           </div>
         )
       },
