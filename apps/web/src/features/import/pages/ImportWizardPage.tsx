@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { FileUpload } from '../components/FileUpload'
@@ -40,6 +42,32 @@ const STEPS: { key: WizardStep; label: string }[] = [
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
 const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'shelf', 'bin', 'section', 'zone']
+
+/**
+ * Turn a `parseHeaders` rejection into the message the operator should act on.
+ *
+ * - 422 → the backend genuinely could not parse the spreadsheet (bad mime,
+ *   over the 10 MB rule, unreadable content) → "invalid file".
+ * - any other HTTP status → an infrastructure/API failure; show the status so
+ *   support can act on it (a 413 is nginx, a 500 is the API, a 419 is CSRF).
+ * - no response at all → the request never completed (offline, CORS, timeout).
+ */
+function describeUploadFailure(
+  error: unknown,
+  t: TFunction<'import'>,
+): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status
+    if (status === undefined) {
+      return t('wizard.upload.networkError')
+    }
+    if (status !== 422) {
+      return t('wizard.upload.serverError', { status })
+    }
+  }
+
+  return t('wizard.upload.parseError')
+}
 
 function isPlacementMode(value: string): value is NonNullable<ImportJobOptions['placement_mode']> {
   return value === 'strict' || value === 'auto_create'
@@ -375,8 +403,15 @@ export function ImportWizardPage() {
           },
         }
       )
-    } catch {
-      toast.error(t('wizard.upload.parseError'))
+    } catch (uploadError: unknown) {
+      // BUG-004: a bare `catch {}` used to map EVERY failure — 500, nginx 413,
+      // CSRF bounce, dropped connection — to "invalid file", which is what hid
+      // the real causes of BUG-001/BUG-002 for days. Only a 422 from
+      // MigrationWizardController::parseHeaders actually means the file could
+      // not be parsed; anything else is an infrastructure problem the operator
+      // must not be blamed for.
+      console.error('Import wizard: parse-headers failed', uploadError)
+      toast.error(describeUploadFailure(uploadError, t))
       setSelectedFile(null)
       setSourceColumns([])
     }

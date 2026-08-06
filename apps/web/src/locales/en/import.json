@@ -116,7 +116,9 @@
       "downloadTemplate": "Download template",
       "fileReady": "File ready: {{name}}",
       "columnsDetected": "{{count}} columns detected",
-      "parseError": "Could not read the file. Please upload a valid CSV or Excel file."
+      "parseError": "Could not read the file. Please upload a valid CSV or Excel file.",
+      "serverError": "The server rejected the upload (HTTP {{status}}). Your file is probably fine — try again, and contact your administrator if it keeps failing.",
+      "networkError": "The upload never reached the server. Check your connection and try again."
     },
     "mapping": {
       "title": "Map your columns",
