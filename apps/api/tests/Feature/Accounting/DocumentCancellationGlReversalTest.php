@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -279,6 +281,55 @@ final class DocumentCancellationGlReversalTest extends TestCase
         self::assertNull($invoice->cancelled_at);
     }
 
+    /**
+     * The L1 lane's lineless-document carve-out applies to the reversal too.
+     *
+     * A document with NO lines posts a lone AR leg with no revenue side on any
+     * chart lacking a `SalesStampDutyPayable` account — a PRE-EXISTING broken
+     * shape that `residualPlan()` deliberately leaves byte-identical
+     * (`balanceAssertable = false`,
+     * docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md).
+     * Refusing to reverse it would make such a document impossible to cancel,
+     * which is strictly worse than before this lane.
+     */
+    public function test_a_lineless_document_is_still_cancellable_and_its_lone_leg_is_mirrored(): void
+    {
+        // The one-legged variant needs a chart WITHOUT a sales stamp-duty account:
+        // on the Tunisian chart the lineless branch sweeps the whole total into
+        // 4375, which is nonsense but balanced. Every other chart gets the lone AR
+        // leg — which is what `FiscalHardeningE2ETest` exercises.
+        Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::SalesStampDutyPayable)
+            ->update(['system_purpose' => null]);
+
+        $invoice = $this->invoice(withLine: false);
+        $this->accountingService->createInvoiceGLEntries($invoice->fresh(['lines']));
+        $original = $this->glEntryFor($invoice);
+        self::assertSame(
+            1,
+            $original->lines->count(),
+            'Precondition: the lineless shape really does post a one-legged entry',
+        );
+        self::assertSame(
+            0,
+            bccomp($this->sum($original, 'credit'), '0', 3),
+            'Precondition: …with no credit side at all',
+        );
+
+        $this->postingService->cancel($invoice->fresh(['lines']), 'lineless', $this->user->id);
+
+        $reversal = JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+            ->where('source_id', $invoice->id)
+            ->with('lines')
+            ->first();
+
+        self::assertNotNull($reversal, 'A lineless document must still be reversible');
+        self::assertSame($this->sum($original, 'debit'), $this->sum($reversal, 'credit'));
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+    }
+
     // ------------------------------------------------------------ helpers ---
 
     private function sum(JournalEntry $entry, string $column): string
@@ -311,7 +362,7 @@ final class DocumentCancellationGlReversalTest extends TestCase
         return $invoice->fresh(['lines']);
     }
 
-    private function invoice(): Document
+    private function invoice(bool $withLine = true): Document
     {
         $invoice = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -329,17 +380,19 @@ final class DocumentCancellationGlReversalTest extends TestCase
             'currency' => 'TND',
         ]);
 
-        DocumentLine::create([
-            'id' => Str::uuid()->toString(),
-            'document_id' => $invoice->id,
-            'product_id' => $this->product->id,
-            'line_number' => 1,
-            'description' => 'Doliprane 1000mg',
-            'quantity' => '10',
-            'unit_price' => '10.000',
-            'tax_rate' => '19.00',
-            'line_total' => '100.000',
-        ]);
+        if ($withLine) {
+            DocumentLine::create([
+                'id' => Str::uuid()->toString(),
+                'document_id' => $invoice->id,
+                'product_id' => $this->product->id,
+                'line_number' => 1,
+                'description' => 'Doliprane 1000mg',
+                'quantity' => '10',
+                'unit_price' => '10.000',
+                'tax_rate' => '19.00',
+                'line_total' => '100.000',
+            ]);
+        }
 
         return $invoice->fresh(['lines']);
     }

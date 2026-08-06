@@ -774,7 +774,20 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
             }
         }
 
-        if (bccomp($originalDebits, $originalCredits, $scale) !== 0) {
+        // The SAME carve-out the posting paths use, for the same reason: a document
+        // with NO lines posts a lone AR leg with no revenue side to balance against
+        // on any chart without a `SalesStampDutyPayable` account. That is a
+        // PRE-EXISTING broken shape which the L1 lane deliberately left
+        // byte-identical rather than change under a merge gate
+        // (`residualPlan()`, `DocumentGlResidualPlan::$balanceAssertable`,
+        // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md).
+        // Refusing to reverse it would make such a document impossible to cancel at
+        // all — strictly worse than before this lane, which reversed nothing and
+        // cancelled cleanly. Its mirror is equal and opposite, so the pair still
+        // nets to zero in the trial balance.
+        $balanceAssertable = $document->lines->isNotEmpty();
+
+        if ($balanceAssertable && bccomp($originalDebits, $originalCredits, $scale) !== 0) {
             throw UnreversibleDocumentGlException::forUnbalancedOriginal(
                 $document->document_number ?? $document->id,
                 (string) $originals->first()->entry_number,
@@ -783,7 +796,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
             );
         }
 
-        $entryId = DB::transaction(function () use ($document, $scale, $mirrorLegs): string {
+        $entryId = DB::transaction(function () use ($document, $scale, $mirrorLegs, $balanceAssertable): string {
             $previousHash = JournalEntry::getLastChainHash($document->company_id);
             $chainSequence = JournalEntry::getNextChainSequence($document->company_id);
 
@@ -827,7 +840,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 'document_cancellation',
                 $document,
                 $scale,
-                new DocumentGlResidualPlan('0', '0', '0', [], null, null),
+                new DocumentGlResidualPlan('0', '0', '0', [], null, null, $balanceAssertable),
             );
 
             $entry->update(['fiscal_hash' => $this->hashService->calculateHash($freshEntry, $previousHash)]);
