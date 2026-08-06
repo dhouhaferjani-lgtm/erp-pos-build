@@ -162,6 +162,21 @@ class CreditNoteMoneyLaneTest extends TestCase
             'system_purpose' => SystemAccountPurpose::ServiceRevenue,
             'is_active' => true,
         ]);
+        // A Tunisian company MUST carry the collected-timbre liability: this whole
+        // lane exercises STAMP_TAX_INVOICE documents whose header total is net +
+        // TVA + a 1.000 timbre, and `TunisiaChartOfAccountsSeeder:200` seeds 4375
+        // for every real TN company. Without it the document-level charge has no
+        // credit leg and the GL entry cannot balance — the posting is refused
+        // (W-6 D1a). Aligned with the real chart rather than hand-rolled around it.
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4375',
+            'name' => 'État - Droit de timbre à reverser',
+            'type' => 'liability',
+            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
+            'is_active' => true,
+        ]);
     }
 
     /**
