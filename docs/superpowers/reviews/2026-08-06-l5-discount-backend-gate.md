@@ -409,3 +409,175 @@ an owner/accountant decision, not an engineering one.
 `LineDiscountAmountWithinGross` docblock overstating credit-note coverage (minor-8), the two
 already-negative-test notes (minor-9, no action needed), and `QuoteController` ignoring line
 discounts entirely in its totals (pre-existing, confirmed correctly untouched under rule 4).
+
+---
+
+# Fix-round re-verify (reviewer, 2026-08-07)
+
+Re-verified commit **`c3df4fafc`** stacked on `47b4114e1`. FE fix `1f1d85a34` confirmed web-only
+(`git show --name-only 1f1d85a34` touches no `apps/api` path) and remains out of scope. Narrow
+pass — only the four findings, plus the probes the coordinator asked for. Nothing re-reviewed that
+was already cleared.
+
+## Verdict: **CLEAR TO MERGE** (backend half)
+
+All four merge conditions are genuinely closed. Two residual observations are recorded below; both
+are ticket-grade and neither blocks.
+
+### Re-verification executed
+
+| Check | Result |
+|---|---|
+| `phpstan` level 8, 5 touched files | **No errors** |
+| `phpunit IngressPrecisionTest` | **OK 22/22, 98 assertions** — matches the claim exactly |
+| `phpunit CreateDocumentLineValidationTest + DocumentLineModelTest + DiscountToleranceValidationTest + DiscountPolicyDocumentValidationTest` | **OK 41/41, 113 assertions** |
+| `git diff 695f6814d c3df4fafc -- apps/api/app \| grep '^+.*app('` | only a *comment* mentioning `app()`; **zero added `app()` calls** |
+| 11-form probe of the fixed rule through a real `Illuminate\Validation\Factory` | all clean 422s, no fatals, no false-422s |
+| 25-form fuzz: helper-accepts ⊆ bcmath-accepts | **0 subset violations** |
+
+### CRITICAL-1 — CLOSED
+
+`isBcmathSafeDecimal()` (`LineDiscountAmountWithinGross.php:105-113`) is applied to all three
+operands (`:53` for `$value`, `:80` for `$quantity`/`$unitPrice`). I re-ran every crash payload
+from the original finding, plus the coordinator's additional forms, through the real validator with
+the production rule arrays. Every one is now a clean 422 owned by the sibling `regex`/`numeric`
+rule, with the gross rule **silent** (no `GROSS-RULE-FIRED` message, no `ValueError`):
+
+| Input | Before (`47b4114e1`) | After (`c3df4fafc`) |
+|---|---|---|
+| `discount_amount: "1e3"` | `ValueError` (500) | 422 `regex` |
+| `discount_amount: 1.0e25` (JSON float) | `ValueError` (500) | 422 `regex` |
+| `discount_amount: "1e-3"` (negative exponent) | `ValueError` (500) | 422 `regex` |
+| `discount_amount: "1.5E+3"` | `ValueError` (500) | 422 `regex` |
+| `discount_amount: "+21"` (leading plus) | passed to bcmath (bcmath-safe) | 422 `regex` |
+| `discount_amount: " 21 "` (untrimmed) | `ValueError` (500) | 422 `regex` |
+| `discount_amount: ".5"` / `"21."` | bcmath-safe | 422 `regex` |
+| `quantity: "1e2"` | `ValueError` on `bcmul` (500) | 422 `lines.0.quantity.regex` |
+| `unit_price: "1e2"` | `ValueError` on `bcmul` (500) | 422 `lines.0.unit_price.regex` |
+
+**No false-422s and no lost coverage.** The guard still fires exactly where it must: `200.000` vs
+gross `10.000` → rejected with `gross=10.000`; `10.000` == gross → **accepted, no errors**;
+`10.001` (gross + 0.001) → rejected. So the rule contributes nothing on malformed input and
+everything on well-formed input — the message ownership the coordinator asked about is correct.
+
+**The helper is provably safe, not just stricter.** Fuzzed 25 forms: every value the helper accepts
+is bcmath-well-formed (0 subset violations), so no path can reach `bcmul`/`bccomp` with a bad
+operand. The forms the helper rejects but bcmath would accept — `.5`, `21.`, `+21`, `-.5`, `-` — are
+all independently rejected by the field's own `regex:/^\d+(\.\d{1,3})?$/`, on the base wildcard
+*and* on the tolerance override (`AppliesDiscountToleranceRule.php:102`). **No over-gross value can
+escape to a 201 through the stricter guard.** The `-?` in the helper's grammar is harmless:
+negatives still 422 on `min:0` + `regex`.
+
+**HTTP-layer fidelity of their proof — confirmed.** The coordinator asked which layer the
+JSON-float test exercised. The 4 new tests use `postJson` against `/api/v1/quotes`
+(`CreateDocumentLineValidationTest.php`), i.e. the full HTTP kernel including global middleware —
+not a synthetic validator. I verified the wire round-trip independently:
+`json_encode(1.0e25)` → `{"discount_amount":1.0e+25}` → decodes to PHP `double` → stringifies as
+`"1.0E+25"`, `is_numeric() === true`. So that test really does deliver an exponent-stringifying
+value to the rule through a real request. Redness pre-fix does not rest on the implementer's
+stash-revert alone — my own round-1 `Illuminate\Validation\Factory` run independently produced the
+`ValueError` for `"1e3"`, `1.0E+25`, `" 21 "` and `"1e2"`.
+
+**The `" 21 "` test is honestly labelled.** Global `TrimStrings` normalizes it to `21` before
+validation, so on this pipeline it 422s as a legitimate over-gross (`21 > 10.000`), not as a
+bcmath-safety proof. The implementer documented this inline rather than banking it as false
+evidence — correct handling, and the test is still worth keeping as a shape regression.
+
+### IMPORTANT-2 — CLOSED
+
+`AppliesDiscountToleranceRule.php:63` now reads `$this->scaleResolver`; the
+`CurrencyScaleResolverInterface` import is gone. Both hosts declare the property with a concrete
+type — `CreateDocumentRequest.php:31` and `UpdateDocumentRequest.php:31`, both
+`private readonly CurrencyScaleResolverInterface $scaleResolver`. Grep over the whole branch diff
+confirms **zero added `app()` calls**. PHPStan level 8 clean, which is the meaningful check here:
+PHPStan analyses a trait body once per using class, so an undeclared property would have been
+caught.
+
+*Residual (minor, ticket):* the trait declares neither the property nor an abstract accessor, so a
+future third consumer that forgets to inject `scaleResolver` fails at runtime, not at analysis
+time. The same latent coupling already exists for `app(CompanyContext::class)`'s replacement path.
+An `@property-read` docblock or an abstract getter on the trait would make the contract explicit.
+Not a blocker — there are exactly two consumers and both satisfy it.
+
+### IMPORTANT-3 — CLOSED
+
+Arity fixed at `IngressPrecisionTest.php:294-295` (adds `DiscountPolicyDocumentValidator` and
+`CurrencyScaleResolverInterface`). I re-ran the suite myself: **22/22, 98 assertions** — the claim
+is accurate. The only remaining output is two pre-existing PHPUnit metadata deprecations.
+
+**The regex-ceiling assertions genuinely execute against the current effective rule set.**
+`documentLineRules()` (`:277-313`) pulls `lines.*.discount_amount` live out of `$request->rules()`
+and hands the array verbatim to `Validator::make`, rule objects included — it is not a filtered
+string subset. `test_document_line_rejects_4_decimal_discount_amount` fails on `'1.2345'` while
+gross is `1 × 10.000`, so the failure is unambiguously the regex and not the gross rule; and
+`test_document_line_accepts_3_decimal_discount_amount` asserts `'1.234'` produces **no** errors,
+which would go red if the ceiling were dropped. Both tripwires are live again.
+
+*Residual (minor, ticket) — two honest limits on what this suite proves:*
+1. The helper builds the request with **no bound route**, so `isPaymentDueDocumentRoute()`
+   (`AppliesDiscountToleranceRule.php:139-146`) returns false and the per-index override never
+   enters `$rules`. The suite therefore covers the **base wildcard set only** — the
+   `invoices.store` / `orders.store` explicit override, the array that the wildcard-vs-explicit
+   *replacement* semantics make load-bearing, is still untested. Dropping the regex from
+   `AppliesDiscountToleranceRule.php:102` would leave this suite green. My round-1 parser probe
+   established the current effective sets are correct; a committed test asserting them is owed.
+2. The helper re-keys `lines.*.discount_amount` → `discount_amount`, so the attribute the rule sees
+   fails its `preg_match('/^lines\.(\d+)\.discount_amount$/')` anchor at `:66` and returns early.
+   The gross rule is **inert** in this suite. Fine for a precision suite; just don't cite these
+   tests as gross-guard coverage.
+
+### IMPORTANT-4 — CLOSED as documented (owner action still open)
+
+The detection SQL is sound. Verified against the two shapes that matter:
+
+| Row | Clause 1 `line_total < 0` | Clause 2 `discount_amount > qty*price` | Flagged? |
+|---|---|---|---|
+| MTP-DSC-04 artifact: qty 10, price 12.500, disc 200.000, `line_total` −75.000 | TRUE | 200.000 > 125.000 TRUE | **yes** ✓ |
+| Legit zero line: qty 1, price 10.000, disc 10.000, `line_total` 0.000 | FALSE (0 ≮ 0) | FALSE (strict `>`, not `>=`) | **no** ✓ |
+| Legit zero line via `discount_percent = 100`, `discount_amount` NULL | FALSE | FALSE (`IS NOT NULL` guard) | **no** ✓ |
+
+So it catches the target shape and does **not** false-positive on legitimate zero-total lines —
+the strict `>` and the `IS NOT NULL` guard are both load-bearing and both correct. All referenced
+columns exist and are `decimal`/`numeric` (`quantity` 15,4; `unit_price`, `discount_amount`,
+`line_total` 15,2→3), so the arithmetic and comparisons are exact — no float in the query.
+
+Three refinements worth folding in before it is run, none of which change the verdict:
+
+- **One real false-positive class.** `computeLineTotal()` `:290-296` is `if/elseif` — a non-zero
+  `discount_percent` makes `discount_amount` **inert**. A historical row with, say,
+  `discount_percent = 10` and `discount_amount = 999` trips clause 2 even though its `line_total`
+  is correct and a recompute changes nothing. Add
+  `AND (dl.discount_percent IS NULL OR dl.discount_percent = 0)` to clause 2 to suppress it.
+- **Sub-scale blind spot in clause 2.** PG computes `quantity * unit_price` at full precision,
+  whereas `computeLineTotal()` truncates the gross to the currency scale. A discount exceeding the
+  *truncated* gross but not the full-precision product is not flagged. Ultra-marginal (needs a
+  scale-2 currency with a 3dp unit price) and clause 1 catches anything that materialised as
+  negative; note only.
+- **Soft-deleted documents are included.** `Document` uses `SoftDeletes` (`Document.php:112`);
+  `DocumentLine` does not. The join has no `d.deleted_at IS NULL` predicate, so lines of
+  soft-deleted documents appear. Arguably right for detection (a restore would resurrect them) —
+  but add `d.deleted_at` to the SELECT so the operator can triage rather than silently including
+  them.
+
+**Still open and owner-gated:** the query has not been *run*. BE-4 remains a pre-deploy
+prerequisite for staging — the MTP-DSC-04 live artifact on `demo-pharmacy-tn` is a known hit, and
+its disposition (fix-forward vs leave-as-is-and-never-recompute) is an owner/accountant decision.
+
+### minor-5..11 — accepted as deferred
+
+The implementer's disposition matches this record's own instruction ("ticket, no merge block").
+`QuoteController` re-confirmed untouched by the fix round.
+
+## Merge conditions — final status
+
+| # | Condition | Status |
+|---|---|---|
+| 1 | CRITICAL-1 bcmath-safe guard + regression tests | **CLOSED** — re-verified independently |
+| 2 | IMPORTANT-2 drop `app()` | **CLOSED** — zero added `app()`, PHPStan clean |
+| 3 | IMPORTANT-3 repair `IngressPrecisionTest` | **CLOSED** — 22/22 re-run by reviewer |
+| 4 | IMPORTANT-4 detection sweep documented | **CLOSED as documented**; *running* it is an open pre-deploy owner gate |
+| 5 | minor-5..11 ticketed; FE gate sequenced | **Accepted** |
+
+**Backend half: CLEAR TO MERGE.** Do not deploy to staging until BE-4 has actually been run and
+its hits dispositioned. Land `07a60fa05` + `1f1d85a34` together with the backend so the flipped
+MTP-DSC-04 assertion and the fix arrive in the same CI run.

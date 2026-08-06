@@ -199,3 +199,101 @@ spec only required en+fr, so this is flagged for parity with `priceEntryMode`, n
 **REJECT.** Fix C-1 (toggle must reconcile the value, plus a payload-level test in both directions) and
 I-1; I-2 and I-3 should land in the same pass. m-1..m-6 may be deferred with a ticket, but m-1 is a
 one-line deletion and m-4 is the only thing standing between the deps fix and a silent future regression.
+
+---
+
+# Fix-round re-verify — commit `1f1d85a34` (2026-08-07)
+
+Scope of this pass: **only** the findings raised above. Backend `c3df4fafc` re-gated separately.
+Fix commit touches 6 files (editor, its test, `ar`/`en`/`fr` `sales.json`, and this record — the
+implementer committed the previously-untracked gate record; noted, not a finding).
+
+## Gates re-run
+
+| Gate | Result |
+|---|---|
+| `npx vitest run DocumentLineEditor.test.tsx DocumentLineEditor.quantityStep.test.tsx` | **2 files / 32 tests passed** (29 + 3; was 27 + 3 — the 2 new C-1 cases) |
+| `npx tsc --noEmit -p tsconfig.json` | clean (`textColors.tertiary` exists, `designTokens.ts:89`) |
+| `node tools/audit-design-system.mjs` | 743 acknowledged, **0 new**, 0 stale — baseline file again **not** in the diff |
+| `npx eslint` (both touched files) | **0 errors**, 17 warnings (same pre-existing categories; `getDiscountMode` no longer in the missing-deps list) |
+| `grep '^+' … -E 'parseFloat\|Number(\|toFixed\|step='` on the diff | **no matches** — no float math, no hardcoded step added |
+
+## Finding-by-finding (empirically re-probed, throw-away file, deleted; worktree clean)
+
+**C-1 — RESOLVED.** `DocumentLineEditor.tsx:823-841`: the toggle's `onClick` now also calls
+`handleUpdateLine(line.id, nextMode === 'amount' ? { discount_percent: null } : { discount_amount: null })`.
+Original probe [A] re-run against the fix:
+
+```
+[A] percent '10' -> click "Amt"
+    amount input value: ""   (was "0")
+    payload:            {"p":null,"a":null,"t":"100.000"}   (was {"p":"10","a":null,"t":90})
+    row text:           ... Max EUR 100.00 ... Total EUR 100.00
+```
+
+The stale `discount_percent:"10"` is gone, `line_total` recomputes to the full gross in the same click, and
+the rendered field equals what saves. **Double-toggle round trip** (`10 → Amt → %`):
+`percent input value: ""`, `payload {"p":null,"a":null,"t":"100.000"}` — view and payload agree; the
+original `10` is destroyed. That is the accepted cost of the "clear the abandoned field" option from the
+fix directive: an accidental double-toggle discards the discount, but it does so **visibly** (empty field
+*and* the total snapping back to EUR 100.00), so there is no silent divergence left. Not a finding.
+
+The 2 new tests (`DocumentLineEditor.test.tsx:509,551` region) assert the **emitted payload**
+(`discount_percent: null`, `discount_amount: null`, `line_total: '100.000'`) plus the emptied sibling
+input, in both directions. Non-vacuous by construction: pre-fix the toggle never invoked `onChange` at
+all, so `expect(onChange).toHaveBeenLastCalledWith(...)` could only fail — the implementer's red-proof
+claim is consistent with the code it replaced.
+
+**I-1 — RESOLVED.** `:800-806` `value={line.discount_amount ?? ''}`. Probe confirms the amount input
+renders `""` for an unset amount, symmetric with the percent branch.
+
+**I-2 — RESOLVED.** `:807-816` `discount_amount: value === '' ? null : value`. Probe: clearing the field
+now emits `{"p":null,"a":null,"t":"100.000"}` (was `a:""`). No further reliance on Laravel's
+`ConvertEmptyStringsToNull`.
+
+**I-3 — RESOLVED to parity with the percent branch.** `:779-783` computes
+`lineGross = bcmul(decimalValue(line.quantity), decimalValue(line.unit_price))` — string math, no
+`parseFloat`/`Number` — fed to `max={lineGross}` and to a `Max {{amount}}` hint rendered under the field in
+amount mode (`:846-850`, `formatAmount(lineGross)`). Probe: `max="100.000"` on a 1×100 line and
+`max="37.500"` on a 3×12.500 line; hint renders `Max EUR 100.00`. Typing `500` still reaches state
+(`a:"500"`, total floored `0.000`) but the input now reports `validity.rangeOverflow === true` /
+`checkValidity() === false`. Worth stating plainly: `max` on a number input is **advisory** — it does not
+block typing and this form does not gate submit on native validity, so the backend 422 remains the hard
+boundary. That is exactly the same semantics the pre-existing `max="100"` percent ceiling has, which is
+what the finding asked for. Accepted.
+
+**m-1 — RESOLVED.** Probe dump of the rendered toggle class list ends
+`… px-3 py-1.5 text-xs` with no `px-2`/`py-1` — the inert override is gone.
+
+**m-3 — RESOLVED.** Probe: readonly `<th>` carries `w-28 text-end`, editable carries `w-40 text-end`.
+
+**m-6 — RESOLVED.** `ar/sales.json` gains `discountAmountPerLine: "مبلغ الخصم (لكل بند)"`,
+`discountMaxHint: "الحد الأقصى {{amount}}"`, `discountMode.amount: "مبلغ"` — genuine Arabic, correctly
+placed inside `lineItems` (which the `ar` `sales` namespace replaces wholesale, `lib/i18n.ts:280-282`).
+`en`/`fr` both gain `discountMaxHint`; `Max` is a legitimate French abbreviation, not an untranslated copy.
+
+**m-2 — ACCEPTED as documentation-only.** The inaccurate "mirrors the existing price-entry-mode toggle"
+claim is corrected in `1f1d85a34`'s body; migrating the pre-existing raw-`<button>` toggle
+(`DocumentLineEditor.tsx:687-700`) stays out of scope. The visual delta between the two adjacent toggles
+persists by decision, not by oversight.
+
+**m-4 — ACCEPTED, DEFERRED WITH TICKET.** The reasoning is present inline at the mock definition site
+(`DocumentLineEditor.test.tsx:27-39`), not just in the commit body, and it names the two tests that break
+("lazily fetches bulk pricing context…", "shows server-driven blocked margin policy…"). The entanglement
+argument is sound and self-consistent: a stable `t` makes every missing dep in `lineColumns` load-bearing,
+and this gate's own m-5 explicitly ruled the pre-existing `openPricingLineId`/`pricingContext?.items`
+omissions out of scope. m-4 cannot be closed without m-5. Both belong on one ticket.
+
+## Open (non-blocking)
+
+- **m-4 + m-5 ticket:** stabilize the suite's `t` mock **and** add `openPricingLineId` /
+  `pricingContext?.items` to the `lineColumns` deps array in the same pass. Until then the
+  `getDiscountMode` deps fix has no regression gate, and the pricing popover carries a live staleness bug.
+- **Merge-order constraint (unchanged):** `e2e/money-campaign/documents-discounts.spec.ts:163-210`
+  asserts the 422 contract, so the FE commits cannot ship ahead of backend `47b4114e1` + `c3df4fafc`.
+
+## Fix-round verdict
+
+**CLEAR TO MERGE** (FE half: `07a60fa05` + `1f1d85a34`). The CRITICAL and all three IMPORTANTs are fixed
+and empirically re-verified; m-1/m-3/m-6 fixed; m-2 accepted as documentation-only; m-4 deferred with
+m-5 on a ticket. No new findings introduced by the fix round.
