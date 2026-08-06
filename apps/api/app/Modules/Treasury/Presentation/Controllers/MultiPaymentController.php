@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -24,7 +25,8 @@ class MultiPaymentController extends Controller
 {
     public function __construct(
         private readonly MultiPaymentService $multiPaymentService,
-        private readonly CompanyContext $companyContext
+        private readonly CompanyContext $companyContext,
+        private readonly DocumentAllocationStateGuard $allocationStateGuard,
     ) {}
 
     /** @param list<string> $methodIds */
@@ -170,6 +172,15 @@ class MultiPaymentController extends Controller
         if ($document->type === DocumentType::SupplierInvoice) {
             return $this->rejectSupplierInvoice();
         }
+
+        // Treasury gate CRITICAL 1 (W-7 F-6, unfinished): this write flips the
+        // document to Paid with no state predicate anywhere downstream — the
+        // same shape the single-payment path guards at
+        // `PaymentController::store()`. Called OUTSIDE the try/catch below on
+        // purpose: it throws `HttpResponseException` to short-circuit straight
+        // to its own structured 422, and the generic `catch (\Exception $e)`
+        // below would otherwise re-wrap it as a bare message string.
+        $this->allocationStateGuard->assertAllocatable($document);
 
         try {
             /** @var string|null $userId */
@@ -365,6 +376,13 @@ class MultiPaymentController extends Controller
         if ($document->type === DocumentType::SupplierInvoice) {
             return $this->rejectSupplierInvoice();
         }
+
+        // Treasury gate CRITICAL 1 (W-7 F-6, unfinished): identical shape to
+        // `createSplitPayment()` above — called before the try/catch so the
+        // guard's own structured 422 reaches the client, and before
+        // `applyDepositToDocument()`'s transaction so a withdrawn document
+        // never reaches the allocation write.
+        $this->allocationStateGuard->assertAllocatable($document);
 
         try {
             $allocation = $this->multiPaymentService->applyDepositToDocument(

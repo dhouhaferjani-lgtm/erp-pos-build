@@ -22,7 +22,10 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -271,6 +274,100 @@ final class PaymentAllocationDocumentStateTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+    }
+
+    /**
+     * TREASURY GATE, CRITICAL 1 — `MultiPaymentService::createSplitPayment()`
+     * (`:109`, `:135-139`) wrote a `PaymentAllocation` and flipped the document to
+     * `Paid` with NO state predicate anywhere on the path, reachable at
+     * `POST /documents/{id}/split-payment` behind the SAME `payments.create`
+     * permission as the guarded single-payment route.
+     */
+    public function test_the_split_payment_path_refuses_a_cancelled_document(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED-SPLIT', '200.000');
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$invoice->id}/split-payment", [
+            'splits' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->repository->id, 'amount' => '100.000'],
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->repository->id, 'amount' => '100.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+        self::assertSame(0, PaymentAllocation::query()->where('document_id', $invoice->id)->count());
+        self::assertDatabaseMissing('payments', ['document_id' => $invoice->id]);
+    }
+
+    /**
+     * TREASURY GATE, CRITICAL 1 — `MultiPaymentService::applyDepositToDocument()`
+     * (`:251-292`) has the identical shape, reachable at
+     * `POST /payments/{id}/apply-deposit`.
+     */
+    public function test_the_apply_deposit_path_refuses_a_cancelled_document(): void
+    {
+        $invoice = $this->cancelledInvoice('INV-CANCELLED-DEPOSIT', '200.000');
+        $deposit = $this->unallocatedDeposit('200.000');
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/payments/{$deposit->id}/apply-deposit", [
+            'document_id' => $invoice->id,
+            'amount' => '200.000',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+        self::assertSame(0, PaymentAllocation::query()->where('document_id', $invoice->id)->count());
+    }
+
+    /**
+     * TREASURY GATE, CRITICAL 1 — `MultiPaymentService::createSplitPayment()`'s
+     * total-match check (`:54`) read `$document->balance_due ?? $document->total`,
+     * the exact D2 cache-blindness shape: a document that already carries an
+     * allocation but whose `balance_due` cache is still NULL (SQLite has no
+     * trigger; a real DML path can race the same way) offered its FULL total as
+     * the required split amount instead of what is actually still outstanding.
+     */
+    public function test_the_split_payment_total_check_uses_the_computed_outstanding_not_the_cache(): void
+    {
+        $invoice = $this->invoice('INV-SPLIT-PARTIAL', '200.000');
+        PaymentAllocation::create(['document_id' => $invoice->id, 'amount' => '50.000']);
+        self::assertNull($invoice->refresh()->balance_due, 'The cache never fired on this manual allocation');
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$invoice->id}/split-payment", [
+            'splits' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->repository->id, 'amount' => '75.000'],
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->repository->id, 'amount' => '75.000'],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $allocated = PaymentAllocation::query()->where('document_id', $invoice->id)->sum('amount');
+        self::assertSame(
+            0,
+            bccomp((string) $allocated, '200.000', 3),
+            'The 50.000 already allocated plus the 150.000 split must equal the 200.000 total',
+        );
+    }
+
+    private function unallocatedDeposit(string $amount): Payment
+    {
+        return Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => $amount,
+            'currency' => 'TND',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'origin' => PaymentOrigin::WebAdmin,
+            'reference' => 'Deposit for apply-deposit test',
+            'notes' => 'Advance payment/deposit [UNALLOCATED]',
+        ]);
     }
 
     private function cancelledInvoice(string $number, string $total, ?string $balanceDue = null): Document

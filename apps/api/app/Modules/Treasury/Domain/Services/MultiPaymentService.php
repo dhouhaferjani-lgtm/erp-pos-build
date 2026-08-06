@@ -52,8 +52,14 @@ class MultiPaymentService
             $totalSplit = bcadd($totalSplit, $splitAmount, $this->scale());
         }
 
+        // Treasury gate CRITICAL 1 (W-6 D2): this used to be
+        // `$document->balance_due ?? $document->total`. `balance_due` is a
+        // PostgreSQL trigger cache fired by allocation DML only, so it stays
+        // NULL on a document that already carries an allocation the trigger
+        // never observed — and the `?? total` fallback then required the split
+        // to sum to the document's FULL total, ignoring what was already paid.
         /** @var numeric-string $docBalance */
-        $docBalance = $document->balance_due ?? $document->total;
+        $docBalance = $document->outstandingBalance($this->documentScale($document));
         if (bccomp($totalSplit, $docBalance, $this->scale()) !== 0) {
             throw new \InvalidArgumentException(
                 'Split payment total must equal document balance'
@@ -580,5 +586,16 @@ class MultiPaymentService
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * The scale to read a DOCUMENT's own outstanding balance at.
+     *
+     * CLAUDE.md rule 19: pass the ENTITY's currency, never a bare no-arg
+     * `getScale()` — mirrors `AccountingService::documentScale()`.
+     */
+    private function documentScale(Document $document): int
+    {
+        return $this->scaleResolver->getScaleSafe($document->currency, 3);
     }
 }
