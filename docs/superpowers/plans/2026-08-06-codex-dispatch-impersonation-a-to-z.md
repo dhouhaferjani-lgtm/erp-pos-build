@@ -10,6 +10,11 @@ Support is impossible under db-per-tenant without a controlled access path; toda
 - **Spec (LOCKED — do not re-litigate its decisions):** `docs/superpowers/specs/2026-06-24-tenant-impersonation-support-access-design.md`
 - Tenancy model: db-per-tenant (Stancl `PostgreSQLDatabaseManager`), central `synerivia_central` + `tenant_<uuid>` DBs.
 
+## Owner rulings 2026-08-06 (close the spec's §12 open questions — bake these in)
+- **D3 four-eyes second approver = the owner's business partner** (named second super-admin). Implement the approver hook so the approver set is configurable, seed it with the partner's super-admin account; the "sensitive" set config ships enabled.
+- **Tunisia Law 2004-63 / INPDP validation** is routed through the E-4 reviewer (the same business partner, chartered accountant). NOT a build blocker — but the handback note must state that impersonation is not to be used on a real TN tenant until that validation is recorded.
+- **Break-glass emergency access stays OUT of scope** — confirmed. Do not build it.
+
 ## Locked design decisions (from the spec — implement, don't redesign)
 - D1 consent = per-incident approval **+** optional tenant pre-granted window. D2 = read-only by default, explicit in-session write-elevation. D3 = four-eyes for sensitive tenants/actions. D4 = 60-min TTL; the grant is the real-time kill switch.
 - Token mechanics: mint a **separate Sanctum token whose tokenable is the subject tenant user** (so `ResolveTenancy` / `SetPermissionsTeam` / `EnforceTokenTenantClaim` all just work), carrying an `impersonation:<operator_id>` ability to preserve the real actor (AWS `sourceIdentity` pattern). **Permission intersection — never escalation.**
