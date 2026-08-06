@@ -64,6 +64,8 @@
       "updated": "Partenaire mis à jour avec succès",
       "saveFailed": "Échec de l'enregistrement du partenaire"
     },
+    "isActive": "Actif",
+    "isActiveHint": "Les partenaires inactifs restent dans vos enregistrements et votre historique, mais n'apparaissent plus lors de la création de nouveaux documents.",
     "delete": {
       "title": "Supprimer {{entity}}",
       "confirm": "Supprimer « {{name}} » ? Cette action est irréversible.",

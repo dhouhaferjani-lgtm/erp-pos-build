@@ -64,6 +64,8 @@
       "updated": "Partner updated successfully",
       "saveFailed": "Failed to save partner"
     },
+    "isActive": "Active",
+    "isActiveHint": "Inactive partners stay in your records and history but are hidden from selection when creating new documents.",
     "delete": {
       "title": "Delete {{entity}}",
       "confirm": "Delete “{{name}}”? This action cannot be undone.",
