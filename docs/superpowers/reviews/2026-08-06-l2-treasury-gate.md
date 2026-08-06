@@ -356,3 +356,248 @@ Guard `MultiPaymentService`'s two allocation writers (F-6 is still open on
 `lockForUpdate()` before `reverseDocumentGl()`, guard
 `CreditNoteService::allocateCreditNote()`, and make the unbalanced-original
 refusal escapable (or at least stop it recommending a remedy that cannot work).
+
+---
+
+## ROUND 2 — closure verification (2026-08-06, Sonnet narrow re-check, NOT a full Opus re-gate)
+
+**Verifier:** treasury-reviewer (adversarial closure check only — scope limited to the items
+named in this gate record; no new-area audit performed). Worktree
+`/Users/houssamr/Projects/syneriva/apps/erp.fix-l2-ar`, HEAD `b76749ac8` (8 commits on top of
+the round reviewed above). Tests run BY PATH against **live PostgreSQL**
+(`DB_CONNECTION=pgsql`, `-c phpunit-pgsql.xml`, `127.0.0.1:5433/autoerp`), not the SQLite
+default, per this round's explicit instruction.
+
+### CRITICAL 1 (F-6 on MultiPaymentService) — CLOSED, verified
+
+`MultiPaymentController::createSplitPayment()` and `::applyDeposit()` both call
+`DocumentAllocationStateGuard::assertAllocatable($document)` **before** the try/catch
+(`MultiPaymentController.php` — guard calls read at the top of each action, ~line 174 and
+~line 378). Confirmed the stated reasoning against the actual catch block: both actions end in
+`catch (\Exception $e) { return response()->json(['error' => $e->getMessage()], 422); }` —
+`HttpResponseException` extends `RuntimeException` extends `Exception`, so a guard call placed
+*inside* that try would have been swallowed and re-emitted as `{"error": ""}` (empty message),
+losing the structured `{error:{code,message,details}}` envelope. Placing it before the try is
+the only way to preserve `DOCUMENT_NOT_ALLOCATABLE`. `MultiPaymentService::createSplitPayment()`'s
+`:54`-area total-match check now reads `$document->outstandingBalance($this->documentScale($document))`,
+with a new `documentScale()` helper that correctly calls `getScaleSafe($document->currency, 3)`
+(never the bare no-arg `getScale()` — rule 20 respected).
+
+`tests/Feature/Treasury/PaymentAllocationDocumentStateTest.php` run against live PG:
+**6/8 pass, 2 fail** (not 8/8 as the file's SQLite run shows — see "Test-quality regression
+found" below). Both probed paths (cancelled invoice via split-payment, cancelled invoice via
+apply-deposit) correctly return 422 with `error.code = DOCUMENT_NOT_ALLOCATABLE` on live PG —
+these specific assertions pass in both failing tests' surrounding cases and in the two
+dedicated tests that exercise exactly this probe
+(`test_the_split_payment_path_refuses_a_cancelled_document`,
+`test_the_apply_deposit_path_refuses_a_cancelled_document` — verified passing individually).
+
+### CRITICAL 2 (D2 opening-balance regression) — CLOSED, verified
+
+`Document::outstandingBalance()` (`Document.php`) now returns `CurrencyScale::bcround((string)
+$this->balance_due, $scale)` whenever `balance_due !== null` (authoritative), and only falls to
+the allocation-derived computation when it is genuinely `NULL`. Byte-read against both writers
+named in the gate: the trigger (unchanged) and `ArApOpeningService`'s `open_amount` write — both
+produce a non-NULL `balance_due` that is now taken as-is. Consumers probed:
+- `AgedOutstandingSourceTest` (opening-balance shape: total 1500 / balance_due 300 / zero
+  allocations) — **15/15 pass on live PG** (run together with `AgedAgingBucketsTest`,
+  `UpcomingPaymentsTest`).
+- `PaymentController::store()`'s per-allocation cap now reads
+  `$document->outstandingBalance($this->scaleResolver->getScaleSafe((string) $document->currency,
+  3))` — rule-19/20 compliant, read at the source.
+- `CloseInvoiceWithToleranceService::close()`'s rerouted `:58`-area read is
+  `$invoice->outstandingBalance(3)` — verified in place, guard runs first.
+- **PaymentTest, PaymentAllocationPrecisionTest, SmartPaymentIntegrationTest,
+  DocumentPaymentStatusTransitionTest, MultiPaymentTest, SupplierPaymentGuardTest,
+  PaymentControllerSpineTest: 76/76 pass on live PG** (the base gate reported 76 pass + 1
+  skipped; on PG this round nothing skipped, 76/76).
+
+**The original over-allocation test's NULL-cache premise does NOT hold on live PostgreSQL** —
+see finding below. The underlying fix logic (non-null-authoritative / null-fallback-compute) is
+still verified correct by direct code reading and by the passing opening-balance and aged-report
+tests; only the specific SQLite-only reproduction of "an allocation exists but the cache stayed
+NULL" is a false premise on real PG, because the PL/pgSQL trigger fires on ANY
+`payment_allocations` DML (any INSERT, regardless of writer/ORM), not only on the app's own code
+paths. The narrower real-world NULL-forever case (a posted document with ZERO allocations ever)
+is unaffected and still correctly handled.
+
+### [IMPORTANT] Test-quality regression found by this round — 2 of 8
+`PaymentAllocationDocumentStateTest` tests fail on live PostgreSQL (pass on SQLite; this is
+exactly the class of drift CLAUDE.md's testing conventions and rule 20 exist to catch)
+
+1. `test_the_split_payment_path_refuses_a_cancelled_document` — errors on live PG:
+   `SQLSTATE[42703]: column "document_id" does not exist` on `assertDatabaseMissing('payments',
+   ['document_id' => $invoice->id])` (`PaymentAllocationDocumentStateTest.php:301`). The
+   `payments` table has never had a `document_id` column — that column lives on
+   `payment_allocations` (confirmed against
+   `database/migrations/tenant/2025_11_30_120000_create_treasury_tables.php:171-179` and a live
+   `\d payments` on the PG instance). On SQLite the same query returns `false` (no error) rather
+   than throwing — verified directly (`PRAGMA table_info(payments)` confirms no such column
+   either; the query builder simply produces an empty result set instead of erroring on SQLite's
+   PDO driver for this specific pattern). **This is a broken/misdirected assertion, not a
+   production defect** — the test's other assertions
+   (`PaymentAllocation::where('document_id', ...)->count() === 0`, cancelled status unchanged)
+   already correctly cover the no-payment-was-created invariant. Fix: change the table to
+   `payment_allocations`, or delete the redundant line.
+2. `test_the_split_payment_total_check_uses_the_computed_outstanding_not_the_cache` — fails on
+   live PG: `assertNull($invoice->refresh()->balance_due, 'The cache never fired on this manual
+   allocation')` gets `150.000`, not `null`
+   (`PaymentAllocationDocumentStateTest.php:337`). The test's premise — that
+   `PaymentAllocation::create(['document_id' => ..., 'amount' => '50.000'])` leaves
+   `balance_due` NULL because "the cache never fired on this manual allocation" — is **false on
+   real PostgreSQL**: the row-level trigger fires on the INSERT regardless of which code wrote
+   it (Eloquent `::create()` is still a plain `INSERT`). The scenario only reproduces on SQLite,
+   which has no trigger at all. **Production code is unaffected** — the assertion after the split
+   (`assertCreated()` + the 200.000-total sum check) still passes on live PG, because
+   `outstandingBalance()`'s non-null-authoritative branch and its null-fallback-compute branch
+   agree numerically here (both derive 150.000). Fix: either rewrite the precondition to state
+   what's actually true on PG (`balance_due` becomes `150.000` via the trigger, and the SPLIT
+   TOTAL CHECK must use that value rather than `total`), or explicitly seed the NULL-cache case
+   the way `ArApOpeningService`-style rows would (a document that has never had *any*
+   `payment_allocations` DML), which is the only PG-real NULL scenario.
+
+**Neither issue changes the verdict on CRITICAL 1 or CRITICAL 2** — both production fixes are
+independently verified correct by direct code reading, by the passing aged/opening-balance
+suites, and by the corrected/individually-verified guard tests. But the closure claim
+"PaymentAllocationDocumentStateTest 8/8" should be read as "8/8 on SQLite, 6/8 on live
+PostgreSQL, 2 test bugs" — fix before merge (mechanical, no design question).
+
+### Item 3 — DocumentPostingService::cancel() lockForUpdate — CLOSED, verified LIVE
+
+`$document->refresh()` replaced with
+`Document::query()->whereKey($document->id)->lockForUpdate()->firstOrFail()`, taken before
+`reverseDocumentGl()` is called, exactly as specified.
+
+**The two-process `pcntl_fork` concurrency test was run against live PostgreSQL and PASSED**:
+`DocumentCancellationGlReversalTest::test_concurrent_cancels_cannot_double_reverse_the_ledger`
+— `OK (1 test, 8 assertions)` — and the full file: `OK (7 tests, 38 assertions)`. This is a
+genuine independent execution (not a re-read of the implementer's claim): `pcntl` is available
+in this environment, `phpunit-pgsql.xml` connects to a live PG instance at
+`127.0.0.1:5433/autoerp`, and the fork test's own child/parent race actually exercised the row
+lock — the child cancel serializes behind the parent's lock and takes the idempotent early
+return, and exactly one `DocumentCancellation`-sourced `JournalEntry` exists afterward. This is
+the strongest possible verification of I-1/finding-3's fix.
+
+### Item 4 — CreditNoteService::allocateCreditNote + CloseInvoiceWithToleranceService guards — CLOSED, verified
+
+Both guard calls placed correctly (`CreditNoteService.php` — after the `findOrFail`+`lockForUpdate`
+on the source invoice, inside the transaction; `CloseInvoiceWithToleranceService.php` — after the
+document's `lockForUpdate()`, before the `outstandingBalance()` read). DI: both services gained a
+4th constructor param `DocumentAllocationStateGuard $allocationStateGuard`; grepped `app/` and
+`tests/` for `new CreditNoteService(` / `new CloseInvoiceWithToleranceService(` — the only manual
+construction site is `tests/Unit/Treasury/CloseInvoiceWithToleranceServiceTest.php:396`, which
+was updated to pass `$this->app->make(DocumentAllocationStateGuard::class)`. `DocumentAllocationStateGuard`
+is a concrete class with no constructor dependencies, so every other site (both services'
+production constructors) resolves it automatically via the container — no explicit binding
+needed, none was added, none is missing.
+
+Both red→green tests are genuine (no `assertTrue(true)`, no mocking the thing under test):
+`CreditNoteAllocationTest::it_refuses_to_allocate_a_credit_note_against_a_cancelled_invoice` and
+`CloseInvoiceWithToleranceServiceTest::test_rejects_a_cancelled_invoice_even_with_a_positive_partial_balance`
+both assert the structured 422 envelope, assert zero allocation/JE rows were written, and assert
+the document's state was not rewritten. **Both pass on live PostgreSQL** (run together with the
+rest of the credit-note/tolerance suite: 29/29 total in that batch, both failures isolated to
+`PaymentAllocationDocumentStateTest` above).
+
+**[IMPORTANT] New cross-module coupling, not flagged in the original gate** (the fix predates
+this finding): `CreditNoteService` (Document module, `Application/Services`) now directly
+imports and constructor-injects `App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard`
+— a concrete Treasury Application service, not a `Shared/Contracts` interface. The original gate's
+MINOR finding already flagged the REVERSE direction (`DocumentAllocationStateGuard` type-hints
+`App\Modules\Document\Domain\Document`) as debt; this fix adds the opposite direction, so the two
+modules are now coupled **both ways** through this one guard class — worse than the pre-existing
+one-directional debt, and not caught by `deptrac.yaml` (its ruleset is glob-based per hexagonal
+tier, explicitly NOT enforcing cross-module coupling — confirmed by reading the config's own
+header comment). Doesn't break anything today and mirrors the `DocumentGlReversalInterface`
+precedent in spirit, just not in shape — the cheaper fix would have been a
+`Shared/Contracts/Treasury/DocumentAllocationGuardInterface` the same way GL reversal got one.
+Ticket-worthy, not blocking.
+
+### Item 5 — duplicate-route deletion + pinning assertion — CLOSED, verified
+
+`Document/Presentation/routes.php` no longer registers `reports/aged-receivables` (confirmed by
+direct grep — only `Accounting/Presentation/routes.php:178-180` registers it now).
+`AgedOutstandingSourceTest::test_the_aged_receivables_route_resolves_to_the_accounting_controller`
+asserts `Route::getRoutes()->getByName('reports.aged-receivables')` resolves to
+`Accounting\...\ReportsController`. Confirmed this is the RIGHT shape even though it would have
+passed before the deletion too (provider load order already made Accounting win) — its actual
+job is guarding against a FUTURE regression (someone reordering `bootstrap/providers.php`, or
+someone re-adding a same-named Document route), not proving today's deletion changed behavior.
+15/15 pass on live PG in the same run as the CRITICAL 2 aged-report suites.
+
+### GL items (I-2, I-5, exception message) — CLOSED, verified (see companion GL gate file for the fuller GL-gate-scoped closure)
+
+- `balanceAssertable = $this->residualPlan($document, $scale)->balanceAssertable;`
+  (`AccountingService.php`, inside `reverseDocumentGl()`) — single source, confirmed reused
+  rather than reimplemented. `DocumentGlResidualPlan::$balanceAssertable` defaults `true` for
+  every non-lineless constructor call in `residualPlan()`, so behavior for documents with lines
+  is unconditionally unchanged (verified by reading every `return new DocumentGlResidualPlan(...)`
+  branch in `residualPlan()` — none pass a 7th argument except the lineless branch's explicit
+  `false`). `residualPlan()`'s account lookups (`Account::findByPurpose`) return `null` rather
+  than throwing on a missing account, so calling it on the cancel path introduces no new
+  exception surface versus the hand-rolled predicate it replaced; it does add a handful of extra
+  read queries per cancel (revenue/VAT/rounding-account lookups whose result is discarded except
+  for the boolean flag) — negligible cost, not flagged as a defect.
+- `calculateHash($freshEntry, $previousHash, $document->currency)` — confirmed the 3rd arg is
+  now passed, closing the no-arg-`getScale()` divergence from `verifyChain()`'s explicit-currency
+  path. Grepped the whole diff for `getScale(` — the only remaining no-arg call
+  (`MultiPaymentService.php` private `scale()` helper) is PRE-EXISTING, untouched by this round
+  (confirmed via `git diff a84c1b53e..HEAD` — that line is unchanged context, not a `+` line),
+  consistent with the gate's own note that this class of debt is inherited, not new.
+- `UnreversibleDocumentGlException::forUnbalancedOriginal()`'s message no longer says "Post a
+  correcting entry first" — now says "Contact accounting/engineering support to correct the
+  underlying ledger entry manually before retrying," which does not claim a self-service path
+  exists. Matches the gate's ruling (c): stop recommending an impossible remedy. The escape
+  hatch itself (options a/b) is correctly NOT implemented in-lane — ticketed as required.
+
+### Item 7 — ticket files — CLOSED, verified
+
+All 5 exist at `docs/superpowers/tickets/2026-08-06-l2-*.md` (not under `reviews/` — the diff
+stat's truncated paths were misleading at a glance; confirmed via `find`). Read all 5 in full:
+each faithfully restates its source finding (I-3 VAT-declaration desync + the period-refusal
+condition from ruling 6a's second attached condition; I-4/6c COGS-and-AP-unreversed as two
+explicit parts; the correcting-entry escape hatch with both suggested fixes (a)/(b) preserved
+verbatim from the gate's ruling; the GL-gate MINOR bundle (M-2/M-3/M-4/6b/AP-report-PO-only, all
+five items present); and the remaining `balance_due` consumer sweep gap, naming all four sites
+the treasury gate identified (`PaymentController::storeMultiple()` x3,
+`PaymentAllocationService::getOpenInvoices()`, `::getInvoiceBalance()`,
+`SmartPaymentController::previewAllocation()`). None of the deferred items were silently dropped
+or softened.
+
+### Item 8 — regression sweep — CLOSED, verified on live PostgreSQL
+
+| Suite | Result (live PG) |
+|---|---|
+| `DocumentGlPreflightTest` + `InvoiceGLIntegrationTest` + `CreditNoteGLIntegrationTest` + `InvoiceAndCreditNoteGLIntegrationTest` | 37/37 pass |
+| `FiscalHardeningE2ETest` | 13/13 pass (pre-existing deprecation notices, no failures) |
+| `DocumentCancelConsolidationTest` + `DocumentPostingServiceTest` | 29/30 — **1 pre-existing failure, path-disjoint from this round's diff**: `test_revert_clean_purchase_order_to_draft` fails on live PG with `invalid input syntax for type uuid: "user-1"` (a test fixture bug — non-UUID string forced into a UUID column, tolerated by SQLite's loose typing, rejected by PG). `DocumentPostingServiceTest.php` does not appear in `git diff a84c1b53e..HEAD --name-only` — untouched by this lane. Not this round's regression. |
+| `RefundResidualTenantIsolationTest` + `InvoicePostedListenerTest` + `Types/InvoiceDocumentTest` | 37/37 pass |
+| `AgedPayablesAutoPoTest` + `AgedReceivablesScalingTest` | 7/7 pass |
+| `AgedOutstandingSourceTest` + `AgedAgingBucketsTest` + `UpcomingPaymentsTest` | 15/15 pass |
+| `PaymentTest` + `PaymentAllocationPrecisionTest` + `SmartPaymentIntegrationTest` + `DocumentPaymentStatusTransitionTest` + `MultiPaymentTest` + `SupplierPaymentGuardTest` + `PaymentControllerSpineTest` | 76/76 pass |
+| `PaymentAllocationDocumentStateTest` | 6/8 pass — 2 test-quality bugs, see above (production code unaffected) |
+| `CreditNoteAllocationTest` + `CloseInvoiceWithToleranceServiceTest` | all pass (batched with the above at 29/29 minus the 2 treasury-file failures) |
+| TypeScript typecheck of `e2e/money-campaign/w7-concurrency.spec.ts` + `finance-aged.spec.ts` | clean, 0 errors (`npx tsc --noEmit --strict`, Playwright not run per instruction) |
+| PHPStan level 8, all 18 changed non-test PHP files, live-DB env | `[OK] No errors` |
+| Pint `--test`, same file set | `{"result":"pass"}` |
+
+Playwright itself was not run (per instruction). `BankStatementAggregateSchemaTest` and
+`RepositoryMovementsEndpointTest` (the base gate's noted pre-existing failures) were not
+re-verified this round — out of scope for this closure check, and path-disjointness from this
+round's diff still holds (`git diff a84c1b53e..HEAD --name-only` touches no migration, bank
+statement, or repository-movement file).
+
+### ROUND 2 VERDICT: spec ✅ + quality APPROVED, with two mechanical test fixes owed
+
+All items named in this gate's "What to fix before merge" are closed and independently
+re-verified, including the two hardest-to-fake claims (the live two-process `pcntl_fork`
+concurrency test, and the D2 opening-balance byte-parity). One class of NEW finding surfaced by
+this round's live-PostgreSQL verification: 2 of 8 `PaymentAllocationDocumentStateTest` tests fail
+against real PG (a wrong-table assertion, and a false NULL-cache precondition) — both are test
+bugs, not production defects, and both are mechanical, small fixes. Recommend fixing them in the
+same PR (or as a fast one-line follow-up commit) rather than blocking the merge on them, since
+the underlying CRITICAL 1/CRITICAL 2 production code is independently verified correct by
+several other passing live-PG suites plus direct code reading. This is a narrow closure check
+under the program's Sonnet-capped posture (Opus capped until Aug 9) — nothing found here rises
+to a level that needs a full Opus re-gate; the test-bug finding is mechanical enough for the
+implementer (or a fast follow-up) to fix without new design review.

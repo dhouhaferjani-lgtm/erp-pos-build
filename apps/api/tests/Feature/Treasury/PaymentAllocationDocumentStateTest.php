@@ -298,7 +298,12 @@ final class PaymentAllocationDocumentStateTest extends TestCase
         $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
         self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
         self::assertSame(0, PaymentAllocation::query()->where('document_id', $invoice->id)->count());
-        self::assertDatabaseMissing('payments', ['document_id' => $invoice->id]);
+        // `payments` has no `document_id` column (it links to a document only
+        // through `payment_allocations.document_id`, asserted zero above) — the
+        // guard runs before the controller's try block, before the service (and
+        // therefore before any `Payment::create()`) is ever reached, so nothing
+        // in this table should exist at all for a RefreshDatabase'd test.
+        self::assertSame(0, Payment::query()->count());
     }
 
     /**
@@ -326,15 +331,30 @@ final class PaymentAllocationDocumentStateTest extends TestCase
      * TREASURY GATE, CRITICAL 1 — `MultiPaymentService::createSplitPayment()`'s
      * total-match check (`:54`) read `$document->balance_due ?? $document->total`,
      * the exact D2 cache-blindness shape: a document that already carries an
-     * allocation but whose `balance_due` cache is still NULL (SQLite has no
-     * trigger; a real DML path can race the same way) offered its FULL total as
-     * the required split amount instead of what is actually still outstanding.
+     * allocation but whose `balance_due` cache is still NULL offered its FULL
+     * total as the required split amount instead of what is actually still
+     * outstanding.
+     *
+     * Round-2 gate note: on real PostgreSQL the trigger fires on ANY
+     * `payment_allocations` INSERT regardless of writer, so a plain
+     * `PaymentAllocation::create()` alone does NOT leave the cache NULL there —
+     * only SQLite (no trigger at all) reproduces that by accident. `balance_due`
+     * is forced NULL explicitly below via a QUERY-BUILDER update, not
+     * `$invoice->update(...)` — the latter compares against `$invoice`'s
+     * in-memory `original` attributes, which were loaded BEFORE the trigger's
+     * raw-SQL write and still read `null`; Eloquent then sees "null -> null",
+     * no dirty attributes, and silently skips `balance_due` in the SET clause
+     * (confirmed live: the row was left at the trigger-set `150.000`). A
+     * `Document::whereKey(...)->update(...)` query bypasses model dirty-tracking
+     * entirely and always issues the SQL, so it holds on every driver
+     * regardless of what the in-memory model last saw.
      */
     public function test_the_split_payment_total_check_uses_the_computed_outstanding_not_the_cache(): void
     {
         $invoice = $this->invoice('INV-SPLIT-PARTIAL', '200.000');
         PaymentAllocation::create(['document_id' => $invoice->id, 'amount' => '50.000']);
-        self::assertNull($invoice->refresh()->balance_due, 'The cache never fired on this manual allocation');
+        Document::query()->whereKey($invoice->id)->update(['balance_due' => null]);
+        self::assertNull($invoice->refresh()->balance_due, 'Forced NULL so the cache-blind case holds on every driver');
 
         $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$invoice->id}/split-payment", [
             'splits' => [

@@ -97,8 +97,40 @@ have both an un-invoiced PO accrual and a posted, unpaid SupplierInvoice
 simultaneously — they should sum, not overwrite). Needs its own red→green test
 fixture with both document types against one supplier.
 
+## 6. `DocumentAllocationStateGuard` now couples Document ↔ Treasury BOTH ways (Round-2 finding)
+
+The guard already type-hinted `App\Modules\Document\Domain\Document`
+(`apps/api/app/Modules/Treasury/Application/Services/DocumentAllocationStateGuard.php:7`)
+— a Treasury class importing a concrete Document-module Eloquent model, flagged
+MINOR at the original gate (M-6, "consistent with `PaymentController`'s
+pre-existing usage"). This round's item-4 fix added the REVERSE direction:
+`CreditNoteService` (Document module, `Application/Services`) now directly
+imports and constructor-injects the concrete
+`App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard`
+(`apps/api/app/Modules/Document/Application/Services/CreditNoteService.php`) to
+guard `allocateCreditNote()`. Document and Treasury are now coupled **both
+ways** through this one class — worse than the pre-existing one-directional
+debt. `deptrac.yaml`'s ruleset is glob-based per hexagonal tier WITHIN a
+module, not across modules (confirmed by reading the config's own header
+comment), so this is invisible to the ratchet CI already runs.
+
+Doesn't break anything today (PHPStan/tests clean on both sides), and it
+mirrors the SHAPE of a precedent this exact lane already established
+correctly elsewhere — `DocumentGlReversalInterface`
+(`apps/api/app/Shared/Contracts/Accounting/DocumentGlReversalInterface.php`)
+decouples the equivalent Accounting↔Document dependency for the GL-reversal
+call. **Fix:** add a `Shared/Contracts/Treasury/DocumentAllocationGuardInterface`
+(single method, `assertAllocatable(Document $document): void`), have
+`DocumentAllocationStateGuard` implement it, and have `CreditNoteService`
+(and, for consistency, `CloseInvoiceWithToleranceService` and
+`MultiPaymentController`/`PaymentAllocationService`/`PaymentController` —
+everywhere this round injected the concrete class) depend on the interface
+instead. Small, mechanical, no behavior change; closes both the new and the
+pre-existing M-6 debt in one pass.
+
 ## Related
 
-- `docs/superpowers/reviews/2026-08-06-l2-gl-gate.md` (M-2, M-3, M-4, ruling 6b)
+- `docs/superpowers/reviews/2026-08-06-l2-gl-gate.md` (M-2, M-3, M-4, ruling 6b,
+  Round-2 cross-module coupling finding)
 - `docs/superpowers/reviews/2026-08-06-l2-treasury-gate.md` (AP report MINOR
-  finding)
+  finding, Round-2 cross-module coupling finding)
