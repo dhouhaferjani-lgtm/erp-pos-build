@@ -417,6 +417,20 @@ export async function authorTier4CardFiscalSale(
   grossAmount: string,
 ): Promise<string> {
   const headers = authHeaders(session)
+
+  // A fiscal SALE_RECEIPT must never be rung at a non-POS location. Selecting
+  // "the first active terminal" (no location predicate) is ORDER-LUCK: once a
+  // warehouse-resident terminal sorts first in the list, this fixture clones
+  // its location onto a new dedicated terminal and rings a real hash-chained
+  // sale at the warehouse — a self-compounding contamination of the fiscal
+  // chain. See docs/superpowers/tickets/2026-08-06-c2-fixture-terminal-location.md.
+  // So select the template DETERMINISTICALLY by location type, never by list
+  // order: the fixture wants a shop, and only a shop.
+  const locationsRes = await request.get(`${API_BASE}/locations`, { headers })
+  await expectOk(locationsRes, 'locations')
+  const locations = ((await jsonData(locationsRes)) as unknown as Array<{ id: string; type: string }>) ?? []
+  const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop').map((l) => l.id))
+
   const terminalsRes = await request.get(`${API_BASE}/pos/terminals`, { headers })
   await expectOk(terminalsRes, 'POS terminals')
   const terminals = ((await jsonData(terminalsRes)) as unknown as Array<{
@@ -425,8 +439,11 @@ export async function authorTier4CardFiscalSale(
     genesis_seed: string
     is_active: boolean
   }>) ?? []
-  const template = terminals.find((t) => t.is_active)
-  expect(template, 'an active terminal exists').toBeTruthy()
+  const template = terminals.find((t) => t.is_active && shopLocationIds.has(t.location_id))
+  expect(
+    template,
+    'an active terminal at a SHOP location exists — a fiscal sale must never be rung at a warehouse',
+  ).toBeTruthy()
 
   const terminalRes = await request.post(`${API_BASE}/pos/terminals`, {
     headers,

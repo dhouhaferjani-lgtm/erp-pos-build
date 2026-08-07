@@ -575,6 +575,23 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
     outboundInstrumentId = await issueExpenseCheque(request, CHEQUE_AMOUNT, outboundReference)
     checkpointInstrumentId = await issueExpenseCheque(request, '11.111', `P5B-CHECKPOINT-${RUN_ID}`)
 
+    // A fiscal SALE_RECEIPT must never be rung at a non-POS location. Selecting
+    // "the first active terminal" (no location predicate) is ORDER-LUCK: once a
+    // warehouse-resident terminal sorts first in the list, this helper clones
+    // its location onto a new dedicated terminal and rings a real hash-chained
+    // sale at the warehouse — a self-compounding contamination of the fiscal
+    // chain (this is the same bug shape closed for the money-campaign's
+    // `statement-support.ts` `authorTier4CardFiscalSale`; see
+    // docs/superpowers/tickets/2026-08-06-c2-fixture-terminal-location.md).
+    // So select the template DETERMINISTICALLY by location type: the fixture
+    // wants a shop, and only a shop.
+    const locationsResponse = await request.get(`${API_BASE}/locations`, {
+      headers: authHeaders(),
+    })
+    await expectStatus(locationsResponse, 200, 'locations')
+    const locations = ((await json(locationsResponse)).data ?? []) as Array<{ id: string; type: string }>
+    const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop').map((l) => l.id))
+
     const terminalsResponse = await request.get(`${API_BASE}/pos/terminals`, {
       headers: authHeaders(),
     })
@@ -587,8 +604,13 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       hash_sequence: number
       is_active: boolean
     }>
-    const terminalTemplate = terminals.find((candidate) => candidate.is_active)
-    expect(terminalTemplate, 'an active terminal exists').toBeTruthy()
+    const terminalTemplate = terminals.find(
+      (candidate) => candidate.is_active && shopLocationIds.has(candidate.location_id),
+    )
+    expect(
+      terminalTemplate,
+      'an active terminal at a SHOP location exists — a fiscal sale must never be rung at a warehouse',
+    ).toBeTruthy()
     const terminalResponse = await request.post(`${API_BASE}/pos/terminals`, {
       headers: authHeaders(),
       data: {
