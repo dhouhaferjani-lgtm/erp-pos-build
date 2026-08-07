@@ -589,8 +589,8 @@ test.describe('Treasury Phase 5b — live reconciliation exit', () => {
       headers: authHeaders(),
     })
     await expectStatus(locationsResponse, 200, 'locations')
-    const locations = ((await json(locationsResponse)).data ?? []) as Array<{ id: string; type: string }>
-    const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop').map((l) => l.id))
+    const locations = ((await json(locationsResponse)).data ?? []) as Array<{ id: string; type: string; pos_enabled?: boolean }>
+    const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop' && l.pos_enabled !== false).map((l) => l.id))
 
     const terminalsResponse = await request.get(`${API_BASE}/pos/terminals`, {
       headers: authHeaders(),

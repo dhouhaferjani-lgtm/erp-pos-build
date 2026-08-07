@@ -428,8 +428,8 @@ export async function authorTier4CardFiscalSale(
   // order: the fixture wants a shop, and only a shop.
   const locationsRes = await request.get(`${API_BASE}/locations`, { headers })
   await expectOk(locationsRes, 'locations')
-  const locations = ((await jsonData(locationsRes)) as unknown as Array<{ id: string; type: string }>) ?? []
-  const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop').map((l) => l.id))
+  const locations = ((await jsonData(locationsRes)) as unknown as Array<{ id: string; type: string; pos_enabled?: boolean }>) ?? []
+  const shopLocationIds = new Set(locations.filter((l) => l.type === 'shop' && l.pos_enabled !== false).map((l) => l.id))
 
   const terminalsRes = await request.get(`${API_BASE}/pos/terminals`, { headers })
   await expectOk(terminalsRes, 'POS terminals')
