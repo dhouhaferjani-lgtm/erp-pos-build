@@ -780,6 +780,89 @@ class CreditNoteGLIntegrationTest extends TestCase
     }
 
     /**
+     * Gate m-1 (2026-08-07) — when a stamp-bearing CN's leftover rounding
+     * residual ALSO lands on the SAME `SalesStampDutyPayable` (4375) account
+     * the new stamp pair uses (residualPlan()'s ladder still prefers 4375 for
+     * the leftover, unchanged, to avoid a TN regression), that leg must be
+     * labelled as rounding dust, never "stamp duty" — the real stamp already
+     * has its own explicit pair with its own description.
+     *
+     * Fixture: same 1.000 net + 0.190 VAT + 0.600 stamp as the main test, but
+     * `total` is bumped by 0.001 so a genuine (non-stamp) residual exists
+     * alongside the stamp.
+     */
+    public function test_credit_note_residual_leg_is_labelled_rounding_dust_not_stamp_duty_when_a_stamp_pair_is_also_written(): void
+    {
+        $purchaseStampDutyAccount = $this->createPurchaseStampDutyAccount();
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'document_number' => 'CN-M1-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '1.000',
+            'stamp_duty_amount' => '0.600',
+            'tax_amount' => '0.791',   // 0.190 line VAT + 0.600 stamp + 0.001 dust
+            'total' => '1.791',        // one ULP above the exact 1.790
+            'balance_due' => '1.791',
+            // TND (scale 3), NOT this fixture's default EUR (scale 2) — the
+            // whole point of this test is a 0.001 (third-decimal) residual,
+            // which a scale-2 currency would truncate away before it ever
+            // reached the ledger.
+            'currency' => 'TND',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $creditNote->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Credited product, stamp + rounding dust',
+            'quantity' => '1',
+            'unit_price' => '1.000',
+            'tax_rate' => '19.00',
+            'line_total' => '1.000',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+
+        $journalEntryId = $this->accountingService->createCreditNoteGLEntries($creditNote);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        // Two DISTINCT lines on the same 4375 account: the stamp pair's
+        // CREDIT (0.600, exact) and the residual ladder's DEBIT (0.001, dust).
+        $stampPayableLines = $lines->where('account_id', $this->salesStampDutyAccount->id);
+        $this->assertCount(2, $stampPayableLines, 'the stamp pair credit and the residual debit both land on 4375');
+
+        $residualLine = $stampPayableLines->firstWhere('debit', '0.001');
+        $this->assertNotNull($residualLine, 'the 0.001 rounding-dust leg must exist');
+        $this->assertStringNotContainsString(
+            'Stamp duty',
+            $residualLine->description,
+            'the residual leg must not claim to carry the stamp when a separate stamp pair is also written'
+        );
+        $this->assertStringContainsString('rounding', strtolower($residualLine->description));
+
+        $stampPairLine = $stampPayableLines->firstWhere('credit', '0.600');
+        $this->assertNotNull($stampPairLine, 'the exact stamp pair credit leg must exist');
+        $this->assertStringContainsString('Stamp duty', $stampPairLine->description);
+
+        $stampChargeLine = $lines->firstWhere('account_id', $purchaseStampDutyAccount->id);
+        $this->assertNotNull($stampChargeLine);
+        $this->assertSame('0.600', $stampChargeLine->debit);
+
+        $debits = '0';
+        $credits = '0';
+        foreach ($lines as $line) {
+            $debits = bcadd($debits, (string) $line->debit, 3);
+            $credits = bcadd($credits, (string) $line->credit, 3);
+        }
+        $this->assertSame($credits, $debits, 'the entry must still balance with the extra rounding-dust leg');
+        $this->assertSame('1.791', $debits);
+    }
+
+    /**
      * Q1 fail-closed branch: a credit note carries its own stamp duty, but this
      * chart has no `PurchaseStampDuty` account to carry the DEBIT (fiscal-charge)
      * leg — the base fixture in `setUp()` never creates one. The pre-flight must

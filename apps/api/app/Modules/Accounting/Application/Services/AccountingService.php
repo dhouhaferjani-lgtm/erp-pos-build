@@ -670,14 +670,26 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 }
             }
 
-            // 3b. Reverse the residual out: total − revenue − line VAT rides in the
-            // AR credit and needs a debit leg, mirroring the invoice posting. On the
-            // Tunisian chart that is the collected timbre going back out of the 4375
-            // liability; elsewhere it is the tax-rounding difference. `residualPlan()`
-            // chose the account and `DocumentPostingService` pre-flighted the verdict
-            // before the credit note was sealed.
+            // 3b. Reverse the residual out: arFacingTotal − revenue − line VAT
+            // rides in the AR credit and needs a debit leg, mirroring the
+            // invoice posting. `residualPlan()` chose the account and
+            // `DocumentPostingService` pre-flighted the verdict before the
+            // credit note was sealed.
+            //
+            // Gate m-1 (2026-08-07): once `$plan->stampDutyAmount` is
+            // positive, THIS leg is pure per-line tax-truncation dust — the
+            // real stamp has its own explicit pair at 3c below — even when it
+            // still lands on the SAME 4375 account a stampless CN's residual
+            // would (`residualPlan()`'s absorbing-account ladder still prefers
+            // `SalesStampDutyPayable` for the leftover after the stamp is
+            // peeled out, unchanged, to avoid a TN regression). Label it
+            // "stamp duty (timbre)" ONLY for a legacy stampless CN whose
+            // residual happens to land on 4375 — the pre-existing, unchanged
+            // shape (gate m-3's disposition-deferred case) — never when a
+            // separate stamp pair is ALSO being written for this same entry.
             if ($plan->absorbingAccount !== null) {
-                $isStampDuty = $plan->absorbingAccount->system_purpose === SystemAccountPurpose::SalesStampDutyPayable;
+                $isStampDuty = $plan->absorbingAccount->system_purpose === SystemAccountPurpose::SalesStampDutyPayable
+                    && $plan->stampExpenseAccount === null;
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $plan->absorbingAccount->id,
