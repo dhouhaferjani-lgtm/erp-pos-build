@@ -230,20 +230,17 @@ test.describe('RFQ — quote request -> comparison -> purchase order', () => {
     expect(g.siblings.every((sib) => sib.status !== 'cancelled'), 'the losing sibling is live again').toBe(true)
   })
 
-  test('MTP-RFQ-06 (P1) TRIPWIRE: an RFQ-awarded PO carries NO tax rate — the VAT is silently missing', async ({ page }) => {
-    // DEFECT (P1) — docs/superpowers/tickets/2026-08-03-w4-purchasing-inventory-defects.md #3.
-    // CreatePurchaseQuoteRequestRequest / UpdatePurchaseQuoteRequestRequest have no
-    // `tax_rate` field at all, so an RFQ line can never carry one, and
-    // PurchaseQuoteRequestToPurchaseOrderConverter copies the untaxed line straight
-    // through. The awarded PO's lines have `tax_rate: null`, so `tax_amount` stays
-    // `0.000` even AFTER confirm — where a hand-authored PO of the same line at 19%
-    // carries 23.750 of VAT (MTP-PUR-01). Consequences: the PO understates the committed
-    // payable by the full VAT, the 3-way match compares an untaxed PO against a taxed
-    // supplier invoice, and LandedCostService's non-recoverable-tax allocation sees
-    // nothing to allocate.
-    //
-    // TRIPWIRE: this asserts TODAY's zero-VAT behaviour. When RFQ lines gain a tax rate
-    // this goes red and must be updated to the taxed expectation.
+  test('MTP-RFQ-06 (P1) FIXED: an RFQ-awarded PO carries the resolved default tax rate', async ({ page }) => {
+    // FIXED (was P1) — docs/superpowers/tickets/2026-08-03-w4-purchasing-inventory-defects.md #3.
+    // CreatePurchaseQuoteRequestRequest / UpdatePurchaseQuoteRequestRequest still have no
+    // `tax_rate` field, so an RFQ line still can never carry an EXPLICIT rate — but the
+    // award now resolves a default (product tax_rate / tax configuration / company
+    // default — the same chain the replenishment-sourcing path already used) and passes
+    // it into the converter, which also recomputes the awarded DRAFT's header from the
+    // resolved lines (gate findings I-1/I-2) instead of copying the RFQ's always-untaxed
+    // subtotal/tax_amount/total/balance_due verbatim. A hand-authored PO of the same line
+    // at 19% carries 23.750 of VAT (MTP-PUR-01) — the RFQ-awarded PO now matches it
+    // immediately at draft, not only after confirm.
     const { product, siblings } = await buildRfq(page, 'RFQ06')
     const winner = siblings[0]
     expect((await sendRfq(page, winner.id)).status).toBe(200)
@@ -255,21 +252,30 @@ test.describe('RFQ — quote request -> comparison -> purchase order', () => {
 
     const draft = await getPurchaseOrder(page, poId)
     const draftLines = draft.lines as Array<{ tax_rate: string | null }>
-    expect(draftLines[0].tax_rate, 'TRIPWIRE: an RFQ line cannot carry a tax rate').toBeNull()
+    expect(draftLines[0].tax_rate, 'resolved default rate — the demo-pharmacy-tn company default is 19%').toBe('19.00')
     expect(draft.subtotal).toBe('125.000')
-    expect(draft.tax_amount).toBe('0.000')
+    // FIXED (was TRIPWIRE 0.000): the DRAFT header is now recomputed from the resolved
+    // line rate at award time, not left at the RFQ's untaxed placeholder until confirm.
+    expect(draft.tax_amount, '19% of 125.000, already correct at draft').toBe('23.750')
+    expect(draft.total).toBe('148.750')
+    expect(draft.balance_due, 'balance_due must agree with total from the moment of award').toBe('148.750')
 
     // Confirm is the point where a PO's taxes are calculated and snapshotted
-    // (PurchaseOrderService::confirmAndAllocateCosts). It cannot invent a rate.
+    // (PurchaseOrderService::confirmAndAllocateCosts) — it independently recomputes from
+    // the now-correctly-rated line and must agree with what the draft already showed.
     const confirm = await apiRequest(page, 'POST', `/purchase-orders/${poId}/confirm`)
     expect(confirm.status, JSON.stringify(confirm.body)).toBe(200)
     const confirmed = await getPurchaseOrder(page, poId)
-    expect(confirmed.tax_amount, 'TRIPWIRE: expected 23.750 (19% of 125.000); an RFQ-sourced PO gets none').toBe('0.000')
-    expect(confirmed.total, 'TRIPWIRE: expected 148.750').toBe('125.000')
+    expect(confirmed.tax_amount, '19% of 125.000').toBe('23.750')
+    expect(confirmed.total).toBe('148.750')
+    // Gate finding I-2: PurchaseOrderService::confirmAndAllocateCosts updates ONLY
+    // tax_amount and total, never balance_due — this is the one place the pre-fix
+    // mismatch (total 148.750, balance_due still 125.000, introduced by the R2-P fix
+    // itself) would have surfaced. It must still agree post-confirm.
+    expect(confirmed.balance_due, 'balance_due must equal total after confirm').toBe(confirmed.total)
 
     // STATE THIS CASE CANNOT RETIRE (recorded, and reported in the wave ledger with exact
-    // amounts): proving the VAT is still zero AFTER confirm requires the PO to be
-    // confirmed, and a confirmed PO is not deletable — there is no cancel route on
+    // amounts): a confirmed PO is not deletable — there is no cancel route on
     // /purchase-orders at all (index/store/show/patch/delete/confirm/receive only). The
     // refusal is asserted here so the constraint is pinned rather than assumed.
     const cannotDelete = await apiRequest(page, 'DELETE', `/purchase-orders/${poId}`)
@@ -278,7 +284,7 @@ test.describe('RFQ — quote request -> comparison -> purchase order', () => {
     test.info().annotations.push({
       type: 'STATE-LEFT-BEHIND',
       description:
-        `confirmed purchase order ${poId as string} — subtotal 125.000, tax_amount 0.000, total 125.000, ` +
+        `confirmed purchase order ${poId as string} — subtotal 125.000, tax_amount 23.750, total 148.750, ` +
         'no cancel route exists. Reported in the W-4 ledger for W-6.',
     })
   })

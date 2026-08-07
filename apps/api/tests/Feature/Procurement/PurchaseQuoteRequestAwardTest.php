@@ -192,14 +192,238 @@ final class PurchaseQuoteRequestAwardTest extends TestCase
         $this->assertNotNull($poLine);
         $this->assertSame('19.00', $poLine->tax_rate);
         $this->assertSame('125.000', $po->subtotal);
+        // Gate finding M-3: line-level tax fields must be populated the same way
+        // DraftPurchaseOrderService::persistLines() populates them on the
+        // sibling replenishment path — not left NULL.
+        $this->assertSame('23.750', $poLine->tax_amount, '19% of the line total 125.000');
+        $this->assertTrue((bool) $poLine->tax_recoverable);
+        $this->assertSame('23.750', $poLine->recoverable_tax_amount);
+        $this->assertSame('0.000', $poLine->non_recoverable_tax_amount);
+
+        // Gate finding I-1: the awarded DRAFT must show its OWN taxed header, not
+        // the RFQ's always-untaxed subtotal/tax_amount/total copied verbatim. The
+        // converter now recomputes the header from the resolved line rates
+        // (Concerns/CopiesDocumentData::recalculateTotals()) BEFORE confirm ever
+        // runs — matching how a hand-authored or replenishment-sourced draft PO
+        // already shows its taxed totals immediately.
+        $this->assertSame('23.750', $po->tax_amount, 'the DRAFT header must already carry 19% VAT, not wait for confirm');
+        $this->assertSame('148.750', $po->total);
+        // Gate finding I-2: balance_due must never diverge from total. Recomputed
+        // by the same call, so it agrees with total from the moment of award.
+        $this->assertSame('148.750', $po->balance_due);
 
         // Confirm is where a PO's taxes are calculated and snapshotted
-        // (PurchaseOrderService::confirmAndAllocateCosts) — it can only compute the
-        // VAT now that the line actually carries a rate.
+        // (PurchaseOrderService::confirmAndAllocateCosts) — it recomputes tax_amount
+        // and total from the now-correctly-rated lines via TaxCalculationService,
+        // independently confirming the draft's own header was already right.
         $confirmed = app(PurchaseOrderService::class)->confirm($po);
 
         $this->assertSame('23.750', $confirmed->tax_amount, '19% of 125.000');
         $this->assertSame('148.750', $confirmed->total);
+        // Gate finding I-2: PurchaseOrderService::confirmAndAllocateCosts updates
+        // ONLY tax_amount and total, never balance_due — so this is the one place
+        // the pre-fix mismatch (total 148.750, balance_due still 125.000) would
+        // have surfaced. It must still agree post-confirm.
+        $this->assertSame($confirmed->total, $confirmed->balance_due, 'balance_due must equal total after confirm, not the stale draft value');
+    }
+
+    /**
+     * Gate finding M-1(a) — an explicit line rate must win over the product
+     * default. The RFQ create/update contract has no field for it today (the
+     * ticket's whole premise), so the line is stamped directly at the DB row
+     * AFTER recordResponse() (which would otherwise wipe it via replaceLines'
+     * delete+recreate) to prove the resolver's precedence, not assume it.
+     */
+    public function test_award_prefers_an_explicit_line_tax_rate_over_the_product_default(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Explicit-rate-wins product',
+            'tax_rate' => '19.00',
+        ]);
+        $supplier = $this->supplier('Explicit Rate Supplier');
+
+        $created = app(PurchaseQuoteRequestService::class)->createGroup(
+            new CreateRfqData(
+                partnerIds: [$supplier->id],
+                lines: [[
+                    'product_id' => $product->id,
+                    'quantity' => '4.0000',
+                    'unit_price' => null,
+                    'description' => 'Explicit-rate-wins line',
+                ]],
+                validityDate: null,
+                notes: null,
+            ),
+            $this->tenant->id,
+            $this->company->id,
+            $this->company->currency,
+        );
+        $rfq = $created->first();
+        $this->assertNotNull($rfq);
+
+        $responded = app(PurchaseQuoteRequestService::class)->recordResponse(
+            $rfq->id,
+            $this->tenant->id,
+            $this->company->id,
+            new UpdateRfqData(
+                lines: [[
+                    'id' => $rfq->lines->first()?->id,
+                    'product_id' => $product->id,
+                    'quantity' => '4.0000',
+                    'unit_price' => '10.000',
+                    'description' => 'Explicit-rate-wins line',
+                ]],
+                validityDate: null,
+                supplierReference: null,
+                leadTimeDays: null,
+            ),
+        );
+
+        $respondedLine = $responded->lines->first();
+        $this->assertNotNull($respondedLine);
+        $respondedLine->update(['tax_rate' => '7.00']);
+
+        $po = app(PurchaseQuoteRequestAwardService::class)->award($responded->id, $this->tenant->id, $this->company->id);
+
+        $this->assertSame('7.00', $po->lines->first()?->tax_rate, 'explicit line rate must win over the product default (19.00)');
+    }
+
+    /**
+     * Gate finding M-1(b) — a legitimately 0%-configured product must NOT be
+     * bumped to a nonzero company default. `hasNumericValue()` is a presence
+     * test, not a truthiness test, so '0.00' must be distinguished from NULL.
+     * The company default is set to a NONZERO rate specifically so a bug that
+     * treats '0.00' as "missing" would be caught (it would resolve to '19.00').
+     */
+    public function test_award_does_not_bump_a_configured_zero_product_rate_to_the_company_default(): void
+    {
+        $this->company->update(['default_tax_rate' => '19.00']);
+
+        $exemptProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Configured-zero product',
+            'tax_rate' => '0.00',
+        ]);
+        $supplier = $this->supplier('Configured Zero Supplier');
+
+        $created = app(PurchaseQuoteRequestService::class)->createGroup(
+            new CreateRfqData(
+                partnerIds: [$supplier->id],
+                lines: [[
+                    'product_id' => $exemptProduct->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => null,
+                    'description' => 'Configured-zero line',
+                ]],
+                validityDate: null,
+                notes: null,
+            ),
+            $this->tenant->id,
+            $this->company->id,
+            $this->company->currency,
+        );
+        $rfq = $created->first();
+        $this->assertNotNull($rfq);
+
+        $responded = app(PurchaseQuoteRequestService::class)->recordResponse(
+            $rfq->id,
+            $this->tenant->id,
+            $this->company->id,
+            new UpdateRfqData(
+                lines: [[
+                    'id' => $rfq->lines->first()?->id,
+                    'product_id' => $exemptProduct->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => '10.000',
+                    'description' => 'Configured-zero line',
+                ]],
+                validityDate: null,
+                supplierReference: null,
+                leadTimeDays: null,
+            ),
+        );
+
+        $po = app(PurchaseQuoteRequestAwardService::class)->award($responded->id, $this->tenant->id, $this->company->id);
+
+        $this->assertSame('0.00', $po->lines->first()?->tax_rate, 'a configured 0% product rate must NOT be bumped to the nonzero company default');
+        $this->assertSame('0.000', $po->tax_amount);
+        $this->assertSame('30.000', $po->total);
+    }
+
+    /**
+     * Gate finding M-1(c) — a product-less RFQ line (no product to consult at
+     * all in the resolver's chain) must fall all the way through to the
+     * company default, not error or silently resolve to '0.00'. The RFQ
+     * create/update FormRequests require product_id (CreatePurchaseQuoteRequestRequest
+     * / UpdatePurchaseQuoteRequestRequest), and the CreateRfqData/UpdateRfqData
+     * DTOs type `product_id` as a non-nullable `string` too, so this state is
+     * never reachable through the normal create/respond calls. Forced at the DB
+     * row directly (mirroring the explicit-rate-wins test's technique above) —
+     * a legitimate defensive case (e.g. a product later hard-deleted out from
+     * under a line) the resolver must still handle without erroring.
+     */
+    public function test_award_resolves_company_default_tax_rate_for_a_product_less_rfq_line(): void
+    {
+        $this->company->update(['default_tax_rate' => '13.00']);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Orphaned-away product',
+            // Deliberately a DIFFERENT nonzero rate than the company default —
+            // if the resolver wrongly kept consulting this product after its id
+            // is cleared from the line, the assertion below would catch it.
+            'tax_rate' => '19.00',
+        ]);
+        $supplier = $this->supplier('Product-less RFQ Supplier');
+
+        $created = app(PurchaseQuoteRequestService::class)->createGroup(
+            new CreateRfqData(
+                partnerIds: [$supplier->id],
+                lines: [[
+                    'product_id' => $product->id,
+                    'quantity' => '5.0000',
+                    'unit_price' => null,
+                    'description' => 'Product-less freight line',
+                ]],
+                validityDate: null,
+                notes: null,
+            ),
+            $this->tenant->id,
+            $this->company->id,
+            $this->company->currency,
+        );
+        $rfq = $created->first();
+        $this->assertNotNull($rfq);
+
+        $responded = app(PurchaseQuoteRequestService::class)->recordResponse(
+            $rfq->id,
+            $this->tenant->id,
+            $this->company->id,
+            new UpdateRfqData(
+                lines: [[
+                    'id' => $rfq->lines->first()?->id,
+                    'product_id' => $product->id,
+                    'quantity' => '5.0000',
+                    'unit_price' => '2.000',
+                    'description' => 'Product-less freight line',
+                ]],
+                validityDate: null,
+                supplierReference: null,
+                leadTimeDays: null,
+            ),
+        );
+
+        $respondedLine = $responded->lines->first();
+        $this->assertNotNull($respondedLine);
+        $respondedLine->update(['product_id' => null]);
+
+        $po = app(PurchaseQuoteRequestAwardService::class)->award($responded->id, $this->tenant->id, $this->company->id);
+
+        $this->assertSame('13.00', $po->lines->first()?->tax_rate, 'a product-less line must fall through to the company default, not error and not use the orphaned product rate');
     }
 
     public function test_second_award_is_rejected_once_group_has_live_po(): void

@@ -4,26 +4,29 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
-use App\Modules\Company\Domain\Company;
-use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentConverted;
+use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Procurement\Domain\Dto\RfqPayload;
-use App\Modules\Product\Domain\Product;
-use Illuminate\Database\Eloquent\Collection;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConverterInterface
 {
+    use CopiesDocumentData;
+
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
-        private readonly DocumentLineTaxResolver $lineTaxResolver,
+        protected readonly DocumentNumberingService $numberingService,
+        protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     public function sourceType(): DocumentType
@@ -73,7 +76,24 @@ final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConv
     }
 
     /**
-     * @param  array<string, mixed>  $options
+     * Ticket 2026-08-03-w4-purchasing-inventory-defects.md #3 (MTP-RFQ-06):
+     * RFQ lines can never carry an explicit tax_rate (CreatePurchaseQuoteRequestRequest /
+     * UpdatePurchaseQuoteRequestRequest declare no such field), so copying
+     * `$line->tax_rate` straight through always yielded NULL — and
+     * PurchaseOrderService::confirmAndAllocateCosts computes tax FROM the line's
+     * tax_rate, so a NULL rate silently meant zero VAT forever.
+     *
+     * This Domain-tier converter does NOT resolve tax rates itself (that would
+     * inject the Application-tier DocumentLineTaxResolver into a Domain class —
+     * a hexagonal-layer violation). The caller resolves rates using the same
+     * default chain DraftPurchaseOrderService uses for the replenishment-sourcing
+     * path (product tax_rate / tax configuration / company default) and passes
+     * them in via `$options['tax_rates']`, keyed by RFQ line id — see
+     * PurchaseQuoteRequestAwardService::resolveTaxRates() in the Application tier
+     * (deliberately NOT an `@see` docblock tag — this Domain-tier class must not
+     * carry even a docblock-only reference to an Application-tier class).
+     *
+     * @param  array<string, mixed>  $options  `tax_rates`: array<string RFQ-line-id, numeric-string>
      */
     public function convert(Document $source, array $options = []): Document
     {
@@ -84,6 +104,9 @@ final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConv
         if (! $this->canConvert($source)) {
             throw new \DomainException(implode('; ', $this->getConversionErrors($source)), 422);
         }
+
+        /** @var array<string, mixed> $rawTaxRates */
+        $rawTaxRates = is_array($options['tax_rates'] ?? null) ? $options['tax_rates'] : [];
 
         $purchaseOrder = Document::create([
             'tenant_id' => $source->tenant_id,
@@ -112,10 +135,26 @@ final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConv
             'source_document_id' => $source->id,
         ]);
 
-        $lines = $source->loadMissing('lines')->lines->values();
-        $resolvedTaxRates = $this->resolveTaxRates($source, $lines);
+        $scale = $source->currency !== ''
+            ? $this->scaleResolver->getScale($source->currency)
+            : $this->scaleResolver->getScaleSafe(null, 3);
+        $working = $scale + 4;
 
-        foreach ($lines as $index => $line) {
+        $lines = $source->loadMissing('lines')->lines->values();
+
+        foreach ($lines as $line) {
+            $rawRate = $rawTaxRates[$line->id] ?? $line->tax_rate;
+            $taxRate = is_numeric($rawRate) ? CurrencyScale::bcformatStrict((string) $rawRate, 2) : null;
+
+            $lineTotal = (string) ($line->line_total ?? '0');
+            $taxAmount = CurrencyScale::bcformatStrict('0', $scale);
+            if ($taxRate !== null && bccomp($taxRate, '0', 4) !== 0) { // precision-ok: percent-rate non-zero check (tax_rate is scale-2, never currency-scaled), not a money/quantity comparison
+                $taxAmount = CurrencyScale::bcformatStrict(
+                    bcmul($lineTotal, bcdiv($taxRate, '100', $working), $working),
+                    $scale,
+                );
+            }
+
             DocumentLine::create([
                 'id' => Str::uuid()->toString(),
                 'document_id' => $purchaseOrder->id,
@@ -129,7 +168,11 @@ final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConv
                 'unit_price' => $line->unit_price,
                 'discount_percent' => $line->discount_percent,
                 'discount_amount' => $line->discount_amount,
-                'tax_rate' => $resolvedTaxRates[$index],
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'tax_recoverable' => true,
+                'recoverable_tax_amount' => $taxAmount,
+                'non_recoverable_tax_amount' => CurrencyScale::bcformatStrict('0', $scale),
                 'line_total' => $line->line_total,
                 'notes' => $line->notes,
                 'designation_default_snapshot' => $line->designation_default_snapshot,
@@ -138,73 +181,15 @@ final class PurchaseQuoteRequestToPurchaseOrderConverter implements DocumentConv
             ]);
         }
 
+        // The awarded draft must show its OWN taxed totals — not the RFQ's
+        // always-untaxed header copied verbatim (gate finding I-1/I-2). Also
+        // repairs balance_due, which previously diverged from total the moment
+        // confirm() updated tax_amount/total but not balance_due.
+        $this->recalculateTotals($purchaseOrder);
+
         $this->dispatchConversionEvent($source, $purchaseOrder);
 
         return $purchaseOrder->refresh()->load('lines');
-    }
-
-    /**
-     * Resolve a tax rate for every RFQ line being carried into the PO.
-     *
-     * Ticket 2026-08-03-w4-purchasing-inventory-defects.md #3: RFQ lines can
-     * never carry an explicit tax_rate (CreatePurchaseQuoteRequestRequest /
-     * UpdatePurchaseQuoteRequestRequest declare no such field), so copying
-     * `$line->tax_rate` straight through always yields NULL — and
-     * PurchaseOrderService::confirmAndAllocateCosts computes tax FROM the
-     * line's tax_rate, so a NULL rate silently means zero VAT forever. Resolve
-     * the same default chain DraftPurchaseOrderService already uses for the
-     * replenishment-sourcing path (product tax_rate / tax configuration /
-     * company default) here at the conversion boundary.
-     *
-     * @param  Collection<int, DocumentLine>  $lines
-     * @return list<numeric-string>
-     */
-    private function resolveTaxRates(Document $source, Collection $lines): array
-    {
-        $company = Company::query()->findOrFail($source->company_id);
-
-        $productIds = $lines
-            ->pluck('product_id')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
-
-        /** @var Collection<array-key, Product> $products */
-        $products = Product::query()
-            ->where('tenant_id', $source->tenant_id)
-            ->where('company_id', $source->company_id)
-            ->whereIn('id', $productIds)
-            ->get()
-            ->keyBy('id');
-
-        $payloads = $lines->map(static function (DocumentLine $line): array {
-            $payload = [
-                'description' => (string) $line->description,
-                'quantity' => (string) $line->quantity,
-                'unit_price' => (string) $line->unit_price,
-                'tax_rate' => $line->tax_rate,
-            ];
-
-            if ($line->product_id !== null) {
-                $payload['product_id'] = $line->product_id;
-            }
-
-            return $payload;
-        })->values()->all();
-
-        $resolved = $this->lineTaxResolver->resolve($payloads, $company, $products);
-
-        $rates = [];
-        foreach (array_values($resolved) as $payload) {
-            $rate = (string) ($payload['tax_rate'] ?? '0.00');
-            if (! is_numeric($rate)) {
-                throw new \DomainException('Resolved tax rate must be numeric.');
-            }
-            $rates[] = $rate;
-        }
-
-        return $rates;
     }
 
     private function dispatchConversionEvent(Document $source, Document $target): void
