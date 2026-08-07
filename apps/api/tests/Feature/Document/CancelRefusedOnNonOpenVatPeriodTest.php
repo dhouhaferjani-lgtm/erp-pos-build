@@ -495,7 +495,75 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         yield 'return note' => [DocumentType::ReturnNote];
         yield 'purchase order' => [DocumentType::PurchaseOrder];
         yield 'purchase quote request' => [DocumentType::PurchaseQuoteRequest];
-        yield 'income' => [DocumentType::Income];
+    }
+
+    /**
+     * GL re-gate I-5 — `Income` is LEDGER-bearing and must be locked.
+     *
+     * The first narrowing pass excluded it on the strength of the declaration
+     * half of the criterion alone (`EloquentVatDataRepository:42` really does
+     * exclude income). But the criterion is DISJUNCTIVE — reaches the ledger OR
+     * the declaration — and the ledger half is true:
+     * `GeneralLedgerService::createFromIncome()` (declared `:4056`) writes a
+     * journal entry at `:4106`, and `IncomeService::post()` calls it
+     * SYNCHRONOUSLY in-transaction (`:161`) right after flipping the document to
+     * Posted (`:152`).
+     *
+     * Not exploitable today — no route cancels an Income
+     * (`IncomeController::destroy` is Draft-only) — but this is precisely the
+     * trigger the seam docblock anticipates: when an Income-cancel lane lands, a
+     * FILED-period Income would withdraw with NO refusal and NO GL reversal
+     * (`reverseDocumentGl()` returns null for non-Invoice/CreditNote), leaving
+     * its cash and revenue legs standing forever.
+     *
+     * Service-level, like the supplier-invoice cases: there is no HTTP route.
+     */
+    public function test_cancelling_an_income_in_a_filed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-02-18');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $income = $this->postedDocumentOfType(DocumentType::Income, $documentDate);
+
+        try {
+            $this->postingService->cancel($income, 'income recorded in error', $this->user->id);
+            self::fail('Cancelling an Income in a FILED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodFiled, $exception->refusalCode);
+        }
+
+        $income->refresh();
+        self::assertSame(DocumentStatus::Posted, $income->status);
+        self::assertNull($income->cancelled_at);
+    }
+
+    public function test_cancelling_an_income_in_a_closed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-02-19');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $income = $this->postedDocumentOfType(DocumentType::Income, $documentDate);
+
+        try {
+            $this->postingService->cancel($income, 'income recorded in error', $this->user->id);
+            self::fail('Cancelling an Income in a CLOSED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodClosed, $exception->refusalCode);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($income));
+    }
+
+    public function test_cancelling_an_income_in_an_open_period_still_works(): void
+    {
+        $documentDate = Carbon::parse('2026-02-20');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Open);
+
+        $income = $this->postedDocumentOfType(DocumentType::Income, $documentDate);
+
+        $this->postingService->cancel($income, 'income recorded in error', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($income));
     }
 
     // ------------------------------------------------------ happy paths ---
