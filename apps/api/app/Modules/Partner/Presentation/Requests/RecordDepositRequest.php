@@ -30,12 +30,14 @@ use Illuminate\Foundation\Http\FormRequest;
  * company and `is_active`, expressible as a single `exists` query and reported
  * against the offending field. They are NOT full parity (gate finding I-4): the
  * bridge additionally requires a resolvable, active cash GL account and an actor
- * holding an ACTIVE company membership, and — ONLY when the tender is not a
- * cheque/effet maturity leg, because the bridge then skips the movement port
- * entirely — a matching repository currency, an UNFROZEN repository, and a
- * repository not already reconciled through the deposit date. Every one of those
- * needs a loaded row or a second table, and the last three need the maturity
- * predicate first. They are enforced by
+ * holding an ACTIVE company membership, plus one of two mutually exclusive tails
+ * decided by the maturity predicate. For a NON-maturity tender: a matching
+ * REPOSITORY currency, an UNFROZEN repository, and a repository not already
+ * reconciled through the deposit date. For a cheque/effet: a resolvable
+ * instrument portfolio account, and a tender denominated in the COMPANY currency
+ * (a different operand from the repository-currency check, not a synonym for it).
+ * Every one of those needs a loaded row or a second table, and both tails need
+ * the maturity predicate first. They are enforced by
  * `DepositReferenceResolutionService::refusalFor()` inside
  * `RecordCustomerDepositService::record()` — still before the seal — and surface
  * as a 422 `BUSINESS_ERROR`.

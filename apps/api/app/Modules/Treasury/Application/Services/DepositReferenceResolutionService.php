@@ -10,9 +10,11 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Domain\Enums\DepositReferenceRefusal;
+use App\Modules\Treasury\Domain\Exceptions\MissingInstrumentAccountException;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Pre-flight resolvability check for a back-office deposit's Treasury references.
@@ -27,10 +29,13 @@ use Carbon\CarbonImmutable;
  *
  * **Parity is the contract, and it is enumerated — but it is CONDITIONAL.** Each
  * case of {@see DepositReferenceRefusal} maps to one invariant enforced post-seal
- * today. The `Applies` column is load-bearing: the last four invariants live in
- * `TreasuryMovementService::record()`, and the bridge SKIPS that call entirely
- * for a maturity tender (`shouldRecordMovement = false` at :169-174, early return
- * at :217-219), so those refusals must not fire on the maturity path.
+ * today. The `Applies` column is load-bearing, and a deposit takes exactly ONE of
+ * the two tails: the bridge SKIPS `TreasuryMovementService::record()` entirely for
+ * a maturity tender (`shouldRecordMovement = false` at :169-174, early return at
+ * :217-219) and instead runs `HandlesMaturityTenderLeg::handleMaturityLeg()`,
+ * which has rejecting steps of its own. Neither tail's refusals may fire on the
+ * other, and NEITHER TAIL MAY BE EMPTY — a bare "nothing to check" on the
+ * maturity branch is what the round-2 gate caught.
  *
  * | Refusal | Applies | Post-seal counterpart |
  * |---|---|---|
@@ -39,9 +44,16 @@ use Carbon\CarbonImmutable;
  * | `RepositoryMissingGlAccount` | always | `resolveRepository()` — `gl_account_id ?? account_id` non-null |
  * | `RepositoryGlAccountInactive` | always | `resolveRepository()` — that Account exists, in-company, `is_active` |
  * | `ActorNotActiveCompanyMember` | always | `TreasuryDepositBridge::resolveActorUserId()` — ACTIVE-membership arm only, see below |
- * | `RepositoryCurrencyMismatch` | movement path only | `TreasuryMovementService::record()` currency guard (:82-84) |
+ * | `RepositoryCurrencyMismatch` | movement path only | `TreasuryMovementService::record()` currency guard (:82-84) — vs REPOSITORY currency |
  * | `RepositoryFrozen` | movement path only | `record()` freeze policy (:91-96) with `allowWhileFrozen: false` for a server-only DEPOSIT_RECEIPT |
  * | `RepositoryBehindCheckpoint` | movement path only | `record()` checkpoint policy — `checkpointDisposition()` (:852-874) with `allowBehindCheckpoint: false` (bridge :273 is constant FALSE here) |
+ * | `MissingInstrumentPortfolioAccount` | maturity path only | `HandlesMaturityTenderLeg::portfolioAccountId()` (:69) — `InstrumentAccountResolver::resolveOrFail()` (:35-39) |
+ * | `InstrumentCurrencyMismatchesCompany` | maturity path only | `InstrumentLifecycleService::receive()` (:74-80), reached from `handleMaturityLeg()` (:76) — vs COMPANY currency |
+ *
+ * **The two currency rows are NOT the same check.** The movement path compares
+ * the tender against the RECEIVING REPOSITORY's currency; the maturity path
+ * compares it against the COMPANY's. Neither implies the other, so collapsing
+ * them would silently under- or over-refuse one tail.
  *
  * **Deliberate omission, recorded for parity (fiscal gate m-2 / authz m-1).**
  * `resolveActorUserId()` has TWO arms: the actor row must exist in the tenant,
@@ -188,9 +200,14 @@ final class DepositReferenceResolutionService
         //
         // The predicate is not re-derived here — `HandlesMaturityTenderLeg` is
         // the same collaborator the bridge consults, so the two cannot drift.
+        //
+        // Taking this branch does NOT mean "nothing left to check" (round-2 gate:
+        // a bare `return null` here traded one under-refusal for another). The
+        // maturity path has its OWN post-seal invariants; they are checked
+        // instead of the port's, not in addition to nothing.
         // ---------------------------------------------------------------------
         if ($this->maturityLegHandler->handles($paymentMethod)) {
-            return null;
+            return $this->maturityRefusal($paymentMethod, $tenantId, $companyId, $currencyCode);
         }
 
         if ($repository->currency !== $currencyCode) {
@@ -207,6 +224,59 @@ final class DepositReferenceResolutionService
         }
 
         return $this->checkpointRefusal($repository);
+    }
+
+    /**
+     * The maturity path's own post-seal invariants (R2-K-prev round-2 gate).
+     *
+     * A cheque/effet deposit never reaches the movement port, but it does reach
+     * `HandlesMaturityTenderLeg::handleMaturityLeg()`, which has two rejecting
+     * steps of its own. Both throw inside the projection — i.e. post-seal — and
+     * both surface as a clean 422 while leaving a permanent orphan behind,
+     * because both underlying exceptions are `DomainException`s.
+     *
+     * **Checked in the order the projection hits them**, which is the order in
+     * `handleMaturityLeg()` itself: `portfolioAccountId()` at
+     * `HandlesMaturityTenderLeg.php:69` runs BEFORE `lifecycle->receive()` at
+     * `:76`. (The round-2 ruling enumerated currency first; the ruling's own
+     * stated principle — "in the order the projection would hit them" — puts the
+     * portfolio account first, and that is what is implemented, so the refusal a
+     * caller sees is still the one they would have hit post-seal.)
+     */
+    private function maturityRefusal(
+        PaymentMethod $paymentMethod,
+        string $tenantId,
+        string $companyId,
+        string $currencyCode,
+    ): ?DepositReferenceRefusal {
+        // (1) Portfolio account. Delegated WHOLESALE to the bridge's own
+        // collaborator rather than re-deriving the purpose match plus the
+        // resolver's (company, code, type, is_active) lookup — asking "would
+        // this throw?" by calling the very code that throws is the only form of
+        // parity that cannot drift. `portfolioAccountId()` is a pure read.
+        try {
+            $this->maturityLegHandler->portfolioAccountId($paymentMethod, $companyId);
+        } catch (MissingInstrumentAccountException) {
+            return DepositReferenceRefusal::MissingInstrumentPortfolioAccount;
+        }
+
+        // (2) Instrument currency. Mirrors `InstrumentLifecycleService::receive()`
+        // (`InstrumentLifecycleService.php:74-80`) exactly, including the
+        // case-insensitive comparison and the tenant-scoped company lookup.
+        // The operand is the COMPANY currency — NOT the repository currency the
+        // movement path compares against. Reproduced with the same `DB::table`
+        // read the lifecycle service uses, so no Company model crosses the
+        // module boundary here.
+        $companyCurrency = DB::table('companies')
+            ->where('tenant_id', $tenantId)
+            ->where('id', $companyId)
+            ->value('currency');
+
+        if (! is_string($companyCurrency) || strtoupper($currencyCode) !== strtoupper($companyCurrency)) {
+            return DepositReferenceRefusal::InstrumentCurrencyMismatchesCompany;
+        }
+
+        return null;
     }
 
     /**

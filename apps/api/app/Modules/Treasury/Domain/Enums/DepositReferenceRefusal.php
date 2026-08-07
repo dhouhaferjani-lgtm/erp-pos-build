@@ -23,12 +23,15 @@ use App\Modules\Treasury\Application\Services\DepositReferenceResolutionService;
  * it, because the projection runs after that transaction commits. Orphans remain
  * possible until the recoverability lane (R2-K-rec) lands a disposition.
  *
- * **Four cases are CONDITIONAL on the movement path** — the three
- * movement-port-derived ones ({@see self::RepositoryCurrencyMismatch},
+ * **Five cases are PATH-CONDITIONAL, and a deposit takes exactly one path.** The
+ * three movement-port-derived cases ({@see self::RepositoryCurrencyMismatch},
  * {@see self::RepositoryFrozen}, {@see self::RepositoryBehindCheckpoint}) never
  * apply to a maturity tender, because the bridge returns before calling the port
- * for a cheque/effet. See the parity table on
- * {@see DepositReferenceResolutionService}.
+ * for a cheque/effet. The two maturity-path cases
+ * ({@see self::MissingInstrumentPortfolioAccount},
+ * {@see self::InstrumentCurrencyMismatchesCompany}) apply ONLY to a cheque/effet,
+ * because nothing else registers an instrument. Neither tail is empty. See the
+ * parity table on {@see DepositReferenceResolutionService}.
  *
  * @see DepositReferenceResolutionService
  * @see TreasuryDepositBridge
@@ -92,6 +95,36 @@ enum DepositReferenceRefusal: string
      */
     case RepositoryBehindCheckpoint = 'payment_repository_behind_checkpoint';
 
+    /**
+     * The company has no active portfolio account for this instrument kind, so
+     * the cheque/effet has nowhere to post.
+     *
+     * MATURITY-PATH invariant (R2-K-prev round-2 gate).
+     * `HandlesMaturityTenderLeg::portfolioAccountId()` calls
+     * `InstrumentAccountResolver::resolveOrFail()`
+     * (`InstrumentAccountResolver.php:35-39`), which raises
+     * `MissingInstrumentAccountException` post-seal. Ops-realistic: a company
+     * whose chart of accounts never got `5312`/`5112` (checks to collect) or
+     * `413` (effects receivable) accepts cheques from the UI and orphans every
+     * one of them.
+     */
+    case MissingInstrumentPortfolioAccount = 'missing_instrument_portfolio_account';
+
+    /**
+     * The tender currency is not the COMPANY currency.
+     *
+     * MATURITY-PATH invariant (R2-K-prev round-2 gate), mirroring
+     * `InstrumentLifecycleService::receive()`
+     * (`InstrumentLifecycleService.php:74-80`), which throws post-seal.
+     *
+     * **The operand differs from {@see self::RepositoryCurrencyMismatch}** —
+     * that one compares against the RECEIVING REPOSITORY's currency, this one
+     * against the COMPANY's. They are not interchangeable and neither implies
+     * the other, which is why the maturity path needs its own case rather than
+     * reusing the movement-path one.
+     */
+    case InstrumentCurrencyMismatchesCompany = 'instrument_currency_mismatches_company';
+
     public function message(): string
     {
         return match ($this) {
@@ -103,6 +136,8 @@ enum DepositReferenceRefusal: string
             self::RepositoryFrozen => 'The selected payment repository is frozen (a cash count or audit is in progress), so it cannot receive a deposit until it is reopened.',
             self::ActorNotActiveCompanyMember => 'The recording user is not an active member of this company, so the deposit cannot be posted to the ledger.',
             self::RepositoryBehindCheckpoint => 'The selected payment repository is reconciled through today, so a deposit dated today would fall inside a closed period. Reopen the latest statement first.',
+            self::MissingInstrumentPortfolioAccount => 'This company has no active portfolio account configured for cheques or bills of exchange, so the instrument cannot be registered.',
+            self::InstrumentCurrencyMismatchesCompany => 'A cheque or bill of exchange must be denominated in the company currency.',
         };
     }
 }
