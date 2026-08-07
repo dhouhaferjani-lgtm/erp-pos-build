@@ -23,17 +23,30 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class ExpenseVatPostingTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Opening balance laid down on every fixture till by
+     * {@see self::fundRepository()}. Comfortably above the 119.000 gross
+     * total every expense in this file settles, so the balance-sufficiency
+     * guard never participates in what these VAT-posting tests assert.
+     */
+    private const TILL_OPENING_BALANCE = '1000.000';
 
     private Tenant $tenant;
 
@@ -418,17 +431,28 @@ final class ExpenseVatPostingTest extends TestCase
 
         $this->assertSame(0, $exitCode, Artisan::output());
         $repository->refresh();
-        $this->assertSame('-119.000', $repository->balance);
-        $this->assertSame(1, $repository->next_movement_ordinal);
+        // The till is funded through the port first (ordinal 1, JE-exempt
+        // `opening_balance` leg), so the expense outflow is ordinal 2 and the
+        // post-expense balance is opening − gross, not a bare negative.
+        $this->assertSame(bcsub(self::TILL_OPENING_BALANCE, '119.000', 3), $repository->balance);
+        $this->assertSame(2, $repository->next_movement_ordinal);
         $this->assertNull($repository->frozen_at);
         $this->assertNull($repository->frozen_reason);
 
+        $openingMovement = RepositoryMovement::query()
+            ->where('payment_repository_id', $repository->id)
+            ->where('source_type', MovementSourceType::OpeningBalance)
+            ->firstOrFail();
+        $this->assertNull($openingMovement->journal_entry_id);
+        $this->assertSame(1, $openingMovement->ordinal);
+
         $movement = RepositoryMovement::query()
             ->where('payment_repository_id', $repository->id)
+            ->where('source_type', MovementSourceType::Expense)
             ->firstOrFail();
         $this->assertSame($entry->id, $movement->journal_entry_id);
-        $this->assertSame('-119.000', $movement->balance_after);
-        $this->assertSame(1, $movement->ordinal);
+        $this->assertSame(bcsub(self::TILL_OPENING_BALANCE, '119.000', 3), $movement->balance_after);
+        $this->assertSame(2, $movement->ordinal);
         $this->assertSame(JournalEntryStatus::Posted, $entry->fresh()?->status);
         $this->assertFalse(AuditEvent::query()
             ->whereIn('event_type', [
@@ -486,13 +510,62 @@ final class ExpenseVatPostingTest extends TestCase
             ->firstOrFail();
     }
 
+    /**
+     * A funded till. Every caller drives an OUTFLOW through the treasury
+     * movement port (a paid expense's `main` leg, or `settle()`'s `settlement`
+     * leg), and a `cash_register` derives `allow_negative = false`, so W-5b
+     * Option B refuses the outflow unless the repository actually holds the
+     * cash. `balance` is port-managed and NOT fillable, so it can only be
+     * established through the port — see {@see self::fundRepository()}.
+     */
     private function cashRepository(): PaymentRepository
     {
-        return PaymentRepository::factory()->for($this->company)->create([
+        $repository = PaymentRepository::factory()->for($this->company)->create([
             'tenant_id' => $this->tenant->id,
             'type' => RepositoryType::CashRegister,
             'gl_account_id' => $this->account(SystemAccountPurpose::Cash)->id,
         ]);
+
+        $this->fundRepository($repository, self::TILL_OPENING_BALANCE);
+
+        return $repository;
+    }
+
+    /**
+     * Fund a repository through the movement port (mirrors
+     * PaymentRepositorySeeder::recordOpeningBalance() and the sibling fixes in
+     * PaymentGlPostingTest / VendorPrepaymentRefundTest) — `balance` is
+     * port-managed and NOT fillable, so a plain create()/update() carrying a
+     * 'balance' key is silently dropped.
+     *
+     * The `opening_balance` source type is JE-exempt in `treasury:reconcile`
+     * check 2 (spec §4), so this leg needs no journal entry and cannot
+     * introduce reconcile drift.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function fundRepository(PaymentRepository $repository, string $amount): void
+    {
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $repository->tenant_id,
+            companyId: $repository->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+
+        $repository->refresh();
     }
 
     private function account(SystemAccountPurpose $purpose): Account
