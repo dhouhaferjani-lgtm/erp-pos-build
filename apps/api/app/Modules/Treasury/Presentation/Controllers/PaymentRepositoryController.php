@@ -172,7 +172,12 @@ class PaymentRepositoryController extends Controller
         // `updating` hook cannot do this correctly (Eloquent dirty-checking
         // cannot distinguish "explicitly re-sent the same value" from "never
         // sent"; only the caller holding the real request payload can).
-        if (array_key_exists('type', $validated) && ! array_key_exists('allow_negative', $validated)) {
+        // Guard on the type actually CHANGING, not merely being present: a
+        // whole-form PATCH that re-sends the unchanged type must not clobber
+        // an explicit allow_negative set earlier (gate round-2 minor).
+        if (array_key_exists('type', $validated)
+            && $validated['type'] !== $repository->type->value
+            && ! array_key_exists('allow_negative', $validated)) {
             $validated['allow_negative'] = PaymentRepository::defaultAllowNegativeForType(
                 RepositoryType::from((string) $validated['type']),
             );

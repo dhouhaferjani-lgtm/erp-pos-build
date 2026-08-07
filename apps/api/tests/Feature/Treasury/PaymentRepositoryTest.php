@@ -213,6 +213,34 @@ class PaymentRepositoryTest extends TestCase
     }
 
     /**
+     * Gate round-2 minor: re-derivation must fire only when the type actually
+     * CHANGES. A whole-form PATCH that re-sends the UNCHANGED type (the normal
+     * React pattern) must not clobber an explicit allow_negative set earlier.
+     */
+    public function test_update_resending_unchanged_type_keeps_explicit_allow_negative(): void
+    {
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'SAFE_KEEP_NEG',
+            'name' => 'Overdraft-allowed safe',
+            'type' => 'safe',
+            'is_active' => true,
+        ]);
+        $repository->forceFill(['allow_negative' => true])->save();
+        $this->assertTrue($repository->fresh()?->allow_negative);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'name' => 'Renamed safe',
+            'type' => 'safe',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.allow_negative', true);
+        $this->assertTrue($repository->fresh()?->allow_negative);
+    }
+
+    /**
      * The reverse direction, and the explicit-override escape hatch in the
      * SAME payload: converting cash_register -> bank_account WITH an
      * explicit allow_negative honors the explicit value instead of the
