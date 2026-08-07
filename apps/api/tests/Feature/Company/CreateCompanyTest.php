@@ -289,4 +289,38 @@ class CreateCompanyTest extends TestCase
         $company = Company::findOrFail($companyId);
         self::assertSame(PosStockPolicy::Off, $company->pos_stock_policy);
     }
+
+    /**
+     * W-8 finding F-5 (P1) — POST /api/v1/companies committed the company and
+     * THEN answered 500.
+     * Ticket: docs/superpowers/tickets/2026-08-03-w8-isolation-findings.md
+     *
+     * `default_target_margin` / `default_minimum_margin` are NOT NULL with a
+     * DATABASE default (30 / 10) and are not passed by Company::create(). The
+     * database supplies them, but the freshly created in-memory Eloquent model
+     * never hydrates them — the attributes are null in PHP. formatCompany()
+     * did `(string) $company->default_target_margin`, and `(string) null` is
+     * `""`, which defeats bcformatOrNull()'s null guard so bcformatStrict()
+     * threw. Every company created through the documented API therefore
+     * 500'd AFTER the commit, so the caller retried and created a duplicate.
+     */
+    public function test_company_creation_returns_the_database_default_margins(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/companies', [
+                'name' => 'Margin Defaults Company',
+                'country_code' => 'FR',
+                'currency' => 'EUR',
+                'locale' => 'fr_FR',
+                'timezone' => 'Europe/Paris',
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.default_target_margin', '30.00')
+            ->assertJsonPath('data.default_minimum_margin', '10.00')
+            ->assertJsonPath('data.default_max_discount_percent', null);
+
+        // The 500 made callers retry; exactly one company must exist for the name.
+        self::assertSame(1, Company::where('name', 'Margin Defaults Company')->count());
+    }
 }
