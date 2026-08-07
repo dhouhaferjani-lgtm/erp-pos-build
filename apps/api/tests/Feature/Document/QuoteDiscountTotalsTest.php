@@ -45,6 +45,15 @@ class QuoteDiscountTotalsTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * The scale the money columns are PERSISTED at (`decimal(15,3)` — see the
+     * `decimal:3` casts on Document/DocumentLine), independent of any
+     * currency's own display scale. All money comparisons in this file run at
+     * this scale so a 3rd-decimal regression cannot hide behind a 2-dp
+     * currency.
+     */
+    private const STORAGE_SCALE = 3;
+
     private User $user;
 
     private Tenant $tenant;
@@ -89,6 +98,9 @@ class QuoteDiscountTotalsTest extends TestCase
         $this->user->givePermissionTo([
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.delete', 'quotes.convert',
             'orders.view', 'orders.create',
+            // POST /orders/{order}/convert-to-invoice is gated on invoices.create
+            // (routes.php:110-112) — needed for the full quote→order→invoice leg.
+            'invoices.view', 'invoices.create',
         ]);
 
         UserCompanyMembership::create([
@@ -145,20 +157,22 @@ class QuoteDiscountTotalsTest extends TestCase
     }
 
     /**
-     * The canonical header the document pipeline must produce for
-     * {@see discountLinesPayload()}: subtotal is the sum of
-     * {@see DocumentLine::computeLineTotal()} (the single source of truth for
-     * line-level discount arithmetic), tax is derived from that NET base.
+     * The canonical header the document pipeline must produce for a line
+     * payload: subtotal is the sum of {@see DocumentLine::computeLineTotal()}
+     * (the single source of truth for line-level discount arithmetic), tax is
+     * derived from that NET base.
      *
+     * @param  list<array{description: string, quantity: numeric-string, unit_price: numeric-string, discount_percent?: numeric-string, discount_amount?: numeric-string, tax_rate: numeric-string}>|null  $lines
      * @return array{subtotal: numeric-string, tax_amount: numeric-string, total: numeric-string}
      */
-    private function canonicalHeader(): array
+    private function canonicalHeader(?array $lines = null, ?int $scale = null): array
     {
-        $scale = $this->scale();
+        $lines ??= $this->discountLinesPayload();
+        $scale ??= $this->scale();
         $subtotal = '0';
         $taxAmount = '0';
 
-        foreach ($this->discountLinesPayload() as $line) {
+        foreach ($lines as $line) {
             $net = DocumentLine::computeLineTotal(
                 $line['quantity'],
                 $line['unit_price'],
@@ -178,8 +192,14 @@ class QuoteDiscountTotalsTest extends TestCase
     }
 
     /**
-     * Assert a persisted money column equals an expected decimal string,
-     * comparing with bccomp at the currency scale (never a float compare).
+     * Assert a persisted money column equals an expected decimal string.
+     *
+     * Compares at {@see self::STORAGE_SCALE} — the scale the columns are
+     * actually PERSISTED at (`decimal(15,3)`), NOT the document currency's
+     * scale. Comparing at the EUR scale (2) let a 3rd-decimal regression pass
+     * silently even though the database round-trips it (precision gate m-2).
+     * bccomp zero-pads the shorter operand, so a 2-dp canonical expectation
+     * still matches a 3-dp stored value exactly.
      *
      * @param  numeric-string  $expected
      * @param  numeric-string  $actual
@@ -188,8 +208,8 @@ class QuoteDiscountTotalsTest extends TestCase
     {
         $this->assertSame(
             0,
-            bccomp($expected, $actual, $this->scale()),
-            $message." (expected {$expected}, got {$actual})",
+            bccomp($expected, $actual, self::STORAGE_SCALE),
+            $message." (expected {$expected}, got {$actual}, compared at scale ".self::STORAGE_SCALE.')',
         );
     }
 
@@ -317,15 +337,129 @@ class QuoteDiscountTotalsTest extends TestCase
         $confirm = $this->actingAs($this->user)->postJson("/api/v1/quotes/{$quoteId}/confirm");
         $confirm->assertStatus(200);
 
+        // Fetched fresh from the DB, not the in-memory draft model.
         /** @var Document $confirmed */
         $confirmed = Document::findOrFail($quoteId);
 
         // Byte-identical decimal strings: confirm() recomputes tax/total from
         // DocumentLine::calculateTotal() (discount-AWARE), so a discount-blind
         // draft header silently moves the moment the quote is confirmed.
-        $this->assertSame($draftSubtotal, $confirmed->subtotal ?? '0', 'Confirming a quote moved its subtotal');
+        // These two DO have teeth — they were the red that proved the defect.
         $this->assertSame($draftTax, $confirmed->tax_amount ?? '0', 'Confirming a quote moved its tax_amount');
         $this->assertSame($draftTotal, $confirmed->total ?? '0', 'Confirming a quote moved its total');
+
+        // `subtotal` is a NEVER-WRITTEN invariant of confirm(): the update at
+        // QuoteController.php:545-548 sets only tax_amount and total, so this
+        // equality is structural, not evidence that the subtotal is right.
+        // Asserted explicitly so the invariant is pinned — if confirm() ever
+        // starts writing subtotal, this test must be revisited rather than
+        // silently keep passing.
+        $this->assertSame($draftSubtotal, $confirmed->subtotal ?? '0', 'confirm() unexpectedly wrote the subtotal column');
+
+        // THIS is the assertion with teeth on the subtotal: a confirmed quote
+        // must be internally consistent. A legacy discount-blind quote fails
+        // here — its store-time gross subtotal plus its confirm-time NET tax
+        // does not add up to its confirm-time NET total.
+        $this->assertMoneyEquals(
+            bcadd($confirmed->subtotal ?? '0', $confirmed->tax_amount ?? '0', self::STORAGE_SCALE),
+            $confirmed->total ?? '0',
+            'Confirmed quote is internally inconsistent: subtotal + tax_amount != total',
+        );
+    }
+
+    // ------------------------------------------------- 3-decimal currency
+
+    /**
+     * The EUR fixtures above all land on clean 2-dp money, so they cannot see
+     * a regression in the 3rd decimal even though the columns store one
+     * (precision gate m-2). This case runs the same code path under a TND
+     * company — a genuinely 3-dp currency — with prices and a flat discount
+     * that force truncation at the 3rd decimal on BOTH toggle shapes:
+     *
+     *   line 1: 3 × 10.333 = 30.999 gross, −10% (3.0999 → 3.099) = 27.900 net,
+     *           19% VAT (5.3010 → 5.301)
+     *   line 2: 7 × 3.777 = 26.439 gross, −2.111 flat = 24.328 net,
+     *           19% VAT (4.62232 → 4.622)
+     *   ⇒ subtotal 52.228, tax 9.923, total 62.151
+     *
+     * The expected values are written out literally (not re-derived from the
+     * helper under test) so the assertion is independent evidence, not a
+     * restatement of the implementation.
+     */
+    public function test_quote_totals_are_exact_at_the_third_decimal_under_a_tnd_company(): void
+    {
+        $tndCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Quote Totals TN Company',
+            'legal_name' => 'Quote Totals TN Company SARL',
+            'tax_id' => 'TAX-QT-TN-001',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $tndCompany->id,
+            'role' => 'admin',
+        ]);
+
+        $tndPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $tndCompany->id,
+            'name' => 'Quote Totals TN Partner',
+            'type' => PartnerType::Customer,
+            'email' => 'quote-totals-tn@example.com',
+        ]);
+
+        $lines = [
+            [
+                'description' => 'Percent-discounted, 3-dp price',
+                'quantity' => '3.0000',
+                'unit_price' => '10.333',
+                'discount_percent' => '10.00',
+                'tax_rate' => '19.00',
+            ],
+            [
+                'description' => 'Flat-discounted, 3-dp price and discount',
+                'quantity' => '7.0000',
+                'unit_price' => '3.777',
+                'discount_amount' => '2.111',
+                'tax_rate' => '19.00',
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->withHeader('X-Company-Id', $tndCompany->id)
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $tndPartner->id,
+                'document_date' => '2026-01-15',
+                'currency' => 'TND',
+                'lines' => $lines,
+            ]);
+
+        $response->assertStatus(201);
+
+        /** @var Document $quote */
+        $quote = Document::with('lines')->findOrFail($response->json('data.id'));
+
+        $this->assertMoneyEquals('52.228', $quote->subtotal ?? '0', 'TND quote subtotal is wrong in the 3rd decimal');
+        $this->assertMoneyEquals('9.923', $quote->tax_amount ?? '0', 'TND quote tax_amount is wrong in the 3rd decimal');
+        $this->assertMoneyEquals('62.151', $quote->total ?? '0', 'TND quote total is wrong in the 3rd decimal');
+
+        /** @var list<DocumentLine> $quoteLines */
+        $quoteLines = $quote->lines->sortBy('line_number')->values()->all();
+        $this->assertMoneyEquals('27.900', $quoteLines[0]->line_total, 'TND percent-discounted line_total is wrong in the 3rd decimal');
+        $this->assertMoneyEquals('24.328', $quoteLines[1]->line_total, 'TND flat-discounted line_total is wrong in the 3rd decimal');
+
+        // Cross-check against the canonical helper at the TND scale too, so a
+        // future change to computeLineTotal cannot drift away from the literals
+        // above without one of the two assertions firing.
+        $canonical = $this->canonicalHeader($lines, 3);
+        $this->assertMoneyEquals($canonical['subtotal'], $quote->subtotal ?? '0', 'TND quote subtotal diverges from the canonical pipeline');
+        $this->assertMoneyEquals($canonical['total'], $quote->total ?? '0', 'TND quote total diverges from the canonical pipeline');
     }
 
     // ----------------------------------------------------------- conversion
@@ -402,5 +536,27 @@ class QuoteDiscountTotalsTest extends TestCase
 
         $this->assertSame($quote->subtotal ?? '0', $orderModel->subtotal ?? '0', 'Quote→order changed the subtotal');
         $this->assertSame($quote->total ?? '0', $orderModel->total ?? '0', 'Quote→order changed the total');
+
+        // …and the leg the test is NAMED for: order → invoice. The fixture is
+        // services-only, so SalesOrderToInvoiceConverter takes the direct
+        // invoicing path (no delivery-note precondition).
+        $invoice = $this->actingAs($this->user)->postJson("/api/v1/orders/{$orderModel->id}/convert-to-invoice");
+        $invoice->assertStatus(201);
+
+        /** @var Document $invoiceModel */
+        $invoiceModel = Document::findOrFail($invoice->json('data.id'));
+        $this->assertSame(DocumentType::Invoice, $invoiceModel->type);
+
+        // The invoice at the end of the chain must carry exactly the money the
+        // quote at the start of it carried. Decimal-string equality.
+        $this->assertSame($quote->subtotal ?? '0', $invoiceModel->subtotal ?? '0', 'Quote→order→invoice changed the subtotal');
+        $this->assertSame($quote->tax_amount ?? '0', $invoiceModel->tax_amount ?? '0', 'Quote→order→invoice changed the tax_amount');
+        $this->assertSame($quote->total ?? '0', $invoiceModel->total ?? '0', 'Quote→order→invoice changed the total');
+
+        // …and it must be the CANONICAL money, not a consistent copy of a
+        // wrong number: 2 × 100.000 − 10% = 180.000 net, 20% VAT = 36.000.
+        $this->assertMoneyEquals('180', $invoiceModel->subtotal ?? '0', 'Invoice subtotal ignores the originating quote line discount');
+        $this->assertMoneyEquals('36', $invoiceModel->tax_amount ?? '0', 'Invoice tax is computed on a discount-blind base');
+        $this->assertMoneyEquals('216', $invoiceModel->total ?? '0', 'Invoice total ignores the originating quote line discount');
     }
 }
