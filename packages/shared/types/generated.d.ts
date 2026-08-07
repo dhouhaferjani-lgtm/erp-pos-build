@@ -4,6 +4,9 @@ export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partne
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
+declare namespace App.Models.Enums {
+export type SuperAdminRole = 'super_admin' | 'support_approver';
+}
 declare namespace App.Modules.Accounting.Application.DTOs {
 export type AccountData = {
 id: string;
@@ -2081,14 +2084,14 @@ pending_elevations: Array<App.Modules.SupportAccess.Application.DTOs.ElevationDa
 };
 }
 declare namespace App.Modules.SupportAccess.Domain.Enums {
-export type AuditOutcome = 'allowed' | 'denied' | 'failed';
+export type AuditOutcome = 'observed' | 'allowed' | 'denied' | 'failed';
 export type ElevationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 export type GrantStatus = 'pending_tenant_approval' | 'pending_internal_approval' | 'active' | 'rejected' | 'revoked' | 'expired';
 export type GrantType = 'per_incident' | 'pre_granted_window';
 export type ImpersonationActionDecision = 'safe' | 'requires_elevation' | 'hard_blocked';
 export type SessionAccessLevel = 'read_only' | 'write_elevated';
 export type SessionEndReason = 'exited' | 'revoked' | 'expired' | 'grant_revoked' | 'operator_ended';
-export type SessionEventType = 'grant_requested' | 'grant_approved' | 'grant_rejected' | 'grant_revoked' | 'session_started' | 'session_ended' | 'request_authorized' | 'request_denied' | 'write_elevation_requested' | 'write_elevation_approved' | 'write_elevation_rejected' | 'reveal_recorded';
+export type SessionEventType = 'grant_requested' | 'grant_approved' | 'grant_rejected' | 'grant_revoked' | 'session_started' | 'session_ended' | 'request_received' | 'request_authorized' | 'request_denied' | 'write_elevation_requested' | 'write_elevation_approved' | 'write_elevation_rejected';
 }
 declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';

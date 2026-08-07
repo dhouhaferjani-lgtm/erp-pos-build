@@ -6,7 +6,6 @@ namespace App\Modules\SupportAccess\Infrastructure\Notifications;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\SupportAccess\Application\DTOs\SupportAccessNotificationData;
-use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\SupportAccess\SupportAccessNotifier;
 use Illuminate\Contracts\Config\Repository;
@@ -23,18 +22,18 @@ final class TenantDatabaseSupportAccessNotifier implements SupportAccessNotifier
         private readonly PermissionRegistrar $permissions,
     ) {}
 
-    public function grantRequested(ImpersonationGrant $grant): void
+    public function grantRequested(string $grantId, string $tenantId, string $ticketRef): void
     {
-        $tenant = Tenant::query()->findOrFail($grant->tenant_id);
-        $notify = function () use ($grant): void {
+        $tenant = Tenant::query()->findOrFail($tenantId);
+        $notify = function () use ($grantId, $tenantId, $ticketRef): void {
             Notification::send(
-                $this->managersOnCurrentConnection($grant->tenant_id),
+                $this->managersOnCurrentConnection($tenantId),
                 new SupportAccessGrantNotification(
                     new SupportAccessNotificationData(
-                        grant_id: $grant->id,
-                        tenant_id: $grant->tenant_id,
+                        grant_id: $grantId,
+                        tenant_id: $tenantId,
                         event: 'grant_requested',
-                        ticket_ref: $grant->ticket_ref,
+                        ticket_ref: $ticketRef,
                     ),
                 ),
             );

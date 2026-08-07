@@ -68,7 +68,7 @@ final class GrantLifecycleService
             'starts_at' => $data->starts_at,
             'expires_at' => $data->expires_at,
         ]);
-        $this->notifier->grantRequested($grant);
+        $this->notifier->grantRequested($grant->id, $grant->tenant_id, $grant->ticket_ref);
 
         return GrantData::fromModel($grant);
     }

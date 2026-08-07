@@ -22,4 +22,8 @@ interface TenantSubjectTokenPort
         array $abilities,
         CarbonImmutable $expiresAt,
     ): MintedImpersonationTokenData;
+
+    public function elevateForWrite(int $personalAccessTokenId): void;
+
+    public function revoke(int $personalAccessTokenId): void;
 }

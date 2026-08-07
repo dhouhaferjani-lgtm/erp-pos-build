@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\SupportAccess\Domain\Entities;
 
-use App\Modules\SupportAccess\Application\DTOs\ImpersonationAuditDetailsData;
+use App\Modules\SupportAccess\Domain\DTOs\ImpersonationAuditDetailsData;
 use App\Modules\SupportAccess\Domain\Enums\AuditOutcome;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use Carbon\Carbon;

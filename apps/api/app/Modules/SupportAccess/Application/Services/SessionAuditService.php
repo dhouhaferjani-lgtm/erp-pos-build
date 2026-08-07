@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\SupportAccess\Application\Services;
 
-use App\Modules\SupportAccess\Application\DTOs\ImpersonationAuditDetailsData;
+use App\Modules\SupportAccess\Domain\DTOs\ImpersonationAuditDetailsData;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\AuditOutcome;

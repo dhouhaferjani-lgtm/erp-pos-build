@@ -296,7 +296,10 @@ jobs:
       # ordering. A manual dispatch must therefore exercise every backend
       # testsuite in one CI environment before that branch can be promoted.
       - name: Full backend suite (manual security gate)
-        if: github.event_name == 'workflow_dispatch'
+        # The repository's narrower Unit/Security lanes can carry unrelated
+        # baseline failures. A manual security dispatch must still execute and
+        # report the whole-suite result instead of silently skipping this gate.
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
         run: ./vendor/bin/phpunit
 
   backend-test-pgsql:

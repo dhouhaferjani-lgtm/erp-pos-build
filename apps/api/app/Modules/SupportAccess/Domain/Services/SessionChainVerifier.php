@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\SupportAccess\Domain\Services;
 
-use App\Modules\SupportAccess\Application\DTOs\ChainVerificationResultData;
+use App\Modules\SupportAccess\Domain\DTOs\ChainVerificationResultData;
 
 final class SessionChainVerifier
 {

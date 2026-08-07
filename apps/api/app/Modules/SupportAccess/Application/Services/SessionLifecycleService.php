@@ -6,7 +6,6 @@ namespace App\Modules\SupportAccess\Application\Services;
 
 use App\Models\SuperAdmin;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\SupportAccess\Application\DTOs\StartedSessionData;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
@@ -147,17 +146,15 @@ final class SessionLifecycleService
     public function exit(User $subject, string $sessionId): void
     {
         $token = $subject->currentAccessToken();
-        if (! $token instanceof CentralPersonalAccessToken) {
-            throw new AuthorizationException('An impersonation token is required to exit.');
-        }
+        $tokenId = (int) $token->getKey();
 
         $this->database->connection(
             $this->config->get('tenancy.database.central_connection'),
-        )->transaction(function () use ($subject, $sessionId, $token): void {
+        )->transaction(function () use ($subject, $sessionId, $tokenId): void {
             $session = ImpersonationSession::query()->lockForUpdate()->findOrFail($sessionId);
             if ($session->subject_user_id !== $subject->id
                 || $session->tenant_id !== $subject->tenant_id
-                || (int) $session->personal_access_token_id !== (int) $token->getKey()) {
+                || (int) $session->personal_access_token_id !== $tokenId) {
                 throw new AuthorizationException('Session does not belong to this subject token.');
             }
 
@@ -191,7 +188,7 @@ final class SessionLifecycleService
                 ]);
             }
 
-            CentralPersonalAccessToken::query()->whereKey($token->getKey())->delete();
+            $this->tokens->revoke($tokenId);
         });
     }
 

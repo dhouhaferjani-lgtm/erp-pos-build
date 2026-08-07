@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\SupportAccess\Application\Services;
 
 use App\Models\SuperAdmin;
-use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationElevation;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Enums\ElevationStatus;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Services\ConfiguredApproverSet;
+use App\Shared\Contracts\SupportAccess\TenantSubjectTokenPort;
 use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
@@ -28,6 +28,7 @@ final class ElevationService
         private readonly Repository $config,
         private readonly ConfiguredApproverSet $approvers,
         private readonly SessionAuditService $audit,
+        private readonly TenantSubjectTokenPort $tokens,
     ) {}
 
     public function request(SuperAdmin $operator, string $sessionId, string $reason): ImpersonationElevation
@@ -105,14 +106,7 @@ final class ElevationService
                 'write_approved_by' => $approver->id,
             ]);
 
-            $token = CentralPersonalAccessToken::query()->findOrFail($session->personal_access_token_id);
-            $abilities = is_array($token->abilities) ? $token->abilities : [];
-            $abilities = array_values(array_filter(
-                $abilities,
-                static fn (mixed $ability): bool => $ability !== 'support:read' && $ability !== 'support:write',
-            ));
-            $abilities[] = 'support:write';
-            $token->update(['abilities' => array_values(array_unique($abilities))]);
+            $this->tokens->elevateForWrite((int) $session->personal_access_token_id);
 
             $this->audit->recordLifecycleEvent(
                 $session,

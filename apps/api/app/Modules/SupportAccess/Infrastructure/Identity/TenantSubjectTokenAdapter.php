@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\SupportAccess\Infrastructure\Identity;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\SupportAccess\TenantSubjectTokenPort;
 use App\Shared\DTOs\SupportAccess\MintedImpersonationTokenData;
@@ -58,6 +59,23 @@ final class TenantSubjectTokenAdapter implements TenantSubjectTokenPort
                 expires_at: $expiresAt,
             );
         });
+    }
+
+    public function elevateForWrite(int $personalAccessTokenId): void
+    {
+        $token = CentralPersonalAccessToken::query()->findOrFail($personalAccessTokenId);
+        $abilities = is_array($token->abilities) ? $token->abilities : [];
+        $abilities = array_values(array_filter(
+            $abilities,
+            static fn (mixed $ability): bool => $ability !== 'support:read' && $ability !== 'support:write',
+        ));
+        $abilities[] = 'support:write';
+        $token->update(['abilities' => array_values(array_unique($abilities))]);
+    }
+
+    public function revoke(int $personalAccessTokenId): void
+    {
+        CentralPersonalAccessToken::query()->whereKey($personalAccessTokenId)->delete();
     }
 
     /**
