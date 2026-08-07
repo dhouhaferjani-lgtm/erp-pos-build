@@ -175,3 +175,13 @@ rule 4:
 and need an owner**: they are the regression guard for the very convention L3 extends, so
 cash-movements should be added to that suite once they are repaired. (3) is unrelated and
 unclaimed.
+
+---
+
+## R2-C gate addenda (2026-08-07)
+
+- **(g) financeSummary applies NO location scope at all** (ReportsController.php:927-951) —
+  pre-existing, same family as (a); scope it with the same resolver when the family is next
+  touched.
+- **(h) 11 bare `$e->getMessage()` 500-body sites** remain outside the four report methods
+  fixed in-lane — same message-leak class; sweep when hardening the controller error paths.
