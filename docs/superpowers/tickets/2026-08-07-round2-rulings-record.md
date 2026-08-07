@@ -77,6 +77,48 @@ consumer F1 (F1 ships default-refusal FIRST, explicitly reversible). ⏳ expert.
 c3 declaration reconciliation: reversal-aware aggregation vs correction-row emission →
 consumer F3. ⏳ expert.
 
+### Gate-derived relay notes, 2026-08-07 (R2-F1 taxation gate — inputs for the expert, NOT rulings)
+
+Three findings from reading the shipped code, offered so the expert rules on facts
+rather than on the lane's original framing. F1 has SHIPPED the default-refusal; none of
+this changes what is merged.
+
+- **(i) Recommend keeping the refusal UNIFORM across CLOSED and FILED.** A tempting
+  middle branch — "permit cancel when CLOSED, refuse only when FILED, since CLOSED is
+  reopenable" — is more expensive than it looks. `VatPeriodManagementService::closePeriod()`
+  FREEZES the declaration into the period row (`total_output_vat`, `total_input_vat`,
+  `net_vat`, `declaration_data`, and the `vat_period_breakdowns` rows). Cancelling a
+  document inside a CLOSED period would leave that frozen snapshot stale with no
+  invalidation anywhere. The sanctioned path already exists and un-freezes correctly:
+  `reopenPeriod()` deletes the breakdowns and nulls the totals. So CLOSED-permits would
+  require auto-invalidating the frozen snapshot on cancel — that is F3 work, not a flag
+  flip. Recommend: keep both statuses refusing; direct users to reopen (CLOSED) or to a
+  credit note (FILED).
+- **(ii) c2's purchase arm has NO live workflow today.** There is no caller and no route
+  that can cancel a supplier invoice, supplier credit note, expense or purchase order:
+  the only HTTP cancel endpoints are `invoices.cancel` and `credit-notes.cancel` (both
+  `RefundController`), and the only in-process callers of
+  `DocumentPostingService::cancel()` are `RefundService` (invoice/credit-note only) and
+  `SalesOrderService`. c2 is therefore FORWARD-LOOKING, not a bleeding workflow — it can
+  be ruled unhurried, and F2 is the lane that will make it reachable.
+- **(iii) Supplier-invoice input VAT is not in the declaration at all.**
+  `EloquentVatDataRepository::aggregateByRateAndDirection()` (`:42`) restricts to
+  `invoice`, `credit_note` and `expense`; `supplier_invoice` appears nowhere in the
+  Taxation module. F1's original justification for refusing purchase docs ("the same
+  filed declaration as the output VAT") was FACTUALLY WRONG and has been corrected
+  in-code: the refusal now rests on AP / trial-balance integrity (a supplier invoice does
+  carry a GL entry dated `document_date`, via
+  `GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry()`) plus forward
+  compatibility. If the expert's instinct was "input VAT symmetry", note that the symmetry
+  does not exist yet.
+
+**Constraint on any c2 = "reverse-in-current-period" answer:** it cannot be adopted until
+F2's AP mirror is merged. `AccountingService::reverseDocumentGl()` returns `null` for any
+type other than Invoice/CreditNote (`:833`) and supplier invoices take the non-fiscal
+branch of `cancel()`, so permitting the cancel TODAY yields a withdrawal with no GL
+reversal at all — the AP/GR-IR legs would stand forever. The refusal is currently the only
+thing preventing that.
+
 ## R-d — multi-company launch posture (owner) — ⏳ OPEN
 Disable-and-defer (API refusal + pinned test; A2/A3 deferred) vs keep-enabled (A2+A3
 pre-launch). Sub-decisions iff keep-enabled: d1 identifier contract (company-inclusive
