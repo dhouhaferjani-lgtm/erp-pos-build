@@ -258,6 +258,87 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         );
     }
 
+    // ------------------------------------------- period-range boundaries ---
+
+    /**
+     * Gate finding (GL I-2 / taxation I-1) — the FIRST day of a locked period.
+     *
+     * `period_start` / `period_end` are `date` columns, but SQLite stores dates as
+     * TEXT and the model casts them to `Y-m-d H:i:s`. Binding a `Y-m-d` STRING
+     * therefore compared `'2026-01-01 00:00:00' <= '2026-01-01'`, which is
+     * lexicographically FALSE — a document dated exactly on `period_start`
+     * escaped the lock in the test environment (PostgreSQL, which compares real
+     * dates, was always correct). Binding the Carbon instance lets the driver's
+     * own date grammar decide, which is what
+     * `FiscalPeriodResolverService::isDateInClosedPeriod()` has always done.
+     */
+    public function test_a_document_dated_exactly_on_period_start_is_refused(): void
+    {
+        $periodStart = Carbon::parse('2026-09-01');
+        $period = $this->vatPeriodFor($periodStart, VatPeriodStatus::Closed);
+        self::assertSame(
+            '2026-09-01',
+            $period->period_start->toDateString(),
+            'Precondition: the document date really is the first day of the period',
+        );
+
+        $invoice = $this->postedInvoiceWithGl($periodStart);
+
+        try {
+            $this->postingService->cancel($invoice, 'first day of a closed period', $this->user->id);
+            self::fail('A document dated on period_start of a CLOSED period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodClosed, $exception->refusalCode);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
+    }
+
+    /**
+     * The LAST day of a locked period — the mirror boundary. See the sibling test
+     * above for why a string bind broke this class of date.
+     */
+    public function test_a_document_dated_exactly_on_period_end_is_refused(): void
+    {
+        $periodEnd = Carbon::parse('2026-09-30');
+        $period = $this->vatPeriodFor($periodEnd, VatPeriodStatus::Closed);
+        self::assertSame(
+            '2026-09-30',
+            $period->period_end->toDateString(),
+            'Precondition: the document date really is the last day of the period',
+        );
+
+        $invoice = $this->postedInvoiceWithGl($periodEnd);
+
+        try {
+            $this->postingService->cancel($invoice, 'last day of a closed period', $this->user->id);
+            self::fail('A document dated on period_end of a CLOSED period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodClosed, $exception->refusalCode);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
+    }
+
+    /**
+     * The boundary fix must not over-reach in the other direction: the day BEFORE
+     * `period_start` and the day AFTER `period_end` stay cancellable.
+     */
+    public function test_the_days_immediately_outside_a_locked_period_stay_cancellable(): void
+    {
+        // A single month, locked, with documents on either side of it.
+        $this->vatPeriodFor(Carbon::parse('2026-09-15'), VatPeriodStatus::Filed);
+
+        $dayBefore = $this->postedInvoiceWithGl(Carbon::parse('2026-08-31'));
+        $dayAfter = $this->postedInvoiceWithGl(Carbon::parse('2026-10-01'));
+
+        $this->postingService->cancel($dayBefore, 'day before', $this->user->id);
+        $this->postingService->cancel($dayAfter, 'day after', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($dayBefore));
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($dayAfter));
+    }
+
     // ----------------------------------------- purchase / supplier (AP) ---
 
     /**
