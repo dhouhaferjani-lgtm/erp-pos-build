@@ -13,6 +13,12 @@ parseFloat-on-money violations that the rule failed to gate, for two independent
    money-name regex matching. Fix: unwrap LogicalExpression / ConditionalExpression /
    TSAsExpression / ChainExpression before name extraction; add RuleTester cases for each.
 
+3. **No RuleTester coverage** (R2-G FE gate MINOR-5): `no-parsefloat-on-money` has NO
+   RuleTester file — `test:eslint-rules` covers only 3 other rules — which is exactly how
+   the AST blind spot survived. The hardening change must ship WITH a RuleTester suite
+   (bare identifier, member access, LogicalExpression, ConditionalExpression, template/cast
+   wrappers, and negative cases).
+
 Land as ONE tooling change AFTER the current remediation-round PHP/FE lanes rebase (same
 sequencing rule as the PHPStan bcmath rule in plan v2 — repo-wide guard changes go last).
 Sweep for new hits the moment the rule is hardened; fix or baseline them explicitly.
