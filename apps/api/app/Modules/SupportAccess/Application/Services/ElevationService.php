@@ -12,6 +12,7 @@ use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Services\ConfiguredApproverSet;
 use App\Shared\Contracts\SupportAccess\TenantSubjectTokenPort;
+use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
@@ -20,6 +21,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
 use InvalidArgumentException;
+use LogicException;
 
 final class ElevationService
 {
@@ -37,7 +39,8 @@ final class ElevationService
             throw new InvalidArgumentException('A write-elevation reason is required.');
         }
 
-        return $this->centralTransaction(function () use ($operator, $sessionId, $reason): ImpersonationElevation {
+        $mirror = null;
+        $elevation = $this->centralTransaction(function () use ($operator, $sessionId, $reason, &$mirror): ImpersonationElevation {
             $session = ImpersonationSession::query()->lockForUpdate()->findOrFail($sessionId);
             if (! $operator->is_active
                 || $session->operator_id !== $operator->id
@@ -58,7 +61,7 @@ final class ElevationService
                 'reason' => trim($reason),
                 'requested_at' => CarbonImmutable::now(),
             ]);
-            $this->audit->recordLifecycleEvent(
+            $mirror = $this->audit->appendLifecycleWithinTransaction(
                 $session,
                 SessionEventType::WriteElevationRequested,
                 CarbonImmutable::instance($elevation->requested_at),
@@ -68,11 +71,15 @@ final class ElevationService
 
             return $elevation;
         });
+        $this->deliverMirror($mirror);
+
+        return $elevation;
     }
 
     public function approve(SuperAdmin $approver, string $elevationId): ImpersonationElevation
     {
-        return $this->centralTransaction(function () use ($approver, $elevationId): ImpersonationElevation {
+        $mirror = null;
+        $elevation = $this->centralTransaction(function () use ($approver, $elevationId, &$mirror): ImpersonationElevation {
             $elevation = ImpersonationElevation::query()->lockForUpdate()->findOrFail($elevationId);
             if ($elevation->requested_by === $approver->id || ! $this->approvers->allows($approver)) {
                 throw new AuthorizationException('A distinct configured approver is required.');
@@ -108,7 +115,7 @@ final class ElevationService
 
             $this->tokens->elevateForWrite((int) $session->personal_access_token_id);
 
-            $this->audit->recordLifecycleEvent(
+            $mirror = $this->audit->appendLifecycleWithinTransaction(
                 $session,
                 SessionEventType::WriteElevationApproved,
                 $now,
@@ -118,6 +125,9 @@ final class ElevationService
 
             return $elevation->refresh();
         });
+        $this->deliverMirror($mirror);
+
+        return $elevation;
     }
 
     public function reject(SuperAdmin $approver, string $elevationId, string $reason): ImpersonationElevation
@@ -126,7 +136,8 @@ final class ElevationService
             throw new InvalidArgumentException('A write-elevation rejection reason is required.');
         }
 
-        return $this->centralTransaction(function () use ($approver, $elevationId, $reason): ImpersonationElevation {
+        $mirror = null;
+        $elevation = $this->centralTransaction(function () use ($approver, $elevationId, $reason, &$mirror): ImpersonationElevation {
             $elevation = ImpersonationElevation::query()->lockForUpdate()->findOrFail($elevationId);
             if ($elevation->requested_by === $approver->id || ! $this->approvers->allows($approver)) {
                 throw new AuthorizationException('A distinct configured approver is required.');
@@ -146,7 +157,7 @@ final class ElevationService
                 'rejected_at' => $now,
                 'rejection_reason' => trim($reason),
             ]);
-            $this->audit->recordLifecycleEvent(
+            $mirror = $this->audit->appendLifecycleWithinTransaction(
                 $session,
                 SessionEventType::WriteElevationRejected,
                 $now,
@@ -156,6 +167,9 @@ final class ElevationService
 
             return $elevation->refresh();
         });
+        $this->deliverMirror($mirror);
+
+        return $elevation;
     }
 
     /**
@@ -173,5 +187,14 @@ final class ElevationService
         return $connection->transaction(
             static fn (Connection $unused): mixed => $callback(),
         );
+    }
+
+    private function deliverMirror(?ImpersonationAuditMirrorData $mirror): void
+    {
+        if ($mirror === null) {
+            throw new LogicException('Elevation transition did not produce an audit event.');
+        }
+
+        $this->audit->deliver($mirror);
     }
 }

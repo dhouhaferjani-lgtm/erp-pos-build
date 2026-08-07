@@ -12,6 +12,9 @@ use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
 use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Config\Repository;
+use Illuminate\Database\Connection;
+use Illuminate\Database\DatabaseManager;
 use Throwable;
 
 final class AuditMirrorDeliveryService
@@ -19,6 +22,8 @@ final class AuditMirrorDeliveryService
     public function __construct(
         private readonly AdminImpersonationAuditWriter $adminWriter,
         private readonly TenantImpersonationAuditWriter $tenantWriter,
+        private readonly DatabaseManager $database,
+        private readonly Repository $config,
     ) {}
 
     public function deliverSession(ImpersonationAuditMirrorData $event): void
@@ -106,22 +111,41 @@ final class AuditMirrorDeliveryService
     /** @param callable(): mixed $adminDelivery @param callable(): mixed $tenantDelivery */
     private function deliver(string $eventId, callable $adminDelivery, callable $tenantDelivery): void
     {
-        $delivery = ImpersonationAuditDelivery::query()->findOrFail($eventId);
+        $failure = $this->centralConnection()->transaction(function () use (
+            $eventId,
+            $adminDelivery,
+            $tenantDelivery,
+        ): ?Throwable {
+            $delivery = ImpersonationAuditDelivery::query()->lockForUpdate()->findOrFail($eventId);
 
-        try {
-            if ($delivery->admin_delivered_at === null) {
-                $adminDelivery();
-                $delivery->update(['admin_delivered_at' => now(), 'last_error' => null]);
-            }
-            if ($delivery->tenant_delivered_at === null) {
-                $tenantDelivery();
-                $delivery->update(['tenant_delivered_at' => now(), 'last_error' => null]);
-            }
-        } catch (Throwable $exception) {
-            $delivery->increment('attempt_count');
-            $delivery->update(['last_error' => mb_substr($exception->getMessage(), 0, 2000)]);
+            try {
+                if ($delivery->admin_delivered_at === null) {
+                    $adminDelivery();
+                    $delivery->update(['admin_delivered_at' => now(), 'last_error' => null]);
+                }
+                if ($delivery->tenant_delivered_at === null) {
+                    $tenantDelivery();
+                    $delivery->update(['tenant_delivered_at' => now(), 'last_error' => null]);
+                }
+            } catch (Throwable $exception) {
+                $delivery->increment('attempt_count');
+                $delivery->update(['last_error' => mb_substr($exception->getMessage(), 0, 2000)]);
 
-            throw $exception;
+                return $exception;
+            }
+
+            return null;
+        });
+
+        if ($failure instanceof Throwable) {
+            throw $failure;
         }
+    }
+
+    private function centralConnection(): Connection
+    {
+        return $this->database->connection(
+            $this->config->get('tenancy.database.central_connection'),
+        );
     }
 }

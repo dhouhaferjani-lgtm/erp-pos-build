@@ -6,13 +6,17 @@ namespace Tests\Feature\SupportAccess;
 
 use App\Models\SuperAdmin;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\SupportAccess\Application\DTOs\GrantRequestData;
 use App\Modules\SupportAccess\Application\Services\GrantLifecycleService;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
+use App\Modules\SupportAccess\Application\Services\SessionLifecycleService;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrantEvent;
+use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
+use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
@@ -311,6 +315,141 @@ final class GrantLifecycleTest extends TestCase
         self::assertSame(GrantStatus::Revoked, $revoked->status);
         self::assertSame($revoked->revoked_at?->toISOString(), $again->revoked_at?->toISOString());
         self::assertSame('Issue resolved', $again->revocation_reason);
+    }
+
+    public function test_grant_state_rolls_back_when_the_authoritative_event_append_fails(): void
+    {
+        $grant = $this->service->requestIncident($this->operator, $this->incidentData());
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_grant_approved_append
+            BEFORE INSERT ON impersonation_grant_events
+            WHEN NEW.event_type = 'grant_approved'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced authoritative append failure');
+            END;
+        SQL);
+
+        try {
+            $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+            self::fail('A failed authoritative append must fail the transition.');
+        } catch (\Throwable $exception) {
+            self::assertStringContainsString('forced authoritative append failure', $exception->getMessage());
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_grant_approved_append');
+        }
+
+        $fresh = ImpersonationGrant::query()->findOrFail($grant->id);
+        self::assertSame(GrantStatus::PendingTenantApproval, $fresh->status);
+        self::assertNull($fresh->tenant_approved_at);
+        self::assertSame(
+            [SessionEventType::GrantRequested],
+            ImpersonationGrantEvent::query()->where('grant_id', $grant->id)->pluck('event_type')->all(),
+        );
+    }
+
+    public function test_expiry_sweep_chains_grant_and_session_end_then_revokes_the_token(): void
+    {
+        $now = CarbonImmutable::parse('2026-08-07 08:00:00');
+        CarbonImmutable::setTestNow($now);
+        $grant = $this->service->requestIncident(
+            $this->operator,
+            $this->incidentData(expiresAt: $now->addMinutes(2)),
+        );
+        $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+        $started = $this->app->make(SessionLifecycleService::class)
+            ->start($this->operator, $grant->id, $this->subject->id);
+
+        CarbonImmutable::setTestNow($now->addMinutes(3));
+        $this->artisan('support-access:expire')->assertExitCode(0);
+
+        $freshGrant = ImpersonationGrant::query()->findOrFail($grant->id);
+        self::assertSame(GrantStatus::Expired, $freshGrant->status);
+        self::assertSame(
+            SessionEventType::GrantExpired,
+            ImpersonationGrantEvent::query()->where('grant_id', $grant->id)->latest('sequence')->firstOrFail()->event_type,
+        );
+        $session = ImpersonationSession::query()
+            ->findOrFail($started->session_id);
+        self::assertNotNull($session->ended_at);
+        self::assertSame(
+            [SessionEventType::GrantExpired, SessionEventType::SessionEnded],
+            ImpersonationSessionEvent::query()
+                ->where('session_id', $session->id)
+                ->whereIn('event_type', [SessionEventType::GrantExpired, SessionEventType::SessionEnded])
+                ->orderBy('sequence')
+                ->pluck('event_type')
+                ->all(),
+        );
+        self::assertNull(CentralPersonalAccessToken::query()->find($started->personal_access_token_id));
+    }
+
+    public function test_expiry_sweep_ends_a_session_when_its_ttl_elapses_before_the_grant(): void
+    {
+        $now = CarbonImmutable::parse('2026-08-07 08:00:00');
+        CarbonImmutable::setTestNow($now);
+        config()->set('support_access.session_ttl_minutes', 1);
+        $grant = $this->service->requestIncident(
+            $this->operator,
+            $this->incidentData(expiresAt: $now->addHours(2)),
+        );
+        $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+        $started = $this->app->make(SessionLifecycleService::class)
+            ->start($this->operator, $grant->id, $this->subject->id);
+
+        CarbonImmutable::setTestNow($now->addMinutes(2));
+        $this->artisan('support-access:expire')->assertExitCode(0);
+
+        self::assertSame(GrantStatus::Active, ImpersonationGrant::query()->findOrFail($grant->id)->status);
+        $session = ImpersonationSession::query()
+            ->findOrFail($started->session_id);
+        self::assertNotNull($session->ended_at);
+        self::assertSame(
+            SessionEventType::SessionEnded,
+            ImpersonationSessionEvent::query()
+                ->where('session_id', $session->id)
+                ->latest('sequence')
+                ->firstOrFail()
+                ->event_type,
+        );
+        self::assertNull(CentralPersonalAccessToken::query()->find($started->personal_access_token_id));
+    }
+
+    public function test_session_expiry_rolls_back_when_its_authoritative_event_append_fails(): void
+    {
+        $now = CarbonImmutable::parse('2026-08-07 08:00:00');
+        CarbonImmutable::setTestNow($now);
+        config()->set('support_access.session_ttl_minutes', 1);
+        $grant = $this->service->requestIncident($this->operator, $this->incidentData());
+        $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+        $started = $this->app->make(SessionLifecycleService::class)
+            ->start($this->operator, $grant->id, $this->subject->id);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_session_ended_append
+            BEFORE INSERT ON impersonation_session_events
+            WHEN NEW.event_type = 'session_ended'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced session append failure');
+            END;
+        SQL);
+
+        CarbonImmutable::setTestNow($now->addMinutes(2));
+        try {
+            $this->artisan('support-access:expire');
+            self::fail('A failed authoritative append must fail the session transition.');
+        } catch (\Throwable $exception) {
+            self::assertStringContainsString('forced session append failure', $exception->getMessage());
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_session_ended_append');
+        }
+
+        $session = ImpersonationSession::query()
+            ->findOrFail($started->session_id);
+        self::assertNull($session->ended_at);
+        self::assertNotNull(CentralPersonalAccessToken::query()->find($started->personal_access_token_id));
+        self::assertDatabaseMissing('impersonation_session_events', [
+            'session_id' => $session->id,
+            'event_type' => SessionEventType::SessionEnded->value,
+        ]);
     }
 
     public function test_routes_have_the_locked_auth_tenancy_permission_stacks_and_admin_annotations(): void

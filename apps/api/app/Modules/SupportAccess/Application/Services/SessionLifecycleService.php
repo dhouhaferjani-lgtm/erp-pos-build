@@ -36,6 +36,7 @@ final class SessionLifecycleService
         private readonly DatabaseManager $database,
         private readonly SessionAuditService $audit,
         private readonly GrantAuditService $grantAudit,
+        private readonly GrantExpiryService $grantExpiry,
     ) {}
 
     public function start(SuperAdmin $operator, string $grantId, string $subjectUserId): StartedSessionData
@@ -45,9 +46,11 @@ final class SessionLifecycleService
         }
 
         $started = null;
+        $startMirror = null;
 
         try {
-            $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($operator, $subjectUserId, &$started): void {
+            $this->grantExpiry->expireGrantIfDue($grantId);
+            $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($operator, $subjectUserId, &$started, &$startMirror): void {
                 $this->authorizeStart($grant, $operator, $subjectUserId);
 
                 $subject = new TenantSubjectData($grant->tenant_id, $subjectUserId);
@@ -91,7 +94,7 @@ final class SessionLifecycleService
                     ]);
                 }
 
-                $this->audit->recordLifecycleEvent(
+                $startMirror = $this->audit->appendLifecycleWithinTransaction(
                     $session,
                     SessionEventType::SessionStarted,
                     CarbonImmutable::instance($session->started_at),
@@ -117,6 +120,10 @@ final class SessionLifecycleService
         if (! $started instanceof StartedSessionData) {
             throw new LogicException('Session start did not produce a token.');
         }
+        if ($startMirror === null) {
+            throw new LogicException('Session start did not produce an audit event.');
+        }
+        $this->audit->deliver($startMirror);
 
         return $started;
     }
@@ -131,10 +138,12 @@ final class SessionLifecycleService
     {
         $token = $subject->currentAccessToken();
         $tokenId = (int) $token->getKey();
+        $sessionMirrors = [];
+        $grantMirror = null;
 
         $this->database->connection(
             $this->config->get('tenancy.database.central_connection'),
-        )->transaction(function () use ($subject, $sessionId, $tokenId): void {
+        )->transaction(function () use ($subject, $sessionId, $tokenId, &$sessionMirrors, &$grantMirror): void {
             $session = ImpersonationSession::query()->lockForUpdate()->findOrFail($sessionId);
             if ($session->subject_user_id !== $subject->id
                 || $session->tenant_id !== $subject->tenant_id
@@ -143,14 +152,14 @@ final class SessionLifecycleService
             }
 
             $now = CarbonImmutable::now();
-            $this->audit->recordLifecycleEvent(
+            $sessionMirrors[] = $this->audit->appendLifecycleWithinTransaction(
                 $session,
                 SessionEventType::SessionEnded,
                 $now,
                 'ImpersonationSession',
                 $session->id,
             );
-            $this->audit->recordLifecycleEvent(
+            $sessionMirrors[] = $this->audit->appendLifecycleWithinTransaction(
                 $session,
                 SessionEventType::GrantRevoked,
                 $now,
@@ -170,7 +179,7 @@ final class SessionLifecycleService
                     'revoked_at' => $now,
                     'revocation_reason' => 'Subject exited support access.',
                 ]);
-                $this->grantAudit->record(
+                $grantMirror = $this->grantAudit->appendWithinTransaction(
                     $grant->refresh(),
                     SessionEventType::GrantRevoked,
                     AuditOutcome::Denied,
@@ -184,6 +193,13 @@ final class SessionLifecycleService
 
             $this->tokens->revoke($tokenId);
         });
+
+        foreach ($sessionMirrors as $mirror) {
+            $this->audit->deliver($mirror);
+        }
+        if ($grantMirror !== null) {
+            $this->grantAudit->deliver($grantMirror);
+        }
     }
 
     private function authorizeStart(ImpersonationGrant $grant, SuperAdmin $operator, string $subjectUserId): void

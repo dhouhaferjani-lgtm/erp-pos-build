@@ -11,7 +11,7 @@
     "startsAt": "Window starts",
     "expiresAt": "Window expires"
   },
-  "validation": { "required": "This field is required.", "expiryAfterStart": "Expiry must be after the start.", "uuid": "Enter a valid user ID.", "maxWindow": "A support window cannot exceed seven days." },
+  "validation": { "required": "This field is required.", "expiryAfterStart": "Expiry must be after the start.", "uuid": "Enter a valid user ID.", "maxLength": "Use {{count}} characters or fewer.", "maxWindow": "Expiry must be within the configured maximum window." },
   "window": {
     "title": "Pre-grant a support window",
     "description": "Create a time-boxed window for a documented support purpose. Starting a session still creates a complete audit trail."

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\SupportAccess\Presentation\Middleware;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\SupportAccess\Application\Services\GrantExpiryService;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
 use App\Modules\SupportAccess\Application\Services\SessionAuditService;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
@@ -33,6 +34,7 @@ final class ImpersonationContext
         private readonly EffectivePermissionService $permissions,
         private readonly PermissionRegistrar $permissionRegistrar,
         private readonly SessionAuditService $audit,
+        private readonly GrantExpiryService $grantExpiry,
     ) {}
 
     /** @param Closure(Request): Response $next */
@@ -55,6 +57,11 @@ final class ImpersonationContext
         }
 
         if (! $claims['valid']) {
+            $auditFailure = $this->auditTokenBoundAttempt($request, $user, $token);
+            if ($auditFailure !== null) {
+                return $auditFailure;
+            }
+
             return $this->ended();
         }
 
@@ -67,6 +74,11 @@ final class ImpersonationContext
                 $claims['session_id'],
             );
         } catch (Throwable) {
+            $auditFailure = $this->auditTokenBoundAttempt($request, $user, $token);
+            if ($auditFailure !== null) {
+                return $auditFailure;
+            }
+
             return $this->ended();
         }
 
@@ -110,6 +122,10 @@ final class ImpersonationContext
             if ($grant === null || $grant->tenant_id !== $session->tenant_id) {
                 return null;
             }
+            $this->grantExpiry->expireGrantIfDue($grant->id);
+            $this->grantExpiry->expireSessionIfDue($session->id);
+            $grant = $grant->refresh();
+            $session = $session->refresh();
 
             if ($session->ended_at === null) {
                 $now = CarbonImmutable::now();
@@ -127,6 +143,42 @@ final class ImpersonationContext
                 $session->update(['ended_at' => $now, 'end_reason' => $reason]);
             }
 
+            $this->audit->recordEndedRequest($session->refresh(), $grant->ticket_ref, $request);
+        } catch (Throwable) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPERSONATION_AUDIT_UNAVAILABLE',
+                    'message' => 'Support access is unavailable because its audit trail could not be recorded.',
+                ],
+            ], 503);
+        }
+
+        return null;
+    }
+
+    private function auditTokenBoundAttempt(
+        Request $request,
+        User $user,
+        PersonalAccessToken $token,
+    ): ?JsonResponse {
+        try {
+            $sessions = ImpersonationSession::query()
+                ->where('personal_access_token_id', (int) $token->getKey())
+                ->where('subject_user_id', $user->id)
+                ->limit(2)
+                ->get();
+            if ($sessions->count() !== 1) {
+                return null;
+            }
+            $session = $sessions->sole();
+            if ($session->tenant_id !== $user->tenant_id) {
+                return null;
+            }
+            $grant = ImpersonationGrant::query()->find($session->grant_id);
+            if ($grant === null || $grant->tenant_id !== $session->tenant_id) {
+                return null;
+            }
+            $this->grantExpiry->expireGrantIfDue($grant->id);
             $this->audit->recordEndedRequest($session->refresh(), $grant->ticket_ref, $request);
         } catch (Throwable) {
             return response()->json([

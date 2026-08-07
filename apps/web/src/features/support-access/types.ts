@@ -52,6 +52,7 @@ export interface SupportAccessLogEntry {
 }
 
 export interface SupportAccessOverview {
+  max_grant_window_hours: number
   grants: SupportAccessGrant[]
   active_sessions: SupportAccessSession[]
   log: SupportAccessLogEntry[]

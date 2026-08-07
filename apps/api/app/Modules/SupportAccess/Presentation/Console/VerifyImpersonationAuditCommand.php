@@ -88,18 +88,19 @@ final class VerifyImpersonationAuditCommand extends Command
             return self::FAILURE;
         }
 
-        $adminMirrors = AdminAuditLog::query()
+        $adminMirrorRows = AdminAuditLog::query()
             ->where('impersonation_session_id', $sessionId)
             ->whereIn('impersonation_event_id', $eventIds)
-            ->get()
-            ->keyBy('impersonation_event_id');
-        $tenantMirrors = $this->tenantMirrors($session->tenant_id, $eventIds)
-            ->keyBy('impersonation_event_id');
-        if ($adminMirrors->count() !== $events->count() || $tenantMirrors->count() !== $events->count()) {
+            ->where('entity_type', 'impersonation_session')
+            ->get();
+        $tenantMirrorRows = $this->tenantMirrors($session->tenant_id, $eventIds);
+        if ($adminMirrorRows->count() !== $events->count() || $tenantMirrorRows->count() !== $events->count()) {
             $this->error('Mirror count mismatch.');
 
             return self::FAILURE;
         }
+        $adminMirrors = $adminMirrorRows->keyBy('impersonation_event_id');
+        $tenantMirrors = $tenantMirrorRows->keyBy('impersonation_event_id');
 
         foreach ($events as $event) {
             $admin = $adminMirrors->get($event->id);
@@ -141,16 +142,22 @@ final class VerifyImpersonationAuditCommand extends Command
             return self::FAILURE;
         }
 
-        $eventIds = $events->pluck('id')->all();
-        $adminMirrors = AdminAuditLog::query()->whereIn('impersonation_event_id', $eventIds)
-            ->get()->keyBy('impersonation_event_id');
-        $tenantMirrors = $this->tenantMirrors($grant->tenant_id, $eventIds)
-            ->keyBy('impersonation_event_id');
-        if ($adminMirrors->count() !== $events->count() || $tenantMirrors->count() !== $events->count()) {
+        $eventIds = array_values($events->pluck('id')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all());
+        $adminMirrorRows = AdminAuditLog::query()
+            ->whereIn('impersonation_event_id', $eventIds)
+            ->where('entity_type', 'impersonation_grant')
+            ->get();
+        $tenantMirrorRows = $this->tenantMirrors($grant->tenant_id, $eventIds);
+        if ($adminMirrorRows->count() !== $events->count() || $tenantMirrorRows->count() !== $events->count()) {
             $this->error('Grant mirror count mismatch.');
 
             return self::FAILURE;
         }
+        $adminMirrors = $adminMirrorRows->keyBy('impersonation_event_id');
+        $tenantMirrors = $tenantMirrorRows->keyBy('impersonation_event_id');
 
         foreach ($events as $event) {
             $admin = $adminMirrors->get($event->id);
@@ -194,7 +201,9 @@ final class VerifyImpersonationAuditCommand extends Command
         }
 
         if ($mirror instanceof AdminAuditLog) {
-            return $mirror->action === 'impersonation_'.$event->event_type->value
+            return $mirror->super_admin_id === $event->operator_id
+                && $mirror->tenant_id === $event->tenant_id
+                && $mirror->action === 'impersonation_'.$event->event_type->value
                 && $mirror->entity_type === 'impersonation_session'
                 && $mirror->entity_id === $event->session_id
                 && $this->arraysMatch($mirror->new_values ?? [], [
@@ -202,6 +211,7 @@ final class VerifyImpersonationAuditCommand extends Command
                     'method' => $event->http_method,
                     'path' => $event->path,
                     'details' => $event->details->toArray(),
+                    'occurred_at' => $event->occurred_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
                 ])
                 && $mirror->ip_address === $event->details->request_ip
                 && $mirror->user_agent === $event->details->user_agent;
@@ -211,23 +221,27 @@ final class VerifyImpersonationAuditCommand extends Command
             return false;
         }
 
-        return $mirror->event_type === 'support_access.'.$event->event_type->value
-            && $mirror->aggregate_type === 'ImpersonationSession'
-            && $mirror->aggregate_id === $event->session_id
-            && $this->arraysMatch($mirror->payload, $event->details->toArray())
-            && $this->arraysMatch($mirror->metadata, [
+        $occurredAt = $mirror->getAttribute('occurred_at');
+        $payload = $mirror->getAttribute('payload');
+        $metadata = $mirror->getAttribute('metadata');
+
+        return $mirror->getAttribute('tenant_id') === $event->tenant_id
+            && $mirror->getAttribute('company_id') === null
+            && $mirror->getAttribute('user_id') === $event->subject_user_id
+            && $occurredAt instanceof CarbonInterface
+            && $occurredAt->equalTo($event->occurred_at)
+            && $mirror->getAttribute('event_type') === 'support_access.'.$event->event_type->value
+            && $mirror->getAttribute('aggregate_type') === 'ImpersonationSession'
+            && $mirror->getAttribute('aggregate_id') === $event->session_id
+            && is_array($payload)
+            && $this->arraysMatch($payload, $event->details->toArray())
+            && is_array($metadata)
+            && $this->arraysMatch($metadata, [
                 'outcome' => $event->outcome->value,
                 'method' => $event->http_method,
                 'path' => $event->path,
             ])
-            && hash_equals($mirror->event_hash, $this->expectedTenantHash(
-                userId: $event->subject_user_id,
-                eventType: 'support_access.'.$event->event_type->value,
-                aggregateType: 'ImpersonationSession',
-                aggregateId: $event->session_id,
-                payload: $event->details->toArray(),
-                occurredAt: $event->occurred_at,
-            ));
+            && hash_equals((string) $mirror->getAttribute('event_hash'), $this->recomputedTenantHash($mirror));
     }
 
     private function grantMirrorMatches(Model $mirror, ImpersonationGrantEvent $event): bool
@@ -243,7 +257,9 @@ final class VerifyImpersonationAuditCommand extends Command
         }
 
         if ($mirror instanceof AdminAuditLog) {
-            return $mirror->action === 'impersonation_'.$event->event_type->value
+            return $mirror->super_admin_id === $event->operator_id
+                && $mirror->tenant_id === $event->tenant_id
+                && $mirror->action === 'impersonation_'.$event->event_type->value
                 && $mirror->entity_type === 'impersonation_grant'
                 && $mirror->entity_id === $event->grant_id
                 && $this->arraysMatch($mirror->new_values ?? [], [
@@ -251,6 +267,7 @@ final class VerifyImpersonationAuditCommand extends Command
                     'actor_id' => $event->actor_id,
                     'actor_type' => $event->actor_type,
                     'details' => $event->details->toArray(),
+                    'occurred_at' => $event->occurred_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
                 ])
                 && $mirror->ip_address === $event->details->request_ip
                 && $mirror->user_agent === $event->details->user_agent;
@@ -260,33 +277,45 @@ final class VerifyImpersonationAuditCommand extends Command
             return false;
         }
 
-        return $mirror->event_type === 'support_access.'.$event->event_type->value
-            && $mirror->aggregate_type === 'ImpersonationGrant'
-            && $mirror->aggregate_id === $event->grant_id
-            && $this->arraysMatch($mirror->payload, $event->details->toArray())
-            && $this->arraysMatch($mirror->metadata, [
+        $expectedUserId = $event->actor_type === 'tenant_user' ? $event->actor_id : $event->subject_user_id;
+
+        $occurredAt = $mirror->getAttribute('occurred_at');
+        $payload = $mirror->getAttribute('payload');
+        $metadata = $mirror->getAttribute('metadata');
+
+        return $mirror->getAttribute('tenant_id') === $event->tenant_id
+            && $mirror->getAttribute('company_id') === null
+            && $mirror->getAttribute('user_id') === $expectedUserId
+            && $occurredAt instanceof CarbonInterface
+            && $occurredAt->equalTo($event->occurred_at)
+            && $mirror->getAttribute('event_type') === 'support_access.'.$event->event_type->value
+            && $mirror->getAttribute('aggregate_type') === 'ImpersonationGrant'
+            && $mirror->getAttribute('aggregate_id') === $event->grant_id
+            && is_array($payload)
+            && $this->arraysMatch($payload, $event->details->toArray())
+            && is_array($metadata)
+            && $this->arraysMatch($metadata, [
                 'outcome' => $event->outcome->value,
                 'actor_id' => $event->actor_id,
                 'actor_type' => $event->actor_type,
             ])
-            && hash_equals($mirror->event_hash, $this->expectedTenantHash(
-                userId: $event->actor_type === 'tenant_user' ? $event->actor_id : $event->subject_user_id,
-                eventType: 'support_access.'.$event->event_type->value,
-                aggregateType: 'ImpersonationGrant',
-                aggregateId: $event->grant_id,
-                payload: $event->details->toArray(),
-                occurredAt: $event->occurred_at,
-            ));
+            && hash_equals((string) $mirror->getAttribute('event_hash'), $this->recomputedTenantHash($mirror));
     }
 
-    /** @param array<string, mixed> $left @param array<string, mixed> $right */
+    /**
+     * @param  array<array-key, mixed>  $left
+     * @param  array<array-key, mixed>  $right
+     */
     private function arraysMatch(array $left, array $right): bool
     {
         return json_encode($this->canonicalize($left), JSON_THROW_ON_ERROR)
             === json_encode($this->canonicalize($right), JSON_THROW_ON_ERROR);
     }
 
-    /** @param array<mixed> $value @return array<mixed> */
+    /**
+     * @param  array<array-key, mixed>  $value
+     * @return array<array-key, mixed>
+     */
     private function canonicalize(array $value): array
     {
         if (! array_is_list($value)) {
@@ -302,23 +331,16 @@ final class VerifyImpersonationAuditCommand extends Command
         return $value;
     }
 
-    /** @param array<string, mixed> $payload */
-    private function expectedTenantHash(
-        ?string $userId,
-        string $eventType,
-        string $aggregateType,
-        string $aggregateId,
-        array $payload,
-        CarbonInterface $occurredAt,
-    ): string {
+    private function recomputedTenantHash(AuditEvent $mirror): string
+    {
         $expected = new AuditEvent;
-        $expected->companyId = '';
-        $expected->userId = $userId;
-        $expected->eventType = $eventType;
-        $expected->aggregateType = $aggregateType;
-        $expected->aggregateId = $aggregateId;
-        $expected->occurredAt = $occurredAt;
-        $expected->forceFill(['payload' => $payload]);
+        $expected->companyId = $mirror->company_id ?? '';
+        $expected->userId = $mirror->user_id;
+        $expected->eventType = $mirror->event_type;
+        $expected->aggregateType = $mirror->aggregate_type;
+        $expected->aggregateId = $mirror->aggregate_id;
+        $expected->occurredAt = $mirror->occurred_at;
+        $expected->forceFill(['payload' => $mirror->payload]);
         $expected->recomputeHash();
 
         return $expected->eventHash;

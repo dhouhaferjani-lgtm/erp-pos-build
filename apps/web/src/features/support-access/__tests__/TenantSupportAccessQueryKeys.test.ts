@@ -1,7 +1,12 @@
+import { QueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { tenantSupportAccessKeys } from '../hooks/useTenantSupportAccess'
+import {
+  invalidateTenantSupportAccess,
+  tenantSupportAccessKeys,
+} from '../hooks/useTenantSupportAccess'
 
 describe('tenant support-access query keys', () => {
   beforeEach(() => {
@@ -9,6 +14,7 @@ describe('tenant support-access query keys', () => {
       id: 'user-1', name: 'User', email: 'user@test', tenant_id: 'tenant-key', roles: [],
       permissions: ['support-access.view'], email_verified_at: null, impersonation: null,
     })
+    useCompanyStore.setState({ currentCompanyId: 'company-key' })
   })
 
   it('stamps every tenant-data key with the authenticated tenant', () => {
@@ -17,5 +23,15 @@ describe('tenant support-access query keys', () => {
     for (const key of keys) {
       expect(key).toContain('tenant-key')
     }
+  })
+
+  it('invalidates populated paginated tenant queries after a mutation', async () => {
+    const queryClient = new QueryClient()
+    const paginatedKey = tenantScopedKey([...tenantSupportAccessKeys.overview(), 2, 25])
+    queryClient.setQueryData(paginatedKey, { grants: [] })
+
+    await invalidateTenantSupportAccess(queryClient)
+
+    expect(queryClient.getQueryState(paginatedKey)?.isInvalidated).toBe(true)
   })
 })

@@ -2081,6 +2081,7 @@ duration_seconds: number;
 occurred_at: any;
 };
 export type SupportAccessOverviewData = {
+max_grant_window_hours: number;
 grants: Array<any>;
 active_sessions: Array<App.Modules.SupportAccess.Application.DTOs.SessionData>;
 log: Array<App.Modules.SupportAccess.Application.DTOs.SupportAccessLogEntryData>;

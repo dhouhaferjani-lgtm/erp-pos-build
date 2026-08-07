@@ -11,6 +11,7 @@ use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Closure;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -24,6 +25,7 @@ final class TenantImpersonationAuditStore
     public function write(ImpersonationAuditMirrorData $event): void
     {
         $this->run($event->tenant_id, function () use ($event): void {
+            $payload = $this->normalizeJsonPayload($event->details);
             $audit = new AuditEvent;
             $audit->companyId = '';
             $audit->userId = $event->subject_user_id;
@@ -40,7 +42,7 @@ final class TenantImpersonationAuditStore
                 'event_type' => $audit->eventType,
                 'aggregate_type' => $audit->aggregateType,
                 'aggregate_id' => $audit->aggregateId,
-                'payload' => $event->details,
+                'payload' => $payload,
                 'metadata' => [
                     'outcome' => $event->outcome,
                     'method' => $event->http_method,
@@ -55,13 +57,14 @@ final class TenantImpersonationAuditStore
                 'impersonation_hash' => $event->hash,
             ]);
             $audit->recomputeHash();
-            $audit->saveOrFail();
+            $this->saveIdempotently($audit);
         });
     }
 
     public function writeGrant(GrantAuditMirrorData $event): void
     {
         $this->run($event->tenant_id, function () use ($event): void {
+            $payload = $this->normalizeJsonPayload($event->details);
             $audit = new AuditEvent;
             $audit->companyId = '';
             $audit->userId = $event->actor_type === 'tenant_user' ? $event->actor_id : ($event->subject_user_id ?? '');
@@ -76,7 +79,7 @@ final class TenantImpersonationAuditStore
                 'event_type' => $audit->eventType,
                 'aggregate_type' => $audit->aggregateType,
                 'aggregate_id' => $audit->aggregateId,
-                'payload' => $event->details,
+                'payload' => $payload,
                 'metadata' => [
                     'outcome' => $event->outcome,
                     'actor_id' => $event->actor_id,
@@ -91,7 +94,7 @@ final class TenantImpersonationAuditStore
                 'impersonation_hash' => $event->hash,
             ]);
             $audit->recomputeHash();
-            $audit->saveOrFail();
+            $this->saveIdempotently($audit);
         });
     }
 
@@ -104,6 +107,7 @@ final class TenantImpersonationAuditStore
         return $this->run($tenantId, static fn (): Collection => AuditEvent::query()
             ->where('tenant_id', $tenantId)
             ->whereIn('impersonation_event_id', $eventIds)
+            ->where('event_type', 'like', 'support_access.%')
             ->get());
     }
 
@@ -124,5 +128,61 @@ final class TenantImpersonationAuditStore
         $tenant = Tenant::query()->findOrFail($tenantId);
 
         return $tenant->run($callback);
+    }
+
+    private function saveIdempotently(AuditEvent $audit): void
+    {
+        if ($this->mirrorExists($audit)) {
+            return;
+        }
+
+        try {
+            $audit->saveOrFail();
+        } catch (QueryException $exception) {
+            if ($this->mirrorExists($audit)) {
+                return;
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * PostgreSQL jsonb normalizes object key order. Hash the same decoded
+     * representation that will be returned after persistence so the legacy
+     * AuditEvent hash remains reproducible without changing calculateHash().
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeJsonPayload(array $payload): array
+    {
+        $connection = $this->database->connection();
+        if ($connection->getDriverName() !== 'pgsql') {
+            return $payload;
+        }
+
+        $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
+        $normalized = $connection->scalar('SELECT CAST(? AS jsonb)::text', [$encoded]);
+        if (! is_string($normalized)) {
+            throw new \RuntimeException('PostgreSQL did not return a normalized audit payload.');
+        }
+
+        $decoded = json_decode($normalized, true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($decoded)) {
+            throw new \RuntimeException('Normalized audit payload is not an object.');
+        }
+
+        return $decoded;
+    }
+
+    /** @phpstan-impure */
+    private function mirrorExists(AuditEvent $audit): bool
+    {
+        return AuditEvent::query()
+            ->where('impersonation_event_id', $audit->impersonation_event_id)
+            ->where('event_type', $audit->event_type)
+            ->where('aggregate_type', $audit->aggregate_type)
+            ->exists();
     }
 }

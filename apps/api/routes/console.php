@@ -8,6 +8,13 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
+Schedule::command('support-access:expire --limit=1000')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onFailure(function (): void {
+        Log::error('support-access:expire exited non-zero; elapsed grants remain fail-closed at request time, but lifecycle audit/session cleanup must be reconciled.');
+    });
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');

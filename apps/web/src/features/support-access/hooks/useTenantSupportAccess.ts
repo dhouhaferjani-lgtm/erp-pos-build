@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
@@ -15,6 +16,10 @@ export const tenantSupportAccessKeys = {
   overview: () => ['support-access', 'overview'] as const,
 }
 
+export async function invalidateTenantSupportAccess(queryClient: QueryClient): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: ['support-access', 'overview'] })
+}
+
 export function useTenantSupportAccess(page = 1, perPage = 25) {
   const { t } = useTranslation('support-access')
   const queryClient = useQueryClient()
@@ -22,9 +27,7 @@ export function useTenantSupportAccess(page = 1, perPage = 25) {
     queryKey: tenantScopedKey([...tenantSupportAccessKeys.overview(), page, perPage]),
     queryFn: () => getTenantSupportAccess(page, perPage),
   })
-  const refresh = async () => queryClient.invalidateQueries({
-    queryKey: tenantScopedKey(tenantSupportAccessKeys.overview()),
-  })
+  const refresh = async () => invalidateTenantSupportAccess(queryClient)
   const onError = () => { toast.error(t('errors.mutation')) }
   const createMutation = useMutation({ mutationFn: createSupportWindow, onSuccess: refresh, onError })
   const approveMutation = useMutation({ mutationFn: approveTenantGrant, onSuccess: refresh, onError })

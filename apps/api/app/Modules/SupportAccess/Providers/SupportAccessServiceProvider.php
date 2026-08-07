@@ -12,6 +12,7 @@ use App\Modules\SupportAccess\Infrastructure\Identity\EloquentTenantSubjectDirec
 use App\Modules\SupportAccess\Infrastructure\Identity\TenantSubjectTokenAdapter;
 use App\Modules\SupportAccess\Infrastructure\Notifications\TenantDatabaseSupportAccessNotifier;
 use App\Modules\SupportAccess\Infrastructure\Repositories\EloquentImpersonationGrantRepository;
+use App\Modules\SupportAccess\Presentation\Console\ExpireSupportAccessCommand;
 use App\Modules\SupportAccess\Presentation\Console\ReconcileImpersonationAuditCommand;
 use App\Modules\SupportAccess\Presentation\Console\VerifyImpersonationAuditCommand;
 use App\Services\AdminAuditService;
@@ -46,6 +47,7 @@ final class SupportAccessServiceProvider extends ServiceProvider
             $this->commands([
                 VerifyImpersonationAuditCommand::class,
                 ReconcileImpersonationAuditCommand::class,
+                ExpireSupportAccessCommand::class,
             ]);
         }
     }

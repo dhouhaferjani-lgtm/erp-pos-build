@@ -21,10 +21,14 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Contracts\SupportAccess\SupportAccessNotifier;
 use App\Shared\Contracts\SupportAccess\TenantSubjectDirectory;
+use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use Carbon\CarbonImmutable;
+use Closure;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Database\Connection;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -39,6 +43,7 @@ final class GrantLifecycleService
         private readonly ImpersonationContextProvider $impersonationContext,
         private readonly SessionAuditService $sessionAudit,
         private readonly GrantAuditService $grantAudit,
+        private readonly DatabaseManager $database,
     ) {}
 
     public function requestIncident(SuperAdmin $operator, GrantRequestData $data): GrantData
@@ -59,28 +64,34 @@ final class GrantLifecycleService
             throw new AuthorizationException('Subject user does not belong to the requested tenant.');
         }
 
-        $grant = $this->grants->create([
-            'tenant_id' => $tenantId,
-            'subject_user_id' => $subjectUserId,
-            'operator_id' => $operator->id,
-            'type' => $data->type,
-            'status' => GrantStatus::PendingTenantApproval,
-            'reason' => trim($data->reason),
-            'ticket_ref' => trim($data->ticket_ref),
-            'requested_at' => CarbonImmutable::now(),
-            'starts_at' => $data->starts_at,
-            'expires_at' => $data->expires_at,
-        ]);
-        $this->grantAudit->record(
-            $grant,
-            SessionEventType::GrantRequested,
-            AuditOutcome::Observed,
-            $operator->id,
-            'super_admin',
-            $grant->reason,
-            'tenant_consent',
-            CarbonImmutable::instance($grant->requested_at),
-        );
+        $mirror = null;
+        $grant = $this->centralTransaction(function () use ($data, $operator, $subjectUserId, $tenantId, &$mirror): ImpersonationGrant {
+            $grant = $this->grants->create([
+                'tenant_id' => $tenantId,
+                'subject_user_id' => $subjectUserId,
+                'operator_id' => $operator->id,
+                'type' => $data->type,
+                'status' => GrantStatus::PendingTenantApproval,
+                'reason' => trim($data->reason),
+                'ticket_ref' => trim($data->ticket_ref),
+                'requested_at' => CarbonImmutable::now(),
+                'starts_at' => $data->starts_at,
+                'expires_at' => $data->expires_at,
+            ]);
+            $mirror = $this->grantAudit->appendWithinTransaction(
+                $grant,
+                SessionEventType::GrantRequested,
+                AuditOutcome::Observed,
+                $operator->id,
+                'super_admin',
+                $grant->reason,
+                'tenant_consent',
+                CarbonImmutable::instance($grant->requested_at),
+            );
+
+            return $grant->refresh();
+        });
+        $this->deliverGrantMirror($mirror);
         $this->notifier->grantRequested($grant->id, $grant->tenant_id, $grant->ticket_ref);
 
         return GrantData::fromModel($grant);
@@ -103,42 +114,36 @@ final class GrantLifecycleService
         $requiresSecondApproval = $this->requiresSensitiveTenantApproval($tenant);
         $now = CarbonImmutable::now();
 
-        $grant = $this->grants->create([
-            'tenant_id' => $tenantAdmin->tenant_id,
-            'subject_user_id' => $data->subject_user_id,
-            'operator_id' => null,
-            'type' => GrantType::PreGrantedWindow,
-            'status' => $requiresSecondApproval
-                ? GrantStatus::PendingInternalApproval
-                : GrantStatus::Active,
-            'reason' => trim($data->reason),
-            'ticket_ref' => trim($data->ticket_ref),
-            'requested_at' => $now,
-            'starts_at' => $data->starts_at,
-            'expires_at' => $data->expires_at,
-            'tenant_approved_by' => $tenantAdmin->id,
-            'tenant_approved_at' => $now,
-        ]);
-        $this->grantAudit->record(
-            $grant,
-            SessionEventType::GrantRequested,
-            AuditOutcome::Observed,
-            $tenantAdmin->id,
-            'tenant_user',
-            $grant->reason,
-            'pre_granted_window',
-            $now,
-        );
-        $this->grantAudit->record(
-            $grant,
-            SessionEventType::GrantApproved,
-            AuditOutcome::Allowed,
-            $tenantAdmin->id,
-            'tenant_user',
-            null,
-            'tenant_consent',
-            $now,
-        );
+        $mirrors = [];
+        $grant = $this->centralTransaction(function () use ($data, $requiresSecondApproval, $tenantAdmin, $now, &$mirrors): ImpersonationGrant {
+            $grant = $this->grants->create([
+                'tenant_id' => $tenantAdmin->tenant_id,
+                'subject_user_id' => $data->subject_user_id,
+                'operator_id' => null,
+                'type' => GrantType::PreGrantedWindow,
+                'status' => $requiresSecondApproval
+                    ? GrantStatus::PendingInternalApproval
+                    : GrantStatus::Active,
+                'reason' => trim($data->reason),
+                'ticket_ref' => trim($data->ticket_ref),
+                'requested_at' => $now,
+                'starts_at' => $data->starts_at,
+                'expires_at' => $data->expires_at,
+                'tenant_approved_by' => $tenantAdmin->id,
+                'tenant_approved_at' => $now,
+            ]);
+            $mirrors[] = $this->grantAudit->appendWithinTransaction(
+                $grant, SessionEventType::GrantRequested, AuditOutcome::Observed,
+                $tenantAdmin->id, 'tenant_user', $grant->reason, 'pre_granted_window', $now,
+            );
+            $mirrors[] = $this->grantAudit->appendWithinTransaction(
+                $grant, SessionEventType::GrantApproved, AuditOutcome::Allowed,
+                $tenantAdmin->id, 'tenant_user', null, 'tenant_consent', $now,
+            );
+
+            return $grant->refresh();
+        });
+        $this->deliverGrantMirrors($mirrors);
 
         return GrantData::fromModel($grant->refresh());
     }
@@ -147,42 +152,37 @@ final class GrantLifecycleService
     {
         $expired = false;
         $approvedAt = null;
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, &$expired, &$approvedAt): void {
-            $this->authorizeTenantManager($tenantAdmin, $grant);
+        $mirror = null;
+        $grant = $this->centralTransaction(function () use ($grantId, $tenantAdmin, &$expired, &$approvedAt, &$mirror): ImpersonationGrant {
+            $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, &$expired, &$approvedAt): void {
+                $this->authorizeTenantManager($tenantAdmin, $grant);
 
-            if ($this->expireIfElapsed($grant)) {
-                $expired = true;
+                if ($this->expireIfElapsed($grant)) {
+                    $expired = true;
 
-                return;
-            }
+                    return;
+                }
 
-            if ($grant->status !== GrantStatus::PendingTenantApproval) {
-                throw new DomainException('Grant is not awaiting tenant approval.');
-            }
+                if ($grant->status !== GrantStatus::PendingTenantApproval) {
+                    throw new DomainException('Grant is not awaiting tenant approval.');
+                }
 
-            $tenant = Tenant::query()->findOrFail($grant->tenant_id);
-            $grant->tenant_approved_by = $tenantAdmin->id;
-            $grant->tenant_approved_at = CarbonImmutable::now();
-            $approvedAt = $grant->tenant_approved_at;
-            $grant->status = $this->requiresSensitiveTenantApproval($tenant)
-                ? GrantStatus::PendingInternalApproval
-                : GrantStatus::Active;
+                $tenant = Tenant::query()->findOrFail($grant->tenant_id);
+                $grant->tenant_approved_by = $tenantAdmin->id;
+                $grant->tenant_approved_at = CarbonImmutable::now();
+                $approvedAt = $grant->tenant_approved_at;
+                $grant->status = $this->requiresSensitiveTenantApproval($tenant)
+                    ? GrantStatus::PendingInternalApproval
+                    : GrantStatus::Active;
+            });
+
+            $mirror = $expired
+                ? $this->appendExpiry($grant, $tenantAdmin->id, 'tenant_user')
+                : $this->appendApproval($grant, $tenantAdmin->id, 'tenant_user', 'tenant_consent', $approvedAt);
+
+            return $grant->refresh();
         });
-
-        if ($expired) {
-            $this->recordExpiry($grant, $tenantAdmin->id, 'tenant_user');
-        } elseif ($approvedAt instanceof CarbonImmutable) {
-            $this->grantAudit->record(
-                $grant,
-                SessionEventType::GrantApproved,
-                AuditOutcome::Allowed,
-                $tenantAdmin->id,
-                'tenant_user',
-                null,
-                'tenant_consent',
-                $approvedAt,
-            );
-        }
+        $this->deliverGrantMirror($mirror);
 
         $this->throwIfExpired($grant);
 
@@ -197,38 +197,37 @@ final class GrantLifecycleService
 
         $expired = false;
         $rejectedAt = null;
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, $reason, &$expired, &$rejectedAt): void {
-            $this->authorizeTenantManager($tenantAdmin, $grant);
-            if ($this->expireIfElapsed($grant)) {
-                $expired = true;
+        $mirror = null;
+        $grant = $this->centralTransaction(function () use ($grantId, $tenantAdmin, $reason, &$expired, &$rejectedAt, &$mirror): ImpersonationGrant {
+            $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, $reason, &$expired, &$rejectedAt): void {
+                $this->authorizeTenantManager($tenantAdmin, $grant);
+                if ($this->expireIfElapsed($grant)) {
+                    $expired = true;
 
-                return;
-            }
-            if ($grant->status !== GrantStatus::PendingTenantApproval) {
-                throw new DomainException('Grant is not awaiting tenant approval.');
-            }
+                    return;
+                }
+                if ($grant->status !== GrantStatus::PendingTenantApproval) {
+                    throw new DomainException('Grant is not awaiting tenant approval.');
+                }
 
-            $grant->status = GrantStatus::Rejected;
-            $grant->rejected_by = $tenantAdmin->id;
-            $grant->rejected_at = CarbonImmutable::now();
-            $rejectedAt = $grant->rejected_at;
-            $grant->rejection_reason = trim($reason);
+                $grant->status = GrantStatus::Rejected;
+                $grant->rejected_by = $tenantAdmin->id;
+                $grant->rejected_at = CarbonImmutable::now();
+                $rejectedAt = $grant->rejected_at;
+                $grant->rejection_reason = trim($reason);
+            });
+            $mirror = $expired
+                ? $this->appendExpiry($grant, $tenantAdmin->id, 'tenant_user')
+                : ($rejectedAt instanceof CarbonImmutable
+                    ? $this->grantAudit->appendWithinTransaction(
+                        $grant, SessionEventType::GrantRejected, AuditOutcome::Denied,
+                        $tenantAdmin->id, 'tenant_user', trim($reason), 'tenant_consent', $rejectedAt,
+                    )
+                    : null);
+
+            return $grant->refresh();
         });
-
-        if ($expired) {
-            $this->recordExpiry($grant, $tenantAdmin->id, 'tenant_user');
-        } elseif ($rejectedAt instanceof CarbonImmutable) {
-            $this->grantAudit->record(
-                $grant,
-                SessionEventType::GrantRejected,
-                AuditOutcome::Denied,
-                $tenantAdmin->id,
-                'tenant_user',
-                trim($reason),
-                'tenant_consent',
-                $rejectedAt,
-            );
-        }
+        $this->deliverGrantMirror($mirror);
 
         $this->throwIfExpired($grant);
 
@@ -239,39 +238,33 @@ final class GrantLifecycleService
     {
         $expired = false;
         $approvedAt = null;
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($approver, &$expired, &$approvedAt): void {
-            if ($grant->operator_id === $approver->id || ! $this->approvers->allows($approver)) {
-                throw new AuthorizationException('A distinct configured approver is required.');
-            }
-            if ($this->expireIfElapsed($grant)) {
-                $expired = true;
+        $mirror = null;
+        $grant = $this->centralTransaction(function () use ($approver, $grantId, &$expired, &$approvedAt, &$mirror): ImpersonationGrant {
+            $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($approver, &$expired, &$approvedAt): void {
+                if ($grant->operator_id === $approver->id || ! $this->approvers->allows($approver)) {
+                    throw new AuthorizationException('A distinct configured approver is required.');
+                }
+                if ($this->expireIfElapsed($grant)) {
+                    $expired = true;
 
-                return;
-            }
-            if ($grant->status !== GrantStatus::PendingInternalApproval) {
-                throw new DomainException('Grant is not awaiting internal approval.');
-            }
+                    return;
+                }
+                if ($grant->status !== GrantStatus::PendingInternalApproval) {
+                    throw new DomainException('Grant is not awaiting internal approval.');
+                }
 
-            $grant->status = GrantStatus::Active;
-            $grant->second_approved_by = $approver->id;
-            $grant->second_approved_at = CarbonImmutable::now();
-            $approvedAt = $grant->second_approved_at;
+                $grant->status = GrantStatus::Active;
+                $grant->second_approved_by = $approver->id;
+                $grant->second_approved_at = CarbonImmutable::now();
+                $approvedAt = $grant->second_approved_at;
+            });
+            $mirror = $expired
+                ? $this->appendExpiry($grant, $approver->id, 'support_approver')
+                : $this->appendApproval($grant, $approver->id, 'support_approver', 'internal_four_eyes', $approvedAt);
+
+            return $grant->refresh();
         });
-
-        if ($expired) {
-            $this->recordExpiry($grant, $approver->id, 'support_approver');
-        } elseif ($approvedAt instanceof CarbonImmutable) {
-            $this->grantAudit->record(
-                $grant,
-                SessionEventType::GrantApproved,
-                AuditOutcome::Allowed,
-                $approver->id,
-                'support_approver',
-                null,
-                'internal_four_eyes',
-                $approvedAt,
-            );
-        }
+        $this->deliverGrantMirror($mirror);
 
         $this->throwIfExpired($grant);
 
@@ -285,19 +278,37 @@ final class GrantLifecycleService
         }
 
         $transitioned = false;
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($actor, $reason, &$transitioned): void {
-            $this->authorizeRevoker($actor, $grant);
+        $mirror = null;
+        $grant = $this->centralTransaction(function () use ($actor, $grantId, $reason, &$transitioned, &$mirror): ImpersonationGrant {
+            $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($actor, $reason, &$transitioned): void {
+                $this->authorizeRevoker($actor, $grant);
 
-            if ($grant->status === GrantStatus::Revoked) {
-                return;
+                if ($grant->status === GrantStatus::Revoked) {
+                    return;
+                }
+
+                $grant->status = GrantStatus::Revoked;
+                $grant->revoked_by = $actor->id;
+                $grant->revoked_at = CarbonImmutable::now();
+                $grant->revocation_reason = trim($reason);
+                $transitioned = true;
+            });
+
+            if ($transitioned) {
+                $revokedAt = $grant->revoked_at;
+                if ($revokedAt === null) {
+                    throw new DomainException('Revoked grant is missing its transition timestamp.');
+                }
+                $mirror = $this->grantAudit->appendWithinTransaction(
+                    $grant, SessionEventType::GrantRevoked, AuditOutcome::Denied,
+                    $actor->id, $actor instanceof User ? 'tenant_user' : 'super_admin',
+                    trim($reason), 'revocation', CarbonImmutable::instance($revokedAt),
+                );
             }
 
-            $grant->status = GrantStatus::Revoked;
-            $grant->revoked_by = $actor->id;
-            $grant->revoked_at = CarbonImmutable::now();
-            $grant->revocation_reason = trim($reason);
-            $transitioned = true;
+            return $grant->refresh();
         });
+        $this->deliverGrantMirror($mirror);
 
         if ($transitioned) {
             $revokedAt = $grant->revoked_at;
@@ -305,50 +316,20 @@ final class GrantLifecycleService
                 throw new DomainException('Revoked grant is missing its transition timestamp.');
             }
 
-            $this->grantAudit->record(
-                $grant,
-                SessionEventType::GrantRevoked,
-                AuditOutcome::Denied,
-                $actor->id,
-                $actor instanceof User ? 'tenant_user' : 'super_admin',
-                trim($reason),
-                'revocation',
-                CarbonImmutable::instance($revokedAt),
-            );
-
             ImpersonationSession::query()
                 ->where('grant_id', $grant->id)
                 ->whereNull('ended_at')
                 ->eachById(function (ImpersonationSession $session) use ($grant, $revokedAt): void {
-                    $this->sessionAudit->recordLifecycleEvent(
-                        session: $session,
-                        eventType: SessionEventType::GrantRevoked,
-                        occurredAt: CarbonImmutable::instance($revokedAt),
-                        resourceType: ImpersonationGrant::class,
-                        resourceId: $grant->id,
-                        ticketRef: $grant->ticket_ref,
-                    );
-                    $this->sessionAudit->recordLifecycleEvent(
-                        session: $session,
-                        eventType: SessionEventType::SessionEnded,
-                        occurredAt: CarbonImmutable::instance($revokedAt),
-                        resourceType: ImpersonationSession::class,
-                        resourceId: $session->id,
-                        ticketRef: $grant->ticket_ref,
-                    );
-                    $session->update([
-                        'ended_at' => $revokedAt,
-                        'end_reason' => SessionEndReason::GrantRevoked,
-                    ]);
+                    $this->endRevokedSession($session, $grant, CarbonImmutable::instance($revokedAt));
                 });
         }
 
         return GrantData::fromModel($grant);
     }
 
-    private function recordExpiry(ImpersonationGrant $grant, string $actorId, string $actorType): void
+    private function appendExpiry(ImpersonationGrant $grant, string $actorId, string $actorType): GrantAuditMirrorData
     {
-        $this->grantAudit->record(
+        return $this->grantAudit->appendWithinTransaction(
             $grant,
             SessionEventType::GrantExpired,
             AuditOutcome::Denied,
@@ -357,6 +338,81 @@ final class GrantLifecycleService
             'Grant window elapsed.',
             'expiry',
         );
+    }
+
+    private function appendApproval(
+        ImpersonationGrant $grant,
+        string $actorId,
+        string $actorType,
+        string $phase,
+        ?CarbonImmutable $occurredAt,
+    ): ?GrantAuditMirrorData {
+        return $occurredAt instanceof CarbonImmutable
+            ? $this->grantAudit->appendWithinTransaction(
+                $grant, SessionEventType::GrantApproved, AuditOutcome::Allowed,
+                $actorId, $actorType, null, $phase, $occurredAt,
+            )
+            : null;
+    }
+
+    private function deliverGrantMirror(?GrantAuditMirrorData $mirror): void
+    {
+        if ($mirror instanceof GrantAuditMirrorData) {
+            $this->grantAudit->deliver($mirror);
+        }
+    }
+
+    private function endRevokedSession(
+        ImpersonationSession $session,
+        ImpersonationGrant $grant,
+        CarbonImmutable $revokedAt,
+    ): void {
+        $mirrors = $this->centralTransaction(function () use ($session, $grant, $revokedAt): array {
+            $locked = ImpersonationSession::query()->lockForUpdate()->findOrFail($session->id);
+            if ($locked->ended_at !== null) {
+                return [];
+            }
+            $mirrors = [
+                $this->sessionAudit->appendLifecycleWithinTransaction(
+                    $locked, SessionEventType::GrantRevoked, $revokedAt,
+                    ImpersonationGrant::class, $grant->id, $grant->ticket_ref,
+                ),
+                $this->sessionAudit->appendLifecycleWithinTransaction(
+                    $locked, SessionEventType::SessionEnded, $revokedAt,
+                    ImpersonationSession::class, $locked->id, $grant->ticket_ref,
+                ),
+            ];
+            $locked->update([
+                'ended_at' => $revokedAt,
+                'end_reason' => SessionEndReason::GrantRevoked,
+            ]);
+
+            return $mirrors;
+        });
+        foreach ($mirrors as $mirror) {
+            $this->sessionAudit->deliver($mirror);
+        }
+    }
+
+    /** @param list<GrantAuditMirrorData> $mirrors */
+    private function deliverGrantMirrors(array $mirrors): void
+    {
+        foreach ($mirrors as $mirror) {
+            $this->grantAudit->deliver($mirror);
+        }
+    }
+
+    /**
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $callback
+     * @return TResult
+     */
+    private function centralTransaction(Closure $callback): mixed
+    {
+        return $this->database->connection(
+            $this->config->get('tenancy.database.central_connection'),
+        )->transaction(static fn (Connection $unused): mixed => $callback());
     }
 
     private function validateRequest(GrantRequestData $data): void

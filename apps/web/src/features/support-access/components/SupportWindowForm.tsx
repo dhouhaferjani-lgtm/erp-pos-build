@@ -9,7 +9,11 @@ import { Textarea } from '@/components/atoms/Textarea'
 import { semanticColorTokens as tokens } from '@/lib/designTokens'
 import type { CreateSupportWindowInput } from '../types'
 
-interface Props { busy: boolean; onSubmit: (input: CreateSupportWindowInput) => Promise<unknown> }
+interface Props {
+  busy: boolean
+  maxWindowHours: number
+  onSubmit: (input: CreateSupportWindowInput) => Promise<unknown>
+}
 interface SupportWindowFormValues {
   subject_user_id: string
   reason: string
@@ -23,19 +27,19 @@ function localDate(minutesFromNow: number): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
-export function SupportWindowForm({ busy, onSubmit }: Props) {
+export function SupportWindowForm({ busy, maxWindowHours, onSubmit }: Props) {
   const { t } = useTranslation('support-access')
   const schema = z.object({
     subject_user_id: z.union([z.literal(''), z.uuid(t('validation.uuid'))]),
-    reason: z.string().trim().min(1, t('validation.required')),
-    ticket_ref: z.string().trim().min(1, t('validation.required')),
+    reason: z.string().trim().min(1, t('validation.required')).max(2000, t('validation.maxLength', { count: 2000 })),
+    ticket_ref: z.string().trim().min(1, t('validation.required')).max(100, t('validation.maxLength', { count: 100 })),
     starts_at: z.string().min(1, t('validation.required')),
     expires_at: z.string().min(1, t('validation.required')),
   }).refine(
     (values) => Date.parse(values.expires_at) > Date.parse(values.starts_at),
     { path: ['expires_at'], message: t('validation.expiryAfterStart') },
   ).refine(
-    (values) => Date.parse(values.expires_at) <= Date.parse(values.starts_at) + (7 * 24 * 60 * 60 * 1000),
+    (values) => Date.parse(values.expires_at) < Date.now() + (maxWindowHours * 60 * 60 * 1000),
     { path: ['expires_at'], message: t('validation.maxWindow') },
   )
   const form = useForm<SupportWindowFormValues>({
@@ -68,10 +72,10 @@ export function SupportWindowForm({ busy, onSubmit }: Props) {
           <Input id="support-window-subject" {...form.register('subject_user_id')} className="w-full" />
         </FormField>
         <FormField label={t('fields.ticket')} htmlFor="support-window-ticket" required error={form.formState.errors.ticket_ref?.message}>
-          <Input id="support-window-ticket" {...form.register('ticket_ref')} className="w-full" />
+          <Input id="support-window-ticket" maxLength={100} {...form.register('ticket_ref')} className="w-full" />
         </FormField>
         <FormField label={t('fields.reason')} htmlFor="support-window-reason" required error={form.formState.errors.reason?.message} className="md:col-span-2">
-          <Textarea id="support-window-reason" {...form.register('reason')} className="min-h-24 w-full" />
+          <Textarea id="support-window-reason" maxLength={2000} {...form.register('reason')} className="min-h-24 w-full" />
         </FormField>
         <FormField label={t('fields.startsAt')} htmlFor="support-window-starts" required error={form.formState.errors.starts_at?.message}>
           <Input id="support-window-starts" type="datetime-local" {...form.register('starts_at')} className="w-full" />

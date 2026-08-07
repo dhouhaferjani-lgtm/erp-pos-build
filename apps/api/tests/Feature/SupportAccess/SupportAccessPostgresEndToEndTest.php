@@ -198,12 +198,34 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
                 ->where('impersonation_event_id', $event->id)
                 ->firstOrFail());
             self::assertSame('support_access.'.$event->event_type->value, $mirror->event_type, "event_type {$event->id}");
+            self::assertSame($event->tenant_id, $mirror->tenant_id, "tenant_id {$event->id}");
+            self::assertNull($mirror->company_id, "company_id {$event->id}");
+            self::assertSame($event->subject_user_id, $mirror->user_id, "user_id {$event->id}");
+            self::assertSame('ImpersonationSession', $mirror->aggregate_type, "aggregate_type {$event->id}");
+            self::assertSame($event->session_id, $mirror->aggregate_id, "aggregate_id {$event->id}");
+            self::assertTrue($mirror->occurred_at->equalTo($event->occurred_at), "occurred_at {$event->id}");
+            self::assertSame(
+                $event->occurred_at->format('Y-m-d H:i:s.u'),
+                $mirror->occurred_at->format('Y-m-d H:i:s.u'),
+                "occurred_at representation {$event->id}",
+            );
             self::assertEquals($event->details->toArray(), $mirror->payload, "payload {$event->id}");
             self::assertEquals([
                 'outcome' => $event->outcome->value,
                 'method' => $event->http_method,
                 'path' => $event->path,
             ], $mirror->metadata, "metadata {$event->id}");
+
+            $expected = new AuditEvent;
+            $expected->companyId = '';
+            $expected->userId = $mirror->user_id;
+            $expected->eventType = $mirror->event_type;
+            $expected->aggregateType = $mirror->aggregate_type;
+            $expected->aggregateId = $mirror->aggregate_id;
+            $expected->occurredAt = $mirror->occurred_at;
+            $expected->forceFill(['payload' => $mirror->payload]);
+            $expected->recomputeHash();
+            self::assertSame($expected->eventHash, $mirror->event_hash, "event_hash {$event->id}");
         }
         self::assertSame(
             0,

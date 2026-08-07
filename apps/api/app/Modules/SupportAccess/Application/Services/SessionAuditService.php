@@ -198,6 +198,43 @@ final class SessionAuditService
         );
     }
 
+    public function appendLifecycleWithinTransaction(
+        ImpersonationSession $session,
+        SessionEventType $eventType,
+        ?CarbonImmutable $occurredAt = null,
+        ?string $resourceType = null,
+        ?string $resourceId = null,
+        ?string $ticketRef = null,
+        ?string $grantChainHead = null,
+    ): ImpersonationAuditMirrorData {
+        return $this->appendWithinTransaction(
+            sessionId: $session->id,
+            operatorId: $session->operator_id,
+            subjectUserId: $session->subject_user_id,
+            tenantId: $session->tenant_id,
+            eventType: $eventType,
+            outcome: AuditOutcome::Allowed,
+            requestId: null,
+            httpMethod: null,
+            path: null,
+            details: new ImpersonationAuditDetailsData(
+                ticket_ref: $ticketRef,
+                route_name: null,
+                response_status: null,
+                error_code: null,
+                resource_type: $resourceType,
+                resource_id: $resourceId,
+                grant_chain_head: $grantChainHead,
+            ),
+            occurredAt: $occurredAt,
+        );
+    }
+
+    public function deliver(ImpersonationAuditMirrorData $mirror): void
+    {
+        $this->delivery->deliverSession($mirror);
+    }
+
     private function recordRequest(
         ImpersonationContextData $context,
         Request $request,
@@ -257,82 +294,104 @@ final class SessionAuditService
     ): ImpersonationAuditMirrorData {
         $mirror = $this->database->connection(
             $this->config->get('tenancy.database.central_connection'),
-        )->transaction(function () use (
-            $sessionId,
-            $operatorId,
-            $subjectUserId,
-            $tenantId,
-            $eventType,
-            $outcome,
-            $requestId,
-            $httpMethod,
-            $path,
-            $details,
-            $occurredAt,
-            $allowEnded,
-        ): ImpersonationAuditMirrorData {
-            $session = ImpersonationSession::query()->lockForUpdate()->findOrFail($sessionId);
-            if ($session->operator_id !== $operatorId
-                || $session->subject_user_id !== $subjectUserId
-                || $session->tenant_id !== $tenantId
-                || (! $allowEnded && $session->ended_at !== null)) {
-                throw new RuntimeException('Impersonation session changed before audit append.');
-            }
+        )->transaction(fn (): ImpersonationAuditMirrorData => $this->appendWithinTransaction(
+            sessionId: $sessionId,
+            operatorId: $operatorId,
+            subjectUserId: $subjectUserId,
+            tenantId: $tenantId,
+            eventType: $eventType,
+            outcome: $outcome,
+            requestId: $requestId,
+            httpMethod: $httpMethod,
+            path: $path,
+            details: $details,
+            occurredAt: $occurredAt,
+            allowEnded: $allowEnded,
+        ));
 
-            $sequence = $session->chain_sequence + 1;
-            $previousHash = $session->chain_head_hash ?? str_repeat('0', 64);
-            $eventOccurredAt = ($occurredAt ?? CarbonImmutable::now('UTC'))->utc()->startOfSecond();
-            $mirror = new ImpersonationAuditMirrorData(
-                event_id: Str::uuid()->toString(),
-                session_id: $session->id,
-                sequence: $sequence,
-                previous_hash: $previousHash,
-                hash: '',
-                event_type: $eventType->value,
-                outcome: $outcome->value,
-                operator_id: $operatorId,
-                subject_user_id: $subjectUserId,
-                tenant_id: $tenantId,
-                request_id: $requestId,
-                http_method: $httpMethod,
-                path: $path,
-                details: $details->toArray(),
-                occurred_at: $eventOccurredAt,
-            );
-            $mirror->hash = $this->hasher->hash($mirror->canonicalPayload());
+        $this->deliver($mirror);
 
-            ImpersonationSessionEvent::query()->create([
-                'id' => $mirror->event_id,
-                'session_id' => $mirror->session_id,
-                'sequence' => $mirror->sequence,
-                'event_type' => $eventType,
-                'outcome' => $outcome,
-                'operator_id' => $mirror->operator_id,
-                'subject_user_id' => $mirror->subject_user_id,
-                'tenant_id' => $mirror->tenant_id,
-                'request_id' => $mirror->request_id,
-                'http_method' => $mirror->http_method,
-                'path' => $mirror->path,
-                'details' => $details,
-                'previous_hash' => $mirror->previous_hash,
-                'hash' => $mirror->hash,
-                'occurred_at' => $mirror->occurred_at,
-            ]);
-            ImpersonationAuditDelivery::query()->create([
-                'event_id' => $mirror->event_id,
-                'aggregate_type' => 'session',
-                'tenant_id' => $mirror->tenant_id,
-            ]);
-            $session->update([
-                'chain_sequence' => $sequence,
-                'chain_previous_hash' => $previousHash,
-                'chain_head_hash' => $mirror->hash,
-            ]);
+        return $mirror;
+    }
 
-            return $mirror;
-        });
+    private function appendWithinTransaction(
+        string $sessionId,
+        string $operatorId,
+        string $subjectUserId,
+        string $tenantId,
+        SessionEventType $eventType,
+        AuditOutcome $outcome,
+        ?string $requestId,
+        ?string $httpMethod,
+        ?string $path,
+        ImpersonationAuditDetailsData $details,
+        ?CarbonImmutable $occurredAt = null,
+        bool $allowEnded = false,
+    ): ImpersonationAuditMirrorData {
+        $connection = $this->database->connection(
+            $this->config->get('tenancy.database.central_connection'),
+        );
+        if ($connection->transactionLevel() < 1) {
+            throw new RuntimeException('Session audit append requires an active central transaction.');
+        }
 
-        $this->delivery->deliverSession($mirror);
+        $session = ImpersonationSession::query()->lockForUpdate()->findOrFail($sessionId);
+        if ($session->operator_id !== $operatorId
+            || $session->subject_user_id !== $subjectUserId
+            || $session->tenant_id !== $tenantId
+            || (! $allowEnded && $session->ended_at !== null)) {
+            throw new RuntimeException('Impersonation session changed before audit append.');
+        }
+
+        $sequence = $session->chain_sequence + 1;
+        $previousHash = $session->chain_head_hash ?? str_repeat('0', 64);
+        $eventOccurredAt = ($occurredAt ?? CarbonImmutable::now('UTC'))->utc()->startOfSecond();
+        $mirror = new ImpersonationAuditMirrorData(
+            event_id: Str::uuid()->toString(),
+            session_id: $session->id,
+            sequence: $sequence,
+            previous_hash: $previousHash,
+            hash: '',
+            event_type: $eventType->value,
+            outcome: $outcome->value,
+            operator_id: $operatorId,
+            subject_user_id: $subjectUserId,
+            tenant_id: $tenantId,
+            request_id: $requestId,
+            http_method: $httpMethod,
+            path: $path,
+            details: $details->toArray(),
+            occurred_at: $eventOccurredAt,
+        );
+        $mirror->hash = $this->hasher->hash($mirror->canonicalPayload());
+
+        ImpersonationSessionEvent::query()->create([
+            'id' => $mirror->event_id,
+            'session_id' => $mirror->session_id,
+            'sequence' => $mirror->sequence,
+            'event_type' => $eventType,
+            'outcome' => $outcome,
+            'operator_id' => $mirror->operator_id,
+            'subject_user_id' => $mirror->subject_user_id,
+            'tenant_id' => $mirror->tenant_id,
+            'request_id' => $mirror->request_id,
+            'http_method' => $mirror->http_method,
+            'path' => $mirror->path,
+            'details' => $details,
+            'previous_hash' => $mirror->previous_hash,
+            'hash' => $mirror->hash,
+            'occurred_at' => $mirror->occurred_at,
+        ]);
+        ImpersonationAuditDelivery::query()->create([
+            'event_id' => $mirror->event_id,
+            'aggregate_type' => 'session',
+            'tenant_id' => $mirror->tenant_id,
+        ]);
+        $session->update([
+            'chain_sequence' => $sequence,
+            'chain_previous_hash' => $previousHash,
+            'chain_head_hash' => $mirror->hash,
+        ]);
 
         return $mirror;
     }

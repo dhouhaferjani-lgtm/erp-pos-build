@@ -369,6 +369,25 @@ final class ImpersonationAuditTest extends TestCase
         );
     }
 
+    public function test_reconciliation_is_idempotent_when_delivery_markers_are_lost(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')->assertOk();
+        $event = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestAuthorized)
+            ->sole();
+        ImpersonationAuditDelivery::query()->whereKey($event->id)->update([
+            'admin_delivered_at' => null,
+            'tenant_delivered_at' => null,
+        ]);
+
+        $this->artisan('support-access:audit-reconcile')->assertExitCode(0);
+
+        self::assertSame(1, AdminAuditLog::query()->where('impersonation_event_id', $event->id)->count());
+        self::assertSame(1, $this->tenantAuditStore->forEvents($this->tenant->id, [$event->id])->count());
+    }
+
     public function test_verify_command_detects_a_missing_mirror(): void
     {
         [, $session, $plainToken] = $this->startedSession();
@@ -398,6 +417,36 @@ final class ImpersonationAuditTest extends TestCase
             'new_values' => ['outcome' => 'allowed', 'method' => 'DELETE', 'path' => '/tampered', 'details' => []],
         ]);
 
+        $this->artisan('support-access:audit-verify', ['--session' => $session->id])
+            ->assertExitCode(1);
+    }
+
+    public function test_verify_command_binds_persisted_actor_and_timestamp_fields(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')->assertOk();
+        $event = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestAuthorized)
+            ->sole();
+
+        $otherAdmin = $this->superAdmin('tampered-principal@example.test');
+        AdminAuditLog::query()->where('impersonation_event_id', $event->id)
+            ->update(['super_admin_id' => $otherAdmin->id]);
+        $this->artisan('support-access:audit-verify', ['--session' => $session->id])
+            ->assertExitCode(1);
+
+        AdminAuditLog::query()->where('impersonation_event_id', $event->id)
+            ->update(['super_admin_id' => $this->operator->id]);
+        AuditEvent::query()->where('impersonation_event_id', $event->id)
+            ->update(['user_id' => User::factory()->create(['tenant_id' => $this->tenant->id])->id]);
+        $this->artisan('support-access:audit-verify', ['--session' => $session->id])
+            ->assertExitCode(1);
+
+        AuditEvent::query()->where('impersonation_event_id', $event->id)->update([
+            'user_id' => $this->subject->id,
+            'occurred_at' => $event->occurred_at->addMinute(),
+        ]);
         $this->artisan('support-access:audit-verify', ['--session' => $session->id])
             ->assertExitCode(1);
     }

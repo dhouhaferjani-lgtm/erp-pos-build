@@ -45,7 +45,7 @@ describe('App impersonation perimeter', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('status')).toHaveTextContent('Tenant Subject')
+    expect(screen.getByRole('region', { name: /support session as/i })).toHaveTextContent('Tenant Subject')
     expect(screen.getByText('Current route')).toBeInTheDocument()
   })
 })

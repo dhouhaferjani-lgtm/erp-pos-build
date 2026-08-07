@@ -63,6 +63,7 @@ final class SupportAccessQueryTest extends TestCase
 
     public function test_tenant_overview_is_scoped_from_auth_and_sanitized(): void
     {
+        config()->set('support_access.max_grant_window_hours', 72);
         $grant = $this->grant($this->tenant, $this->subject, 'SUP-8001');
         $session = $this->makeSession($grant, $this->subject);
         $this->event($session, '/api/v1/products?secret=hidden');
@@ -78,6 +79,7 @@ final class SupportAccessQueryTest extends TestCase
 
         $response = $this->withToken($token)->getJson('/api/v1/support-access');
         $response->assertOk()
+            ->assertJsonPath('data.max_grant_window_hours', 72)
             ->assertJsonPath('data.grants.0.id', $grant->id)
             ->assertJsonPath('data.active_sessions.0.id', $session->id)
             ->assertJsonPath('data.log.0.session_id', $session->id)

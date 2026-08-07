@@ -18,6 +18,7 @@ final class SupportAccessOverviewData extends Data
      * @param  array{current_page: int, per_page: int, total: int, last_page: int, from: int|null, to: int|null}|null  $log_meta
      */
     public function __construct(
+        public int $max_grant_window_hours,
         public array $grants,
         public array $active_sessions,
         public array $log,

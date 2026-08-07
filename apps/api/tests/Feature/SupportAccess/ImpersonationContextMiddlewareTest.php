@@ -144,6 +144,24 @@ final class ImpersonationContextMiddlewareTest extends TestCase
             ->assertJsonPath('error.code', 'IMPERSONATION_ENDED');
     }
 
+    public function test_corrupted_live_session_claims_append_a_token_bound_denial(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $token = CentralPersonalAccessToken::query()->findOrFail($session->personal_access_token_id);
+        $token->abilities = [...$token->abilities, 'impersonation:'.Str::uuid()->toString()];
+        $token->saveOrFail();
+        Auth::forgetGuards();
+
+        $this->bearer($plainToken)->getJson('/_test/impersonation-context')
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'IMPERSONATION_ENDED');
+
+        self::assertSame(1, ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestDenied)
+            ->count());
+    }
+
     public function test_live_session_populates_context_and_keeps_tenant_claim_enforcement(): void
     {
         [$grant, $session, $plainToken] = $this->startedSession();
@@ -264,8 +282,8 @@ final class ImpersonationContextMiddlewareTest extends TestCase
         Auth::forgetGuards();
 
         $this->bearer($plainToken)->getJson('/_test/impersonation-context')
-            ->assertUnauthorized()
-            ->assertJsonPath('error.code', 'IMPERSONATION_ENDED');
+            ->assertStatus(503)
+            ->assertJsonPath('error.code', 'IMPERSONATION_AUDIT_UNAVAILABLE');
     }
 
     public function test_live_permission_intersection_is_recomputed_before_gate_checks(): void

@@ -16,9 +16,14 @@ use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\ElevationStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
+use Illuminate\Contracts\Config\Repository;
 
 final class SupportAccessQueryService
 {
+    public function __construct(
+        private readonly Repository $config,
+    ) {}
+
     /** @return array{overview: SupportAccessOverviewData, current_page: int, per_page: int, total: int, last_page: int, from: int|null, to: int|null} */
     public function adminOverview(string $operatorId, bool $isApprover, int $page, int $perPage): array
     {
@@ -53,6 +58,7 @@ final class SupportAccessQueryService
 
         return [
             'overview' => new SupportAccessOverviewData(
+                max_grant_window_hours: $this->maxGrantWindowHours(),
                 grants: $grants,
                 active_sessions: $this->activeSessions(operatorId: $operatorId),
                 log: [],
@@ -98,6 +104,7 @@ final class SupportAccessQueryService
         $to = $from === null ? null : $from + count($log) - 1;
 
         return new SupportAccessOverviewData(
+            max_grant_window_hours: $this->maxGrantWindowHours(),
             grants: $grantData,
             active_sessions: $this->activeSessions($tenantId),
             log: $log,
@@ -111,6 +118,13 @@ final class SupportAccessQueryService
                 'to' => $to,
             ],
         );
+    }
+
+    private function maxGrantWindowHours(): int
+    {
+        $hours = $this->config->get('support_access.max_grant_window_hours', 168);
+
+        return is_int($hours) && $hours > 0 ? $hours : 168;
     }
 
     /** @return list<SessionData> */

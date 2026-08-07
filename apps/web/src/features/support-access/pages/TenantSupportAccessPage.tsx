@@ -30,7 +30,11 @@ export function TenantSupportAccessPage() {
         breadcrumb={<div className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${tokens.intent.primary.bgSoft}`}><Headphones className={`h-5 w-5 ${tokens.intent.primary.textStrong}`} /></div>}
         className="mb-0"
       />
-      {canManage && <SupportWindowForm busy={access.isMutating} onSubmit={access.createWindow} />}
+      {canManage && <SupportWindowForm
+        busy={access.isMutating}
+        maxWindowHours={access.overview?.max_grant_window_hours ?? 168}
+        onSubmit={access.createWindow}
+      />}
       <IncomingRequests
         grants={access.overview?.grants ?? []}
         canManage={canManage}

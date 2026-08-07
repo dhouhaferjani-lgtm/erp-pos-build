@@ -68,6 +68,11 @@ return new class extends Migration
         Schema::table('impersonation_grants', function (Blueprint $table): void {
             $table->dropColumn(['chain_sequence', 'chain_previous_hash', 'chain_head_hash']);
         });
+        DB::table('admin_audit_logs')
+            ->whereNull('super_admin_id')
+            ->where('entity_type', 'impersonation_grant')
+            ->whereNull('impersonation_session_id')
+            ->delete();
         Schema::table('admin_audit_logs', function (Blueprint $table): void {
             $table->uuid('super_admin_id')->nullable(false)->change();
         });

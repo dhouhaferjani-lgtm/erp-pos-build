@@ -23,24 +23,26 @@ class AdminAuditService implements AdminImpersonationAuditWriter
 
     public function writeImpersonationMirror(ImpersonationAuditMirrorData $event): void
     {
-        AdminAuditLog::query()->create([
+        AdminAuditLog::query()->firstOrCreate([
+            'impersonation_event_id' => $event->event_id,
+            'entity_type' => 'impersonation_session',
+            'action' => 'impersonation_'.$event->event_type,
+        ], [
             'super_admin_id' => $event->operator_id,
             'tenant_id' => $event->tenant_id,
-            'action' => 'impersonation_'.$event->event_type,
-            'entity_type' => 'impersonation_session',
             'entity_id' => $event->session_id,
             'new_values' => [
                 'outcome' => $event->outcome,
                 'method' => $event->http_method,
                 'path' => $event->path,
                 'details' => $event->details,
+                'occurred_at' => $event->occurred_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
             ],
             'notes' => 'Consent-gated support access audit mirror.',
             'ip_address' => $event->details['request_ip'] ?? null,
             'user_agent' => $event->details['user_agent'] ?? null,
             'impersonator_id' => $event->operator_id,
             'impersonation_session_id' => $event->session_id,
-            'impersonation_event_id' => $event->event_id,
             'impersonation_sequence' => $event->sequence,
             'impersonation_previous_hash' => $event->previous_hash,
             'impersonation_hash' => $event->hash,
@@ -49,24 +51,26 @@ class AdminAuditService implements AdminImpersonationAuditWriter
 
     public function writeGrantMirror(GrantAuditMirrorData $event): void
     {
-        AdminAuditLog::query()->create([
+        AdminAuditLog::query()->firstOrCreate([
+            'impersonation_event_id' => $event->event_id,
+            'entity_type' => 'impersonation_grant',
+            'action' => 'impersonation_'.$event->event_type,
+        ], [
             'super_admin_id' => $event->operator_id,
             'tenant_id' => $event->tenant_id,
-            'action' => 'impersonation_'.$event->event_type,
-            'entity_type' => 'impersonation_grant',
             'entity_id' => $event->grant_id,
             'new_values' => [
                 'outcome' => $event->outcome,
                 'actor_id' => $event->actor_id,
                 'actor_type' => $event->actor_type,
                 'details' => $event->details,
+                'occurred_at' => $event->occurred_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
             ],
             'notes' => 'Consent-gated support grant audit mirror.',
             'ip_address' => $event->details['request_ip'] ?? null,
             'user_agent' => $event->details['user_agent'] ?? null,
             'impersonator_id' => $event->operator_id,
             'impersonation_session_id' => null,
-            'impersonation_event_id' => $event->event_id,
             'impersonation_sequence' => $event->sequence,
             'impersonation_previous_hash' => $event->previous_hash,
             'impersonation_hash' => $event->hash,

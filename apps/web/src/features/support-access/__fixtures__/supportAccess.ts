@@ -2,6 +2,7 @@ import type { OffsetPaginationMeta } from '@/types/pagination'
 import type { SupportAccessOverview } from '../types'
 
 export const supportAccessFixture: SupportAccessOverview = {
+  max_grant_window_hours: 168,
   grants: [
     {
       id: 'grant-sensitive', tenant_id: 'tenant-1', subject_user_id: 'subject-1', operator_id: 'admin-1',
