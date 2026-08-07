@@ -249,17 +249,25 @@ final class GeneralLedgerService
 
             // Q1 — `tax_amount` bundles the LINE VAT with the credit note's own
             // `stamp_duty_amount`; only the line VAT belongs on VatCollected.
+            //
+            // Gate I-2 (2026-08-07): explicit currency, never the bare no-arg
+            // `$this->scale()` (rule 19/20) — this method is dead in
+            // production today, but it is the one someone would revive, and a
+            // no-arg resolve throws outside a bound CompanyContext (e.g. a
+            // queued/console caller).
+            $scale = $this->scaleResolver->getScaleSafe($creditNote->currency, 3);
+
             /** @var numeric-string $stampDutyAmount */
             $stampDutyAmount = $creditNote->stamp_duty_amount ?? '0';
-            $hasStampDuty = bccomp($stampDutyAmount, '0', $this->scale()) > 0;
+            $hasStampDuty = bccomp($stampDutyAmount, '0', $scale) > 0;
 
             /** @var numeric-string $taxAmount */
             $taxAmount = $creditNote->tax_amount ?? '0';
             /** @var numeric-string $lineVatAmount */
-            $lineVatAmount = $hasStampDuty ? bcsub($taxAmount, $stampDutyAmount, $this->scale()) : $taxAmount;
+            $lineVatAmount = $hasStampDuty ? bcsub($taxAmount, $stampDutyAmount, $scale) : $taxAmount;
 
             // Debit: VAT Payable (line tax only) - only if there's tax
-            if (bccomp($lineVatAmount, '0', $this->scale()) > 0) {
+            if (bccomp($lineVatAmount, '0', $scale) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $taxAccount->id,
@@ -303,7 +311,7 @@ final class GeneralLedgerService
             /** @var numeric-string $total */
             $total = $creditNote->total ?? '0';
             /** @var numeric-string $arCreditAmount */
-            $arCreditAmount = $hasStampDuty ? bcsub($total, $stampDutyAmount, $this->scale()) : $total;
+            $arCreditAmount = $hasStampDuty ? bcsub($total, $stampDutyAmount, $scale) : $total;
 
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
