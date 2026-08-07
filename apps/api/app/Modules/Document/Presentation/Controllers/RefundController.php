@@ -192,11 +192,17 @@ class RefundController extends Controller
         $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
-            $canCancel = $this->refundService->canCancelInvoice($invoice);
+            // R2-F1 / GL gate I-3: `reason_code` is additive and carries the SAME
+            // codes the cancel endpoint's 422 returns, so the UI can disable the
+            // button and explain itself (DOCUMENT_PERIOD_FILED is a permanent dead
+            // end — a filed declaration is never reopened) instead of letting the
+            // user discover the refusal on submit.
+            $reasonCode = $this->refundService->cancellationBlockReason($invoice);
 
             return response()->json([
                 'data' => [
-                    'can_cancel' => $canCancel,
+                    'can_cancel' => $reasonCode === null,
+                    'reason_code' => $reasonCode,
                     'status' => $invoice->status->value,
                 ],
             ]);

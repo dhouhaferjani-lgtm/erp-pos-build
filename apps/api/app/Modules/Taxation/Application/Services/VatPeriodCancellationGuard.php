@@ -6,6 +6,8 @@ namespace App\Modules\Taxation\Application\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Taxation\Domain\Entities\VatPeriod;
+use App\Modules\Taxation\Domain\Enums\PeriodLockRefusalCode;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
@@ -95,14 +97,7 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
 
     public function assertCancellationPeriodIsOpen(Document $document): void
     {
-        if (! $this->refusalAppliesTo($document->type)) {
-            return;
-        }
-
-        $lockedPeriod = $this->periodRepository->findLockedPeriodCoveringDate(
-            $document->company_id,
-            $document->document_date,
-        );
+        $lockedPeriod = $this->lockedPeriodFor($document);
 
         if ($lockedPeriod === null) {
             return;
@@ -112,6 +107,33 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
             $document->document_number,
             $lockedPeriod->label,
             $lockedPeriod->status,
+        );
+    }
+
+    public function cancellationRefusalCode(Document $document): ?string
+    {
+        $lockedPeriod = $this->lockedPeriodFor($document);
+
+        if ($lockedPeriod === null) {
+            return null;
+        }
+
+        return PeriodLockRefusalCode::fromPeriodStatus($lockedPeriod->status)->value;
+    }
+
+    /**
+     * The single resolution both the throwing and the read-model entry points
+     * share, so a read model can never disagree with the write path.
+     */
+    private function lockedPeriodFor(Document $document): ?VatPeriod
+    {
+        if (! $this->refusalAppliesTo($document->type)) {
+            return null;
+        }
+
+        return $this->periodRepository->findLockedPeriodCoveringDate(
+            $document->company_id,
+            $document->document_date,
         );
     }
 

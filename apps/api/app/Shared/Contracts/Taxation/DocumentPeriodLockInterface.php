@@ -6,6 +6,7 @@ namespace App\Shared\Contracts\Taxation;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Taxation\Application\Services\VatPeriodCancellationGuard;
+use App\Modules\Taxation\Domain\Enums\PeriodLockRefusalCode;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 
 /**
@@ -38,4 +39,21 @@ interface DocumentPeriodLockInterface
      *                                       covering period is still OPEN.
      */
     public function assertCancellationPeriodIsOpen(Document $document): void;
+
+    /**
+     * The NON-throwing counterpart, for read models that must render a Cancel
+     * button's availability without provoking an exception.
+     *
+     * Exists so the `can-cancel` endpoint can report the same verdict the cancel
+     * itself would reach WITHOUT Document having to catch a Taxation exception —
+     * the module boundary allows Document to depend on this contract, not on
+     * `DocumentPeriodLockedException`. Returns the same stable codes the 422
+     * carries ({@see PeriodLockRefusalCode}),
+     * so front end and API agree by construction.
+     *
+     * @return string|null The refusal code, or NULL when the period permits the
+     *                     cancellation (open period, absent period, or a document
+     *                     type outside the lock).
+     */
+    public function cancellationRefusalCode(Document $document): ?string;
 }

@@ -631,6 +631,85 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
     }
 
+    // ------------------------------------------- can-cancel read model ---
+
+    /**
+     * GL gate I-3 — the read model must agree with the write path.
+     *
+     * Before this, `canCancelInvoice()` knew nothing about accounting periods, so
+     * an invoice in a FILED period reported `can_cancel: true`, the FE rendered a
+     * live Cancel button, and every click returned a 422. A filed declaration is
+     * never reopened, so that button was a PERMANENT dead end.
+     */
+    public function test_can_cancel_reports_false_with_a_reason_code_for_a_filed_period(): void
+    {
+        $documentDate = Carbon::parse('2026-01-25');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$invoice->id}/can-cancel");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.can_cancel', false);
+        $response->assertJsonPath('data.reason_code', PeriodLockRefusalCode::PeriodFiled->value);
+    }
+
+    public function test_can_cancel_reports_false_with_a_reason_code_for_a_closed_period(): void
+    {
+        $documentDate = Carbon::parse('2026-01-26');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$invoice->id}/can-cancel");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.can_cancel', false);
+        $response->assertJsonPath('data.reason_code', PeriodLockRefusalCode::PeriodClosed->value);
+    }
+
+    public function test_can_cancel_stays_true_with_no_reason_code_in_an_open_period(): void
+    {
+        $documentDate = Carbon::parse('2026-01-27');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Open);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$invoice->id}/can-cancel");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.can_cancel', true);
+        $response->assertJsonPath('data.reason_code', null);
+    }
+
+    /**
+     * The read model and the write path must never disagree: whatever
+     * `can-cancel` reports as the blocker is exactly the code the cancel returns.
+     */
+    public function test_the_read_model_code_matches_the_code_the_cancel_endpoint_returns(): void
+    {
+        $documentDate = Carbon::parse('2026-01-28');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $readModel = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$invoice->id}/can-cancel");
+        $writePath = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", ['reason' => 'filed period']);
+
+        $writePath->assertStatus(422);
+        self::assertSame(
+            $writePath->json('error.code'),
+            $readModel->json('data.reason_code'),
+            'can-cancel must predict the exact refusal the cancel endpoint raises',
+        );
+    }
+
     // ------------------------------------------------------------ helpers ---
 
     private function freshStatus(Document $document): DocumentStatus

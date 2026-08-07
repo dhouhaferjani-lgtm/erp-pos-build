@@ -6,9 +6,11 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
+use App\Modules\Document\Domain\Enums\CancelBlockReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
 use Illuminate\Support\Facades\DB;
 
 class RefundService
@@ -16,6 +18,7 @@ class RefundService
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly DocumentPostingService $documentPostingService,
+        private readonly DocumentPeriodLockInterface $periodLock,
     ) {}
 
     /**
@@ -278,18 +281,48 @@ class RefundService
      */
     public function canCancelInvoice(Document $invoice): bool
     {
+        return $this->cancellationBlockReason($invoice) === null;
+    }
+
+    /**
+     * WHY this invoice's Cancel action is unavailable, or NULL when it is.
+     *
+     * R2-F1 / GL gate I-3. This must agree with `DocumentPostingService::cancel()`
+     * or the UI lies: before the period check was added here, an invoice sitting
+     * in a FILED VAT period reported `can_cancel: true`, the front end rendered a
+     * live Cancel button, and every click returned a 422. A FILED period can never
+     * be reopened, so that button was a PERMANENT dead end — exactly the case the
+     * read model has to pre-empt rather than discover on submit.
+     *
+     * Period refusals return the same codes the 422 carries, resolved through the
+     * Shared contract so Document never touches Taxation internals.
+     */
+    public function cancellationBlockReason(Document $invoice): ?string
+    {
         if ($invoice->type !== DocumentType::Invoice) {
-            return false;
+            return CancelBlockReason::NotAnInvoice->value;
+        }
+
+        if ($invoice->status === DocumentStatus::Cancelled) {
+            return CancelBlockReason::AlreadyCancelled->value;
         }
 
         if ($invoice->status === DocumentStatus::Posted) {
-            return ! $this->documentPostingService->hasBlockingAllocations($invoice);
+            if ($this->documentPostingService->hasBlockingAllocations($invoice)) {
+                return CancelBlockReason::HasPayments->value;
+            }
+
+            // Only a POSTED invoice reaches DocumentPostingService::cancel() and
+            // therefore the period guard; the draft/confirmed branch below never
+            // touches the ledger.
+            return $this->periodLock->cancellationRefusalCode($invoice);
         }
 
-        return ! in_array($invoice->status, [
-            DocumentStatus::Paid,
-            DocumentStatus::Cancelled,
-        ], true);
+        if ($invoice->status === DocumentStatus::Paid) {
+            return CancelBlockReason::HasPayments->value;
+        }
+
+        return null;
     }
 
     /**
