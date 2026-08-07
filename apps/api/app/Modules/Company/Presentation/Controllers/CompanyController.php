@@ -593,16 +593,18 @@ class CompanyController extends Controller
             'default_tax_rate' => $company->default_tax_rate,
             'default_tax_configuration_id' => $company->default_tax_configuration_id,
             'tax_status' => $company->tax_status->value,
-            // W-8 F-5: `(string) null` is `""`, which defeats bcformatOrNull()'s
-            // null guard and makes bcformatStrict() throw. Guard the cast the
-            // way default_max_discount_percent below already does — a model that
-            // has not hydrated a DB default must serialize, never 500.
+            // W-8 F-5: these two columns are NOT NULL with a DATABASE default, so
+            // they are `string` here — but ONLY on a model that has actually been
+            // read back from the database. Callers must never hand this formatter
+            // a freshly created, unrefreshed model: `(string) null` is `""`, which
+            // defeats bcformatOrNull()'s null guard and makes bcformatStrict()
+            // throw. store() refreshes for exactly this reason.
             'default_target_margin' => CurrencyScale::bcformatOrNull(
-                $company->default_target_margin !== null ? (string) $company->default_target_margin : null,
+                (string) $company->default_target_margin,
                 2
             ),
             'default_minimum_margin' => CurrencyScale::bcformatOrNull(
-                $company->default_minimum_margin !== null ? (string) $company->default_minimum_margin : null,
+                (string) $company->default_minimum_margin,
                 2
             ),
             'default_max_discount_percent' => CurrencyScale::bcformatOrNull(

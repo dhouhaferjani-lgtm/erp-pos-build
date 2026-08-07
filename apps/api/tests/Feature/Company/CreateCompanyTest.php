@@ -286,7 +286,9 @@ class CreateCompanyTest extends TestCase
         $response->assertCreated();
 
         $companyId = $response->json('data.id');
-        $company = Company::findOrFail($companyId);
+        // firstOrFail (not findOrFail) so the static type is Company, not
+        // Company|Collection — findOrFail also accepts an array of ids.
+        $company = Company::query()->where('id', $companyId)->firstOrFail();
         self::assertSame(PosStockPolicy::Off, $company->pos_stock_policy);
     }
 
