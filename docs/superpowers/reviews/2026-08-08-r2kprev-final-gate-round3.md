@@ -1,0 +1,19 @@
+# GATE RECORD — R2-K-prev ROUND 3 (COMBINED axes: fiscal-pos + authz doc items)
+
+**Verdict: CLEAR TO MERGE.** Branch tip reviewed `59b147310` (round-3 range `c31483c83..59b147310`). Read-only compliance: nothing written/checked out/reverted; verification via git reads + one by-path test run.
+
+## Closures
+1. **I-1 currency orphan CLOSED:** `maturityRefusal()` currency arm (`DepositReferenceResolutionService.php:274-284`) is a **byte-equivalent predicate** of `InstrumentLifecycleService.php:74-80` (same tenant-scoped `DB::table('companies')` read, same case-insensitive compare, no Company model import). Operand chain confirmed bridge→context→receive. Red evidence corroborated by the reviewer's own round-2 probe (422 + sealed orphan pre-fix); the new test's only discriminator is `assertNoDepositWasSealed()` — non-vacuity established.
+2. **I-2 portfolio orphan CLOSED; delegation sound:** try/catch wholesale delegation to `HandlesMaturityTenderLeg::portfolioAccountId()` — pure read (two `DB::table()->value()` SELECTs), no side effects, catch names exactly one class, the `match` default RuntimeException correctly NOT swallowed (unreachable behind `handles()`). Strongest parity form in the file: cannot drift, verifies the same object the projection will.
+3. **Ordering ruling confirmed:** portfolio (`HandlesMaturityTenderLeg.php:69`) precedes receive (`:76`); implementation matches; docblock records the (a)/(b)-was-enumeration point. No unmirrored maturity invariant ahead of the portfolio check (the `:57-66` guards are unreachable behind `handles()` + boundary validation).
+4. **Parity table truthful + structurally exhaustive for both tails:** 10 rows = 10 enum cases, all counterparts verified at cited lines (always `:109-112` / movement `TreasuryMovementService.php:82-96,852-874` / maturity `HandlesMaturityTenderLeg.php:69` + `InstrumentLifecycleService.php:74-80`). Neither-tail-empty clause satisfied; different-operands note load-bearing and correct.
+5. **4th drift entry CLOSED** (ticket `:230-262`): checkpoint duplication recorded Treasury-internal with the private-method/ordering-header rationale + `CheckpointPolicy` sketch; correctly named the most fragile of the four.
+6. **Authz items:** m2-1 withdrawal itself verified correct (`fiscal_events` has `operator_id`, no `actor_user_id`, ZERO foreign keys — grep-proven; replacement clause independently verified round 1; correction block present; no surviving occurrence). m2-2 reframing TRUTHFUL ("every case reads mutable state, so no case closes its race" — verified case-by-case). m2-3 citations accurate at tip (2 spot-checked).
+7. **Tenant-arm ruling CONFIRMED, no overrule:** no divergent-database path exists (no `$connection` overrides on the three models; preflight and bridge share the request's tenant connection; async retry re-initialises tenancy for the same tenant). Caveat recorded, scoped not glossed. Acceptable as-is.
+8. **O-1:** precondition assert correctly placed BEFORE the mutation with a leak-vs-guard diagnosis note. Reviewer run: OK 24/139 by path. UNVERIFIED-BY-ME: the 10/10-consecutive claim (implementer evidence quoted; no flake observed in any gate run across three rounds).
+
+Pint pass; PHPStan clean on both changed app files. No hash-chain, sealing-format, or `TreasuryDepositBridge` changes in any round.
+
+## Non-blocking minors (applied by the orchestrator at merge — no re-gate required)
+- **m-1:** blame-axis reword in `DepositReferenceRefusal.php` — the real distinction is routine-ops state mutated mid-day (freeze/revoke/reconcile) vs static misconfiguration; three sibling cases fell outside the named trio. **APPLIED at merge.**
+- **m-2:** ticket line noting `PaymentAllocationService`/GL (`TreasuryDepositBridge.php:200-209`, both tails) and the null-JE guard (`:236-243`) are post-seal surfaces outside the 10-row enumeration, owned by R2-K-rec's residual. **APPLIED at merge.**

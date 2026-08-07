@@ -27,11 +27,15 @@ use App\Modules\Treasury\Application\Services\DepositReferenceResolutionService;
  * time-of-check/time-of-use vector, and is exactly what the round-1
  * `is_active` regression tests cover.)
  *
- * What DOES separate them is blame, not mechanism: for
+ * What DOES separate them is the KIND of state that moved, not mechanism:
  * {@see self::RepositoryFrozen}, {@see self::ActorNotActiveCompanyMember} and
- * {@see self::RepositoryBehindCheckpoint} the caller did nothing wrong and
- * cannot fix the request — only ops can (reopen the drawer, restore the
- * membership, reopen the statement).
+ * {@see self::RepositoryBehindCheckpoint} are routine-ops state mutated during
+ * a normal business day (a cash count freezes the drawer, a membership is
+ * revoked, a statement is reconciled) — while the remaining cases are static
+ * misconfiguration (missing/inactive GL account, missing portfolio account,
+ * currency mismatch) that predates the request. In neither group can the
+ * caller fix the request themselves; the routine-ops trio is simply the one
+ * that can flip mid-day under a correctly configured tenant.
  *
  * **Five cases are PATH-CONDITIONAL, and a deposit takes exactly one path.** The
  * three movement-port-derived cases ({@see self::RepositoryCurrencyMismatch},

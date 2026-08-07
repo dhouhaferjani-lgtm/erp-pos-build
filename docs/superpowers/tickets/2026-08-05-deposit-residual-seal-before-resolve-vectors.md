@@ -288,3 +288,15 @@ group is the sole carrier of the company gate) and
     lookup.
 
   That is the shape all four drift-list entries above should reach.
+
+## Round-3 gate calibration note (2026-08-08, fiscal gate m-2)
+
+Two post-seal throw surfaces sit OUTSIDE the 10-row parity enumeration and belong to
+R2-K-rec's residual, so the table must not be read as "the projection cannot fail any
+other way": (1) `PaymentAllocationService::applyAllocationFromCommand()` at
+`TreasuryDepositBridge.php:200-209` — common to BOTH tails; delegates GL to
+`createCustomerAdvanceJournalEntry()` (`PaymentAllocationService.php:315/352`), which can
+fail on a missing customer-advance account; (2) the null-JE guard at
+`TreasuryDepositBridge.php:236-243` — movement path, self-documented unreachable once
+rows 3/4 pass. Neither is claimed covered by the preflight; the honest-scope block
+already discloses that orphans remain reachable.
