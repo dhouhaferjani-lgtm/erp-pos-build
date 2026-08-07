@@ -6,7 +6,7 @@ import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBa
 import type { LookupState, SuggestedProduct } from '@/features/inventory/types/platform'
 import { CreateModeImageBuffer, ProductImageUpload } from '@/features/products/components'
 import type { ProductHeroChip, ProductHeroEnrichmentState } from '@/features/products/productHeroTypes'
-import { withProductHeroImageVariant } from '@/features/products/productHeroImage'
+import { productHeroImageSrc } from '@/features/products/productHeroImage'
 import { tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { ProductHeroShell } from '../../sections/ProductHeroShell'
@@ -65,7 +65,7 @@ export function ProductEditHero({
 }: ProductEditHeroProps): React.JSX.Element {
   const { t } = useTranslation(['catalog', 'inventory'])
   const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const imageUrl = withProductHeroImageVariant(primaryImageUrl)
+  const imageUrl = productHeroImageSrc(primaryImageUrl)
   const statusLabelKey = statusKey(enrichmentState)
   const isLoading = enrichmentState === 'pending'
 

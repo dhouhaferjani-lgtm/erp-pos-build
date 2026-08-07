@@ -12,41 +12,90 @@ use App\Modules\Tenant\Domain\Enums\OnboardingStep;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Illuminate\Support\Facades\Log;
 
 final class OnboardingChecklistService
 {
     /**
      * Get the onboarding status for the given company.
      *
-     * @return list<array{step: string, label: string, completed: bool, required: bool, settings_path: string}>
+     * BUG-005 / RCA B1 — each step is fault-isolated. The 7 checks span 5
+     * modules; before this, a single failure (a tenant whose migration lane is
+     * behind and is missing a table, a transient PG error) 500'd the entire
+     * `/settings/setup` page. One broken module must degrade its own row, never
+     * blank the page — so a throwing check is logged and reported as
+     * `completed: false, degraded: true`.
+     *
+     * @return list<array{step: string, label: string, completed: bool, required: bool, settings_path: string, degraded: bool}>
      */
     public function getStatus(string $companyId): array
     {
-        $company = Company::find($companyId);
+        // The company lookup itself is fault-isolated: the per-step checks all
+        // treat a null company as "not completed", so a failed lookup degrades
+        // the whole list rather than throwing.
+        $company = $this->safely(
+            'company_lookup',
+            $companyId,
+            static fn (): ?Company => Company::find($companyId),
+        );
 
         $result = [];
 
         foreach (OnboardingStep::cases() as $step) {
-            $completed = match ($step) {
-                OnboardingStep::CompanyInfo => $this->checkCompanyInfo($company),
-                OnboardingStep::TaxConfig => $this->checkTaxConfig($company),
-                OnboardingStep::PaymentMethods => $this->checkPaymentMethods($companyId),
-                OnboardingStep::PaymentRepositories => $this->checkPaymentRepositories($companyId),
-                OnboardingStep::PosTerminal => $this->checkPosTerminal($companyId),
-                OnboardingStep::FirstProduct => $this->checkFirstProduct($companyId),
-                OnboardingStep::ProductOptions => $this->checkProductOptions($company),
-            };
+            $completed = $this->safely(
+                $step->value,
+                $companyId,
+                fn (): bool => match ($step) {
+                    OnboardingStep::CompanyInfo => $this->checkCompanyInfo($company),
+                    OnboardingStep::TaxConfig => $this->checkTaxConfig($company),
+                    OnboardingStep::PaymentMethods => $this->checkPaymentMethods($companyId),
+                    OnboardingStep::PaymentRepositories => $this->checkPaymentRepositories($companyId),
+                    OnboardingStep::PosTerminal => $this->checkPosTerminal($companyId),
+                    OnboardingStep::FirstProduct => $this->checkFirstProduct($companyId),
+                    OnboardingStep::ProductOptions => $this->checkProductOptions($company),
+                },
+            );
 
             $result[] = [
                 'step' => $step->value,
                 'label' => $step->label(),
-                'completed' => $completed,
+                'completed' => $completed ?? false,
                 'required' => $step->isRequired(),
                 'settings_path' => $step->settingsPath(),
+                'degraded' => $completed === null,
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * Run one checklist probe, logging and returning null on ANY Throwable
+     * instead of letting it escape and 500 the page.
+     *
+     * null therefore means "could not be determined", which the caller renders
+     * as `completed: false, degraded: true` — distinct from a probe that ran
+     * fine and reported `false`.
+     *
+     * @template T
+     *
+     * @param  \Closure(): T  $probe
+     * @return T|null
+     */
+    private function safely(string $stepKey, string $companyId, \Closure $probe): mixed
+    {
+        try {
+            return $probe();
+        } catch (\Throwable $e) {
+            Log::warning('Onboarding checklist step degraded', [
+                'step' => $stepKey,
+                'company_id' => $companyId,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function checkCompanyInfo(?Company $company): bool

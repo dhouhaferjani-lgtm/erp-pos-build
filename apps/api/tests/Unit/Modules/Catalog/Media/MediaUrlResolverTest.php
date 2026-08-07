@@ -27,6 +27,79 @@ final class MediaUrlResolverTest extends TestCase
     // forAttachment() — SPA signed-URL strategy
     // -----------------------------------------------------------------------
 
+    /**
+     * BUG-005 follow-up (authz gate 2026-08-06) — signed-URL stability.
+     *
+     * `primary_image_url` is minted per product row on the LIST endpoint. With a
+     * rolling `now()->addMinutes(60)` expiry the signature changed on every
+     * response, so every refetch produced brand-new URLs and invalidated the
+     * browser image cache wholesale — a 60-100 product grid re-downloading each
+     * minute, shared across terminals behind one NAT, trips the `signed-media`
+     * limiter and images break intermittently.
+     *
+     * The expiry is bucketed so two calls inside the same window mint a
+     * byte-identical URL, which is what makes the response cacheable.
+     */
+    public function test_for_attachment_mints_byte_identical_urls_within_an_expiry_bucket(): void
+    {
+        $resolver = new MediaUrlResolver;
+
+        $tenantId = (string) Str::uuid();
+
+        $asset = new MediaAsset;
+        $asset->type = MediaAssetType::Image;
+        $asset->source = MediaSource::Upload;
+        $asset->status = MediaStatus::Ready;
+
+        $attachment = new MediaAttachment;
+        $attachment->id = (string) Str::uuid();
+        $attachment->tenant_id = $tenantId;
+        $attachment->owner_id = (string) Str::uuid();
+        $attachment->setRelation('mediaAsset', $asset);
+
+        $first = $resolver->forAttachment($attachment, 'md');
+        // Simulate a later request inside the same bucket.
+        $this->travel(3)->minutes();
+        $second = $resolver->forAttachment($attachment, 'md');
+
+        self::assertSame(
+            $first,
+            $second,
+            'Two resolutions inside one expiry bucket must produce identical URLs so the browser cache survives a refetch'
+        );
+    }
+
+    public function test_bucketed_url_is_still_valid_for_at_least_an_hour(): void
+    {
+        $resolver = new MediaUrlResolver;
+
+        $asset = new MediaAsset;
+        $asset->type = MediaAssetType::Image;
+        $asset->source = MediaSource::Upload;
+        $asset->status = MediaStatus::Ready;
+
+        $attachment = new MediaAttachment;
+        $attachment->id = (string) Str::uuid();
+        $attachment->tenant_id = (string) Str::uuid();
+        $attachment->owner_id = (string) Str::uuid();
+        $attachment->setRelation('mediaAsset', $asset);
+
+        $url = $resolver->forAttachment($attachment, 'md');
+        self::assertNotNull($url);
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        self::assertArrayHasKey('expires', $query);
+
+        // Bucketing must never shorten the URL's life below the Cache-Control
+        // max-age (3600s) the serve route advertises, or the browser would keep
+        // serving a cached response for a URL the server has already expired.
+        self::assertGreaterThanOrEqual(
+            now()->addHour()->getTimestamp(),
+            (int) $query['expires'],
+            'A bucketed URL must stay valid for at least the advertised max-age'
+        );
+    }
+
     public function test_for_attachment_upload_returns_signed_media_serve_url_with_variant(): void
     {
         $resolver = new MediaUrlResolver;

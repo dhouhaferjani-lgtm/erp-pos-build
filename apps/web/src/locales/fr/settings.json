@@ -389,6 +389,8 @@
     "viewChecklist": "Voir la liste de configuration",
     "dismiss": "Ignorer",
     "allDone": "Configuration terminée ! Vous êtes prêt à vendre.",
+    "loadErrorTitle": "Impossible de charger la liste de configuration",
+    "loadErrorBody": "Une erreur est survenue de notre côté. Votre configuration n'a pas changé — réessayez dans un instant.",
     "steps": {
       "company_info": "Informations de l'entreprise",
       "tax_config": "Configuration fiscale",
@@ -400,7 +402,9 @@
     },
     "badges": {
       "required": "Requis",
-      "optional": "Optionnel"
+      "optional": "Optionnel",
+      "unavailable": "Indisponible",
+      "unavailableHint": "Impossible de vérifier cette étape pour le moment. Votre configuration n'a pas changé."
     }
   },
   "terminalDiscount": {

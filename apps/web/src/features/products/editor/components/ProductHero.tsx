@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import { withProductHeroImageVariant } from '../../productHeroImage'
+import { productHeroImageSrc } from '../../productHeroImage'
 import { ProductHeroShell } from '../../sections/ProductHeroShell'
 
 export type ProductHeroProduct = Pick<
@@ -21,7 +21,7 @@ export type ProductHeroProduct = Pick<
 
 export function ProductHero({ product }: { product: ProductHeroProduct }) {
   const { t } = useTranslation(['inventory', 'common'])
-  const imageUrl = withProductHeroImageVariant(product.primary_image_url)
+  const imageUrl = productHeroImageSrc(product.primary_image_url)
 
   return (
     <ProductHeroShell

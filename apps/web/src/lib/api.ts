@@ -1,4 +1,4 @@
-import axios, { type AxiosError, type AxiosInstance, type AxiosResponse } from 'axios'
+import axios, { type AxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { useCompanyStore } from '../stores/companyStore'
 import { useAuthStore } from '../stores/authStore'
 
@@ -55,16 +55,40 @@ export function isApiError(error: unknown): error is AxiosError<ApiError> {
   return data?.error !== undefined
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 /**
- * Extract error message from API error
+ * Read a string field off an unknown response body without assuming its shape.
+ */
+function readString(source: unknown, key: string): string | null {
+  if (!isRecord(source)) return null
+  const value = source[key]
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Extract a human-readable message from an API error.
+ *
+ * BUG-005 / RCA B3 — this used to read `data.error.message` behind an
+ * `isApiError` guard, with two holes: a body carrying only a bare top-level
+ * `message` (Laravel's untyped `{"message":"Server Error"}`) failed the guard
+ * and lost the server's text entirely, and an envelope whose `error` object
+ * had no `message` returned `undefined` despite the `string` return type.
+ *
+ * Fallback chain: `data?.error?.message ?? data?.message ?? error.message`.
  */
 export function getErrorMessage(error: unknown): string {
-  if (isApiError(error)) {
-    const data = error.response?.data
-    if (data) {
-      return data.error.message
-    }
-    return 'An unexpected error occurred'
+  if (axios.isAxiosError(error)) {
+    const data: unknown = error.response?.data
+    const envelope = isRecord(data) ? data['error'] : null
+
+    return (
+      readString(envelope, 'message') ??
+      readString(data, 'message') ??
+      (error.message !== '' ? error.message : 'An unexpected error occurred')
+    )
   }
   if (error instanceof Error) {
     return error.message
@@ -162,6 +186,38 @@ function createApiClient(): AxiosInstance {
   client.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error: unknown) => {
+      // 419 CSRF is handled FIRST and keys on STATUS alone, deliberately
+      // outside the `isApiError` gate below.
+      //
+      // Laravel's CSRF failure is a bare `{"message":"CSRF token mismatch."}` —
+      // 419 is an HttpException, which the API's catch-all renderer leaves
+      // untyped on purpose — so `isApiError` is false for it and this
+      // refresh-and-retry branch was unreachable: every CSRF expiry surfaced as
+      // a hard failure instead of self-healing. (Found independently by the
+      // media and imports merge gates, 2026-08-06.)
+      if (axios.isAxiosError(error) && error.response?.status === 419) {
+        const config = error.config as (InternalAxiosRequestConfig & { _csrfRetried?: boolean }) | undefined
+
+        // Replay at most once — a second 419 means the token is not the problem
+        // and retrying again would loop.
+        if (config && config._csrfRetried !== true) {
+          config._csrfRetried = true
+          console.warn('CSRF token mismatch, refreshing token...')
+          try {
+            await ensureCsrfCookie()
+          } catch (csrfError) {
+            console.error('Failed to refresh CSRF token:', csrfError)
+          }
+
+          // Outside the try: a failure of the REPLAY itself (e.g. the retried
+          // request 422s or 500s) must propagate as its own error, not be
+          // caught by the block above and mislabelled "Failed to refresh CSRF
+          // token" while the caller still sees the stale original 419
+          // (FE gate round 2, MINOR-R2-1, 2026-08-06).
+          return await client.request(config)
+        }
+      }
+
       if (isApiError(error)) {
         const response = error.response
         if (!response) {
@@ -184,26 +240,14 @@ function createApiClient(): AxiosInstance {
 
         // Handle 403 Forbidden
         if (response.status === 403) {
-          console.error('Access denied:', response.data.error.message)
+          console.error('Access denied:', getErrorMessage(error))
         }
 
-        // Handle 419 CSRF Token Mismatch - retry after fetching new token
-        if (response.status === 419) {
-          console.warn('CSRF token mismatch, refreshing token...')
-          try {
-            await ensureCsrfCookie()
-            // Retry the original request
-            if (error.config) {
-              return client.request(error.config)
-            }
-          } catch (csrfError) {
-            console.error('Failed to refresh CSRF token:', csrfError)
-          }
-        }
+        // 419 is handled above, before the isApiError gate.
 
         // Handle 500+ Server Errors
         if (response.status >= 500) {
-          console.error('Server error:', response.data.error.message)
+          console.error('Server error:', getErrorMessage(error))
         }
       }
 

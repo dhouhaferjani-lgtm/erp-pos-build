@@ -46,7 +46,7 @@ final class MediaUploadServiceTest extends TestCase
 
         $asset = $this->service->uploadForProduct($tenantId, $productId, $file, $userId);
 
-        self::assertSame(MediaStatus::Uploaded, $asset->status);
+        self::assertSame(MediaStatus::Ready, $asset->status, 'Image assets are READY on upload (BUG-005 A2) — the queue only adds renditions');
         self::assertNotNull($asset->checksum);
         self::assertSame(64, strlen($asset->checksum)); // SHA-256 hex = 64 chars
         self::assertSame($tenantId, $asset->tenant_id);
@@ -347,7 +347,7 @@ final class MediaUploadServiceTest extends TestCase
         );
 
         self::assertSame(MediaAssetType::Image, $asset->type);
-        self::assertSame(MediaStatus::Uploaded, $asset->status);
+        self::assertSame(MediaStatus::Ready, $asset->status, 'Image assets are READY on upload (BUG-005 A2)');
         Queue::assertPushed(GenerateRenditions::class);
     }
 

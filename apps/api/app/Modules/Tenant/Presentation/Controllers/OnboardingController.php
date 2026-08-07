@@ -11,13 +11,18 @@ use Illuminate\Http\Request;
 
 /**
  * api.module-gating cluster: companyId resolves exclusively from
- * CompanyContext::requireCompanyId(). The earlier explicit
- * `if ($companyId === null) → 400` guard was dead code because
- * CompanyContextMiddleware (registered in the global `api` group)
- * already returns 403 NO_COMPANY_ACCESS upstream, and
- * requireCompanyId() throws on missing context. Pinning here keeps
- * controller behavior correct even if future middleware re-ordering
- * disturbs the validator.
+ * CompanyContext.
+ *
+ * CompanyContextMiddleware (registered in the global `api` group) normally
+ * returns 403 NO_COMPANY_ACCESS upstream — but it deliberately SKIPS
+ * principals that are not App\Modules\Identity\Domain\User (super-admin
+ * guard), so the controller can still be reached with an empty context.
+ * requireCompanyId() then threw a bare \RuntimeException that matched no
+ * render callback → an unhandled 500 (BUG-005 / RCA B2).
+ *
+ * The guard below makes that path answer the SAME typed 403 envelope the
+ * middleware emits, so the contract holds regardless of middleware ordering
+ * or principal type.
  */
 final class OnboardingController
 {
@@ -28,7 +33,16 @@ final class OnboardingController
 
     public function status(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
+
+        if ($companyId === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NO_COMPANY_ACCESS',
+                    'message' => 'User is not a member of any company.',
+                ],
+            ], 403);
+        }
 
         return response()->json([
             'data' => $this->checklistService->getStatus($companyId),

@@ -85,14 +85,25 @@ final class GenerateRenditions implements ShouldQueue
                 return;
             }
 
-            $assets->markProcessing($asset);
-
+            // BUG-005 / RCA A2 — this job ADDS renditions; it never gates
+            // visibility. Assets are READY from upload (MediaUploadService) and
+            // MediaStorageAdapter falls back to the original object whenever a
+            // variant's rendition row is absent, so the bytes are serveable the
+            // whole time this job runs.
+            //
+            // It therefore must NOT demote the asset: marking it PROCESSING would
+            // 404 every read for the duration of encoding, and marking it FAILED
+            // would hide a perfectly good original forever because a derived
+            // thumbnail failed — the exact "worker trouble = no images ever"
+            // failure mode this fix removes. Retries ($tries = 3) and the Horizon
+            // failed-jobs record remain the observability channel.
             try {
                 $renditions->generate($asset);
+                // Promote any legacy row still sitting at UPLOADED/PROCESSING from
+                // before assets were created READY. A no-op for new uploads.
                 $assets->markReady($asset);
             } catch (\Throwable $e) {
-                $assets->markFailed($asset);
-                Log::error('GenerateRenditions failed', [
+                Log::error('GenerateRenditions failed — asset keeps serving its original bytes', [
                     'asset' => $this->mediaAssetId,
                     'tenant' => $this->tenantId,
                     'error' => $e->getMessage(),

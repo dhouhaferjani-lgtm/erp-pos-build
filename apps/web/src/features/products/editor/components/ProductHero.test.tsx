@@ -39,7 +39,7 @@ describe('ProductHero', () => {
 
     expect(screen.getByRole('img', { name: 'Crème solaire SPF50' })).toHaveAttribute(
       'src',
-      '/media/product/serve?signature=abc&variant=md',
+      '/media/product/serve?signature=abc',
     )
     expect(screen.getByRole('heading', { name: 'Crème solaire SPF50' })).toBeInTheDocument()
     expect(screen.getByText('6194000123456')).toBeInTheDocument()

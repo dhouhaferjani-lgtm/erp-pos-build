@@ -374,7 +374,7 @@ describe('ProductForm opening-stock section gate', () => {
     expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
   })
 
-  it('renders edit hero primary image with md variant and accepted enrichment state', async () => {
+  it('renders edit hero primary image verbatim from the backend and accepted enrichment state', async () => {
     routeParams.id = PRODUCT_ID
     currentProductData = {
       ...makeProduct(),
@@ -403,7 +403,9 @@ describe('ProductForm opening-stock section gate', () => {
 
     expect(screen.getByRole('img', { name: 'Opening Test Product' })).toHaveAttribute(
       'src',
-      '/media/tenant/attachment/serve?signature=abc&variant=md',
+      // BUG-005 / A1: the backend already signs the md variant into the URL; the
+      // hero must not append anything or the HMAC breaks.
+      '/media/tenant/attachment/serve?signature=abc',
     )
     expect(screen.getByText('catalog:editor.hero.statusEnriched')).toBeInTheDocument()
     expect(screen.getByText('Avène ✦')).toBeInTheDocument()

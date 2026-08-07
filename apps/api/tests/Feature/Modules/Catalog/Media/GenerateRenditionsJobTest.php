@@ -189,18 +189,19 @@ final class GenerateRenditionsJobTest extends TestCase
         self::assertSame(0, $fresh->renditions()->count(), 'Document asset must have zero renditions');
     }
 
-    public function test_job_marks_failed_and_rethrows_when_generate_throws(): void
+    public function test_job_rethrows_without_demoting_the_asset_when_generate_throws(): void
     {
         Storage::fake('s3');
 
         $tenant = $this->makeTenant('generate-renditions-fail-'.Str::random(6));
 
-        // Asset with UPLOAD source but NO file on disk — RenditionService will throw.
+        // A READY asset (the post-BUG-005 upload state) with NO file on disk —
+        // RenditionService will throw.
         $asset = MediaAsset::create([
             'tenant_id' => $tenant->id,
             'type' => MediaAssetType::Image,
             'source' => MediaSource::Upload,
-            'status' => MediaStatus::Uploaded,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenant->id.'/missing/original.jpg',
             'mime_type' => 'image/jpeg',
@@ -208,17 +209,29 @@ final class GenerateRenditionsJobTest extends TestCase
         ]);
         // Deliberately do NOT put any file on the fake disk.
 
-        $this->expectException(\Throwable::class);
+        $thrown = null;
 
-        (new GenerateRenditions($tenant->id, $asset->id))
-            ->handle(
-                $this->app->make(RenditionService::class),
-                $this->app->make(MediaAssetRepositoryInterface::class),
-            );
+        try {
+            (new GenerateRenditions($tenant->id, $asset->id))
+                ->handle(
+                    $this->app->make(RenditionService::class),
+                    $this->app->make(MediaAssetRepositoryInterface::class),
+                );
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        }
 
-        // Unreachable — but document the contract: asset would be FAILED.
+        self::assertNotNull($thrown, 'The job must rethrow so the queue records the failure and retries');
+
+        // BUG-005 / RCA A2 — a failed rendition must NOT demote the asset. Marking
+        // it FAILED would hide a perfectly serveable original forever because a
+        // derived thumbnail could not be built.
         $fresh = MediaAsset::withoutGlobalScopes()->find($asset->id);
         self::assertNotNull($fresh);
-        self::assertSame(MediaStatus::Failed, $fresh->status);
+        self::assertSame(
+            MediaStatus::Ready,
+            $fresh->status,
+            'A rendition failure must never demote a READY asset — the original stays serveable'
+        );
     }
 }

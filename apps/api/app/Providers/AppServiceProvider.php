@@ -333,12 +333,22 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(100)->by($request->ip() ?? 'unknown');
         });
 
-        // Signed media serving — 120 per minute per IP.
-        // These URLs carry their own HMAC gate (60-min TTL), so the limiter
-        // is a secondary defence against enumeration loops rather than the
-        // primary access control.
+        // Signed media serving — 600 per minute per (IP + tenant) pair.
+        // These URLs carry their own HMAC gate, so the limiter is a secondary
+        // defence against enumeration loops rather than the primary access
+        // control.
+        //
+        // Re-keyed and raised per the authz gate (2026-08-06): `primary_image_url`
+        // is now minted per product row on the LIST endpoint, so a 60-100 product
+        // grid issues that many image GETs. Keying on IP alone meant every POS
+        // terminal behind one NAT shared a single 120/min budget across tenants —
+        // a legitimate grid render would 429 and images would break
+        // intermittently. The tenant segment comes from the SIGNED path, so it
+        // cannot be forged to widen the budget.
         RateLimiter::for('signed-media', function (Request $request): Limit {
-            return Limit::perMinute(120)->by($request->ip() ?? 'unknown');
+            $tenant = (string) ($request->route('tenant') ?? 'none');
+
+            return Limit::perMinute(600)->by(($request->ip() ?? 'unknown').'|'.$tenant);
         });
 
         // Channel webhook ingress - 60 per minute per IP.
