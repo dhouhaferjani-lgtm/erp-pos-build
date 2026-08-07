@@ -34,8 +34,20 @@ namespace App\Shared\Contracts\Partner;
  * constructor-captured connection is therefore pinned to `central`, which
  * holds none of these tables. Inject `Illuminate\Database\DatabaseManager`
  * and call `->connection()` INSIDE each query instead — or simply extend
- * `App\Shared\Application\Partner\TableBackedPartnerReferenceSource`, which does this
- * for you. Guarded by `PartnerReferenceCounterConnectionTimingTest`.
+ * `App\Shared\Application\Partner\TableBackedPartnerReferenceSource`, which
+ * does this for you.
+ *
+ * `PartnerReferenceCounterConnectionTimingTest` guards the rule, but be
+ * precise about what it can see. Today's counter binding passes
+ * `app->tagged(...)`, a `RewindableGenerator` that `make()`s each source
+ * lazily at iteration time — i.e. inside `countFor()`, after `ResolveTenancy`
+ * has already swapped the connection. Under THAT shape a construction-time
+ * capture happens to be harmless, and the test only discriminates because it
+ * materialises the tagged set eagerly (`iterator_to_array`) to reproduce the
+ * pre-swap construction that any eager consumer — a singleton, a
+ * constructor-injected `iterable`, an `app->tagged()` hoisted out of the
+ * binding closure — would reintroduce. The rule is therefore a REQUIREMENT
+ * on implementations, not a property the current wiring grants for free.
  */
 interface PartnerReferenceSource
 {

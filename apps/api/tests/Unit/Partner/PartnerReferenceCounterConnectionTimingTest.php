@@ -53,8 +53,23 @@ use Tests\TestCase;
  * tags an `App\Shared\Contracts\Partner\PartnerReferenceSource`. The timing
  * rule therefore has to hold for EVERY tagged source, so the probe schema
  * below is built from what the sources themselves declare rather than from
- * a hardcoded table list. A new source with a construction-time connection
- * fails here the day it is tagged.
+ * a hardcoded table list.
+ *
+ * WHY THE SOURCES ARE MATERIALISED WITH `iterator_to_array` — do not
+ * "simplify" this to `$this->app->make(PartnerReferenceCounter::class)`.
+ * `Container::tagged()` returns a `RewindableGenerator`, which `make()`s
+ * each tagged source lazily, AT ITERATION TIME — i.e. inside `countFor()`,
+ * which runs AFTER the swap. Resolving the counter through the container
+ * therefore constructs every source on the post-swap connection and the
+ * test cannot discriminate: the R2-S gate implanted a construction-time
+ * connection capture in `TableBackedPartnerReferenceSource` and all three
+ * tests here stayed GREEN. Materialising the tagged set BEFORE the swap is
+ * what puts source construction on the pre-swap connection, which is what
+ * production actually does — `PartnerController` is `make()`d during
+ * `Route::gatherMiddleware()`, and any future eager consumer (a singleton,
+ * a constructor-injected `iterable`, an `app->tagged()` hoisted out of the
+ * closure) would construct the sources there too. This test pins the rule
+ * for that shape, which is the only shape in which it can be violated.
  */
 class PartnerReferenceCounterConnectionTimingTest extends TestCase
 {
@@ -114,8 +129,7 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
         // Route::gatherMiddleware(), before ResolveTenancy has run.
         Config::set('database.default', self::CONNECTION_AT_CONSTRUCTION);
 
-        /** @var PartnerReferenceCounter $counter */
-        $counter = $this->app->make(PartnerReferenceCounter::class);
+        $counter = $this->counterBuiltOnTheCurrentConnection();
 
         // Simulate ResolveTenancy's mid-request swap, which happens AFTER
         // the controller (and this counter, plus every tagged source it
@@ -142,17 +156,24 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
     public function test_counter_never_leaks_a_reference_row_planted_on_the_construction_time_connection(): void
     {
         // Defends against a regression in the OPPOSITE direction: a fix
-        // that accidentally caches `connection()`'s return value at
-        // construction (e.g. resolving it once in the constructor and
-        // reusing it) would read the decoy row on
-        // CONNECTION_AT_CONSTRUCTION forever, even after the swap, for a
-        // partner id that never existed on that connection.
+        // that caches `connection()`'s return value at construction (e.g.
+        // resolving it once in the constructor and reusing it) keeps reading
+        // CONNECTION_AT_CONSTRUCTION forever, even after the swap.
+        //
+        // The row below is planted for THIS partner id on the pre-swap
+        // connection ONLY. Correct code queries the post-swap connection and
+        // finds nothing; a construction-time capture reports it and wrongly
+        // blocks a partner that is in fact clean on the tenant DB.
         $partnerId = (string) Str::uuid();
+
+        DB::connection(self::CONNECTION_AT_CONSTRUCTION)->table('documents')->insert([
+            'partner_id' => $partnerId,
+            'deleted_at' => null,
+        ]);
 
         Config::set('database.default', self::CONNECTION_AT_CONSTRUCTION);
 
-        /** @var PartnerReferenceCounter $counter */
-        $counter = $this->app->make(PartnerReferenceCounter::class);
+        $counter = $this->counterBuiltOnTheCurrentConnection();
 
         Config::set('database.default', self::CONNECTION_AT_CALL_TIME);
 
@@ -172,8 +193,7 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
 
         Config::set('database.default', self::CONNECTION_AT_CONSTRUCTION);
 
-        /** @var PartnerReferenceCounter $counter */
-        $counter = $this->app->make(PartnerReferenceCounter::class);
+        $counter = $this->counterBuiltOnTheCurrentConnection();
 
         Config::set('database.default', self::CONNECTION_AT_CALL_TIME);
 
@@ -190,6 +210,25 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
         ksort($counts);
 
         $this->assertSame($expected, $counts);
+    }
+
+    /**
+     * A counter whose sources are ALL constructed right now, on whatever
+     * `database.default` currently points at.
+     *
+     * `$this->app->make(PartnerReferenceCounter::class)` would NOT do this:
+     * the binding passes `app->tagged(...)`, a `RewindableGenerator` that
+     * defers each source's `make()` to iteration time — which happens inside
+     * `countFor()`, after the swap. Under that shape a construction-time
+     * connection capture is unobservable (proven: the gate's implanted
+     * mutation kept all three tests green). `iterator_to_array` forces the
+     * `make()`s here, before the swap.
+     */
+    private function counterBuiltOnTheCurrentConnection(): PartnerReferenceCounter
+    {
+        $sources = iterator_to_array($this->app->tagged(PartnerReferenceSource::class));
+
+        return new PartnerReferenceCounter($sources);
     }
 
     /**

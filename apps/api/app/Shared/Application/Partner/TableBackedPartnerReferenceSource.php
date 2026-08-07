@@ -22,6 +22,16 @@ use Illuminate\Database\Query\Builder;
  *    `ResolveTenancy` has swapped the default hits the tenant DB even
  *    though this object was built while the default was still `central`.
  *    Never cache the return value of `->connection()` on the instance.
+ *
+ *    Note what this does and does not currently protect. Because the
+ *    counter binding hands over `app->tagged(...)` — a lazy
+ *    `RewindableGenerator` — sources are `make()`d INSIDE `countFor()`,
+ *    after the swap, so a construction-time capture would not bite through
+ *    today's wiring. It bites the moment anything constructs the set
+ *    eagerly (singleton, constructor-injected `iterable`, `tagged()` hoisted
+ *    out of the closure). `PartnerReferenceCounterConnectionTimingTest`
+ *    deliberately materialises the set before the swap so the rule is
+ *    enforced against that future shape rather than against today's luck.
  *  - **Multi-column tables are counted once per ROW**, not once per column.
  *  - **Soft-deleted rows never block**: an invisible row cannot be
  *    orphaned by making the partner invisible too.
