@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:2578583cb8d8ca55e7c3f07e2e84eca751caee49d76060f67a81dc19a42f9649
+// Source hash: sha256:08ebc97307842c08d45e9858da382150261a9f6d7f9d930426798343f5b64788
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -246,6 +246,7 @@ export const PERMISSIONS = {
   'supplier-invoices.create-pending': ['accountant', 'admin', 'manager'],
   'supplier-invoices.link-receipts': ['accountant', 'admin', 'manager'],
   'taxation.tax_configurations.manage': ['accountant', 'admin'],
+  'taxation.withholding_rules.manage': ['accountant', 'admin'],
   'treasury.adjust': ['accountant', 'admin', 'manager'],
   'treasury.manage': ['accountant', 'admin'],
   'treasury.transfer': ['accountant', 'admin', 'manager'],

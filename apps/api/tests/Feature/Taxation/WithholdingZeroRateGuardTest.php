@@ -118,6 +118,13 @@ class WithholdingZeroRateGuardTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'CREATION_FAILED');
+        // Fix round F (gate docs/superpowers/reviews/2026-08-07-r2h-zerorate-gate.md
+        // #2): `error.code = CREATION_FAILED` is ALSO emitted for "No
+        // applicable withholding rule found" (service, non-override branch)
+        // — pinning `error.message` too proves it is genuinely the
+        // zero-withholding guard that fired, not a different \DomainException
+        // sharing the same code.
+        $response->assertJsonPath('error.message', 'Withholding amount is zero; no certificate is created.');
 
         $this->assertDatabaseCount('withholding_certificates', 0);
 
@@ -156,6 +163,7 @@ class WithholdingZeroRateGuardTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'CREATION_FAILED');
+        $response->assertJsonPath('error.message', 'Withholding amount is zero; no certificate is created.');
         $this->assertDatabaseCount('withholding_certificates', 0);
     }
 

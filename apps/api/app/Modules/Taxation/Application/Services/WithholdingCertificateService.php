@@ -220,8 +220,16 @@ class WithholdingCertificateService
     /**
      * P1 fiscal guard (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
      * #1, §20-69): a zero EFFECTIVE withholding amount — a zero rate, a zero
-     * gross amount, or any combination that rounds to `0.000` at currency
-     * scale 3 — must never manufacture a withholding certificate. Pre-fix,
+     * gross amount, or any combination that rounds to `0` at the RESOLVED
+     * currency scale (`CurrencyScaleResolverInterface::getScale()`, below —
+     * e.g. 3 for TND, 2 for EUR/USD, 0 for XOF/JPY/KRW; NOT a hardcoded
+     * scale-3 literal) — must never manufacture a withholding certificate.
+     * Gate review (2026-08-07-r2h-zerorate-gate.md #1): for a non-3-dp
+     * currency this compares at a coarser scale than the `decimal(15,3)`
+     * storage column, so it is an over-refusal in the safe direction (a
+     * value the column would store as nonzero, e.g. EUR `0.004`, is judged
+     * zero here) — conservative (no fictitious document is ever created),
+     * never an under-refusal. Pre-fix,
      * `WithholdingCalculation::calculate()`/`calculateWithOverride()` had no
      * zero-rate guard, so `bcmul($gross, '0', 3)` silently produced a `0.000`
      * DRAFT row that was TEJ-exportable, PDF-printable, and — on `issue()` —

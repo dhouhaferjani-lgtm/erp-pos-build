@@ -120,7 +120,17 @@ final class WithholdingRouteAuthorizationTest extends TestCase
             'company_id' => $this->company->id,
             'code' => 'AUTHZ_TN_10',
             'name' => 'Authz Tunisia 10%',
-            'rate' => '10.00',
+            // Fix round F2 (gate docs/superpowers/reviews/2026-08-07-r2h-routes-gate.md):
+            // `rate` is a FRACTION (0-1), decimal(5,4) — NOT a percentage.
+            // `'10.00'` overflowed the column on live PostgreSQL
+            // (SQLSTATE[22003], precision 5 scale 4 -> values must be < 10^1)
+            // while SQLite silently accepted it, so all 20 tests in this file
+            // errored in setUp() on PG and were falsely green on SQLite.
+            // `0.1000` is the correct fraction for "10%" — matches
+            // CreateWithholdingRuleRequest.php's `min:0, max:1` domain and
+            // every production seeder (TunisiaWithholdingRulesSeeder.php,
+            // TunisianParapharmacySeeder.php).
+            'rate' => '0.1000',
             'effective_from' => now()->subYear(),
             'is_active' => true,
         ]);
@@ -302,6 +312,64 @@ final class WithholdingRouteAuthorizationTest extends TestCase
     }
 
     // ────────────────────────────────────────────────────────────────
+    // Fix round F6 (gate docs/superpowers/reviews/2026-08-07-r2h-routes-gate.md):
+    // every deny-path assertion above proves a role IS refused, but none
+    // proved a permission-holder is NOT refused for `destroy`/`submit-tej`/
+    // `export-tej-batch` specifically — so a typo'd guard string (e.g.
+    // `can:withholding.destroy`, which does not exist in the seeded
+    // catalog) would silently 403 EVERY role including admin on that route
+    // while the whole suite stayed green. These are admin allow-path (2xx)
+    // controls, one per distinct permission not otherwise covered by a
+    // positive assertion above (index/issue already have one via manager/
+    // accountant).
+    // ────────────────────────────────────────────────────────────────
+
+    public function test_admin_allow_path_can_create_a_certificate(): void
+    {
+        $response = $this->actingAsRole('admin', 'admin-cert-store@example.com')
+            ->postJson('/api/v1/withholding/certificates', [
+                'direction' => 'purchase',
+                'partner_id' => $this->certificate->partner_id,
+                'currency' => 'TND',
+                'gross_amount' => '500.000',
+                'manual_rate_percentage' => '5',
+                'override_reason' => 'F6 admin allow-path control',
+            ]);
+
+        $response->assertStatus(201);
+    }
+
+    public function test_admin_allow_path_can_issue_export_batch_and_submit_a_certificate_to_tej(): void
+    {
+        $issue = $this->actingAsRole('admin', 'admin-cert-issue@example.com')
+            ->postJson("/api/v1/withholding/certificates/{$this->certificate->id}/issue");
+        $issue->assertStatus(200);
+        $this->assertSame(CertificateStatus::ISSUED, $this->certificate->fresh()?->status);
+
+        // downloadBatchTEJXML filters to status=issued only — must run BEFORE
+        // submit-tej flips the status to SUBMITTED.
+        $batch = $this->actingAsRole('admin', 'admin-cert-batch@example.com')
+            ->getJson('/api/v1/withholding/certificates/export-tej-batch');
+        $batch->assertStatus(200);
+
+        $submit = $this->actingAsRole('admin', 'admin-cert-submit@example.com')
+            ->postJson("/api/v1/withholding/certificates/{$this->certificate->id}/submit-tej", [
+                'tej_reference' => 'TEJ-AUTHZ-CONTROL-0001',
+            ]);
+        $submit->assertStatus(200);
+        $this->assertSame(CertificateStatus::SUBMITTED, $this->certificate->fresh()?->status);
+    }
+
+    public function test_admin_allow_path_can_delete_a_draft_certificate(): void
+    {
+        $response = $this->actingAsRole('admin', 'admin-cert-destroy@example.com')
+            ->deleteJson("/api/v1/withholding/certificates/{$this->certificate->id}");
+
+        $response->assertStatus(200);
+        $this->assertNull($this->certificate->fresh(), 'admin (who holds withholding.delete) must be able to delete a draft certificate');
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // Rules group (§153-174 scope widening) — `deactivate`/`destroy` had NO
     // authorization check at all pre-fix. cashier AND manager both lack
     // `taxation.withholding_rules.manage`.
@@ -343,7 +411,7 @@ final class WithholdingRouteAuthorizationTest extends TestCase
 
         $response->assertStatus(403);
         $response->assertJsonPath('error.code', 'FORBIDDEN');
-        $this->assertSame('10.0000', $this->rule->fresh()?->rate, 'rule rate must NOT have been mutated');
+        $this->assertSame('0.1000', $this->rule->fresh()?->rate, 'rule rate must NOT have been mutated');
     }
 
     public function test_cashier_is_refused_deactivating_a_rule(): void
