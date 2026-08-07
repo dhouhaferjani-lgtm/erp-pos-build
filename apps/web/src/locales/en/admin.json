@@ -28,5 +28,24 @@
       "cancel": "Cancel",
       "close": "Close"
     }
+  },
+  "supportAccess": {
+    "navigation": "Support access",
+    "title": "Support access",
+    "subtitle": "Request consent, enter a subject-scoped session, and manage four-eyes elevation.",
+    "loading": "Loading support access…",
+    "loadError": "Support access could not be loaded",
+    "errors": { "mutation": "The support-access change could not be completed." },
+    "revokeReason": "Support operator revoked this grant.",
+    "dialog": { "eyebrow": "Consent required", "title": "Request tenant access", "description": "Name one tenant, one subject, one ticket, and a bounded duration." },
+    "fields": { "tenantId": "Tenant ID", "subjectUserId": "Subject user ID", "reason": "Support reason", "ticket": "Ticket reference", "duration": "Duration (minutes)" },
+    "validation": { "required": "This field is required.", "uuid": "Enter a valid UUID.", "duration": "Duration must be between 1 and 1440 minutes." },
+    "actions": { "requestAccess": "Request access", "cancel": "Cancel", "sendRequest": "Send consent request", "secondApprove": "Second approve", "revoke": "Revoke", "startSession": "Start session", "requestWrite": "Request write access", "submitElevation": "Submit for second approval", "approveWrite": "Approve write elevation" },
+    "queue": { "title": "Consent queue", "description": "Every entry is incident-bound and expires automatically.", "scope": "Tenant {{tenant}} · Subject {{subject}}" },
+    "status": { "pending_tenant_approval": "Tenant approval", "pending_internal_approval": "Second approval", "active": "Active", "rejected": "Rejected", "revoked": "Revoked", "expired": "Expired" },
+    "session": { "active": "Active support session", "expires": "Expires {{date}}" },
+    "access": { "read_only": "Read-only", "write_elevated": "Write-elevated" },
+    "elevation": { "title": "Request write elevation", "description": "Explain the exact non-fiscal write. A distinct configured partner must approve it." },
+    "approvals": { "title": "Four-eyes approvals", "description": "Only a distinct configured partner may approve these requests.", "session": "Session {{session}}" }
   }
 }

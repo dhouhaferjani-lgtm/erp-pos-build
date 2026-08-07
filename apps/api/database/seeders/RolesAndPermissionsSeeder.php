@@ -11,13 +11,15 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
+    public function __construct(private readonly PermissionRegistrar $permissionRegistrar) {}
+
     /**
      * Run the database seeds.
      */
     public function run(): void
     {
         // Reset cached roles and permissions
-        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        $this->permissionRegistrar->forgetCachedPermissions();
 
         // Create permissions per module
         $this->createPermissions();
@@ -491,6 +493,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.manage',
             'audit.view',
             'imports.manage',
+            'support-access.view',
+            'support-access.manage',
         ];
     }
 

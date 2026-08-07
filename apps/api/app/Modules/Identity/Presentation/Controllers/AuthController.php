@@ -34,6 +34,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
+use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,6 +75,7 @@ class AuthController extends Controller
         private readonly TenancyResolver $tenancyResolver,
         private readonly TenantLinkSigner $tenantLinkSigner,
         private readonly TenantProvisioningService $tenantProvisioningService,
+        private readonly ImpersonationContextProvider $impersonationContext,
     ) {}
 
     /**
@@ -611,7 +613,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         return response()->json([
-            'data' => AuthUserData::fromUser($user),
+            'data' => AuthUserData::fromUser($user, $this->impersonationContext->current()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

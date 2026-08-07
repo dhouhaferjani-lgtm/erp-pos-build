@@ -2,7 +2,7 @@ export interface AdminAuthResponse {
   id: string
   email: string
   name: string
-  role: 'super_admin'
+  role: 'super_admin' | 'support_approver'
 }
 
 export interface AdminDashboardStats {

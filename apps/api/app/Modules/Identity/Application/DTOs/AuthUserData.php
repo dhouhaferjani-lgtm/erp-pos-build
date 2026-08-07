@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Application\DTOs;
 
 use App\Modules\Identity\Domain\User;
+use App\Shared\DTOs\SupportAccess\ImpersonationContextData;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
@@ -27,9 +28,10 @@ final readonly class AuthUserData
         public array $permissions,
         public bool $emailVerified,
         public ?string $emailVerifiedAt,
+        public ?ImpersonationContextViewData $impersonation,
     ) {}
 
-    public static function fromUser(User $user): self
+    public static function fromUser(User $user, ?ImpersonationContextData $context = null): self
     {
         // Set the team context for Spatie permissions before loading roles/permissions
         setPermissionsTeamId($user->tenant_id);
@@ -53,6 +55,7 @@ final readonly class AuthUserData
             permissions: $permissions,
             emailVerified: $user->hasVerifiedEmail(),
             emailVerifiedAt: $user->email_verified_at?->toIso8601String(),
+            impersonation: $context === null ? null : ImpersonationContextViewData::fromContext($context),
         );
     }
 }

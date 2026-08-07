@@ -16,6 +16,16 @@ interface MeResponseUser {
   roles: string[]
   permissions: string[]
   emailVerifiedAt: string | null
+  impersonation: {
+    session_id: string
+    subject_user_id: string
+    subject_name: string
+    reason: string
+    ticket_ref: string
+    access_level: 'read_only' | 'write_elevated'
+    expires_at: string
+    remaining_seconds: number
+  } | null
 }
 
 interface MeResponse {
@@ -76,6 +86,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         roles: data.roles,
         permissions: data.permissions,
         email_verified_at: data.emailVerifiedAt,
+        impersonation: data.impersonation,
       }
       setUser(userData)
     } else if (isError) {

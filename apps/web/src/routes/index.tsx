@@ -29,6 +29,8 @@ const CompanyOwnersPage = lazy(() => import('../features/admin/pages/CompanyOwne
 const AdminVerticalsPage = lazy(() => import('../features/admin/pages/VerticalsPage').then((m) => ({ default: m.VerticalsPage })))
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
+const AdminSupportAccessPage = lazy(() => import('../features/support-access/pages/AdminSupportAccessPage').then((m) => ({ default: m.AdminSupportAccessPage })))
+const TenantSupportAccessPage = lazy(() => import('../features/support-access/pages/TenantSupportAccessPage').then((m) => ({ default: m.TenantSupportAccessPage })))
 
 // Sales module
 const CustomerListPage = lazy(() => import('../features/partners/PartnerListPage').then((m) => ({ default: m.PartnerListPage })))
@@ -396,6 +398,14 @@ export function AppRoutes() {
           element={
             <SuspenseWrapper>
               <AdminDashboardPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="support-access"
+          element={
+            <SuspenseWrapper>
+              <AdminSupportAccessPage />
             </SuspenseWrapper>
           }
         />
@@ -2180,6 +2190,16 @@ export function AppRoutes() {
 
         {/* Settings */}
         <Route path="settings">
+          <Route
+            path="support-access"
+            element={
+              <RequirePermission permission="support-access.view">
+                <SuspenseWrapper>
+                  <TenantSupportAccessPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
           <Route
             index
             element={

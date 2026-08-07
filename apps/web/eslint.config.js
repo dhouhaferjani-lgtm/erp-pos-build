@@ -245,6 +245,7 @@ export default tseslint.config(
       'src/features/workshop-technicians/**/*.{ts,tsx}',
       'src/features/workshop-work-orders/**/*.{ts,tsx}',
       'src/features/document-ingestions/**/*.{ts,tsx}',
+      'src/features/support-access/**/*.{ts,tsx}',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
@@ -348,6 +349,23 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['src/features/support-access/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|hover:bg)-(white|black)\\b/]',
+          message: 'Hardcoded white/black utilities are not allowed in support access. Use semantic design tokens.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|hover:bg)-(white|black)\\b/]',
+          message: 'Hardcoded white/black utilities are not allowed in support access. Use semantic design tokens.',
+        },
+      ],
+    },
+  },
   // i18n-clean dirs — fully EN/FR translated in the 2026-06 sweep; no
   // untranslated user-facing literal may regress here. The internal
   // super-admin panel (src/features/admin) is intentionally NOT listed yet
@@ -379,6 +397,7 @@ export default tseslint.config(
       'src/features/withholding/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
       'src/features/document-ingestions/**/*.{ts,tsx}',
+      'src/features/support-access/**/*.{ts,tsx}',
     ],
     rules: { 'local/no-untranslated-literal': 'error' },
   },

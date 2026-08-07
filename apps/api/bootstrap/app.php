@@ -4,13 +4,16 @@ use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\CrossTenantContext;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RequireAnyPermission;
+use App\Http\Middleware\RequireCentralAdminRole;
 use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
@@ -18,6 +21,10 @@ use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
 use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
+use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationAudit;
+use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationContext;
+use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationResponseMasking;
+use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationWriteGuard;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
@@ -77,6 +84,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register middleware aliases
         $middleware->alias([
             'super_admin' => EnsureSuperAdmin::class,
+            'central_admin_role' => RequireCentralAdminRole::class,
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,
             'require.any.permission' => RequireAnyPermission::class,
@@ -108,6 +116,10 @@ return Application::configure(basePath: dirname(__DIR__))
             SecurityHeaders::class,
             SetLocale::class,
             CompanyContextMiddleware::class,
+            ImpersonationContext::class,
+            ImpersonationWriteGuard::class,
+            ImpersonationAudit::class,
+            ImpersonationResponseMasking::class,
         ]);
 
         // The Identity auth routes (login/register/verify-email/reset) sit under
@@ -115,6 +127,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // pre-auth link flows initialize their tenant before the token lookup.
         $middleware->appendToGroup('web', [
             ResolveTenancy::class,
+            ImpersonationContext::class,
+            ImpersonationWriteGuard::class,
+            ImpersonationAudit::class,
+            ImpersonationResponseMasking::class,
         ]);
 
         // Group append order alone is NOT enough: Laravel's middleware-priority
@@ -128,6 +144,30 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: AuthenticatesRequests::class,
             prepend: ResolveTenancy::class,
+        );
+        $middleware->appendToPriorityList(
+            after: AuthenticatesRequests::class,
+            append: SetPermissionsTeam::class,
+        );
+        $middleware->appendToPriorityList(
+            after: SetPermissionsTeam::class,
+            append: EnforceTokenTenantClaim::class,
+        );
+        $middleware->appendToPriorityList(
+            after: EnforceTokenTenantClaim::class,
+            append: ImpersonationContext::class,
+        );
+        $middleware->appendToPriorityList(
+            after: ImpersonationContext::class,
+            append: ImpersonationWriteGuard::class,
+        );
+        $middleware->appendToPriorityList(
+            after: ImpersonationWriteGuard::class,
+            append: ImpersonationAudit::class,
+        );
+        $middleware->appendToPriorityList(
+            after: ImpersonationAudit::class,
+            append: ImpersonationResponseMasking::class,
         );
 
         // Ensure API requests get JSON responses for auth failures

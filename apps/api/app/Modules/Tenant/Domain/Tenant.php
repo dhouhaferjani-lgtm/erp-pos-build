@@ -112,6 +112,9 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         'enabled_extras',
         'signup_source',
         'signup_tracking',
+        'is_sensitive',
+        'support_access_starts_at',
+        'support_access_expires_at',
     ];
 
     /**
@@ -132,6 +135,9 @@ class Tenant extends BaseTenant implements TenantWithDatabase
             'subscription_ends_at' => 'datetime',
             'enabled_extras' => 'array',
             'signup_tracking' => 'array',
+            'is_sensitive' => 'boolean',
+            'support_access_starts_at' => 'datetime',
+            'support_access_expires_at' => 'datetime',
         ];
     }
 
@@ -174,6 +180,9 @@ class Tenant extends BaseTenant implements TenantWithDatabase
             'enabled_extras',
             'signup_source',
             'signup_tracking',
+            'is_sensitive',
+            'support_access_starts_at',
+            'support_access_expires_at',
             'created_at',
             'updated_at',
         ];

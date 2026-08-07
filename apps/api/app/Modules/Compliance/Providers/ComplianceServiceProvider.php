@@ -9,8 +9,10 @@ use App\Modules\Compliance\Application\Services\CompanyFraudSettingsService;
 use App\Modules\Compliance\Application\Services\ComplianceNotificationDispatcher;
 use App\Modules\Compliance\Commands\ExportNf525JetCommand;
 use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Listeners\DomainEventSubscriber;
 use App\Modules\Compliance\Listeners\OpenFraudAlertForShiftVariance;
+use App\Modules\Compliance\Observers\AuditEventImpersonationObserver;
 use App\Modules\Compliance\Presentation\Controllers\AuditController;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
@@ -33,9 +35,7 @@ class ComplianceServiceProvider extends ServiceProvider
             return new FiscalHashService;
         });
 
-        $this->app->singleton(AuditService::class, function () {
-            return new AuditService;
-        });
+        $this->app->scoped(AuditService::class);
 
         $this->app->singleton(FraudAlertNotificationService::class, function () {
             return new FraudAlertNotificationService;
@@ -64,6 +64,8 @@ class ComplianceServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        AuditEvent::observe(AuditEventImpersonationObserver::class);
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 VerifyFiscalChainsCommand::class,

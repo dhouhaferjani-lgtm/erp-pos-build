@@ -1,0 +1,58 @@
+{
+  "navigation": { "tenant": "Accès assistance" },
+  "title": "Accès assistance",
+  "subtitle": "Contrôlez quand l'assistance AutoERP peut accéder à votre espace et consultez le journal d'activité assaini.",
+  "loading": "Chargement de l'accès assistance…",
+  "loadError": "Impossible de charger l'accès assistance",
+  "fields": {
+    "subjectOptional": "ID de l'utilisateur concerné (facultatif)",
+    "reason": "Motif de l'assistance",
+    "ticket": "Référence du ticket",
+    "startsAt": "Début de la fenêtre",
+    "expiresAt": "Fin de la fenêtre"
+  },
+  "validation": { "required": "Ce champ est obligatoire.", "expiryAfterStart": "La fin doit être postérieure au début." },
+  "window": {
+    "title": "Préautoriser une fenêtre d'assistance",
+    "description": "Créez une fenêtre limitée dans le temps pour un objectif documenté. Chaque session reste intégralement auditée."
+  },
+  "requests": {
+    "title": "Demandes et autorisations",
+    "description": "Examinez les demandes de consentement et les fenêtres actives.",
+    "expires": "Expire le {{date}}"
+  },
+  "history": {
+    "title": "Activité de l'assistance",
+    "description": "Journal assaini des accès d'assistance visible par le locataire.",
+    "empty": "Aucune activité d'assistance enregistrée."
+  },
+  "active": { "title": "L'assistance est actuellement active", "description_one": "{{count}} session d'assistance active", "description_other": "{{count}} sessions d'assistance actives" },
+  "actions": { "createWindow": "Créer la fenêtre", "approve": "Approuver", "reject": "Refuser", "revoke": "Révoquer" },
+  "status": {
+    "pending_tenant_approval": "En attente de votre accord",
+    "pending_internal_approval": "En attente du second accord",
+    "active": "Active",
+    "rejected": "Refusée",
+    "revoked": "Révoquée",
+    "expired": "Expirée"
+  },
+  "events": {
+    "grant_requested": "Autorisation d'assistance demandée",
+    "grant_approved": "Autorisation d'assistance approuvée",
+    "grant_rejected": "Autorisation d'assistance refusée",
+    "grant_revoked": "Autorisation d'assistance révoquée",
+    "session_started": "Session d'assistance démarrée",
+    "session_ended": "Session d'assistance terminée",
+    "request_received": "Requête d'assistance reçue",
+    "request_authorized": "Requête d'assistance autorisée",
+    "request_denied": "Requête d'assistance refusée",
+    "write_elevation_requested": "Élévation d'écriture demandée",
+    "write_elevation_approved": "Élévation d'écriture approuvée",
+    "write_elevation_rejected": "Élévation d'écriture refusée"
+  },
+  "access": { "read_only": "Lecture seule", "write_elevated": "Écriture élevée" },
+  "banner": { "active": "Session d'assistance en tant que {{subject}}", "endingSoon": "La session se termine bientôt", "exit": "Quitter la session d'assistance" },
+  "errors": { "mutation": "La modification de l'accès assistance n'a pas pu être effectuée.", "exit": "La session d'assistance reste active, car sa fermeture n'a pas pu être confirmée." },
+  "rejection": { "defaultReason": "L'administrateur du locataire a refusé cette demande d'assistance." },
+  "revocation": { "defaultReason": "L'administrateur du locataire a révoqué l'accès assistance." }
+}

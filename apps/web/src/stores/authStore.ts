@@ -4,6 +4,17 @@ import { persist } from 'zustand/middleware'
 /**
  * User type (will be replaced with generated type from backend)
  */
+export interface ImpersonationContext {
+  session_id: string
+  subject_user_id: string
+  subject_name: string
+  reason: string
+  ticket_ref: string
+  access_level: 'read_only' | 'write_elevated'
+  expires_at: string
+  remaining_seconds: number
+}
+
 interface User {
   id: string
   name: string
@@ -12,6 +23,7 @@ interface User {
   roles: string[]
   permissions?: string[]
   email_verified_at: string | null
+  impersonation?: ImpersonationContext | null
 }
 
 /**
@@ -98,7 +110,8 @@ export const useAuthStore = create<AuthStore>()(
       // The session cookie determines actual auth status
       partialize: (state) => ({
         user: state.user,
-        token: state.token,
+        // Impersonation bearer credentials are deliberately memory-only.
+        token: state.user?.impersonation ? null : state.token,
       }),
     }
   )

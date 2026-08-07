@@ -7,12 +7,26 @@ namespace App\Modules\Compliance\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\SupportAccess\Infrastructure\Audit\TenantImpersonationAuditStore;
+use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
+use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
+use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
-final class AuditService
+final class AuditService implements TenantImpersonationAuditWriter
 {
+    public function __construct(
+        private readonly ImpersonationContextProvider $impersonationContext,
+        private readonly TenantImpersonationAuditStore $impersonationAuditStore,
+    ) {}
+
+    public function writeImpersonationMirror(ImpersonationAuditMirrorData $event): void
+    {
+        $this->impersonationAuditStore->write($event);
+    }
+
     /**
      * Record a new audit event
      *
@@ -49,9 +63,15 @@ final class AuditService
             aggregateId: $aggregateId,
             payload: $payload,
             metadata: $metadata,
-            attributes: [
+            attributes: array_filter([
                 'tenant_id' => $tenantId,
-            ]
+                'impersonator_id' => $this->impersonationContext->current()?->operator_id,
+                'impersonation_session_id' => $this->impersonationContext->current()?->session_id,
+                'impersonation_event_id' => $this->impersonationContext->current()?->audit_event_id,
+                'impersonation_sequence' => $this->impersonationContext->current()?->audit_sequence,
+                'impersonation_previous_hash' => $this->impersonationContext->current()?->audit_previous_hash,
+                'impersonation_hash' => $this->impersonationContext->current()?->audit_hash,
+            ], static fn (mixed $value): bool => $value !== null)
         );
 
         $event->save();

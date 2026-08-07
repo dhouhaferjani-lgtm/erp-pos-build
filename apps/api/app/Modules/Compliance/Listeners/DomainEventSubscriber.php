@@ -53,6 +53,7 @@ use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
+use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Auth;
@@ -75,6 +76,7 @@ final class DomainEventSubscriber
 {
     public function __construct(
         private readonly AuditService $auditService,
+        private readonly ImpersonationContextProvider $impersonationContext,
     ) {}
 
     /**
@@ -1046,6 +1048,10 @@ final class DomainEventSubscriber
                 'aggregate_id' => $aggregateId,
             ]);
         } catch (\Throwable $e) {
+            if ($this->impersonationContext->current() !== null) {
+                throw $e;
+            }
+
             // Log the error but don't fail the main operation
             // Audit logging should not break business operations
             Log::error('Failed to persist audit event', [

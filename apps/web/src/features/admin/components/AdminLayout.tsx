@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers } from 'lucide-react'
+import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers, Headphones } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { logoutSuperAdmin } from '../api'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 import { colorClasses } from '@/lib/designTokens'
@@ -12,9 +13,11 @@ const navigation = [
   { name: 'Billing', href: '/admin/billing', icon: CreditCard },
   { name: 'Monitoring', href: '/admin/monitoring', icon: Activity },
   { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText },
+  { labelKey: 'supportAccess.navigation', href: '/admin/support-access', icon: Headphones },
 ]
 
 export function AdminLayout() {
+  const { t } = useTranslation('admin')
   const location = useLocation()
   const navigate = useNavigate()
   const { admin, logout } = useAdminAuthStore()
@@ -50,7 +53,7 @@ export function AdminLayout() {
             {navigation.map((item) => {
               const isActive = location.pathname === item.href
               return (
-                <li key={item.name}>
+                <li key={item.href}>
                   <Link
                     to={item.href}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -60,7 +63,7 @@ export function AdminLayout() {
                     }`}
                   >
                     <item.icon className="h-5 w-5" />
-                    {item.name}
+                    {'labelKey' in item ? t(item.labelKey) : item.name}
                   </Link>
                 </li>
               )

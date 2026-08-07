@@ -13,6 +13,8 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'bank-statements.import',
   'bank-statements.reconcile',
   'bank-statements.reopen',
+  'support-access.view',
+  'support-access.manage',
 ])
 
 // Module-level permission mapping for navigation
@@ -65,6 +67,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'workshop-work-orders': ['work-orders.view'],
   scheduling: ['scheduling.appointments.view'],
   'batches.write-off': ['batches.write-off'],
+  'support-access': ['support-access.view'],
 }
 
 function isGeneratedPermission(permission: Permission): permission is GeneratedPermission {

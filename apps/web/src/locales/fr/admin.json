@@ -28,5 +28,24 @@
       "cancel": "Annuler",
       "close": "Fermer"
     }
+  },
+  "supportAccess": {
+    "navigation": "Accès assistance",
+    "title": "Accès assistance",
+    "subtitle": "Demandez le consentement, ouvrez une session limitée au sujet et gérez l'élévation à quatre yeux.",
+    "loading": "Chargement de l'accès assistance…",
+    "loadError": "Impossible de charger l'accès assistance",
+    "errors": { "mutation": "La modification de l'accès assistance n'a pas pu être effectuée." },
+    "revokeReason": "L'opérateur d'assistance a révoqué cette autorisation.",
+    "dialog": { "eyebrow": "Consentement requis", "title": "Demander l'accès au locataire", "description": "Indiquez un locataire, un utilisateur, un ticket et une durée limitée." },
+    "fields": { "tenantId": "ID du locataire", "subjectUserId": "ID de l'utilisateur concerné", "reason": "Motif de l'assistance", "ticket": "Référence du ticket", "duration": "Durée (minutes)" },
+    "validation": { "required": "Ce champ est obligatoire.", "uuid": "Saisissez un UUID valide.", "duration": "La durée doit être comprise entre 1 et 1 440 minutes." },
+    "actions": { "requestAccess": "Demander l'accès", "cancel": "Annuler", "sendRequest": "Envoyer la demande", "secondApprove": "Seconde approbation", "revoke": "Révoquer", "startSession": "Démarrer la session", "requestWrite": "Demander l'écriture", "submitElevation": "Soumettre au second approbateur", "approveWrite": "Approuver l'élévation en écriture" },
+    "queue": { "title": "File de consentement", "description": "Chaque accès est lié à un incident et expire automatiquement.", "scope": "Locataire {{tenant}} · Utilisateur {{subject}}" },
+    "status": { "pending_tenant_approval": "Accord du locataire", "pending_internal_approval": "Second accord", "active": "Active", "rejected": "Refusée", "revoked": "Révoquée", "expired": "Expirée" },
+    "session": { "active": "Session d'assistance active", "expires": "Expire le {{date}}" },
+    "access": { "read_only": "Lecture seule", "write_elevated": "Écriture élevée" },
+    "elevation": { "title": "Demander l'élévation en écriture", "description": "Décrivez précisément l'écriture non fiscale. Un partenaire configuré distinct doit l'approuver." },
+    "approvals": { "title": "Approbations à quatre yeux", "description": "Seul un partenaire configuré distinct peut approuver ces demandes.", "session": "Session {{session}}" }
   }
 }

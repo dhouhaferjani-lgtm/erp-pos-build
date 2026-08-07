@@ -1,0 +1,55 @@
+{
+  "navigation": { "tenant": "وصول الدعم" },
+  "title": "وصول الدعم",
+  "subtitle": "تحكّم في توقيت دخول فريق دعم AutoERP إلى مساحة عملك وراجع سجل النشاط المنقّح.",
+  "loading": "جارٍ تحميل وصول الدعم…",
+  "loadError": "تعذّر تحميل وصول الدعم",
+  "fields": {
+    "subjectOptional": "معرّف المستخدم المعني (اختياري)",
+    "reason": "سبب الدعم",
+    "ticket": "مرجع التذكرة",
+    "startsAt": "بداية النافذة",
+    "expiresAt": "نهاية النافذة"
+  },
+  "validation": { "required": "هذا الحقل مطلوب.", "expiryAfterStart": "يجب أن يكون وقت الانتهاء بعد وقت البدء." },
+  "window": { "title": "منح نافذة دعم مسبقًا", "description": "أنشئ نافذة محددة المدة لغرض دعم موثّق. تبقى كل جلسة مسجّلة بالكامل." },
+  "requests": { "title": "الطلبات والمنح", "description": "راجع طلبات الموافقة ونوافذ الوصول النشطة.", "expires": "تنتهي في {{date}}" },
+  "history": { "title": "نشاط الدعم", "description": "سجل منقّح لوصول الدعم يمكن للمستأجر الاطلاع عليه.", "empty": "لم يُسجّل أي نشاط دعم." },
+  "active": {
+    "title": "الدعم نشط حاليًا",
+    "description_zero": "لا توجد جلسات دعم نشطة",
+    "description_one": "جلسة دعم نشطة واحدة",
+    "description_two": "جلستا دعم نشطتان",
+    "description_few": "{{count}} جلسات دعم نشطة",
+    "description_many": "{{count}} جلسة دعم نشطة",
+    "description_other": "{{count}} جلسة دعم نشطة"
+  },
+  "actions": { "createWindow": "إنشاء نافذة دعم", "approve": "موافقة", "reject": "رفض", "revoke": "إلغاء" },
+  "status": {
+    "pending_tenant_approval": "بانتظار موافقتك",
+    "pending_internal_approval": "بانتظار الموافقة الثانية",
+    "active": "نشط",
+    "rejected": "مرفوض",
+    "revoked": "ملغى",
+    "expired": "منتهي"
+  },
+  "events": {
+    "grant_requested": "طُلب منح وصول الدعم",
+    "grant_approved": "تمت الموافقة على منح وصول الدعم",
+    "grant_rejected": "رُفض منح وصول الدعم",
+    "grant_revoked": "أُلغي منح وصول الدعم",
+    "session_started": "بدأت جلسة الدعم",
+    "session_ended": "انتهت جلسة الدعم",
+    "request_received": "تم استلام طلب الدعم",
+    "request_authorized": "طلب دعم مصرح به",
+    "request_denied": "طلب دعم مرفوض",
+    "write_elevation_requested": "طُلب رفع صلاحية الكتابة",
+    "write_elevation_approved": "تمت الموافقة على رفع صلاحية الكتابة",
+    "write_elevation_rejected": "رُفض رفع صلاحية الكتابة"
+  },
+  "access": { "read_only": "للقراءة فقط", "write_elevated": "صلاحية كتابة مرفوعة" },
+  "banner": { "active": "جلسة دعم بصلاحيات {{subject}}", "endingSoon": "ستنتهي الجلسة قريبًا", "exit": "الخروج من جلسة الدعم" },
+  "errors": { "mutation": "تعذّر إكمال تغيير وصول الدعم.", "exit": "لا تزال جلسة الدعم نشطة لتعذّر تأكيد الخروج منها." },
+  "rejection": { "defaultReason": "رفض مسؤول المستأجر طلب الدعم هذا." },
+  "revocation": { "defaultReason": "ألغى مسؤول المستأجر وصول الدعم." }
+}

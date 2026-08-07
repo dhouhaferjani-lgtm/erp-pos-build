@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Models\Enums\SuperAdminRole;
 use App\Models\SuperAdmin;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -39,7 +40,7 @@ final class EnsureSuperAdmin
         }
 
         // Check if user is a SuperAdmin instance
-        if (! $user instanceof SuperAdmin) {
+        if (! $user instanceof SuperAdmin || $user->role !== SuperAdminRole::SuperAdmin->value) {
             return response()->json([
                 'error' => [
                     'code' => 'FORBIDDEN',

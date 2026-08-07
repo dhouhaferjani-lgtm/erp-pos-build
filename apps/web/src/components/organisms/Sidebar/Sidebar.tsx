@@ -64,6 +64,7 @@ import {
   Globe,
   Trash2,
   MapPinned,
+  ShieldCheck,
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -343,8 +344,16 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       icon: BarChart3,
       permission: 'ownerReports',
     },
-    // Settings — the only bottom item. Its sub-pages (refund policies,
-    // customer-history audit, …) are reached from the Settings hub page.
+    // Support access and Settings stay pinned at the bottom. Settings sub-pages
+    // (refund policies, customer-history audit, …) remain in the hub page.
+    {
+      key: 'supportAccess',
+      labelKey: 'support-access:navigation.tenant',
+      href: '/settings/support-access',
+      icon: ShieldCheck,
+      permission: 'support-access',
+      section: 'bottom',
+    },
     {
       key: 'settings',
       href: '/settings',
@@ -367,7 +376,7 @@ function parseExpandedModules(value: string | null): Set<string> {
 }
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
-  const { t } = useTranslation(['common', 'catalog', 'finance'])
+  const { t } = useTranslation(['common', 'catalog', 'finance', 'support-access'])
   const location = useLocation()
   const { canAccessModule } = usePermissions()
   const { hasModule, config } = useCompanyConfig()
@@ -675,7 +684,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           </ul>
         </nav>
 
-        {/* Bottom navigation (Settings) */}
+        {/* Bottom navigation (support access and Settings) */}
         {bottomNavigation.length > 0 && (
           <div className={`border-t px-3 py-3 ${isOtospex ? `${colorTokens.border.subtle}` : colorTokens.variants.borderGray800}`}>
             <ul className="space-y-1">

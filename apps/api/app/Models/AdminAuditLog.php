@@ -10,6 +10,25 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
+/**
+ * @property string $id
+ * @property string $super_admin_id
+ * @property string|null $tenant_id
+ * @property string $action
+ * @property string|null $entity_type
+ * @property string|null $entity_id
+ * @property array<string, mixed>|null $old_values
+ * @property array<string, mixed>|null $new_values
+ * @property string|null $ip_address
+ * @property string|null $user_agent
+ * @property string|null $notes
+ * @property string|null $impersonator_id
+ * @property string|null $impersonation_session_id
+ * @property string|null $impersonation_event_id
+ * @property int|null $impersonation_sequence
+ * @property string|null $impersonation_previous_hash
+ * @property string|null $impersonation_hash
+ */
 class AdminAuditLog extends Model
 {
     // Central table — admin audit log must land centrally even if logged from tenant context.
@@ -29,6 +48,12 @@ class AdminAuditLog extends Model
         'ip_address',
         'user_agent',
         'notes',
+        'impersonator_id',
+        'impersonation_session_id',
+        'impersonation_event_id',
+        'impersonation_sequence',
+        'impersonation_previous_hash',
+        'impersonation_hash',
     ];
 
     /**
@@ -40,6 +65,7 @@ class AdminAuditLog extends Model
             'old_values' => 'array',
             'new_values' => 'array',
             'created_at' => 'datetime',
+            'impersonation_sequence' => 'integer',
         ];
     }
 

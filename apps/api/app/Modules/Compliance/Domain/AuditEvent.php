@@ -25,6 +25,12 @@ use Illuminate\Support\Carbon;
  * @property Carbon $occurred_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property string|null $impersonator_id
+ * @property string|null $impersonation_session_id
+ * @property string|null $impersonation_event_id
+ * @property int|null $impersonation_sequence
+ * @property string|null $impersonation_previous_hash
+ * @property string|null $impersonation_hash
  */
 class AuditEvent extends Model
 {
@@ -49,6 +55,12 @@ class AuditEvent extends Model
         'metadata',
         'event_hash',
         'occurred_at',
+        'impersonator_id',
+        'impersonation_session_id',
+        'impersonation_event_id',
+        'impersonation_sequence',
+        'impersonation_previous_hash',
+        'impersonation_hash',
     ];
 
     /**
@@ -212,6 +224,7 @@ class AuditEvent extends Model
             'payload' => 'array',
             'metadata' => 'array',
             'occurred_at' => 'datetime',
+            'impersonation_sequence' => 'integer',
         ];
     }
 

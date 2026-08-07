@@ -15,7 +15,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
+use Laravel\Sanctum\Contracts\HasAbilities;
 use Laravel\Sanctum\HasApiTokens;
+use Laravel\Sanctum\PersonalAccessToken;
+use Spatie\Permission\Contracts\Permission;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
@@ -49,7 +53,10 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory;
 
-    use HasRoles;
+    use HasRoles {
+        getAllPermissions as private getAllPermissionsWithoutImpersonationFilter;
+        hasPermissionTo as private hasPermissionToWithoutImpersonationFilter;
+    }
     use HasUuids;
     use Notifiable;
 
@@ -158,6 +165,85 @@ class User extends Authenticatable
     public function getPermissionsTeamId(): string
     {
         return $this->tenant_id;
+    }
+
+    /**
+     * Support-session permission intersection must start from the subject's
+     * current database grants, not from the token's previously minted list.
+     *
+     * @return Collection<int, Permission>
+     */
+    public function getUnfilteredPermissionsForSupportAccess(): Collection
+    {
+        return $this->getAllPermissionsWithoutImpersonationFilter();
+    }
+
+    /**
+     * @param  string|int|Permission|\BackedEnum  $permission
+     * @param  string|null  $guardName
+     */
+    public function hasPermissionTo($permission, $guardName = null): bool
+    {
+        $allowed = $this->impersonationPermissionNames();
+        if ($allowed === null) {
+            return $this->hasPermissionToWithoutImpersonationFilter($permission, $guardName);
+        }
+
+        $resolved = $this->filterPermission($permission, $guardName);
+        if (! in_array($resolved->name, $allowed, true)) {
+            return false;
+        }
+
+        return $this->hasPermissionToWithoutImpersonationFilter($permission, $guardName);
+    }
+
+    /** @return Collection<int, Permission> */
+    public function getAllPermissions(): Collection
+    {
+        $permissions = $this->getAllPermissionsWithoutImpersonationFilter();
+        $allowed = $this->impersonationPermissionNames();
+
+        if ($allowed === null) {
+            return $permissions;
+        }
+
+        return $permissions
+            ->filter(static fn ($permission): bool => in_array($permission->name, $allowed, true))
+            ->values();
+    }
+
+    /** @return list<string>|null */
+    private function impersonationPermissionNames(): ?array
+    {
+        $token = $this->resolvePersonalAccessToken($this->currentAccessToken());
+        if ($token === null || ! is_array($token->abilities)) {
+            return null;
+        }
+
+        $abilities = array_values(array_filter($token->abilities, is_string(...)));
+
+        $isImpersonating = false;
+        foreach ($abilities as $ability) {
+            if (str_starts_with($ability, 'impersonation:')) {
+                $isImpersonating = true;
+                break;
+            }
+        }
+        if (! $isImpersonating) {
+            return null;
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (string $ability): ?string => str_starts_with($ability, 'permission:')
+                ? substr($ability, strlen('permission:'))
+                : null,
+            $abilities,
+        )));
+    }
+
+    private function resolvePersonalAccessToken(?HasAbilities $token): ?PersonalAccessToken
+    {
+        return $token instanceof PersonalAccessToken ? $token : null;
     }
 
     /**

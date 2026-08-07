@@ -292,6 +292,13 @@ jobs:
       - name: Security regression suite (module gating + kill-switches)
         run: ./vendor/bin/phpunit tests/Feature/Security
 
+      # Consent-gated support access changes the global middleware priority
+      # ordering. A manual dispatch must therefore exercise every backend
+      # testsuite in one CI environment before that branch can be promoted.
+      - name: Full backend suite (manual security gate)
+        if: github.event_name == 'workflow_dispatch'
+        run: ./vendor/bin/phpunit
+
   backend-test-pgsql:
     name: Backend Tests — PG-only invariants (PHPUnit + PostgreSQL)
     runs-on: ubuntu-latest

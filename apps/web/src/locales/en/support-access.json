@@ -1,0 +1,71 @@
+{
+  "navigation": { "tenant": "Support access" },
+  "title": "Support access",
+  "subtitle": "Control when AutoERP support may enter your workspace and review the sanitized activity trail.",
+  "loading": "Loading support access…",
+  "loadError": "Support access could not be loaded",
+  "fields": {
+    "subjectOptional": "Subject user ID (optional)",
+    "reason": "Support reason",
+    "ticket": "Ticket reference",
+    "startsAt": "Window starts",
+    "expiresAt": "Window expires"
+  },
+  "validation": { "required": "This field is required.", "expiryAfterStart": "Expiry must be after the start." },
+  "window": {
+    "title": "Pre-grant a support window",
+    "description": "Create a time-boxed window for a documented support purpose. Starting a session still creates a complete audit trail."
+  },
+  "requests": {
+    "title": "Requests and grants",
+    "description": "Review incoming consent requests and active access windows.",
+    "expires": "Expires {{date}}"
+  },
+  "history": {
+    "title": "Support activity",
+    "description": "A sanitized tenant-visible record of support access.",
+    "empty": "No support activity has been recorded."
+  },
+  "active": {
+    "title": "Support is currently active",
+    "description_one": "{{count}} active support session",
+    "description_other": "{{count}} active support sessions"
+  },
+  "actions": {
+    "createWindow": "Create support window",
+    "approve": "Approve",
+    "reject": "Reject",
+    "revoke": "Revoke"
+  },
+  "status": {
+    "pending_tenant_approval": "Awaiting your approval",
+    "pending_internal_approval": "Awaiting second approval",
+    "active": "Active",
+    "rejected": "Rejected",
+    "revoked": "Revoked",
+    "expired": "Expired"
+  },
+  "events": {
+    "grant_requested": "Support grant requested",
+    "grant_approved": "Support grant approved",
+    "grant_rejected": "Support grant rejected",
+    "grant_revoked": "Support grant revoked",
+    "session_started": "Support session started",
+    "session_ended": "Support session ended",
+    "request_received": "Support request received",
+    "request_authorized": "Authorized support request",
+    "request_denied": "Denied support request",
+    "write_elevation_requested": "Write elevation requested",
+    "write_elevation_approved": "Write elevation approved",
+    "write_elevation_rejected": "Write elevation rejected"
+  },
+  "access": { "read_only": "Read-only", "write_elevated": "Write-elevated" },
+  "banner": {
+    "active": "Support session as {{subject}}",
+    "endingSoon": "Session ending soon",
+    "exit": "Exit support session"
+  },
+  "errors": { "mutation": "The support-access change could not be completed.", "exit": "The support session is still active because exit could not be confirmed." },
+  "rejection": { "defaultReason": "Tenant administrator rejected this support request." },
+  "revocation": { "defaultReason": "Tenant administrator revoked support access." }
+}

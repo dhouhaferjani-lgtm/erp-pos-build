@@ -10,6 +10,7 @@ import { AppRoutes } from './routes'
 import { languages } from './lib/i18n'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { CookieConsent } from './components/CookieConsent'
+import { ImpersonationBanner } from './features/support-access/components/ImpersonationBanner'
 
 function App() {
   const { i18n } = useTranslation()
@@ -28,6 +29,7 @@ function App() {
           <CompanyProvider>
             <CompanyConfigProvider>
               <LocationProvider>
+                <ImpersonationBanner />
                 <AppRoutes />
                 <Toaster position="top-right" richColors />
                 <CookieConsent />

@@ -41,6 +41,7 @@ use App\Modules\Replenishment\Providers\ReplenishmentServiceProvider;
 use App\Modules\Scheduling\SchedulingServiceProvider;
 use App\Modules\Service\Providers\ServiceModuleServiceProvider;
 use App\Modules\SmartPrompts\Providers\SmartPromptsServiceProvider;
+use App\Modules\SupportAccess\Providers\SupportAccessServiceProvider;
 use App\Modules\Taxation\Providers\TaxationServiceProvider;
 use App\Modules\Tenant\Infrastructure\Providers\TenantServiceProvider;
 use App\Modules\Treasury\Providers\TreasuryServiceProvider;
@@ -104,6 +105,7 @@ return [
     CartServiceProvider::class,
     ProgressionServiceProvider::class,
     SmartPromptsServiceProvider::class,
+    SupportAccessServiceProvider::class,
     TechnicianServiceProvider::class,
     BundleServiceProvider::class,
     WorkshopWorkOrderServiceProvider::class,

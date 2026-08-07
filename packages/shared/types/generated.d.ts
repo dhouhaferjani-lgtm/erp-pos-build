@@ -297,13 +297,14 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance';
 export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
 export type PostingMode = 'after_commit' | 'synchronous_in_transaction';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'refund_write_off' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'refund_write_off' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable' | 'sales_rounding_difference_income' | 'sales_rounding_difference_expense';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -856,6 +857,17 @@ roles: Array<any>;
 permissions: Array<any>;
 emailVerified: boolean;
 emailVerifiedAt: string | null;
+impersonation: App.Modules.Identity.Application.DTOs.ImpersonationContextViewData | null;
+};
+export type ImpersonationContextViewData = {
+session_id: string;
+subject_user_id: string;
+subject_name: string;
+reason: string;
+ticket_ref: string;
+access_level: string;
+expires_at: string;
+remaining_seconds: number;
 };
 export type LoginResponseData = {
 user: App.Modules.Identity.Application.DTOs.AuthUserData;
@@ -2031,6 +2043,53 @@ declare namespace App.Modules.SmartPrompts.Domain.Enums {
 export type RecommendationContext = 'cart' | 'checkout' | 'reorder';
 export type SmartPromptsVariant = 'inline' | 'toast' | 'both' | 'off';
 }
+declare namespace App.Modules.SupportAccess.Application.DTOs {
+export type ElevationData = {
+id: string;
+session_id: string;
+status: App.Modules.SupportAccess.Domain.Enums.ElevationStatus;
+reason: string;
+requested_at: any;
+};
+export type SessionData = {
+id: string;
+grant_id: string;
+subject_user_id: string;
+access_level: App.Modules.SupportAccess.Domain.Enums.SessionAccessLevel;
+started_at: any;
+expires_at: any;
+ended_at: any | null;
+reason: string;
+ticket_ref: string;
+};
+export type SupportAccessLogEntryData = {
+id: string;
+session_id: string;
+subject_user_id: string;
+event_type: App.Modules.SupportAccess.Domain.Enums.SessionEventType;
+outcome: App.Modules.SupportAccess.Domain.Enums.AuditOutcome;
+action: string | null;
+http_method: string | null;
+ticket_ref: string | null;
+occurred_at: any;
+};
+export type SupportAccessOverviewData = {
+grants: Array<any>;
+active_sessions: Array<App.Modules.SupportAccess.Application.DTOs.SessionData>;
+log: Array<App.Modules.SupportAccess.Application.DTOs.SupportAccessLogEntryData>;
+pending_elevations: Array<App.Modules.SupportAccess.Application.DTOs.ElevationData>;
+};
+}
+declare namespace App.Modules.SupportAccess.Domain.Enums {
+export type AuditOutcome = 'allowed' | 'denied' | 'failed';
+export type ElevationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
+export type GrantStatus = 'pending_tenant_approval' | 'pending_internal_approval' | 'active' | 'rejected' | 'revoked' | 'expired';
+export type GrantType = 'per_incident' | 'pre_granted_window';
+export type ImpersonationActionDecision = 'safe' | 'requires_elevation' | 'hard_blocked';
+export type SessionAccessLevel = 'read_only' | 'write_elevated';
+export type SessionEndReason = 'exited' | 'revoked' | 'expired' | 'grant_revoked' | 'operator_ended';
+export type SessionEventType = 'grant_requested' | 'grant_approved' | 'grant_rejected' | 'grant_revoked' | 'session_started' | 'session_ended' | 'request_authorized' | 'request_denied' | 'write_elevation_requested' | 'write_elevation_approved' | 'write_elevation_rejected' | 'reveal_recorded';
+}
 declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
@@ -2130,6 +2189,7 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
+export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch';
 export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentAccountPurpose = 'checks_to_collect' | 'checks_to_pay' | 'effects_receivable' | 'effets_payable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';

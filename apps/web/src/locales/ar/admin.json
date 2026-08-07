@@ -28,5 +28,24 @@
       "cancel": "إلغاء",
       "close": "إغلاق"
     }
+  },
+  "supportAccess": {
+    "navigation": "وصول الدعم",
+    "title": "وصول الدعم",
+    "subtitle": "اطلب الموافقة وابدأ جلسة مقيدة بالمستخدم وأدر رفع الصلاحية بمبدأ العينين الإضافيتين.",
+    "loading": "جارٍ تحميل وصول الدعم…",
+    "loadError": "تعذّر تحميل وصول الدعم",
+    "errors": { "mutation": "تعذّر إكمال تغيير وصول الدعم." },
+    "revokeReason": "ألغى مشغّل الدعم هذه المنحة.",
+    "dialog": { "eyebrow": "الموافقة مطلوبة", "title": "طلب الوصول إلى المستأجر", "description": "حدّد مستأجرًا ومستخدمًا وتذكرة ومدة محدودة." },
+    "fields": { "tenantId": "معرّف المستأجر", "subjectUserId": "معرّف المستخدم المعني", "reason": "سبب الدعم", "ticket": "مرجع التذكرة", "duration": "المدة (بالدقائق)" },
+    "validation": { "required": "هذا الحقل مطلوب.", "uuid": "أدخل معرّف UUID صالحًا.", "duration": "يجب أن تتراوح المدة بين دقيقة واحدة و1440 دقيقة." },
+    "actions": { "requestAccess": "طلب الوصول", "cancel": "إلغاء", "sendRequest": "إرسال طلب الموافقة", "secondApprove": "الموافقة الثانية", "revoke": "إلغاء المنحة", "startSession": "بدء الجلسة", "requestWrite": "طلب صلاحية الكتابة", "submitElevation": "إرسال للموافقة الثانية", "approveWrite": "الموافقة على رفع صلاحية الكتابة" },
+    "queue": { "title": "قائمة الموافقات", "description": "كل وصول مرتبط بحادثة وينتهي تلقائيًا.", "scope": "المستأجر {{tenant}} · المستخدم {{subject}}" },
+    "status": { "pending_tenant_approval": "موافقة المستأجر", "pending_internal_approval": "الموافقة الثانية", "active": "نشط", "rejected": "مرفوض", "revoked": "ملغى", "expired": "منتهي" },
+    "session": { "active": "جلسة دعم نشطة", "expires": "تنتهي في {{date}}" },
+    "access": { "read_only": "للقراءة فقط", "write_elevated": "صلاحية كتابة مرفوعة" },
+    "elevation": { "title": "طلب رفع صلاحية الكتابة", "description": "اشرح عملية الكتابة غير الجبائية بدقة. يجب أن يوافق عليها شريك مهيأ ومختلف." },
+    "approvals": { "title": "موافقات العينين الإضافيتين", "description": "لا يجوز الموافقة على هذه الطلبات إلا لشريك مهيأ ومختلف.", "session": "الجلسة {{session}}" }
   }
 }
