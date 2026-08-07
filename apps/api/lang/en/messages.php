@@ -71,6 +71,12 @@ return [
         'insufficient_repository_balance' => 'This repository\'s balance (:available :currency) is insufficient to record an outflow of :requested :currency; this repository does not allow a negative balance.',
     ],
 
+    // Taxation
+    'taxation' => [
+        'cancel_refused_period_closed' => 'Document :document cannot be cancelled: its VAT period (:period) is closed, so the cancellation would move VAT out of a period that is already settled. Issue a credit note instead, or ask your accountant to reopen :period first.',
+        'cancel_refused_period_filed' => 'Document :document cannot be cancelled: its VAT period (:period) has already been filed with the tax authority. A filed period can never be reopened — issue a credit note instead.',
+    ],
+
     // Inventory
     'inventory' => [
         'adjustment_recorded' => 'Stock adjustment recorded successfully.',

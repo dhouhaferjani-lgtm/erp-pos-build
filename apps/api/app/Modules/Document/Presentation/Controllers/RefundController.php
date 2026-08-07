@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\RefundService;
+use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -60,6 +61,16 @@ class RefundController extends Controller
                 'data' => $cancelled->load(['lines', 'partner']),
                 'message' => 'Invoice cancelled successfully',
             ]);
+        } catch (DocumentPeriodLockedException $e) {
+            // R2-F1. The generic catch below flattens every failure into
+            // `{error: <message>, code: <message>}` — `code` carries the message,
+            // not a code — which would erase the typed refusal code and its
+            // period metadata. Re-throwing hands the exception to the dedicated
+            // renderer in bootstrap/app.php, which emits the standard
+            // `{error: {code, message, …}}` envelope with a stable machine code.
+            // The pre-existing envelope of the generic branch is left untouched
+            // (out of this lane's scope; other consumers assert on it).
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
@@ -89,6 +100,9 @@ class RefundController extends Controller
                 'data' => $cancelled->load(['lines', 'partner']),
                 'message' => 'Credit note cancelled successfully',
             ]);
+        } catch (DocumentPeriodLockedException $e) {
+            // R2-F1 — see cancelInvoice() above.
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),

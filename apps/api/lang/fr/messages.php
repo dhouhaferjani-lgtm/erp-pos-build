@@ -71,6 +71,12 @@ return [
         'insufficient_repository_balance' => 'Le solde de ce dépôt (:available :currency) est insuffisant pour enregistrer une sortie de :requested :currency ; ce dépôt n\'autorise pas un solde négatif.',
     ],
 
+    // Taxation
+    'taxation' => [
+        'cancel_refused_period_closed' => 'Le document :document ne peut pas être annulé : sa période de TVA (:period) est clôturée, l\'annulation sortirait donc de la TVA d\'une période déjà arrêtée. Émettez un avoir, ou demandez à votre comptable de rouvrir :period au préalable.',
+        'cancel_refused_period_filed' => 'Le document :document ne peut pas être annulé : sa période de TVA (:period) a déjà été déclarée auprès de l\'administration fiscale. Une période déclarée ne peut jamais être rouverte — émettez un avoir à la place.',
+    ],
+
     // Inventory
     'inventory' => [
         'adjustment_recorded' => 'Ajustement de stock enregistré avec succès.',

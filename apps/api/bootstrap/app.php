@@ -18,6 +18,7 @@ use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
 use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
+use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherExpiredException;
@@ -418,6 +419,26 @@ return Application::configure(basePath: dirname(__DIR__))
                         'requested' => $e->requested,
                         'resulting_balance' => $e->resultingBalance,
                         'currency' => $e->currency,
+                    ],
+                ], 422);
+            }
+        });
+
+        // R2-F1 — a cancellation refused because the document's VAT period is
+        // CLOSED or FILED. Typed so the FE can tell the two apart: a CLOSED period
+        // can be reopened by an accountant, a FILED one never can, and only the
+        // second is a hard "issue a credit note" dead end. Registered BEFORE the
+        // generic DomainException handler (it extends \DomainException and
+        // Laravel 11 matches render callbacks in registration order).
+        $exceptions->render(function (DocumentPeriodLockedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode->value,
+                        'message' => $e->getMessage(),
+                        'document_number' => $e->documentNumber,
+                        'period_label' => $e->periodLabel,
+                        'period_status' => $e->periodStatus->value,
                     ],
                 ], 422);
             }
