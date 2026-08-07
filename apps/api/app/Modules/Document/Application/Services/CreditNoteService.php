@@ -99,8 +99,18 @@ class CreditNoteService
 
         $taxResult = $this->taxCalculationService->calculateDocumentTaxes($document);
 
+        // Gate C-1 (2026-08-07, Q1 lane) — `documentTaxTotal` (the credit
+        // note's OWN document-level duty, e.g. STAMP_CREDIT_NOTE) and
+        // `lineItemsTaxTotal` were folded into `total`/`tax_amount` here but
+        // never persisted to their own columns, so
+        // `AccountingService::createCreditNoteGLEntries()`'s Q1 fix
+        // (`$hasStampDuty = $document->stamp_duty_amount > 0`) was inert on
+        // every REAL credit note — this is the SAME split
+        // `DocumentTotalsCalculator` already persists for drafts/invoices.
         $document->update([
             'subtotal' => $taxResult->subtotal,
+            'line_tax_amount' => $taxResult->lineItemsTaxTotal,
+            'stamp_duty_amount' => $taxResult->documentTaxTotal,
             'tax_amount' => $taxResult->totalTax,
             'total' => $taxResult->total,
         ]);
@@ -1231,6 +1241,15 @@ class CreditNoteService
      * the credit note -- readable as `creditNote.total -
      * CreditNoteAllocation.amount`, no new column needed.
      *
+     * Gate C-2 (2026-08-07, Q1 lane) — the amount being clamped is now the
+     * credit note's EX-STAMP total (`total - stamp_duty_amount`), mirroring
+     * `remainingCreditHeadroom()` above (already duty-exclusive). Q1: the
+     * CN's own stamp is a fiscal charge borne by the company, never a
+     * reduction of what the customer owes, so it must never reduce
+     * `balance_due` either — allocating it would desync the GL's ex-stamp 411
+     * movement (`AccountingService::createCreditNoteGLEntries()`) from the
+     * document ledger's `balance_due`, the exact class of drift N1 raised.
+     *
      * @param  string|null  $allocatedBy  User ID who is allocating the credit note (for audit trail)
      *
      * @throws \InvalidArgumentException
@@ -1275,8 +1294,17 @@ class CreditNoteService
             $scale = $this->scaleFor($invoice);
             /** @var numeric-string $currentBalance */
             $currentBalance = (string) ($invoice->balance_due ?? $invoice->total ?? '0');
+
+            // Q1 (gate C-2) — allocate EX-STAMP: the credit note's own
+            // stamp_duty_amount never reduces what the customer owes.
+            /** @var numeric-string $creditNoteStampDutyAmount */
+            $creditNoteStampDutyAmount = (string) ($creditNote->stamp_duty_amount ?? '0');
+            /** @var numeric-string $creditNoteDocumentTotal */
+            $creditNoteDocumentTotal = (string) $creditNote->total;
             /** @var numeric-string $creditNoteTotal */
-            $creditNoteTotal = (string) $creditNote->total;
+            $creditNoteTotal = bccomp($creditNoteStampDutyAmount, '0', $scale) > 0
+                ? bcsub($creditNoteDocumentTotal, $creditNoteStampDutyAmount, $scale)
+                : $creditNoteDocumentTotal;
 
             /** @var numeric-string $clampedAmount */
             $clampedAmount = bccomp($creditNoteTotal, $currentBalance, $scale) > 0 ? $currentBalance : $creditNoteTotal;

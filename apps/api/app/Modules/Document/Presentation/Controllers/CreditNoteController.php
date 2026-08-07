@@ -290,8 +290,18 @@ class CreditNoteController extends Controller
                 // where subtotal + tax_amount != total whenever the
                 // recomputed subtotal differed from the one stored at draft
                 // time (e.g. the line-based discount bug, B1).
+                //
+                // Gate C-1 (2026-08-07, Q1 lane) — persist `stamp_duty_amount`
+                // / `line_tax_amount` here too, mirroring
+                // CreditNoteService::applyConfirmEquivalentTotals(). This
+                // endpoint recomputes independently (it does not call that
+                // service method), so a PRE-FIX draft confirmed POST-fix must
+                // still get the column populated here — closes gate m-3's
+                // draft case.
                 $lockedDocument->update([
                     'subtotal' => $taxResult->subtotal,
+                    'line_tax_amount' => $taxResult->lineItemsTaxTotal,
+                    'stamp_duty_amount' => $taxResult->documentTaxTotal,
                     'tax_amount' => $taxResult->totalTax,
                     'total' => $taxResult->total,
                 ]);

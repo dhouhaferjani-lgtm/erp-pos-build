@@ -7,6 +7,8 @@ namespace Tests\Feature\Document;
 use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -175,6 +177,17 @@ class CreditNoteMoneyLaneTest extends TestCase
             'name' => 'État - Droit de timbre à reverser',
             'type' => 'liability',
             'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
+            'is_active' => true,
+        ]);
+        // Q1 (2026-08-07 ruling) — the credit note's OWN stamp duty books as a
+        // separate fiscal-charge pair; this is its DEBIT leg.
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '6354',
+            'name' => "Droits d'enregistrement et de timbre",
+            'type' => 'expense',
+            'system_purpose' => SystemAccountPurpose::PurchaseStampDuty,
             'is_active' => true,
         ]);
     }
@@ -486,7 +499,16 @@ class CreditNoteMoneyLaneTest extends TestCase
         $create->assertCreated();
         $this->assertSame('120.600', $create->json('data.total'), 'the CN itself still carries its own 0.600 stamp');
 
+        // C-1 (gate 2026-08-07) — deliberate flip: the DRAFT must persist its
+        // own stamp to the `stamp_duty_amount` COLUMN, not just fold it into
+        // `total`. Before the fix this column stayed at its DB default
+        // ('0.000') even though `total` already included the 0.600 stamp.
         $creditNoteId = $create->json('data.id');
+        $this->assertSame(
+            '0.600',
+            (string) Document::findOrFail($creditNoteId)->stamp_duty_amount,
+            'the draft must persist its own stamp_duty_amount, not just fold it into total'
+        );
         $this->actingAs($this->user)->postJson("/api/v1/credit-notes/{$creditNoteId}/confirm")->assertOk();
         $post = $this->actingAs($this->user)->postJson("/api/v1/credit-notes/{$creditNoteId}/post");
         $post->assertOk();
@@ -504,6 +526,122 @@ class CreditNoteMoneyLaneTest extends TestCase
         $this->assertSame('120.000', (string) $allocation->amount, 'only 120.000 of the 120.600 CN total is allocated to the invoice');
         $unallocated = bcsub('120.600', (string) $allocation->amount, 3);
         $this->assertSame('0.600', $unallocated, 'the CNs own stamp stays unallocated residual, per existing allocated-vs-total semantics');
+    }
+
+    /**
+     * DECISIVE E2E test (gate 2026-08-07, closing C-1 + C-2 together) — creates
+     * a real duty-bearing TN credit note through the PRODUCTION service/API
+     * flow (create -> confirm -> post), with NO hand-written
+     * `stamp_duty_amount` fixture anywhere. Proves three things at once:
+     *
+     * 1. (C-1) The live CN flow PERSISTS `stamp_duty_amount` to the column —
+     *    at create (Draft) and again at confirm-time recompute — not just
+     *    folds it into `total`.
+     * 2. (C-1, GL shape) Posting produces the Q1 shape from THIS real
+     *    document, not a fabricated one: 411 credited ex-stamp, a DEBIT on
+     *    the fiscal-charge account (6354), a CREDIT on the stamp-payable
+     *    account (4375).
+     * 3. (C-2) `allocateCreditNote()` (auto-run by `/post` for an
+     *    invoice-linked CN) allocates the EX-STAMP amount, so the GL's 411
+     *    movement and the invoice's `balance_due` delta AGREE — both ex-stamp,
+     *    no permanent unreconcilable residual on the trial balance.
+     *
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md §Q1
+     * docs/superpowers/reviews/2026-08-07-q1-cn-stamp-gl-gate.md C-1, C-2
+     */
+    public function test_amount_based_credit_note_with_tn_stamp_persists_column_and_posts_ex_stamp_gl_and_allocation(): void
+    {
+        // 99.000 net, 19% VAT (18.810) + 1.000 STAMP_TAX_INVOICE = 118.810 total.
+        $invoice = $this->createPostedInvoiceWithLine('INV-Q1-E2E', qty: '1.0000', unitPrice: '99.000', taxRate: '19.00');
+
+        $create = $this->actingAs($this->user)->postJson('/api/v1/credit-notes', [
+            'source_invoice_id' => $invoice->id,
+            'amount' => '50.000',
+            'reason' => 'return',
+        ]);
+        $create->assertCreated();
+        $this->assertSame('50.600', $create->json('data.total'), 'CN total still folds in its own 0.600 stamp');
+
+        $creditNoteId = $create->json('data.id');
+
+        // (C-1) Persisted at DRAFT creation — no fixture wrote this column.
+        $this->assertSame(
+            '0.600',
+            (string) Document::findOrFail($creditNoteId)->stamp_duty_amount,
+            'the live create flow must persist stamp_duty_amount, not just fold it into total'
+        );
+
+        $confirm = $this->actingAs($this->user)->postJson("/api/v1/credit-notes/{$creditNoteId}/confirm");
+        $confirm->assertOk();
+
+        // (C-1) Persisted again at CONFIRM-time recompute — closes gate m-3's
+        // draft case: a pre-fix draft confirmed post-fix gets the column too.
+        $this->assertSame(
+            '0.600',
+            (string) Document::findOrFail($creditNoteId)->stamp_duty_amount,
+            'confirm() must also persist stamp_duty_amount on its own recompute'
+        );
+
+        $post = $this->actingAs($this->user)->postJson("/api/v1/credit-notes/{$creditNoteId}/post");
+        $post->assertOk();
+
+        // (C-1, GL shape) — the REAL posting path, not a hand-built fixture.
+        $entry = JournalEntry::query()
+            ->where('source_type', 'Document')
+            ->where('source_id', $creditNoteId)
+            ->with('lines')
+            ->firstOrFail();
+
+        $arAccount = Account::where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::CustomerReceivable)
+            ->firstOrFail();
+        $stampChargeAccount = Account::where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::PurchaseStampDuty)
+            ->firstOrFail();
+        $stampPayableAccount = Account::where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::SalesStampDutyPayable)
+            ->firstOrFail();
+
+        /** @var JournalLine $arLine */
+        $arLine = $entry->lines->firstWhere('account_id', $arAccount->id);
+        $this->assertNotNull($arLine, 'AR line must exist');
+        $this->assertSame('50.000', (string) $arLine->credit, '411 must be credited EX-STAMP only (Q1) — from the REAL posting, not a fixture');
+
+        /** @var JournalLine $stampChargeLine */
+        $stampChargeLine = $entry->lines->firstWhere('account_id', $stampChargeAccount->id);
+        $this->assertNotNull($stampChargeLine, 'the fiscal-charge (6354) DEBIT leg must exist');
+        $this->assertSame('0.600', (string) $stampChargeLine->debit);
+
+        /** @var JournalLine $stampPayableLine */
+        $stampPayableLine = $entry->lines->firstWhere('account_id', $stampPayableAccount->id);
+        $this->assertNotNull($stampPayableLine, 'the stamp-payable (4375) CREDIT leg must exist');
+        $this->assertSame('0.600', (string) $stampPayableLine->credit);
+
+        $debits = '0';
+        $credits = '0';
+        foreach ($entry->lines as $line) {
+            $debits = bcadd($debits, (string) $line->debit, 3);
+            $credits = bcadd($credits, (string) $line->credit, 3);
+        }
+        $this->assertSame($credits, $debits, 'the posted entry must balance');
+
+        // (C-2) `/post` auto-allocates (invoice-linked CN) — the allocation
+        // must be EX-STAMP, matching the GL's 411 movement exactly.
+        /** @var CreditNoteAllocation $allocation */
+        $allocation = CreditNoteAllocation::where('credit_note_id', $creditNoteId)->firstOrFail();
+        $this->assertSame(
+            (string) $arLine->credit,
+            (string) $allocation->amount,
+            'the allocation must agree with the GL 411 movement — both ex-stamp'
+        );
+        $this->assertSame('50.000', (string) $allocation->amount);
+
+        $invoiceAfter = $this->actingAs($this->user)->getJson("/api/v1/invoices/{$invoice->id}");
+        $this->assertSame(
+            0,
+            bccomp((string) $invoiceAfter->json('data.balance_due'), '68.810', 3),
+            'balance_due must drop by the EX-STAMP amount only (118.810 - 50.000), agreeing with the GL — got '.$invoiceAfter->json('data.balance_due')
+        );
     }
 
     /**
