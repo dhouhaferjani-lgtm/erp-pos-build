@@ -364,6 +364,45 @@ class PaymentTest extends TestCase
         $this->assertArrayHasKey('withholding_rate', $response->json('error.errors') ?? []);
     }
 
+    /**
+     * P1 fiscal guard (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
+     * #1, §20-69 / MTP-WHT-04): a `withholding_rate = 0` must settle the payment
+     * at full gross with NO certificate created — pre-fix
+     * `WithholdingCertificateService` had no zero-rate guard and manufactured a
+     * draft `0.000` certificate, sequencing a fictitious fiscal document.
+     *
+     * The zero-rate guard raises `\DomainException`, which
+     * `PaymentController::store()` already catches (logs a warning, does not
+     * fail the payment) — so the payment itself must still 201, unchanged.
+     */
+    public function test_store_settles_at_full_gross_with_no_certificate_when_withholding_rate_is_zero(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1190.00',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $this->invoice->id,
+                    'amount' => '1190.00',
+                ],
+            ],
+            'withholding_enabled' => true,
+            'withholding_rate' => '0',
+        ]);
+
+        $response->assertStatus(201);
+        $paymentId = $response->json('data.id');
+
+        $payment = Payment::query()->findOrFail($paymentId);
+        $this->assertNull(
+            $payment->withholding_certificate_id,
+            'a zero withholding_rate must settle at full gross with NO certificate created'
+        );
+        $this->assertDatabaseCount('withholding_certificates', 0);
+    }
+
     public function test_can_create_payment_with_allocation(): void
     {
         $location = Location::factory()->create(['company_id' => $this->company->id]);

@@ -431,7 +431,7 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     }
   })
 
-  test('MTP-WHT-04: withholding_rate = 0 settles at full gross — TRIPWIRE(#1): a 0.000 certificate is manufactured today', async ({
+  test('MTP-WHT-04: withholding_rate = 0 settles at full gross with NO certificate (fix #1)', async ({
     request,
   }) => {
     const customerId = await createCustomer(request, owner, uniqueName('WHT04'))
@@ -451,34 +451,16 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     })
     expect(payment.status, `payment create -> ${payment.status} ${JSON.stringify(payment.data)}`).toBe(201)
 
-    // Snapshot the certificate surface and retire any junk BEFORE any further
-    // assertion runs. `finally`-based cleanup was rejected here: an `expect`
-    // inside a `finally` masks the try-block's real failure, and a bare
-    // `finally` leaves the cleanup unasserted on the failing path — which is
-    // exactly the path this case takes today. No assertion sits between the
-    // read and the delete, so the probe can never be stranded.
+    // FIXED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
+    // #1): `WithholdingCertificateService::assertNonZeroWithholding()` now
+    // refuses certificate creation BEFORE any fiscal sequencing/hash write
+    // whenever the effective withholding amount is `0.000`.
+    // `PaymentController::store()`'s existing try/catch(\DomainException)
+    // swallows the refusal, so the payment above still 201s at full gross —
+    // there is nothing left to retire here (this used to be a "snapshot the
+    // junk certificate + void it" step; see the removed TRIPWIRE (#1) below).
     const certificates = await certificatesForPartner(request, owner, customerId)
     const observed = certificates.map((c) => `${c.certificate_number}:${c.withholding_amount}`)
-    // A 0.000-withheld draft is junk, not money — the tenant must not be left
-    // holding a live fictitious tax document. EVERY observed certificate is
-    // retired, not just the first.
-    //
-    // Retired by VOIDING, not deleting: `DELETE /withholding/certificates/{id}`
-    // on a payment-linked certificate hits
-    // `payments_withholding_certificate_id_foreign` and escapes
-    // `WithholdingCertificateController::destroy()` (which catches only
-    // \DomainException) as a raw 500 that (APP_DEBUG=true) leaks the SQL, host,
-    // port and tenant database name — ticket #6. Void is the only working retire
-    // path here.
-    for (const junk of certificates) {
-      const retired = await post(request, owner, `/withholding/certificates/${junk.id}/void`, {
-        reason: 'W5a MTP-WHT-04 zero-rate junk certificate retired',
-      })
-      expect(
-        retired.status,
-        `junk zero-rate certificate ${junk.certificate_number} retired (voided)`
-      ).toBeLessThan(300)
-    }
 
     // "…payment settles at full gross" — true independently of the certificate
     // question: nothing is withheld from the cash actually moved.
@@ -488,17 +470,14 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     const settled = await get(request, owner, `/documents/${invoice.id}`)
     expect(settled.data.balance_due, 'invoice settled at full gross, nothing withheld').toBe('0.000')
 
-    // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #1):
-    // today a zero rate still manufactures a draft certificate for 0.000 withheld,
-    // because PaymentController::store():916-940 branches on `withholding_enabled`
-    // alone and `WithholdingCalculation::calculate()` has no zero-rate guard.
-    // TRIPWIRE (#1) — GREEN today, pinning the DEFECT: exactly one zero-amount
-    // certificate is manufactured. When the guard lands this goes RED; the
-    // deliberate update is the plan's expected behaviour, `toEqual([])`.
+    // FIXED (was TRIPWIRE #1 — GREEN pre-fix, pinning the DEFECT that a zero
+    // withholding rate manufactured exactly one 0.000 certificate, via
+    // `toEqual([expect.stringMatching(/:0\.000$/)])`). Now: no certificate at
+    // all.
     expect(
       observed,
-      'TRIPWIRE (#1): a zero withholding rate manufactures exactly one 0.000 certificate today'
-    ).toEqual([expect.stringMatching(/:0\.000$/)])
+      'FIXED (was TRIPWIRE #1): a zero withholding rate creates NO certificate'
+    ).toEqual([])
   })
 
   test('MTP-WHT-05: TRIPWIRE(#3) — a user without withholding.* can read/create/edit certificates today (routes ungated)', async ({

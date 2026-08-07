@@ -18,6 +18,7 @@ use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInt
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
 use App\Modules\Taxation\Domain\ValueObjects\WithholdingCalculation;
 use App\Modules\Treasury\Domain\Payment;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -31,6 +32,7 @@ class WithholdingCertificateService
         private readonly WithholdingCertificateRepositoryInterface $certificateRepository,
         private readonly WithholdingCalculationService $calculationService,
         private readonly WithholdingHashChainService $hashChainService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -69,6 +71,8 @@ class WithholdingCertificateService
                     throw new \DomainException('No applicable withholding rule found');
                 }
             }
+
+            $this->assertNonZeroWithholding($calculation);
 
             // Generate certificate number
             $year = now()->year;
@@ -175,6 +179,8 @@ class WithholdingCertificateService
                 }
             }
 
+            $this->assertNonZeroWithholding($calculation);
+
             // Generate certificate number
             $year = now()->year;
             $certificateNumber = $this->certificateRepository->generateCertificateNumber(
@@ -209,6 +215,53 @@ class WithholdingCertificateService
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
+    }
+
+    /**
+     * P1 fiscal guard (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
+     * #1, §20-69): a zero EFFECTIVE withholding amount — a zero rate, a zero
+     * gross amount, or any combination that rounds to `0.000` at currency
+     * scale 3 — must never manufacture a withholding certificate. Pre-fix,
+     * `WithholdingCalculation::calculate()`/`calculateWithOverride()` had no
+     * zero-rate guard, so `bcmul($gross, '0', 3)` silently produced a `0.000`
+     * DRAFT row that was TEJ-exportable, PDF-printable, and — on `issue()` —
+     * written into the withholding fiscal hash chain under the acting user's
+     * identity. A stream of `0.000` certificates is a stream of fictitious
+     * tax documents, and it inflates `generateCertificateNumber()`'s per-year
+     * sequence so real certificates carry non-contiguous numbers.
+     *
+     * MUST be called AFTER the calculation is finalised but BEFORE
+     * `certificateRepository->generateCertificateNumber()` (no sequence
+     * number is derived for a phantom row) and BEFORE
+     * `certificateRepository->create()` (no row is written at all) — the
+     * guard is preventive, not corrective, because a payment-linked
+     * certificate cannot be deleted through the API afterwards (only voided).
+     *
+     * Both callers of this guard (`create()`'s manual-override percentage
+     * path and `createFromPayment()`'s fraction-rate path) route through it,
+     * so neither entry point can slip a zero-amount certificate past it.
+     *
+     * @throws \DomainException Translated to an HTTP 422
+     *                          (`WithholdingCertificateController::store()`'s existing
+     *                          `catch (\DomainException $e)` -> `CREATION_FAILED`) for the direct-
+     *                          create endpoint. `PaymentController::store()`'s existing
+     *                          `try/catch (\DomainException)` around `createFromPayment()` swallows
+     *                          this exception instead — the payment still settles at full gross
+     *                          with no certificate (MTP-WHT-04), matching the pre-existing "no
+     *                          applicable withholding rule found" \DomainException handling one
+     *                          branch above.
+     */
+    private function assertNonZeroWithholding(WithholdingCalculation $calculation): void
+    {
+        // Precision contract (rule 19): currency-resolved scale, not a
+        // hardcoded literal — the certificate's currency is always known
+        // here (never null), so getScale() (not the *Safe variant) is the
+        // correct call; a bound CompanyContext is not required.
+        $scale = $this->scaleResolver->getScale($calculation->currency);
+
+        if (bccomp($calculation->withholdingAmount, '0', $scale) === 0) {
+            throw new \DomainException('Withholding amount is zero; no certificate is created.');
+        }
     }
 
     /**

@@ -231,6 +231,70 @@ class WithholdingCertificateTest extends TestCase
         // Manual override doesn't have a rule ID
     }
 
+    /**
+     * P1 fiscal guard (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
+     * #1, §20-69): a zero effective withholding amount must never manufacture a
+     * fiscal certificate — pre-fix it wrote a `0.000` DRAFT row into
+     * `withholding_certificates` and would go on to sequence it into the
+     * hash-chained TEJ-exportable fiscal artifact. The guard must fire BEFORE
+     * `certificateRepository->generateCertificateNumber()` (no sequence derived
+     * for a phantom row) and BEFORE `certificateRepository->create()` (no row
+     * written at all) — asserted here by confirming a REAL certificate created
+     * immediately afterwards still gets sequence `0001`, not `0002`.
+     *
+     * @test
+     */
+    public function it_refuses_to_create_a_certificate_when_the_effective_withholding_amount_is_zero(): void
+    {
+        $document = $this->createInvoice('1000.000');
+        $payment = $this->createPayment($document, '1000.000');
+
+        try {
+            $this->service->createFromPayment($payment, $document, '0.0000', 'Zero rate probe');
+            $this->fail('Expected a DomainException for a zero effective withholding rate.');
+        } catch (\DomainException $e) {
+            $this->assertSame(
+                'Withholding amount is zero; no certificate is created.',
+                $e->getMessage()
+            );
+        }
+
+        $this->assertDatabaseCount('withholding_certificates', 0);
+
+        // No sequence consumption: the next REAL certificate still gets 0001,
+        // proving the zero-rate attempt never reserved/derived a number.
+        $document2 = $this->createInvoice('2000.000');
+        $payment2 = $this->createPayment($document2, '1900.000');
+        $certificateData = $this->service->createFromPayment($payment2, $document2, '0.0500', 'Real rate');
+
+        $certificate = WithholdingCertificate::findOrFail($certificateData->id);
+        $this->assertSame(
+            sprintf('WHT-%04d-0001', now()->year),
+            $certificate->certificate_number,
+            'the zero-rate attempt must not have consumed a certificate-number sequence slot'
+        );
+    }
+
+    /**
+     * Nonzero path unchanged: a zero GROSS amount is a distinct scenario from a
+     * zero RATE (§20-69's "effective rate/amount") — a nonzero rate applied to a
+     * zero gross amount also yields a `0.000` withholding amount and must be
+     * refused for the same fiscal reason, while a nonzero rate on a nonzero
+     * gross amount must keep creating a certificate exactly as before.
+     *
+     * @test
+     */
+    public function it_refuses_a_nonzero_rate_when_the_gross_amount_is_zero_but_still_creates_for_nonzero_amounts(): void
+    {
+        $zeroGrossDocument = $this->createInvoice('0.000');
+        $zeroGrossPayment = $this->createPayment($zeroGrossDocument, '0.000');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Withholding amount is zero; no certificate is created.');
+
+        $this->service->createFromPayment($zeroGrossPayment, $zeroGrossDocument, '0.1000', 'Nonzero rate, zero gross');
+    }
+
     /** @test */
     public function it_prevents_issuing_already_issued_certificate(): void
     {
