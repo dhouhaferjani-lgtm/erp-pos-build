@@ -16,12 +16,19 @@ use App\Modules\Treasury\Application\Services\DepositReferenceResolutionService;
  * delete route, so every invariant that can only be discovered post-seal mints a
  * permanent orphan that over-states the customer's deposit history.
  *
- * **Two cases are TOCTOU-shaped, not input validation** —
- * {@see self::RepositoryFrozen} and {@see self::ActorNotActiveCompanyMember}
- * (R2-K-prev). Checking them pre-seal NARROWS the race to the width of the
- * sealing transaction; it does NOT close it, because the projection runs after
- * that transaction commits. Orphans remain possible until the recoverability
- * lane (R2-K-rec) lands a disposition for them.
+ * **Three cases are TOCTOU-shaped, not input validation** —
+ * {@see self::RepositoryFrozen}, {@see self::ActorNotActiveCompanyMember} and
+ * {@see self::RepositoryBehindCheckpoint} (R2-K-prev). Checking them pre-seal
+ * NARROWS the race to the width of the sealing transaction; it does NOT close
+ * it, because the projection runs after that transaction commits. Orphans remain
+ * possible until the recoverability lane (R2-K-rec) lands a disposition.
+ *
+ * **Four cases are CONDITIONAL on the movement path** — the three
+ * movement-port-derived ones ({@see self::RepositoryCurrencyMismatch},
+ * {@see self::RepositoryFrozen}, {@see self::RepositoryBehindCheckpoint}) never
+ * apply to a maturity tender, because the bridge returns before calling the port
+ * for a cheque/effet. See the parity table on
+ * {@see DepositReferenceResolutionService}.
  *
  * @see DepositReferenceResolutionService
  * @see TreasuryDepositBridge
@@ -69,6 +76,22 @@ enum DepositReferenceRefusal: string
      */
     case ActorNotActiveCompanyMember = 'actor_not_active_company_member';
 
+    /**
+     * The receiving repository is reconciled through today or later
+     * (`payment_repositories.last_reconciled_at`), so the movement would land
+     * inside a closed period.
+     *
+     * R2-K-prev, authz gate I-2. `TreasuryDepositBridge.php:273` passes
+     * `allowBehindCheckpoint = ! isServerOnly()`, constant FALSE for a
+     * DEPOSIT_RECEIPT, so `TreasuryMovementService::checkpointDisposition()`
+     * raises `RepositoryCheckpointException` post-seal. Reachable with no
+     * privilege at all: `StatementCompletionService` stamps the checkpoint at
+     * end-of-day of the statement's `period_end` and nothing bounds `period_end`
+     * above, so confirming a statement through today orphans every subsequent
+     * same-day cash deposit. TOCTOU — see the class docblock.
+     */
+    case RepositoryBehindCheckpoint = 'payment_repository_behind_checkpoint';
+
     public function message(): string
     {
         return match ($this) {
@@ -79,6 +102,7 @@ enum DepositReferenceRefusal: string
             self::RepositoryCurrencyMismatch => 'The deposit currency does not match the currency held by the selected payment repository.',
             self::RepositoryFrozen => 'The selected payment repository is frozen (a cash count or audit is in progress), so it cannot receive a deposit until it is reopened.',
             self::ActorNotActiveCompanyMember => 'The recording user is not an active member of this company, so the deposit cannot be posted to the ledger.',
+            self::RepositoryBehindCheckpoint => 'The selected payment repository is reconciled through today, so a deposit dated today would fall inside a closed period. Reopen the latest statement first.',
         };
     }
 }

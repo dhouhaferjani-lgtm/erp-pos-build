@@ -29,18 +29,22 @@ use Illuminate\Foundation\Http\FormRequest;
  * These rules are the CHEAP SUBSET of the bridge's preconditions — tenant,
  * company and `is_active`, expressible as a single `exists` query and reported
  * against the offending field. They are NOT full parity (gate finding I-4): the
- * bridge additionally requires a resolvable, active cash GL account, a matching
- * repository currency, an UNFROZEN repository and an actor holding an ACTIVE
- * company membership — all of which need a loaded row or a second table. Those
- * are enforced by `DepositReferenceResolutionService::refusalFor()` inside
+ * bridge additionally requires a resolvable, active cash GL account and an actor
+ * holding an ACTIVE company membership, and — ONLY when the tender is not a
+ * cheque/effet maturity leg, because the bridge then skips the movement port
+ * entirely — a matching repository currency, an UNFROZEN repository, and a
+ * repository not already reconciled through the deposit date. Every one of those
+ * needs a loaded row or a second table, and the last three need the maturity
+ * predicate first. They are enforced by
+ * `DepositReferenceResolutionService::refusalFor()` inside
  * `RecordCustomerDepositService::record()` — still before the seal — and surface
  * as a 422 `BUSINESS_ERROR`.
  *
- * The freeze and membership predicates are deliberately NOT mirrored here as
- * field rules (R2-K-prev): they are time-of-check/time-of-use state, not input
- * shape, so a validation-time answer would be no more authoritative than the
- * service's and would report a stale `frozen_at` against a field the caller did
- * not get wrong.
+ * The freeze, checkpoint and membership predicates are deliberately NOT mirrored
+ * here as field rules (R2-K-prev): they are time-of-check/time-of-use state, not
+ * input shape, so a validation-time answer would be no more authoritative than
+ * the service's and would report a stale `frozen_at` against a field the caller
+ * did not get wrong.
  *
  * `'bail'` leads each reference rule so validation stops at the format failure.
  * Laravel already skips `Exists` for an attribute that carries a message
