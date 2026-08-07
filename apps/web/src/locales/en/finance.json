@@ -360,8 +360,10 @@
       "timbreFiscalCount": "Timbre Fiscal Count",
       "timbreFiscalAmount": "Timbre Fiscal Amount",
       "retenueSourceAmount": "Retenue à la Source Amount",
-      "creditTvaPrevious": "Previous TVA Credit",
-      "euAcquisitionsVat": "EU Acquisitions VAT"
+      "intraCommunityAcquisitions": "Intra-Community Acquisitions",
+      "intraCommunitySupplies": "Intra-Community Supplies",
+      "ecSupplies": "EC Supplies",
+      "ecAcquisitions": "EC Acquisitions"
     },
     "toast": {
       "generated": "VAT periods generated successfully",

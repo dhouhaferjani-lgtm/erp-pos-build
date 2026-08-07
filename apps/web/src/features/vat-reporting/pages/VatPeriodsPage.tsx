@@ -7,54 +7,20 @@ import { useVatPeriods } from '../hooks/useVatPeriods'
 import { useVatPeriodActions } from '../hooks/useVatPeriodActions'
 import { VatPeriodList } from '../components/VatPeriodList'
 import { VatSummaryCards } from '../components/VatSummaryCards'
-import { useCurrency } from '@/hooks/useCurrency'
-import { bcadd } from '@/lib/decimal'
-import type { VatPeriod } from '../types'
+import { computeYtdTotals } from '../computeYtdTotals'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
-
-// m-6 (2026-08-06 gate): accumulate with bcadd (Big.js, never a float `+=`
-// off a parseFloat'd value) -- rule 19.
-function computeYtdTotals(periods: VatPeriod[], decimals: number) {
-  let totalOutput = '0'
-  let totalInput = '0'
-  let creditCarried = '0'
-  let amountPayable = '0'
-
-  for (const period of periods) {
-    totalOutput = bcadd(totalOutput, period.total_output_vat ?? '0', decimals)
-    totalInput = bcadd(totalInput, period.total_input_vat ?? '0', decimals)
-  }
-
-  // Use the most recent period's credit/payable as the running total.
-  // Periods are ordered by period_start DESC, so index 0 is the latest.
-  if (periods.length > 0) {
-    const latestPeriod = periods.reduce((latest, p) =>
-      p.period_end > latest.period_end ? p : latest
-    , periods[0])
-    creditCarried = latestPeriod.credit_carried_forward
-    amountPayable = latestPeriod.amount_payable
-  }
-
-  return {
-    outputVat: totalOutput,
-    inputVat: totalInput,
-    creditBroughtForward: creditCarried,
-    amountPayable,
-  }
-}
 
 export function VatPeriodsPage() {
   const { t } = useTranslation(['finance'])
   const navigate = useNavigate()
-  const { decimals } = useCurrency()
   const [year, setYear] = useState(new Date().getFullYear())
 
   const { data: periods, isLoading, error, refetch } = useVatPeriods({ year })
   const { generateMutation, closeMutation, reopenMutation, fileMutation } = useVatPeriodActions()
 
   const periodList = periods ?? []
-  const ytd = computeYtdTotals(periodList, decimals)
+  const ytd = computeYtdTotals(periodList)
 
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i)

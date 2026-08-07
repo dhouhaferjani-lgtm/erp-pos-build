@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { formatDecimalAmount } from '@/lib/format'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface VatSpecialItemsProps {
   specialItems: Record<string, unknown>
@@ -10,48 +11,75 @@ interface VatSpecialItemsProps {
 interface SpecialItemConfig {
   key: string
   labelKey: string
+  kind: 'money' | 'count'
 }
 
+// MAJOR-2 (2026-08-07 FE gate, docs/superpowers/reviews/2026-08-07-r2g-fe-gate.md):
+// aligned to the REAL per-country keys the backend strategies emit. The
+// prior key set (credit_tva_previous, eu_acquisitions_vat, timbre_fiscal_*)
+// had ZERO overlap with what any strategy actually returns, so this panel
+// never rendered in any country -- `hasValues` below was always false. See
+// apps/api/app/Modules/Taxation/Infrastructure/Strategies/TunisiaVatStrategy.php:118-122,
+// FranceVatStrategy.php:114-117, UkVatStrategy.php:131-134.
 const countryItemConfigs: Record<string, SpecialItemConfig[]> = {
   TN: [
-    { key: 'timbre_fiscal_count', labelKey: 'finance:vatReporting.specialItems.timbreFiscalCount' },
-    { key: 'timbre_fiscal_amount', labelKey: 'finance:vatReporting.specialItems.timbreFiscalAmount' },
-    { key: 'retenue_source_amount', labelKey: 'finance:vatReporting.specialItems.retenueSourceAmount' },
+    { key: 'stamp_duty_count', labelKey: 'finance:vatReporting.specialItems.timbreFiscalCount', kind: 'count' },
+    { key: 'stamp_duty_total', labelKey: 'finance:vatReporting.specialItems.timbreFiscalAmount', kind: 'money' },
+    { key: 'retenue_source_total', labelKey: 'finance:vatReporting.specialItems.retenueSourceAmount', kind: 'money' },
   ],
   FR: [
-    { key: 'credit_tva_previous', labelKey: 'finance:vatReporting.specialItems.creditTvaPrevious' },
+    { key: 'intra_community_acquisitions', labelKey: 'finance:vatReporting.specialItems.intraCommunityAcquisitions', kind: 'money' },
+    { key: 'intra_community_supplies', labelKey: 'finance:vatReporting.specialItems.intraCommunitySupplies', kind: 'money' },
   ],
   GB: [
-    { key: 'eu_acquisitions_vat', labelKey: 'finance:vatReporting.specialItems.euAcquisitionsVat' },
+    { key: 'ec_supplies', labelKey: 'finance:vatReporting.specialItems.ecSupplies', kind: 'money' },
+    { key: 'ec_acquisitions', labelKey: 'finance:vatReporting.specialItems.ecAcquisitions', kind: 'money' },
   ],
 }
 
-// m-6 (2026-08-06 gate): these values mix money (timbre_fiscal_amount,
-// retenue_source_amount, credit_tva_previous, eu_acquisitions_vat) and
-// plain counts (timbre_fiscal_count) with no type tag to tell them apart
-// at this layer, so a currency-scaled formatter can't be applied uniformly
-// here. The precision-safe fix keeps the exact prior 'en-US'/2dp display
-// behaviour but routes the string branch through the canonical
-// float-free path (lib/format's formatDecimalAmount, Big.js/BigInt
-// internally) instead of `parseFloat` -- rule 19: no float ever touches a
-// numeric-string amount, even for a value that may turn out to be a count.
-function formatItemValue(value: unknown): string {
+// MINOR-2 (2026-08-07 FE gate): a plain decimal-string regex probe --
+// never Number()/parseFloat, even as a validity check. Junk input like
+// "12abc" now renders as the literal string instead of silently
+// prefix-parsing to "12.00" the way parseFloat used to.
+const NUMERIC_STRING_PATTERN = /^-?\d+(\.\d+)?$/
+
+function isNumericString(value: string): boolean {
+  return NUMERIC_STRING_PATTERN.test(value.trim())
+}
+
+/**
+ * MAJOR-1 (2026-08-07 FE gate): money fields render through the SAME
+ * currency-driven, float-free path as every sibling on this screen
+ * (VatSummaryCards, VatBreakdownTable) -- a TND tenant now sees millimes
+ * here too, instead of the hardcoded en-US/2dp formatter that disagreed
+ * with the rest of the page (the exact W-7 F-7 bug class). Count fields
+ * (MINOR-3: "3.00 stamps" was wrong) render as plain grouped integers,
+ * never through the currency formatter.
+ */
+function formatSpecialItem(
+  value: unknown,
+  kind: 'money' | 'count',
+  formatMoney: (amount: string | number, options?: { symbol?: boolean }) => string,
+  locale: string,
+): string {
   if (value === null || value === undefined) return '-'
+
   if (typeof value === 'number') {
-    return formatDecimalAmount(value, 'en-US', 2)
+    return kind === 'money' ? formatMoney(value, { symbol: false }) : formatDecimalAmount(value, locale, 0)
   }
+
   if (typeof value === 'string') {
-    const isNumeric = value.trim() !== '' && !isNaN(Number(value))
-    if (isNumeric) {
-      return formatDecimalAmount(value, 'en-US', 2)
-    }
-    return value
+    if (!isNumericString(value)) return value
+
+    return kind === 'money' ? formatMoney(value, { symbol: false }) : formatDecimalAmount(value, locale, 0)
   }
+
   return String(value)
 }
 
 export function VatSpecialItems({ specialItems, countryCode }: VatSpecialItemsProps) {
   const { t } = useTranslation('finance')
+  const { format: formatMoney, locale } = useCurrency()
   const configs = countryItemConfigs[countryCode]
 
   if (!configs || configs.length === 0) {
@@ -82,7 +110,7 @@ export function VatSpecialItems({ specialItems, countryCode }: VatSpecialItemsPr
                 {t(config.labelKey)}
               </p>
               <p className={`mt-1 text-lg font-semibold ${colorTokens.text.primary}`}>
-                {formatItemValue(value)}
+                {formatSpecialItem(value, config.kind, formatMoney, locale)}
               </p>
             </div>
           )

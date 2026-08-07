@@ -360,8 +360,10 @@
       "timbreFiscalCount": "Nombre de timbres fiscaux",
       "timbreFiscalAmount": "Montant des timbres fiscaux",
       "retenueSourceAmount": "Montant de retenue à la source",
-      "creditTvaPrevious": "Crédit TVA précédent",
-      "euAcquisitionsVat": "TVA acquisitions UE"
+      "intraCommunityAcquisitions": "Acquisitions intracommunautaires",
+      "intraCommunitySupplies": "Livraisons intracommunautaires",
+      "ecSupplies": "Livraisons CE",
+      "ecAcquisitions": "Acquisitions CE"
     },
     "toast": {
       "generated": "Périodes de TVA générées avec succès",
