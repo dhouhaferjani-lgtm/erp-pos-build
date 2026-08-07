@@ -746,6 +746,14 @@ class ReportsController extends Controller
             ], 401);
         }
 
+        // Deliberately OUTSIDE the catch below: reportLocationScope() throws an
+        // AuthorizationException for a location outside the principal's grant,
+        // which must surface as 403 (via the global AccessDeniedHttpException
+        // render handler in bootstrap/app.php) rather than be swallowed into a
+        // REPORT_GENERATION_ERROR 500 that also leaked the resolver's internal
+        // message text (ticket 2026-08-06-l3-cash-scope-residuals.md (b)).
+        $locationIds = $this->reportLocationScope($request, $companyId);
+
         try {
             $asOfDate = $request->input('as_of_date')
                 ? Carbon::parse($request->input('as_of_date'))
@@ -754,7 +762,7 @@ class ReportsController extends Controller
             $reportData = $this->agedReceivablesService->generate(
                 $companyId,
                 $asOfDate,
-                $this->reportLocationScope($request, $companyId),
+                $locationIds,
                 $request->input('group_by') === 'location',
             );
 
@@ -799,6 +807,9 @@ class ReportsController extends Controller
             ], 401);
         }
 
+        // Deliberately OUTSIDE the catch below — see agedReceivables() above.
+        $locationIds = $this->reportLocationScope($request, $companyId);
+
         try {
             $asOfDate = $request->input('as_of_date')
                 ? Carbon::parse($request->input('as_of_date'))
@@ -807,7 +818,7 @@ class ReportsController extends Controller
             $reportData = $this->agedPayablesService->generate(
                 $companyId,
                 $asOfDate,
-                $this->reportLocationScope($request, $companyId),
+                $locationIds,
                 $request->input('group_by') === 'location',
             );
 
@@ -837,11 +848,14 @@ class ReportsController extends Controller
             ], 401);
         }
 
+        // Deliberately OUTSIDE the catch below — see agedReceivables() above.
+        $locationIds = $this->reportLocationScope($request, $companyId);
+
         try {
             $reportData = $this->upcomingPaymentsService->generate(
                 $companyId,
                 $request->days(),
-                $this->reportLocationScope($request, $companyId),
+                $locationIds,
                 $request->input('group_by') === 'location',
             );
 
