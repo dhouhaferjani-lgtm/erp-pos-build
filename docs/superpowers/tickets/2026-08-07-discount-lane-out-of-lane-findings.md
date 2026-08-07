@@ -47,3 +47,35 @@ artifact). After the lane merges, recompute (incl. at confirm, into the hash cha
 to zero → totals change. Run the lane's detection SQL pre-deploy per tenant; affected
 documents join the accountant-disposition list (same class as the stranded 19.000 and the C-2
 warehouse fiscal sale).
+
+## 5. DOWNGRADED — `QuoteController::confirm()` wholesale `totalTax` consumption (P3, note)
+
+Added 2026-08-07 by the R2-B lane, then **downgraded in the same round** by the R2-B
+precision gate. Recording both halves so the claim is not re-raised at its original severity.
+
+**As originally raised (R2-B out-of-lane finding 4):** `QuoteController::confirm()`
+(`:545-548`) consumes `$taxResult->totalTax` / `->total` wholesale, whereas
+`InvoiceController::withDocumentLevelTaxes()` deliberately takes *only* `documentTaxTotal`
+because consuming `totalTax` "would silently ZERO the VAT of any line carrying an explicitly
+supplied rate that has no configuration row".
+
+**Why that is narrower than described — two independent reasons, both verified:**
+
+1. The **2026-08-02 UNCONFIGURED ruling** already closed the zeroing hazard.
+   `TaxCalculationService.php:245-265` emits an `UNCONFIGURED` `CalculatedTax` that
+   **honours the line's own rate** when no `TaxConfiguration` matches — its inline comment
+   states this explicitly ("Honour the line's own rate directly … so confirm() stays
+   consistent with the draft it is confirming"), and it covers the explicit-0% case too.
+   The InvoiceController comment predates that ruling.
+2. The **stamp-fold half is unreachable for quotes.** A quote is
+   `FiscalCategory::NonFiscal` (`FiscalCategory.php:38-47`, `default` arm), and the TN
+   seeder lists no `NON_FISCAL` token for any DOCUMENT_TOTAL stamp — `STAMP_TAX_INVOICE` is
+   scoped to `['TAX_INVOICE']` and `STAMP_FISCAL_RECEIPT` to `['FISCAL_RECEIPT']`
+   (`TunisiaTaxConfigurationSeeder.php:92`, `:101`). So there is no document-level tax for a
+   quote's confirm to mis-fold.
+
+**Residual worth keeping (hence still ticketed, at P3):** the *structural* asymmetry stands —
+quotes have no `withDocumentLevelTaxes()` equivalent, so if a DOCUMENT_TOTAL tax is ever
+configured for `NON_FISCAL` documents, a quote's draft total would be short by exactly that
+amount until confirm. A guard test pinning "no document-level tax applies to a quote" would
+convert this from a latent trap into a caught regression.
