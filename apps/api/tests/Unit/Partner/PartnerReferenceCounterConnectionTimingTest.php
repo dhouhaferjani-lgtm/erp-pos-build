@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Partner;
 
 use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
+use App\Shared\Application\Partner\PartnerReferenceTable;
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -194,7 +195,7 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
     /**
      * Every table declared by every tagged source.
      *
-     * @return list<\App\Shared\Partner\PartnerReferenceTable>
+     * @return list<PartnerReferenceTable>
      */
     private function declaredTables(): array
     {

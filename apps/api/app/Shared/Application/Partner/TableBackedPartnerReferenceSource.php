@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Shared\Partner;
+namespace App\Shared\Application\Partner;
 
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Database\DatabaseManager;

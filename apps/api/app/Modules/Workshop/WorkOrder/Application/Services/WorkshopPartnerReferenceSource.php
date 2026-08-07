@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Workshop\WorkOrder\Application\Services;
 
-use App\Shared\Partner\PartnerReferenceTable;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
+use App\Shared\Application\Partner\PartnerReferenceTable;
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 
 /**
  * Workshop jobs involving the partner.

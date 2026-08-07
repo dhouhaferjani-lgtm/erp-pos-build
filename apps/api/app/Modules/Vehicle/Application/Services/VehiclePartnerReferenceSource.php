@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Vehicle\Application\Services;
 
-use App\Shared\Partner\PartnerReferenceTable;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
+use App\Shared\Application\Partner\PartnerReferenceTable;
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 
 /**
  * Vehicles owned by the partner (Otospex).

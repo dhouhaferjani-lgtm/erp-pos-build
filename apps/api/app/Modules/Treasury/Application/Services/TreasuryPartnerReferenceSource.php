@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Services;
 
-use App\Shared\Partner\PartnerReferenceTable;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
+use App\Shared\Application\Partner\PartnerReferenceTable;
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 
 /**
  * Treasury rows that carry the partner's money.

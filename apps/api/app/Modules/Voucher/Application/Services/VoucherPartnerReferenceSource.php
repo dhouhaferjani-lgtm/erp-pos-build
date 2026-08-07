@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Voucher\Application\Services;
 
-use App\Shared\Partner\PartnerReferenceTable;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
+use App\Shared\Application\Partner\PartnerReferenceTable;
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 
 /**
  * Vouchers held by, or issued to, the partner.

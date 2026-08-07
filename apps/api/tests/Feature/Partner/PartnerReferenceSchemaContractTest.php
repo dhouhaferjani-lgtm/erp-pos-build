@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Partner;
 
+use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
-use App\Shared\Partner\TableBackedPartnerReferenceSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;

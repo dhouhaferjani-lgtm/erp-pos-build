@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Shared\Partner;
+namespace App\Shared\Application\Partner;
 
 /**
  * One table a module owns that carries a pointer to `partners.id`.

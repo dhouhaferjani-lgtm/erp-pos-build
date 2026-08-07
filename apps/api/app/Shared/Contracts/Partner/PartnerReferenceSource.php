@@ -34,7 +34,7 @@ namespace App\Shared\Contracts\Partner;
  * constructor-captured connection is therefore pinned to `central`, which
  * holds none of these tables. Inject `Illuminate\Database\DatabaseManager`
  * and call `->connection()` INSIDE each query instead — or simply extend
- * `App\Shared\Partner\TableBackedPartnerReferenceSource`, which does this
+ * `App\Shared\Application\Partner\TableBackedPartnerReferenceSource`, which does this
  * for you. Guarded by `PartnerReferenceCounterConnectionTimingTest`.
  */
 interface PartnerReferenceSource
