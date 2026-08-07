@@ -178,6 +178,8 @@ return [
     'opening_qty_positive' => 'Opening quantity must be greater than zero.',
     'opening_qty_format' => 'Opening quantity must have at most 4 decimal places.',
     'opening_cost_format' => 'Opening unit cost must have at most 3 decimal places.',
+    'bonus_line_unit_price_must_be_zero' => 'A bonus/free-goods line must be billed at a zero unit price.',
+    'bonus_line_not_supported_on_invoice_first' => 'Bonus/free-goods lines are not supported on an invoice-first (delivery-note or pending-receipt) supplier invoice.',
 
     'custom' => [
         'attribute-name' => [

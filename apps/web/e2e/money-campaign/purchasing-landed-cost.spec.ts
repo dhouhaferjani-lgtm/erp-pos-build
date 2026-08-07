@@ -107,25 +107,17 @@ test.describe('PUR — bonus / free goods (14..16)', () => {
     })
   })
 
-  test('MTP-PUR-16 (P1) TRIPWIRE: `is_bonus_line` is DROPPED at the supplier-invoice HTTP boundary', async ({ page }) => {
-    // DEFECT (P1) — docs/superpowers/tickets/2026-08-03-w4-purchasing-inventory-defects.md #2.
-    // CreateSupplierInvoiceRequest's `rules()` never declares `lines.*.is_bonus_line`
-    // (CreateSupplierInvoiceRequest.php:110-139), and SupplierInvoiceController::store()
-    // passes `$request->validated()` (line 215/228) to CreateSupplierInvoiceService, whose
-    // line 115 then reads `$lineInput['is_bonus_line'] ?? false`. Laravel strips every
-    // undeclared key from validated(), so the flag can NEVER be true on the documented
-    // creation path. Consequence: the matcher's whole bonus arm
-    // (SupplierInvoiceMatcher::buildQtyGroupStatuses():291 — accumulation :295-314,
-    // resolution :389-445 — and ReceiptLineConsumptionPlanner::freeMatchableQty():91) is
-    // unreachable from the API, and free units
-    // billed on an invoice are counted against the PAID matchable window instead —
-    // turning a legitimate bonus invoice into `quantity_variance`, which is a HARD block
-    // at post under BOTH match_enforcement modes. i.e. a bonus receipt cannot be invoiced
-    // at all through the API today.
-    //
-    // The plan's intended assertion ("bonus line matched against free_matchable_qty only;
-    // no price check") is therefore NOT reachable. This test pins TODAY's behaviour so the
-    // fix flips it red.
+  test('MTP-PUR-16 (P1) FIXED: a zero-value bonus line is invoiced and matched against its own free window', async ({ page }) => {
+    // FIXED (was P1) — docs/superpowers/tickets/2026-08-03-w4-purchasing-inventory-defects.md #2.
+    // CreateSupplierInvoiceRequest now declares `lines.*.is_bonus_line` (gated on
+    // PurchaseBonusGate) so the flag survives to CreateSupplierInvoiceService and the
+    // matcher's bonus arm (SupplierInvoiceMatcher::buildQtyGroupStatuses bonus
+    // accumulation/resolution, ReceiptLineConsumptionPlanner::freeMatchableQty) is reachable.
+    // Gate follow-up B1: a bonus line's canonical shape is ZERO VALUE — billing it at a
+    // non-zero price is now REJECTED at the request boundary (422,
+    // bonus_line_with_non_zero_unit_price_is_rejected in SupplierInvoiceBonusLineTest), so
+    // this scenario uses unit_price 0.000 for the free units, matching the module's
+    // canonical "Remise en nature" shape (SupplierInvoiceSnapshotTest, SupplierInvoiceGlTest).
     const { id: productId } = await createW4Product(page, 'PUR16')
     const r = await poAndReceive(page, {
       supplierId,
@@ -141,28 +133,40 @@ test.describe('PUR — bonus / free goods (14..16)', () => {
       sourceDocumentIds: [r.poId],
       lines: [
         { sourceLineId: r.lineId, quantity: '10', unitPrice: '10.000' },
-        // 2 free units billed at a NON-ZERO price, explicitly flagged as a bonus line.
-        { sourceLineId: r.lineId, quantity: '2', unitPrice: '10.000', isBonusLine: true },
+        // 2 free units billed at ZERO price, explicitly flagged as a bonus line — the
+        // only value shape the request boundary now accepts for is_bonus_line: true.
+        { sourceLineId: r.lineId, quantity: '2', unitPrice: '0.000', isBonusLine: true },
       ],
     })
     expect(inv.status, JSON.stringify(inv.body)).toBe(201)
     const detail = await getSupplierInvoice(page, inv.id as string)
     const perLine = (detail.match as { per_line: Array<{ price_variance: boolean; matchable: string }> }).per_line
 
-    // The price check itself is clean on both lines (the invoiced price equals the PO price).
-    expect(perLine.every((l) => l.price_variance === false)).toBe(true)
+    // The paid line's invoiced price equals the PO price — clean.
+    expect(perLine[0].price_variance).toBe(false)
+    // KNOWN RESIDUAL (not fixed here, out of this round's scope): the per-line
+    // `match.per_line[].price_variance` READ MODEL (SupplierInvoiceController::
+    // buildMatchBlock -> SupplierInvoiceMatcher::priceStatus) is NOT bonus-aware — unlike
+    // the authoritative match()/assertPostable() path, which deliberately skips the price
+    // check for is_bonus_line lines, this display-only wrapper compares the bonus line's
+    // 0.000 invoiced price against the PO's 10.000 basis and reports a variance. It does
+    // NOT affect match_status or postability (both are correct below); it is a spurious
+    // display flag on every bonus line. Flagged for a follow-up ticket, not fixed in this
+    // round.
+    expect(perLine[1].price_variance, 'KNOWN display-only residual — does not affect match_status/postability').toBe(true)
 
-    // TRIPWIRE: both lines are matched against the SAME paid window of 10.0000 — the
-    // bonus line got no free window of its own, proving the flag was dropped.
+    // Both invoice lines reference the same PO line, so the displayed `matchable` (the PAID
+    // window) is identical for both rows — this is the read model's shape, not evidence of
+    // a defect either way.
     expect(perLine.map((l) => l.matchable)).toEqual(['10.0000', '10.0000'])
-    expect(
-      detail.match_status,
-      'TRIPWIRE: expected `matched` per plan; the dropped bonus flag makes 12 invoiced against a 10 window'
-    ).toBe('quantity_variance')
 
-    // And the consequence that actually costs money: the invoice cannot be posted.
+    // FIXED: the bonus line is matched against its own free window (2.0000 received free,
+    // 0 invoiced free) and the paid line against the paid window — both exactly consumed.
+    expect(detail.match_status, 'bonus line matched against free_matchable_qty, not the paid window').toBe('matched')
+
+    // And the consequence that actually costs money: the invoice CAN be posted.
     const post = await apiRequest(page, 'POST', `/supplier-invoices/${inv.id as string}/post`)
-    expect(post.status, 'TRIPWIRE: quantity_variance is a HARD block — a bonus receipt is un-invoiceable').toBe(422)
+    expect(post.status, JSON.stringify(post.body)).toBe(200)
   })
 })
 

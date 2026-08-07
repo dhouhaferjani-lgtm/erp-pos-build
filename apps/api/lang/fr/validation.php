@@ -178,6 +178,8 @@ return [
     'opening_qty_positive' => 'La quantité d\'ouverture doit être supérieure à zéro.',
     'opening_qty_format' => 'La quantité d\'ouverture ne peut pas avoir plus de 4 décimales.',
     'opening_cost_format' => 'Le coût unitaire d\'ouverture ne peut pas avoir plus de 3 décimales.',
+    'bonus_line_unit_price_must_be_zero' => 'Une ligne de bonus/gratuité doit être facturée à un prix unitaire nul.',
+    'bonus_line_not_supported_on_invoice_first' => 'Les lignes de bonus/gratuité ne sont pas prises en charge sur une facture fournisseur "invoice-first" (bon de livraison ou réception en attente).',
 
     'custom' => [
         'attribute-name' => [

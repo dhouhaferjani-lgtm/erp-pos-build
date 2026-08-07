@@ -164,6 +164,53 @@ final class CreateSupplierInvoiceRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v): void {
+            // Bonus/free-goods lines carry NO value — the module's canonical bonus
+            // shape is a zero-price line (SupplierInvoiceSnapshotTest, SupplierInvoiceGlTest
+            // model "Remise en nature" as unit_price 0.000). A bonus line billed at a
+            // non-zero price would post the free goods' value as an unfavourable price
+            // variance (PPV) and deduct input VAT on goods received free of charge, while
+            // the matcher deliberately skips the price check for bonus lines — making the
+            // wrong economics invisible to 3-way matching. Enforced here, before the
+            // basic-rules short-circuit below, so the wrong shape is inexpressible
+            // regardless of what else is wrong with the request.
+            //
+            // Invoice-first (delivery-note / pending-receipt) requests map EACH request
+            // line 1:1 to one auto-generated PO line and one invoice line
+            // (InvoiceFirstOrchestrator::createDelivered) and declare no per-line
+            // free_quantity, so there is no way to express "N paid + M free" on a single
+            // invoice-first line the way the ordinary receive-then-invoice flow does with
+            // two invoice lines against the same source_line_id. Refuse the combination
+            // outright rather than let it reach the matcher, where it would hard-fail with
+            // an opaque Exception (the auto-receipt's free window is always 0).
+            $invoiceFirstRequested = $this->boolean('invoice_first_delivered') || $this->boolean('pending_receipt');
+
+            /** @var array<int, mixed>|null $rawLines */
+            $rawLines = $this->input('lines');
+            if (is_array($rawLines)) {
+                foreach ($rawLines as $idx => $line) {
+                    if (! is_array($line) || ! (bool) ($line['is_bonus_line'] ?? false)) {
+                        continue;
+                    }
+
+                    if ($invoiceFirstRequested) {
+                        $v->errors()->add(
+                            "lines.{$idx}.is_bonus_line",
+                            __('validation.bonus_line_not_supported_on_invoice_first'),
+                        );
+
+                        continue;
+                    }
+
+                    $unitPrice = $line['unit_price'] ?? null;
+                    if (! is_numeric($unitPrice) || bccomp((string) $unitPrice, '0', 3) !== 0) {
+                        $v->errors()->add(
+                            "lines.{$idx}.unit_price",
+                            __('validation.bonus_line_unit_price_must_be_zero'),
+                        );
+                    }
+                }
+            }
+
             // Skip if basic rules already failed (avoids DB queries on invalid input).
             if ($v->errors()->isNotEmpty()) {
                 return;
