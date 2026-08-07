@@ -1,26 +1,16 @@
 import type { OffsetPaginationMeta } from '@/types/pagination'
 
-export type GrantStatus =
-  | 'pending_tenant_approval'
-  | 'pending_internal_approval'
-  | 'active'
-  | 'rejected'
-  | 'revoked'
-  | 'expired'
+export type GrantStatus = App.Modules.SupportAccess.Domain.Enums.GrantStatus
 
-export interface SupportAccessGrant {
-  id: string
-  tenant_id: string
-  subject_user_id: string | null
-  operator_id: string | null
-  type: 'per_incident' | 'pre_granted_window'
-  status: GrantStatus
-  reason: string
-  ticket_ref: string
+export type SupportAccessGrant = Omit<
+  App.Modules.SupportAccess.Application.DTOs.GrantData,
+  'starts_at' | 'expires_at' | 'tenant_approved_at' | 'second_approved_at' | 'revoked_at'
+> & {
   starts_at: string
   expires_at: string
-  tenant_approved_by: string | null
-  second_approved_by: string | null
+  tenant_approved_at: string | null
+  second_approved_at: string | null
+  revoked_at: string | null
 }
 
 export interface SupportAccessSession {
@@ -51,7 +41,10 @@ export interface SupportAccessLogEntry {
   occurred_at: string
 }
 
-export interface SupportAccessOverview {
+export interface SupportAccessOverview extends Omit<
+  App.Modules.SupportAccess.Application.DTOs.SupportAccessOverviewData,
+  'grants' | 'active_sessions' | 'log' | 'pending_elevations' | 'log_meta'
+> {
   max_grant_window_hours: number
   grants: SupportAccessGrant[]
   active_sessions: SupportAccessSession[]

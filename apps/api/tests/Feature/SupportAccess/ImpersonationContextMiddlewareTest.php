@@ -251,6 +251,7 @@ final class ImpersonationContextMiddlewareTest extends TestCase
             ->where('session_id', $session->id)
             ->where('event_type', SessionEventType::RequestDenied)
             ->count());
+        self::assertNull(CentralPersonalAccessToken::query()->find($session->personal_access_token_id));
     }
 
     public function test_expired_session_is_closed_and_the_denied_probe_is_chained(): void

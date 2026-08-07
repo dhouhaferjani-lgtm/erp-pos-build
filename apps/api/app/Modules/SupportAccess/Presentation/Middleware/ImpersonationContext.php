@@ -144,6 +144,7 @@ final class ImpersonationContext
             }
 
             $this->audit->recordEndedRequest($session->refresh(), $grant->ticket_ref, $request);
+            $token->delete();
         } catch (Throwable) {
             return response()->json([
                 'error' => [

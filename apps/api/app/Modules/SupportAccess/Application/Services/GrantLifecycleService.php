@@ -22,6 +22,7 @@ use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Contracts\SupportAccess\SupportAccessNotifier;
 use App\Shared\Contracts\SupportAccess\TenantSubjectDirectory;
 use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
+use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
@@ -279,7 +280,15 @@ final class GrantLifecycleService
 
         $transitioned = false;
         $mirror = null;
-        $grant = $this->centralTransaction(function () use ($actor, $grantId, $reason, &$transitioned, &$mirror): ImpersonationGrant {
+        $sessionMirrors = [];
+        $grant = $this->centralTransaction(function () use (
+            $actor,
+            $grantId,
+            $reason,
+            &$transitioned,
+            &$mirror,
+            &$sessionMirrors,
+        ): ImpersonationGrant {
             $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($actor, $reason, &$transitioned): void {
                 $this->authorizeRevoker($actor, $grant);
 
@@ -304,24 +313,29 @@ final class GrantLifecycleService
                     $actor->id, $actor instanceof User ? 'tenant_user' : 'super_admin',
                     trim($reason), 'revocation', CarbonImmutable::instance($revokedAt),
                 );
+
+                $sessions = ImpersonationSession::query()
+                    ->where('grant_id', $grant->id)
+                    ->whereNull('ended_at')
+                    ->lockForUpdate()
+                    ->get();
+                foreach ($sessions as $session) {
+                    array_push(
+                        $sessionMirrors,
+                        ...$this->endRevokedSessionWithinTransaction(
+                            $session,
+                            $grant,
+                            CarbonImmutable::instance($revokedAt),
+                        ),
+                    );
+                }
             }
 
             return $grant->refresh();
         });
         $this->deliverGrantMirror($mirror);
-
-        if ($transitioned) {
-            $revokedAt = $grant->revoked_at;
-            if ($revokedAt === null) {
-                throw new DomainException('Revoked grant is missing its transition timestamp.');
-            }
-
-            ImpersonationSession::query()
-                ->where('grant_id', $grant->id)
-                ->whereNull('ended_at')
-                ->eachById(function (ImpersonationSession $session) use ($grant, $revokedAt): void {
-                    $this->endRevokedSession($session, $grant, CarbonImmutable::instance($revokedAt));
-                });
+        foreach ($sessionMirrors as $sessionMirror) {
+            $this->sessionAudit->deliver($sessionMirror);
         }
 
         return GrantData::fromModel($grant);
@@ -362,36 +376,28 @@ final class GrantLifecycleService
         }
     }
 
-    private function endRevokedSession(
+    /** @return list<ImpersonationAuditMirrorData> */
+    private function endRevokedSessionWithinTransaction(
         ImpersonationSession $session,
         ImpersonationGrant $grant,
         CarbonImmutable $revokedAt,
-    ): void {
-        $mirrors = $this->centralTransaction(function () use ($session, $grant, $revokedAt): array {
-            $locked = ImpersonationSession::query()->lockForUpdate()->findOrFail($session->id);
-            if ($locked->ended_at !== null) {
-                return [];
-            }
-            $mirrors = [
-                $this->sessionAudit->appendLifecycleWithinTransaction(
-                    $locked, SessionEventType::GrantRevoked, $revokedAt,
-                    ImpersonationGrant::class, $grant->id, $grant->ticket_ref,
-                ),
-                $this->sessionAudit->appendLifecycleWithinTransaction(
-                    $locked, SessionEventType::SessionEnded, $revokedAt,
-                    ImpersonationSession::class, $locked->id, $grant->ticket_ref,
-                ),
-            ];
-            $locked->update([
-                'ended_at' => $revokedAt,
-                'end_reason' => SessionEndReason::GrantRevoked,
-            ]);
+    ): array {
+        $mirrors = [
+            $this->sessionAudit->appendLifecycleWithinTransaction(
+                $session, SessionEventType::GrantRevoked, $revokedAt,
+                ImpersonationGrant::class, $grant->id, $grant->ticket_ref,
+            ),
+            $this->sessionAudit->appendLifecycleWithinTransaction(
+                $session, SessionEventType::SessionEnded, $revokedAt,
+                ImpersonationSession::class, $session->id, $grant->ticket_ref,
+            ),
+        ];
+        $session->update([
+            'ended_at' => $revokedAt,
+            'end_reason' => SessionEndReason::GrantRevoked,
+        ]);
 
-            return $mirrors;
-        });
-        foreach ($mirrors as $mirror) {
-            $this->sessionAudit->deliver($mirror);
-        }
+        return $mirrors;
     }
 
     /** @param list<GrantAuditMirrorData> $mirrors */

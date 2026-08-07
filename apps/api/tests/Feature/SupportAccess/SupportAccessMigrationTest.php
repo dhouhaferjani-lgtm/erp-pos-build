@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use LogicException;
 use Tests\TestCase;
 
 final class SupportAccessMigrationTest extends TestCase
@@ -54,6 +55,53 @@ final class SupportAccessMigrationTest extends TestCase
             ->firstWhere('name', 'subject_user_id');
         self::assertIsArray($subjectColumn);
         self::assertTrue($subjectColumn['nullable'], 'Pre-granted scope must allow subject selection at session start.');
+    }
+
+    public function test_authoritative_grant_audit_migration_refuses_destructive_rollback(): void
+    {
+        $tenantId = Str::uuid()->toString();
+        $operatorId = Str::uuid()->toString();
+        $subjectId = Str::uuid()->toString();
+        $grant = ImpersonationGrant::query()->create([
+            'tenant_id' => $tenantId,
+            'subject_user_id' => $subjectId,
+            'operator_id' => $operatorId,
+            'type' => GrantType::PerIncident,
+            'status' => GrantStatus::Active,
+            'reason' => 'Retained evidence fixture',
+            'ticket_ref' => 'SUP-RETENTION',
+            'requested_at' => now(),
+            'starts_at' => now(),
+            'expires_at' => now()->addHour(),
+        ]);
+        DB::table('impersonation_grant_events')->insert([
+            'id' => Str::uuid()->toString(),
+            'grant_id' => $grant->id,
+            'sequence' => 1,
+            'event_type' => SessionEventType::GrantRequested->value,
+            'outcome' => AuditOutcome::Observed->value,
+            'tenant_id' => $tenantId,
+            'subject_user_id' => $subjectId,
+            'operator_id' => $operatorId,
+            'actor_id' => $operatorId,
+            'actor_type' => 'super_admin',
+            'details' => '{}',
+            'previous_hash' => str_repeat('0', 64),
+            'hash' => str_repeat('c', 64),
+            'occurred_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_08_07_020000_add_authoritative_grant_audit_chain.php');
+        try {
+            $migration->down();
+            self::fail('Rollback must refuse to delete retained authoritative audit evidence.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('irreversible', $exception->getMessage());
+        }
+
+        self::assertTrue(Schema::hasTable('impersonation_grant_events'));
+        self::assertDatabaseHas('impersonation_grant_events', ['grant_id' => $grant->id]);
     }
 
     public function test_central_models_cast_statuses_and_json_details_to_typed_objects(): void

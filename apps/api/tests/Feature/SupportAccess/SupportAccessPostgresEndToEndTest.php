@@ -31,7 +31,6 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -61,9 +60,7 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
         }
 
         config(['tenancy_resolver.db_per_tenant' => true]);
-        if (! Schema::hasTable('tenants')) {
-            Artisan::call('migrate', ['--force' => true]);
-        }
+        Artisan::call('migrate', ['--force' => true]);
 
         self::$writeProbeHits = 0;
         Route::middleware([

@@ -2054,6 +2054,33 @@ status: App.Modules.SupportAccess.Domain.Enums.ElevationStatus;
 reason: string;
 requested_at: any;
 };
+export type GrantData = {
+id: string;
+tenant_id: string;
+subject_user_id: string | null;
+operator_id: string | null;
+type: App.Modules.SupportAccess.Domain.Enums.GrantType;
+status: App.Modules.SupportAccess.Domain.Enums.GrantStatus;
+reason: string;
+ticket_ref: string;
+starts_at: any;
+expires_at: any;
+tenant_approved_by: string | null;
+tenant_approved_at: any | null;
+second_approved_by: string | null;
+second_approved_at: any | null;
+revoked_by: string | null;
+revoked_at: any | null;
+revocation_reason: string | null;
+};
+export type OffsetPaginationMetaData = {
+current_page: number;
+per_page: number;
+total: number;
+last_page: number;
+from: number | null;
+to: number | null;
+};
 export type SessionData = {
 id: string;
 grant_id: string;
@@ -2082,11 +2109,11 @@ occurred_at: any;
 };
 export type SupportAccessOverviewData = {
 max_grant_window_hours: number;
-grants: Array<any>;
+grants: Array<App.Modules.SupportAccess.Application.DTOs.GrantData>;
 active_sessions: Array<App.Modules.SupportAccess.Application.DTOs.SessionData>;
 log: Array<App.Modules.SupportAccess.Application.DTOs.SupportAccessLogEntryData>;
 pending_elevations: Array<App.Modules.SupportAccess.Application.DTOs.ElevationData>;
-log_meta: Array<any> | null;
+log_meta: App.Modules.SupportAccess.Application.DTOs.OffsetPaginationMetaData | null;
 };
 }
 declare namespace App.Modules.SupportAccess.Domain.Enums {

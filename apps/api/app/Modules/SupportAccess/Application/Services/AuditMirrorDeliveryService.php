@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\SupportAccess\Application\Services;
 
+use App\Modules\SupportAccess\Application\DTOs\AuditReconciliationResultData;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationAuditDelivery;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrantEvent;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
@@ -15,6 +16,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 final class AuditMirrorDeliveryService
@@ -24,6 +26,7 @@ final class AuditMirrorDeliveryService
         private readonly TenantImpersonationAuditWriter $tenantWriter,
         private readonly DatabaseManager $database,
         private readonly Repository $config,
+        private readonly LoggerInterface $logger,
     ) {}
 
     public function deliverSession(ImpersonationAuditMirrorData $event): void
@@ -52,9 +55,10 @@ final class AuditMirrorDeliveryService
         );
     }
 
-    public function reconcilePending(int $limit = 100): int
+    public function reconcilePending(int $limit = 100): AuditReconciliationResultData
     {
         $reconciled = 0;
+        $failed = 0;
         $pending = ImpersonationAuditDelivery::query()
             ->where(static fn ($query) => $query
                 ->whereNull('admin_delivered_at')
@@ -64,48 +68,76 @@ final class AuditMirrorDeliveryService
             ->get();
 
         foreach ($pending as $delivery) {
-            if ($delivery->aggregate_type === 'session') {
-                $event = ImpersonationSessionEvent::query()->findOrFail($delivery->event_id);
-                $this->deliverSession(new ImpersonationAuditMirrorData(
-                    event_id: $event->id,
-                    session_id: $event->session_id,
-                    sequence: $event->sequence,
-                    previous_hash: $event->previous_hash,
-                    hash: $event->hash,
-                    event_type: $event->event_type->value,
-                    outcome: $event->outcome->value,
-                    operator_id: $event->operator_id,
-                    subject_user_id: $event->subject_user_id,
-                    tenant_id: $event->tenant_id,
-                    request_id: $event->request_id,
-                    http_method: $event->http_method,
-                    path: $event->path,
-                    details: $event->details->toArray(),
-                    occurred_at: CarbonImmutable::instance($event->occurred_at),
-                ));
-            } else {
-                $event = ImpersonationGrantEvent::query()->findOrFail($delivery->event_id);
-                $this->deliverGrant(new GrantAuditMirrorData(
-                    event_id: $event->id,
-                    grant_id: $event->grant_id,
-                    sequence: $event->sequence,
-                    previous_hash: $event->previous_hash,
-                    hash: $event->hash,
-                    event_type: $event->event_type->value,
-                    outcome: $event->outcome->value,
-                    operator_id: $event->operator_id,
-                    subject_user_id: $event->subject_user_id,
-                    tenant_id: $event->tenant_id,
-                    actor_id: $event->actor_id,
-                    actor_type: $event->actor_type,
-                    details: $event->details->toArray(),
-                    occurred_at: CarbonImmutable::instance($event->occurred_at),
-                ));
+            try {
+                if ($delivery->aggregate_type === 'session') {
+                    $event = ImpersonationSessionEvent::query()->findOrFail($delivery->event_id);
+                    $this->deliverSession(new ImpersonationAuditMirrorData(
+                        event_id: $event->id,
+                        session_id: $event->session_id,
+                        sequence: $event->sequence,
+                        previous_hash: $event->previous_hash,
+                        hash: $event->hash,
+                        event_type: $event->event_type->value,
+                        outcome: $event->outcome->value,
+                        operator_id: $event->operator_id,
+                        subject_user_id: $event->subject_user_id,
+                        tenant_id: $event->tenant_id,
+                        request_id: $event->request_id,
+                        http_method: $event->http_method,
+                        path: $event->path,
+                        details: $event->details->toArray(),
+                        occurred_at: CarbonImmutable::instance($event->occurred_at),
+                    ));
+                } else {
+                    $event = ImpersonationGrantEvent::query()->findOrFail($delivery->event_id);
+                    $this->deliverGrant(new GrantAuditMirrorData(
+                        event_id: $event->id,
+                        grant_id: $event->grant_id,
+                        sequence: $event->sequence,
+                        previous_hash: $event->previous_hash,
+                        hash: $event->hash,
+                        event_type: $event->event_type->value,
+                        outcome: $event->outcome->value,
+                        operator_id: $event->operator_id,
+                        subject_user_id: $event->subject_user_id,
+                        tenant_id: $event->tenant_id,
+                        actor_id: $event->actor_id,
+                        actor_type: $event->actor_type,
+                        details: $event->details->toArray(),
+                        occurred_at: CarbonImmutable::instance($event->occurred_at),
+                    ));
+                }
+                $reconciled++;
+            } catch (Throwable $exception) {
+                $failed++;
+                $this->logger->error('Impersonation audit mirror reconciliation failed.', [
+                    'event_id' => $delivery->event_id,
+                    'aggregate_type' => $delivery->aggregate_type,
+                    'attempt_count' => $delivery->fresh()?->attempt_count,
+                    'exception' => $exception,
+                ]);
             }
-            $reconciled++;
         }
 
-        return $reconciled;
+        $remaining = ImpersonationAuditDelivery::query()
+            ->where(static fn ($query) => $query
+                ->whereNull('admin_delivered_at')
+                ->orWhereNull('tenant_delivered_at'))
+            ->count();
+        if ($remaining > 0) {
+            $this->logger->warning('Impersonation audit mirror backlog remains after reconciliation.', [
+                'pending' => $remaining,
+                'failed' => $failed,
+                'limit' => $limit,
+            ]);
+        }
+
+        return new AuditReconciliationResultData(
+            attempted: $pending->count(),
+            reconciled: $reconciled,
+            failed: $failed,
+            pending: $remaining,
+        );
     }
 
     /** @param callable(): mixed $adminDelivery @param callable(): mixed $tenantDelivery */

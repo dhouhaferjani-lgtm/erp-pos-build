@@ -53,11 +53,13 @@
     "grant_approved": "Support grant approved",
     "grant_rejected": "Support grant rejected",
     "grant_revoked": "Support grant revoked",
+    "grant_expired": "Support grant expired",
     "session_started": "Support session started",
     "session_ended": "Support session ended",
     "request_received": "Support request received",
     "request_authorized": "Authorized support request",
     "request_denied": "Denied support request",
+    "request_failed": "Failed support request",
     "write_elevation_requested": "Write elevation requested",
     "write_elevation_approved": "Write elevation approved",
     "write_elevation_rejected": "Write elevation rejected"

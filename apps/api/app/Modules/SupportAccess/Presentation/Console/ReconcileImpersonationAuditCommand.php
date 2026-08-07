@@ -27,8 +27,16 @@ final class ReconcileImpersonationAuditCommand extends Command
             return self::FAILURE;
         }
 
-        $count = $this->delivery->reconcilePending($limit);
-        $this->info("Reconciled {$count} audit delivery record(s).");
+        $result = $this->delivery->reconcilePending($limit);
+        $this->info("Reconciled {$result->reconciled} of {$result->attempted} audit delivery record(s).");
+        if ($result->failed > 0) {
+            $this->error("{$result->failed} audit delivery record(s) failed; {$result->pending} remain pending.");
+
+            return self::FAILURE;
+        }
+        if ($result->pending > 0) {
+            $this->warn("{$result->pending} audit delivery record(s) remain pending for the next scheduled pass.");
+        }
 
         return self::SUCCESS;
     }

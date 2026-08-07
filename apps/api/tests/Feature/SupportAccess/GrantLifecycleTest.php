@@ -20,6 +20,7 @@ use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
+use App\Modules\SupportAccess\Domain\Enums\SessionEndReason;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Services\GrantChainVerifier;
 use App\Modules\SupportAccess\Infrastructure\Notifications\SupportAccessGrantNotification;
@@ -317,6 +318,47 @@ final class GrantLifecycleTest extends TestCase
         self::assertSame('Issue resolved', $again->revocation_reason);
     }
 
+    public function test_grant_mirror_failure_cannot_leave_child_session_live_or_unaudited(): void
+    {
+        $grant = $this->service->requestIncident($this->operator, $this->incidentData());
+        $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+        $started = $this->app->make(SessionLifecycleService::class)
+            ->start($this->operator, $grant->id, $this->subject->id);
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_grant_revoked_tenant_mirror
+            BEFORE INSERT ON audit_events
+            WHEN NEW.event_type = 'support_access.grant_revoked'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced grant mirror failure');
+            END;
+        SQL);
+
+        try {
+            $this->service->revoke($this->tenantAdmin, $grant->id, 'Issue resolved');
+            self::fail('The terminal mirror failure must fail the request closed.');
+        } catch (\Throwable $exception) {
+            self::assertStringContainsString('forced grant mirror failure', $exception->getMessage());
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_grant_revoked_tenant_mirror');
+        }
+
+        self::assertSame(GrantStatus::Revoked, ImpersonationGrant::query()->findOrFail($grant->id)->status);
+        $session = ImpersonationSession::query()->findOrFail($started->session_id);
+        self::assertNotNull($session->ended_at);
+        self::assertSame(SessionEndReason::GrantRevoked, $session->end_reason);
+        self::assertSame(
+            [SessionEventType::GrantRevoked, SessionEventType::SessionEnded],
+            ImpersonationSessionEvent::query()
+                ->where('session_id', $session->id)
+                ->whereIn('event_type', [SessionEventType::GrantRevoked, SessionEventType::SessionEnded])
+                ->orderBy('sequence')
+                ->pluck('event_type')
+                ->all(),
+        );
+        self::assertNotNull(CentralPersonalAccessToken::query()->find($started->personal_access_token_id));
+    }
+
     public function test_grant_state_rolls_back_when_the_authoritative_event_append_fails(): void
     {
         $grant = $this->service->requestIncident($this->operator, $this->incidentData());
@@ -471,6 +513,14 @@ final class GrantLifecycleTest extends TestCase
             $reflection = new ReflectionMethod($admin->getControllerClass(), $method);
             self::assertCount(1, $reflection->getAttributes(CrossTenantRoute::class));
         }
+    }
+
+    public function test_expiry_and_audit_reconciliation_commands_are_scheduled_with_overlap_protection(): void
+    {
+        $this->artisan('schedule:list')
+            ->expectsOutputToContain('support-access:expire --limit=1000')
+            ->expectsOutputToContain('support-access:audit-reconcile --limit=1000')
+            ->assertExitCode(0);
     }
 
     private function incidentData(string $reason = 'Investigate invoice rendering', ?CarbonImmutable $expiresAt = null): GrantRequestData

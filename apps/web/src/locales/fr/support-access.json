@@ -44,11 +44,13 @@
     "grant_approved": "Autorisation d'assistance approuvée",
     "grant_rejected": "Autorisation d'assistance refusée",
     "grant_revoked": "Autorisation d'assistance révoquée",
+    "grant_expired": "Autorisation d'assistance expirée",
     "session_started": "Session d'assistance démarrée",
     "session_ended": "Session d'assistance terminée",
     "request_received": "Requête d'assistance reçue",
     "request_authorized": "Requête d'assistance autorisée",
     "request_denied": "Requête d'assistance refusée",
+    "request_failed": "Échec de la requête d'assistance",
     "write_elevation_requested": "Élévation d'écriture demandée",
     "write_elevation_approved": "Élévation d'écriture approuvée",
     "write_elevation_rejected": "Élévation d'écriture refusée"

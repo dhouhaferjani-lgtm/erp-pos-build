@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\SupportAccess\Application\Services\AuditMirrorDeliveryService;
 use App\Modules\SupportAccess\Application\Services\ElevationService;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
 use App\Modules\SupportAccess\Application\Services\SessionLifecycleService;
@@ -386,6 +387,54 @@ final class ImpersonationAuditTest extends TestCase
 
         self::assertSame(1, AdminAuditLog::query()->where('impersonation_event_id', $event->id)->count());
         self::assertSame(1, $this->tenantAuditStore->forEvents($this->tenant->id, [$event->id])->count());
+    }
+
+    public function test_reconciliation_isolates_a_poison_delivery_and_continues_the_backlog(): void
+    {
+        [, $firstSession] = $this->startedSession();
+        [, $secondSession] = $this->startedSession();
+        $firstEvent = ImpersonationSessionEvent::query()
+            ->where('session_id', $firstSession->id)
+            ->where('event_type', SessionEventType::SessionStarted)
+            ->sole();
+        $secondEvent = ImpersonationSessionEvent::query()
+            ->where('session_id', $secondSession->id)
+            ->where('event_type', SessionEventType::SessionStarted)
+            ->sole();
+        ImpersonationAuditDelivery::query()
+            ->whereIn('event_id', [$firstEvent->id, $secondEvent->id])
+            ->update(['tenant_delivered_at' => null]);
+
+        $realWriter = $this->app->make(TenantImpersonationAuditWriter::class);
+        $this->app->instance(TenantImpersonationAuditWriter::class, new class($realWriter, $firstEvent->id) implements TenantImpersonationAuditWriter
+        {
+            public function __construct(
+                private readonly TenantImpersonationAuditWriter $delegate,
+                private readonly string $poisonEventId,
+            ) {}
+
+            public function writeImpersonationMirror(ImpersonationAuditMirrorData $event): void
+            {
+                if ($event->event_id === $this->poisonEventId) {
+                    throw new RuntimeException('poison mirror');
+                }
+                $this->delegate->writeImpersonationMirror($event);
+            }
+
+            public function writeGrantMirror(GrantAuditMirrorData $event): void
+            {
+                $this->delegate->writeGrantMirror($event);
+            }
+        });
+
+        $result = $this->app->make(AuditMirrorDeliveryService::class)->reconcilePending();
+
+        self::assertSame(2, $result->attempted);
+        self::assertSame(1, $result->reconciled);
+        self::assertSame(1, $result->failed);
+        self::assertSame(1, $result->pending);
+        self::assertNull(ImpersonationAuditDelivery::query()->findOrFail($firstEvent->id)->tenant_delivered_at);
+        self::assertNotNull(ImpersonationAuditDelivery::query()->findOrFail($secondEvent->id)->tenant_delivered_at);
     }
 
     public function test_verify_command_detects_a_missing_mirror(): void

@@ -7,6 +7,7 @@ namespace App\Modules\SupportAccess\Application\Services;
 use App\Models\SuperAdmin;
 use App\Modules\SupportAccess\Application\DTOs\ElevationData;
 use App\Modules\SupportAccess\Application\DTOs\GrantData;
+use App\Modules\SupportAccess\Application\DTOs\OffsetPaginationMetaData;
 use App\Modules\SupportAccess\Application\DTOs\SessionData;
 use App\Modules\SupportAccess\Application\DTOs\SupportAccessLogEntryData;
 use App\Modules\SupportAccess\Application\DTOs\SupportAccessOverviewData;
@@ -109,14 +110,14 @@ final class SupportAccessQueryService
             active_sessions: $this->activeSessions($tenantId),
             log: $log,
             pending_elevations: [],
-            log_meta: [
-                'current_page' => $page,
-                'per_page' => $perPage,
-                'total' => $total,
-                'last_page' => max(1, (int) ceil($total / $perPage)),
-                'from' => $from,
-                'to' => $to,
-            ],
+            log_meta: new OffsetPaginationMetaData(
+                current_page: $page,
+                per_page: $perPage,
+                total: $total,
+                last_page: max(1, (int) ceil($total / $perPage)),
+                from: $from,
+                to: $to,
+            ),
         );
     }
 

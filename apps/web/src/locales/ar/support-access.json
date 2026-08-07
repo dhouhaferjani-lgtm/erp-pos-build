@@ -38,11 +38,13 @@
     "grant_approved": "تمت الموافقة على منح وصول الدعم",
     "grant_rejected": "رُفض منح وصول الدعم",
     "grant_revoked": "أُلغي منح وصول الدعم",
+    "grant_expired": "انتهت صلاحية منح وصول الدعم",
     "session_started": "بدأت جلسة الدعم",
     "session_ended": "انتهت جلسة الدعم",
     "request_received": "تم استلام طلب الدعم",
     "request_authorized": "طلب دعم مصرح به",
     "request_denied": "طلب دعم مرفوض",
+    "request_failed": "فشل طلب الدعم",
     "write_elevation_requested": "طُلب رفع صلاحية الكتابة",
     "write_elevation_approved": "تمت الموافقة على رفع صلاحية الكتابة",
     "write_elevation_rejected": "رُفض رفع صلاحية الكتابة"

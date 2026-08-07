@@ -62,17 +62,19 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (Schema::hasTable('impersonation_grant_events')
+            && DB::table('impersonation_grant_events')->exists()) {
+            throw new LogicException(
+                'This migration is irreversible after authoritative support-access grant audit evidence exists.',
+            );
+        }
+
         $this->dropImmutabilityTriggers();
         Schema::dropIfExists('impersonation_audit_deliveries');
         Schema::dropIfExists('impersonation_grant_events');
         Schema::table('impersonation_grants', function (Blueprint $table): void {
             $table->dropColumn(['chain_sequence', 'chain_previous_hash', 'chain_head_hash']);
         });
-        DB::table('admin_audit_logs')
-            ->whereNull('super_admin_id')
-            ->where('entity_type', 'impersonation_grant')
-            ->whereNull('impersonation_session_id')
-            ->delete();
         Schema::table('admin_audit_logs', function (Blueprint $table): void {
             $table->uuid('super_admin_id')->nullable(false)->change();
         });

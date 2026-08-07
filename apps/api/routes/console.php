@@ -15,6 +15,13 @@ Schedule::command('support-access:expire --limit=1000')
         Log::error('support-access:expire exited non-zero; elapsed grants remain fail-closed at request time, but lifecycle audit/session cleanup must be reconciled.');
     });
 
+Schedule::command('support-access:audit-reconcile --limit=1000')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onFailure(function (): void {
+        Log::error('support-access:audit-reconcile exited non-zero; one or more durable admin/tenant audit mirrors remain pending.');
+    });
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
