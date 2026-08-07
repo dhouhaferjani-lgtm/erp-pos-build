@@ -27,6 +27,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\DepositReferenceRefusal;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -547,14 +548,171 @@ final class RecordCustomerDepositTest extends TestCase
     }
 
     /**
+     * R2-K-prev SCOPE GATE — the movement-port-derived refusals must NOT fire on
+     * a MATURITY tender (cheque / effet).
+     *
+     * `TreasuryDepositBridge::apply()` takes the maturity branch at :169-174,
+     * sets `shouldRecordMovement = false`, and RETURNS at :217-219 before
+     * `TreasuryMovementService::record()` is ever called. Neither the freeze
+     * policy nor the currency guard nor the checkpoint guard executes on that
+     * path, so refusing a cheque deposit against a frozen drawer would 422 a
+     * legitimate ops flow that projects perfectly well today: the customer hands
+     * over a cheque while the drawer is frozen for a cash count. No cash moves,
+     * so the freeze is irrelevant.
+     *
+     * Asserts the whole positive path: the receipt seals, the instrument is
+     * created into the checks-to-collect portfolio, and NO repository movement
+     * is written.
+     */
+    public function test_post_accepts_a_maturity_tender_deposit_against_a_frozen_repository(): void
+    {
+        $this->seedChequePortfolioAccount();
+
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CHECK',
+            'name' => 'Cheque',
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+
+        DB::table('payment_repositories')
+            ->where('id', $this->repository->id)
+            ->update(['frozen_at' => now(), 'frozen_reason' => 'cash count in progress']);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CHECK',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(201);
+
+        $this->assertSame(
+            1,
+            FiscalEvent::query()->where('event_type', FiscalEventType::DEPOSIT_RECEIPT)->count(),
+            'A maturity-tender deposit must still seal its receipt — the freeze does not apply to it.'
+        );
+        $this->assertSame(1, DB::table('payment_instruments')->count(), 'The cheque must be received into the portfolio.');
+        $this->assertSame(
+            0,
+            DB::table('repository_movements')->count(),
+            'A maturity leg never touches the cash drawer, which is exactly why the freeze must not refuse it.'
+        );
+    }
+
+    /**
+     * R2-K-prev, authz gate I-2 — the movement port's THIRD rejecting guard.
+     *
+     * `TreasuryDepositBridge.php:273` passes `allowBehindCheckpoint =
+     * ! isServerOnly()`, which is CONSTANT FALSE for a DEPOSIT_RECEIPT, so
+     * `TreasuryMovementService::checkpointDisposition()` (:852-874) throws
+     * `RepositoryCheckpointException` for any movement whose occurrence date is
+     * not strictly after `payment_repositories.last_reconciled_at` — POST-seal.
+     *
+     * Reachable without any privilege: `StatementCompletionService` stamps
+     * `last_reconciled_at` at end-of-day of the statement's `period_end`, and
+     * `ConfirmBankStatementRequest` puts no upper bound on `period_end`. Confirm
+     * a statement through today and EVERY subsequent same-day cash deposit
+     * seals and then orphans.
+     */
+    public function test_post_returns_422_for_a_repository_reconciled_through_today_without_sealing_a_receipt(): void
+    {
+        DB::table('payment_repositories')
+            ->where('id', $this->repository->id)
+            ->update(['last_reconciled_at' => now()->endOfDay()]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev, authz gate m-2 / fiscal gate m-4 — DENY-PATH PIN.
+     *
+     * The V2 reachability answer ("`can:payments.create` is tenant-team scoped
+     * and therefore company-blind; what actually closes the non-member path is
+     * `CompanyContextMiddleware`") lived only in the lane report. Pin it:
+     * a user who HOLDS `payments.create` but whose company membership was
+     * revoked BEFORE the request never reaches the controller, on both
+     * company-resolution paths.
+     *
+     * Without `X-Company-Id` the user has no active membership to default to
+     * (`CompanyContext::getDefaultCompanyForUser()` filters on Active), so the
+     * middleware answers `NO_COMPANY_ACCESS`; with an explicit header,
+     * `userHasAccessToCompany()` rejects it as `COMPANY_ACCESS_DENIED`.
+     */
+    public function test_a_revoked_member_holding_payments_create_is_denied_before_the_controller(): void
+    {
+        $this->assertTrue(
+            $this->user->can('payments.create'),
+            'The pin is only meaningful while the actor still holds the permission the route gates on.'
+        );
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['status' => MembershipStatus::Revoked->value]);
+
+        $payload = [
+            'amount' => '11.111',
+            'payment_method_code' => 'CASH',
+            'repository_id' => $this->repository->id,
+            'currency' => 'TND',
+        ];
+
+        $withoutHeader = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            $payload,
+        );
+        $withoutHeader->assertStatus(403);
+        $withoutHeader->assertJsonPath('error.code', 'NO_COMPANY_ACCESS');
+
+        $withHeader = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            $payload,
+            ['X-Company-Id' => $this->company->id],
+        );
+        $withHeader->assertStatus(403);
+        $withHeader->assertJsonPath('error.code', 'COMPANY_ACCESS_DENIED');
+
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
      * R2-K-prev V1, NARROWING proof — a freeze that lands AFTER the pre-flight
      * read must still be refused, because the pre-flight is re-run INSIDE the
      * transaction that seals the event.
      *
-     * The freeze is applied from a one-shot `TransactionBeginning` listener, so
-     * it commits between the pre-transaction pre-flight and the append. If the
-     * only check were the pre-transaction one, the receipt would be sealed here
-     * and the assertion below would fail.
+     * The freeze is applied from a one-shot `TransactionBeginning` listener,
+     * which fires straight after `beginTransaction()` — so the write lands
+     * between the pre-transaction pre-flight and the append. If the only check
+     * were the pre-transaction one, the receipt would be sealed here and the
+     * assertion below would fail.
+     *
+     * **What this probe does and does not model (fiscal gate m-3).** The
+     * listener runs on the SAME connection, INSIDE the sealing transaction: it
+     * never independently commits, and it is rolled back with everything else.
+     * So this models a same-connection write interleaved at the right instant —
+     * enough to prove the in-transaction re-verification exists and aborts
+     * cleanly. It is NOT a concurrent external committer, which no
+     * single-connection test can simulate, and which is precisely the residual
+     * race below.
      *
      * This NARROWS the race to the width of the sealing transaction; it does NOT
      * close it — the projection runs after that transaction commits, so a freeze
@@ -644,8 +802,9 @@ final class RecordCustomerDepositTest extends TestCase
      * in-transaction re-verification can catch it, and it must land as a 422
      * with nothing sealed rather than a 500 plus an orphan.
      *
-     * Same honest scope as the freeze leg: the window is narrowed to the sealing
-     * transaction, not closed.
+     * Same probe semantics and same honest scope as the freeze leg above: a
+     * same-connection interleaved write, not a concurrent committer; the window
+     * is narrowed to the sealing transaction, not closed.
      */
     public function test_post_refuses_a_membership_revoked_after_the_pre_flight_without_sealing_a_receipt(): void
     {
@@ -731,6 +890,25 @@ final class RecordCustomerDepositTest extends TestCase
 
         $response->assertForbidden();
         $this->assertSame(0, DB::table('payments')->count());
+    }
+
+    /**
+     * The checks-to-collect portfolio account a cheque deposit posts into.
+     *
+     * `InstrumentAccountResolver` looks it up by (company, code, type, active),
+     * and the code is country-derived: `5312` for TN (this fixture's company),
+     * `5112` elsewhere.
+     */
+    private function seedChequePortfolioAccount(): void
+    {
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '5312',
+            'name' => 'Cheques to collect',
+            'type' => 'asset',
+            'is_active' => true,
+        ]);
     }
 
     private function seedChartOfAccounts(): void
