@@ -105,15 +105,37 @@ use Illuminate\Support\Facades\Schema;
  *   SNAPSHOT taken at period close (`VatPeriodManagementService::
  *   persistBreakdowns()`/`closePeriod()`), which this leg does not touch.
  *   After the scan, the leg looks up every CLOSED `VatPeriod` overlapping
- *   a REWRITTEN expense's `document_date` and prints an explicit
- *   REOPEN + RE-CLOSE instruction naming each affected period. It never
- *   reopens or re-closes a period itself.
- * - I-3 (2026-08-06 gate): a 0%-deductible expense (vat_deductible_percent
- *   = 0.00) is OUT OF SCOPE for this leg pending an owner/expert ruling on
- *   whether it should also declare the full facial base — see the
- *   `writeDeductibleVatSnapshot()` docblock. The leg SKIPS AND REPORTS
- *   0%-deductible rows via their own counter line rather than rewriting
- *   them.
+ *   a REWRITTEN (or I-3-remediated) expense's `document_date` and prints
+ *   an explicit REOPEN + RE-CLOSE instruction naming each affected period.
+ *   It never reopens or re-closes a period itself.
+ * - m-7/m-8 (2026-08-06 re-gate, folded into R2-G): the period lookup now
+ *   ALSO matches `FILED` periods — reported in their OWN "FILED-PERIOD
+ *   IMPACT" section with an escalation message, since `reopenPeriod()`
+ *   refuses filed periods ("Only closed periods can be reopened") and the
+ *   reopen/re-close remedy above does not apply to them. The lookup also
+ *   uses `->get()` instead of `->first()` and merges every match (a
+ *   monthly + quarterly period after a `period_type` switch, or two
+ *   `country_code` rows, can legitimately overlap one document_date) so a
+ *   second overlapping period is never silently dropped.
+ * - I-3 — EXPERT RULING RECEIVED 2026-08-07 (
+ *   docs/superpowers/tickets/2026-08-06-q2-gate-minor-followups.md): a
+ *   0%-deductible expense (vat_deductible_percent = 0.00) is EXCLUDED
+ *   ENTIRELY from the VAT declaration — see the `writeDeductibleVatSnapshot()`
+ *   docblock for the verbatim ruling. This leg now REMEDIATES (rather than
+ *   skips) 0%-deductible rows: it DELETES the writer's sequence_order=1/
+ *   is_stamp_duty=false row outright, covering BOTH pre-ruling shapes —
+ *   the V5-era row (tax_base 0.000/tax_amount 0.000, prorated at 0%) and
+ *   the interim Q2 row (tax_base = full subtotal/tax_amount 0.000) — the
+ *   branch keys purely on `vat_deductible_percent`, never on the row's
+ *   current tax_base, so it catches both shapes identically. Deleting is
+ *   idempotent by construction: a re-run's `WHERE` clause (a
+ *   sequence_order=1/is_stamp_duty=false row must exist) no longer matches
+ *   the document once its row is gone, so it drops out of the scan
+ *   entirely on the next run. Reported with a per-document reference list
+ *   (id + number) under both dry-run ("Would delete") and --apply
+ *   ("Deleted") so an operator can audit exactly which documents were
+ *   affected. Duplicate-slot rows (I-1, >1 row in the slot) are still
+ *   skipped-and-reported BEFORE this branch runs, regardless of percent.
  * - DRY-RUN BY DEFAULT / --apply / --company, same contract as the main leg.
  */
 final class BackfillTaxDetailsCommand extends Command
@@ -312,13 +334,16 @@ final class BackfillTaxDetailsCommand extends Command
 
         $scanned = 0;
         $touched = 0;
-        $zeroDeductibleSkipped = 0;
         /** @var list<array{id: string, number: string, reason: string}> $skipped */
         $skipped = [];
         /** @var numeric-string $baseDelta */
         $baseDelta = '0';
+        /** @var list<array{id: string, number: string}> $zeroDeductibleRemediated */
+        $zeroDeductibleRemediated = [];
         /** @var array<string, VatPeriod> $affectedClosedPeriods */
         $affectedClosedPeriods = [];
+        /** @var array<string, VatPeriod> $affectedFiledPeriods */
+        $affectedFiledPeriods = [];
 
         foreach ($query->cursor() as $document) {
             // m-2 (2026-08-06 gate): count every candidate document BEFORE
@@ -384,14 +409,23 @@ final class BackfillTaxDetailsCommand extends Command
 
             $deductiblePercent = (string) $rawDeductiblePercent;
 
-            // I-3 (2026-08-06 gate): 0%-deductible expenses now declare the
-            // FULL facial base with 0.000 deducted VAT -- outside the
-            // ticket's stated 80%-case scope, with an owner/expert ruling
-            // still PENDING (see writeDeductibleVatSnapshot() docblock).
-            // Conservative interim handling: skip and report rather than
-            // rewrite while the ruling is open.
+            // I-3 EXPERT RULING (2026-08-07): 0%-deductible expenses are
+            // excluded entirely from the VAT declaration -- see the class
+            // docblock. Delete the row outright; this keys purely on the
+            // percent, not on the row's current tax_base, so it remediates
+            // BOTH pre-ruling shapes (V5-era 0.000/0.000 and interim
+            // full-base/0.000) identically.
             if (bccomp($deductiblePercent, '0', 2) === 0) {
-                $zeroDeductibleSkipped++;
+                if ($apply) {
+                    DB::transaction(function () use ($detail): void {
+                        $detail->delete();
+                    });
+                }
+                $zeroDeductibleRemediated[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                ];
+                $this->recordPeriodImpact($document, $affectedClosedPeriods, $affectedFiledPeriods);
 
                 continue;
             }
@@ -436,20 +470,11 @@ final class BackfillTaxDetailsCommand extends Command
             $baseDelta = bcadd($baseDelta, bcsub($subtotal, $storedBase, $scale), $scale);
 
             // I-2 (2026-08-06 gate): a rewritten row inside an already
-            // CLOSED period leaves that period's materialized
-            // vat_period_breakdowns snapshot stale. Record the period so
-            // the report can name it and instruct the operator to reopen
-            // + re-close it -- this command never does so automatically.
-            $documentDate = $document->document_date->toDateString();
-            $closedPeriod = VatPeriod::query()
-                ->where('company_id', $document->company_id)
-                ->where('status', VatPeriodStatus::Closed)
-                ->where('period_start', '<=', $documentDate)
-                ->where('period_end', '>=', $documentDate)
-                ->first();
-            if ($closedPeriod !== null) {
-                $affectedClosedPeriods[$closedPeriod->id] = $closedPeriod;
-            }
+            // CLOSED (or FILED -- m-7) period leaves that period's
+            // materialized vat_period_breakdowns snapshot (or frozen
+            // declaration) stale. Record it so the report can name it --
+            // this command never touches a period itself.
+            $this->recordPeriodImpact($document, $affectedClosedPeriods, $affectedFiledPeriods);
         }
 
         $this->line(sprintf(
@@ -460,7 +485,14 @@ final class BackfillTaxDetailsCommand extends Command
             count($skipped),
         ));
         $this->line(sprintf('  Cumulative declared-base delta (AFTER - BEFORE): %s', $baseDelta));
-        $this->line(sprintf('  0%%-deductible: awaiting ruling, skipped %d document(s).', $zeroDeductibleSkipped));
+        $this->line(sprintf(
+            '  0%%-deductible (I-3 ruling -- excluded from the declaration): %s %d document(s).',
+            $apply ? 'Deleted' : 'Would delete',
+            count($zeroDeductibleRemediated),
+        ));
+        foreach ($zeroDeductibleRemediated as $row) {
+            $this->line(sprintf('    - %s (%s)', $row['number'], $row['id']));
+        }
 
         foreach ($skipped as $row) {
             $this->warn(sprintf(
@@ -485,8 +517,57 @@ final class BackfillTaxDetailsCommand extends Command
             }
         }
 
-        if (! $apply && $touched > 0) {
+        if ($affectedFiledPeriods !== []) {
+            $this->line('');
+            $this->error('  FILED-PERIOD IMPACT -- these periods are ALREADY FILED; reopenPeriod() REFUSES filed periods, so do NOT attempt reopen+re-close:');
+            foreach ($affectedFiledPeriods as $period) {
+                $this->error(sprintf(
+                    '    - %s (%s, %s to %s): the filed declaration is now stale for this document. Remedy: a filed-declaration correction (amended/corrective filing) -- ESCALATE TO THE ACCOUNTANT before taking any action.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        if (! $apply && ($touched > 0 || $zeroDeductibleRemediated !== [])) {
             $this->info('Dry-run only for the expense leg -- re-run with --apply to write it for real.');
+        }
+    }
+
+    /**
+     * I-2 (2026-08-06 gate) + m-7/m-8 (2026-08-06 re-gate): look up every
+     * VatPeriod overlapping a touched expense's document_date whose status
+     * is CLOSED or FILED, and merge every match into the corresponding
+     * report bucket by reference. `->get()` (not `->first()`) so two
+     * overlapping periods for the same company (e.g. a monthly + quarterly
+     * period after a `period_type` switch, or two `country_code` rows) are
+     * both reported, not just the first one found.
+     *
+     * @param  array<string, VatPeriod>  $affectedClosedPeriods
+     * @param  array<string, VatPeriod>  $affectedFiledPeriods
+     */
+    private function recordPeriodImpact(
+        Document $document,
+        array &$affectedClosedPeriods,
+        array &$affectedFiledPeriods,
+    ): void {
+        $documentDate = $document->document_date->toDateString();
+
+        $overlappingPeriods = VatPeriod::query()
+            ->where('company_id', $document->company_id)
+            ->whereIn('status', [VatPeriodStatus::Closed, VatPeriodStatus::Filed])
+            ->where('period_start', '<=', $documentDate)
+            ->where('period_end', '>=', $documentDate)
+            ->get();
+
+        foreach ($overlappingPeriods as $period) {
+            if ($period->status === VatPeriodStatus::Filed) {
+                $affectedFiledPeriods[$period->id] = $period;
+            } else {
+                $affectedClosedPeriods[$period->id] = $period;
+            }
         }
     }
 

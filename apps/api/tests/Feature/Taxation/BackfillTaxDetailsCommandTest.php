@@ -481,24 +481,354 @@ final class BackfillTaxDetailsCommandTest extends TestCase
     }
 
     /**
-     * Gate finding I-3: 0%-deductible expenses now declare the full facial
-     * base with 0.000 deducted VAT -- a behaviour change outside the
-     * ticket's stated 80%-case scope, with an OWNER RULING STILL PENDING
-     * (see the writeDeductibleVatSnapshot() docblock). Interim, the leg
-     * must SKIP AND REPORT these rows rather than rewrite them.
+     * m-9 (2026-08-06 re-gate): the I-2 closed-period-impact block is
+     * structurally $apply-independent, but was only ever exercised under
+     * --apply. Dry-run is what an operator runs first -- pin that the
+     * preview also surfaces the reopen/re-close instruction, and that
+     * nothing is written.
      */
-    public function test_expense_leg_skips_and_reports_zero_percent_deductible_rows_pending_owner_ruling(): void
+    public function test_expense_leg_dry_run_reports_a_reopen_and_reclose_instruction_for_an_affected_closed_period(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('[DRY-RUN]', $output);
+        $this->assertStringContainsString('January 2026', $output);
+        $this->assertStringContainsString('reopen', $output);
+        $this->assertStringContainsString('re-close', $output);
+
+        // Dry-run must never write.
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    /**
+     * m-8 (2026-08-06 re-gate): the period lookup used `->first()`, so a
+     * SECOND period overlapping the same document_date (a monthly +
+     * quarterly period after a `period_type` switch is the realistic
+     * cause) went unreported. Both CLOSED periods covering the expense's
+     * date must be named.
+     */
+    public function test_expense_leg_reports_every_overlapping_closed_period_not_just_the_first(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026 (monthly)',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+        ]);
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'QUARTERLY',
+            'label' => 'Q1 2026 (quarterly)',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-03-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('January 2026 (monthly)', $output);
+        $this->assertStringContainsString('Q1 2026 (quarterly)', $output);
+    }
+
+    /**
+     * m-7 (2026-08-06 re-gate): a FILED period must be reported in its OWN
+     * section with an escalation message, never the reopen/re-close
+     * instruction -- `reopenPeriod()` refuses filed periods
+     * ("Only closed periods can be reopened").
+     */
+    public function test_expense_leg_reports_a_filed_period_with_an_escalation_message_not_a_reopen_instruction(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Filed,
+            'closed_at' => now()->subDay(),
+            'filed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT', $output);
+        $this->assertStringContainsString('January 2026', $output);
+        $this->assertStringContainsString('ALREADY FILED', $output);
+        $this->assertStringContainsString('escalate', strtolower($output));
+        // A filed period must NEVER get the reopen+re-close remedy.
+        $this->assertStringNotContainsString('CLOSED-PERIOD IMPACT', $output);
+        $this->assertStringNotContainsString('reopen this period', $output);
+
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('100.000', $detail->tax_base);
+    }
+
+    /**
+     * I-3 -- EXPERT RULING RECEIVED 2026-08-07 (
+     * docs/superpowers/tickets/2026-08-06-q2-gate-minor-followups.md):
+     * "Exclure totalement la charge de la déclaration mensuelle de TVA" --
+     * a 0%-deductible expense is excluded entirely from the VAT
+     * declaration. The interim "skip, awaiting ruling" behaviour is
+     * abandoned; the leg now REMEDIATES by deleting the row. This covers
+     * the V5-era shape: tax_base 0.000 / tax_amount 0.000 (100.000 × 0%).
+     */
+    public function test_expense_leg_dry_run_reports_the_zero_percent_deductible_row_for_deletion_v5_shape(): void
+    {
+        $expense = $this->createLegacyExpense('0.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id])
+            ->expectsOutputToContain('[DRY-RUN]')
+            ->expectsOutputToContain('0%-deductible (I-3 ruling -- excluded from the declaration): Would delete 1')
+            ->assertSuccessful();
+
+        // Dry-run must never write -- row survives untouched.
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('0.000', $detail->tax_base);
+        $this->assertSame('0.000', $detail->tax_amount);
+    }
+
+    public function test_expense_leg_apply_deletes_the_zero_percent_deductible_row_v5_shape(): void
     {
         $expense = $this->createLegacyExpense('0.00');
 
         $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
-            ->expectsOutputToContain('0%-deductible: awaiting ruling, skipped 1')
+            ->expectsOutputToContain('[APPLY]')
+            ->expectsOutputToContain('0%-deductible (I-3 ruling -- excluded from the declaration): Deleted 1')
+            ->expectsOutputToContain('EXP-LEGACY-0.00')
             ->assertSuccessful();
 
-        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
-        // Untouched -- the V5 shape for 0% deductible is base=0.000 (100.000 × 0%).
-        $this->assertSame('0.000', $detail->tax_base);
-        $this->assertSame('0.000', $detail->tax_amount);
+        $this->assertFalse(
+            DocumentTaxDetail::where('document_id', $expense->id)->exists(),
+            'The 0%-deductible row must be DELETED, not rewritten, per the I-3 ruling.',
+        );
+    }
+
+    /**
+     * The interim (pre-ruling) shape the Q2 writer produced for the 0%
+     * case before the I-3 ruling landed: full facial base, zero deducted
+     * VAT. The remediation branch keys purely on vat_deductible_percent,
+     * never on the row's stored base, so it must delete this shape
+     * identically to the V5 shape above.
+     */
+    public function test_expense_leg_apply_deletes_the_zero_percent_deductible_row_interim_shape(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-INTERIM-ZERO-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Interim Zero Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '0.00',
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '100.000', // interim shape: full facial subtotal
+            'tax_amount' => '0.000',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('0%-deductible (I-3 ruling -- excluded from the declaration): Deleted 1', $output);
+        $this->assertStringContainsString('EXP-INTERIM-ZERO-0001', $output);
+        $this->assertFalse(DocumentTaxDetail::where('document_id', $document->id)->exists());
+    }
+
+    public function test_expense_leg_zero_percent_deductible_deletion_is_idempotent_on_a_second_run(): void
+    {
+        $expense = $this->createLegacyExpense('0.00');
+
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('Deleted 1')
+            ->assertSuccessful();
+        $this->assertFalse(DocumentTaxDetail::where('document_id', $expense->id)->exists());
+
+        // Second run: the document no longer carries a matching row in the
+        // writer's slot, so it drops out of the leg's own scan query
+        // entirely -- nothing left to do.
+        $this->command('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true])
+            ->expectsOutputToContain('Deleted 0')
+            ->assertSuccessful();
+        $this->assertFalse(DocumentTaxDetail::where('document_id', $expense->id)->exists());
+    }
+
+    /**
+     * I-1 (2026-08-06 gate) still wins over I-3's remediation: a
+     * 0%-deductible document carrying a DUPLICATE sequence_order=1 slot is
+     * skipped and reported, never guessed at -- the duplicate check runs
+     * before the deductible percent is even read.
+     */
+    public function test_expense_leg_duplicate_rows_on_a_zero_percent_deductible_document_still_hit_i1_skip(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-ZERO-DUPLICATE-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Zero Duplicate Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '0.00',
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '0.000',
+            'tax_amount' => '0.000',
+            'is_stamp_duty' => false,
+            'created_at' => now()->subDay(),
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '100.000',
+            'tax_amount' => '0.000',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('SKIPPED EXP-ZERO-DUPLICATE-0001', $output);
+        $this->assertStringContainsString('2 rows at sequence_order=1', $output);
+        $this->assertStringContainsString('0%-deductible (I-3 ruling -- excluded from the declaration): Deleted 0', $output);
+        $this->assertCount(2, DocumentTaxDetail::where('document_id', $document->id)->get());
+    }
+
+    /**
+     * m-9 (2026-08-06 re-gate): the I-1 duplicate-slot skip is structurally
+     * $apply-independent, but was only ever exercised under --apply.
+     * Dry-run must surface the same skip-and-report line, and never write.
+     */
+    public function test_expense_leg_dry_run_reports_a_document_with_duplicate_sequence_order_one_rows(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-DUPLICATE-DRYRUN-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'Duplicate Dry-Run Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '100.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now()->subDay(),
+        ]);
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('[DRY-RUN]', $output);
+        $this->assertStringContainsString('SKIPPED EXP-DUPLICATE-DRYRUN-0001', $output);
+        $this->assertStringContainsString('2 rows at sequence_order=1', $output);
+
+        // Dry-run must never write -- both rows survive unchanged.
+        $this->assertCount(2, DocumentTaxDetail::where('document_id', $document->id)->get());
+        $rowA = DocumentTaxDetail::where('document_id', $document->id)->where('tax_base', '100.000')->firstOrFail();
+        $rowB = DocumentTaxDetail::where('document_id', $document->id)->where('tax_base', '80.000')->firstOrFail();
+        $this->assertSame('100.000', $rowA->tax_base);
+        $this->assertSame('80.000', $rowB->tax_base);
     }
 
     public function test_expense_leg_apply_is_idempotent_on_a_second_run(): void
