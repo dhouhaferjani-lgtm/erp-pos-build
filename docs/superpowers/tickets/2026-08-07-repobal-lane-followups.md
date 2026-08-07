@@ -30,8 +30,19 @@ Fix: target the rollback by migration name/batch, not a fixed step count.
 `balance` is port-managed and not `$fillable`; two suites (VendorPrepaymentRefundTest,
 PaymentGlPostingTest) had never actually funded their repositories — invisible until the new
 guard. Fixed in-lane by funding through the movement port. Sweep remaining tests/seeders for
-the same pattern (`grep "balance' =>" tests/ database/`), and consider a model-level guard
-(throw on balance in create attributes in non-production) so the trap is loud.
+the same pattern, and consider a model-level guard (throw on balance in create attributes in
+non-production) so the trap is loud.
+
+**2026-08-07 R2-G-gate escalation — the sweep predicate is TOO NARROW and dev is RED:**
+`grep "balance' =>"` misses fixtures that never pass balance at all.
+`ExpenseVatPostingTest` has **3 reds ON origin/dev today** (`InsufficientRepositoryBalance`
+from `cashRepository()` which creates an unfunded till, then drives outflows). Correct
+predicate: **any test driving an OUTFLOW through the movement port from a fixture-created
+repository** must fund it via the port first. ⚠️ Repair warning from the gate: funding those
+fixtures re-pins four values in a treasury-reconcile golden (ExpenseVatPostingTest:381-390) —
+the fix belongs to a treasury-gated change, not whatever lane happens to trip over the reds.
+Fix PROMPTLY: every lane touching these suites currently has to hand-wave "3 pre-existing
+failures".
 
 ## 5. Already-negative production repositories (deploy checklist lines — gate-corrected timing)
 
