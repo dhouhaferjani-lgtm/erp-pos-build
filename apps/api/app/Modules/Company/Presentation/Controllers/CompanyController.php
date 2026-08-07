@@ -165,6 +165,13 @@ class CompanyController extends Controller
             return $company;
         });
 
+        // W-8 F-5: several NOT-NULL columns (default_target_margin,
+        // default_minimum_margin, …) are supplied by DATABASE defaults and are
+        // not part of the create() payload, so the in-memory model carries null
+        // for them. Re-read the committed row before serializing, otherwise the
+        // response either 500s or reports nulls the database does not hold.
+        $company->refresh();
+
         return response()->json([
             'data' => $this->formatCompany($company),
             'meta' => [
@@ -586,12 +593,16 @@ class CompanyController extends Controller
             'default_tax_rate' => $company->default_tax_rate,
             'default_tax_configuration_id' => $company->default_tax_configuration_id,
             'tax_status' => $company->tax_status->value,
+            // W-8 F-5: `(string) null` is `""`, which defeats bcformatOrNull()'s
+            // null guard and makes bcformatStrict() throw. Guard the cast the
+            // way default_max_discount_percent below already does — a model that
+            // has not hydrated a DB default must serialize, never 500.
             'default_target_margin' => CurrencyScale::bcformatOrNull(
-                (string) $company->default_target_margin,
+                $company->default_target_margin !== null ? (string) $company->default_target_margin : null,
                 2
             ),
             'default_minimum_margin' => CurrencyScale::bcformatOrNull(
-                (string) $company->default_minimum_margin,
+                $company->default_minimum_margin !== null ? (string) $company->default_minimum_margin : null,
                 2
             ),
             'default_max_discount_percent' => CurrencyScale::bcformatOrNull(
