@@ -266,6 +266,46 @@ final class ExpenseVatPostingTest extends TestCase
         );
     }
 
+    /**
+     * IMP-1 (2026-08-07 backend gate,
+     * docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md): the
+     * delete-then-create block's delete half used to sit BELOW the
+     * `$vatAmount === null || bccomp !== 1` early return, so a re-post that
+     * CLEARS a previously-snapshotted expense's VAT entirely (not just
+     * drops its deductible percent to 0%) never reached the delete and left
+     * a stale row behind -- phantom deductible VAT that is strictly worse
+     * than the interim shape the I-3 ruling abolished. The delete must run
+     * TRULY unconditionally, above every other guard in the method.
+     */
+    public function test_vat_cleared_repost_deletes_the_previously_snapshotted_row(): void
+    {
+        [$expense] = $this->postVatExpense([
+            'vat_deductible_percent' => '80.00',
+        ]);
+        $this->assertTrue(
+            DocumentTaxDetail::query()->where('document_id', $expense->id)->exists(),
+            'precondition: the 80%-deductible post must have written a row',
+        );
+
+        // Simulate a correction workflow re-opening the posted expense to
+        // Draft with its VAT cleared entirely (not merely a lower
+        // deductible percent) -- same manual-DB-state technique as the
+        // sibling test above, for the same unpost() reachability reason.
+        $expense->status = DocumentStatus::Draft;
+        $expense->tax_amount = null;
+        $expense->save();
+        $expense->expenseMetadata()->update(['vat_rate' => null, 'vat_deductible_percent' => null]);
+
+        $reopened = $expense->fresh(['expenseMetadata']);
+        $this->assertNotNull($reopened);
+        $this->service->post($reopened, $this->user);
+
+        $this->assertFalse(
+            DocumentTaxDetail::query()->where('document_id', $expense->id)->exists(),
+            'The re-post with VAT cleared must delete the stale 80%-deductible row -- leaving it would be phantom deductible VAT.',
+        );
+    }
+
     public function test_vatless_expense_keeps_the_exact_legacy_two_line_shape_and_has_no_tax_detail(): void
     {
         [$expense, $entry] = $this->postExpense([

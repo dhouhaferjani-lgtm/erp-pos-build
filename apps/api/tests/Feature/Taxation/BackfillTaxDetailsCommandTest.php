@@ -555,6 +555,55 @@ final class BackfillTaxDetailsCommandTest extends TestCase
     }
 
     /**
+     * gate minor-2 (2026-08-07 backend gate,
+     * docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md): a document
+     * can overlap a CLOSED period and a FILED period simultaneously (e.g. a
+     * monthly period closed and a quarterly period already filed). Both
+     * sections must print together -- the prior tests only proved a FILED
+     * period alone does not print CLOSED-PERIOD IMPACT, not that the two
+     * coexist correctly.
+     */
+    public function test_expense_leg_reports_both_closed_and_filed_sections_when_both_periods_overlap(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026 (closed, monthly)',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+        ]);
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'QUARTERLY',
+            'label' => 'Q1 2026 (filed, quarterly)',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-03-31',
+            'status' => VatPeriodStatus::Filed,
+            'closed_at' => now()->subDay(),
+            'filed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('CLOSED-PERIOD IMPACT', $output);
+        $this->assertStringContainsString('January 2026 (closed, monthly)', $output);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT', $output);
+        $this->assertStringContainsString('Q1 2026 (filed, quarterly)', $output);
+
+        // The FILED period blocks the mutation without --include-filed --
+        // rows stay untouched even though a CLOSED period also overlaps.
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    /**
      * m-7 (2026-08-06 re-gate): a FILED period must be reported in its OWN
      * section with an escalation message, never the reopen/re-close
      * instruction -- `reopenPeriod()` refuses filed periods
@@ -587,8 +636,149 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->assertStringNotContainsString('CLOSED-PERIOD IMPACT', $output);
         $this->assertStringNotContainsString('reopen this period', $output);
 
+        // IMP-2 (2026-08-07 gate,
+        // docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md): --apply
+        // must NOT rewrite a row inside an ALREADY-FILED period without an
+        // explicit --include-filed -- the FILED-PERIOD IMPACT section must
+        // never trail a mutation it warns about. Rows stay untouched and
+        // the document is reported as SKIPPED.
+        $this->assertStringContainsString('SKIPPED', $output);
+        $this->assertStringContainsString('ALREADY-FILED VAT period', $output);
+        $this->assertStringContainsString('--include-filed', $output);
+        $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('80.000', $detail->tax_base);
+    }
+
+    /**
+     * IMP-2 (2026-08-07 gate) -- the flip side: with --include-filed passed
+     * explicitly, the operator has made an informed decision to mutate a
+     * FILED-period document anyway; the rewrite goes through.
+     */
+    public function test_expense_leg_apply_with_include_filed_rewrites_a_row_in_a_filed_period(): void
+    {
+        $expense = $this->createLegacyExpense('80.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Filed,
+            'closed_at' => now()->subDay(),
+            'filed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', [
+            '--company' => $this->company->id,
+            '--apply' => true,
+            '--include-filed' => true,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT', $output);
+        $this->assertStringContainsString('THIS RUN PASSED --include-filed', $output);
+        $this->assertStringContainsString('Rewrote 1', $output);
+        // The FILED-PERIOD IMPACT section's policy sentence always mentions
+        // "SKIPPED" (it states the general rule); what must NOT appear is a
+        // per-document SKIPPED line naming this expense -- i.e. it was not
+        // added to the leg's own $skipped list.
+        $this->assertStringNotContainsString('SKIPPED EXP-LEGACY-80.00', $output);
+
         $detail = DocumentTaxDetail::where('document_id', $expense->id)->firstOrFail();
         $this->assertSame('100.000', $detail->tax_base);
+    }
+
+    /**
+     * IMP-2 -- same gate, the 0%-deductible DELETION path (the more
+     * consequential of the two, per the gate finding). Without
+     * --include-filed the row survives; with it, the row is deleted.
+     */
+    public function test_expense_leg_apply_skips_a_zero_percent_deductible_row_in_a_filed_period_without_include_filed(): void
+    {
+        $expense = $this->createLegacyExpense('0.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Filed,
+            'closed_at' => now()->subDay(),
+            'filed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', ['--company' => $this->company->id, '--apply' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT', $output);
+        $this->assertStringContainsString('SKIPPED', $output);
+        $this->assertStringContainsString('deletion refused', $output);
+        $this->assertStringContainsString('--include-filed', $output);
+        // 0%-deductible remediation count must be 0 -- nothing was queued
+        // for deletion, only skipped.
+        $this->assertStringContainsString('Deleted 0', $output);
+
+        $this->assertTrue(
+            DocumentTaxDetail::where('document_id', $expense->id)->exists(),
+            'The row must survive when a FILED period blocks the deletion without --include-filed.',
+        );
+    }
+
+    public function test_expense_leg_apply_with_include_filed_deletes_a_zero_percent_deductible_row_in_a_filed_period(): void
+    {
+        $expense = $this->createLegacyExpense('0.00'); // document_date 2026-01-10
+        VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Filed,
+            'closed_at' => now()->subDay(),
+            'filed_at' => now(),
+        ]);
+
+        $exitCode = Artisan::call('vat:backfill-tax-details', [
+            '--company' => $this->company->id,
+            '--apply' => true,
+            '--include-filed' => true,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Deleted 1', $output);
+        $this->assertStringContainsString('THIS RUN PASSED --include-filed', $output);
+        $this->assertFalse(DocumentTaxDetail::where('document_id', $expense->id)->exists());
+    }
+
+    /**
+     * IMP-3 (2026-08-07 gate): a hard-deleted row has no audit trail of its
+     * own, so the printed output must be a usable snapshot -- document
+     * number, id, tax_base, tax_amount, tax_rate -- captured before the
+     * delete, in BOTH dry-run and --apply.
+     */
+    public function test_expense_leg_zero_percent_deletion_report_includes_a_full_row_snapshot_in_dry_run_and_apply(): void
+    {
+        $expense = $this->createLegacyExpense('0.00');
+
+        $dryRunOutput = $this->runBackfillAndCaptureOutput(['--company' => $this->company->id]);
+        $this->assertStringContainsString('EXP-LEGACY-0.00', $dryRunOutput);
+        $this->assertStringContainsString('tax_base=0.000', $dryRunOutput);
+        $this->assertStringContainsString('tax_amount=0.000', $dryRunOutput);
+        $this->assertStringContainsString('tax_rate=19.00', $dryRunOutput);
+
+        $applyOutput = $this->runBackfillAndCaptureOutput(['--company' => $this->company->id, '--apply' => true]);
+        $this->assertStringContainsString('EXP-LEGACY-0.00', $applyOutput);
+        $this->assertStringContainsString('tax_base=0.000', $applyOutput);
+        $this->assertStringContainsString('tax_amount=0.000', $applyOutput);
+        $this->assertStringContainsString('tax_rate=19.00', $applyOutput);
+
+        $this->assertFalse(DocumentTaxDetail::where('document_id', $expense->id)->exists());
     }
 
     /**
@@ -1220,5 +1410,15 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->assertInstanceOf(PendingCommand::class, $pending);
 
         return $pending;
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    private function runBackfillAndCaptureOutput(array $parameters): string
+    {
+        Artisan::call('vat:backfill-tax-details', $parameters);
+
+        return Artisan::output();
     }
 }

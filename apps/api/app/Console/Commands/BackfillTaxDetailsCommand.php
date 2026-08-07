@@ -131,20 +131,39 @@ use Illuminate\Support\Facades\Schema;
  *   idempotent by construction: a re-run's `WHERE` clause (a
  *   sequence_order=1/is_stamp_duty=false row must exist) no longer matches
  *   the document once its row is gone, so it drops out of the scan
- *   entirely on the next run. Reported with a per-document reference list
- *   (id + number) under both dry-run ("Would delete") and --apply
- *   ("Deleted") so an operator can audit exactly which documents were
- *   affected. Duplicate-slot rows (I-1, >1 row in the slot) are still
- *   skipped-and-reported BEFORE this branch runs, regardless of percent.
- * - DRY-RUN BY DEFAULT / --apply / --company, same contract as the main leg.
+ *   entirely on the next run. Duplicate-slot rows (I-1, >1 row in the slot)
+ *   are still skipped-and-reported BEFORE this branch runs, regardless of
+ *   percent.
+ * - IMP-2 (2026-08-07 gate, docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md):
+ *   `DocumentTaxDetail` has no `SoftDeletes`, and the original I-3
+ *   remediation let `--apply` delete a row inside an ALREADY-FILED VAT
+ *   period, with the FILED-PERIOD IMPACT warning printing only AFTER that
+ *   mutation. Both mutation paths (0%-deductible deletion and
+ *   partially-deductible base rewrite) now check FILED-period membership
+ *   BEFORE deciding to write: a document whose `document_date` falls
+ *   inside an ALREADY-FILED period is SKIPPED (reported, never mutated)
+ *   under BOTH dry-run and --apply unless `--include-filed` is also
+ *   passed. The FILED-PERIOD IMPACT section always prints when any FILED
+ *   period is found, in every mode, independent of whether the mutation
+ *   was allowed.
+ * - IMP-3 (2026-08-07 gate): a 0%-deductible deletion is a HARD delete
+ *   with no audit trail of its own, so the printed output is the ONLY
+ *   surviving record a row ever existed. Every deletion (would-delete or
+ *   deleted) is reported with a FULL ROW SNAPSHOT — document number, id,
+ *   tax_base, tax_amount, tax_rate — captured before the delete, in BOTH
+ *   dry-run and --apply, not merely a document reference list.
+ * - DRY-RUN BY DEFAULT / --apply / --company / --include-filed, same
+ *   contract as the main leg (--include-filed is expense-leg-only; the
+ *   main invoice/credit-note leg does not delete rows and is unaffected).
  */
 final class BackfillTaxDetailsCommand extends Command
 {
     protected $signature = 'vat:backfill-tax-details
-                            {--apply : Actually rewrite document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
-                            {--company= : Optional company id to scope to a single company within the current tenant}';
+                            {--apply : Actually rewrite/delete document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
+                            {--company= : Optional company id to scope to a single company within the current tenant}
+                            {--include-filed : IMP-2 (2026-08-07 gate). Without this flag, expense-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway.}';
 
-    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal per the Q2 expert-comptable ruling. DRY-RUN by default. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6 and docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md.';
+    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling). DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
 
     public function __construct(
         private readonly TaxCalculationService $taxCalculationService,
@@ -162,6 +181,7 @@ final class BackfillTaxDetailsCommand extends Command
         }
 
         $apply = (bool) $this->option('apply');
+        $includeFiled = (bool) $this->option('include-filed');
         $companyOption = $this->option('company');
         $companyId = is_string($companyOption) && $companyOption !== '' ? $companyOption : null;
 
@@ -295,7 +315,7 @@ final class BackfillTaxDetailsCommand extends Command
             $this->info('Dry-run only. The AFTER column above is a simulation (not yet written) -- re-run with --apply to write it for real.');
         }
 
-        $this->handleExpenseLeg($apply, $companyId);
+        $this->handleExpenseLeg($apply, $companyId, $includeFiled);
 
         return self::SUCCESS;
     }
@@ -304,12 +324,17 @@ final class BackfillTaxDetailsCommand extends Command
      * Expense leg (Q2 ruling) — see class docblock. Rewrites tax_base on a
      * partially-deductible expense's own DocumentTaxDetail row (sequence
      * order 1, non-stamp) from the V5 deductible-proportion base to the
-     * document's full stored subtotal. tax_amount is never touched.
+     * document's full stored subtotal, and DELETES that row entirely for a
+     * 0%-deductible expense (I-3 ruling). tax_amount is never touched by
+     * the rewrite path. IMP-2 (2026-08-07 gate): either mutation is
+     * refused for a document whose document_date falls inside an
+     * ALREADY-FILED VAT period unless `--include-filed` is passed — see
+     * `recordPeriodImpact()`.
      */
-    private function handleExpenseLeg(bool $apply, ?string $companyId): void
+    private function handleExpenseLeg(bool $apply, ?string $companyId, bool $includeFiled): void
     {
         $this->line('');
-        $this->line('Expense leg (Q2 ruling, declared base = full facial subtotal):');
+        $this->line('Expense leg (Q2 ruling, declared base = full facial subtotal; I-3 ruling, 0%-deductible rows DELETED):');
 
         // m-5 (2026-08-06 gate): the main leg guards `documents` and
         // `document_tax_details` at the top of handle(); this leg also
@@ -338,12 +363,22 @@ final class BackfillTaxDetailsCommand extends Command
         $skipped = [];
         /** @var numeric-string $baseDelta */
         $baseDelta = '0';
-        /** @var list<array{id: string, number: string}> $zeroDeductibleRemediated */
+        // IMP-3 (2026-08-07 gate): DocumentTaxDetail is a HARD delete with
+        // no SoftDeletes/audit event -- this row snapshot (id, number,
+        // tax_base, tax_amount, tax_rate) captured BEFORE the delete is the
+        // ONLY record a deleted row ever existed, so it is collected (and
+        // printed) in BOTH dry-run and --apply, not just on write.
+        /** @var list<array{id: string, number: string, tax_base: string, tax_amount: string, tax_rate: string|null}> $zeroDeductibleRemediated */
         $zeroDeductibleRemediated = [];
         /** @var array<string, VatPeriod> $affectedClosedPeriods */
         $affectedClosedPeriods = [];
         /** @var array<string, VatPeriod> $affectedFiledPeriods */
         $affectedFiledPeriods = [];
+        // minor-3 (2026-08-07 gate): memoise the period lookup per
+        // (company_id, document_date) so a batch of same-day documents only
+        // queries VatPeriod once for that date instead of once per document.
+        /** @var array<string, array{closed: list<VatPeriod>, filed: list<VatPeriod>}> $periodLookupCache */
+        $periodLookupCache = [];
 
         foreach ($query->cursor() as $document) {
             // m-2 (2026-08-06 gate): count every candidate document BEFORE
@@ -416,16 +451,41 @@ final class BackfillTaxDetailsCommand extends Command
             // BOTH pre-ruling shapes (V5-era 0.000/0.000 and interim
             // full-base/0.000) identically.
             if (bccomp($deductiblePercent, '0', 2) === 0) {
+                // IMP-2 (2026-08-07 gate): check FILED-period membership
+                // BEFORE deciding to delete, not after -- the FILED-PERIOD
+                // IMPACT section must never trail the mutation it warns
+                // about. Without --include-filed this row is left
+                // untouched, in BOTH dry-run and --apply.
+                $isFiled = $this->recordPeriodImpact(
+                    $document,
+                    $affectedClosedPeriods,
+                    $affectedFiledPeriods,
+                    $periodLookupCache,
+                );
+
+                if ($isFiled && ! $includeFiled) {
+                    $skipped[] = [
+                        'id' => (string) $document->id,
+                        'number' => (string) ($document->document_number ?? $document->id),
+                        'reason' => 'document_date falls inside an ALREADY-FILED VAT period -- deletion refused; pass --include-filed to override',
+                    ];
+
+                    continue;
+                }
+
+                $zeroDeductibleRemediated[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'tax_base' => (string) ($detail->tax_base ?? '0'),
+                    'tax_amount' => (string) $detail->tax_amount,
+                    'tax_rate' => $detail->tax_rate !== null ? (string) $detail->tax_rate : null,
+                ];
+
                 if ($apply) {
                     DB::transaction(function () use ($detail): void {
                         $detail->delete();
                     });
                 }
-                $zeroDeductibleRemediated[] = [
-                    'id' => (string) $document->id,
-                    'number' => (string) ($document->document_number ?? $document->id),
-                ];
-                $this->recordPeriodImpact($document, $affectedClosedPeriods, $affectedFiledPeriods);
 
                 continue;
             }
@@ -460,6 +520,31 @@ final class BackfillTaxDetailsCommand extends Command
                 continue;
             }
 
+            // I-2 (2026-08-06 gate) + IMP-2 (2026-08-07 gate): a rewritten
+            // row inside an already CLOSED (or FILED -- m-7) period leaves
+            // that period's materialized vat_period_breakdowns snapshot (or
+            // frozen declaration) stale. Record it BEFORE deciding whether
+            // to write, so the FILED-PERIOD IMPACT section can never trail
+            // the mutation it warns about -- and so a FILED-period document
+            // is refused (skipped) unless --include-filed is passed. This
+            // command never touches a period itself.
+            $isFiled = $this->recordPeriodImpact(
+                $document,
+                $affectedClosedPeriods,
+                $affectedFiledPeriods,
+                $periodLookupCache,
+            );
+
+            if ($isFiled && ! $includeFiled) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'document_date falls inside an ALREADY-FILED VAT period -- base rewrite refused; pass --include-filed to override',
+                ];
+
+                continue;
+            }
+
             if ($apply) {
                 DB::transaction(function () use ($detail, $subtotal): void {
                     $detail->tax_base = $subtotal;
@@ -468,13 +553,6 @@ final class BackfillTaxDetailsCommand extends Command
             }
             $touched++;
             $baseDelta = bcadd($baseDelta, bcsub($subtotal, $storedBase, $scale), $scale);
-
-            // I-2 (2026-08-06 gate): a rewritten row inside an already
-            // CLOSED (or FILED -- m-7) period leaves that period's
-            // materialized vat_period_breakdowns snapshot (or frozen
-            // declaration) stale. Record it so the report can name it --
-            // this command never touches a period itself.
-            $this->recordPeriodImpact($document, $affectedClosedPeriods, $affectedFiledPeriods);
         }
 
         $this->line(sprintf(
@@ -490,8 +568,18 @@ final class BackfillTaxDetailsCommand extends Command
             $apply ? 'Deleted' : 'Would delete',
             count($zeroDeductibleRemediated),
         ));
+        // IMP-3 (2026-08-07 gate): full row snapshot per deletion -- the
+        // ONLY surviving record of a hard-deleted document_tax_details row.
+        // Printed in BOTH dry-run and --apply.
         foreach ($zeroDeductibleRemediated as $row) {
-            $this->line(sprintf('    - %s (%s)', $row['number'], $row['id']));
+            $this->line(sprintf(
+                '    - %s (%s): tax_base=%s tax_amount=%s tax_rate=%s',
+                $row['number'],
+                $row['id'],
+                $row['tax_base'],
+                $row['tax_amount'],
+                $row['tax_rate'] ?? 'null',
+            ));
         }
 
         foreach ($skipped as $row) {
@@ -519,7 +607,10 @@ final class BackfillTaxDetailsCommand extends Command
 
         if ($affectedFiledPeriods !== []) {
             $this->line('');
-            $this->error('  FILED-PERIOD IMPACT -- these periods are ALREADY FILED; reopenPeriod() REFUSES filed periods, so do NOT attempt reopen+re-close:');
+            $this->error(sprintf(
+                '  FILED-PERIOD IMPACT -- these periods are ALREADY FILED; reopenPeriod() REFUSES filed periods, so do NOT attempt reopen+re-close. Affected documents are SKIPPED (not mutated) unless --include-filed is passed%s:',
+                $includeFiled ? ' -- THIS RUN PASSED --include-filed, so affected documents WERE mutated' : '',
+            ));
             foreach ($affectedFiledPeriods as $period) {
                 $this->error(sprintf(
                     '    - %s (%s, %s to %s): the filed declaration is now stale for this document. Remedy: a filed-declaration correction (amended/corrective filing) -- ESCALATE TO THE ACCOUNTANT before taking any action.',
@@ -538,37 +629,68 @@ final class BackfillTaxDetailsCommand extends Command
 
     /**
      * I-2 (2026-08-06 gate) + m-7/m-8 (2026-08-06 re-gate): look up every
-     * VatPeriod overlapping a touched expense's document_date whose status
-     * is CLOSED or FILED, and merge every match into the corresponding
-     * report bucket by reference. `->get()` (not `->first()`) so two
-     * overlapping periods for the same company (e.g. a monthly + quarterly
-     * period after a `period_type` switch, or two `country_code` rows) are
-     * both reported, not just the first one found.
+     * VatPeriod overlapping a candidate expense's document_date whose
+     * status is CLOSED or FILED, and merge every match into the
+     * corresponding report bucket by reference. `->get()` (not `->first()`)
+     * so two overlapping periods for the same company (e.g. a monthly +
+     * quarterly period after a `period_type` switch, or two `country_code`
+     * rows) are both reported, not just the first one found.
+     *
+     * IMP-2 (2026-08-07 gate): called BEFORE any mutation decision (not
+     * after, as before) so the caller can gate a FILED-period document's
+     * delete/rewrite on the return value — the printed FILED-PERIOD IMPACT
+     * section must never trail the write it warns about.
+     *
+     * minor-3 (2026-08-07 gate): memoises the VatPeriod query per
+     * `company_id|document_date` in `$periodLookupCache` so a batch of
+     * same-day documents (a common case: an import or a bulk entry
+     * session) issues one query per unique date instead of one per
+     * document.
      *
      * @param  array<string, VatPeriod>  $affectedClosedPeriods
      * @param  array<string, VatPeriod>  $affectedFiledPeriods
+     * @param  array<string, array{closed: list<VatPeriod>, filed: list<VatPeriod>}>  $periodLookupCache
+     * @return bool true if this document overlaps at least one FILED period
      */
     private function recordPeriodImpact(
         Document $document,
         array &$affectedClosedPeriods,
         array &$affectedFiledPeriods,
-    ): void {
+        array &$periodLookupCache,
+    ): bool {
         $documentDate = $document->document_date->toDateString();
+        $cacheKey = $document->company_id.'|'.$documentDate;
 
-        $overlappingPeriods = VatPeriod::query()
-            ->where('company_id', $document->company_id)
-            ->whereIn('status', [VatPeriodStatus::Closed, VatPeriodStatus::Filed])
-            ->where('period_start', '<=', $documentDate)
-            ->where('period_end', '>=', $documentDate)
-            ->get();
+        if (! isset($periodLookupCache[$cacheKey])) {
+            $overlappingPeriods = VatPeriod::query()
+                ->where('company_id', $document->company_id)
+                ->whereIn('status', [VatPeriodStatus::Closed, VatPeriodStatus::Filed])
+                ->where('period_start', '<=', $documentDate)
+                ->where('period_end', '>=', $documentDate)
+                ->get();
 
-        foreach ($overlappingPeriods as $period) {
-            if ($period->status === VatPeriodStatus::Filed) {
-                $affectedFiledPeriods[$period->id] = $period;
-            } else {
-                $affectedClosedPeriods[$period->id] = $period;
+            /** @var list<VatPeriod> $closed */
+            $closed = [];
+            /** @var list<VatPeriod> $filed */
+            $filed = [];
+            foreach ($overlappingPeriods as $period) {
+                if ($period->status === VatPeriodStatus::Filed) {
+                    $filed[] = $period;
+                } else {
+                    $closed[] = $period;
+                }
             }
+            $periodLookupCache[$cacheKey] = ['closed' => $closed, 'filed' => $filed];
         }
+
+        foreach ($periodLookupCache[$cacheKey]['closed'] as $period) {
+            $affectedClosedPeriods[$period->id] = $period;
+        }
+        foreach ($periodLookupCache[$cacheKey]['filed'] as $period) {
+            $affectedFiledPeriods[$period->id] = $period;
+        }
+
+        return $periodLookupCache[$cacheKey]['filed'] !== [];
     }
 
     /**

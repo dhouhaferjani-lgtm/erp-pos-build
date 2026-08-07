@@ -52,6 +52,23 @@ landed + gated + promoted; staging auto-deployed; zero migrations in the batch).
 document before any VAT declaration is filed — detail:
 [`docs/superpowers/tickets/2026-08-03-vat-regate-carryovers.md`](../superpowers/tickets/2026-08-03-vat-regate-carryovers.md) (§N2).
 
+**Updated 2026-08-07 (IMP-3, `docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md`):** the
+command's expense leg now **DELETES** `document_tax_details` rows outright for 0%-deductible
+expenses (I-3 expert ruling — excluded entirely from the VAT declaration), not just rewrites the
+base. This is a **hard delete with no `SoftDeletes`/audit event** — the command's own printed
+output is the ONLY record a deleted row ever existed. Operator procedure:
+1. Run **dry-run first** (default, no `--apply`) and **capture the full output** (`| tee
+   backfill-<tenant>-<date>.log` or equivalent) — every 0%-deductible deletion prints a full row
+   snapshot (document number, id, tax_base, tax_amount, tax_rate) under the "0%-deductible (I-3
+   ruling — excluded from the declaration)" line. Keep this log as the deletion's audit trail.
+2. If any document falls inside an **ALREADY-FILED** VAT period, the leg **skips it by default**
+   (reports it, does not mutate) — look for the "FILED-PERIOD IMPACT" section. Do NOT pass
+   `--include-filed` without first getting an explicit accountant sign-off on the
+   filed-declaration correction; the section's remedy text says exactly this.
+3. Re-run with `--apply` only after reviewing the dry-run log, and resolve every reported
+   "skipped" document (duplicate-slot, missing metadata, FILED-period) before any VAT declaration
+   for the affected period is filed.
+
 ---
 
 ## 3. Codex Desktop handover (POS Tauri, §Z — 64 items)

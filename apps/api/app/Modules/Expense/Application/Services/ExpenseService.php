@@ -467,15 +467,23 @@ final class ExpenseService
      * DocumentTaxDetail row at all -- same as the no-VAT early return
      * above -- pinned by
      * ExpenseVatPostingTest::test_zero_percent_deductible_vat_omits_the_input_vat_line.
-     * The delete-then-create block below still runs its DELETE half (keyed
-     * on this writer's own `sequence_order = 1` slot) even when the create
-     * half is skipped, so a re-post of a previously-snapshotted expense
-     * whose percent later drops to 0% cleans up its own stale row --
-     * pinned by
-     * ExpenseVatPostingTest::test_zero_percent_deductible_repost_deletes_the_previously_snapshotted_row.
-     * The backfill command's expense leg (BackfillTaxDetailsCommand) now
-     * REMEDIATES (deletes, not skips) existing 0%-deductible rows written
-     * under either pre-ruling shape.
+     * The delete-then-create block below runs its DELETE half FIRST and
+     * TRULY UNCONDITIONALLY (keyed on this writer's own
+     * `sequence_order = 1, is_stamp_duty = false` slot), ABOVE every other
+     * guard in this method including the vat-amount check -- IMP-1
+     * (2026-08-07 gate, docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md)
+     * found the delete originally sat below the vat-amount guard, so a
+     * re-post that CLEARED a previously-snapshotted expense's VAT entirely
+     * (not merely dropped its deductible percent to 0%) never reached the
+     * delete and left a stale row behind -- phantom deductible VAT, worse
+     * than the interim shape the ruling above abolished. Both re-post
+     * scenarios now clean up their own stale row -- pinned by
+     * ExpenseVatPostingTest::test_zero_percent_deductible_repost_deletes_the_previously_snapshotted_row
+     * (percent drops to 0%) and
+     * ExpenseVatPostingTest::test_vat_cleared_repost_deletes_the_previously_snapshotted_row
+     * (VAT cleared entirely). The backfill command's expense leg
+     * (BackfillTaxDetailsCommand) now REMEDIATES (deletes, not skips)
+     * existing 0%-deductible rows written under either pre-ruling shape.
      *
      * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md,
      * SUPERSEDED by the Q2 ruling above -- kept for history):
@@ -508,6 +516,24 @@ final class ExpenseService
      */
     private function writeDeductibleVatSnapshot(Document $expense, ?ExpenseMetadata $metadata): void
     {
+        // IMP-1 (2026-08-07 gate,
+        // docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md): delete
+        // this writer's own stable slot FIRST, TRULY unconditionally --
+        // above every other guard below, including the vat-amount check.
+        // A re-post that CLEARS a previously-snapshotted expense's VAT
+        // entirely (not merely drops its deductible percent) must still
+        // remove the stale row; leaving it would be phantom deductible VAT
+        // the expense no longer carries, which is strictly worse than the
+        // interim shape the I-3 ruling abolished. `is_stamp_duty = false`
+        // narrows the slot symmetrically with the backfill leg's own query
+        // (gate minor-1) -- a future stamp-duty row manually attached to
+        // sequence_order = 1 is left alone, matching
+        // BackfillTaxDetailsCommand's predicate.
+        DocumentTaxDetail::where('document_id', $expense->id)
+            ->where('sequence_order', 1)
+            ->where('is_stamp_duty', false)
+            ->delete();
+
         $vatAmount = $expense->tax_amount !== null ? (string) $expense->tax_amount : null;
         $scale = $this->scaleResolver->getScale((string) $expense->currency);
 
@@ -517,15 +543,6 @@ final class ExpenseService
 
         $rawDeductiblePercent = $metadata !== null ? $metadata->vat_deductible_percent : null;
         $deductiblePercent = (string) ($rawDeductiblePercent ?? '100.00');
-
-        // Delete this writer's own stable slot FIRST, unconditionally --
-        // see the I-3 docblock note above. A previously-snapshotted expense
-        // whose deductible percent has since dropped to 0% must have its
-        // stale row removed even though the create half below is skipped
-        // for that case.
-        DocumentTaxDetail::where('document_id', $expense->id)
-            ->where('sequence_order', 1)
-            ->delete();
 
         // I-3 EXPERT RULING: 0%-deductible expenses are excluded entirely
         // from the VAT declaration -- write no row. See the docblock above
@@ -548,7 +565,11 @@ final class ExpenseService
         // FACIAL value copied from the expense's own stored subtotal, not a
         // computed intermediate that needs rounding -- there is no
         // sub-scale precision to lose, so bcformatStrict's truncate
-        // semantics and bcround's half-up semantics agree trivially.
+        // semantics and bcround's half-up semantics agree trivially. (gate
+        // minor-4: this holds ONLY because every path reaching this line
+        // computes subtotal as bcsub($total, $vatAmount, $scale) above --
+        // if a future edit ever let subtotal carry a sub-scale remainder,
+        // this claim would need re-checking.)
         $subtotal = (string) ($expense->subtotal ?? '0');
         $taxBase = CurrencyScale::bcformatStrict($subtotal, $scale);
 
