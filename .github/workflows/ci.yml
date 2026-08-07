@@ -257,6 +257,7 @@ jobs:
           sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
           sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
           sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_test/' .env.testing
           sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
           sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env.testing
           sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
@@ -300,7 +301,29 @@ jobs:
         # baseline failures. A manual security dispatch must still execute and
         # report the whole-suite result instead of silently skipping this gate.
         if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-        run: ./vendor/bin/phpunit
+        run: |
+          # A single 11k-test PHPUnit process exceeds the configured 2 GiB
+          # memory limit before the suite completes. Partition only at the
+          # top-level path boundary so every backend test still runs in this
+          # job while PHPUnit releases process-local state between groups.
+          mapfile -d '' feature_paths < <(
+            find tests/Feature -mindepth 1 -maxdepth 1 -print0 | sort -z
+          )
+          test_paths=(
+            tests/Unit
+            "${feature_paths[@]}"
+            tests/Integration
+            tests/Architecture
+          )
+          status=0
+          for test_path in "${test_paths[@]}"; do
+            echo "::group::PHPUnit ${test_path}"
+            if ! ./vendor/bin/phpunit "${test_path}"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${status}"
 
   backend-test-pgsql:
     name: Backend Tests — PG-only invariants (PHPUnit + PostgreSQL)
@@ -376,6 +399,7 @@ jobs:
           sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
           sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
           sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_test/' .env.testing
           sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
           sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env.testing
           sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
