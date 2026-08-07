@@ -40,6 +40,7 @@ use App\Services\VerticalConfigService;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\BankAccountValidator;
 use App\Shared\Contracts\AbilityAuthorizerInterface;
+use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
@@ -102,6 +103,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InventoryServiceInterface::class, InventoryService::class);
         $this->app->bind(LocationServiceInterface::class, LocationService::class);
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
+        $this->app->bind(DocumentGlCorrectionInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlPreflightInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlReversalInterface::class, AccountingService::class);
         // DPA-REV2-A (A5): the reversal lane's SOLE GL-shape selector. Treasury

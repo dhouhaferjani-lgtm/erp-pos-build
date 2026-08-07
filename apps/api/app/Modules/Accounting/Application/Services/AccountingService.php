@@ -11,14 +11,19 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableCorrectingEntryException;
 use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
 use App\Modules\Accounting\Domain\Exceptions\UnreversibleDocumentGlException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\DoubleEntryValidator;
+use App\Modules\Document\Application\DTOs\CorrectingEntryLegData;
+use App\Modules\Document\Application\DTOs\CorrectingEntryPayload;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
@@ -32,7 +37,7 @@ use Illuminate\Support\Facades\Log;
  *
  * Exposes accounting functionality to other modules through the AccountingServiceInterface.
  */
-final class AccountingService implements AccountingServiceInterface, DocumentGlPreflightInterface, DocumentGlReversalInterface
+final class AccountingService implements AccountingServiceInterface, DocumentGlCorrectionInterface, DocumentGlPreflightInterface, DocumentGlReversalInterface
 {
     /**
      * `journal_entries.source_type` for an entry written BY posting a document.
@@ -46,6 +51,45 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      * another — the reversal must not itself look like a posting to be reversed.
      */
     public const DOCUMENT_CANCELLATION_SOURCE_TYPE = 'DocumentCancellation';
+
+    /**
+     * `journal_entries.source_type` for the entry a CORRECTING-ENTRY document
+     * posts (R2-F4, owner ruling c4).
+     *
+     * A third distinct value, on the same reasoning as
+     * {@see self::DOCUMENT_CANCELLATION_SOURCE_TYPE}: a correction must never be
+     * mistaken for the document posting it repairs, nor for a reversal.
+     *
+     * KEYING — `source_id` is the CORRECTING document's own id, NOT the target's.
+     * That differs from the cancellation idiom (which keys the original) for one
+     * concrete reason: a document may accumulate SEVERAL corrections over time,
+     * so keying on the target could not express "has THIS correction been
+     * posted?" and idempotence would be unimplementable. The link to the
+     * original is not lost — it lives on `documents.source_document_id`, which is
+     * exactly where owner ruling c4 requires it, and
+     * {@see self::correctingEntriesFor()} is the one query that resolves it.
+     *
+     * @var string
+     */
+    public const DOCUMENT_CORRECTION_SOURCE_TYPE = 'DocumentCorrection';
+
+    /**
+     * The document types a correcting entry may target.
+     *
+     * Deliberately IDENTICAL to `reverseDocumentGl()`'s own type gate, and it
+     * must stay that way: the whole point of the correction is to make a refused
+     * cancellation possible again, which only works if both sides agree on which
+     * documents they are talking about. Every other document family keys its GL
+     * through `GeneralLedgerService` under snake_case source types
+     * (`supplier_invoice`, `expense`, `income`, …) that the aggregate below does
+     * not read, so accepting them would silently apply a weaker invariant.
+     *
+     * @var list<DocumentType>
+     */
+    private const CORRECTABLE_TARGET_TYPES = [
+        DocumentType::Invoice,
+        DocumentType::CreditNote,
+    ];
 
     public function __construct(
         private readonly GeneralLedgerHashService $hashService,
@@ -987,6 +1031,332 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
         );
 
         return $entryId;
+    }
+
+    // =====================================================================
+    // R2-F4 — correcting-entry documents (owner ruling c4)
+    // =====================================================================
+
+    /**
+     * The non-writing verdict: would this correcting-entry document post?
+     *
+     * {@inheritDoc}
+     */
+    public function assertCorrectingEntryIsPostable(Document $correctingEntry): void
+    {
+        $this->resolveCorrectingEntry($correctingEntry);
+    }
+
+    /**
+     * Post a correcting-entry document to the general ledger.
+     *
+     * DATING — `now()`, never the target's `document_date`. Same doctrine as
+     * `reverseDocumentGl()`: the original stands in its own period and the
+     * correction lands in the period the correction actually happened in.
+     *
+     * PERIOD-LOCK DECISION (R2-F4, recorded here because this is where it bites):
+     * a correcting entry MAY target an original whose VAT period is CLOSED or
+     * FILED. That is the entire purpose of the escape hatch — the document
+     * needing repair is by definition one whose books were closed with a defect
+     * in them, and refusing would make the defect permanent. Nothing inside the
+     * locked period is rewritten. F1's `VatPeriodCancellationGuard` is therefore
+     * deliberately NOT consulted here: it guards WITHDRAWAL of a document from a
+     * locked period, not forward correction into the current one. Pinned by
+     * `CorrectingEntryGlPostingTest::test_a_correcting_entry_may_target_an_original_in_a_filed_period()`.
+     *
+     * Not routed through `GeneralLedgerService::postEntryNow()`, exactly like
+     * `reverseDocumentGl()`, so the same known `fiscal_periods` gap applies
+     * (ticket `2026-08-07-cancel-reversal-bypasses-closed-fiscal-period.md`);
+     * closing it for one path and not the other would be worse than either.
+     *
+     * {@inheritDoc}
+     */
+    public function postCorrectingEntryGl(Document $correctingEntry): string
+    {
+        $entryId = DB::transaction(function () use ($correctingEntry): string {
+            // Re-resolved INSIDE the transaction: the aggregate-balance verdict
+            // depends on rows another request may be writing concurrently, so a
+            // pre-flight answer computed outside would be stale by construction.
+            $resolved = $this->resolveCorrectingEntry($correctingEntry);
+            $target = $resolved['target'];
+            $legs = $resolved['legs'];
+            $scale = $resolved['scale'];
+
+            $previousHash = JournalEntry::getLastChainHash($correctingEntry->company_id);
+            $chainSequence = JournalEntry::getNextChainSequence($correctingEntry->company_id);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $correctingEntry->tenant_id,
+                'company_id' => $correctingEntry->company_id,
+                'entry_number' => 'CORR-'.now()->format('YmdHis').'-'.str_replace('-', '', $correctingEntry->id),
+                'entry_date' => now(),
+                'description' => 'Correction of '.($target->document_number ?? $target->id)
+                    .' — '.$resolved['reason'],
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => self::DOCUMENT_CORRECTION_SOURCE_TYPE,
+                'source_id' => $correctingEntry->id,
+                'chain_sequence' => $chainSequence,
+                'previous_hash' => $previousHash,
+            ]);
+
+            foreach ($legs as $leg) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $leg->accountId,
+                    'debit' => $leg->debit,
+                    'credit' => $leg->credit,
+                    'description' => $leg->description
+                        ?? 'Correction of '.($target->document_number ?? $target->id),
+                ]);
+            }
+
+            $freshEntry = $entry->fresh(['lines']);
+            if ($freshEntry === null) {
+                throw new \RuntimeException('Failed to reload correcting journal entry after creation');
+            }
+
+            // NOTE — deliberately NOT `assertLegsBalance()`. That helper asserts a
+            // single entry balances on its own, which a correcting entry
+            // legitimately does not: the canonical case (W-6 D1b) is supplying
+            // the ONE leg a broken original is missing. The balance promise this
+            // entry makes is the AGGREGATE one, already proven by
+            // `resolveCorrectingEntry()` above from rows read inside this same
+            // transaction — a stronger statement than the per-entry check,
+            // because it covers the original and every prior correction too.
+
+            $entry->update([
+                'fiscal_hash' => $this->hashService->calculateHash(
+                    $freshEntry,
+                    $previousHash,
+                    $correctingEntry->currency,
+                ),
+            ]);
+
+            $entry = $entry->fresh(['lines']);
+            if ($entry === null) {
+                throw new \RuntimeException('Failed to reload correcting journal entry after hash update');
+            }
+
+            $this->dispatchJournalEntryCreatedEvent($entry, 'document_correction', $scale);
+
+            return $entry->id;
+        });
+
+        $this->refreshPartnerBalanceAfterGlPersistence(
+            $correctingEntry->company_id,
+            $correctingEntry->partner_id,
+            $entryId
+        );
+
+        return $entryId;
+    }
+
+    /**
+     * Every posted correcting-entry DOCUMENT that targets `$target`.
+     *
+     * The resolution of ruling c4's mandated link: `documents.source_document_id`
+     * is what ties a correction to the document it repairs, and this is the only
+     * place that walks it. Scoped by company as well as by link, because
+     * `source_document_id` carries no FK and no scoping of its own
+     * (`2025_11_30_080000_create_documents_table.php:33`).
+     *
+     * @return list<string> The correcting documents' ids.
+     */
+    private function correctingEntryDocumentIdsFor(Document $target): array
+    {
+        /** @var list<string> */
+        return Document::query()
+            ->where('company_id', $target->company_id)
+            ->where('type', DocumentType::CorrectingEntry)
+            ->where('source_document_id', $target->id)
+            ->where('status', DocumentStatus::Posted)
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * A document's WHOLE posted ledger footprint: the entry its own posting
+     * sealed, plus every correcting entry applied to it.
+     *
+     * This is the single query both `reverseDocumentGl()` and the correcting
+     * entry's own balance invariant read, so the two can never disagree about
+     * what "this document's ledger" means — the exact disagreement that made the
+     * escape-hatch ticket's dead end possible
+     * (`2026-08-06-l2-correcting-entry-escape-hatch.md`: a correction posted
+     * through the manual endpoint could never enter the reversal's predicate).
+     *
+     * @return Collection<int, JournalEntry>
+     */
+    private function documentLedgerFootprint(Document $target): Collection
+    {
+        $correctionIds = $this->correctingEntryDocumentIdsFor($target);
+
+        /** @var Collection<int, JournalEntry> */
+        return JournalEntry::query()
+            ->where('company_id', $target->company_id)
+            ->where('status', JournalEntryStatus::Posted)
+            ->where(function ($query) use ($target, $correctionIds): void {
+                $query->where(function ($own) use ($target): void {
+                    $own->where('source_type', self::DOCUMENT_SOURCE_TYPE)
+                        ->where('source_id', $target->id);
+                });
+
+                if ($correctionIds !== []) {
+                    $query->orWhere(function ($corrections) use ($correctionIds): void {
+                        $corrections->where('source_type', self::DOCUMENT_CORRECTION_SOURCE_TYPE)
+                            ->whereIn('source_id', $correctionIds);
+                    });
+                }
+            })
+            ->with('lines')
+            ->orderBy('chain_sequence')
+            ->get();
+    }
+
+    /**
+     * Validate a correcting-entry document end to end and return everything the
+     * write needs.
+     *
+     * Runs every refusal in one place so the pre-flight and the write can never
+     * reach different verdicts (the `assertDocumentGlIsPostable()` /
+     * `createInvoiceGLEntries()` split learned this the hard way — GL gate I-2).
+     *
+     * @return array{target: Document, legs: list<CorrectingEntryLegData>, scale: int, reason: string}
+     *
+     * @throws UnpostableCorrectingEntryException
+     */
+    private function resolveCorrectingEntry(Document $correctingEntry): array
+    {
+        if ($correctingEntry->type !== DocumentType::CorrectingEntry) {
+            // A programming error, not a business refusal: no caller should ever
+            // hand a non-correcting document to this path.
+            throw new \InvalidArgumentException(sprintf(
+                'Expected a %s document, got %s.',
+                DocumentType::CorrectingEntry->value,
+                $correctingEntry->type->value,
+            ));
+        }
+
+        $targetId = $correctingEntry->source_document_id;
+        if ($targetId === null || $targetId === '') {
+            throw UnpostableCorrectingEntryException::missingSourceDocument($correctingEntry->document_number);
+        }
+
+        $alreadyPosted = JournalEntry::query()
+            ->where('company_id', $correctingEntry->company_id)
+            ->where('source_type', self::DOCUMENT_CORRECTION_SOURCE_TYPE)
+            ->where('source_id', $correctingEntry->id)
+            ->exists();
+
+        if ($alreadyPosted) {
+            throw UnpostableCorrectingEntryException::alreadyPosted($correctingEntry->document_number);
+        }
+
+        /** @var Document|null $target */
+        $target = Document::query()
+            ->where('tenant_id', $correctingEntry->tenant_id)
+            ->where('company_id', $correctingEntry->company_id)
+            ->whereKey($targetId)
+            ->with('lines')
+            ->first();
+
+        if ($target === null) {
+            throw UnpostableCorrectingEntryException::targetNotFound(
+                $correctingEntry->document_number,
+                $targetId,
+            );
+        }
+
+        if (! in_array($target->type, self::CORRECTABLE_TARGET_TYPES, true)) {
+            throw UnpostableCorrectingEntryException::unsupportedTargetType(
+                $correctingEntry->document_number,
+                $target->type->value,
+            );
+        }
+
+        try {
+            $payload = CorrectingEntryPayload::fromDocumentPayload($correctingEntry->payload);
+        } catch (\InvalidArgumentException $exception) {
+            throw UnpostableCorrectingEntryException::malformedPayload(
+                $correctingEntry->document_number,
+                $exception->getMessage(),
+            );
+        }
+
+        // The chart of accounts is Accounting's own; Document never reaches into
+        // it, so this is where a leg's account is proven to exist AND to belong
+        // to this tenant and company (W-8 F-1: company_id is an authorization
+        // axis, not a filter).
+        $accountIds = array_values(array_unique(array_map(
+            static fn (CorrectingEntryLegData $leg): string => $leg->accountId,
+            $payload->legs,
+        )));
+
+        $knownAccountIds = Account::query()
+            ->where('tenant_id', $correctingEntry->tenant_id)
+            ->where('company_id', $correctingEntry->company_id)
+            ->whereIn('id', $accountIds)
+            ->pluck('id')
+            ->all();
+
+        foreach ($accountIds as $accountId) {
+            if (! in_array($accountId, $knownAccountIds, true)) {
+                throw UnpostableCorrectingEntryException::unknownAccount(
+                    $correctingEntry->document_number,
+                    $accountId,
+                );
+            }
+        }
+
+        $scale = $this->documentScale($correctingEntry);
+        $footprint = $this->documentLedgerFootprint($target);
+
+        if ($footprint->isEmpty()) {
+            throw UnpostableCorrectingEntryException::targetHasNoLedgerEntry(
+                $correctingEntry->document_number,
+                $target->document_number,
+            );
+        }
+
+        /** @var numeric-string $debits */
+        $debits = '0';
+        /** @var numeric-string $credits */
+        $credits = '0';
+
+        foreach ($footprint as $entry) {
+            foreach ($entry->lines as $line) {
+                /** @var numeric-string $lineDebit */
+                $lineDebit = (string) $line->debit;
+                /** @var numeric-string $lineCredit */
+                $lineCredit = (string) $line->credit;
+                $debits = bcadd($debits, $lineDebit, $scale);
+                $credits = bcadd($credits, $lineCredit, $scale);
+            }
+        }
+
+        foreach ($payload->legs as $leg) {
+            $debits = bcadd($debits, $leg->debit, $scale);
+            $credits = bcadd($credits, $leg->credit, $scale);
+        }
+
+        // THE INVARIANT. Not "does this entry balance on its own" — a correcting
+        // entry legitimately does not, when it supplies the one leg a broken
+        // original is missing — but "does the corrected document balance now".
+        if (bccomp($debits, $credits, $scale) !== 0) {
+            throw UnpostableCorrectingEntryException::leavesTargetUnbalanced(
+                $correctingEntry->document_number,
+                $target->document_number,
+                $debits,
+                $credits,
+            );
+        }
+
+        return [
+            'target' => $target,
+            'legs' => $payload->legs,
+            'scale' => $scale,
+            'reason' => $payload->reason,
+        ];
     }
 
     /**
