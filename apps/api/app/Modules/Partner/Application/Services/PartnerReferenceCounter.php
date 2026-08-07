@@ -82,10 +82,25 @@ final class PartnerReferenceCounter
         'party_contacts.party_id' => 'cascadeOnDelete; the partner s own contact people, removed with it',
 
         // --- Fiscal journal ---------------------------------------------
-        // See the rationale on FISCAL_EVENTS_EXCLUSION below — the sealed
-        // pos_*_receipts projections are what make this safe, and they ARE
-        // counted (PosPartnerReferenceSource).
-        'fiscal_events.partner_id' => 'append-only fiscal event stream; the sealed pos_*_receipts projections of these events are counted instead',
+        // The DECISION to exclude stands, but NOT on the reasoning this lane
+        // first shipped. "It can never be the sole reference because the
+        // underlying transaction is already counted" was REFUTED by the R2-S
+        // authz gate: ACCOUNT_CHARGE, ACCOUNT_PAYMENT and DEPOSIT_RECEIPT
+        // write NO `pos_receipts` and NO `documents` row by default, and
+        // their Treasury counterparts are contingent on the Treasury module
+        // being active AND its bridge having run. For those three event
+        // types `fiscal_events` really could have been the only trace.
+        //
+        // What makes the exclusion safe is the fix applied alongside it:
+        // each of those three event types has a SEALED projection —
+        // `pos_account_charge_receipts`, `pos_account_payment_receipts`,
+        // `pos_deposit_receipts` — and all three are now counted by
+        // PosPartnerReferenceSource. The partner is therefore blocked by the
+        // projection of the event rather than by the raw event stream, which
+        // is the better key to surface: an operator can act on a deposit
+        // receipt, but `fiscal_events` is append-only and immutable, so a
+        // count there names a blocker nobody can ever clear.
+        'fiscal_events.partner_id' => 'append-only immutable event stream; the three event types that leave no other trace (ACCOUNT_CHARGE, ACCOUNT_PAYMENT, DEPOSIT_RECEIPT) are covered by their sealed pos_*_receipts projections, which ARE counted',
 
         // --- Audit log of an action ABOUT the partner --------------------
         'customer_history_searches.partner_id' => 'append-only PII audit of a cashier SEARCHING for a customer; rows are never deletable, so counting them would block any partner ever looked up',
