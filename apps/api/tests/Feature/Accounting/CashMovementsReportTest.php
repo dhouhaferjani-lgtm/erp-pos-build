@@ -824,12 +824,21 @@ final class CashMovementsReportTest extends TestCase
     }
 
     // ── Ticket 2026-08-06-l3-cash-scope-residuals.md (a), P1 ───────────────
-    // `LocationScopeBoundary::isUnrestricted()` used to compare the grant
-    // against ACTIVE locations only, so a principal restricted to exactly
-    // today's active set (Shop A) was misclassified as "unrestricted" the
-    // moment ANY other company location (Shop B) went inactive — collapsing
-    // reportLocationScope() to `[]` (no predicate at all) and leaking Shop
-    // B's cash to an implicit/unscoped read despite it never being granted.
+    // `LocationScopeBoundary::isUnrestricted()` compares the grant against
+    // EVERY company location (active or not — the ticket's "option 1", fixed
+    // at the shared helper after merge-gate 2026-08-07 F-1/F-3 caught a
+    // first-pass count-clamp that dropped NULL/unattributed rows and the
+    // deactivated branch's own rows from the company-wide read, and failed
+    // OPEN when every location was inactive). Two shapes, pinned below:
+    //   - a grant covering every location the company has (incl. an inactive
+    //     one — e.g. an admin's null membership) stays UNRESTRICTED: the
+    //     implicit read keeps `[]` (no predicate), so NULL rows and every
+    //     location's rows stay visible regardless of any one location's
+    //     active state.
+    //   - a grant that falls short of that — including one that merely
+    //     equals TODAY'S ACTIVE set — is RESTRICTED: the implicit read
+    //     applies the explicit grant as `location_id IN (...)`, which a
+    //     deactivated, non-granted location can never satisfy.
 
     public function test_an_unscoped_read_excludes_a_deactivated_out_of_grant_location(): void
     {
@@ -889,7 +898,20 @@ final class CashMovementsReportTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_reactivating_a_location_restores_it_to_the_unrestricted_read(): void
+    /**
+     * Merge-gate 2026-08-07 F-1: the first-pass fix (a count-clamp local to
+     * ReportsController) silently dropped NULL-location cash — and the
+     * deactivated branch's own rows — from a genuinely unrestricted read the
+     * moment ANY company location went inactive. A principal whose grant
+     * covers every company location (this one: `setUp()`'s plain admin
+     * membership, `allowed_location_ids = null`, which
+     * `LocationScopeResolver::allCompanyLocationIds()` resolves to EVERY
+     * location regardless of active state) must see the exact same total —
+     * Shop A + Shop B + the NULL/unattributed row — whether Shop B is active
+     * or deactivated. Deactivating a branch must never quietly shrink the
+     * company-wide figure an owner reconciles against.
+     */
+    public function test_a_grant_covering_every_location_stays_unrestricted_through_deactivation(): void
     {
         $shopA = $this->location('SHOP-A', 'Shop A');
         $shopB = $this->location('SHOP-B', 'Shop B');
@@ -915,18 +937,21 @@ final class CashMovementsReportTest extends TestCase
             paymentType: PaymentType::DocumentPayment,
         );
 
-        // This principal has no `allowed_location_ids` restriction at all
-        // (setUp() grants plain admin membership), so it is unrestricted
-        // by GRANT throughout — only Shop B's own active/inactive state
-        // should move the needle on what an unscoped read returns.
+        $whileActive = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-26&to=2026-07-26');
+
+        $whileActive->assertOk();
+        $whileActive->assertJsonCount(3, 'data');
+        $whileActive->assertJsonPath('meta.totals.EUR.in', '35.00');
+
         $shopB->update(['is_active' => false]);
 
         $whileInactive = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/reports/cash-movements?from=2026-07-26&to=2026-07-26');
 
         $whileInactive->assertOk();
-        $whileInactive->assertJsonCount(1, 'data');
-        $whileInactive->assertJsonPath('meta.totals.EUR.in', '10.00');
+        $whileInactive->assertJsonCount(3, 'data');
+        $whileInactive->assertJsonPath('meta.totals.EUR.in', '35.00');
 
         $shopB->update(['is_active' => true]);
 
@@ -936,6 +961,53 @@ final class CashMovementsReportTest extends TestCase
         $afterReactivation->assertOk();
         $afterReactivation->assertJsonCount(3, 'data');
         $afterReactivation->assertJsonPath('meta.totals.EUR.in', '35.00');
+    }
+
+    /**
+     * Merge-gate 2026-08-07 F-3: the first-pass fix compared against
+     * `activeLocationIds()`, which returns `[]` when every company location
+     * is inactive — and `[]` reads as "unrestricted, no predicate" to every
+     * consumer, so a company with all its locations deactivated failed OPEN
+     * for a principal restricted to just one of them (the exact leak the
+     * ticket filed). Comparing against every location instead of the active
+     * subset means this can't happen: a partial grant is never mistaken for
+     * "covers everything" just because "everything currently active" shrank
+     * to nothing.
+     */
+    public function test_all_locations_inactive_with_a_partial_grant_stays_restricted_no_leak(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+        $shopA->update(['is_active' => false]);
+        $shopB->update(['is_active' => false]);
+
+        $atShopA = $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-27',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-27',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$shopA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-27&to=2026-07-27');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_id', $atShopA->id);
+        $response->assertJsonPath('meta.totals.EUR.in', '10.00');
     }
 
     public function test_journal_only_cash_lines_are_scoped_by_the_owning_repository_location(): void

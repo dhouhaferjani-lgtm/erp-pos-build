@@ -770,10 +770,20 @@ class ReportsController extends Controller
 
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
+            // Merge-gate 2026-08-07 F-4: the exception message (which can carry
+            // SQL text from a PDO error, or attacker-supplied `as_of_date`
+            // echoed back by a Carbon parse failure) must never reach the
+            // client — log the detail server-side and return a static message.
+            \Log::error('Aged Receivables generation failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
-                    'message' => 'Failed to generate aged receivables report: '.$e->getMessage(),
+                    'message' => 'Failed to generate aged receivables report. Please try again or contact support.',
                 ],
             ], 500);
         }
@@ -826,10 +836,17 @@ class ReportsController extends Controller
 
             return response()->json(['data' => $payload]);
         } catch (\Exception $e) {
+            // Merge-gate 2026-08-07 F-4 — see agedReceivables() above.
+            \Log::error('Aged Payables generation failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
-                    'message' => 'Failed to generate aged payables report: '.$e->getMessage(),
+                    'message' => 'Failed to generate aged payables report. Please try again or contact support.',
                 ],
             ], 500);
         }
@@ -861,10 +878,17 @@ class ReportsController extends Controller
 
             return response()->json(['data' => $reportData->toArray()]);
         } catch (\Exception $e) {
+            // Merge-gate 2026-08-07 F-4 — see agedReceivables() above.
+            \Log::error('Upcoming Payments generation failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
-                    'message' => 'Failed to generate upcoming payments report: '.$e->getMessage(),
+                    'message' => 'Failed to generate upcoming payments report. Please try again or contact support.',
                 ],
             ], 500);
         }
@@ -876,18 +900,11 @@ class ReportsController extends Controller
      * membership scope is represented by the effective ids and therefore hides
      * NULL location rows.
      *
-     * `LocationScopeBoundary::isUnrestricted()` only ever compared the grant
-     * against ACTIVE locations, so a grant covering exactly today's active
-     * set was classified "unrestricted" the moment any OTHER company
-     * location went inactive — collapsing to `[]` (no predicate at all) and
-     * silently surfacing that deactivated location's rows to an implicit/
-     * unscoped read despite it never being granted (ticket
-     * 2026-08-06-l3-cash-scope-residuals.md (a), P1). Clamp the "full
-     * company" scope to the active set whenever the company has a
-     * deactivated location, so it can never leak through the implicit read;
-     * once every location is active again the two sets match in size and the
-     * unrestricted `[]` (which keeps NULL/unattributed rows visible too) is
-     * restored automatically.
+     * The deactivated-location leak this used to carry (ticket
+     * 2026-08-06-l3-cash-scope-residuals.md (a), P1) lived in
+     * {@see LocationScopeBoundary::isUnrestricted()} itself, which is shared
+     * by every financial-read surface — see its docblock. Fixed there, so
+     * this method stays the simple two-way split its own docblock describes.
      *
      * @return list<string>
      */
@@ -899,14 +916,7 @@ class ReportsController extends Controller
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
 
-        if (! $this->locationScopeBoundary->isUnrestricted($companyId, $effective)) {
-            return $effective;
-        }
-
-        $activeLocationIds = $this->locationScopeBoundary->activeLocationIds($companyId);
-        $allLocationIds = $this->locationScopeBoundary->allLocationIds($companyId);
-
-        return count($activeLocationIds) === count($allLocationIds) ? [] : $activeLocationIds;
+        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
     }
 
     /** @return list<string> */
@@ -943,10 +953,17 @@ class ReportsController extends Controller
                 'data' => $this->financeSummaryService->generate($companyId),
             ]);
         } catch (\Exception $e) {
+            // Merge-gate 2026-08-07 F-4 — see agedReceivables() above.
+            \Log::error('Finance Summary generation failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
-                    'message' => 'Failed to generate finance summary report: '.$e->getMessage(),
+                    'message' => 'Failed to generate finance summary report. Please try again or contact support.',
                 ],
             ], 500);
         }
