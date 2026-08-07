@@ -1,0 +1,515 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Document;
+
+use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Entities\VatPeriod;
+use App\Modules\Taxation\Domain\Enums\PeriodLockRefusalCode;
+use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
+use App\Modules\Taxation\Domain\Enums\VatPeriodType;
+use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
+use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
+use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\TunisiaChartOfAccountsSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
+
+/**
+ * R2-F1 — cancelling a document whose VAT period is no longer OPEN is REFUSED.
+ *
+ * The L2 lane made `DocumentPostingService::cancel()` reverse a posted document's
+ * SEALED GL legs inside the cancel transaction, dated `now()` (GL gate ruling 6a:
+ * back-dating the reversal to the original document's date would retroactively
+ * rewrite a period that may already be CLOSED or FILED — a compliance-ready
+ * ledger must never do that). That ruling carried a SECOND condition which was
+ * ticketed but not implemented: when the original document's own period is
+ * already CLOSED/FILED, the cancel itself must be refused — in FR/TN such an
+ * invoice is not cancelled at all, it is credited (avoir).
+ *
+ * docs/superpowers/tickets/2026-08-06-l2-gl-vat-declaration-desync.md (§"Second
+ * condition attached to ruling 6a", suggested fix 2)
+ * docs/superpowers/tickets/2026-08-07-round2-rulings-record.md (R-c c2)
+ */
+final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Tenant $tenant;
+
+    private Company $company;
+
+    private User $user;
+
+    private Partner $customer;
+
+    private Partner $supplier;
+
+    private Product $product;
+
+    private AccountingService $accountingService;
+
+    private DocumentPostingService $postingService;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->tenant = Tenant::create([
+            'name' => 'Period Lock Tenant',
+            'slug' => 'period-lock-'.Str::lower(Str::random(6)),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+
+        $this->company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Period Lock Company',
+            'legal_name' => 'Period Lock Company SARL',
+            'tax_id' => 'TAX-PERIOD-LOCK',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Period Lock User',
+            'email' => 'period-lock@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $this->user->assignRole('admin');
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Admin,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+        (new TunisiaChartOfAccountsSeeder)->run($this->company->id, $this->tenant->id);
+
+        $this->customer = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Clinique Al Amal',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+
+        $this->supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Grossiste Pharma',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        $this->product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'PROD-PERIOD-'.uniqid(),
+            'name' => 'Doliprane 1000mg',
+            'type' => ProductType::Part,
+            'cost_price' => '5.000',
+            'selling_price' => '10.000',
+            'is_active' => true,
+        ]);
+
+        $this->accountingService = app(AccountingService::class);
+        $this->postingService = app(DocumentPostingService::class);
+    }
+
+    // ------------------------------------------------ sales invoice (AR) ---
+
+    public function test_cancelling_a_sales_invoice_in_a_closed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-01-15');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        try {
+            $this->postingService->cancel($invoice, 'January cleanup', $this->user->id);
+            self::fail('Cancelling a document in a CLOSED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodClosed, $exception->refusalCode);
+        }
+
+        $invoice->refresh();
+        self::assertSame(DocumentStatus::Posted, $invoice->status, 'The document must stay posted');
+        self::assertSame(FiscalStatus::Sealed, $invoice->fiscal_status);
+        self::assertNull($invoice->cancelled_at);
+        self::assertNull($invoice->cancellation_reason);
+
+        self::assertSame(
+            0,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                ->where('source_id', $invoice->id)
+                ->count(),
+            'A refused cancel must write ZERO reversal journal entries',
+        );
+    }
+
+    public function test_cancelling_a_sales_invoice_in_a_filed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-02-10');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        try {
+            $this->postingService->cancel($invoice, 'February cleanup', $this->user->id);
+            self::fail('Cancelling a document in a FILED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodFiled, $exception->refusalCode);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+        self::assertSame(
+            0,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                ->where('source_id', $invoice->id)
+                ->count(),
+        );
+    }
+
+    /**
+     * The refusal must roll back cleanly — no partial write survives, and the
+     * document is still cancellable once the period is reopened. Anything less
+     * would strand the document in a half-cancelled state.
+     */
+    public function test_the_refusal_rolls_back_cleanly_and_leaves_the_document_cancellable(): void
+    {
+        $documentDate = Carbon::parse('2026-03-20');
+        $period = $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+        $entryCountBefore = JournalEntry::query()->count();
+
+        try {
+            $this->postingService->cancel($invoice, 'refused', $this->user->id);
+            self::fail('Expected a refusal');
+        } catch (DocumentPeriodLockedException) {
+            // expected
+        }
+
+        self::assertSame(0, DB::transactionLevel(), 'The refusal must not leave an open transaction');
+        self::assertSame(
+            $entryCountBefore,
+            JournalEntry::query()->count(),
+            'Nothing at all may be persisted by a refused cancel',
+        );
+        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+
+        // Reopen the period: the very same cancel must now succeed and write its
+        // reversal, proving the refusal was the ONLY thing standing in the way.
+        $period->update(['status' => VatPeriodStatus::Open]);
+
+        $this->postingService->cancel($invoice->fresh(['lines']), 'now allowed', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(
+            1,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                ->where('source_id', $invoice->id)
+                ->count(),
+        );
+    }
+
+    // ----------------------------------------- purchase / supplier (AP) ---
+
+    /**
+     * R-c c2 DEFAULT: the refusal applies to purchase documents too. A supplier
+     * invoice's deductible input VAT sits in the same filed declaration as the
+     * output VAT, so withdrawing it after filing has the identical retroactive
+     * problem. REVERSIBLE by the c2 seam — see
+     * `VatPeriodCancellationGuard::refusalAppliesTo()`.
+     */
+    public function test_cancelling_a_supplier_invoice_in_a_closed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-01-22');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $supplierInvoice = $this->postedSupplierInvoice($documentDate);
+
+        try {
+            $this->postingService->cancel($supplierInvoice, 'wrong supplier', $this->user->id);
+            self::fail('Cancelling a supplier invoice in a CLOSED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodClosed, $exception->refusalCode);
+        }
+
+        $supplierInvoice->refresh();
+        self::assertSame(DocumentStatus::Posted, $supplierInvoice->status);
+        self::assertNull($supplierInvoice->cancelled_at);
+        self::assertSame(
+            0,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                ->where('source_id', $supplierInvoice->id)
+                ->count(),
+        );
+    }
+
+    public function test_cancelling_a_supplier_invoice_in_a_filed_period_is_refused(): void
+    {
+        $documentDate = Carbon::parse('2026-02-05');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $supplierInvoice = $this->postedSupplierInvoice($documentDate);
+
+        try {
+            $this->postingService->cancel($supplierInvoice, 'wrong supplier', $this->user->id);
+            self::fail('Cancelling a supplier invoice in a FILED VAT period must be refused');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(PeriodLockRefusalCode::PeriodFiled, $exception->refusalCode);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $supplierInvoice->fresh()->status);
+    }
+
+    // ------------------------------------------------------ happy paths ---
+
+    public function test_cancelling_a_sales_invoice_in_an_open_period_still_works(): void
+    {
+        $documentDate = Carbon::parse('2026-04-08');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Open);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $this->postingService->cancel($invoice, 'customer withdrew', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(
+            1,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+                ->where('source_id', $invoice->id)
+                ->count(),
+            'An OPEN period must still reverse exactly as before this lane',
+        );
+    }
+
+    public function test_cancelling_a_supplier_invoice_in_an_open_period_still_works(): void
+    {
+        $documentDate = Carbon::parse('2026-04-09');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Open);
+
+        $supplierInvoice = $this->postedSupplierInvoice($documentDate);
+
+        $this->postingService->cancel($supplierInvoice, 'duplicate entry', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $supplierInvoice->fresh()->status);
+    }
+
+    /**
+     * Period-resolution semantics: NO `vat_periods` row covering the document
+     * date means nothing has ever been closed or filed for that span, so there
+     * is nothing to protect — the cancel proceeds. Any other reading would make
+     * every document uncancellable on every tenant that has not started
+     * declaring VAT yet (which is all of them at launch).
+     */
+    public function test_a_document_with_no_vat_period_row_at_all_is_still_cancellable(): void
+    {
+        $invoice = $this->postedInvoiceWithGl(Carbon::parse('2026-05-11'));
+        self::assertSame(0, VatPeriod::query()->count(), 'Precondition: no periods exist');
+
+        $this->postingService->cancel($invoice, 'no periods configured', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+    }
+
+    /**
+     * The lock is scoped to the document's OWN company: another company's closed
+     * period must never block this company's cancel.
+     */
+    public function test_another_companys_closed_period_does_not_block_the_cancel(): void
+    {
+        $documentDate = Carbon::parse('2026-06-17');
+
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company',
+            'legal_name' => 'Other Company SARL',
+            'tax_id' => 'TAX-OTHER-LOCK',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed, $otherCompany->id);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $this->postingService->cancel($invoice, 'other company period is irrelevant', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+    }
+
+    /**
+     * A period that does NOT cover the document's own date must not block it —
+     * the lookup keys on `document_date`, the same date the GL entry and the VAT
+     * declaration both use for this document.
+     */
+    public function test_a_closed_period_that_does_not_cover_the_document_date_does_not_block(): void
+    {
+        $this->vatPeriodFor(Carbon::parse('2026-01-15'), VatPeriodStatus::Filed);
+
+        $invoice = $this->postedInvoiceWithGl(Carbon::parse('2026-07-15'));
+
+        $this->postingService->cancel($invoice, 'different month', $this->user->id);
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+    }
+
+    // ---------------------------------------------------------- HTTP 422 ---
+
+    public function test_the_cancel_endpoint_returns_a_coded_422(): void
+    {
+        $documentDate = Carbon::parse('2026-01-18');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", ['reason' => 'filed period']);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', PeriodLockRefusalCode::PeriodFiled->value);
+        self::assertIsString($response->json('error.message'));
+        self::assertNotSame('', $response->json('error.message'));
+
+        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+    }
+
+    // ------------------------------------------------------------ helpers ---
+
+    private function vatPeriodFor(Carbon $date, VatPeriodStatus $status, ?string $companyId = null): VatPeriod
+    {
+        DB::table('countries')->insertOrIgnore([
+            'code' => 'TN',
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'is_active' => true,
+        ]);
+
+        $start = $date->copy()->startOfMonth();
+
+        return VatPeriod::create([
+            'company_id' => $companyId ?? $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => VatPeriodType::Monthly,
+            'label' => $start->format('F Y'),
+            'period_start' => $start->toDateString(),
+            'period_end' => $date->copy()->endOfMonth()->toDateString(),
+            'status' => $status,
+        ]);
+    }
+
+    private function postedInvoiceWithGl(Carbon $documentDate): Document
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-PERIOD-'.uniqid(),
+            'document_date' => $documentDate,
+            'status' => DocumentStatus::Posted,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+            'balance_due' => '119.000',
+            'currency' => 'TND',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $invoice->id,
+            'product_id' => $this->product->id,
+            'line_number' => 1,
+            'description' => 'Doliprane 1000mg',
+            'quantity' => '10',
+            'unit_price' => '10.000',
+            'tax_rate' => '19.00',
+            'line_total' => '100.000',
+        ]);
+
+        /** @var Document $fresh */
+        $fresh = $invoice->fresh(['lines']);
+        $this->accountingService->createInvoiceGLEntries($fresh);
+
+        /** @var Document */
+        return $fresh->fresh(['lines']);
+    }
+
+    private function postedSupplierInvoice(Carbon $documentDate): Document
+    {
+        $supplierInvoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'document_number' => 'SI-PERIOD-'.uniqid(),
+            'document_date' => $documentDate,
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '200.000',
+            'tax_amount' => '38.000',
+            'total' => '238.000',
+            'balance_due' => '238.000',
+            'currency' => 'TND',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $supplierInvoice->id,
+            'product_id' => $this->product->id,
+            'line_number' => 1,
+            'description' => 'Doliprane 1000mg (achat)',
+            'quantity' => '40',
+            'unit_price' => '5.000',
+            'tax_rate' => '19.00',
+            'line_total' => '200.000',
+        ]);
+
+        /** @var Document */
+        return $supplierInvoice->fresh(['lines']);
+    }
+}
