@@ -55,13 +55,23 @@ class PartnerReferenceSchemaContractTest extends TestCase
     {
         foreach ($this->taggedSources() as $source) {
             foreach ($source->tables() as $table) {
-                foreach ($table->columns as $column) {
+                foreach ($table->referenceColumns() as $column) {
                     $this->assertTrue(
-                        Schema::hasColumn($table->table, $column),
-                        $source::class.' declares `'.$table->table.'.'.$column.'`, which does not '
+                        Schema::hasColumn($table->table, $column->column),
+                        $source::class.' declares `'.$table->table.'.'.$column->column.'`, which does not '
                         .'exist. A renamed column makes the guard silently count nothing and lets '
                         .'partners with live references be deleted.',
                     );
+
+                    // A polymorphic anchor's discriminator is load-bearing:
+                    // if it is renamed the count query throws inside DELETE.
+                    foreach (array_keys($column->where) as $guardColumn) {
+                        $this->assertTrue(
+                            Schema::hasColumn($table->table, $guardColumn),
+                            $source::class.' guards `'.$table->table.'.'.$column->column.'` on `'
+                            .$guardColumn.'`, which does not exist on that table.',
+                        );
+                    }
                 }
             }
         }

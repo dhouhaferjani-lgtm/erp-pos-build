@@ -94,8 +94,13 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
                     $table->table,
                     function (Blueprint $blueprint) use ($table): void {
                         $blueprint->id();
-                        foreach ($table->columns as $column) {
-                            $blueprint->string($column)->nullable();
+                        foreach ($table->referenceColumns() as $column) {
+                            $blueprint->string($column->column)->nullable();
+                            // Discriminator columns (polymorphic anchors)
+                            // must exist too or the count query errors.
+                            foreach (array_keys($column->where) as $guardColumn) {
+                                $blueprint->string($guardColumn)->nullable();
+                            }
                         }
                         if ($table->hasSoftDeletes) {
                             $blueprint->timestamp('deleted_at')->nullable();
@@ -199,9 +204,11 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
 
         $expected = [];
         foreach ($this->declaredTables() as $table) {
-            DB::connection(self::CONNECTION_AT_CALL_TIME)->table($table->table)->insert([
-                $table->columns[0] => $partnerId,
-            ]);
+            $column = $table->referenceColumns()[0];
+
+            DB::connection(self::CONNECTION_AT_CALL_TIME)->table($table->table)->insert(
+                [$column->column => $partnerId] + $column->where,
+            );
             $expected[$table->table] = 1;
         }
 

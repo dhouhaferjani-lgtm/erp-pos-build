@@ -69,8 +69,18 @@ abstract class TableBackedPartnerReferenceSource implements PartnerReferenceSour
             $query = $this->db->connection()
                 ->table($table->table)
                 ->where(static function (Builder $builder) use ($table, $partnerId): void {
-                    foreach ($table->columns as $column) {
-                        $builder->orWhere($column, $partnerId);
+                    foreach ($table->referenceColumns() as $column) {
+                        // Each column contributes `(col = ? AND <guards>)`,
+                        // and the alternatives are OR'd — so a polymorphic
+                        // anchor only counts under its own type, while a row
+                        // qualifying through several columns is still ONE row.
+                        $builder->orWhere(static function (Builder $alternative) use ($column, $partnerId): void {
+                            $alternative->where($column->column, $partnerId);
+
+                            foreach ($column->where as $guardColumn => $guardValue) {
+                                $alternative->where($guardColumn, $guardValue);
+                            }
+                        });
                     }
                 });
 

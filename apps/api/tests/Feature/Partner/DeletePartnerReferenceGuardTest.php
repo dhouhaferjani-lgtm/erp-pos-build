@@ -300,6 +300,74 @@ class DeletePartnerReferenceGuardTest extends TestCase
     }
 
     #[Test]
+    public function an_anchor_only_loyalty_member_blocks_the_delete(): void
+    {
+        // Loyalty records partner ownership through TWO channels and its own
+        // code treats them as equivalent — `MemberResolver::resolve()` ORs
+        // `customer_id` with `(loyaltyable_type='partner' AND
+        // loyaltyable_id=?)`, and `LoyaltyPartnerController::isBoundToPartner()`
+        // does the same. `LoyaltyMemberController::store` accepts an
+        // anchor-only member, so `customer_id` can be NULL while the member
+        // is unambiguously this partner's — points balance and all.
+        DB::table('loyalty_members')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'customer_id' => null,
+            'loyaltyable_type' => 'partner',
+            'loyaltyable_id' => $this->partner->id,
+            'phone' => '+33'.random_int(100000000, 999999999),
+            'enrollment_date' => now(),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/partners/{$this->partner->id}")
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'PARTNER_HAS_DOCUMENTS')
+            ->assertJsonPath('error.details.loyalty_members', 1);
+    }
+
+    #[Test]
+    public function the_loyalty_anchor_is_discriminated_by_type_not_matched_blindly(): void
+    {
+        // The anchor is polymorphic: `loyaltyable_id` can hold a contact id
+        // (or any other loyaltyable) that merely COLLIDES with this partner's
+        // uuid space. Without the `loyaltyable_type` discriminator the guard
+        // would block on a member that belongs to something else entirely.
+        DB::table('loyalty_members')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'customer_id' => null,
+            'loyaltyable_type' => 'contact',
+            'loyaltyable_id' => $this->partner->id,
+            'phone' => '+33'.random_int(100000000, 999999999),
+            'enrollment_date' => now(),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/partners/{$this->partner->id}")
+            ->assertNoContent();
+    }
+
+    #[Test]
+    public function a_loyalty_member_owned_through_both_channels_is_counted_once(): void
+    {
+        DB::table('loyalty_members')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'customer_id' => $this->partner->id,
+            'loyaltyable_type' => 'partner',
+            'loyaltyable_id' => $this->partner->id,
+            'phone' => '+33'.random_int(100000000, 999999999),
+            'enrollment_date' => now(),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/partners/{$this->partner->id}")
+            ->assertStatus(409)
+            ->assertJsonPath('error.details.loyalty_members', 1);
+    }
+
+    #[Test]
     public function the_covered_table_list_matches_what_the_tagged_sources_declare(): void
     {
         // The tie between this test class and the production wiring: a
