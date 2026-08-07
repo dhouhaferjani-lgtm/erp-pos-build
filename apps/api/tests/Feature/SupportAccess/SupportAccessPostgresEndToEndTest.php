@@ -48,6 +48,8 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
 
     private ?Tenant $tenant = null;
 
+    private bool $postgresSchemaReady = false;
+
     /** @var list<string> */
     private array $superAdminIds = [];
 
@@ -61,6 +63,7 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
 
         config(['tenancy_resolver.db_per_tenant' => true]);
         Artisan::call('migrate', ['--force' => true]);
+        $this->postgresSchemaReady = true;
 
         self::$writeProbeHits = 0;
         Route::middleware([
@@ -77,6 +80,12 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
 
     protected function tearDown(): void
     {
+        if (! $this->postgresSchemaReady) {
+            parent::tearDown();
+
+            return;
+        }
+
         Auth::forgetGuards();
         if (tenancy()->initialized) {
             tenancy()->end();
