@@ -44,6 +44,34 @@ LINKED to the original document it refers to (source_document_id). No free-float
 JEs as the correction mechanism. **F4 contract:** correcting-entry document type w/
 mandatory link to the original; schema-bearing → release/data gate + R2-I harness apply.
 
+**c1 PREMISE VERIFICATION (2026-08-07, code research w/ citations):**
+- ✅ CONFIRMED for stock UNITS: invoice posting/cancel moves NO stock (DocumentPostingService
+  posts/seals/reverses GL only); units move on delivery-note confirm (issueStock/recordSale),
+  return-note confirm (receiveStockBack/recordReturn), goods receipt, POS projections.
+- ✅ CONFIRMED return-note lifecycle: Draft → Confirmed only (confirm refuses non-draft; no
+  cancel endpoint); linkage EXISTS: documents.source_document_id + return_note_metadata
+  (source_delivery_note_id / source_invoice_id / linked_credit_note_id).
+- ❌ CONTRADICTED at the GL layer: **COGS books at INVOICE posting** (InventoryServiceProvider:77
+  → PostCOGSOnInvoice → GeneralLedgerService::createCOGSEntry, Dr COGS/Cr Inventory at
+  current WAC; failures logged-never-blocking). Two defects vs the ruled lane model:
+  **D1 — re-invoice double-COGS:** cancel books no COGS reversal (reverseDocumentGl mirrors
+  source_type=DOCUMENT only; the COGS entry is separately sourced) → cancel-then-re-invoice
+  books COGS TWICE for one delivery. Pre-existing, reachable via the normal fix-and-reissue
+  flow. **D2 — return-note confirm writes NO GL:** units + WAC come back but GL inventory
+  asset is never re-debited / COGS never credited → GL-vs-physical inventory divergence and
+  overstated COGS on every confirmed sales return. Ticket:
+  `2026-08-07-cogs-lane-mismatch.md`.
+- **NEW EXPERT QUESTION c1-bis (blocks F2's GL half; the prompt/UX half is unblocked):** où
+  doit être constaté le coût des ventes — à la sortie de stock (confirmation du BL, lane
+  stock, cohérent avec le modèle voulu) ou à la facturation (état actuel) ? Et quelle
+  écriture comptable à la confirmation d'un bon de retour (re-débit stock / crédit 607) ?
+  La réponse détermine si on déplace le COGS vers le BL (migration comptable) ou si on le
+  garde à la facture avec extourne à l'annulation + écriture au retour.
+- ✅ c4 infrastructure CONFIRMED BETTER than feared: source_document_id already exists on
+  documents (+ CN/refund/conversion precedents, DOCUMENT_CANCELLATION journal keying,
+  reverses_*_id idempotency idiom) — the correcting-document type may need little or no new
+  schema.
+
 c2 purchase-doc cancel when period CLOSED/FILED: reverse-in-current vs refuse-cancel →
 consumer F1 (F1 ships default-refusal FIRST, explicitly reversible). ⏳ expert.
 c3 declaration reconciliation: reversal-aware aggregation vs correction-row emission →
