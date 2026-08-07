@@ -33,8 +33,14 @@ guard. Fixed in-lane by funding through the movement port. Sweep remaining tests
 the same pattern (`grep "balance' =>" tests/ database/`), and consider a model-level guard
 (throw on balance in create attributes in non-production) so the trap is loud.
 
-## 5. Already-negative production repositories (pre-deploy checklist line)
+## 5. Already-negative production repositories (deploy checklist lines — gate-corrected timing)
 
 After deploy, repos with `balance < 0 AND allow_negative = false` (blocked types) will refuse
-further outflows until topped up or explicitly allowed. Detection SQL lands in the lane's
-commit body; run per tenant pre-deploy alongside the discount lane's negative-line query.
+further outflows until topped up or explicitly allowed. Gate round-2 corrections:
+- **Pre-deploy** (column doesn't exist yet): `SELECT ... WHERE balance < 0 AND type <> 'bank_account'`.
+- **Post-`tenants:migrate`**: the lane's commit-body query (`balance < 0 AND allow_negative = false`).
+- ⚠️ The natural remedy (an `in` adjustment) can ITSELF 422 on a tenant whose chart lacks the
+  payment-tolerance account (pinned by
+  `RepositoryAdjustmentTest::test_in_adjustment_returns_422_when_chart_lacks_payment_tolerance_account`)
+  — check the account exists before prescribing that remedy in the runbook.
+Run per tenant alongside the discount lane's negative-line query.
