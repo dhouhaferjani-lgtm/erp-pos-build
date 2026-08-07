@@ -41,7 +41,36 @@ FE hygiene batch.
 Close all three in the same motion as the I-3 ruling implementation (one small backfill-leg
 touch-up round).
 
-## I-3 — 0%-deductible expense base: OWNER RULING PENDING (tracked here until answered)
+## I-3 — ✅ EXPERT RULING RECEIVED 2026-08-07: EXCLUDE ENTIRELY (R2-G lane dispatched)
+
+Verbatim:
+
+> Exclure totalement la charge de la déclaration mensuelle de TVA et de son annexe des
+> achats.
+> Actions requises sur l'ERP :
+> Conserver le comportement de reprise de données (backfill) qui ignore ces lignes.
+> Abandonner le comportement provisoire (interim behaviour) qui déclare la base avec une TVA
+> à zéro.
+> Justification métier & fiscale :
+> Une charge à TVA non déductible est comptabilisée intégralement en TTC (le flux de TVA est
+> inexistant en comptabilité). Sur le portail de télédéclaration de la DGI (JIBAYA/SINDA),
+> déclarer une base avec un taux de TVA (ex: 19%) mais forcer le montant déductible à zéro
+> provoquera un rejet automatique du fichier pour incohérence mathématique (Base × Taux ≠ 0).
+> (Précision technique : L'exclusion de la déclaration mensuelle de TVA n'impacte pas la
+> Déclaration Annuelle de l'Employeur. Si l'achat a subi une Retenue à la Source, il sera
+> déclaré annuellement via le module RAS de l'ERP.)
+
+Consequences (R2-G scope):
+1. `writeDeductibleVatSnapshot()`: at 0% deductible, write NO DocumentTaxDetail row (early
+   return) — abandon the interim full-base/zero-VAT shape; flip its pinning test.
+2. Backfill 0% leg: from "skip awaiting ruling" to REMEDIATE — delete the sequence_order=1
+   non-stamp row on 0%-deductible expenses (covers BOTH pre-ruling shapes: V5-era 0/0 rows
+   and interim full-base/0 rows), dry-run default, reported counts, idempotent.
+3. RAS note recorded: monthly-declaration exclusion does not affect the annual employer
+   declaration; withheld purchases surface via the RAS module annually — no ERP change owed
+   beyond the above.
+
+## I-3 (original question, answered above) — kept for history
 
 The Q2 fix makes a fully NON-deductible expense (vat_deductible_percent = 0) declare
 `tax_base = full subtotal, tax_amount = 0.000` (previously 0.000/0.000 under V5). This grows
