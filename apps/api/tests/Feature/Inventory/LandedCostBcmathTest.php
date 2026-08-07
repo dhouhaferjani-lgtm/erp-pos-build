@@ -190,12 +190,11 @@ class LandedCostBcmathTest extends TestCase
     }
 
     /**
-     * P2-4 regression: the largest-remainder absorber must be located by VALUE
-     * (last positive-base line), not by assuming a 0-based sequential key. When a
-     * caller hands the service a non-zero-keyed collection (e.g. keyBy('id')),
-     * the old `$index >= $lastIndex` check could match no line and silently drop
-     * the residue. With ->values() re-keying + value-based absorber, the sum
-     * still reconciles exactly.
+     * P2-4 regression: the last-positive-base absorber must be located by VALUE,
+     * not by assuming a 0-based sequential key. When a caller hands the service a
+     * non-zero-keyed collection (e.g. keyBy('id')), the old `$index >= $lastIndex`
+     * check could match no line and silently drop the residue. With ->values()
+     * re-keying + value-based absorber, the sum still reconciles exactly.
      */
     public function test_allocation_reconciles_with_non_zero_keyed_line_collection(): void
     {

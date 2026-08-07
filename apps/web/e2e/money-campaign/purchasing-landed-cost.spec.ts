@@ -171,7 +171,7 @@ test.describe('PUR — additional costs -> landed cost (17..22)', () => {
     await loginAsRole(page, 'owner')
   })
 
-  test('MTP-PUR-17 (P0): freight 30.000 over lines 100.000 / 50.000 — Sigma is exact; the SPLIT drifts 1 millime', async ({ page }) => {
+  test('MTP-PUR-17 (P0): freight 30.000 over lines 100.000 / 50.000 — Sigma is exact and the SPLIT is exact', async ({ page }) => {
     const a = await createW4Product(page, 'PUR17a')
     const b = await createW4Product(page, 'PUR17b')
     const poRes = await apiRequest(page, 'POST', '/purchase-orders', {
@@ -203,20 +203,17 @@ test.describe('PUR — additional costs -> landed cost (17..22)', () => {
     // exactly. No 29.999, no 30.001.
     expect(sumMoney([rows[0].allocatedCosts, rows[1].allocatedCosts])).toBe('30.000')
 
-    // FINDING (P1) — docs/superpowers/tickets/2026-08-03-w4-landed-cost-proportion-truncation.md
-    // The plan expects the exact proportional split L1 = 30.000 x 100/150 = 20.000 and
-    // L2 = 10.000, with L1 landed unit cost 12.000000. The system produces 19.999 /
-    // 10.001 (and 11.999900 / 12.000200) because ProportionalMoneyAllocator computes
-    // `proportion = base / subtotal` TRUNCATED to the working scale FIRST
-    // (0.6666666 at scale 7) and only then multiplies by the total
-    // (30.000 x 0.6666666 = 19.999998 -> 19.999); the absorber line silently swallows
-    // the +0.001 residue. One-step `total x base / subtotal` would give exactly 20.000.
-    // TRIPWIRE: these are today's values. When the allocator is fixed this test goes red
-    // and must be updated to the plan's 20.000 / 10.000 / 12.000000.
-    expect(rows[0].allocatedCosts, 'TRIPWIRE: expected 20.000000 per plan; truncated proportion yields 19.999').toBe('19.999000')
-    expect(rows[1].allocatedCosts, 'TRIPWIRE: absorber swallows the +0.001 residue').toBe('10.001000')
-    expect(rows[0].landedUnitCost, 'TRIPWIRE: expected 12.000000 per plan').toBe('11.999900')
-    expect(rows[1].landedUnitCost).toBe('12.000200')
+    // FIXED (was P1) — docs/superpowers/tickets/2026-08-03-w4-purchasing-inventory-defects.md #1.
+    // ProportionalMoneyAllocator used to compute `proportion = base / subtotal` TRUNCATED to the
+    // working scale FIRST (0.6666666 at scale 7) and only then multiply by the total
+    // (30.000 x 0.6666666 = 19.999998 -> 19.999), with the absorber line silently swallowing the
+    // +0.001 residue. Fixed to a single-step `total x base / subtotal` division so nothing is
+    // truncated before the multiplication: the exact proportional split is now
+    // L1 = 30.000 x 100/150 = 20.000, L2 = 10.000, landed unit cost 12.000000 on both lines.
+    expect(rows[0].allocatedCosts, 'exact proportional split, no millime drift').toBe('20.000000')
+    expect(rows[1].allocatedCosts).toBe('10.000000')
+    expect(rows[0].landedUnitCost).toBe('12.000000')
+    expect(rows[1].landedUnitCost).toBe('12.000000')
   })
 
   test('MTP-PUR-18 (P0): 3 equal lines, pool 10.000 — shares 3.333/3.333/3.334, sum EXACTLY 10.000', async ({ page }) => {

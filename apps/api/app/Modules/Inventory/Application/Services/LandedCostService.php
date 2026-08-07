@@ -27,10 +27,14 @@ use Illuminate\Support\Facades\DB;
  * Precision: all arithmetic is bcmath. Intermediate values carry
  * {@see self::workingScale()} (currency scale + 4) extra digits and are
  * truncated to the currency scale exactly once at the boundary. Proportional
- * allocations use {@see ProportionalMoneyAllocator}'s largest-remainder
- * reconciliation so the sum of allocated columns equals the input total to the
- * last unit, the residue never lands on a zero-base line, and line order/keying
- * cannot drop it.
+ * allocations use {@see ProportionalMoneyAllocator}'s last-positive-base
+ * absorber (NOT a largest-remainder distribution — the entire running
+ * remainder is assigned to the last line with a positive base) so the sum of
+ * allocated columns equals the input total to the last unit, the residue
+ * never lands on a zero-base line, and line order/keying cannot drop it. The
+ * absorber convention concentrates all truncation residue on that one line
+ * rather than spreading it by remainder size — see
+ * {@see ProportionalMoneyAllocator}'s own docblock.
  */
 class LandedCostService
 {
@@ -103,9 +107,9 @@ class LandedCostService
             $scale = $this->scale();
             $working = $this->workingScale();
 
-            // Re-key to a contiguous 0-based sequence so the largest-remainder
-            // "is this the last line" check is robust even if the relation was
-            // filtered/keyed by a caller (otherwise the remainder could be dropped).
+            // Re-key to a contiguous 0-based sequence so the last-positive-base
+            // absorber "is this the last line" check is robust even if the relation
+            // was filtered/keyed by a caller (otherwise the remainder could be dropped).
             $lines = $purchaseOrder->lines->values();
             $additionalCostsTotal = CurrencyScale::bcformat(
                 $this->landedCostAdditionalCostsTotal($purchaseOrder),
@@ -376,9 +380,10 @@ class LandedCostService
      * Calculate what the allocated cost would be for a line without saving.
      *
      * Note: this preview helper computes a single line's proportional share in
-     * isolation; it does NOT perform the largest-remainder reconciliation used
-     * by {@see allocateCosts()} (which needs the whole line set). The published
-     * float return type is preserved for backward compatibility.
+     * isolation; it does NOT perform the last-positive-base absorber
+     * reconciliation used by {@see allocateCosts()} (which needs the whole line
+     * set). The published float return type is preserved for backward
+     * compatibility.
      */
     public function calculateAllocatedCost(float $lineTotal, float $subtotal, float $additionalCostsTotal): float
     {
