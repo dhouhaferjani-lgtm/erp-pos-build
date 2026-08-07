@@ -517,7 +517,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <CustomerListPage partnerType="customer" />
+                  <CustomerListPage key="customer" partnerType="customer" />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -527,7 +527,7 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="sales.create">
                 <SuspenseWrapper>
-                  <CustomerForm partnerType="customer" />
+                  <CustomerForm key="customer" partnerType="customer" />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -547,7 +547,7 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
-                  <CustomerForm partnerType="customer" />
+                  <CustomerForm key="customer" partnerType="customer" />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -764,7 +764,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="purchases">
                 <SuspenseWrapper>
-                  <CustomerListPage partnerType="supplier" />
+                  <CustomerListPage key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -774,7 +774,7 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="purchases.create">
                 <SuspenseWrapper>
-                  <CustomerForm partnerType="supplier" />
+                  <CustomerForm key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -794,7 +794,7 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
-                  <CustomerForm partnerType="supplier" />
+                  <CustomerForm key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
               </RequirePermission>
             }

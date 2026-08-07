@@ -187,8 +187,13 @@ describe('partner queryKey tenant scope', () => {
 
     renderWithProviders(<PartnerListPage />, { queryClient })
 
+    // The partner-type segment ('all' when the page is mounted outside the
+    // Clients/Fournisseurs routes) was added by the BUG-006 fix so the two
+    // typed lists can never share a cache entry. Tenant + company stay the
+    // trailing suffix, which is what this test locks.
     expect(partnersKeysFromCache(queryClient)).toContainEqual([
       'partners',
+      'all',
       { sort_by: 'name', sort_dir: 'asc', page: '1', per_page: '25' },
       'tenant-A',
       'company-1',

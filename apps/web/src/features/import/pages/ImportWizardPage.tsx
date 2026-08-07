@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { FileUpload } from '../components/FileUpload'
@@ -40,6 +42,67 @@ const STEPS: { key: WizardStep; label: string }[] = [
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
 const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'shelf', 'bin', 'section', 'zone']
+
+/**
+ * The message `api.ts`'s response interceptor substitutes for a request that
+ * never got a response. That branch is unreachable today (`isApiError` returns
+ * false without a response body envelope, so the raw AxiosError falls through
+ * instead) — but repairing `isApiError` into a plain axios guard is a tempting
+ * one-line cleanup, and the moment it lands every network failure arrives here
+ * as this bare Error with no axios shape. Recognising the sentinel keeps the
+ * taxonomy correct across that change instead of silently reinstating BUG-004.
+ */
+const INTERCEPTOR_NETWORK_ERROR = 'network error'
+
+/**
+ * Turn a `parseHeaders` rejection into the message the operator should act on.
+ *
+ * The guiding rule, and the whole point of BUG-004: never assert a cause the
+ * frontend cannot know. Each branch below is a cause we CAN establish.
+ *
+ * - 401 / 419 → the session died (401 is `UNAUTHENTICATED`; 419 is a CSRF
+ *   bounce, which the interceptor's auto-retry never sees because `isApiError`
+ *   rejects Laravel's bare `{"message":…}` body). `api.ts` is already
+ *   redirecting to /login, so the action is "sign in again and re-upload" —
+ *   NOT "contact your administrator".
+ * - 413 → the file is genuinely too large for a proxy in front of the API.
+ *   This is the one status where the file IS the cause, so it must not inherit
+ *   the generic "try again" copy: retrying is guaranteed to fail.
+ * - 422 → the backend genuinely could not parse the spreadsheet, or rejected
+ *   its mime/size. `MigrationWizardController::parseHeaders` emits 422 for both
+ *   and for nothing else.
+ * - any other HTTP status → an infrastructure/API failure. Surface the status
+ *   for support and claim NOTHING about the file.
+ * - no response, or the interceptor's network sentinel → the request never
+ *   completed (offline, CORS, timeout).
+ */
+function describeUploadFailure(
+  error: unknown,
+  t: TFunction<'import'>,
+): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status
+    if (status === undefined) {
+      return t('wizard.upload.networkError')
+    }
+    if (status === 401 || status === 419) {
+      return t('wizard.upload.sessionExpired')
+    }
+    if (status === 413) {
+      return t('wizard.upload.tooLarge')
+    }
+    if (status !== 422) {
+      return t('wizard.upload.serverError', { status })
+    }
+    return t('wizard.upload.parseError')
+  }
+
+  if (error instanceof Error && error.message.toLowerCase() === INTERCEPTOR_NETWORK_ERROR) {
+    return t('wizard.upload.networkError')
+  }
+
+  return t('wizard.upload.parseError')
+}
 
 function isPlacementMode(value: string): value is NonNullable<ImportJobOptions['placement_mode']> {
   return value === 'strict' || value === 'auto_create'
@@ -375,8 +438,15 @@ export function ImportWizardPage() {
           },
         }
       )
-    } catch {
-      toast.error(t('wizard.upload.parseError'))
+    } catch (uploadError: unknown) {
+      // BUG-004: a bare `catch {}` used to map EVERY failure — 500, nginx 413,
+      // CSRF bounce, dropped connection — to "invalid file", which is what hid
+      // the real causes of BUG-001/BUG-002 for days. Only a 422 from
+      // MigrationWizardController::parseHeaders actually means the file could
+      // not be parsed; anything else is an infrastructure problem the operator
+      // must not be blamed for.
+      console.error('Import wizard: parse-headers failed', uploadError)
+      toast.error(describeUploadFailure(uploadError, t))
       setSelectedFile(null)
       setSourceColumns([])
     }
@@ -521,6 +591,22 @@ export function ImportWizardPage() {
               </p>
             </div>
 
+            {/*
+              SIZE BOUNDARY — keep this equal to the server rule. Client
+              10 * 1024 * 1024 = 10,485,760 B; server `max:10240` (KB) in
+              MigrationWizardController::parseHeaders = 10,485,760 B. They are
+              EXACTLY equal today, which is why an oversize file is stopped
+              here and never produces a server 422.
+
+              If the two ever diverge, a gap band opens: files inside it pass
+              the client check, get a Laravel mime/size 422, and — because 422
+              maps to `parseError` — the operator is told "Could not read the
+              file. Please upload a valid CSV or Excel file." That is BUG-004
+              reinstated for the most common large-import case. Change one side,
+              change the other (or key off `error.code`; see the PARSE_FAILED
+              follow-up in
+              docs/superpowers/tickets/2026-08-06-l6-partners-followups.md).
+            */}
             <FileUpload
               onFileSelect={handleFileSelect}
               accept=".csv,.xlsx,.xls"

@@ -14,6 +14,7 @@ import { Input } from '../../components/atoms/Input/Input'
 import { Select } from '../../components/atoms/Select/Select'
 import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { Button } from '../../components/atoms/Button/Button'
+import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { B2BFieldsSection } from './components/B2BFieldsSection'
@@ -54,6 +55,7 @@ interface Partner {
   exemption_certificate_path: string | null
   exemption_valid_until: string | null
   notes: string | null
+  is_active: boolean
   bank_accounts?: {
     id: string
     label: string | null
@@ -104,6 +106,7 @@ export interface PartnerFormData {
   exemption_reason: string
   exemption_valid_until: string
   notes: string
+  is_active: boolean
   bank_accounts: PartnerBankAccountFormData[]
 }
 
@@ -224,6 +227,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       exemption_reason: '',
       exemption_valid_until: '',
       notes: '',
+      // New partners are active by default, matching the model default
+      // (Partner.php: 'is_active' => true).
+      is_active: true,
       bank_accounts: [],
     },
   })
@@ -332,6 +338,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         exemption_reason: partner.exemption_reason ?? '',
         exemption_valid_until: partner.exemption_valid_until ?? '',
         notes: partner.notes ?? '',
+        is_active: partner.is_active,
         bank_accounts: (partner.bank_accounts ?? []).map((account) => ({
           id: account.id,
           label: account.label ?? '',
@@ -782,6 +789,28 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 {...register('notes')}
               />
             </FormField>
+
+            {/*
+              Active / inactive. The 409 PARTNER_HAS_DOCUMENTS toast tells the
+              operator to deactivate a partner they cannot delete, so the
+              affordance has to exist for that instruction to mean anything.
+              The backend has always accepted the field
+              (Create/UpdatePartnerRequest: ['sometimes','boolean']).
+            */}
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-3">
+                <Checkbox id="is_active" {...register('is_active')} />
+                <label
+                  htmlFor="is_active"
+                  className={`text-sm font-medium ${colorTokens.text.secondary}`}
+                >
+                  {t('sales:partners.isActive')}
+                </label>
+              </div>
+              <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
+                {t('sales:partners.isActiveHint')}
+              </p>
+            </div>
           </div>
         </div>
 

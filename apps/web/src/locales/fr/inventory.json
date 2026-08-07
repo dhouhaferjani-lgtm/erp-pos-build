@@ -171,6 +171,7 @@
     "quickCreateNote": "Ceci crée un produit de base. Modifiez le produit plus tard pour ajouter plus de détails.",
     "nameRequired": "Le nom est requis",
     "skuRequired": "La référence est requise",
+    "validationBlocked": "Certains champs obligatoires sont manquants ou invalides. Le premier est mis en évidence ci-dessous.",
     "unitPlaceholder": "pcs, kg, heures…",
     "costWac": "Coût (CMP)",
     "priceHt": "Prix de vente HT",

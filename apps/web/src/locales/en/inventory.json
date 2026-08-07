@@ -171,6 +171,7 @@
     "quickCreateNote": "This creates a basic product. Edit the product later to add more details.",
     "nameRequired": "Name is required",
     "skuRequired": "SKU is required",
+    "validationBlocked": "Some required fields are missing or invalid. The first one is highlighted below.",
     "unitPlaceholder": "pcs, kg, hours…",
     "costWac": "Cost (WAC)",
     "priceHt": "Sale price (excl. tax)",

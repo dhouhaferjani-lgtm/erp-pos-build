@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Application\Services\PartnerBankAccountService;
+use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Events\PartnerCreated;
 use App\Modules\Partner\Domain\Events\PartnerDeleted;
@@ -20,7 +21,7 @@ use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,12 +32,27 @@ class PartnerController extends Controller
     use FiltersAndSorts;
     use PaginatesResults;
 
+    /**
+     * `$db` is `DatabaseManager`, not `ConnectionInterface` — see the
+     * 2026-08-06 live-verification fix on
+     * `PartnerReferenceCounter` for the full root-cause writeup. In short:
+     * this controller is `make()`'d by Laravel during
+     * `Route::gatherMiddleware()`, BEFORE `ResolveTenancy` swaps
+     * `database.default` from `central` to the tenant DB. A
+     * constructor-captured `ConnectionInterface` is therefore permanently
+     * pinned to `central` for the lifetime of the request. `DatabaseManager`
+     * defers connection resolution to call time (`->connection()` re-reads
+     * `database.default` on every call), so `store()`/`update()`'s
+     * transactions correctly cover the tenant DB where `Partner::create()`
+     * / `->update()` actually write.
+     */
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly TaxIdValidationService $taxIdValidationService,
         private readonly PartnerBankAccountService $partnerBankAccounts,
         private readonly BankAccountValidatorInterface $bankAccountValidator,
-        private readonly ConnectionInterface $db,
+        private readonly DatabaseManager $db,
+        private readonly PartnerReferenceCounter $partnerReferenceCounter,
     ) {}
 
     /**
@@ -195,7 +211,7 @@ class PartnerController extends Controller
 
         /** @var User $actor */
         $actor = $request->user();
-        $partner = $this->db->transaction(function () use ($validated, $tenantId, $companyId, $request, $actor, $company): Partner {
+        $partner = $this->db->connection()->transaction(function () use ($validated, $tenantId, $companyId, $request, $actor, $company): Partner {
             $partner = Partner::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
@@ -275,7 +291,7 @@ class PartnerController extends Controller
         }
 
         $company = $this->companyContext->requireCompany();
-        $this->db->transaction(function () use ($partnerModel, $validated, $hasBankAccounts, $request, $user, $company): void {
+        $this->db->connection()->transaction(function () use ($partnerModel, $validated, $hasBankAccounts, $request, $user, $company): void {
             $partnerModel->update($validated);
             if ($hasBankAccounts) {
                 $this->partnerBankAccounts->sync(
@@ -340,6 +356,25 @@ class PartnerController extends Controller
                     'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
                 ],
             ], 404);
+        }
+
+        // BUG-007: block the delete while the partner still carries financial
+        // history. The partner is soft-deleted, so the DB FKs never fire and
+        // the referencing rows would silently point at an invisible partner.
+        $references = $this->partnerReferenceCounter->countFor($partnerModel->id);
+
+        if ($references !== []) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_HAS_DOCUMENTS',
+                    'message' => 'Cannot delete this partner: it is still referenced by financial records.',
+                    'details' => $references,
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 409);
         }
 
         $partnerModel->delete();

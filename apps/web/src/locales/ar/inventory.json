@@ -179,6 +179,7 @@
     "fastPathAcceptError": "تعذر تطبيق الإثراء."
   },
   "products": {
+    "validationBlocked": "بعض الحقول المطلوبة ناقصة أو غير صالحة. تم إبراز أول حقل منها أدناه.",
     "typePlaceholder": "اختر النوع…",
     "typeOptions": {
       "part": "قطعة",
