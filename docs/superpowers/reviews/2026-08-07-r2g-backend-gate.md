@@ -272,3 +272,122 @@ Move the delete above the `$vatAmount` early return (IMPORTANT-1), decide the FI
 gate (IMPORTANT-2), and update the command `$description` + owner runbook to say the leg now
 deletes and that its output is the only audit record (IMPORTANT-3). The four minors and the
 probe-7 routing can ship as tickets.
+
+---
+
+# Fix-round re-verify — `c24a1267e` (2026-08-07)
+
+Narrow re-verify of the three IMPORTANTs and the minors only. All checks on live PostgreSQL
+(`phpunit-pgsql.xml`). Eleven throwaway probes written, run, deleted; worktree byte-clean.
+
+| Check | Result |
+|---|---|
+| `BackfillTaxDetailsCommandTest.php` (pgsql) | **OK 29/29, 181 assertions** (was 24) |
+| `ExpenseVatPostingTest.php` (pgsql) | 12 tests, new test green, **same 3 pre-existing errors** (probe-7 lane, unchanged) |
+| PHPStan L8 on both touched app files | **[OK] No errors** |
+| Pint `--test` on all 4 touched files | `{"result":"pass"}` |
+
+## IMP-1 — ✅ CLOSED
+`ExpenseService.php:532-535` (delete) / `:519-531` (rationale comment) — the delete now sits at the very top of the method, above the
+`$vatAmount`/`$scale` lines, with `->where('is_stamp_duty', false)` added (minor-1 folded in).
+
+Probe results (5/5 green):
+- **Original gate probe re-run**: post 80%-deductible → reopen → clear VAT → re-post ⇒ **0 rows**.
+  The phantom `seq=1 base=100.000 amt=15.200` is gone.
+- Percent-skip path (percent → 0%) still deletes and writes nothing.
+- **No over-deletion**: normal 80% path still writes `base=100.000 / amount=15.200 / seq=1`;
+  `null` percent still writes `100.000 / 19.000`.
+- **minor-1 verified positively**: a `is_stamp_duty = true` row planted in slot 1 now **survives**
+  the writer's delete, and the VAT row is written alongside it (2 rows). Writer and backfill
+  (`:396-400`) now agree on the slot predicate.
+- Docblock `:470-486` rewritten and now accurate ("FIRST and TRULY UNCONDITIONALLY … ABOVE every
+  other guard in this method including the vat-amount check").
+
+## IMP-2 — ✅ CLOSED
+`--include-filed` added to the signature (`:169`); both mutation paths call
+`recordPeriodImpact()` **before** the write decision (0% branch `:454-470`, rewrite branch
+`:531-546`) and `continue` with an explicit skip reason when filed and the flag is absent.
+
+Probe results (5/5 green):
+- **Flag OFF, `--apply`, filed period**: `FILED-PERIOD IMPACT` prints, `Rewrote 0`, row untouched,
+  and **`THIS RUN PASSED` is absent**. Flag ON: `THIS RUN PASSED --include-filed` appears and
+  `Rewrote 1`. The annotation is correctly conditional (`:610-613`).
+- **Dry-run also refuses filed**: `[DRY-RUN]` + `FILED-PERIOD IMPACT` + `deletion refused` +
+  `Would delete 0`, no annotation. Gate applies in both modes as specified.
+- **`--include-filed` does NOT bypass I-1**: a duplicate-slot 0%-deductible doc inside a filed
+  period still reports `2 rows at sequence_order=1`, `Deleted 0`, both rows intact. Structurally
+  guaranteed — the I-1 check at `:396-409` runs before the percent is even read.
+- **`--include-filed` does NOT delete non-0% rows**: an 80%-deductible doc in a filed period is
+  **rewritten** (`Rewrote 1`, `Deleted 0`, `tax_base` → `100.000`, `tax_amount` untouched at
+  `15.200`). The delete lives only in the 0% branch.
+- Ordering detail confirmed by reading: the rewrite path's `recordPeriodImpact()` sits **below**
+  the `bccomp($storedBase, $subtotal)` no-op `continue` (`:516-521`), so a document that needs
+  nothing does not spuriously raise a FILED/CLOSED section. Correct.
+
+## IMP-3 — ⚠️ PARTIALLY CLOSED — one residual (see B-1)
+Closed: `$description` (`:171`) now says "**AND DELETES the row entirely for 0%-deductible
+expenses**" and names the `--include-filed` default; the snapshot is captured into
+`$zeroDeductibleRemediated` with `tax_base` / `tax_amount` / `tax_rate` **before** `$detail->delete()`
+(`:474-483`, before the `if ($apply)` at `:484`); it prints in both dry-run and `--apply` (`:577-584`); the owner runbook
+(`docs/handoff/OWNER-INDEX-2026-08-03.md:55-71`) now carries the deletion notice, the
+`| tee` capture instruction, and the "no `--include-filed` without accountant sign-off" line.
+
+### B-1 [IMPORTANT] — the snapshot is captured before the delete but PRINTED only after the whole scan, so a crashed run loses the audit record it exists to provide
+`apps/api/app/Console/Commands/BackfillTaxDetailsCommand.php:485-487` (per-document commit) vs
+`:577-584` (print, after the `cursor()` loop closes at `:556`)
+
+**Probe 1 — output ordering (FAILED as predicted).** In a completed `--apply` run the snapshot
+line `tax_base=0.000 tax_amount=0.000` appears **after** `Scanned 1 expense document(s)`, i.e.
+after every delete in the run has already committed.
+
+**Probe 2 — simulated crash mid-scan (confirms the loss).** Two 0%-deductible expenses; a
+`DB::listen` hook throws on the second `delete from "document_tax_details"`. Result: exactly
+**one deletion committed** (each delete is its own `DB::transaction` at `:485-487`, committed
+immediately), and the captured output contains **no snapshot line at all** — the committed
+deletion has no surviving record anywhere.
+
+**Why it matters.** This is precisely the property IMP-3 exists to guarantee: the printed output
+is the ONLY record a hard-deleted row existed (no `SoftDeletes`, no audit event). Capture-before-
+delete protects a *completed* run; it does nothing for an operator `Ctrl-C`, a DB blip, or a PHP
+fatal partway through a large tenant — the exact conditions under which an operator most needs
+to know what was already destroyed.
+
+**Fix (≈5 lines).** Emit the snapshot line at the moment of capture, inside the loop, immediately
+before the `if ($apply) { … delete … }` block. Keep the end-of-run list as the summary. That makes
+the record stdout-flushed ahead of the mutation it describes, so any abort still leaves it.
+
+### minor-5 [minor] — FILED refusals share the `$skipped` bucket with data-quality skips
+`:539-543` and `:456-462` push FILED refusals into the same `$skipped` list whose warning line
+(~`:589-596`) reads "needs manual review, NOT backfilled", and into the same `Skipped N` count as
+duplicate-slot / missing-metadata / null-subtotal cases. The reason strings are explicit so no
+information is lost, but an operator counting "Skipped" can no longer tell a *data problem* from
+a *deliberate policy refusal*. Consider a separate counter/line.
+
+## Minors from round 1 — status
+- **minor-1** (writer/backfill slot predicate asymmetry) — ✅ closed, probe-verified positively
+  (stamp-duty row in slot 1 survives).
+- **minor-2** (closed+filed coexistence untested) — ✅ closed,
+  `test_expense_leg_reports_both_closed_and_filed_sections_when_both_periods_overlap` green.
+- **minor-3** (N+1 in `recordPeriodImpact`) — ✅ closed. Cache key is
+  `$document->company_id.'|'.$documentDate` (`:662`) — full date, not month, so no
+  same-month/different-date bleed; company-qualified, so no cross-company bleed; and
+  `$periodLookupCache` is a local of `handleExpenseLeg()`, so nothing survives a run (tenancy is
+  db-per-tenant and the command is per-tenant anyway). **Cross-contamination probe:** two
+  companies in one tenant, same `document_date`, company A inside a FILED period and company B
+  with no periods at all, run with **no `--company` scope** ⇒ A refused, **B deleted** (`Deleted 1`).
+  B did not inherit A's cache entry. Correct.
+- **minor-4** (m-3 docblock claim narrower than stated) — ✅ closed, caveat added at
+  `ExpenseService.php:568-572` naming the `bcsub($total, $vatAmount, $scale)` dependency.
+
+## Probe 7 (the 3 red treasury/expense tests) — unchanged
+Still 3 errors, still `InsufficientRepositoryBalanceException`, still identical on `origin/dev`.
+Ruling from round 1 stands: out of scope here, route to the repobal lane and widen its §4 sweep
+predicate (the `grep "balance' =>"` sweep does not match `ExpenseVatPostingTest::cashRepository()`,
+which never sets `balance` at all).
+
+## Fix-round verdict
+
+**CLEAR TO MERGE once B-1 lands** (one ≈5-line move: print the snapshot at capture time, before
+the delete). IMP-1 and IMP-2 are fully closed and probe-verified; IMP-3's docs/description/capture
+halves are closed; all four round-1 minors are closed. No other blockers. minor-5 and the probe-7
+routing are ticket material.

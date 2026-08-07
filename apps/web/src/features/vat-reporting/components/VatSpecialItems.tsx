@@ -27,14 +27,12 @@ const countryItemConfigs: Record<string, SpecialItemConfig[]> = {
     { key: 'stamp_duty_total', labelKey: 'finance:vatReporting.specialItems.timbreFiscalAmount', kind: 'money' },
     { key: 'retenue_source_total', labelKey: 'finance:vatReporting.specialItems.retenueSourceAmount', kind: 'money' },
   ],
-  FR: [
-    { key: 'intra_community_acquisitions', labelKey: 'finance:vatReporting.specialItems.intraCommunityAcquisitions', kind: 'money' },
-    { key: 'intra_community_supplies', labelKey: 'finance:vatReporting.specialItems.intraCommunitySupplies', kind: 'money' },
-  ],
-  GB: [
-    { key: 'ec_supplies', labelKey: 'finance:vatReporting.specialItems.ecSupplies', kind: 'money' },
-    { key: 'ec_acquisitions', labelKey: 'finance:vatReporting.specialItems.ecAcquisitions', kind: 'money' },
-  ],
+  // MAJOR-3 (2026-08-07 FE re-gate): FR/GB deliberately UNMAPPED.
+  // FranceVatStrategy.php:114-117 and UkVatStrategy.php:130-134 emit
+  // hardcoded deferred-feature STUBS ('0.000'/0) -- rendering them would
+  // present "Acquisitions intracommunautaires 0,00" as computed fact when
+  // the system never tracks it. Re-add the mappings only when the
+  // strategies compute real values.
 }
 
 // MINOR-2 (2026-08-07 FE gate): a plain decimal-string regex probe --

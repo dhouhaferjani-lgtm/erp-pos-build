@@ -771,12 +771,21 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->assertStringContainsString('tax_base=0.000', $dryRunOutput);
         $this->assertStringContainsString('tax_amount=0.000', $dryRunOutput);
         $this->assertStringContainsString('tax_rate=19.00', $dryRunOutput);
+        // B-1 (re-gate): the capture-time snapshot line must print INSIDE
+        // the scan loop, i.e. BEFORE the post-loop "Scanned N ..." summary,
+        // so a mid-scan crash never leaves a committed deletion unrecorded.
+        $captureLinePos = strpos($dryRunOutput, ' -- would delete');
+        $summaryPos = strpos($dryRunOutput, 'Scanned 1 expense document(s)');
+        $this->assertNotFalse($captureLinePos);
+        $this->assertNotFalse($summaryPos);
+        $this->assertLessThan($summaryPos, $captureLinePos);
 
         $applyOutput = $this->runBackfillAndCaptureOutput(['--company' => $this->company->id, '--apply' => true]);
         $this->assertStringContainsString('EXP-LEGACY-0.00', $applyOutput);
         $this->assertStringContainsString('tax_base=0.000', $applyOutput);
         $this->assertStringContainsString('tax_amount=0.000', $applyOutput);
         $this->assertStringContainsString('tax_rate=19.00', $applyOutput);
+        $this->assertStringContainsString(' -- deleting', $applyOutput);
 
         $this->assertFalse(DocumentTaxDetail::where('document_id', $expense->id)->exists());
     }

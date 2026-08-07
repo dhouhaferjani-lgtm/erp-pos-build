@@ -473,13 +473,29 @@ final class BackfillTaxDetailsCommand extends Command
                     continue;
                 }
 
-                $zeroDeductibleRemediated[] = [
+                $snapshot = [
                     'id' => (string) $document->id,
                     'number' => (string) ($document->document_number ?? $document->id),
                     'tax_base' => (string) ($detail->tax_base ?? '0'),
                     'tax_amount' => (string) $detail->tax_amount,
                     'tax_rate' => $detail->tax_rate !== null ? (string) $detail->tax_rate : null,
                 ];
+                $zeroDeductibleRemediated[] = $snapshot;
+
+                // B-1 (2026-08-07 re-gate): the snapshot line is the ONLY
+                // surviving record of a hard-deleted row, so it must reach
+                // the output BEFORE the delete commits — a crash mid-scan
+                // must never leave a committed deletion with no printed
+                // record. The end-of-run section keeps the count summary.
+                $this->line(sprintf(
+                    '    - %s (%s): tax_base=%s tax_amount=%s tax_rate=%s%s',
+                    $snapshot['number'],
+                    $snapshot['id'],
+                    $snapshot['tax_base'],
+                    $snapshot['tax_amount'],
+                    $snapshot['tax_rate'] ?? 'null',
+                    $apply ? ' -- deleting' : ' -- would delete',
+                ));
 
                 if ($apply) {
                     DB::transaction(function () use ($detail): void {
@@ -568,9 +584,11 @@ final class BackfillTaxDetailsCommand extends Command
             $apply ? 'Deleted' : 'Would delete',
             count($zeroDeductibleRemediated),
         ));
-        // IMP-3 (2026-08-07 gate): full row snapshot per deletion -- the
-        // ONLY surviving record of a hard-deleted document_tax_details row.
-        // Printed in BOTH dry-run and --apply.
+        // IMP-3 (2026-08-07 gate) + B-1 (re-gate): the FULL row snapshots
+        // print at capture time inside the scan loop, BEFORE each delete
+        // commits (crash-safety: a mid-scan crash never leaves a committed
+        // deletion with no printed record). This end-of-run section is the
+        // SUMMARY reference list only.
         foreach ($zeroDeductibleRemediated as $row) {
             $this->line(sprintf(
                 '    - %s (%s): tax_base=%s tax_amount=%s tax_rate=%s',

@@ -89,23 +89,28 @@ describe('VatSpecialItems', () => {
     expect(screen.queryByText('234.57')).not.toBeInTheDocument()
   })
 
-  it('renders FR special items with the intra-community keys the FranceVatStrategy actually emits', () => {
-    render(
+  // MAJOR-3 (2026-08-07 FE re-gate): FR/GB strategies emit hardcoded
+  // deferred-feature STUBS ('0.000'/0) -- rendering them would present
+  // placeholder zeros as computed fact ("Acquisitions intracommunautaires
+  // 0,00" implying none were found when the system never tracks them).
+  // The panel must render NOTHING for FR/GB until the strategies compute
+  // real values.
+  it('renders nothing for FR while the FranceVatStrategy emits deferred-feature stubs', () => {
+    const { container } = render(
       <VatSpecialItems
         specialItems={{
-          intra_community_acquisitions: '500.00',
-          intra_community_supplies: '250.00',
+          intra_community_acquisitions: '0.000',
+          intra_community_supplies: '0.000',
         }}
         countryCode="FR"
       />
     )
 
-    expect(screen.getByText('Intra-Community Acquisitions')).toBeInTheDocument()
-    expect(screen.getByText('Intra-Community Supplies')).toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
   })
 
-  it('renders GB special items with the ec_supplies/ec_acquisitions keys the UkVatStrategy actually emits', () => {
-    render(
+  it('renders nothing for GB while the UkVatStrategy emits deferred-feature stubs', () => {
+    const { container } = render(
       <VatSpecialItems
         specialItems={{
           ec_supplies: 0,
@@ -115,8 +120,7 @@ describe('VatSpecialItems', () => {
       />
     )
 
-    expect(screen.getByText('EC Supplies')).toBeInTheDocument()
-    expect(screen.getByText('EC Acquisitions')).toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
   })
 
   it('renders nothing when no configured key has a value (unknown country)', () => {
