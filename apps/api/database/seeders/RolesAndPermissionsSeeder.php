@@ -374,6 +374,20 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.update',
             'withholding.delete',
 
+            // Withholding Tax Rules (Admin) — gates Taxation/routes.php:38-45
+            // (index/show/store/update/deactivate/destroy). Same class of
+            // defect as taxation.tax_configurations.manage below: was
+            // defined only in the dead central-bootstrap PermissionSeeder
+            // (never called by DatabaseSeeder), never in this per-tenant
+            // seeder, so it was never created on any real tenant DB — no
+            // user, not even admin, could ever satisfy
+            // CreateWithholdingRuleRequest/UpdateWithholdingRuleRequest's
+            // authorize() check, and `deactivate`/`destroy` (which had NO
+            // authorization check at all) were reachable by any
+            // authenticated tenant user.
+            // docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #3
+            'taxation.withholding_rules.manage',
+
             // Taxation - Tax Configurations (W-X, 2026-08-06): create/edit/
             // delete/reorder tax rates, types and stamp duties. Was defined
             // in the central-bootstrap PermissionSeeder but never in this
@@ -764,6 +778,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'ledger.view',
                 'reports.financial', 'reports.operational', 'reports.manage',
                 'taxation.tax_configurations.manage',
+                'taxation.withholding_rules.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',
                 'audit.view',
                 'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',

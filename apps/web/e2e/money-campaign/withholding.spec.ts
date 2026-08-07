@@ -482,7 +482,7 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     ).toEqual([])
   })
 
-  test('MTP-WHT-05: TRIPWIRE(#3) — a user without withholding.* can read/create/edit certificates today (routes ungated)', async ({
+  test('MTP-WHT-05: fix #3 — a user without withholding.* is refused read/create/edit on certificate routes', async ({
     request,
   }) => {
     const cashier = await login(request, 'cashier')
@@ -498,9 +498,9 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
 
     const partnerId = await createCustomer(request, owner, uniqueName('WHT05'))
 
-    // --- READ probe: the FE route is wrapped in RequirePermission
-    // "withholding.view", but no route in Modules/Taxation/routes.php:48-59
-    // carries a `can:` middleware for the certificate group.
+    // --- READ probe: every certificate route now carries a `can:` middleware
+    // (Modules/Taxation/routes.php) matching the FE's
+    // `RequirePermission permission="withholding.view"` gate.
     const readProbe = await get(request, cashier, '/withholding/certificates')
 
     // --- CREATE probe. `manual_rate_percentage` is the 0-100 PERCENTAGE domain
@@ -514,44 +514,51 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
       manual_rate_percentage: '1.50',
       override_reason: 'W5a MTP-WHT-05 authorization probe',
     })
-    const junkCertificateId =
-      created.status === 201 ? String((created.data as { id?: string }).id ?? '') : ''
 
-    // --- EDIT probe. Deliberately submits an INVALID (too short) void reason:
-    // a `can:` middleware would refuse with 403 BEFORE the FormRequest ran, so a
-    // 422 here proves the request reached validation with no authorization gate
-    // in front of it — and, unlike a valid void, it mutates NOTHING, so the probe
+    // --- EDIT probe. The cashier can no longer create a certificate to void
+    // (the create probe above is now refused at 403), so `owner` — who holds
+    // withholding.create — seeds a REAL certificate, and the cashier attempts
+    // to void it with a deliberately INVALID (too short) reason. A `can:`
+    // middleware refuses with 403 BEFORE the FormRequest ever runs, so a 403
+    // here (not a 422) proves authorization is now checked first — and,
+    // unlike a valid void, the invalid reason mutates nothing, so the seeded
     // certificate stays a deletable draft.
-    let editStatus: number | null = null
-    if (junkCertificateId !== '') {
-      const voided = await post(request, cashier, `/withholding/certificates/${junkCertificateId}/void`, {
-        reason: 'short',
-      })
-      editStatus = voided.status
-    }
-
-    // Retire the junk probe BEFORE the verdict assertions (same rationale as
-    // MTP-WHT-04): no `expect` runs between the create and this delete, and an
-    // `expect` inside a `finally` would mask the real failure below.
-    if (junkCertificateId !== '') {
-      const removed = await del(request, owner, `/withholding/certificates/${junkCertificateId}`)
-      expect(removed.status, 'junk authorization-probe certificate retired').toBeLessThan(300)
-    }
-
-    // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #3).
-    // The plan's MTP-WHT-05 specifies the create/edit probes only; the read probe
-    // is a W-5a extension recording the FE-only `withholding.view` gate.
-    // TRIPWIRE (#3) — GREEN today, pinning the DEFECT: no `can:` middleware
-    // anywhere on Modules/Taxation/routes.php:48-59, so read is served (200),
-    // create succeeds (201), and the deliberately-invalid void reaches FormRequest
-    // validation (422 — authorization never refused it; a `can:` gate would have
-    // 403'd BEFORE validation ran). Asserted as ONE object so a partial fix
-    // reports all three observed statuses at once. When `can:withholding.*`
-    // middleware lands this goes RED; the deliberate update is
-    // `{ read: 403, create: 403, edit: 403 }`.
+    const ownerSeeded = await post(request, owner, '/withholding/certificates', {
+      direction: 'purchase',
+      partner_id: partnerId,
+      currency: 'TND',
+      gross_amount: '1000.000',
+      manual_rate_percentage: '1.50',
+      override_reason: 'W5a MTP-WHT-05 owner-seeded probe certificate',
+    })
     expect(
-      { read: readProbe.status, create: created.status, edit: editStatus },
-      'TRIPWIRE (#3): certificate routes are unprotected today — read 200 / create 201 / edit(void) 422'
-    ).toEqual({ read: 200, create: 201, edit: 422 })
+      ownerSeeded.status,
+      `owner (who holds withholding.create) seeds the probe certificate -> ${ownerSeeded.status} ${JSON.stringify(ownerSeeded.data)}`
+    ).toBe(201)
+    const probeCertificateId = String((ownerSeeded.data as { id?: string }).id ?? '')
+
+    const voided = await post(request, cashier, `/withholding/certificates/${probeCertificateId}/void`, {
+      reason: 'short',
+    })
+
+    // Retire the probe certificate BEFORE the verdict assertions (owner holds
+    // withholding.delete; no `expect` sits between seed and delete other than
+    // the status-code check above, and an `expect` inside a `finally` would
+    // mask the real failure below).
+    const removed = await del(request, owner, `/withholding/certificates/${probeCertificateId}`)
+    expect(removed.status, 'probe certificate retired').toBeLessThan(300)
+
+    // FIXED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md
+    // #3). Was TRIPWIRE (#3) — GREEN pre-fix, pinning the DEFECT: no `can:`
+    // middleware anywhere on Modules/Taxation/routes.php:48-59, so read was
+    // served (200), create succeeded (201), and the deliberately-invalid
+    // void reached FormRequest validation (422 — authorization never
+    // refused it). `can:withholding.*` middleware now gates the group;
+    // asserted as ONE object so a partial fix reports all three observed
+    // statuses at once.
+    expect(
+      { read: readProbe.status, create: created.status, edit: voided.status },
+      'FIXED (was TRIPWIRE #3): certificate routes are now gated — read/create/edit all refuse the cashier at 403'
+    ).toEqual({ read: 403, create: 403, edit: 403 })
   })
 })

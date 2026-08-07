@@ -34,8 +34,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Withholding Tax Preview endpoint
     Route::post('withholding/preview', [WithholdingPreviewController::class, 'preview']);
 
-    // Withholding Tax Rules (Admin)
-    Route::prefix('withholding/rules')->group(function (): void {
+    // Withholding Tax Rules (Admin). ALL routes in this group — including
+    // `deactivate`/`destroy`, which pre-fix carried NO authorization check
+    // at all — gate on `taxation.withholding_rules.manage`, the same
+    // permission CreateWithholdingRuleRequest/UpdateWithholdingRuleRequest's
+    // authorize() already reference (docs/superpowers/tickets/
+    // 2026-08-03-w5a-withholding-defects.md #3, §153-174).
+    Route::prefix('withholding/rules')->middleware('can:taxation.withholding_rules.manage')->group(function (): void {
         Route::get('/', [WithholdingTaxRuleController::class, 'index']);
         Route::get('/{id}', [WithholdingTaxRuleController::class, 'show']);
         Route::post('/', [WithholdingTaxRuleController::class, 'store']);
@@ -44,18 +49,36 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::delete('/{id}', [WithholdingTaxRuleController::class, 'destroy']);
     });
 
-    // Withholding Certificates
+    // Withholding Certificates. Pre-fix this group carried NO authorization
+    // middleware at all (docs/superpowers/tickets/
+    // 2026-08-03-w5a-withholding-defects.md #3, §106-152) — mirrors the
+    // neighbouring `sales-withholding` group's `can:` pattern two lines
+    // below. Read routes (list/show/downloads, which stream partner
+    // identity, VAT numbers, amounts and hash-chain fields) gate on
+    // `withholding.view`; `store` on `withholding.create`; the lifecycle
+    // mutators (`issue`/`void`/`submitTEJ`, which write into the fiscal hash
+    // chain) on `withholding.update`; `destroy` on `withholding.delete`.
     Route::prefix('withholding/certificates')->group(function (): void {
-        Route::get('/', [WithholdingCertificateController::class, 'index']);
-        Route::get('/export-tej-batch', [WithholdingCertificateController::class, 'downloadBatchTEJXML']);
-        Route::get('/{id}', [WithholdingCertificateController::class, 'show']);
-        Route::post('/', [WithholdingCertificateController::class, 'store']);
-        Route::post('/{id}/issue', [WithholdingCertificateController::class, 'issue']);
-        Route::post('/{id}/void', [WithholdingCertificateController::class, 'void']);
-        Route::post('/{id}/submit-tej', [WithholdingCertificateController::class, 'submitTEJ']);
-        Route::get('/{id}/download-pdf', [WithholdingCertificateController::class, 'downloadPDF']);
-        Route::get('/{id}/download-tej-xml', [WithholdingCertificateController::class, 'downloadTEJXML']);
-        Route::delete('/{id}', [WithholdingCertificateController::class, 'destroy']);
+        Route::get('/', [WithholdingCertificateController::class, 'index'])
+            ->middleware('can:withholding.view');
+        Route::get('/export-tej-batch', [WithholdingCertificateController::class, 'downloadBatchTEJXML'])
+            ->middleware('can:withholding.view');
+        Route::get('/{id}', [WithholdingCertificateController::class, 'show'])
+            ->middleware('can:withholding.view');
+        Route::post('/', [WithholdingCertificateController::class, 'store'])
+            ->middleware('can:withholding.create');
+        Route::post('/{id}/issue', [WithholdingCertificateController::class, 'issue'])
+            ->middleware('can:withholding.update');
+        Route::post('/{id}/void', [WithholdingCertificateController::class, 'void'])
+            ->middleware('can:withholding.update');
+        Route::post('/{id}/submit-tej', [WithholdingCertificateController::class, 'submitTEJ'])
+            ->middleware('can:withholding.update');
+        Route::get('/{id}/download-pdf', [WithholdingCertificateController::class, 'downloadPDF'])
+            ->middleware('can:withholding.view');
+        Route::get('/{id}/download-tej-xml', [WithholdingCertificateController::class, 'downloadTEJXML'])
+            ->middleware('can:withholding.view');
+        Route::delete('/{id}', [WithholdingCertificateController::class, 'destroy'])
+            ->middleware('can:withholding.delete');
     });
 
     // Sales Withholding Tracking (when customers withhold from our sales invoices)
