@@ -823,6 +823,121 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonPath('meta.totals.EUR.in', '10.00');
     }
 
+    // ── Ticket 2026-08-06-l3-cash-scope-residuals.md (a), P1 ───────────────
+    // `LocationScopeBoundary::isUnrestricted()` used to compare the grant
+    // against ACTIVE locations only, so a principal restricted to exactly
+    // today's active set (Shop A) was misclassified as "unrestricted" the
+    // moment ANY other company location (Shop B) went inactive — collapsing
+    // reportLocationScope() to `[]` (no predicate at all) and leaking Shop
+    // B's cash to an implicit/unscoped read despite it never being granted.
+
+    public function test_an_unscoped_read_excludes_a_deactivated_out_of_grant_location(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+        $shopB->update(['is_active' => false]);
+
+        $atShopA = $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-25',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-25',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '5.000',
+            paymentDate: '2026-07-25',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$shopA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-25&to=2026-07-25');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_id', $atShopA->id);
+        $response->assertJsonPath('meta.totals.EUR.in', '10.00');
+    }
+
+    public function test_explicit_request_for_a_deactivated_out_of_grant_location_is_still_refused(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+        $shopB->update(['is_active' => false]);
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$shopA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-25&to=2026-07-25&location_ids[]={$shopB->id}");
+
+        $response->assertForbidden();
+    }
+
+    public function test_reactivating_a_location_restores_it_to_the_unrestricted_read(): void
+    {
+        $shopA = $this->location('SHOP-A', 'Shop A');
+        $shopB = $this->location('SHOP-B', 'Shop B');
+
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '10.000',
+            paymentDate: '2026-07-26',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopA->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '20.000',
+            paymentDate: '2026-07-26',
+            paymentType: PaymentType::DocumentPayment,
+            locationId: $shopB->id,
+        );
+        $this->payment(
+            repository: $this->cashRepository,
+            amount: '5.000',
+            paymentDate: '2026-07-26',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        // This principal has no `allowed_location_ids` restriction at all
+        // (setUp() grants plain admin membership), so it is unrestricted
+        // by GRANT throughout — only Shop B's own active/inactive state
+        // should move the needle on what an unscoped read returns.
+        $shopB->update(['is_active' => false]);
+
+        $whileInactive = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-26&to=2026-07-26');
+
+        $whileInactive->assertOk();
+        $whileInactive->assertJsonCount(1, 'data');
+        $whileInactive->assertJsonPath('meta.totals.EUR.in', '10.00');
+
+        $shopB->update(['is_active' => true]);
+
+        $afterReactivation = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-26&to=2026-07-26');
+
+        $afterReactivation->assertOk();
+        $afterReactivation->assertJsonCount(3, 'data');
+        $afterReactivation->assertJsonPath('meta.totals.EUR.in', '35.00');
+    }
+
     public function test_journal_only_cash_lines_are_scoped_by_the_owning_repository_location(): void
     {
         $shopA = $this->location('SHOP-A', 'Shop A');

@@ -862,6 +862,19 @@ class ReportsController extends Controller
      * membership scope is represented by the effective ids and therefore hides
      * NULL location rows.
      *
+     * `LocationScopeBoundary::isUnrestricted()` only ever compared the grant
+     * against ACTIVE locations, so a grant covering exactly today's active
+     * set was classified "unrestricted" the moment any OTHER company
+     * location went inactive — collapsing to `[]` (no predicate at all) and
+     * silently surfacing that deactivated location's rows to an implicit/
+     * unscoped read despite it never being granted (ticket
+     * 2026-08-06-l3-cash-scope-residuals.md (a), P1). Clamp the "full
+     * company" scope to the active set whenever the company has a
+     * deactivated location, so it can never leak through the implicit read;
+     * once every location is active again the two sets match in size and the
+     * unrestricted `[]` (which keeps NULL/unattributed rows visible too) is
+     * restored automatically.
+     *
      * @return list<string>
      */
     private function reportLocationScope(Request $request, string $companyId): array
@@ -872,7 +885,14 @@ class ReportsController extends Controller
         }
         $effective = $this->locationScopeResolver->resolve($user, $this->requestedLocationIds($request->input('location_ids')), null);
 
-        return $this->locationScopeBoundary->isUnrestricted($companyId, $effective) ? [] : $effective;
+        if (! $this->locationScopeBoundary->isUnrestricted($companyId, $effective)) {
+            return $effective;
+        }
+
+        $activeLocationIds = $this->locationScopeBoundary->activeLocationIds($companyId);
+        $allLocationIds = $this->locationScopeBoundary->allLocationIds($companyId);
+
+        return count($activeLocationIds) === count($allLocationIds) ? [] : $activeLocationIds;
     }
 
     /** @return list<string> */
