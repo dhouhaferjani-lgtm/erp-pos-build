@@ -3,7 +3,14 @@
 From the credit-note money-lane re-gate (2026-08-03, APPROVE-WITH-FIXES promotable —
 docs/superpowers/reviews/2026-08-03-credit-note-money-lane-gate.md §"Re-gate ba7be2ce2").
 
-## N1 — P2, BLOCKS credit-note GL certification sign-off: clamp desynchronises the ledgers
+## N1 — ✅ RULING RECEIVED 2026-08-07 (fix lane dispatched): 411 ex-stamp only, stamp = charge fiscale
+
+Expert-comptable answer (verbatim + full consequence list in
+`2026-08-06-expert-comptable-rulings-q2-q3.md` §Q1): the sub-ledger's ex-stamp clamp was
+correct; `createFromCreditNote()` must credit 411 ex-stamp and book the avoir's timbre as a
+separate charge-fiscale/stamp-payable pair. Original finding below for context.
+
+## N1 (original finding) — P2, BLOCKS credit-note GL certification sign-off: clamp desynchronises the ledgers
 
 `GeneralLedgerService::createFromCreditNote()` (:252-260) credits AR (411) by the FULL unclamped
 CN total while `allocateCreditNote()` clamps the subledger allocation at remaining balance_due.

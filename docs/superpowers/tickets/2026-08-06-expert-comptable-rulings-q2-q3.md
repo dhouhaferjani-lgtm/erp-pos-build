@@ -1,8 +1,37 @@
-# Expert-comptable rulings — Q2 & Q3 answered (2026-08-06); Q1 still pending
+# Expert-comptable rulings — Q1 (2026-08-07), Q2 & Q3 (2026-08-06) — ALL THREE ANSWERED
 
 Source: owner relayed the expert-comptable's answers to the three questions in
-`docs/handoff/OWNER-INDEX-2026-08-03.md` §1. Q2 and Q3 are answered below (verbatim);
-**Q1 (timbre fiscal sur avoir — GL vs lettrage) is still awaiting the expert's answer.**
+`docs/handoff/OWNER-INDEX-2026-08-03.md` §1.
+
+## Q1 — Timbre fiscal sur avoir : le 411 n'est réduit QUE du montant hors timbre (2026-08-07)
+
+Verbatim answer:
+
+> Le compte client (411) ne doit être diminué que du montant crédité hors timbre, et le
+> timbre de l'avoir doit être comptabilisé séparément comme une charge fiscale pour
+> l'entreprise.
+
+### Consequence: the SUB-LEDGER (lettrage) was right; the GL is wrong — fix owed
+
+`GeneralLedgerService::createFromCreditNote()` credits AR (411) by the FULL stamp-inclusive
+CN total; `allocateToInvoice`'s ex-stamp clamp is the correct behaviour. Required change:
+1. CN GL entry credits 411 with the EX-STAMP credited amount only.
+2. The CN's own stamp duty books as a separate self-balancing pair: DEBIT a fiscal-charge
+   expense account (TN: the 6xxx charge class; FR/Generic: the seeded 6581 pair from the L1
+   lane — implementer to confirm per-chart mapping), CREDIT the stamp-payable account
+   (TN 4375 SalesStampDutyPayable class) — the company owes the avoir's timbre to the state;
+   it no longer reduces what the customer owes.
+3. DoubleEntry balance must hold on both the new shape and the lineless/edge branches; the
+   L1 preflight (DocumentGlPreflightInterface) and the L2 reversal mirror (sealed-legs
+   string-exact) both consume CN entries — sweep both for shape assumptions.
+4. Already-posted CNs (demo tenant has live ones, e.g. the 1.600/0.400 desync case in ticket
+   2026-08-03-credit-note-regate-carryovers.md §N1): NO automatic rewrite — sealed entries
+   are mirrored by the L2 reversal logic; disposition joins the accountant list (same class
+   as the other campaign artifacts). New postings only.
+This closes N1 and unblocks credit-note GL certification (project_accounting_gl_roadmap A1).
+
+RELATED (separate feature line, owner 2026-08-06): whether a CN/return note carries a stamp
+AT ALL should become configurable/optional — see the note at the bottom of this file.
 
 ---
 
