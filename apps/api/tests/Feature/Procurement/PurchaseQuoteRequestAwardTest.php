@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseQuoteRequestToPurchaseOrderConverter;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\CreateRfqData;
@@ -115,6 +116,90 @@ final class PurchaseQuoteRequestAwardTest extends TestCase
         $this->assertSame('lost', $a->payload['rfq']['closed_reason']);
         $this->assertSame(DocumentStatus::Cancelled, $c->refresh()->status);
         $this->assertSame('lost', $c->payload['rfq']['closed_reason']);
+    }
+
+    /**
+     * Ticket 2026-08-03-w4-purchasing-inventory-defects.md #3 (MTP-RFQ-06).
+     *
+     * CreatePurchaseQuoteRequestRequest / UpdatePurchaseQuoteRequestRequest never
+     * declare a `tax_rate` field, so an RFQ line's tax_rate is always null, and the
+     * award converter used to copy it straight through — an RFQ-awarded PO carried
+     * NO tax rate at all, so PurchaseOrderService::confirmAndAllocateCosts (which
+     * computes tax FROM the line's tax_rate) could never invent one: tax_amount
+     * stayed 0.000 even after confirm. Fixed by resolving a default rate (product
+     * tax_rate / tax configuration / company default — the exact chain
+     * DraftPurchaseOrderService already uses for the replenishment path) at the
+     * converter boundary when the RFQ line carries none.
+     */
+    public function test_award_carries_a_default_tax_rate_when_the_rfq_line_has_none(): void
+    {
+        $taxedProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Taxed RFQ product',
+            'tax_rate' => '19.00',
+        ]);
+
+        $supplier = $this->supplier('Taxed RFQ Supplier');
+
+        $created = app(PurchaseQuoteRequestService::class)->createGroup(
+            new CreateRfqData(
+                partnerIds: [$supplier->id],
+                lines: [
+                    [
+                        'product_id' => $taxedProduct->id,
+                        'quantity' => '10.0000',
+                        'unit_price' => null,
+                        'description' => 'Taxed RFQ line',
+                    ],
+                ],
+                validityDate: null,
+                notes: null,
+            ),
+            $this->tenant->id,
+            $this->company->id,
+            $this->company->currency,
+        );
+
+        $rfq = $created->first();
+        $this->assertNotNull($rfq);
+
+        $responded = app(PurchaseQuoteRequestService::class)->recordResponse(
+            $rfq->id,
+            $this->tenant->id,
+            $this->company->id,
+            new UpdateRfqData(
+                lines: [
+                    [
+                        'id' => $rfq->lines->first()?->id,
+                        'product_id' => $taxedProduct->id,
+                        'quantity' => '10.0000',
+                        'unit_price' => '12.500',
+                        'description' => 'Taxed RFQ line',
+                    ],
+                ],
+                validityDate: null,
+                supplierReference: null,
+                leadTimeDays: null,
+            ),
+        );
+
+        $po = app(PurchaseQuoteRequestAwardService::class)->award($responded->id, $this->tenant->id, $this->company->id);
+
+        // RFQ line carried no tax_rate — the PO line must now carry the resolved
+        // default (the product's own tax_rate, since the line specified none).
+        $poLine = $po->lines->first();
+        $this->assertNotNull($poLine);
+        $this->assertSame('19.00', $poLine->tax_rate);
+        $this->assertSame('125.000', $po->subtotal);
+
+        // Confirm is where a PO's taxes are calculated and snapshotted
+        // (PurchaseOrderService::confirmAndAllocateCosts) — it can only compute the
+        // VAT now that the line actually carries a rate.
+        $confirmed = app(PurchaseOrderService::class)->confirm($po);
+
+        $this->assertSame('23.750', $confirmed->tax_amount, '19% of 125.000');
+        $this->assertSame('148.750', $confirmed->total);
     }
 
     public function test_second_award_is_rejected_once_group_has_live_po(): void
