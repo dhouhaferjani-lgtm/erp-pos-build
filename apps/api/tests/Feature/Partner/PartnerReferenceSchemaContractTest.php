@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Partner;
 
+use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
 use App\Shared\Application\Partner\TableBackedPartnerReferenceSource;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -91,6 +92,44 @@ class PartnerReferenceSchemaContractTest extends TestCase
                     .($hasDeletedAt ? 'HAS' : 'does NOT have').' a `deleted_at` column. '
                     .'Flag it correctly: a missing flag makes soft-deleted history block the '
                     .'partner forever; a spurious flag makes the guard throw at delete time.',
+                );
+            }
+        }
+    }
+
+    public function test_ignoring_soft_deleted_rows_requires_an_explicit_allowlist_entry(): void
+    {
+        // R2-S treasury m-1 — the biconditional above is a trap on its own.
+        // The day a MONEY table (payments, payment_instruments, journal_lines,
+        // the pos_*_receipts family) gains a `deleted_at` column, that rule
+        // alone would invite flipping `hasSoftDeletes` to true just to keep
+        // the suite green — silently weakening the guard, because
+        // soft-deleted money rows would stop blocking the delete.
+        //
+        // So the weakening direction has to be allowlisted explicitly: a
+        // table may only stop counting its soft-deleted rows if someone has
+        // written down why that is safe.
+        foreach ($this->taggedSources() as $source) {
+            foreach ($source->tables() as $table) {
+                if (! $table->hasSoftDeletes) {
+                    continue;
+                }
+
+                $this->assertArrayHasKey(
+                    $table->table,
+                    PartnerReferenceCounter::SOFT_DELETE_AWARE_TABLES,
+                    $source::class.' declares `'.$table->table.'` with hasSoftDeletes: true, so '
+                    .'soft-deleted rows there no longer block a partner delete. That is a '
+                    .'deliberate weakening of the guard and must be recorded in '
+                    .'PartnerReferenceCounter::SOFT_DELETE_AWARE_TABLES with the reason it is '
+                    .'safe. If this table carries money or a fiscal record, the answer is '
+                    .'probably to leave the flag false and keep counting.',
+                );
+
+                $this->assertNotSame(
+                    '',
+                    trim(PartnerReferenceCounter::SOFT_DELETE_AWARE_TABLES[$table->table]),
+                    '`'.$table->table.'` is on the soft-delete allowlist without a reason.',
                 );
             }
         }

@@ -25,29 +25,11 @@ use App\Shared\Contracts\Partner\PartnerReferenceSource;
  * SCOPE (2026-08-07, lane R2-S). The original guard covered three tables of
  * the ~26 columns that reference `partners.id`; the gap is now closed for
  * every table where a lingering row can still ACT on the partner (see the
- * per-module sources). Four groups are DELIBERATELY not counted, and the
- * reasons are recorded here so nobody "fixes" them by accident:
- *
- *  1. `partner_bank_accounts`, `party_contacts`, `partner_price_lists` —
- *     all `cascadeOnDelete`. The schema declares them owned BY the partner;
- *     they describe it rather than record anything it took part in, and a
- *     hard delete removes them automatically. Counting them would make
- *     every fully-configured partner permanently undeletable while
- *     protecting nothing. (`pos_customer_aliases` is also CASCADE but IS
- *     counted — see `PosPartnerReferenceSource` for why it is not
- *     descriptive configuration.)
- *  2. `fiscal_events.partner_id` — the append-only fiscal journal OF the
- *     transactions already counted (`pos_receipts` / `documents`). It can
- *     never be the sole reference, so counting it would only duplicate a
- *     block that already fires, under a key an operator cannot act on.
- *  3. `customer_history_searches.partner_id` — an append-only PII audit log
- *     of a cashier SEARCHING for a customer. The partner is the object of
- *     the search, not a participant in a record; the rows are never
- *     deletable, so counting them would permanently block any partner who
- *     was ever looked up.
- *  4. `catalog_cart_items.preferred_supplier_partner_id` — a transient
- *     per-cart supplier preference (SET NULL, no financial or audit
- *     weight). An abandoned cart must not veto a supplier's deletion.
+ * per-module sources). The columns deliberately NOT counted are no longer
+ * prose: they are `EXCLUDED_PARTNER_COLUMNS` below, and
+ * `PartnerReferenceSchemaSweepTest` walks the live schema and fails on any
+ * partner-shaped column that is neither declared by a source nor listed
+ * there. A new FK-less money column cannot ship unnoticed.
  *
  * CONNECTION TIMING — do not "simplify" this away. Sources must resolve
  * their connection at QUERY time, never at construction time: Laravel
@@ -71,6 +53,73 @@ use App\Shared\Contracts\Partner\PartnerReferenceSource;
  */
 final class PartnerReferenceCounter
 {
+    /**
+     * Partner-shaped columns the delete guard deliberately does NOT count,
+     * each with the reason it is safe to ignore.
+     *
+     * This is policy in code, not commentary: `PartnerReferenceSchemaSweepTest`
+     * asserts that every `partner_id` / `*_partner_id` / `customer_id` /
+     * `*_customer_id` column in the live schema is either declared by a
+     * tagged `PartnerReferenceSource` or listed here — and that every key
+     * here still exists and is not also declared. Adding a column to this
+     * list is therefore an explicit, reviewable decision.
+     *
+     * @var array<string, string> `table.column` => why it is excluded
+     */
+    public const array EXCLUDED_PARTNER_COLUMNS = [
+        // --- Cascade-owned descriptive child data -----------------------
+        // The schema declares these owned BY the partner (cascadeOnDelete):
+        // they describe it rather than record anything it took part in, and
+        // a hard delete removes them automatically. Counting them would make
+        // every fully-configured partner permanently undeletable while
+        // protecting nothing. (`pos_customer_aliases` is also CASCADE but IS
+        // counted — see PosPartnerReferenceSource for why it is not
+        // descriptive configuration.)
+        'partner_bank_accounts.partner_id' => 'cascadeOnDelete; the partner s own bank details, not a record it participated in',
+        'partner_price_lists.partner_id' => 'cascadeOnDelete; the partner s own negotiated pricing, removed with it',
+        // Found by the sweep's FOREIGN-KEY net, not its name net: a real FK
+        // to `partners` under a column no naming convention would guess.
+        'party_contacts.party_id' => 'cascadeOnDelete; the partner s own contact people, removed with it',
+
+        // --- Fiscal journal ---------------------------------------------
+        // See the rationale on FISCAL_EVENTS_EXCLUSION below — the sealed
+        // pos_*_receipts projections are what make this safe, and they ARE
+        // counted (PosPartnerReferenceSource).
+        'fiscal_events.partner_id' => 'append-only fiscal event stream; the sealed pos_*_receipts projections of these events are counted instead',
+
+        // --- Audit log of an action ABOUT the partner --------------------
+        'customer_history_searches.partner_id' => 'append-only PII audit of a cashier SEARCHING for a customer; rows are never deletable, so counting them would block any partner ever looked up',
+
+        // --- Transient preference ----------------------------------------
+        'catalog_cart_items.preferred_supplier_partner_id' => 'transient per-cart supplier preference (SET NULL); an abandoned cart must not veto a supplier s deletion',
+
+        // --- Partner-shaped name, NOT a partner reference -----------------
+        'tenant_subscriptions.stripe_customer_id' => 'a Stripe customer identifier on a central-DB billing table; nothing to do with partners',
+    ];
+
+    /**
+     * Tables whose declarations are allowed to set `hasSoftDeletes: true`,
+     * i.e. to stop counting rows once they are soft-deleted.
+     *
+     * Curated on purpose (R2-S treasury m-1). Pinning the flag to "does the
+     * table have a `deleted_at` column" alone is a trap: the day a MONEY
+     * table gains soft deletes, that rule would invite flipping the flag to
+     * keep the schema test green — and silently weaken the guard, because
+     * soft-deleted money rows would stop blocking. With this allowlist the
+     * flip does not compile past the test without a deliberate edit here.
+     *
+     * @var array<string, string> table => why ignoring its soft-deleted rows is safe
+     */
+    public const array SOFT_DELETE_AWARE_TABLES = [
+        'documents' => 'a soft-deleted document is already withdrawn from the ledger and from every list',
+        'vouchers' => 'a soft-deleted voucher is void; it is no longer a redeemable liability',
+        'workshop_work_orders' => 'a soft-deleted work order is cancelled history',
+        'workshop_work_order_lines' => 'lines follow their work order',
+        'scheduling_appointments' => 'a soft-deleted appointment is a cancelled booking',
+        'vehicles' => 'a soft-deleted vehicle is off the fleet and unreachable in the UI',
+        'loyalty_members' => 'a soft-deleted member is deactivated; its points balance is no longer redeemable',
+    ];
+
     /**
      * @param  iterable<PartnerReferenceSource>  $sources  Tagged via
      *                                                     `app->tagged(PartnerReferenceSource::class)` in
