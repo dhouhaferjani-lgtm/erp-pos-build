@@ -9,3 +9,13 @@
    a 422 boundary refusal — supporting bonus on invoice-first would need a per-line
    paid/free split contract that doesn't exist. If TN pharmacies ever need invoice-first
    bonus flows, that's a spec'd feature, not a fix.
+
+3. **(bonus re-gate (a))** `matchable` at SupplierInvoiceController:611 is ALSO not
+   bonus-aware, alongside price_variance :614 — false variance chip on every bonus line in
+   the exact TN-pharmacy flow this unlocks. Not backlog-forever; align both read-model
+   fields with the matcher's bonus-skip.
+4. **(bonus re-gate (b), minor)** gate-off + bonus + nonzero price returns BOTH the
+   prohibited and must-be-zero messages — cosmetic, but discloses the bonus feature to
+   ungated tenants.
+5. **(bonus re-gate (c), minor)** the pending_receipt arm of the invoice-first refusal is
+   code-covered but test-uncovered.
